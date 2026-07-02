@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc -t markdown 'GraphRAG System Feasibility Research.docx' -o __TRACKED_VAR__/doc1.md)",
+      "Bash(pandoc -t markdown \"GraphRAG System Feasibility Research.docx\")",
+      "Bash(python -c \"import docx; print\\('ok'\\)\")"
+    ]
+  }
+}

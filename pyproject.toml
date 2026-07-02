@@ -1,0 +1,20 @@
+[project]
+name = "ai-semiconductor-risk-intelligence-graphrag"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "edgartools>=5.40.1",
+    "jupyterlab>=4.6.1",
+    "litellm>=1.90.2",
+    "matplotlib>=3.11.0",
+    "neo4j>=6.2.0",
+    "pandas>=2.3.3",
+    "pyarrow>=24.0.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "python-dotenv>=1.2.2",
+    "ragas>=0.4.3",
+    "sec-parser>=0.58.1",
+    "sentence-transformers>=5.6.0",
+    "tiktoken>=0.13.0",
+]
