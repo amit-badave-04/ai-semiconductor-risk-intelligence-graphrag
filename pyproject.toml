@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "edgartools>=5.40.1",
+    "ipywidgets>=8.1.8",
     "jupyterlab>=4.6.1",
     "litellm>=1.90.2",
     "matplotlib>=3.11.0",
