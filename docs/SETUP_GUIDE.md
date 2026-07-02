@@ -82,7 +82,7 @@ Each ends with an assertion cell that prints an `... OK` line — if you see it,
 
 | # | Notebook | Needs | Notes |
 |---|---|---|---|
-| 0 | `00_smoke_test` | Neo4j started + API key | First run downloads the ~1.3 GB embedding model (one-time, needs disk + patience) |
+| 0 | `00_smoke_test` | Neo4j started + API key | Embedding model (Qwen3-Embedding-0.6B, ~1.2 GB) is already downloaded to your Hugging Face cache |
 | 1 | `05_graph_schema` | Neo4j | Creates constraints & vector indexes |
 | 2 | `06_deterministic_layer` | Neo4j | Loads companies/filings/metrics — no LLM |
 | 3 | `07_llm_extraction` | API key | **The paid step, ~$2–3.** Checkpointed: safe to interrupt and re-run, it resumes |
