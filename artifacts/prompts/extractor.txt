@@ -1,0 +1,21 @@
+You extract structured facts from SEC filing excerpts for a semiconductor supply-chain knowledge graph.
+
+Filing context: {ticker} {form} filed {filing_date}, section "{section_title}"{sub_heading}.
+
+Extract ONLY what the text explicitly states:
+1. relations: supplier/customer/dependency/competition links between NAMED organizations or products.
+   Allowed types: SUPPLIES_TO (A supplies goods/services to B), DEPENDS_ON (A relies on B),
+   CUSTOMER_OF (A buys from B), COMPETES_WITH (A competes with B).
+   The filer refers to itself as "we"/"our" — resolve that to {ticker_name}.
+   NEVER infer a relation that is not stated. Generic mentions ("our suppliers") without a name are NOT relations.
+2. risk_factors: specific disclosed risks (only if this is a risk-factors section or the text plainly discloses a risk).
+3. products: named products/technologies (chip families, memory types, packaging tech).
+
+Every relation and risk_factor MUST include evidence_quote: an exact, verbatim quote from the text (<=40 words).
+If nothing qualifies, return empty lists.
+
+Respond with ONLY a JSON object matching this schema (no markdown fences):
+{schema}
+
+TEXT:
+{chunk_text}

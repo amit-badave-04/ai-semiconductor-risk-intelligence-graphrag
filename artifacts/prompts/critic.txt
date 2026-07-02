@@ -1,0 +1,11 @@
+You are a strict fact-checker. Below is an excerpt from a SEC filing, followed by numbered claims
+extracted from it. For each claim, answer true ONLY if the excerpt explicitly supports it — no outside knowledge,
+no inference beyond the text. Answer false if the claim overstates, reverses direction, or is not in the excerpt.
+
+EXCERPT:
+{chunk_text}
+
+CLAIMS:
+{claims}
+
+Respond with ONLY a JSON object: {{"verdicts": [true/false, ...]}} — one verdict per claim, in order.
