@@ -1,0 +1,9 @@
+Judge whether the answer is a correct response to the question, given the grading notes.
+
+QUESTION: {q}
+GRADING NOTES: {notes}
+
+ANSWER:
+{a}
+
+Reply ONLY with JSON: {{"correct": true/false, "reason": "..."}}

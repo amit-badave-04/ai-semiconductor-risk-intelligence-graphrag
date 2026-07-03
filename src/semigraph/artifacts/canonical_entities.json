@@ -1,0 +1,220 @@
+{
+  "Nvidia": {
+    "cik": 1045810,
+    "ticker": "NVDA",
+    "aliases": [
+      "nvidia corporation",
+      "nvidia corp"
+    ],
+    "entity_id": 1045810
+  },
+  "AMD": {
+    "cik": 2488,
+    "ticker": "AMD",
+    "aliases": [
+      "advanced micro devices"
+    ],
+    "entity_id": 2488
+  },
+  "Intel": {
+    "cik": 50863,
+    "ticker": "INTC",
+    "aliases": [
+      "intel corporation",
+      "intel corp"
+    ],
+    "entity_id": 50863
+  },
+  "Broadcom": {
+    "cik": 1730168,
+    "ticker": "AVGO",
+    "aliases": [
+      "broadcom inc"
+    ],
+    "entity_id": 1730168
+  },
+  "Qualcomm": {
+    "cik": 804328,
+    "ticker": "QCOM",
+    "aliases": [
+      "qualcomm incorporated"
+    ],
+    "entity_id": 804328
+  },
+  "TSMC": {
+    "cik": 1046179,
+    "ticker": "TSM",
+    "aliases": [
+      "taiwan semiconductor manufacturing company",
+      "taiwan semiconductor",
+      "taiwan semi",
+      "tsmc arizona"
+    ],
+    "entity_id": 1046179
+  },
+  "ASML": {
+    "cik": 937966,
+    "ticker": "ASML",
+    "aliases": [
+      "asml holding",
+      "asml holding nv"
+    ],
+    "entity_id": 937966
+  },
+  "Micron": {
+    "cik": 723125,
+    "ticker": "MU",
+    "aliases": [
+      "micron technology"
+    ],
+    "entity_id": 723125
+  },
+  "Samsung": {
+    "cik": null,
+    "ticker": "SSNLF",
+    "aliases": [
+      "samsung electronics",
+      "samsung electronics co"
+    ],
+    "entity_id": -1
+  },
+  "Apple": {
+    "cik": 320193,
+    "ticker": "AAPL",
+    "aliases": [
+      "apple inc"
+    ],
+    "entity_id": 320193
+  },
+  "Microsoft": {
+    "cik": 789019,
+    "ticker": "MSFT",
+    "aliases": [
+      "microsoft corporation",
+      "azure",
+      "microsoft azure"
+    ],
+    "entity_id": 789019
+  },
+  "Amazon": {
+    "cik": 1018724,
+    "ticker": "AMZN",
+    "aliases": [
+      "amazon com",
+      "aws",
+      "amazon web services"
+    ],
+    "entity_id": 1018724
+  },
+  "Alphabet": {
+    "cik": 1652044,
+    "ticker": "GOOGL",
+    "aliases": [
+      "google",
+      "google cloud",
+      "google llc"
+    ],
+    "entity_id": 1652044
+  },
+  "Meta": {
+    "cik": 1326801,
+    "ticker": "META",
+    "aliases": [
+      "meta platforms",
+      "facebook"
+    ],
+    "entity_id": 1326801
+  },
+  "SK Hynix": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [
+      "sk hynix",
+      "hynix"
+    ],
+    "entity_id": -2
+  },
+  "Arm": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [
+      "arm holdings",
+      "arm limited"
+    ],
+    "entity_id": -3
+  },
+  "OpenAI": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [
+      "open ai"
+    ],
+    "entity_id": -4
+  },
+  "Anthropic": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [],
+    "entity_id": -5
+  },
+  "Marvell": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [
+      "marvell technology"
+    ],
+    "entity_id": -6
+  },
+  "GlobalFoundries": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [
+      "global foundries"
+    ],
+    "entity_id": -7
+  },
+  "Foxconn": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [
+      "hon hai",
+      "hon hai precision industry"
+    ],
+    "entity_id": -8
+  },
+  "CoreWeave": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [],
+    "entity_id": -9
+  },
+  "xAI": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [],
+    "entity_id": -10
+  },
+  "Oracle": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [
+      "oracle corporation",
+      "oracle cloud"
+    ],
+    "entity_id": -11
+  },
+  "Tesla": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [],
+    "entity_id": -12
+  },
+  "Huawei": {
+    "cik": null,
+    "ticker": null,
+    "aliases": [
+      "huawei technologies"
+    ],
+    "entity_id": -13
+  }
+}

@@ -1,4 +1,18 @@
-# Project Status — end of notebook phase (2026-07-03)
+# Project Status — ALL MILESTONES COMPLETE (M7 shipped 2026-07-03)
+
+**M7 is DONE**: notebook logic is refactored into the `semigraph` package under `src/semigraph/`
+(config / llm / embeddings / ingestion / parsing / extraction / graph / retrieval / eval), with a
+typer CLI (`semigraph ingest|build-graph|query|eval`), a 114-test pytest suite (LLM fully mocked —
+zero API spend), packaged artifacts (schema.cypher, canonical_entities.json, benchmark.json,
+prompts/), and `uv build` producing an installable wheel (verified in a fresh venv). All vector
+queries use the Neo4j SEARCH clause. Every battle scar below is preserved in code and pinned by a
+test where the logic is pure. `notebooks/15_sdk_demo.ipynb` reproduces Query D via
+`import semigraph` only (live-verified: 11 citations, 0 hallucinated). Notebooks 00–14 are
+untouched as the historical record.
+
+---
+
+*The original M7 handoff below is retained for context.*
 
 **Milestones M0–M6 are COMPLETE and verified. M7 (the `semigraph` SDK) is the only one left.**
 This file is the handoff for the SDK-building session. Companion references: notebook text exports in

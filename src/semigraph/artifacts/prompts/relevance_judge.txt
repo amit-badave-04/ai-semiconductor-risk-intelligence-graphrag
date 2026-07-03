@@ -1,0 +1,8 @@
+For each numbered excerpt, answer true if it is relevant to answering the question, else false.
+
+QUESTION: {q}
+
+EXCERPTS:
+{chunks}
+
+Reply ONLY with JSON: {{"verdicts": [true/false, ...]}} in order.

@@ -1,0 +1,13 @@
+Fact-check this answer against ONLY the provided context (graph facts + excerpts).
+Count the factual claims in the answer, then count how many are directly supported by the context.
+Statements of absence ('the context does not contain X') count as supported when nothing contradicts them.
+
+QUESTION: {q}
+
+ANSWER:
+{a}
+
+CONTEXT:
+{ctx}
+
+Reply ONLY with JSON: {{"total_claims": N, "supported_claims": K}}
