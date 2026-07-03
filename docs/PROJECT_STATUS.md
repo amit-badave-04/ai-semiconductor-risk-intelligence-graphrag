@@ -6,9 +6,25 @@ typer CLI (`semigraph ingest|build-graph|query|eval`), a 114-test pytest suite (
 zero API spend), packaged artifacts (schema.cypher, canonical_entities.json, benchmark.json,
 prompts/), and `uv build` producing an installable wheel (verified in a fresh venv). All vector
 queries use the Neo4j SEARCH clause. Every battle scar below is preserved in code and pinned by a
-test where the logic is pure. `notebooks/15_sdk_demo.ipynb` reproduces Query D via
+test where the logic is pure. `notebooks/15_sdk_inference_driver.ipynb` reproduces Query D via
 `import semigraph` only (live-verified: 11 citations, 0 hallucinated). Notebooks 00–14 are
 untouched as the historical record.
+
+## V2 roadmap (approved as TODO — each retrieval change requires a paid ~$2-3 re-benchmark before merge)
+
+1. **BM25/full-text keyword channel** — Neo4j full-text (Lucene) index on `EvidenceSpan.text`,
+   merged with the vector channel via **RRF** (reciprocal rank fusion, not weighted score mixing —
+   vector/BM25/graph scores are not on comparable scales).
+2. **Reranker + adaptive k** — local cross-encoder (or Haiku-as-reranker) over merged candidates;
+   fixes context precision (~0.3, k always 8 even when graph blocks answer).
+3. **Eval judge diversity** — Ragas (needs version bump: pinned 0.4.3 fails to import,
+   `langchain_community.ChatVertexAI` drift) + DeepEval for CI regression, pointed at a DIFFERENT
+   judge model family (frameworks are LLM-judges too; same family = same self-preference).
+   Ragas testset generation to grow the benchmark 20 → 50 questions. Keep the custom
+   entity/edge/path expectations — no framework provides graph-path metrics.
+4. **Framework interfaces, custom internals** — do NOT adopt neo4j-graphrag-python/LangChain
+   wholesale (no framework supports the bitemporal layer = the 100%-vs-0% temporal edge, the
+   quote-gate+critic, or XBRL-only numbers); optionally mirror official retriever interfaces.
 
 ---
 
