@@ -1,0 +1,44 @@
+{
+  "overall": {
+    "correct": {
+      "hybrid": 1.0,
+      "vector": 0.8
+    },
+    "faithfulness": {
+      "hybrid": 0.865,
+      "vector": 0.943
+    },
+    "context_precision": {
+      "hybrid": 0.275,
+      "vector": 0.325
+    },
+    "citation_validity": {
+      "hybrid": 1.0,
+      "vector": 1.0
+    },
+    "avg_citations": {
+      "hybrid": 5.45,
+      "vector": 4.0
+    }
+  },
+  "by_type": {
+    "hybrid": {
+      "dependency": 1.0,
+      "numeric": 1.0,
+      "refusal": 1.0,
+      "regulatory": 1.0,
+      "risk": 1.0,
+      "temporal": 1.0
+    },
+    "vector": {
+      "dependency": 1.0,
+      "numeric": 0.8,
+      "refusal": 1.0,
+      "regulatory": 1.0,
+      "risk": 1.0,
+      "temporal": 0.0
+    }
+  },
+  "n_questions": 20,
+  "scored_runs": 40
+}

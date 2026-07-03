@@ -1,0 +1,173 @@
+[
+  {
+    "id": "N1",
+    "type": "numeric",
+    "q": "What was Nvidia's total revenue for the fiscal year ended January 28, 2024?",
+    "expect": {
+      "value": 60922000000
+    }
+  },
+  {
+    "id": "N2",
+    "type": "numeric",
+    "q": "What was Nvidia's total revenue for the fiscal year ended January 25, 2026?",
+    "expect": {
+      "value": 215938000000
+    }
+  },
+  {
+    "id": "N3",
+    "type": "numeric",
+    "q": "What was Nvidia's total revenue for the fiscal year ended January 26, 2025?",
+    "expect": {
+      "value": 130497000000
+    }
+  },
+  {
+    "id": "N4",
+    "type": "numeric",
+    "q": "What was Microsoft's total revenue for the fiscal year ended June 30, 2025?",
+    "expect": {
+      "value": 281724000000
+    }
+  },
+  {
+    "id": "D1",
+    "type": "dependency",
+    "q": "Which companies does Nvidia depend on for chip manufacturing and assembly?",
+    "expect": {
+      "any_of": [
+        "TSMC",
+        "Taiwan Semiconductor",
+        "Samsung",
+        "Foxconn"
+      ]
+    }
+  },
+  {
+    "id": "D2",
+    "type": "dependency",
+    "q": "Which memory suppliers does Nvidia buy HBM or memory from?",
+    "expect": {
+      "any_of": [
+        "Micron",
+        "SK Hynix",
+        "Samsung"
+      ]
+    }
+  },
+  {
+    "id": "D3",
+    "type": "dependency",
+    "q": "Which foundries does AMD rely on to manufacture its chips?",
+    "expect": {
+      "any_of": [
+        "TSMC",
+        "Taiwan Semiconductor",
+        "GlobalFoundries",
+        "Samsung"
+      ]
+    }
+  },
+  {
+    "id": "D4",
+    "type": "dependency",
+    "q": "Which hyperscaler is disclosed as a customer of AMD in the knowledge graph?",
+    "expect": {
+      "any_of": [
+        "Meta"
+      ]
+    }
+  },
+  {
+    "id": "R1",
+    "type": "regulatory",
+    "q": "Which BIS export-control rules is AMD affected by?",
+    "expect": {
+      "any_of": [
+        "Entity List",
+        "Advanced Computing",
+        "Foreign-Produced Direct Product"
+      ]
+    }
+  },
+  {
+    "id": "R2",
+    "type": "regulatory",
+    "q": "Which companies in the graph are affected by US export-control rules?",
+    "expect": {
+      "any_of": [
+        "Nvidia",
+        "AMD",
+        "Broadcom"
+      ]
+    }
+  },
+  {
+    "id": "R3",
+    "type": "regulatory",
+    "q": "What does Nvidia disclose about export controls affecting its sales to China?",
+    "judge_notes": "Should describe US export controls restricting advanced GPU/AI chip sales to China, citing Nvidia filing chunks."
+  },
+  {
+    "id": "T1",
+    "type": "temporal",
+    "q": "Did Nvidia stop disclosing any risk factors in its latest 10-K that appeared in earlier 10-Ks?",
+    "judge_notes": "Correct answer affirms YES \u2014 dozens of risk lineages were closed/dropped \u2014 ideally with examples."
+  },
+  {
+    "id": "T2",
+    "type": "temporal",
+    "q": "What new supply-chain or geopolitical risks appeared in Meta's most recent annual report?",
+    "judge_notes": "Should list plausible Meta risks with citations from Meta chunks; 'newly appeared' framing acknowledged."
+  },
+  {
+    "id": "T3",
+    "type": "temporal",
+    "q": "How has Nvidia's disclosed risk profile evolved across its recent annual reports?",
+    "judge_notes": "Should discuss evolution (e.g., growing AI/export-control emphasis) grounded in cited Nvidia chunks from multiple years."
+  },
+  {
+    "id": "Q1",
+    "type": "risk",
+    "q": "What supply-chain related risks does TSMC disclose in its annual report?",
+    "judge_notes": "Should present TSMC-disclosed risks with citations from TSM 20-F chunks."
+  },
+  {
+    "id": "Q2",
+    "type": "risk",
+    "q": "What geopolitical risks does ASML disclose?",
+    "judge_notes": "Should present ASML-disclosed risks (export restrictions, China exposure) citing ASML chunks."
+  },
+  {
+    "id": "Q3",
+    "type": "risk",
+    "q": "Compare the competition risks disclosed by AMD and Nvidia.",
+    "judge_notes": "Should contrast both companies' competition risks, citing chunks from BOTH filers."
+  },
+  {
+    "id": "M1",
+    "type": "numeric",
+    "q": "By how much did Nvidia's annual revenue grow from the fiscal year ended January 28, 2024 to the fiscal year ended January 25, 2026?",
+    "expect": {
+      "any_of": [
+        "155",
+        "3.5",
+        "254%",
+        "215.9",
+        "60.9"
+      ]
+    },
+    "judge_notes": "Correct if consistent with 60.922B -> 215.938B (about +155B, ~3.5x)."
+  },
+  {
+    "id": "U1",
+    "type": "refusal",
+    "q": "What is Samsung's total annual revenue according to its SEC filings?"
+  },
+  {
+    "id": "U2",
+    "type": "refusal",
+    "q": "What did Nvidia's CEO say on the most recent earnings call?"
+  }
+]
