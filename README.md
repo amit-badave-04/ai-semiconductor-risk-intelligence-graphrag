@@ -26,6 +26,8 @@ Feasibility research: see [docs/](docs/) (two studies; verdict: BUILD, 8.4/10).
 
 ## Phases & Milestones
 
+**Status: M0–M6 complete (benchmark: hybrid 100% correct / 0.865 faithful; temporal questions 100% vs 0% for vector-only). M7 (SDK) in progress — see [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md).**
+
 | Phase | Milestone | Notebooks | Deliverable |
 |---|---|---|---|
 | 0. Environment & scaffold | M0 | `00_smoke_test` | env + Neo4j + LLM + embeddings verified |
