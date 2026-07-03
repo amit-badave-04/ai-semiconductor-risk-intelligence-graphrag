@@ -20,9 +20,9 @@ Feasibility research: see [docs/](docs/) (two studies; verdict: BUILD, 8.4/10).
 | Python | 3.12 via [uv](https://docs.astral.sh/uv/) |
 | LLM | Provider-agnostic via LiteLLM; default **Claude Sonnet** |
 | Graph DB | **Neo4j Desktop** (local), native vector indexes |
-| Embeddings | Local `BAAI/bge-large-en-v1.5` (sentence-transformers) |
+| Embeddings | Local `Qwen/Qwen3-Embedding-0.6B` (sentence-transformers, 1024-dim, 32k ctx) |
 | SEC ingestion | `edgartools`, `sec-parser`, XBRL Company Facts API |
-| Evaluation | RAGAS + custom temporal/numeric consistency checks |
+| Evaluation | Transparent LLM-judge (standard RAG metrics) + programmatic citation/numeric/temporal checks |
 
 ## Phases & Milestones
 
