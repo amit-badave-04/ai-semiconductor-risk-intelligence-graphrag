@@ -12,6 +12,38 @@ This README covers the **project**: lifecycle, milestones, results, environment,
 The **package documentation** (install, configuration, API, CLI, module map, design rules) lives in
 [src/semigraph/README.md](src/semigraph/README.md) and ships inside the wheel.
 
+## The problem this solves
+
+Questions about AI-semiconductor supply-chain and export-control exposure are **relationship and
+time questions**, not text-similarity questions: *who depends on whom, since when, under which BIS
+rule, and did that risk survive into the latest annual report?* Plain vector RAG over filing text
+fails at exactly this — in our benchmark it scored **0% on temporal questions** (it happily presents
+a withdrawn 2023 risk as current) and misses multi-hop chains that are never stated in one passage.
+LLM-parsed financial figures are similarly untrustworthy.
+
+`semigraph` answers these questions from a knowledge graph in which **every edge is backed by a
+verbatim SEC evidence span**, risk disclosures carry bitemporal state (active / deleted, with
+first-seen and end dates), and all financial numbers come from XBRL — never from LLM parsing of
+prose. Answers cite chunk ids that are post-verified against the retrieved context (0 hallucinated
+citations across the benchmark), and the system declines when the corpus lacks the facts.
+
+## What the SDK can be used for
+
+- **Multi-hop dependency tracing** — e.g. Query D: Meta's AI plans → accelerator vendors → TSMC →
+  HBM suppliers → the export-control regime, every hop cited to a filing excerpt.
+- **Export-control exposure screening** — which companies are AFFECTED_BY which BIS/Federal Register
+  rules, with disclosure evidence.
+- **Risk-evolution / time-travel analysis** — risks newly introduced or dropped between annual
+  reports; "risk factors active as of 2024-06-30" (the bitemporal layer).
+- **Deterministic financial lookups** — revenue/capex/R&D per fiscal period from XBRL facts.
+- **Audit-grade cited Q&A** — every factual sentence carries a `[chunk_id]` resolvable to the exact
+  SEC source text and URL.
+- **Rebuilding or extending the corpus** — the CLI re-runs the whole pipeline (ingest → build-graph
+  → eval) for a different filer universe or newer filings, with paid stages cost-estimated and
+  confirmation-gated.
+- **Retrieval research** — the 20-question gold benchmark + judge harness compares retrieval
+  strategies reproducibly (that is how the hybrid-vs-vector numbers below were produced).
+
 ## Approach
 
 **Notebook-first DSML lifecycle.** Every stage was proven in a numbered Jupyter notebook; after

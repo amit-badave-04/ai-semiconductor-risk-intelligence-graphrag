@@ -5,9 +5,14 @@ pipeline: SEC EDGAR filings (10-K/10-Q/8-K + XBRL) and BIS/Federal Register
 export-control rules → a **bitemporal Neo4j knowledge graph with full provenance** →
 multi-hop, citation-grounded question answering.
 
+Use it for: multi-hop supply-chain dependency tracing, export-control exposure screening,
+bitemporal risk-evolution analysis (active vs dropped disclosures, as-of queries),
+deterministic XBRL financial lookups, and audit-grade cited Q&A that declines when the
+corpus lacks the facts.
+
 This README documents the **package** (install, configuration, API, CLI, design rules).
-For the project story — DSML lifecycle, notebooks, benchmark results, V2 roadmap — see
-the repository root `README.md`.
+For the project story — the problem it solves, DSML lifecycle, notebooks, benchmark
+results, V2 roadmap — see the repository root `README.md`.
 
 ## Install
 
