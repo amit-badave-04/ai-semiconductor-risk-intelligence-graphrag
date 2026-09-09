@@ -1,0 +1,294 @@
+{
+ "source": "M6 benchmark run (artifacts/eval_report.json), hybrid system, Claude Sonnet 5",
+ "examples": [
+  {
+   "id": "N1",
+   "type": "numeric",
+   "question": "What was Nvidia's total revenue for the fiscal year ended January 28, 2024?",
+   "answer": "- Nvidia's total revenue for the fiscal year ended January 28, 2024 (fiscal year 2024) was **$60,922,000,000 (~$60.9 billion)** [0001045810-24-000029:II.7:0171], confirmed by reported metrics for the period 2023-01-30 to 2024-01-28 [Nvidia revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD].\n- This represented a 126% increase from the prior fiscal year [0001045810-24-000029:II.7:0171].",
+   "citations": [
+    "0001045810-24-000029:II.7:0171"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "N2",
+   "type": "numeric",
+   "question": "What was Nvidia's total revenue for the fiscal year ended January 25, 2026?",
+   "answer": "Nvidia's total revenue for fiscal year 2026 (period 2025-01-27 to 2026-01-25) was **$215,938,000,000 (approximately $215.9 billion)** [Nvidia revenue for period 2025-01-27..2026-01-25: 215,938,000,000 USD].\n\nAdditional context:\n- This represents growth from $130,497,000,000 in fiscal year 2025 (period 2024-01-29 to 2025-01-26) [Nvidia revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD].\n- Revenue growth in fiscal year 2026 was driven by data center compute and networking platforms for accelerated computing and AI solutions, with Blackwell architectures representing the majority of Data Center revenue [0001045810-26-000021:II.7:0368].\n- Nvidia incurred a $4.5 billion charge in Q1 FY2026 related to H20 excess inventory and purchase obligations due to new export licensing requirements affecting China market sales [0001045810-26-000021:I.1A:0355] [0001045810-26-000021:I.1:0323] [0001045810-26-000021:II.7:0368].\n- Nvidia also disclosed customer concentration risk, with two direct customers representing 22% and 14% of total revenue in fiscal 2026 [0001045810-26-000021:I.1A:0348].",
+   "citations": [
+    "0001045810-26-000021:I.1:0323",
+    "0001045810-26-000021:I.1A:0348",
+    "0001045810-26-000021:I.1A:0355",
+    "0001045810-26-000021:II.7:0368"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "N3",
+   "type": "numeric",
+   "question": "What was Nvidia's total revenue for the fiscal year ended January 26, 2025?",
+   "answer": "Nvidia's total revenue for the fiscal year ended January 26, 2025 (fiscal year 2025) was **$130,497,000,000 (approximately $130.5 billion)** [Nvidia revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD].\n\nFor context on the trend:\n- Fiscal year 2024 (ended January 28, 2024) revenue: $60,922,000,000 [Nvidia revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD]\n- Fiscal year 2026 (ended January 25, 2026) revenue: $215,938,000,000 [Nvidia revenue for period 2025-01-27..2026-01-25: 215,938,000,000 USD]\n\nThis represents substantial year-over-year growth, consistent with the pattern of increases driven largely by Data Center revenue described in prior filings [0001045810-24-000029:II.7:0172].",
+   "citations": [
+    "0001045810-24-000029:II.7:0172"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "N4",
+   "type": "numeric",
+   "question": "What was Microsoft's total revenue for the fiscal year ended June 30, 2025?",
+   "answer": "- Microsoft's total revenue for the fiscal year ended June 30, 2025 was $281,724,000,000 (approximately $281.7 billion) [Microsoft revenue for period 2024-07-01..2025-06-30: 281,724,000,000 USD].\n\nSupporting context:\n- This represents growth from $245,122,000,000 in fiscal year 2024 [Microsoft revenue for period 2023-07-01..2024-06-30: 245,122,000,000 USD].\n- Fiscal year 2025 highlights include Microsoft Cloud revenue increasing 23% to $168.9 billion, Server products and cloud services revenue increasing 23% (driven by Azure and other cloud services revenue growth of 34%), and Microsoft 365 Commercial products and cloud services revenue increasing 14% [0000950170-25-100235:II.7:0001].",
+   "citations": [
+    "0000950170-25-100235:II.7:0001"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "D1",
+   "type": "dependency",
+   "question": "Which companies does Nvidia depend on for chip manufacturing and assembly?",
+   "answer": "Based on the knowledge graph, Nvidia depends on the following companies for chip manufacturing and assembly:\n\n- **TSMC** — wafer fabrication/foundry dependency [0001045810-26-000021:I.1:0320]\n- **Samsung** — manufacturing dependency, also noted as a customer relationship and competitor in other lines of business [0001045810-26-000021:I.1:0320] [0001045810-26-000021:I.1:0321]\n- **Foxconn** — assembly dependency [0001045810-26-000021:I.1:0320]\n\nAdditionally, Nvidia is a **customer of Micron** and **SK Hynix**, likely for memory components rather than chip fabrication/assembly [0001045810-26-000021:I.1:0320].\n\n**Supporting risk disclosures:**\n- Nvidia's semiconductor wafers are manufactured, assembled, tested and packaged by third parties located outside the United States [0001045810-23-000017:I.1A:0040].\n- Nvidia depends on consistent and reliable supply from overseas partners, especially in Taiwan and South Korea, and new restrictions could harm its business — pointing to TSMC (Taiwan) and Samsung (South Korea) as key geographic dependencies [0001045810-26-000021:I.1A:0357].\n- Nvidia lacks guaranteed supply of components and manufacturing capacity from its suppliers [0001045810-26-000021:I.1A:0339].\n- Reliance on partners to supply and manufacture components reduces Nvidia's direct control over production, increasing defect risk [0001045810-23-000017:I.1A:0038].\n- Geopolitical tensions in regions with critical suppliers, contract manufacturers, and assembly partners could materially adversely impact Nvidia [0001045810-26-000021:I.1A:0337].\n\n**Summary:**\n- Chip fabrication (foundry): **TSMC, Samsung**\n- Assembly: **Foxconn**\n- Memory supply (customer relationship): **Micron, SK Hynix**",
+   "citations": [
+    "0001045810-23-000017:I.1A:0038",
+    "0001045810-23-000017:I.1A:0040",
+    "0001045810-26-000021:I.1:0320",
+    "0001045810-26-000021:I.1:0321",
+    "0001045810-26-000021:I.1A:0337",
+    "0001045810-26-000021:I.1A:0339",
+    "0001045810-26-000021:I.1A:0357"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "D2",
+   "type": "dependency",
+   "question": "Which memory suppliers does Nvidia buy HBM or memory from?",
+   "answer": "Based on the knowledge graph, Nvidia's memory suppliers are:\n\n- **Samsung** — Nvidia is recorded as both DEPENDS_ON and CUSTOMER_OF Samsung [0001045810-26-000021:I.1:0320]\n- **Micron** — Nvidia is recorded as CUSTOMER_OF Micron [0001045810-26-000021:I.1:0320]\n- **SK Hynix** — Nvidia is recorded as CUSTOMER_OF SK Hynix [0001045810-26-000021:I.1:0320]\n\nAll three relationships derive from the same source chunk, which also lists Nvidia's dependency on TSMC and Foxconn [0001045810-26-000021:I.1:0320], consistent with these being suppliers named alongside its foundry/assembly partners.\n\nNote: the knowledge graph does not explicitly label these as \"HBM\" suppliers specifically — the relationships are generic CUSTOMER_OF/DEPENDS_ON links to Samsung, Micron, and SK Hynix. The context does not contain further detail (e.g., product-specific HBM supply terms or contract volumes) beyond this.",
+   "citations": [
+    "0001045810-26-000021:I.1:0320"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "D3",
+   "type": "dependency",
+   "question": "Which foundries does AMD rely on to manufacture its chips?",
+   "answer": "Based on the knowledge graph, AMD relies on three main third-party foundries/manufacturers:\n\n- **TSMC (Taiwan Semiconductor Manufacturing Company)** — TSMC supplies to AMD, and AMD is described as both dependent on and a customer of TSMC [0000002488-26-000018:I.1:0024] [0000002488-26-000076:II.1A:0013] [0000002488-26-000018:I.1A:0011] [0000002488-26-000018:I.1A:0012].\n- **GlobalFoundries** — GlobalFoundries supplies to AMD, and AMD depends on GlobalFoundries [0000002488-26-000018:I.1:0024] [0000002488-26-000018:I.1A:0011] [0000002488-25-000012:I.1A:0012].\n- **Samsung** — AMD depends on and is a customer of Samsung [0000002488-26-000018:I.1:0024] [0000002488-26-000018:I.1A:0011] [0000002488-25-000012:I.1A:0012] [0000002488-26-000076:II.1A:0011].\n\n**Associated risk context:**\n- AMD relies on third-party wafer foundries and international manufacturing/assembly/testing facilities exposed to geopolitical, legal, and economic risks [0000002488-26-000076:II.1A:0036].\n- AMD depends on third-party companies for design, manufacture, and supply of key components supporting its business [0000002488-25-000012:I.1A:0015].\n- Dependence on third-party manufacturers exposes AMD to risks including limited control over delivery, yield, quality, pricing, capacity, IP misappropriation, and disruptions from disasters or financial difficulties [0000002488-26-000076:II.1A:0011].\n- AMD's dependence on limited or sole suppliers of equipment, materials, and substrates for manufacturing could adversely affect the business if supplies become unavailable [0000002488-26-000018:I.1A:0012].\n- Geopolitical changes between China and Taiwan could disrupt Taiwan-based foundries, manufacturing facilities and subcontractors, materially affecting AMD's business — a direct reference to its reliance on TSMC [0000002488-26-000018:I.1A:0035].\n\nNote: The context does not specify the exact allocation of manufacturing volume across these three foundries.",
+   "citations": [
+    "0000002488-25-000012:I.1A:0012",
+    "0000002488-25-000012:I.1A:0015",
+    "0000002488-26-000018:I.1:0024",
+    "0000002488-26-000018:I.1A:0011",
+    "0000002488-26-000018:I.1A:0012",
+    "0000002488-26-000018:I.1A:0035",
+    "0000002488-26-000076:II.1A:0011",
+    "0000002488-26-000076:II.1A:0013",
+    "0000002488-26-000076:II.1A:0036"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "D4",
+   "type": "dependency",
+   "question": "Which hyperscaler is disclosed as a customer of AMD in the knowledge graph?",
+   "answer": "- **Microsoft** is disclosed in the knowledge graph as a customer of AMD, via the relationship AMD SUPPLIES_TO Microsoft (status=Active) [0000002488-26-000018:I.1A:0008] [0000002488-25-000012:I.1A:0008].\n\nAdditional relevant context:\n- AMD is also described as dependent on Microsoft [0000002488-26-000018:I.1A:0003] [0000002488-26-000018:I.1A:0015] [0000002488-25-000012:I.1A:0003], though this reflects a dependency relationship rather than a pure customer designation.\n- Meta is separately disclosed as a customer of AMD (CUSTOMER_OF relationship) [0000002488-26-000076:I.2:0002], and Meta is a hyperscaler as well, though the label in the graph is CUSTOMER_OF rather than SUPPLIES_TO.\n- The source excerpts also reference \"large hyperscale customers\" broadly in connection with AMD's Data Center segment (e.g., deployment of AMD Instinct MI350X Series GPUs) [0000002488-26-000018:I.1:0003] [0000002488-26-000018:II.7:0002], but do not name additional specific hyperscalers beyond Microsoft and Meta in the KNOWN RELATIONSHIPS section.\n\nIn summary: **Microsoft and Meta** are the hyperscalers explicitly named as AMD customers in the knowledge graph.",
+   "citations": [
+    "0000002488-25-000012:I.1A:0003",
+    "0000002488-25-000012:I.1A:0008",
+    "0000002488-26-000018:I.1:0003",
+    "0000002488-26-000018:I.1A:0003",
+    "0000002488-26-000018:I.1A:0008",
+    "0000002488-26-000018:I.1A:0015",
+    "0000002488-26-000018:II.7:0002",
+    "0000002488-26-000076:I.2:0002"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "R1",
+   "type": "regulatory",
+   "question": "Which BIS export-control rules is AMD affected by?",
+   "answer": "## BIS Export-Control Rules Affecting AMD\n\nBased on the knowledge graph and source filings, AMD is affected by the following BIS (Bureau of Industry and Security) export-control rules and related actions:\n\n- **Additions and Revisions to the Entity List** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Implementation of Additional Due Diligence Measures for Advanced Computing Integrated Circuits; Amendments and Clarifications; and Extension of Comment Period** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Foreign-Produced Direct Product Rule Additions, and Refinements to Controls for Advanced Computing and Semiconductor Manufacturing Items** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Implementation of Additional Export Controls: Certain Advanced Computing Items; Supercomputer and Semiconductor End Use; Updates and Corrections; and Export Controls on Semiconductor Manufacturing Items; Corrections and Clarifications** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Export Controls on Semiconductor Manufacturing Items; Implementation of Additional Export Controls: Certain Advanced Computing Items; Supercomputer and Semiconductor End Use; Updates and Corrections; Extension of Comment Period** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Implementation of Additional Export Controls: Certain Advanced Computing Items; Supercomputer and Semiconductor End Use; Updates and Corrections** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Export Controls on Semiconductor Manufacturing Items** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Implementation of Additional Export Controls: Certain Advanced Computing and Semiconductor Manufacturing Items; Supercomputer and Semiconductor End Use; Entity List Modification; Updates to the Controls To Add Macau** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Implementation of Additional Export Controls: Certain Advanced Computing and Semiconductor Manufacturing Items; Supercomputer and Semiconductor End Use; Entity List Modification** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n- **Procedures for Access to the Public Briefing on Additional Export Controls on Certain Advanced Computing and Semiconductor Manufacturing Items** [0000002488-26-000018:I.1A:0021][0000002488-26-000076:II.1A:0021]\n\n### Substantive detail from the filings\n\n- BIS's October 2023 rule requires licenses for export of items classified ECCN 3A090/4A090 (advanced computing) to parties headquartered in Country Groups D1, D4, or D5 (including China), directly preventing AMD from shipping certain AMD Instinct™ integrated circuits and AMD Versal™ FPGAs without a license [0000002488-26-000018:I.1A:0020][0000002488-25-000012:I.1A:0020].",
+   "citations": [
+    "0000002488-25-000012:I.1A:0020",
+    "0000002488-26-000018:I.1A:0020",
+    "0000002488-26-000018:I.1A:0021",
+    "0000002488-26-000076:II.1A:0021"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "R2",
+   "type": "regulatory",
+   "question": "Which companies in the graph are affected by US export-control rules?",
+   "answer": "# Companies Affected by US Export-Control Rules\n\nBased on the knowledge graph's `AFFECTED_BY` relationships, three companies are explicitly linked to US export-control regulations:\n\n- **Nvidia** — affected by the \"Framework for Artificial Intelligence Diffusion\" (AI Diffusion rule) [0001045810-26-000021:I.1:0323] [0001045810-26-000021:I.1:0324] [0001045810-26-000021:I.1A:0334]\n- **AMD** — affected by multiple named BIS regulatory actions, including Entity List additions/revisions, additional due diligence measures for advanced computing ICs, Foreign-Produced Direct Product Rule additions, and several implementations/updates of export controls on semiconductor manufacturing and advanced computing items [0000002488-26-000018:I.1A:0021] [0000002488-26-000076:II.1A:0021]\n- **Broadcom** — affected by the same suite of Entity List and advanced-computing/semiconductor-manufacturing export control rules as AMD (Additions and Revisions to the Entity List, Foreign-Produced Direct Product Rule Additions, Implementation of Additional Export Controls, etc.) [0001730168-26-000054:II.1A:0006]\n\n## Detail on Nvidia's exposure (most extensively documented in the context)\n\n- The US has imposed unilateral worldwide export controls restricting GPUs and associated products, with further controls considered likely, which could prohibit exports to customers and disrupt manufacturing, testing, and warehousing operations [0001045810-26-000021:I.1A:0354] [0001045810-25-000023:I.1A:0256].\n- Nvidia states the USG \"may change export control rules at any time,\" potentially subjecting a wider range of its products to restrictions and negatively affecting financial results [0001045810-26-000021:I.1A:0356] [0001045810-26-000052:II.1A:0437].\n- Specific historical actions cited include August 2022 licensing requirements on A100/H100 exports to China, Hong Kong, Macau, and Russia; a July 2023 licensing requirement extension to Middle East customers; and October 2023 rules extending thresholds to Country Groups D1, D4, D5 [0001045810-24-000029:I.1A:0152] [0001045810-25-000023:I.1:0219].\n- The January 2025 \"AI Diffusion\" Interim Final Rule imposes a worldwide licensing requirement on products under ECCNs 3A090.a/4A090.a (and related systems like DGX, HGX, MGX) [0001045810-25-000023:I.1:0219].\n- Nvidia notes these controls have disproportionately harmed its competitive position relative to rivals whose products fall outside control scope, and have encouraged customers to \"design out\" US semiconductors [0001045810-26-000021:I.1A:0356].\n\n## AMD's exposure\n\nAMD is linked via `AFFECTED_BY` to a large number of named export-control rule actions, including Entity List modifications, due-diligence measures for advanced computing ICs, and multiple iterations of \"Implementation of Additional Export Controls: Certain Advanced Computing Items\" rules [0000002488-26-000018:I.1A:0021] [0000002488-26-000076:II.1A:0021]. No narrative excerpt for AMD is provided in the source excerpts, only the relationship citations.\n\n## Broadcom's exposure\n\nBroadcom is similarly linked to the same set of Entity List and advanced-computing export control regulatory actions [0001730168-26-000054",
+   "citations": [
+    "0000002488-26-000018:I.1A:0021",
+    "0000002488-26-000076:II.1A:0021",
+    "0001045810-24-000029:I.1A:0152",
+    "0001045810-25-000023:I.1:0219",
+    "0001045810-25-000023:I.1A:0256",
+    "0001045810-26-000021:I.1:0323",
+    "0001045810-26-000021:I.1:0324",
+    "0001045810-26-000021:I.1A:0334",
+    "0001045810-26-000021:I.1A:0354",
+    "0001045810-26-000021:I.1A:0356",
+    "0001045810-26-000052:II.1A:0437",
+    "0001730168-26-000054:II.1A:0006"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "R3",
+   "type": "regulatory",
+   "question": "What does Nvidia disclose about export controls affecting its sales to China?",
+   "answer": "## Nvidia's Disclosures on Export Controls Affecting China Sales\n\n**Current State of Exclusion**\n- Nvidia states it is \"currently effectively foreclosed from the China market due to U.S. export controls\" [0001045810-26-000021:I.1A:0357].\n- Under current rules, Nvidia says it \"cannot deliver a competitive product for China's data center market approved by both the US and Chinese governments\" [0001045810-26-000021:I.1:0323].\n- Nvidia has not received licenses to ship restricted products (A100, A800, H100, H800, L40S, and Blackwell systems like GB200/B200) to China [0001045810-25-000023:II.7:0272] [0001045810-25-000023:I.1:0219].\n\n**Regulatory History / Escalating Restrictions**\n- August 2022: USG imposed licensing requirements on exports to China (incl. Hong Kong, Macau) and Russia for A100/H100 and related systems [0001045810-25-000023:I.1:0219].\n- October 2023: New/updated licensing requirements covered additional products (A100, A800, H100, H800, L4, L40, L40S, RTX 4090) exceeding performance thresholds for China and Country Groups D1, D4, D5 [0001045810-25-000023:I.1:0219].\n- January 2025: USG published the \"AI Diffusion\" Interim Final Rule (IFR), imposing worldwide licensing requirements on products under certain Export Control Classification Numbers (ECCNs), covering DGX, HGX, MGX systems and future high-performance ICs [0001045810-25-000023:I.1:0219]. This framework is tracked in the knowledge graph as the \"Framework for Artificial Intelligence Diffusion,\" which Nvidia is formally listed as **AFFECTED_BY** [0001045810-26-000021:I.1:0323] [0001045810-26-000021:I.1:0324] [0001045810-26-000021:I.1A:0334].\n- The Notified Advanced Computing (\"NAC\") licensing process \"has not resulted in approvals for exports of products to customers in China\" [0001045810-25-000023:I.1A:0258].\n\n**Business Impact**\n- Export licensing requirements have directly restricted Nvidia's ability to ship products to China, Hong Kong, Macau, Russia, and other regions, with licenses not granted [0001045810-25-000023:I.1A:0257] [0001045810-26-000021:I.1:0323].\n- Nvidia transitioned certain testing, validation, supply, and distribution operations out of China/Hong Kong in response to controls, which it describes as potentially costly and disruptive if repeated [0001045810-24-000029:I.1A:0152].\n- Nvidia developed China-specific products (e.g., A800, and later solutions not requiring a license) to partially serve the market, but Data Center revenue from China \"remains well below levels seen prior to the onset of export controls in October 2023\" [0001045810-25-000023:II.7:0272].\n- Nvidia states controls have caused it to experience excess inventory and purchase obligations, citing the H20 product specifically as a recent example [0001045810-26-000021:I.1A:0356].\n\n**Competitive Disadvantage**\n- Nvidia discloses that export controls \"disproportionately impact Nvidia relative to competitors selling chips outside the scope of controls\" [0001045810-26-000052:II.1A:0437], and that this \"may disadvantage NVIDIA against certain of our competitors who sell products that are not subject to the new restrictions\" [0001045810-25-000023:I",
+   "citations": [
+    "0001045810-24-000029:I.1A:0152",
+    "0001045810-25-000023:I.1:0219",
+    "0001045810-25-000023:I.1A:0257",
+    "0001045810-25-000023:I.1A:0258",
+    "0001045810-25-000023:II.7:0272",
+    "0001045810-26-000021:I.1:0323",
+    "0001045810-26-000021:I.1:0324",
+    "0001045810-26-000021:I.1A:0334",
+    "0001045810-26-000021:I.1A:0356",
+    "0001045810-26-000021:I.1A:0357",
+    "0001045810-26-000052:II.1A:0437"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "T1",
+   "type": "temporal",
+   "question": "Did Nvidia stop disclosing any risk factors in its latest 10-K that appeared in earlier 10-Ks?",
+   "answer": "## Yes — Nvidia's latest 10-K dropped several risk factors that appeared in earlier filings.\n\nBased on the bitemporal lineage data, the following risk factors were disclosed in Nvidia's 10-Ks from fiscal 2023 through fiscal 2025 (filed 2023-02-24 through 2025-02-26) but are no longer present in the latest 10-K:\n\n- **Accounting standards risk**: Changes in financial accounting standards or interpretations could affect results [bitemporal lineage].\n- **Cross-border data transfer risk**: Restrictions and legal challenges to international data transfer mechanisms creating uncertainty [bitemporal lineage].\n- **Insurance adequacy risk**: Nvidia's business liability insurance may be inadequate or unavailable on acceptable terms [bitemporal lineage].\n- **Product defect risk**: A defect identified in a third-party component embedded in certain Data Center products, adversely affecting cost and reputation [bitemporal lineage].\n- **Climate/ESG reputational risk**: Stakeholder perception of insufficient climate responsiveness could lead to legal action or reputational harm [bitemporal lineage].\n- **Data privacy compliance risk**: Numerous and evolving U.S. federal, state and local data privacy laws (e.g., CCPA, CPRA) increasing enforcement and compliance burden [bitemporal lineage].\n- **Cryptocurrency demand risk**: Difficulty estimating past, current, or future impact of cryptocurrency mining on product demand [bitemporal lineage].\n- **Litigation/regulatory risk**: General exposure to risks from litigation, investigations, and regulatory proceedings [bitemporal lineage].\n- **Product defect/security risk**: Hardware and software products may contain defects, security vulnerabilities, or performance failures [bitemporal lineage].\n- **Tax rate risk**: Increases in U.S. tax rates or reduction of the FDII deduction adversely affecting income tax provision [bitemporal lineage].\n\n### Context on how the latest 10-K frames risk disclosure\nNvidia's most recent filing (fiscal year ended January 25, 2026) incorporates risk factors largely by reference to the prior Annual Report, stating there have been \"no material changes from the risk factors previously described\" except for specific additions noted — which is consistent with a broader consolidation/streamlining of risk-factor language rather than exhaustive re-disclosure of every prior item [0001045810-26-000052:II.1A:0430].\n\n### Caveat\n- The dropped-risk list is derived from the bitemporal lineage layer of the knowledge graph, which tracks disclosure presence/absence across filings; it does not itself explain *why* each item was removed (e.g., merged into another risk factor, deemed immaterial, or genuinely resolved).\n- The context does not provide the exact text of the current 10-K's full risk factor list, only currently \"active\" excerpts — so this answer is based on what the graph explicitly flags as dropped, not a manual full-text comparison.",
+   "citations": [
+    "0001045810-26-000052:II.1A:0430"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "T2",
+   "type": "temporal",
+   "question": "What new supply-chain or geopolitical risks appeared in Meta's most recent annual report?",
+   "answer": "## Supply-Chain / Geopolitical Risks in Meta's Most Recent 10-K\n\n**Persisting (carried-forward) risks, largely unchanged in substance:**\n- Meta continues to disclose that geopolitical events — international conflicts, tariffs, sanctions, and export/import controls — could reduce or eliminate suppliers' or manufacturers' ability to operate, or restrict Meta's ability to purchase key infrastructure components [0001628280-26-003942:I.1A:0027]. This risk language is nearly identical to the prior year's filing [0001326801-25-000017:I.1A:0025], indicating continuity rather than a genuinely new risk.\n- Broad international-operations risk disclosures (political instability, legal/regulatory scrutiny, currency fluctuation, geopolitical events) also persist across filings [0001628280-26-003942:I.1A:0030] [0001628280-26-028526:II.1A:0030] [0001326801-25-000017:I.1A:0028].\n\n**New/expanded element identified in the most recent filing:**\n- A newly added tax/regulatory-geopolitical nuance: in January 2026, the OECD introduced a \"Side-by-Side Safe Harbor,\" allowing U.S.-headquartered companies (including Meta) to remain subject only to U.S. global minimum tax rules (CAMT) rather than the OECD's Pillar Two regime — a new development not present in earlier filings [0001628280-26-028526:II.1A:0034]. This reflects a shift in the international tax/regulatory landscape relevant to Meta's global operations, though it is a tax-policy risk rather than a physical supply-chain disruption risk.\n- The 10-K also references the One Big Beautiful Bill Act (OBBBA), enacted July 2025, as materially affecting Meta's tax obligations and effective tax rate — a new U.S. legislative risk factor not seen in the prior-year filing [0001628280-26-003942:I.1A:0034].\n\n**Notably dropped from the most recent report (per bitemporal lineage):**\n- \"Ability to obtain equipment, components, and labor for data centers and technical infrastructure in a timely and cost-effective manner\" — a direct supply-chain risk statement — was disclosed in the 2025-01-30 filing but has since been dropped from the active risk factors list, suggesting Meta no longer treats this as a standalone material risk in the current report.\n- Other dropped items (competition, advertising measurement, Reality Labs investment dependency, cost-reduction measures, legal/regulatory settlement exposure) are not supply-chain/geopolitical in nature but indicate a broader restructuring of the risk-factor section.\n\n**Assessment:**\n- Based on the context provided, no wholly new geopolitical or supply-chain risk category (e.g., new export-control regime, new named supplier dependency, or new sanctioned jurisdiction) appears explicitly introduced for Meta in the latest 10-K — the core geopolitical/trade and international-operations risk language is materially the same as prior years [0001628280-26-003942:I.1A:0027] vs. [0001326801-25-000017:I.1A:0025].\n- The one clearly new element is the tax-related geopolitical development (OECD Side-by-Side Safe Harbor / OBBBA), which is a regulatory rather than a physical supply-chain risk [0001628280-26-028526:II.1A:0034] [0001628280-26-003942:I.1A:0034].\n- Notably, the KNOWN RELATIONSHIPS section shows Meta's supplier dependencies are",
+   "citations": [
+    "0001326801-25-000017:I.1A:0025",
+    "0001326801-25-000017:I.1A:0028",
+    "0001628280-26-003942:I.1A:0027",
+    "0001628280-26-003942:I.1A:0030",
+    "0001628280-26-003942:I.1A:0034",
+    "0001628280-26-028526:II.1A:0030",
+    "0001628280-26-028526:II.1A:0034"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "T3",
+   "type": "temporal",
+   "question": "How has Nvidia's disclosed risk profile evolved across its recent annual reports?",
+   "answer": "## Nvidia's Risk Profile Evolution Across Annual Reports\n\n### Financial context underpinning the growing risk stakes\nNvidia's scale has expanded dramatically, which changes the materiality of nearly every risk category:\n- Revenue grew from $10.9B (FY2020) to $215.9B (FY2026) [Reported Metrics].\n- Net income grew from $4.3B (FY2020) to $120.1B (FY2026) [Reported Metrics].\n- R&D spend nearly doubled year-over-year in the most recent period, from $12.9B (FY2025) to $18.5B (FY2026), reflecting intensified investment amid competitive and technology risk [Reported Metrics].\n\n### Structural/boilerplate framing has stayed consistent\nAcross filings, Nvidia retains the same general disclaimer language that \"any one of the following risks could harm our business, financial condition, results of operations or reputation\" and that additional unknown risks may exist [0001045810-23-000017:I.1A:0028] [0001045810-24-000029:I.1A:0128]. Quarterly filings continue to reference the most recent 10-K's risk factors as the baseline, updated only with incremental changes [0001045810-26-000052:II.1A:0430].\n\n### New/emphasized risks in the latest 10-K (FY2026 filing)\n- **Supply chain concentration**: Nvidia now explicitly flags that geographic concentration of itself and its third-party foundries/suppliers creates \"unknown risk exposure\" [0001045810-26-000021:I.1A:0345], consistent with newly modeled dependencies on TSMC, Samsung, Foxconn, Micron, and SK Hynix [0001045810-26-000021:I.1:0320].\n- **Systemic/embedded supply-chain liability**: A new risk theme describes Nvidia as being embedded in the global supply chain such that a compromise of its products could affect a \"significant number of customers and their data,\" creating liability exposure [0001045810-26-000021:I.1A:0343].\n- **Counterparty/financial commitment risk**: Long-term capacity purchase obligations and financial guarantees are called out as new/expanded exposure to customer or partner insolvency and project delays [0001045810-26-000021:I.1A:0349].\n- **Acquisition-related cybersecurity risk**: Present in both FY2025 and FY2026 filings, indicating a sustained (not new) concern that acquisitions increase cybersecurity vulnerabilities [0001045810-25-000023:I.1A:0250] [0001045810-26-000021:I.1A:0347].\n- **GFN security incidents**: Language on past breaches of NVIDIA's GeForce NOW (GFN) security measures and resulting litigation/reputational risk is carried essentially verbatim from the FY2025 filing into the FY2026 filing, showing continuity rather than change [0001045810-25-000023:I.1A:0247] [0001045810-26-000021:I.1A:0344].\n- **Geopolitical/export exposure**: Nvidia is now explicitly tied to the \"Framework for Artificial Intelligence Diffusion\" as an active regulatory risk factor [0001045810-26-000021:I.1A:0334] [0001045810-26-000021:I.1:0323] [0001045810-26-000021:I.1:0324], reflecting escalating export-control scrutiny also seen affecting AMD and Broadcom in the competitive set.\n\n### Risks dropped from the latest annual report (bitemporal lineage: disclosed 2023–2025, then removed)\nThe following risk them",
+   "citations": [
+    "0001045810-23-000017:I.1A:0028",
+    "0001045810-24-000029:I.1A:0128",
+    "0001045810-25-000023:I.1A:0247",
+    "0001045810-25-000023:I.1A:0250",
+    "0001045810-26-000021:I.1:0320",
+    "0001045810-26-000021:I.1:0323",
+    "0001045810-26-000021:I.1:0324",
+    "0001045810-26-000021:I.1A:0334",
+    "0001045810-26-000021:I.1A:0343",
+    "0001045810-26-000021:I.1A:0344",
+    "0001045810-26-000021:I.1A:0345",
+    "0001045810-26-000021:I.1A:0347",
+    "0001045810-26-000021:I.1A:0349",
+    "0001045810-26-000052:II.1A:0430"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "Q1",
+   "type": "risk",
+   "question": "What supply-chain related risks does TSMC disclose in its annual report?",
+   "answer": "# Supply-Chain Related Risks Disclosed by TSMC\n\nBased on the retrieved context, TSMC's own annual report (Form 20-F, accession 0001628280-26-025362 and prior filing 0001193125-25-083423) discloses the following supply-chain related risks:\n\n**Export Controls & Regulatory Risk**\n- Export controls impose license requirements on TSMC's P.R.C. fab's acquisition of certain manufacturing tools, creating operational risk [0001628280-26-025362:I.3:0003].\n- Export control restrictions and sanctions could impact TSMC's ability to supply products to certain customers and affect customer demand and supply chains [0001193125-25-083423:I.3:0001].\n- There is no assurance TSMC's business activities will always comply with export control and sanctions laws, risking penalties and legal proceedings [0001193125-25-083423:I.3:0011].\n\n**Macroeconomic / Geopolitical Risk**\n- Global systemic political, economic and financial crises could negatively affect TSMC's business, results of operations, and financial condition [0001628280-26-025362:I.3:0001] [0001193125-25-083423:I.3:0001].\n\n**Resource Supply (Electricity & Water)**\n- Government energy policy changes, growth of Science Park manufacturers, and periodic droughts raise concerns about future availability of sufficient electricity and water for Taiwan production, and TSMC has experienced power outages, dips, or surges affecting production schedules [0001628280-26-025362:I.4:0016] [0001628280-26-025362:I.4:0015].\n- Rising utility (electricity) prices could increase manufacturing costs and adversely impact financial results [0001628280-26-025362:I.4:0016].\n\n**Intellectual Property / Legal**\n- TSMC may be unable to obtain necessary intellectual property licenses, exposing it to claims for damages and indemnification claims from customers [0001628280-26-025362:I.3:0008].\n\n**Environmental / Operational Continuity**\n- TSMC's fabs face risks from natural disasters/climate impacts, mitigated via pollution control equipment, GHG reduction measures, insurance coverage on facilities/equipment/inventories, and crisis management/business continuity planning — though no assurance is given that insurance or these plans will fully prevent losses [0001628280-26-025362:I.4:0016].\n\n## Risks Dropped from the Latest Annual Report (bitemporal layer)\nThe following supply-chain-adjacent risks were disclosed in an earlier filing (2025-04-17) but are **no longer present** in the current version, per the knowledge graph's lineage tracking:\n- New U.S. export license requirements for advanced process nodes that could delay or prohibit shipments.\n- Future changes in export control regulations or countermeasures tied to trade tensions/military conflicts.\n- Concentration of executive offices and production facilities in the R.O.C. exposing TSMC to political/economic risk.\n- Government subsidies/incentives to competitors (US, China, Europe, South Korea, Japan) creating competitive disadvantage.\n- Uncertainty over receiving anticipated financial incentives and related conditions/restrictions.\n- Inability to compete on technology, capacity, quality, or customer satisfaction risking loss of customers/business.\n- Lack of necessary IP licenses exposing TSMC to damages, injunctions, and indemnification claims.\n- Cybersecurity risk (hackers introducing viruses/ransomware to disrupt operations).\n\n*(Note: these dropped items indicate risks previously",
+   "citations": [
+    "0001193125-25-083423:I.3:0001",
+    "0001193125-25-083423:I.3:0011",
+    "0001628280-26-025362:I.3:0001",
+    "0001628280-26-025362:I.3:0003",
+    "0001628280-26-025362:I.3:0008",
+    "0001628280-26-025362:I.4:0015",
+    "0001628280-26-025362:I.4:0016"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "Q2",
+   "type": "risk",
+   "question": "What geopolitical risks does ASML disclose?",
+   "answer": "## Geopolitical Risks Disclosed by ASML\n\n**Export controls, sanctions, and trade regulations**\n- ASML's business is subject to export control restrictions, sanctions, tariffs, and international trade regulations that affect its ability to deliver systems, technology, and services, with geopolitical tensions increasing such restrictions [0001628280-26-011378:I.3:0003].\n- Deliveries to China are increasingly impacted by export regulations requiring specific licenses/approvals under Dutch, US, and other laws (e.g., for EUV systems and certain DUV immersion systems) [0001628280-26-011378:I.3:0003].\n- US trade measures include license requirements for transactions with certain Chinese entities and restrict US-person support for non-US origin items destined for advanced-node fabs in China; the list of restricted entities is subject to further expansion [0001628280-26-011378:I.3:0003].\n- Obtaining US licenses to authorize foreign nationals to work on programs involving controlled US items has become increasingly difficult [0001628280-26-011378:I.3:0003].\n- Rising tariffs increase ASML's import costs and can reduce customer demand due to higher costs of importing ASML products [0001628280-26-011378:I.3:0003].\n- Countries affected by export controls may introduce countermeasures, creating conflicting regulations and legal liabilities [0001628280-26-011378:I.3:0003].\n\n**Customer concentration and country-specific exposure**\n- High customer concentration in China exposes ASML to geopolitical and regulatory risk [0000937966-25-000009:I.3:0004]; customers in China represented 29.1% of 2025 net sales (down from 36.1% in 2024) [0001628280-26-011378:I.3:0003].\n- Taiwan exposure: facilities, supply chain, and customers are located in Taiwan (25.5% of 2025 sales, up from 15.4% in 2024); Taiwan's unique political status and cross-strait tensions with China could affect ASML's ability to serve customers there [0001628280-26-011378:I.3:0003].\n- South Korea exposure: customers represented 25.0% of 2025 sales (22.7% in 2024); deterioration in North Korea–South Korea relations or conflict on the peninsula could disrupt operations [0001628280-26-011378:I.3:0003].\n- A limited portion of suppliers, customers, and support teams are based in Israel, where regional tensions \"have had limited impact but could further impact\" operations [0001628280-26-011378:I.3:0003].\n\n**Raw materials and supply chain restrictions**\n- Controlled raw materials used in the semiconductor industry may become unavailable or restricted due to geopolitical developments, impacting suppliers, customers, and ASML directly — noting China has imposed or issued directives on export controls for certain minerals [0000937966-25-000009:I.3:0004] [0001628280-26-011378:I.3:0003].\n\n**Nationalization and instability risk**\n- Geopolitical instability and potential nationalization of ASML assets pose risks to the business, particularly given facility/supply-chain/customer concentration in Taiwan and South Korea [0001628280-26-011378:I.3:0003].\n\n**New market expansion**\n- ASML plans to initiate sales and support operations in new countries, such as India, introducing additional geopolitical/operational exposure [0001628280-26-011378:I.3:0003].\n\n**Geopolitical-linked competition**\n- ASML faces competition from new entrants driven by ambitions of geopolitical \"self-sufficiency\" [0001628280",
+   "citations": [
+    "0000937966-25-000009:I.3:0004",
+    "0001628280-26-011378:I.3:0003"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "Q3",
+   "type": "risk",
+   "question": "Compare the competition risks disclosed by AMD and Nvidia.",
+   "answer": "## Competition Risk Comparison: AMD vs. Nvidia\n\n### AMD's Disclosed Competition Risks\n- **Nvidia named as primary threat in GPUs**: AMD explicitly states Nvidia's \"dominance in the graphics processing unit market and its aggressive business practices may limit our ability to compete effectively on a level playing field,\" citing Nvidia's Data Center GPU share, financial resources, and proprietary software ecosystem as factors that influence customers away from AMD [0000002488-25-000012:I.1A:0007][0000002488-25-000012:I.1A:0002].\n- **Intel named as primary threat in CPUs**: AMD identifies Intel's microprocessor dominance and \"aggressive business practices\" (rebating, allocation strategies, pricing, exclusivity payments) as a parallel risk to its Nvidia-related GPU risk [0000002488-25-000012:I.1A:0007].\n- AMD frames Nvidia as its \"principal competitor in the supply of discrete graphics,\" with Intel also competing via integrated graphics [0000002488-26-000018:I.1:0021].\n- AMD flags **competitor consolidation/partnerships** as a rising risk, specifically citing \"Nvidia's investment in Intel\" as an example of strategic alliances that could increase pricing pressure against AMD [0000002488-26-000076:II.1A:0007].\n- More broadly, AMD describes its markets as \"highly competitive and rapidly evolving,\" citing rapid technological change, potential internal development by customers, Arm ecosystem growth, and industry consolidation as compounding threats — explicitly naming Nvidia as the intense competitor in AI GPUs/accelerators [0000002488-25-000012:I.1A:0007][0000002488-26-000076:II.1A:0002].\n- The knowledge graph confirms AMD COMPETES_WITH both Nvidia and Intel as active relationships [0000002488-26-000018:I.1:0020][0000002488-26-000018:I.1:0021][0000002488-26-000018:I.1A:0007].\n\n### Nvidia's Disclosed Competition Risks\n- Nvidia describes its market as \"intensely competitive\" with \"rapid technological change and evolving industry standards,\" competing on performance, product breadth, software support, and manufacturing capability rather than naming one dominant rival the way AMD does [0001045810-26-000021:I.1:0321].\n- Nvidia lists a **broad, multi-category competitor set** rather than singling out one company:\n  - GPU/accelerated computing suppliers: **AMD, Huawei, Intel** [0001045810-26-000021:I.1:0321]\n  - Large cloud companies building internal AI/accelerated chips: **Alphabet, Amazon, Huawei, Microsoft** [0001045810-26-000021:I.1:0321]\n  - Arm-based CPU suppliers/internal design teams: **Amazon, Huawei, Microsoft** [0001045810-26-000021:I.1:0321]\n  - SoC suppliers: **AMD, Broadcom, Intel, Qualcomm, Samsung, Tesla** [0001045810-26-000021:I.1:0321]\n  - Networking product competitors: **AMD, Broadcom, Cisco, Huawei, Intel, Marvell** [0001045810-26-000021:I.1:0321]\n- The knowledge graph confirms Nvidia COMPETES_WITH a wide array of firms: AMD, Intel, Broadcom, Qualcomm, Microsoft, Amazon,",
+   "citations": [
+    "0000002488-25-000012:I.1A:0002",
+    "0000002488-25-000012:I.1A:0007",
+    "0000002488-26-000018:I.1:0020",
+    "0000002488-26-000018:I.1:0021",
+    "0000002488-26-000018:I.1A:0007",
+    "0000002488-26-000076:II.1A:0002",
+    "0000002488-26-000076:II.1A:0007",
+    "0001045810-26-000021:I.1:0321"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "M1",
+   "type": "numeric",
+   "question": "By how much did Nvidia's annual revenue grow from the fiscal year ended January 28, 2024 to the fiscal year ended January 25, 2026?",
+   "answer": "## Nvidia Revenue Growth: FY2024 → FY2026\n\n**Revenue figures:**\n- Fiscal year ended January 28, 2024: $60,922,000,000 [Nvidia revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD]\n- Fiscal year ended January 25, 2026: $215,938,000,000 [Nvidia revenue for period 2025-01-27..2026-01-25: 215,938,000,000 USD]\n\n**Growth calculation:**\n- Absolute increase: $215,938,000,000 − $60,922,000,000 = **$155,016,000,000**\n- Percentage growth: **~254.5%** increase over the two-year period\n\n**Supporting context:**\n- Nvidia's revenue growth trajectory through this period was driven substantially by Data Center demand, with fiscal year 2024 revenue already up 126% year-over-year, led by Data Center revenue growth of 217% [0001045810-24-000029:II.7:0171].\n- The intervening fiscal year (FY2025, ended January 26, 2025) posted revenue of $130,497,000,000, representing the midpoint of this two-year climb [Nvidia revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD].\n- Note: the context does not include a detailed narrative breakdown (by segment) explaining the FY2024-to-FY2026 growth directly — the FY2026 filing's MD&A only discusses FY2026 vs. FY2025 and refers readers to the prior 10-K for FY2025-vs-FY2024 detail [0001045810-26-000021:II.7:0377] [0001045810-25-000023:II.7:0284]. The growth figures above are calculated directly from the reported XBRL revenue metrics rather than from narrative disclosure.",
+   "citations": [
+    "0001045810-24-000029:II.7:0171",
+    "0001045810-25-000023:II.7:0284",
+    "0001045810-26-000021:II.7:0377"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "U1",
+   "type": "refusal",
+   "question": "What is Samsung's total annual revenue according to its SEC filings?",
+   "answer": "The context provided does not contain Samsung's total annual revenue. The knowledge graph excerpts only reference Samsung indirectly—as a customer, competitor, or supplier in relation to companies like Nvidia, AMD, Qualcomm, Intel, and Micron [0001045810-26-000021:I.1:0320] [0000002488-26-000018:I.1:0024] [0000804328-25-000085:I.1:0012] [0000050863-26-000011:I.1:0006] [0000723125-25-000028:I.1:0010].\n\n- The only revenue-related detail available is that Samsung is named as one of the customers/licensees comprising 10% or more of Qualcomm's consolidated revenues in fiscal 2025, but this reflects Qualcomm's revenue concentration, not Samsung's own total revenue [0000804328-25-000085:I.1:0012].\n- No REPORTED METRICS (XBRL) are available in this context [none].\n- Since Samsung is not the filer in any of these SEC filings, no figures for Samsung's own consolidated/total annual revenue are present in the retrieved context.\n\n**Conclusion:** Based solely on the provided context, Samsung's total annual revenue cannot be determined.",
+   "citations": [
+    "0000002488-26-000018:I.1:0024",
+    "0000050863-26-000011:I.1:0006",
+    "0000723125-25-000028:I.1:0010",
+    "0000804328-25-000085:I.1:0012",
+    "0001045810-26-000021:I.1:0320"
+   ],
+   "hallucinated": []
+  },
+  {
+   "id": "U2",
+   "type": "refusal",
+   "question": "What did Nvidia's CEO say on the most recent earnings call?",
+   "answer": "The context does not contain any earnings call transcripts or quotes from Nvidia's CEO. The available material is limited to SEC filings — 10-K risk factor sections, executive biography disclosures, XBRL-derived financial metrics, and knowledge-graph relationships/risk lineages — none of which capture earnings call commentary [0001045810-26-000021:I.1:0328] [0001045810-23-000017:II.7:0071] [0001045810-24-000029:II.7:0172].\n\nI cannot answer this question from the provided context. If you'd like, I can summarize what the filings say about Nvidia's most recent reported financial results (e.g., FY2026 revenue of $215.938B and net income of $120.067B) or disclosed risks instead.",
+   "citations": [
+    "0001045810-23-000017:II.7:0071",
+    "0001045810-24-000029:II.7:0172",
+    "0001045810-26-000021:I.1:0328"
+   ],
+   "hallucinated": []
+  }
+ ]
+}

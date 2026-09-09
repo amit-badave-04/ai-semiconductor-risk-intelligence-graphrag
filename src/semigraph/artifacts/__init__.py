@@ -26,6 +26,14 @@ def load_benchmark() -> list[dict]:
     )
 
 
+def load_examples() -> dict:
+    """The 20 gold-benchmark questions with their benchmarked hybrid answers
+    (served by the web UI as free, cached example clicks)."""
+    return json.loads(
+        _root().joinpath("examples.json").read_text(encoding="utf-8")
+    )
+
+
 def read_prompt(name: str) -> str:
     """Read a prompt template by stem, e.g. read_prompt("extractor")."""
     return _root().joinpath("prompts", f"{name}.txt").read_text(encoding="utf-8")
