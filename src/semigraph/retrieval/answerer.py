@@ -71,27 +71,35 @@ def build_blocks(r: dict) -> tuple[tuple[str, str, str, str, str], str, set[str]
     return blocks, full_context, valid_ids
 
 
-def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200) -> str:
+def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
+             attempts: int = 4, backoff: tuple[int, ...] = tuple(BACKOFF_S),
+             timeout: float | None = None) -> str:
     """Hardened plain-completion call (the unstructured sibling of
     ``semigraph.llm.llm_json`` — notebooks 11/14 answered unstructured).
 
     Same battle-scar handling: no sampling params, thinking disabled,
-    transient-only backoff (15/60/180/300s), empty-response retry, and
-    truncation -> regenerate from scratch with a doubled budget. On the last
-    attempt a truncated answer is returned rather than raised (the notebooks
-    accepted truncated answers; the citation post-check still applies).
+    transient-only backoff (15/60/180/300s by default), empty-response retry,
+    and truncation -> regenerate from scratch with a doubled budget. On the
+    last attempt a truncated answer is returned rather than raised (the
+    notebooks accepted truncated answers; the citation post-check still
+    applies).
+
+    ``attempts`` / ``backoff`` / ``timeout`` make the retry budget
+    request-scoped for the web service (a browser cannot wait out a 300 s
+    backoff); the pipeline keeps the long-tailed defaults.
     """
     model = model or get_settings().llm_model
     budget = max_tokens
     last_err = "unknown"
-    for attempt in range(4):
+    extra = {"timeout": timeout} if timeout else {}
+    for attempt in range(attempts):
         try:
             resp = completion(
                 model=model, messages=[{"role": "user", "content": prompt}],
-                max_tokens=budget, thinking={"type": "disabled"}, num_retries=2,
+                max_tokens=budget, thinking={"type": "disabled"}, num_retries=2, **extra,
             )
         except TRANSIENT as e:
-            wait = BACKOFF_S[attempt]
+            wait = backoff[min(attempt, len(backoff) - 1)]
             logger.warning("transient error (%s) — waiting %ss then retrying",
                            type(e).__name__, wait)
             time.sleep(wait)
@@ -102,13 +110,102 @@ def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200) -
         if not text:
             last_err = f"empty response (finish_reason={choice.finish_reason})"
             continue
-        if choice.finish_reason == "length" and attempt < 3:
+        if choice.finish_reason == "length" and attempt < attempts - 1:
             budget = min(budget * 2, MAX_BUDGET)
             last_err = "output truncated"
             logger.warning("answer truncated — regenerating with budget %d", budget)
             continue
         return text
-    raise RuntimeError(f"llm_text failed after 4 attempts — last error: {last_err}")
+    raise RuntimeError(f"llm_text failed after {attempts} attempts — last error: {last_err}")
+
+
+def usage_cost(usage: dict | None) -> float | None:
+    """USD estimate for a usage dict (prompt_tokens / completion_tokens) at the
+    configured list prices. None when usage is unknown."""
+    if not usage:
+        return None
+    s = get_settings()
+    return round(usage.get("prompt_tokens", 0) * s.llm_input_price_per_mtok / 1e6
+                 + usage.get("completion_tokens", 0) * s.llm_output_price_per_mtok / 1e6, 6)
+
+
+class TextStream:
+    """Streaming sibling of :func:`llm_text` — iterate it for text deltas.
+
+    After exhaustion ``finish_reason`` and ``usage`` (``prompt_tokens`` /
+    ``completion_tokens``; provider-reported when available, else estimated
+    by LiteLLM's chunk builder and flagged ``estimated``) are set. Transient
+    errors are retried only BEFORE the first delta has been yielded — once
+    text has reached the client, a mid-stream failure raises RuntimeError so
+    the caller can report a partial answer honestly instead of silently
+    regenerating.
+    """
+
+    def __init__(self, prompt: str, *, model: str | None = None, max_tokens: int = 1200,
+                 attempts: int = 2, backoff: tuple[int, ...] = (5, 15),
+                 timeout: float | None = None):
+        self.prompt = prompt
+        self.model = model or get_settings().llm_model
+        self.max_tokens, self.attempts = max_tokens, attempts
+        self.backoff, self.timeout = backoff, timeout
+        self.finish_reason: str | None = None
+        self.usage: dict | None = None
+        self.text = ""
+
+    def _run_once(self, messages: list[dict]) -> list:
+        extra = {"timeout": self.timeout} if self.timeout else {}
+        chunks = []
+        resp = completion(
+            model=self.model, messages=messages, max_tokens=self.max_tokens,
+            thinking={"type": "disabled"}, num_retries=2, stream=True,
+            stream_options={"include_usage": True}, **extra,
+        )
+        for chunk in resp:
+            chunks.append(chunk)
+            choice = chunk.choices[0] if chunk.choices else None
+            delta = getattr(getattr(choice, "delta", None), "content", None)
+            if delta:
+                self.text += delta
+                yield delta
+            if choice is not None and choice.finish_reason:
+                self.finish_reason = choice.finish_reason
+            usage = getattr(chunk, "usage", None)
+            if usage and getattr(usage, "prompt_tokens", None):
+                self.usage = {"prompt_tokens": usage.prompt_tokens,
+                              "completion_tokens": usage.completion_tokens}
+        self._chunks = chunks
+
+    def __iter__(self):
+        import litellm
+
+        messages = [{"role": "user", "content": self.prompt}]
+        last_err = "unknown"
+        for attempt in range(self.attempts):
+            self._chunks = []
+            try:
+                yield from self._run_once(messages)
+            except TRANSIENT as e:
+                if self.text:
+                    raise RuntimeError(f"stream interrupted mid-answer: {type(e).__name__}") from e
+                wait = self.backoff[min(attempt, len(self.backoff) - 1)]
+                logger.warning("transient error (%s) before first token — waiting %ss",
+                               type(e).__name__, wait)
+                time.sleep(wait)
+                last_err = f"transient: {type(e).__name__}"
+                continue
+            if not self.text:
+                last_err = f"empty response (finish_reason={self.finish_reason})"
+                continue
+            if self.usage is None and self._chunks:
+                try:
+                    built = litellm.stream_chunk_builder(self._chunks, messages=messages)
+                    self.usage = {"prompt_tokens": built.usage.prompt_tokens,
+                                  "completion_tokens": built.usage.completion_tokens,
+                                  "estimated": True}
+                except Exception as e:  # accounting must never break an answer
+                    logger.debug("usage estimate unavailable: %s", e)
+            return
+        raise RuntimeError(f"streaming answer failed after {self.attempts} attempts — last error: {last_err}")
 
 
 def answer(question: str, driver, embedder, strategy: str = "hybrid",
@@ -138,3 +235,46 @@ def answer(question: str, driver, embedder, strategy: str = "hybrid",
             "citations": sorted(cited), "cited": cited, "valid_ids": valid_ids,
             "hallucinated": cited - valid_ids, "context": full_context,
             "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "retrieval": r}
+
+
+def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
+                  llm_stream=None, k_chunks: int = 8, hops: int = 2, **stream_kwargs):
+    """Streaming variant of :func:`answer` — a generator of event dicts.
+
+    Events, in order: ``{"event": "retrieval", "anchors", "counts"}``, then
+    ``{"event": "delta", "text"}`` per token batch, finally ``{"event": "done",
+    "answer", "citations", "hallucinated", "finish_reason", "usage", "cost_usd",
+    "chunk_ids", "context_chars"}``. Citations are post-verified exactly like
+    ``answer``. ``llm_stream`` is injectable: ``callable(prompt) ->
+    iterable[str]`` (defaults to :class:`TextStream` with ``stream_kwargs``).
+    """
+    if strategy == "hybrid":
+        r = hybrid_retrieve(question, driver, embedder, k_chunks=k_chunks, hops=hops)
+    elif strategy == "vector":
+        r = vector_retrieve(question, driver, embedder, k=k_chunks)
+    else:
+        raise ValueError(f"unknown strategy {strategy!r} — use 'hybrid' or 'vector'")
+    (e_b, m_b, k_b, t_b, c_b), full_context, valid_ids = build_blocks(r)
+    yield {"event": "retrieval", "anchors": r["anchors"],
+           "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")}}
+    prompt = ANSWER_PROMPT.format(question=question, edges_block=e_b, metrics_block=m_b,
+                                  risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
+    stream = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
+    parts = []
+    try:
+        for delta in stream:
+            parts.append(delta)
+            yield {"event": "delta", "text": delta}
+    except Exception as e:  # noqa: BLE001 — surface, with whatever spend is known
+        usage = getattr(stream, "usage", None)
+        yield {"event": "error", "detail": f"{type(e).__name__}: {e}", "partial": "".join(parts),
+               "usage": usage, "cost_usd": usage_cost(usage), "strategy": strategy}
+        return
+    text = "".join(parts)
+    cited = set(CITE_RE.findall(text))
+    usage = getattr(stream, "usage", None)
+    yield {"event": "done", "question": question, "strategy": strategy, "answer": text,
+           "citations": sorted(cited), "hallucinated": sorted(cited - valid_ids),
+           "finish_reason": getattr(stream, "finish_reason", None), "usage": usage,
+           "cost_usd": usage_cost(usage), "chunk_ids": [c["chunk_id"] for c in r["chunks"]],
+           "context_chars": len(full_context)}
