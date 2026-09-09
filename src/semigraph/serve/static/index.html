@@ -127,6 +127,7 @@ function setStatus(text, cls) { $("status").innerHTML = cls ? `<span class="${cl
 
 async function ask() {
   const question = $("q").value.trim(); if (!question) return;
+  if (TURNSTILE_SITE_KEY && !turnstileToken) { setStatus("completing the bot check first — try again in a second"); return; }
   $("ask").disabled = true; $("answer").innerHTML = ""; $("meta").hidden = true; setStatus("retrieving from the graph…");
   const body = { question, strategy: $("strategy").value, turnstile_token: turnstileToken };
   let resp;

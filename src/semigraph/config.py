@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     answer_cache_ttl_hours: int = 24
     turnstile_site_key: str = ""              # Cloudflare Turnstile (optional bot gate)
     turnstile_secret_key: str = ""
+    turnstile_required: bool = False          # true = fail CLOSED for live questions when unconfigured/invalid
+    read_rate_limit_per_minute: int = 120     # per address, free read endpoints (stats/evidence/examples)
 
     @property
     def is_production(self) -> bool:

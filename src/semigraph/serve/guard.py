@@ -77,11 +77,17 @@ def validate_strategy(strategy: str) -> str:
     return s
 
 
-async def verify_turnstile(token: str | None, ip: str, secret: str, is_production: bool) -> bool:
-    """True when the Turnstile token is valid. Not configured -> allowed, but
-    loudly logged in production (the daily ceiling + rate limit remain the
-    hard cost controls; see docs/RUNBOOK.md to enable the bot gate)."""
+async def verify_turnstile(token: str | None, ip: str, secret: str, is_production: bool,
+                           required: bool = False) -> bool:
+    """True when the Turnstile token is valid.
+
+    Not configured: allowed (loudly logged in production) unless ``required``
+    is set, in which case live questions fail CLOSED — the posture of the
+    reference deployment once the widget exists (docs/RUNBOOK.md)."""
     if not secret:
+        if required:
+            logger.error("TURNSTILE_REQUIRED is set but TURNSTILE_SECRET_KEY is empty — failing closed")
+            return False
         if is_production:
             logger.warning("turnstile not configured in production — relying on rate limit + daily ceiling")
         return True

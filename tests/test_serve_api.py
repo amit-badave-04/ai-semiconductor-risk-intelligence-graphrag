@@ -39,6 +39,8 @@ class FakeSettings:
     client_ip_header = ""
     free_rate_limit_questions = 10
     stats_cache_seconds = 0
+    turnstile_required = False
+    read_rate_limit_per_minute = 5
     llm_model = "anthropic/claude-sonnet-5"
 
 
@@ -99,6 +101,7 @@ def client(fakes):
                                          FakeSettings.rate_limit_window_seconds)
     app.state.free_rate_limiter = RateLimiter(FakeSettings.free_rate_limit_questions,
                                               FakeSettings.rate_limit_window_seconds)
+    app.state.read_rate_limiter = RateLimiter(FakeSettings.read_rate_limit_per_minute, 60)
     app.state.answer_slots = threading.BoundedSemaphore(FakeSettings.max_concurrent_answers)
     return TestClient(app)
 
@@ -119,6 +122,7 @@ def test_index_sets_security_headers(client):
     assert r.status_code == 200 and "semigraph" in r.text
     assert "default-src 'self'" in r.headers["content-security-policy"]
     assert r.headers["x-frame-options"] == "DENY"
+    assert r.headers["strict-transport-security"].startswith("max-age=")
 
 
 def test_examples_lists_benchmark_questions_without_answers(client):
@@ -285,3 +289,17 @@ def test_admin_requires_token_and_toggles_kill_switch(client, fakes):
 def test_admin_disabled_when_no_token_configured(client):
     client.app.state.settings.admin_token = ""
     assert client.get("/api/admin/policy", headers={"X-Admin-Token": ""}).status_code == 404
+
+
+def test_turnstile_required_fails_closed_without_keys(client, fakes):
+    client.app.state.settings.turnstile_required = True
+    r = client.post("/api/ask", json={"question": Q})
+    assert r.status_code == 403 and "Bot check" in r.json()["detail"]
+    assert fakes.queries == []
+
+
+def test_read_endpoints_are_rate_limited(client):
+    n = FakeSettings.read_rate_limit_per_minute
+    codes = [client.get("/api/stats").status_code for _ in range(n + 1)]
+    assert codes[:-1] == [200] * n and codes[-1] == 429
+    assert client.get("/api/evidence/not-a-chunk").status_code == 429  # same window

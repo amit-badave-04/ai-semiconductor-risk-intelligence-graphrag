@@ -69,7 +69,9 @@ def bootstrap(settings):
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    if settings.is_production and not settings.turnstile_secret_key:
+    if settings.turnstile_required and not settings.turnstile_secret_key:
+        logger.error("TURNSTILE_REQUIRED without TURNSTILE_SECRET_KEY: live questions will be refused")
+    elif settings.is_production and not settings.turnstile_secret_key:
         logger.warning("production without Turnstile: cost is bounded only by the daily ceiling (%d) and the per-IP window",
                        settings.max_queries_per_day)
     driver, embedder, stats = await run_in_threadpool(bootstrap, settings)
@@ -80,6 +82,7 @@ async def lifespan(app: FastAPI):
     app.state.rate_limiter = RateLimiter(settings.rate_limit_questions, settings.rate_limit_window_seconds)
     app.state.free_rate_limiter = RateLimiter(settings.free_rate_limit_questions,
                                               settings.rate_limit_window_seconds)
+    app.state.read_rate_limiter = RateLimiter(settings.read_rate_limit_per_minute, 60)
     app.state.answer_slots = threading.BoundedSemaphore(settings.max_concurrent_answers)
     logger.info("semigraph %s serving — graph: %s", __version__, stats)
     yield

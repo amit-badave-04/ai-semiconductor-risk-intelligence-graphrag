@@ -29,7 +29,9 @@ CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges
        "style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://challenges.cloudflare.com; "
        "img-src 'self' data:; base-uri 'none'; form-action 'none'")
 SECURITY_HEADERS = {"Content-Security-Policy": CSP, "X-Content-Type-Options": "nosniff",
-                    "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer"}
+                    "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
+                    "Strict-Transport-Security": "max-age=31536000; includeSubDomains"}
+MSG_READ_RATE = "Too many requests from your address — please slow down."
 MSG_PAUSED = "Live questions are paused right now — the example questions still work."
 MSG_BUDGET = "The daily budget of live questions is used up — try an example, or come back tomorrow."
 MSG_BOT = "Bot check failed — reload the page and try again."
@@ -45,6 +47,13 @@ class AskRequest(BaseModel):
 
 class PolicyRequest(BaseModel):
     kill_switch: bool
+
+
+def _read_gate(request: Request) -> None:
+    """Per-address window for the free read endpoints (they hit the database)."""
+    st, s = request.app.state, request.app.state.settings
+    if not st.read_rate_limiter.allow(guard.ip_hash(guard.client_ip(request, s.client_ip_header))):
+        raise HTTPException(status_code=429, detail=MSG_READ_RATE)
 
 
 def _sse(event: dict) -> ServerSentEvent:
@@ -70,7 +79,8 @@ async def healthz(request: Request):
 
 
 @router.get("/api/examples")
-async def examples():
+async def examples(request: Request):
+    _read_gate(request)
     ex = load_examples()
     return {"source": ex["source"],
             "examples": [{"id": e["id"], "type": e["type"], "question": e["question"]}
@@ -91,6 +101,7 @@ async def _ledger_cached(st) -> dict:
 
 @router.get("/api/stats")
 async def stats(request: Request):
+    _read_gate(request)
     st, s = request.app.state, request.app.state.settings
     ledger = await _ledger_cached(st)
     paused = await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch)
@@ -103,6 +114,7 @@ async def stats(request: Request):
 
 @router.get("/api/evidence/{chunk_id}")
 async def evidence(chunk_id: str, request: Request):
+    _read_gate(request)
     if not CHUNK_ID_RE.match(chunk_id):
         raise HTTPException(status_code=400, detail="malformed chunk id")
     rows = await run_in_threadpool(run_cypher, request.app.state.driver, """
@@ -141,7 +153,8 @@ async def ask(body: AskRequest, request: Request):
         raise HTTPException(status_code=503, detail=MSG_PAUSED)
     if s.max_queries_per_day and await run_in_threadpool(store.paid_queries_today, st.driver) >= s.max_queries_per_day:
         raise HTTPException(status_code=429, detail=MSG_BUDGET)
-    if not await guard.verify_turnstile(body.turnstile_token, ip, s.turnstile_secret_key, s.is_production):
+    if not await guard.verify_turnstile(body.turnstile_token, ip, s.turnstile_secret_key,
+                                        s.is_production, required=s.turnstile_required):
         raise HTTPException(status_code=403, detail=MSG_BOT)
     if not st.rate_limiter.allow(iph):
         raise HTTPException(status_code=429, detail=MSG_RATE)

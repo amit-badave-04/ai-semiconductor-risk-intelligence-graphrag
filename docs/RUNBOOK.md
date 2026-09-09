@@ -77,8 +77,26 @@ cached answers, estimated USD from provider-reported token usage).
 | Output budget | `LLM_ANSWER_MAX_TOKENS` (streamed answers cannot regenerate on truncation; truncated answers are not cached) | 2400 on Fly |
 | Bot gate | Cloudflare Turnstile when `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` are set; otherwise a warning is logged and the caps above are the control | off |
 
-To enable Turnstile: create a widget for `semigraph.fly.dev` in the Cloudflare dashboard, add the
-two keys to `.env.fly`, run `python -m scripts.push_fly_secrets --only TURNSTILE_SITE_KEY,TURNSTILE_SECRET_KEY`.
+### Enabling the Turnstile bot gate (one-time, ~5 minutes)
+
+1. Sign in at https://dash.cloudflare.com (a free account is enough; no domain needs to be on
+   Cloudflare — Turnstile works on any hostname).
+2. Left menu **Turnstile** → **Add widget**. Widget name: `semigraph`. Hostname: `semigraph.fly.dev`
+   (add `localhost` too if you want to test locally). Widget mode: **Managed**. Pre-clearance: off.
+   Create.
+3. Copy the **Site Key** and the **Secret Key** into `.env.fly`:
+   `TURNSTILE_SITE_KEY=0x...` and `TURNSTILE_SECRET_KEY=0x...`, and add `TURNSTILE_REQUIRED=true`
+   (fail closed: if the secret is ever missing or Cloudflare cannot verify, live questions are refused
+   instead of silently allowed).
+4. Push them (this restarts the API machine):
+   `python -m scripts.push_fly_secrets --only TURNSTILE_SITE_KEY,TURNSTILE_SECRET_KEY,TURNSTILE_REQUIRED`
+5. Verify: open https://semigraph.fly.dev/ — the widget renders under the Ask button; a live question
+   works in the browser, while `curl -X POST .../api/ask` without a token gets **403 Bot check failed**.
+   `flyctl logs -a semigraph` must not show the "turnstile not configured" warning any more.
+
+Other protections already on: HSTS + CSP + nosniff/deny-frame headers, per-address windows on the
+free read endpoints (`READ_RATE_LIMIT_PER_MINUTE`, default 120), cached and live question windows,
+the daily ceiling, and the kill switch. The database is never exposed publicly (private 6PN only).
 
 ## Secrets
 
