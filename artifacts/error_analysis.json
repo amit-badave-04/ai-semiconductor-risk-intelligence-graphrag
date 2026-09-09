@@ -1,0 +1,161 @@
+{
+  "n_failures": 11,
+  "counts": {
+    "vector": {
+      "REFUSAL_OVERTRIGGER": 3,
+      "RETRIEVAL_MISS": 2
+    },
+    "hybrid": {
+      "UNGROUNDED_CLAIM": 2,
+      "STALE_RISK_LEAK": 2,
+      "NUMERIC_MISMATCH": 1,
+      "RETRIEVAL_MISS": 1
+    }
+  },
+  "mechanical_share": 0.36363636363636365,
+  "labels": [
+    "RETRIEVAL_MISS",
+    "UNGROUNDED_CLAIM",
+    "WRONG_ENTITY",
+    "STALE_RISK_LEAK",
+    "NUMERIC_MISMATCH",
+    "REFUSAL_OVERTRIGGER",
+    "REFUSAL_MISSED",
+    "FORMAT_OR_CITATION",
+    "OTHER"
+  ],
+  "rows": [
+    {
+      "id": "N4",
+      "system": "vector",
+      "type": "numeric",
+      "label": "REFUSAL_OVERTRIGGER",
+      "mechanical": true,
+      "evidence": "",
+      "correct": false,
+      "faithfulness": 1.0,
+      "citation_ok": true,
+      "context_recall": 0.0
+    },
+    {
+      "id": "D2",
+      "system": "hybrid",
+      "type": "dependency",
+      "label": "UNGROUNDED_CLAIM",
+      "mechanical": false,
+      "evidence": "The answer asserts that Samsung, Micron, and SK Hynix are HBM suppliers, but the context only shows generic CUSTOMER_OF/DEPENDS_ON relationships without any explicit mention of HBM products or memory-specific supply relationships.",
+      "correct": true,
+      "faithfulness": 0.75,
+      "citation_ok": true,
+      "context_recall": 0.6666666666666666
+    },
+    {
+      "id": "R2",
+      "system": "vector",
+      "type": "regulatory",
+      "label": "RETRIEVAL_MISS",
+      "mechanical": false,
+      "evidence": "The answer identifies AMD and NVIDIA as affected by US export-control rules, but the grading notes indicate that Broadcom should also be included in the answer, and the provided context excerpts contain no information about Broadcom's export-control exposure.",
+      "correct": true,
+      "faithfulness": 0.7692307692307693,
+      "citation_ok": true,
+      "context_recall": 0.6666666666666666
+    },
+    {
+      "id": "R3",
+      "system": "hybrid",
+      "type": "regulatory",
+      "label": "NUMERIC_MISMATCH",
+      "mechanical": false,
+      "evidence": "The answer's final sentence about competitive disadvantage is incomplete and cuts off mid-claim ('and that this'), making the citation and factual assertion incomplete and unverifiable against the actual filing content.",
+      "correct": true,
+      "faithfulness": 0.6875,
+      "citation_ok": true,
+      "context_recall": 1.0
+    },
+    {
+      "id": "T1",
+      "system": "vector",
+      "type": "temporal",
+      "label": "REFUSAL_OVERTRIGGER",
+      "mechanical": true,
+      "evidence": "",
+      "correct": false,
+      "faithfulness": 1.0,
+      "citation_ok": true,
+      "context_recall": 0.0
+    },
+    {
+      "id": "T2",
+      "system": "hybrid",
+      "type": "temporal",
+      "label": "UNGROUNDED_CLAIM",
+      "mechanical": false,
+      "evidence": "The answer extensively discusses tax policy changes (OECD Side-by-Side Safe Harbor, One Big Beautiful Bill Act) and explicitly states 'no wholly new geopolitical or supply-chain risk category...appears explicitly introduced for Meta in the latest 10-K,' directly contradicting the question's premise about new supply-chain or geopolitical risks while presenting tax-regulatory developments as the primary findings, which are outside the scope of the question.",
+      "correct": true,
+      "faithfulness": 0.7142857142857143,
+      "citation_ok": true,
+      "context_recall": 0.5
+    },
+    {
+      "id": "T2",
+      "system": "vector",
+      "type": "temporal",
+      "label": "RETRIEVAL_MISS",
+      "mechanical": false,
+      "evidence": "The answer correctly identifies that the Meta filing chunks provided (0001628280-26-003942) contain only workforce and corporate information sections, not risk factors, and that supply-chain/geopolitical risk excerpts in the context are sourced from different, non-Meta filings (accession numbers starting with 0000050863, 0001193125, etc.), making it impossible to ground an answer about Meta's risks in the provided context.",
+      "correct": true,
+      "faithfulness": 0.0,
+      "citation_ok": true,
+      "context_recall": 1.0
+    },
+    {
+      "id": "T3",
+      "system": "hybrid",
+      "type": "temporal",
+      "label": "RETRIEVAL_MISS",
+      "mechanical": true,
+      "evidence": "",
+      "correct": false,
+      "faithfulness": 0.9047619047619048,
+      "citation_ok": true,
+      "context_recall": 0.3333333333333333
+    },
+    {
+      "id": "T3",
+      "system": "vector",
+      "type": "temporal",
+      "label": "REFUSAL_OVERTRIGGER",
+      "mechanical": true,
+      "evidence": "",
+      "correct": false,
+      "faithfulness": 1.0,
+      "citation_ok": true,
+      "context_recall": 0.0
+    },
+    {
+      "id": "Q1",
+      "system": "hybrid",
+      "type": "risk",
+      "label": "STALE_RISK_LEAK",
+      "mechanical": false,
+      "evidence": "The answer includes a section titled 'Risks Dropped from the Latest Annual Report' presenting withdrawn risks as current disclosure, and the section is incomplete/truncated, suggesting stale information was inappropriately presented alongside current risks.",
+      "correct": false,
+      "faithfulness": 1.0,
+      "citation_ok": true,
+      "context_recall": 1.0
+    },
+    {
+      "id": "Q2",
+      "system": "hybrid",
+      "type": "risk",
+      "label": "STALE_RISK_LEAK",
+      "mechanical": false,
+      "evidence": "The answer presents Taiwan and South Korea geopolitical risks as current disclosures, but the DROPPED_RISK_LINEAGES section indicates these risks were disclosed 2025-03-05 through 2025-03-05 and then dropped, meaning they are no longer actively disclosed by ASML.",
+      "correct": true,
+      "faithfulness": 0.7647058823529411,
+      "citation_ok": true,
+      "context_recall": 1.0
+    }
+  ]
+}

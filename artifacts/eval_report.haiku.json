@@ -1,0 +1,57 @@
+{
+  "overall": {
+    "correct": {
+      "hybrid": 0.9,
+      "vector": 0.85
+    },
+    "faithfulness": {
+      "hybrid": 0.9266,
+      "vector": 0.9193
+    },
+    "context_precision": {
+      "hybrid": 0.2812,
+      "vector": 0.3
+    },
+    "context_recall": {
+      "hybrid": 0.8704,
+      "vector": 0.6435
+    },
+    "citation_validity": {
+      "hybrid": 1.0,
+      "vector": 1.0
+    },
+    "avg_citations": {
+      "hybrid": 5.45,
+      "vector": 4.0
+    },
+    "avg_cost_usd": {
+      "hybrid": null,
+      "vector": null
+    },
+    "avg_latency_s": {
+      "hybrid": null,
+      "vector": null
+    }
+  },
+  "by_type": {
+    "hybrid": {
+      "dependency": 1.0,
+      "numeric": 1.0,
+      "refusal": 1.0,
+      "regulatory": 1.0,
+      "risk": 0.67,
+      "temporal": 0.67
+    },
+    "vector": {
+      "dependency": 1.0,
+      "numeric": 0.8,
+      "refusal": 1.0,
+      "regulatory": 1.0,
+      "risk": 1.0,
+      "temporal": 0.33
+    }
+  },
+  "n_questions": 20,
+  "scored_runs": 40,
+  "judge_model": "anthropic/claude-haiku-4-5"
+}
