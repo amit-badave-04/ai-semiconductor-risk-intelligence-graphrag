@@ -72,7 +72,8 @@ driver that reproduces the flagship Query D using only `import semigraph`.
 | Embeddings | Local `Qwen/Qwen3-Embedding-0.6B` (sentence-transformers, 1024-dim, 32k ctx) |
 | SEC ingestion | `edgartools`, `sec-parser`, XBRL Company Facts API (numbers are XBRL-only, never LLM-parsed) |
 | Evaluation | Transparent LLM-judge (standard RAG metrics) + programmatic citation/numeric/temporal checks |
-| Packaging | `semigraph` wheel (`uv build`), typer CLI, 114 mocked-LLM pytest tests |
+| Packaging | `semigraph` wheel (`uv build`), typer CLI, 142 mocked-LLM pytest tests |
+| Serving | FastAPI + SSE on Fly.io, Neo4j Community on Fly, ONNX query embedder — see *Production* below |
 
 ## Phases & Milestones — ALL COMPLETE
 
@@ -89,12 +90,37 @@ driver that reproduces the flagship Query D using only `import semigraph`.
 | 6. Evaluation | M6 ✅ | `14_evaluation` | benchmark above |
 | 7. SDK packaging | M7 ✅ | `15_sdk_inference_driver` | `semigraph` wheel + CLI + tests |
 
+## Live demo
+
+**https://semigraph.fly.dev/** — the graph above behind a small web product: click any of the 20
+benchmark questions (served from the committed evaluation run, free) or ask your own (one streamed
+Claude Sonnet 5 call, rate-limited per address and capped per day). Every citation chip opens the
+verbatim SEC excerpt it points to. The owner takes the demo offline with one script when not in
+use — if the page does not load, it is parked.
+
+## Production (how it is deployed)
+
+Mirrors the operating pattern of [clinic-voice-agent](https://github.com/amit-badave-04/clinic-voice-agent):
+FastAPI on Fly.io, secrets pushed from a local env file, a kill switch, a runbook with START/STOP
+blocks, CI with tests + secret scan, and an ADR with the evidence behind each choice.
+
+| Piece | Where |
+|---|---|
+| Web service (`/`, `POST /api/ask` SSE, `/api/evidence/{id}`, `/api/stats`, `/healthz`, admin kill switch) | `src/semigraph/serve/`, `Dockerfile`, `fly.toml` |
+| Neo4j Community 2026.07 + volume, private network, graph seeded from a dump baked into the image | `deploy/neo4j/` |
+| Torch-free query embedder: 8-bit weight-only ONNX of Qwen3-Embedding-0.6B (cosine 0.999 vs sentence-transformers, verified locally: `artifacts/onnx_embedder_fidelity.json`) | `scripts/build_onnx_embedder.py`, `src/semigraph/embeddings_onnx.py` |
+| Cost controls: per-address window, daily ceiling + kill switch + answer cache persisted in Neo4j, benchmark answers pre-seeded | `src/semigraph/serve/guard.py`, `store.py` |
+| Operations: START / STOP / status, secrets push, kill switch | `scripts/ops.ps1`, `scripts/push_fly_secrets.py`, `scripts/kill_switch.py`, [docs/RUNBOOK.md](docs/RUNBOOK.md) |
+| Decisions + measurements | [adr/0001-production-stack.md](adr/0001-production-stack.md), [docs/PRODUCTIONIZATION_PLAN.md](docs/PRODUCTIONIZATION_PLAN.md) |
+
+Running both machines 24/7 is ≈ $17/month; parked ≈ $0.75/month; each live answer ≈ $0.06.
+
 ## Setup
 
 ```bash
 uv sync                          # creates .venv with all dependencies (editable semigraph)
 copy .env.example .env           # then fill in keys (Anthropic, Neo4j, SEC user-agent)
-uv run pytest -q                 # 114 tests, zero API spend
+uv run pytest -q                 # 142 tests, zero API spend
 uv run semigraph --help          # CLI: ingest | build-graph | query | eval
 uv run jupyter lab               # open notebooks/
 ```

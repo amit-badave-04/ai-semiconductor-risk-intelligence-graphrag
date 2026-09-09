@@ -1,4 +1,14 @@
-# Project Status — ALL MILESTONES COMPLETE (M7 shipped 2026-07-03)
+# Project Status — productionized (web service live, 2026-09-09)
+
+**Production**: `semigraph.serve` (FastAPI, SSE streaming, Neo4j-persisted cost controls) runs at
+https://semigraph.fly.dev with Neo4j Community on a second Fly machine; torch-free ONNX query
+embeddings; START/STOP via `scripts/ops.ps1`. See [RUNBOOK.md](RUNBOOK.md),
+[PRODUCTIONIZATION_PLAN.md](PRODUCTIONIZATION_PLAN.md) and
+[adr/0001-production-stack.md](../adr/0001-production-stack.md). 142 tests.
+
+---
+
+## SDK milestones — ALL COMPLETE (M7 shipped 2026-07-03)
 
 **M7 is DONE**: notebook logic is refactored into the `semigraph` package under `src/semigraph/`
 (config / llm / embeddings / ingestion / parsing / extraction / graph / retrieval / eval), with a
