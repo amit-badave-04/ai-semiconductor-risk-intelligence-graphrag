@@ -298,3 +298,17 @@ def test_run_benchmark_rescore_reuses_runs_with_other_judge(tmp_path, fake_answe
     assert all(c[2].get("model") == "anthropic/claude-haiku-4-5"
                for c in judge2.calls if c[0] in ("Faithfulness", "Correct"))
     assert (tmp_path / "a" / "eval_report.json").exists()  # primary report untouched
+
+
+def test_score_runs_survives_a_failing_judge_call():
+    class FlakyJudge(ScriptedJudge):
+        def __call__(self, prompt, model_cls, **kw):
+            if model_cls is Faithfulness:
+                raise RuntimeError("llm_json failed after 4 attempts")
+            return super().__call__(prompt, model_cls, **kw)
+
+    rows = score_runs([make_run("N1", "numeric", "$60.9 billion"), make_run("T1", "temporal", "dropped")],
+                      BENCH, judge=FlakyJudge())
+    assert [r["faithfulness"] for r in rows] == [None, None]
+    assert rows[0]["correct"] is True and rows[1]["correct"] is True  # other metrics unaffected
+    assert rows[0]["context_recall"] == 1.0

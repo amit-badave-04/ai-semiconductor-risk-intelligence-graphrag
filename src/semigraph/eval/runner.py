@@ -152,6 +152,16 @@ def score_runs(runs: list[dict], benchmark: list[dict], *, judge=None,
     judge = judge or llm_json
     bench_by_id = {b["id"]: b for b in benchmark}
     scored = []
+
+    def safe_judge(label: str, *args, **kwargs):
+        """A judge that fails after its retries costs ONE metric, not the run."""
+        try:
+            return judge(*args, **kwargs)
+        except RuntimeError as e:
+            logger.error("%s judge failed for %s/%s — recorded as null: %s", label,
+                         run["id"], run["system"], e)
+            return None
+
     for run in runs:
         b = bench_by_id[run["id"]]
         row = {"id": run["id"], "system": run["system"], "type": run["type"]}
@@ -169,31 +179,35 @@ def score_runs(runs: list[dict], benchmark: list[dict], *, judge=None,
         elif "expect" in b and "any_of" in b["expect"]:
             row["correct"] = any(s.lower() in ans.lower() for s in b["expect"]["any_of"])
         else:
-            v = judge(JUDGE_PROMPT.format(q=b["q"], notes=b.get("judge_notes", ""), a=ans[:4000]),
-                      Correct, model=judge_model, max_tokens=300)
-            row["correct"] = v.correct
+            v = safe_judge("correctness", JUDGE_PROMPT.format(q=b["q"], notes=b.get("judge_notes", ""), a=ans[:4000]),
+                           Correct, model=judge_model, max_tokens=300)
+            row["correct"] = v.correct if v is not None else None
         # faithfulness (skip refusals — nothing to fact-check)
         if run["type"] != "refusal":
             # judge against the FULL context the answering model saw (graph blocks + excerpts) —
             # judging hybrid answers against excerpts alone falsely marks graph-derived claims unsupported
             ctx = run.get("context") or "\n".join(f"[{cid}] {t[:600]}" for cid, t in run["chunk_texts"].items())
             ctx = ctx[:24000]
-            f = judge(FAITH_PROMPT.format(q=b["q"], a=ans[:4000], ctx=ctx or "(no context retrieved)"),
-                      Faithfulness, model=judge_model, max_tokens=200)
-            row["faithfulness"] = (f.supported_claims / f.total_claims) if f.total_claims else 1.0
+            f = safe_judge("faithfulness", FAITH_PROMPT.format(q=b["q"], a=ans[:4000], ctx=ctx or "(no context retrieved)"),
+                           Faithfulness, model=judge_model, max_tokens=200)
+            if f is not None:
+                row["faithfulness"] = (f.supported_claims / f.total_claims) if f.total_claims else 1.0
+            else:
+                row["faithfulness"] = None
         # context recall (Haiku): are the facts the grading notes require in the context at all?
         notes = b.get("judge_notes") or (json.dumps(b["expect"]) if b.get("expect") else "")
         if run["type"] != "refusal" and notes:
             rctx = (run.get("context") or "")[:24000]
-            rc = judge(RECALL_PROMPT.format(q=b["q"], notes=notes, ctx=rctx or "(no context retrieved)"),
-                       Recall, model=critic_model, max_tokens=100, thinking_off=False)
-            row["context_recall"] = (min(rc.present, rc.needed) / rc.needed) if rc.needed else 1.0
+            rc = safe_judge("recall", RECALL_PROMPT.format(q=b["q"], notes=notes, ctx=rctx or "(no context retrieved)"),
+                            Recall, model=critic_model, max_tokens=100, thinking_off=False)
+            if rc is not None:
+                row["context_recall"] = (min(rc.present, rc.needed) / rc.needed) if rc.needed else 1.0
         # context precision (Haiku, one call per run)
         if run["chunk_texts"]:
             numbered = "\n".join(f"{i+1}. {t[:350]}" for i, t in enumerate(run["chunk_texts"].values()))
-            rel = judge(REL_PROMPT.format(q=b["q"], chunks=numbered), Relevance,
-                        model=critic_model, max_tokens=200, thinking_off=False)
-            if len(rel.verdicts) == len(run["chunk_texts"]):
+            rel = safe_judge("relevance", REL_PROMPT.format(q=b["q"], chunks=numbered), Relevance,
+                             model=critic_model, max_tokens=200, thinking_off=False)
+            if rel is not None and len(rel.verdicts) == len(run["chunk_texts"]):
                 row["context_precision"] = sum(rel.verdicts) / len(rel.verdicts)
         scored.append(row)
         logger.info("  scored %s/%s", run["id"], run["system"])

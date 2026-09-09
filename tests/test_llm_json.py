@@ -140,3 +140,10 @@ def test_gives_up_after_four_attempts(patch_completion):
     patch_completion([make_resp(None)] * 4)
     with pytest.raises(RuntimeError, match="failed after 4 attempts"):
         llm_json("p", Item, model="m")
+
+
+def test_llm_json_salvages_json_object_wrapped_in_prose(monkeypatch):
+    fake = FakeCompletion([make_resp("Here is my verdict: {\"name\": \"x\", \"value\": 1} Hope that helps.")])
+    monkeypatch.setattr(llm_mod, "completion", fake)
+    item = llm_json("p", Item)
+    assert (item.name, item.value) == ("x", 1) and len(fake.calls) == 1  # no correction turn spent

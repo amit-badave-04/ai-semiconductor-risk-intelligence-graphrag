@@ -46,6 +46,23 @@ MAX_BUDGET = 8000
 _FENCE_RE = re.compile(r"^```(json)?|```$", flags=re.MULTILINE)
 
 
+def _salvage_json_object(text: str) -> str | None:
+    """The first balanced {...} object inside prose (judges occasionally wrap
+    their JSON in a sentence); None when there is no such object."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return None
+
+
 def llm_json(
     prompt: str,
     model_cls,
@@ -94,6 +111,12 @@ def llm_json(
         try:
             return model_cls.model_validate_json(raw)
         except ValidationError as e:
+            salvaged = _salvage_json_object(raw)
+            if salvaged is not None:
+                try:
+                    return model_cls.model_validate_json(salvaged)
+                except ValidationError:
+                    pass
             last_err = str(e)[:300]
             messages = [
                 {"role": "user", "content": prompt},
