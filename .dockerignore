@@ -1,0 +1,21 @@
+# Secrets must NEVER enter image layers.
+.env
+.env.*
+!.env.example
+# VCS, envs, caches, data lake, notebooks, docs — not needed to serve
+.git
+.venv
+.pytest_cache
+__pycache__
+**/__pycache__
+*.pyc
+data/
+notebooks/
+docs/
+dist/
+tests/
+models/
+deploy/neo4j/
+.claude
+Dockerfile
+.dockerignore

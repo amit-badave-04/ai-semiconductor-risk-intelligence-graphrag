@@ -1,0 +1,16 @@
+# Direct dependencies of the web service ONLY (no torch / sentence-transformers /
+# edgartools / sec-parser / pandas — those are pipeline-time). Pinned by:
+#   uv pip compile deploy/requirements-serve.in -o deploy/requirements-serve.txt
+# The semigraph package itself is installed with --no-deps on top of this file.
+fastapi>=0.141
+uvicorn[standard]>=0.52
+sse-starlette>=2.0
+httpx>=0.28
+onnxruntime>=1.29
+tokenizers>=0.21
+numpy>=2.0
+neo4j>=6.2.0
+litellm>=1.90.2
+pydantic>=2.13
+pydantic-settings>=2.14
+python-dotenv>=1.2

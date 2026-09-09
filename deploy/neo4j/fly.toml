@@ -1,0 +1,38 @@
+# Fly.io config — semigraph's Neo4j Community database (private, volume-backed).
+# No [[services]] block on purpose: bolt is reachable ONLY over the org's private
+# 6PN network as semigraph-neo4j.internal:7687 (the API app), never publicly.
+# Stop/start with `fly machine stop|start` (see docs/RUNBOOK.md); the volume and
+# the data survive a stop, which then costs only rootfs + volume storage.
+app = "semigraph-neo4j"
+primary_region = "sin"
+swap_size_mb = 1024
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Listen on IPv6 too: 6PN traffic from the API app arrives over IPv6.
+  NEO4J_server_default__listen__address = "::"
+  # ~50 MB store + two 1024-dim vector indexes: small JVM, leave room for Lucene.
+  NEO4J_server_memory_heap_initial__size = "400m"
+  NEO4J_server_memory_heap_max__size = "400m"
+  NEO4J_server_memory_pagecache_size = "200m"
+  # The SDK's retrieval uses the Cypher 25 SEARCH clause (vector indexes).
+  NEO4J_db_query_default__language = "CYPHER_25"
+  NEO4J_server_directories_import = "/data/import"
+
+[[mounts]]
+  source = "neo4j_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+
+[checks]
+  [checks.bolt]
+    type = "tcp"
+    port = 7687
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "90s"

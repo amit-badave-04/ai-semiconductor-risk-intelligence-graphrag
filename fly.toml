@@ -1,0 +1,44 @@
+# Fly.io config — semigraph web service. Scales to zero when idle (nothing is
+# mid-call here, unlike a voice agent): the first request after idle pays a
+# ~10 s boot (machine start + 1 GB embedder load + Neo4j connect).
+# The database is the separate app semigraph-neo4j (deploy/neo4j), reached
+# over the private network; see docs/RUNBOOK.md for START / STOP.
+app = "semigraph"
+primary_region = "sin"
+swap_size_mb = 1024
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  EMBEDDING_BACKEND = "onnx"
+  ONNX_MODEL_PATH = "/srv/models/qwen3-embedding-0.6b-q8/model_q8.onnx"
+  ONNX_THREADS = "1"
+  LLM_ANSWER_MAX_TOKENS = "2400"
+  # The Fly edge proxy sets this from the real connection; never trust it elsewhere.
+  CLIENT_IP_HEADER = "fly-client-ip"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 40
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8080
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "180s"  # DB retry window (90 s) + embedder load
