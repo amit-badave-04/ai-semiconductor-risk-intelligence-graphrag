@@ -227,9 +227,18 @@ def summarize(scored_df: pd.DataFrame, n_questions: int, judge_model: str | None
     summary = scored_df.groupby("system").agg(**aggs).round(4)
     by_type = (scored_df.pivot_table(index="type", columns="system", values="correct",
                                      aggfunc="mean").round(2))
-    return {"overall": summary.to_dict(), "by_type": by_type.to_dict(),
+    return {"overall": _nan_to_none(summary.to_dict()), "by_type": _nan_to_none(by_type.to_dict()),
             "n_questions": n_questions, "scored_runs": len(scored_df),
             "judge_model": judge_model}
+
+
+def _nan_to_none(obj):
+    """Runs that predate a metric aggregate to NaN, which is not JSON — emit null."""
+    if isinstance(obj, dict):
+        return {k: _nan_to_none(v) for k, v in obj.items()}
+    if isinstance(obj, float) and obj != obj:
+        return None
+    return obj
 
 
 def run_benchmark(settings, driver, embedder, systems=("hybrid", "vector"),

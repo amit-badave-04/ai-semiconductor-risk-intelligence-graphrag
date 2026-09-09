@@ -274,6 +274,9 @@ def test_summarize_adds_recall_cost_latency_and_judge_model():
     assert report["judge_model"] == "anthropic/claude-haiku-4-5"
     legacy = summarize(scored.drop(columns=["context_recall", "cost_usd", "latency_s"]), n_questions=2)
     assert "context_recall" not in legacy["overall"] and legacy["judge_model"] is None
+    # rows that predate a metric carry None -> the aggregate is null, never NaN (invalid JSON)
+    scored.loc[:, "cost_usd"] = None
+    assert summarize(scored, n_questions=2)["overall"]["avg_cost_usd"]["hybrid"] is None
 
 
 def test_run_benchmark_records_latency_and_cost_per_run(tmp_path, fake_answer):
