@@ -58,7 +58,7 @@
       <button class="btn" id="ask">Ask</button>
       <span class="hint" id="limits"></span>
     </div>
-    <div id="turnstile" class="row"></div>
+    <div id="turnstile-widget" class="row"></div>
     <div id="status"></div>
     <div id="answer"></div>
     <div id="meta" hidden></div>
@@ -127,13 +127,12 @@ function setStatus(text, cls) { $("status").innerHTML = cls ? `<span class="${cl
 
 async function ask() {
   const question = $("q").value.trim(); if (!question) return;
-  if (TURNSTILE_SITE_KEY && !turnstileToken) { setStatus("completing the bot check first — try again in a second"); return; }
   $("ask").disabled = true; $("answer").innerHTML = ""; $("meta").hidden = true; setStatus("retrieving from the graph…");
   const body = { question, strategy: $("strategy").value, turnstile_token: turnstileToken };
   let resp;
   try { resp = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
   catch (e) { setStatus("network error — is the service online?", "err"); $("ask").disabled = false; return; }
-  if (!resp.ok) { let detail = resp.statusText; try { detail = (await resp.json()).detail; } catch (_) {} setStatus(detail, "err"); $("ask").disabled = false; resetTurnstile(); return; }
+  if (!resp.ok) { let detail = resp.statusText; try { detail = (await resp.json()).detail; } catch (_) {} if (resp.status === 403 && TURNSTILE_SITE_KEY) detail += (turnstileToken ? " (the check expired — please click Ask again)" : " (the bot check below has not completed yet — wait a moment and click Ask again)"); setStatus(detail, "err"); $("ask").disabled = false; resetTurnstile(); return; }
   const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "", text = "";
   const handle = (chunk) => {
     let event = "message", data = "";
@@ -184,7 +183,7 @@ $("ask").addEventListener("click", ask);
 function resetTurnstile() { if (window.turnstile && TURNSTILE_SITE_KEY) { turnstileToken = null; window.turnstile.reset(); } }
 if (TURNSTILE_SITE_KEY) {
   const s = document.createElement("script"); s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstile"; s.async = true; document.head.appendChild(s);
-  window.onTurnstile = () => window.turnstile.render("#turnstile", { sitekey: TURNSTILE_SITE_KEY, callback: (t) => { turnstileToken = t; } });
+  window.onTurnstile = () => window.turnstile.render("#turnstile-widget", { sitekey: TURNSTILE_SITE_KEY, callback: (t) => { turnstileToken = t; } });
 }
 loadStats(); loadExamples();
 </script>

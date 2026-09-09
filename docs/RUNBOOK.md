@@ -4,7 +4,7 @@ Two Fly apps in the `personal` org, region `sin`:
 
 | App | What | Machine | State when "online" | Cost when "offline" |
 |---|---|---|---|---|
-| `semigraph` | FastAPI + ONNX embedder (public: https://semigraph.fly.dev) | shared-cpu-1x, 2 GB, auto-stops when idle | 0 or 1 machine (starts on request) | scaled to 0 → rootfs only (~$0.20/mo) |
+| `semigraph` | FastAPI + ONNX embedder (public: https://semigraph.fly.dev) | shared-cpu-1x, 2 GB, always-warm while online | 1 machine started | scaled to 0 → rootfs only (~$0.20/mo) |
 | `semigraph-neo4j` | Neo4j Community 2026.07 + 3 GB volume (private, `semigraph-neo4j.internal:7687`) | shared-cpu-1x, 1 GB + 1 GB swap | 1 machine started | stopped → rootfs + volume (~$0.55/mo) |
 
 Everything else persists across STOP/START: the volume (graph + service ledger/cache), Fly
@@ -30,7 +30,7 @@ flyctl deploy --ha=false --remote-only --yes
 Database first (`machine start`, ~30 s to `Started.`), then the API (`flyctl deploy`, ~2 min when
 the image layers are cached, up to 15 min when the embedder layer rebuilds), then the phone-line
 equivalent is rebound (`kill_switch off`). Check: open https://semigraph.fly.dev/ or run
-`flyctl status -a semigraph` (1 machine; `started` or stopped-by-autoscaler are both fine).
+`flyctl status -a semigraph` (1 machine, `started`).
 
 ## ⏹️ STOP (take it offline, stop cost)
 
@@ -134,7 +134,7 @@ flyctl ips allocate-v4 --shared -a semigraph; flyctl ips allocate-v6 -a semigrap
 
 - `/healthz` 503 → the API cannot reach Neo4j: `flyctl status -a semigraph-neo4j` (machine must be
   `started`), `flyctl logs -a semigraph-neo4j`. The API retries the connection for 90 s on boot.
-- First request after idle takes ~10 s (machine boot + 1 GB embedder load). Expected.
+- The API is always-warm while online (`min_machines_running = 1`); if it was ever auto-stopped, the first request pays ~10 s (machine boot + 1 GB embedder load).
 - `flyctl logs -a semigraph` — every answered question logs strategy, citation count, hallucinated
   count and cost.
 - Out-of-memory on the API machine → the embedder needs ~1.3 GB resident; keep `memory = "2gb"`.

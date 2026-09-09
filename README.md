@@ -99,7 +99,7 @@ on the roadmap below with the paid re-benchmark it requires.
 | Query embeddings | `Qwen/Qwen3-Embedding-0.6B` — sentence-transformers in the pipeline, an **8-bit weight-only ONNX** build in the service (no torch) | Open-source, 1024-dim, 32k context. The quantized build scores cosine 0.998 min / 0.999 mean against the original on the benchmark questions ([`artifacts/onnx_embedder_fidelity.json`](artifacts/onnx_embedder_fidelity.json)); the community int8 / q4 exports were rejected at 0.87 / 0.94. |
 | SEC ingestion | `edgartools`, `sec-parser`, the XBRL Company Facts API | Section-aware parsing with fallbacks for custom layouts (Intel has no item headings; ASML files 20-F). Financial numbers are XBRL-only. |
 | Extraction | Sonnet extractor → verbatim-quote gate → Haiku critic, checkpointed per chunk | A relationship only enters the graph if its evidence quote is found verbatim in the chunk. |
-| Web service | **FastAPI + Server-Sent Events** on Fly.io (scale-to-zero, 2 GB) | Answers stream token by token; nothing is mid-call, so a ~10 s cold start is acceptable and the machine costs nothing while idle. |
+| Web service | **FastAPI + Server-Sent Events** on Fly.io (always-warm while online, 2 GB) | Answers stream token by token. The machine stays warm while the demo is online (a cold start costs ~10 s and made every first visit slow); cost is controlled by the STOP script, not by idle auto-stop. |
 | Bot and abuse control | **Cloudflare Turnstile** (fail-closed), per-address windows, daily ceiling, kill switch | Every live question is a paid model call. |
 | Packaging and tests | `uv`, Python 3.13, the `semigraph` wheel with a typer CLI, **162 pytest tests with the LLM mocked** (zero spend) | Every battle scar from the notebooks is pinned by a test. |
 
@@ -203,7 +203,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     Visitor((Visitor)) -->|HTTPS| Edge["Fly edge proxy<br/>sets fly-client-ip"]
-    Edge --> API["App: semigraph<br/>shared-cpu-1x, 2 GB, auto-stop<br/>FastAPI + ONNX embedder"]
+    Edge --> API["App: semigraph<br/>shared-cpu-1x, 2 GB, always-warm<br/>FastAPI + ONNX embedder"]
     API -->|"private 6PN network<br/>bolt://semigraph-neo4j.internal:7687"| NEO["App: semigraph-neo4j<br/>Neo4j Community 2026.07<br/>1 GB + swap, 3 GB volume"]
     API -->|HTTPS| Claude["Anthropic API<br/>Claude Sonnet 5"]
     API -->|verify token| TS["Cloudflare Turnstile"]
@@ -258,9 +258,8 @@ client-IP header, ledger writes before any gate, spend lost on mid-stream failur
 and are covered by tests. Decisions with their measurements: [adr/0001-production-stack.md](adr/0001-production-stack.md).
 
 Measured on the live deployment: a live hybrid answer streams in 15–20 s and costs $0.035–0.056
-(12–21k prompt tokens); cached answers return in 0.2–0.3 s; the first request after idle takes
-about 10 s (machine boot + 1 GB embedder load). Both machines running 24/7 ≈ $17/month; parked
-≈ $0.75/month.
+(12–21k prompt tokens); cached answers return in 0.2–0.3 s. The API machine stays warm while online
+(a cold start would cost about 10 s). Both machines online ≈ $17/month; parked ≈ $0.75/month.
 
 ## Operations (START / STOP)
 

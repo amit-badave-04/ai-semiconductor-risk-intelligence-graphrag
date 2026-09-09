@@ -20,7 +20,7 @@ scan, an ADR that records the stack decision with evidence.
 
 | Concern | clinic-voice-agent | This project | Why |
 |---|---|---|---|
-| Compute | Fly.io Machines (sjc, always-warm) | Fly.io Machines (`sin`), API auto-stops when idle | same account/tooling; API can scale to zero because nothing is mid-call |
+| Compute | Fly.io Machines (sjc, always-warm) | Fly.io Machines (`sin`), API always-warm while online (auto-stop dropped after launch: ~10 s cold starts) | same account/tooling |
 | Database | Neon Postgres (managed free tier) | **Neo4j Community 2026.x self-hosted on a second Fly machine + volume**; AuraDB Free documented as the $0 swap | Neo4j is the schema (vector indexes + `SEARCH` clause). Aura Free = $0 but needs an account/instance created by the owner and pauses after 72 h idle; self-host is deliverable now and STOP/START fits the ops pattern |
 | LLM | GPT-4.1 (Retell-hosted) | Claude Sonnet 5 via LiteLLM (unchanged — benchmark-proven) | the 100 %/0.865 numbers are tied to this model; cost is capped instead of downgraded |
 | Embeddings | — | Qwen3-Embedding-0.6B via **onnxruntime int8** in-process (torch-free) | open-source, no new vendor; fidelity verified against sentence-transformers before shipping |
