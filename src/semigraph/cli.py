@@ -144,28 +144,46 @@ def query(
 def eval_cmd(
     limit: int = typer.Option(None, help="Only the first N benchmark questions"),
     systems: str = typer.Option("hybrid,vector", help="Comma-separated systems to run"),
+    judge_model: str = typer.Option(None, help="Override the faithfulness/correctness judge (e.g. anthropic/claude-haiku-4-5 to cross-check judge self-preference)"),
+    rescore: bool = typer.Option(False, help="Do not answer again: re-score the checkpointed runs (judge calls only)"),
+    analyze: bool = typer.Option(False, help="After scoring, label every failing run with the failure taxonomy -> artifacts/error_analysis.json"),
+    report_suffix: str = typer.Option("", help="Suffix for eval_report/eval_scores file names (keeps a re-scoring next to the primary report)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the spend confirmation"),
     verbose: bool = typer.Option(False, "-v"),
 ):
     """Run the gold benchmark (PAID: answering + judging LLM calls)."""
     _setup_logging(verbose)
-    from semigraph.embeddings import Embedder
+    from semigraph.artifacts import load_benchmark
+    from semigraph.eval.error_analysis import analyze_failures
     from semigraph.eval.runner import run_benchmark
     from semigraph.graph import client
 
     settings = _settings()
     sys_tuple = tuple(s.strip() for s in systems.split(",") if s.strip())
     n = limit or "all 20"
+    what = "judge calls only (re-scoring)" if rescore else "paid answer+judge calls"
     if not yes and not typer.confirm(
-        f"This runs {n} benchmark questions x {len(sys_tuple)} systems with paid answer+judge calls. Proceed?"
+        f"This runs {n} benchmark questions x {len(sys_tuple)} systems with {what}. Proceed?"
     ):
         raise typer.Abort()
-    driver = client.get_driver(settings)
+    driver = embedder = None
+    if not rescore:
+        from semigraph.embeddings import Embedder
+        driver = client.get_driver(settings)
+        embedder = Embedder()
     try:
-        report = run_benchmark(settings, driver, Embedder(), systems=sys_tuple, limit=limit)
+        out = run_benchmark(settings, driver, embedder, systems=sys_tuple, limit=limit,
+                            judge_model=judge_model, rescore=rescore, report_suffix=report_suffix)
     finally:
-        driver.close()
-    typer.echo(json.dumps(report, indent=2, default=str))
+        if driver is not None:
+            driver.close()
+    typer.echo(json.dumps(out["report"], indent=2, default=str))
+    if analyze:
+        bench = load_benchmark()[:limit] if limit else load_benchmark()
+        analysis = analyze_failures(out["scored_df"].to_dict(orient="records"), out["runs"], bench,
+                                    model=settings.critic_model)
+        typer.echo(json.dumps({k: analysis[k] for k in ("n_failures", "counts", "mechanical_share")},
+                              indent=2, default=str))
 
 
 if __name__ == "__main__":

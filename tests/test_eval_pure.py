@@ -16,6 +16,7 @@ from semigraph.config import Settings
 from semigraph.eval import (
     Correct,
     Faithfulness,
+    Recall,
     REFUSAL_PAT,
     Relevance,
     parse_numbers,
@@ -70,10 +71,11 @@ def make_run(id_, type_, answer, system="hybrid", hallucinated=(), cited=(CID,),
 class ScriptedJudge:
     """llm_json-compatible double; records prompts per schema."""
 
-    def __init__(self, faithfulness=(3, 4), verdicts=(True, False), correct=True):
+    def __init__(self, faithfulness=(3, 4), verdicts=(True, False), correct=True, recall=(2, 2)):
         self.faithfulness = faithfulness
         self.verdicts = list(verdicts)
         self.correct = correct
+        self.recall = recall
         self.calls = []
 
     def __call__(self, prompt, model_cls, **kw):
@@ -83,6 +85,9 @@ class ScriptedJudge:
             return Faithfulness(total_claims=total, supported_claims=supported)
         if model_cls is Relevance:
             return Relevance(verdicts=self.verdicts)
+        if model_cls is Recall:
+            present, needed = self.recall
+            return Recall(needed=needed, present=present)
         return Correct(correct=self.correct, reason="scripted")
 
 
@@ -225,3 +230,71 @@ def test_run_benchmark_resumes_from_checkpoint(tmp_path, fake_answer):
                   artifacts_dir=tmp_path / "artifacts")
     # second pass answered nothing new — all (id, system) pairs checkpointed
     assert len(fake_answer) == n_first == 2
+
+
+# --- Agentic_Evals-derived additions: context recall, cost/latency, judge override, rescore ---
+
+def test_score_runs_context_recall_from_grading_notes_on_critic_model():
+    judge = ScriptedJudge(recall=(1, 2))
+    [row] = score_runs([make_run("T1", "temporal", "yes, dropped")], BENCH, judge=judge,
+                       critic_model="haiku")
+    assert row["context_recall"] == 0.5
+    recall_calls = [c for c in judge.calls if c[0] == "Recall"]
+    assert len(recall_calls) == 1 and "should affirm" in recall_calls[0][1]
+    assert recall_calls[0][2]["model"] == "haiku" and recall_calls[0][2]["thinking_off"] is False
+
+
+def test_score_runs_context_recall_uses_expect_and_skips_refusals():
+    judge = ScriptedJudge(recall=(2, 2))
+    rows = score_runs([make_run("N1", "numeric", "$60.9 billion"),
+                       make_run("U1", "refusal", "The context does not contain that.")], BENCH, judge=judge)
+    assert rows[0]["context_recall"] == 1.0 and "context_recall" not in rows[1]
+    assert "60922000000" in [c for c in judge.calls if c[0] == "Recall"][0][1]
+
+
+def test_score_runs_carries_cost_and_latency():
+    run = {**make_run("N1", "numeric", "$60.9 billion"), "latency_s": 12.5, "cost_usd": 0.05}
+    [row] = score_runs([run], BENCH, judge=ScriptedJudge())
+    assert row["latency_s"] == 12.5 and row["cost_usd"] == 0.05
+
+
+def test_summarize_adds_recall_cost_latency_and_judge_model():
+    scored = pd.DataFrame([
+        {"id": "N1", "system": "hybrid", "type": "numeric", "correct": True, "faithfulness": 1.0,
+         "context_precision": 0.5, "context_recall": 1.0, "citation_ok": True, "n_citations": 4,
+         "cost_usd": 0.04, "latency_s": 10.0},
+        {"id": "T1", "system": "hybrid", "type": "temporal", "correct": False, "faithfulness": 1.0,
+         "context_precision": 0.5, "context_recall": 0.5, "citation_ok": True, "n_citations": 2,
+         "cost_usd": 0.06, "latency_s": 20.0},
+    ])
+    report = summarize(scored, n_questions=2, judge_model="anthropic/claude-haiku-4-5")
+    assert report["overall"]["context_recall"]["hybrid"] == 0.75
+    assert report["overall"]["avg_cost_usd"]["hybrid"] == 0.05
+    assert report["overall"]["avg_latency_s"]["hybrid"] == 15.0
+    assert report["judge_model"] == "anthropic/claude-haiku-4-5"
+    legacy = summarize(scored.drop(columns=["context_recall", "cost_usd", "latency_s"]), n_questions=2)
+    assert "context_recall" not in legacy["overall"] and legacy["judge_model"] is None
+
+
+def test_run_benchmark_records_latency_and_cost_per_run(tmp_path, fake_answer):
+    settings = Settings(data_dir=tmp_path / "data", _env_file=None)
+    out = run_benchmark(settings, None, None, limit=1, judge=ScriptedJudge(),
+                        artifacts_dir=tmp_path / "artifacts")
+    line = json.loads(out["results_path"].read_text(encoding="utf-8").splitlines()[0])
+    assert isinstance(line["latency_s"], float) and line["latency_s"] >= 0
+    assert line["usage"] is None and line["cost_usd"] is None  # fake answer exposes no usage
+
+
+def test_run_benchmark_rescore_reuses_runs_with_other_judge(tmp_path, fake_answer):
+    settings = Settings(data_dir=tmp_path / "data", _env_file=None)
+    run_benchmark(settings, None, None, limit=1, judge=ScriptedJudge(), artifacts_dir=tmp_path / "a")
+    n_answers = len(fake_answer)
+    judge2 = ScriptedJudge(correct=False)
+    out = run_benchmark(settings, None, None, limit=1, judge=judge2, artifacts_dir=tmp_path / "a",
+                        judge_model="anthropic/claude-haiku-4-5", rescore=True, report_suffix=".haiku")
+    assert len(fake_answer) == n_answers  # nothing re-answered
+    assert out["report_path"].name == "eval_report.haiku.json"
+    assert out["report"]["judge_model"].endswith("haiku-4-5")
+    assert all(c[2].get("model") == "anthropic/claude-haiku-4-5"
+               for c in judge2.calls if c[0] in ("Faithfulness", "Correct"))
+    assert (tmp_path / "a" / "eval_report.json").exists()  # primary report untouched

@@ -1,0 +1,11 @@
+Given the QUESTION and the GRADING NOTES (what a correct answer must contain), decide how many of the
+required facts are PRESENT in the CONTEXT (graph facts + excerpts) — judge the context, NOT the answer.
+Count the distinct facts the notes require (needed), then how many of them the context contains (present).
+
+QUESTION: {q}
+GRADING NOTES: {notes}
+
+CONTEXT:
+{ctx}
+
+Reply ONLY with JSON: {{"needed": N, "present": K}}

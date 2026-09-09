@@ -5,14 +5,18 @@ Public surface:
     from semigraph.eval import run_benchmark
 """
 
+from .error_analysis import LABELS, analyze_failures, classify_failures, is_failure
 from .runner import (
     FAITH_PROMPT,
     JUDGE_PROMPT,
     NUM_PAT,
     REFUSAL_PAT,
     REL_PROMPT,
+    RECALL_PROMPT,
+    SUMMARY_COLUMNS,
     Correct,
     Faithfulness,
+    Recall,
     Relevance,
     parse_numbers,
     run_benchmark,
@@ -22,6 +26,13 @@ from .runner import (
 )
 
 __all__ = [
+    "LABELS",
+    "RECALL_PROMPT",
+    "Recall",
+    "SUMMARY_COLUMNS",
+    "analyze_failures",
+    "classify_failures",
+    "is_failure",
     "Correct",
     "FAITH_PROMPT",
     "Faithfulness",

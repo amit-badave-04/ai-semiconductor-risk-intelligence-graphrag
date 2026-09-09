@@ -1,0 +1,24 @@
+An answer from a filings-grounded question-answering system FAILED evaluation. Classify the PRIMARY
+reason with exactly one label:
+
+- RETRIEVAL_MISS: the facts needed to answer were not in the context at all
+- UNGROUNDED_CLAIM: the answer asserts things the context does not support
+- WRONG_ENTITY: the answer is about the wrong company, filing, or period
+- STALE_RISK_LEAK: a withdrawn/dropped risk is presented as current
+- NUMERIC_MISMATCH: wrong figure, unit, or fiscal period
+- REFUSAL_OVERTRIGGER: the answer declined although the context contained the answer
+- REFUSAL_MISSED: the answer asserted facts although the corpus lacks them
+- FORMAT_OR_CITATION: content is right but citations are missing/invalid or the format is unusable
+- OTHER
+
+QUESTION: {q}
+GRADING NOTES: {notes}
+SCORES: {scores}
+
+ANSWER:
+{a}
+
+CONTEXT (truncated):
+{ctx}
+
+Reply ONLY with JSON: {{"label": "ONE_OF_THE_LABELS", "evidence": "one sentence citing the answer text"}}
