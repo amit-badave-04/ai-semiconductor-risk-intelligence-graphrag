@@ -44,8 +44,36 @@ run: `label`, `mechanical`, `evidence`), `counts` per system per label, and `mec
 
 Estimated cost for the 20-question × 2-system benchmark: recall adds ~40 Haiku calls (≈ $0.10),
 the taxonomy a Haiku call per ambiguous failure, a Haiku re-scoring ≈ $1; a full re-answer stays
-≈ $2–3 as before. **None of these were executed as part of the implementation** — the existing
-`artifacts/eval_report.json` still reflects the M6 run; the new metrics appear on the next paid run.
+≈ $2–3 as before. The Haiku re-scoring and the error analysis were run once (results below); the primary
+`artifacts/eval_report.json` still reflects the M6 Sonnet-judged run.
+
+## Results of the first run (2026-09-09, Haiku 4.5 as judge, 40 checkpointed M6 answers)
+
+| metric | hybrid | vector |
+|---|---|---|
+| correctness | 0.90 | 0.85 |
+| faithfulness | 0.927 | 0.919 |
+| context precision | 0.281 | 0.300 |
+| **context recall** | **0.870** | 0.644 |
+| citation validity | 1.0 | 1.0 |
+| temporal correctness / recall | 0.67 / 0.61 | 0.33 / 0.33 |
+
+Compared with the Sonnet judge (M6 report: hybrid 1.00 / 0.865, vector 0.80 / 0.943), the second
+judge family narrows the hybrid lead but keeps the ranking; it disagrees with Sonnet on two hybrid
+answers (one risk, one temporal) and agrees with one more vector answer. Faithfulness moves the other
+way for both systems, which is the judge self-preference the reference methodology warns about. Two
+invocations of the same re-scoring differed by up to 0.02 on faithfulness and by one labelled
+failure — judge calls are not deterministic.
+
+Failure taxonomy (`artifacts/error_analysis.json`): 11 failing runs, 36 % labelled mechanically.
+vector: 3 × REFUSAL_OVERTRIGGER, 2 × RETRIEVAL_MISS. hybrid: 2 × STALE_RISK_LEAK, 2 × UNGROUNDED_CLAIM,
+1 × RETRIEVAL_MISS, 1 × NUMERIC_MISMATCH (this last judge label is noisy — its evidence describes a
+truncated sentence). The actionable item is STALE_RISK_LEAK: the answerer receives dropped lineages
+as a separate block but sometimes narrates them as current — a prompt fix, gated on a paid
+re-benchmark.
+
+`avg_cost_usd` / `avg_latency_s` are null in this report because the checkpointed answers predate
+that instrumentation; they populate on the next full `semigraph eval`.
 
 ## Planned (not implemented)
 
