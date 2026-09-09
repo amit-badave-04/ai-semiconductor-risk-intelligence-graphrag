@@ -71,9 +71,11 @@ semigraph build-graph  [-t TICKER]... [--extract]
                                         estimate and asks for confirmation first)
 semigraph query "QUESTION" [--strategy hybrid|vector] [--show-context]
                                         one answer (one Sonnet call — cents)
-semigraph eval         [--limit N] [--systems hybrid,vector]
+semigraph eval         [--limit N] [--systems hybrid,vector] [--judge-model M] [--rescore] [--analyze] [--report-suffix S]
                                         gold benchmark (PAID answer+judge calls; confirms first;
-                                        checkpointed per question/system — interruptions never re-bill)
+                                        checkpointed per question/system — interruptions never re-bill;
+                                        --rescore re-judges checkpointed runs, --judge-model swaps the judge
+                                        family, --analyze writes the failure taxonomy; see docs/EVALUATION.md)
 ```
 
 ## Module map

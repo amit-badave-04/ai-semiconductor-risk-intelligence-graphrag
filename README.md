@@ -112,6 +112,7 @@ blocks, CI with tests + secret scan, and an ADR with the evidence behind each ch
 | Cost controls: per-address window, daily ceiling + kill switch + answer cache persisted in Neo4j, benchmark answers pre-seeded | `src/semigraph/serve/guard.py`, `store.py` |
 | Operations: START / STOP / status, secrets push, kill switch | `scripts/ops.ps1`, `scripts/push_fly_secrets.py`, `scripts/kill_switch.py`, [docs/RUNBOOK.md](docs/RUNBOOK.md) |
 | Decisions + measurements | [adr/0001-production-stack.md](adr/0001-production-stack.md), [docs/PRODUCTIONIZATION_PLAN.md](docs/PRODUCTIONIZATION_PLAN.md) |
+| Evaluation methodology (context recall, cost/latency, failure taxonomy, second judge; alignment with Agentic_Evals) | [docs/EVALUATION.md](docs/EVALUATION.md) |
 
 Running both machines 24/7 is ≈ $17/month; parked ≈ $0.75/month; each live answer ≈ $0.06.
 
