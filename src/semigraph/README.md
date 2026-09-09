@@ -19,6 +19,7 @@ results, V2 roadmap — see the repository root `README.md`.
 ```bash
 uv pip install .            # from the repo root, or install the wheel from dist/
 uv pip install ".[eval]"    # + ragas (second-scorer stack; see note in Design rules)
+uv pip install ".[serve]"   # + FastAPI/uvicorn/onnxruntime for the web service (semigraph.serve)
 ```
 
 Python ≥ 3.12. A running Neo4j (Desktop 2026.x, local bolt) is required for
@@ -37,6 +38,7 @@ via environment variables:
 | `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` | `bolt://localhost:7687` / `neo4j` / — | graph connection |
 | `SEC_USER_AGENT` | — | required declared identity for EDGAR requests |
 | `EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | local embeddings, 1024-dim (schema-locked) |
+| `EMBEDDING_BACKEND` | `local` | `local` (sentence-transformers), `onnx` (torch-free, `ONNX_MODEL_PATH`), `remote` (OpenAI-compatible endpoint, `EMBEDDING_API_*`) |
 | `DATA_DIR` | `./data` | data-lake root (raw / interim / processed) |
 
 ## Quickstart (inference)
@@ -93,7 +95,8 @@ semigraph eval         [--limit N] [--systems hybrid,vector]
 | `graph.loaders` | idempotent MERGE loaders: deterministic layer, evidence spans, knowledge, export controls (06, 09, 12) |
 | `graph.temporal` | bitemporal lineage clustering + closure (pure core + thin appliers), as-of queries (13) |
 | `retrieval.retriever` | entity-first `hybrid_retrieve` (graph + XBRL + bitemporal + scoped vector) and `vector_retrieve` baseline — **SEARCH clause everywhere** (10, 14) |
-| `retrieval.answerer` | `build_blocks` + `answer` with citation post-verification and full-context return (11, 14) |
+| `retrieval.answerer` | `build_blocks` + `answer` with citation post-verification and full-context return (11, 14); `answer_stream` / `TextStream` for streamed, usage-accounted answers |
+| `serve` | FastAPI web service (`uvicorn semigraph.serve.main:app`): SSE answers, evidence lookup, Neo4j-persisted rate/daily/kill-switch controls — needs the `serve` extra |
 | `eval.runner` | benchmark runner: programmatic checks + LLM judges, checkpointed, artifact writers (14) |
 | `artifacts` | packaged `schema.cypher`, `canonical_entities.json`, `benchmark.json`, `prompts/` + loaders (`importlib.resources`) |
 

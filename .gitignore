@@ -11,6 +11,8 @@ wheels/
 
 # Environment / secrets
 .env
+.env.*
+!.env.example
 
 # Data lake (large, reproducible from SEC APIs)
 data/raw/
@@ -23,3 +25,9 @@ data/processed/
 # Model / tool caches
 .cache/
 *.log
+
+# Quantized ONNX embedder (rebuilt by scripts/build_onnx_embedder.py; ~1 GB)
+models/
+
+# Graph seed baked into the Neo4j image (export procedure: deploy/neo4j/seed/README.md)
+deploy/neo4j/seed/*.dump

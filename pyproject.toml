@@ -21,12 +21,23 @@ dependencies = [
 [project.optional-dependencies]
 # second-scorer evaluation stack (M6 backlog: judge diversity)
 eval = ["ragas>=0.4.3"]
+# web service (semigraph.serve): FastAPI + torch-free ONNX query embeddings
+serve = [
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.52",
+    "onnxruntime>=1.29",
+    "tokenizers>=0.21",
+    "sse-starlette>=2.0",
+    "httpx>=0.28",
+]
 
 [project.scripts]
 semigraph = "semigraph.cli:app"
 
 [dependency-groups]
 dev = [
+    "onnx>=1.17",  # scripts/build_onnx_embedder.py (weight-only quantization of the query embedder)
+    "onnx-ir>=1.0",  # required by onnxruntime.quantization.matmul_nbits_quantizer
     "ipywidgets>=8.1.8",
     "jupyterlab>=4.6.1",
     "matplotlib>=3.11.0",

@@ -1,0 +1,7 @@
+{
+  "questions": 20,
+  "cosine_min": 0.9979663491249084,
+  "cosine_mean": 0.9991781115531921,
+  "threshold": 0.98,
+  "passed": true
+}
