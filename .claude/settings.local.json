@@ -3,7 +3,32 @@
     "allow": [
       "Bash(pandoc -t markdown 'GraphRAG System Feasibility Research.docx' -o __TRACKED_VAR__/doc1.md)",
       "Bash(pandoc -t markdown \"GraphRAG System Feasibility Research.docx\")",
-      "Bash(python -c \"import docx; print\\('ok'\\)\")"
+      "Bash(python -c \"import docx; print\\('ok'\\)\")",
+      "Bash(rtk read *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk grep *)",
+      "Bash(awk '/def llm_json|TRANSIENT|use_thinking_off|num_retries|def _backoff|RETRYABLE/{print FILENAME\": line \"FNR}' 12_full_universe_ingestion.txt 14_evaluation.txt)",
+      "Bash(python -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(uv --version)",
+      "Bash(rtk uv *)",
+      "Bash(rtk wc *)",
+      "Bash(uv run python -c ' *)",
+      "Bash(rtk git *)",
+      "Bash(xargs ls -la)",
+      "Bash(awk '{print $5, $9}')",
+      "Bash(uv run *)",
+      "Bash(awk '/^def \\(build_extraction_plan|run_extraction|resolve_extractions|extract_metrics|download_filings|segment_filings|chunk_filings|load_companies|load_filings_and_sections|load_metrics|load_evidence_spans|load_knowledge|load_export_controls|link_affected_by\\)/,/\\\\\\) ->|\\\\\\):/' src/semigraph/extraction/extractor.py src/semigraph/extraction/resolution.py src/semigraph/ingestion/xbrl.py src/semigraph/ingestion/edgar.py src/semigraph/parsing/segmentation.py src/semigraph/parsing/chunker.py src/semigraph/graph/loaders.py)",
+      "Bash(uv build *)",
+      "Bash(rm -rf /c/Users/amit1/AppData/Local/Temp/claude/C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag/7619e72c-624b-4615-b495-21aaba6eafce/scratchpad/freshenv)",
+      "Bash(uv venv *)",
+      "Bash(/c/Users/amit1/AppData/Local/Temp/claude/C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag/7619e72c-624b-4615-b495-21aaba6eafce/scratchpad/freshenv/Scripts/python.exe -c ' *)",
+      "Bash(rtk git commit -m 'M7 COMPLETE: semigraph SDK — notebooks 01-14 refactored into an installable package *)",
+      "Read(//c/Users/amit1/.claude/projects/C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag/memory/**)",
+      "Bash(sed -i 's|\\\\[GraphRAG project state\\\\]\\(graphrag-pending-prereqs.md\\) — .*|[GraphRAG project state]\\(graphrag-pending-prereqs.md\\) — **M0–M7 ALL COMPLETE \\(SDK shipped\\)**; OneDrive/venv/MAX_PATH hazards; ragas 0.4.3 broken import; standardization backlog needs paid re-benchmark|' MEMORY.md)",
+      "Bash(git mv *)",
+      "Bash(rtk git commit -q -m 'docs: split README \\(project vs SDK\\), rename nb15 to SDK inference driver, record V2 roadmap *)",
+      "Bash(rtk git commit -q -m 'v1: semigraph SDK — cited, bitemporal GraphRAG over SEC filings & export controls *)",
+      "Bash(git tag *)"
     ]
   }
 }
