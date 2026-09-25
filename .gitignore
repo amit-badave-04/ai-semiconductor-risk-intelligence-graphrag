@@ -31,3 +31,6 @@ models/
 
 # Graph seed baked into the Neo4j image (export procedure: deploy/neo4j/seed/README.md)
 deploy/neo4j/seed/*.dump
+
+# Local backups of graph dumps (v1-final etc.)
+data/backups/
