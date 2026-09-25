@@ -252,3 +252,39 @@ class TestScopeFollowsFilingVersions:
             r["filing_date"] = pd.Timestamp(r["filing_date"])
         write_chunks(settings, "NVDA", rows)
         assert accessions(extraction_scope(settings, "NVDA")) == {"k-26", "k-25"}
+
+
+class TestPartialAmendmentOverlay:
+    """AMD 2026-02-04: the 10-K/A restates Item 7 (MD&A) ONLY. The corrected MD&A
+    comes from the amendment; Business and Risk Factors stay with the original."""
+
+    def test_latest_annual_is_original_business_and_risks_plus_amended_mdna(self, tmp_path):
+        settings = make_settings(tmp_path)
+        write_chunks(settings, "AMD",
+                     filing_rows("AMD", "a-25", "10-K", "2025-02-05")
+                     + filing_rows("AMD", "a-26", "10-K", "2026-02-04")
+                     + filing_rows("AMD", "a-26A", "10-K/A", "2026-02-04", sections=("II.7",)))
+
+        scope = extraction_scope(settings, "AMD")
+
+        by_filing = {acc: set(g["section_id"]) for acc, g in scope.groupby("accession_no")}
+        assert by_filing["a-26"] == {"I.1", "I.1A"}          # the original's uncorrected MD&A is NOT extracted
+        assert by_filing["a-26A"] == {"II.7"}                # the corrected MD&A is
+        assert by_filing["a-25"] == {"I.1A"}                 # prior period: risk-only history
+
+    def test_a_full_amendment_still_replaces_the_original_completely(self, tmp_path):
+        settings = make_settings(tmp_path)
+        write_chunks(settings, "AMD",
+                     filing_rows("AMD", "a-26", "10-K", "2026-02-04")
+                     + filing_rows("AMD", "a-26A", "10-K/A", "2026-02-04"))
+        assert accessions(extraction_scope(settings, "AMD")) == {"a-26A"}
+
+    def test_history_keeps_only_the_effective_risk_sections_of_an_amended_prior_period(self, tmp_path):
+        settings = make_settings(tmp_path)
+        write_chunks(settings, "AMD",
+                     filing_rows("AMD", "a-25", "10-K", "2025-02-05")
+                     + filing_rows("AMD", "a-25A", "10-K/A", "2025-02-06", sections=("II.7",))
+                     + filing_rows("AMD", "a-26", "10-K", "2026-02-04"))
+        scope = extraction_scope(settings, "AMD")
+        hist = scope[scope["accession_no"].isin({"a-25", "a-25A"})]
+        assert set(hist["accession_no"]) == {"a-25"} and set(hist["section_id"]) == {"I.1A"}

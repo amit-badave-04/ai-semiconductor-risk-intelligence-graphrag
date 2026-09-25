@@ -98,3 +98,18 @@ def test_snapshot_prints_the_id_for_the_lake(tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert "snap-20260925-" in result.output
+
+
+def test_ingest_exits_nonzero_but_still_parses_when_a_filing_failed(calls, monkeypatch):
+    from semigraph.ingestion import edgar
+
+    monkeypatch.setattr(edgar, "download_filings", lambda *a, **k: {
+        "tickers": {"INTC": {"filings": 5, "new": [], "cached": True, "failed": [
+            {"accession_no": "0000050863-26-000157", "form": "10-Q", "filing_date": "2026-07-24", "error": "boom"}]}},
+        "total_filings": 5, "failed_total": 1})
+
+    result = runner.invoke(app, ["ingest"])
+
+    assert result.exit_code == 2
+    assert "0000050863-26-000157" in result.output and "NOT ingested" in result.output
+    assert "segment" in calls and "chunk" in calls      # what did land is still parsed

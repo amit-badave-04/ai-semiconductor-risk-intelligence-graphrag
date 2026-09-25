@@ -110,3 +110,67 @@ def test_unknown_forms_are_ignored_not_fatal():
 def test_missing_fields_raise_a_clear_error(bad):
     with pytest.raises(ValueError, match="accession_no|filing_date"):
         compute_filing_versions([bad], annual_form="10-K", quarterly_form="10-Q")
+
+
+# --------------------------------------- section-level amendments (AMD 10-K/A, 2026-02-04)
+
+from semigraph.versions import annual_periods, effective_annual_sections  # noqa: E402
+
+FULL = ("I.1", "I.1A", "II.7")
+AMD_SECTIONS = {
+    "a-25": set(FULL), "a-26": set(FULL),
+    "a-26A": {"II.7"},                       # the amendment corrects ONLY Item 7 (MD&A)
+    "q-may": {"I.2", "II.1A"}, "q-aug": {"I.2", "II.1A"},
+}
+
+
+def amd_versions(sections=None, parsed=None):
+    return compute_filing_versions(AMD[2:], annual_form="10-K", quarterly_form="10-Q",
+                                   parsed=parsed, sections=AMD_SECTIONS if sections is None else sections)
+
+
+def test_partial_amendment_overlays_and_does_not_retire_the_original():
+    v = by_acc(amd_versions())
+    assert v["a-26"].status == "current" and v["a-26"].superseded_by is None       # NOT corrected wholesale
+    assert v["a-26A"].status == "current"
+    assert v["a-26"].period_key == v["a-26A"].period_key == "a-26"
+
+
+def test_partial_amendment_takes_over_only_the_sections_it_contains():
+    versions = amd_versions()
+    eff = effective_annual_sections(versions, AMD_SECTIONS)
+    assert eff["a-26"] == frozenset({"I.1", "I.1A"})            # business + risks stay with the original
+    assert eff["a-26A"] == frozenset({"II.7"})                  # the corrected MD&A comes from the amendment
+    assert eff["a-25"] == frozenset(FULL)                       # prior period untouched
+
+
+def test_annual_periods_group_the_original_with_its_overlay_in_period_order():
+    assert annual_periods(amd_versions()) == [("a-25",), ("a-26", "a-26A")]
+
+
+def test_partial_amendment_in_a_rolled_period_is_rolled_with_its_original():
+    later = AMD[2:] + [f("a-27", "10-K", "2027-02-04")]
+    v = by_acc(compute_filing_versions(later, annual_form="10-K", quarterly_form="10-Q",
+                                       sections={**AMD_SECTIONS, "a-27": set(FULL)}))
+    assert (v["a-26"].status, v["a-26"].superseded_by) == ("superseded", "a-27")
+    assert (v["a-26A"].status, v["a-26A"].superseded_by) == ("superseded", "a-27")
+    assert v["a-27"].is_current
+
+
+def test_full_amendment_still_corrects_the_original_when_sections_are_known():
+    sections = {**AMD_SECTIONS, "a-26A": set(FULL)}             # the amendment restates every section
+    v = by_acc(amd_versions(sections=sections))
+    assert v["a-26"].status == "corrected" and v["a-26"].superseded_by == "a-26A"
+    assert effective_annual_sections(list(v.values()), sections)["a-26A"] == frozenset(FULL)
+    assert "a-26" not in effective_annual_sections(list(v.values()), sections)
+
+
+def test_unknown_sections_keep_the_legacy_whole_filing_behaviour():
+    v = by_acc(compute_filing_versions(AMD, annual_form="10-K", quarterly_form="10-Q"))
+    assert v["a-26"].status == "corrected"                        # documented legacy default (sections=None)
+
+
+def test_an_unparsed_partial_amendment_is_still_inert():
+    v = by_acc(amd_versions(parsed={"a-25", "a-26", "q-may", "q-aug"}))
+    assert v["a-26A"].status == "amendment" and v["a-26"].status == "current"
+    assert v["a-26A"].period_key == "a-26"

@@ -62,9 +62,12 @@ def ingest(
     bound = _parse_as_of(as_of)
     settings = _settings()
     tickers = list(ticker) if ticker else None
+    failed: list[dict] = []
     if not skip_download:
         typer.echo("== EDGAR filings ==")
-        typer.echo(json.dumps(edgar.download_filings(settings, tickers, as_of=bound), default=str))
+        downloaded = edgar.download_filings(settings, tickers, as_of=bound)
+        typer.echo(json.dumps(downloaded, default=str))
+        failed = [{"ticker": t, **f} for t, s in downloaded.get("tickers", {}).items() for f in s.get("failed", [])]
         typer.echo("== XBRL company facts -> key metrics ==")
         typer.echo(json.dumps(xbrl.extract_metrics(settings, tickers, refresh=refresh_xbrl), default=str))
         typer.echo("== Federal Register export-control rules ==")
@@ -74,6 +77,11 @@ def ingest(
     typer.echo(json.dumps(segmentation.segment_filings(settings, tickers), default=str))
     typer.echo("== Chunking ==")
     typer.echo(json.dumps(chunker.chunk_filings(settings, tickers), default=str))
+    if failed:
+        typer.echo(f"{len(failed)} filing(s) NOT ingested (re-run `ingest` to retry):", err=True)
+        for f in failed:
+            typer.echo(f"  {f['ticker']} {f['form']} {f['filing_date']} {f['accession_no']}: {f['error']}", err=True)
+        raise typer.Exit(2)
 
 
 @app.command()

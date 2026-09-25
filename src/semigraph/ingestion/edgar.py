@@ -297,13 +297,74 @@ def _local_html_path(cdir: Path, rec: FilingRecord) -> Path:
     return cdir / f"{rec.form.replace('/', '-')}_{rec.filing_date.isoformat()}_{rec.accession_no}.html"
 
 
-def _ensure_html(local: Path, rec: FilingRecord) -> None:
+def _polite_sec_get(settings: Settings) -> Callable[[str], bytes]:
+    """``fetch(url) -> bytes`` with the declared SEC identity and the fair-access pause."""
+    identity = _identity(settings)
+
+    def fetch(url: str) -> bytes:
+        body = _sec_get(url, identity)
+        time.sleep(SEC_PAUSE_S)
+        return body
+
+    return fetch
+
+
+class FilingDownloadError(RuntimeError):
+    """A filing's HTML could not be fetched (primary source and fallback both failed)."""
+
+
+HtmlFallback = Callable[[FilingRecord], str]
+
+
+def submissions_html_fallback(fetch: Callable[[str], bytes]) -> HtmlFallback:
+    """Direct download of a filing's primary document, named by the submissions JSON.
+
+    edgartools discovers the primary document by parsing the filing index page and
+    returns None for some filings (INTC's 2026-07-24 10-Q); EDGAR's own submissions
+    metadata (``primaryDocument``) is authoritative. The submissions document is
+    fetched once per CIK. ``fetch(url) -> bytes`` is the network seam.
+    """
+    cache: dict[int, dict] = {}
+
+    def primary_document(rec: FilingRecord) -> str:
+        if rec.cik not in cache:
+            cache[rec.cik] = json.loads(fetch(f"https://data.sec.gov/submissions/CIK{rec.cik:010d}.json"))
+        recent = cache[rec.cik].get("filings", {}).get("recent", {})
+        names = dict(zip(recent.get("accessionNumber", []), recent.get("primaryDocument", []), strict=False))
+        if not names.get(rec.accession_no):
+            raise LookupError(f"{rec.accession_no}: not in the recent submissions of CIK {rec.cik}")
+        url = (f"https://www.sec.gov/Archives/edgar/data/{rec.cik}/"
+               f"{rec.accession_no.replace('-', '')}/{names[rec.accession_no]}")
+        return fetch(url).decode("utf-8", errors="replace")
+
+    return primary_document
+
+
+def _fetch_html(rec: FilingRecord, fallback: HtmlFallback | None) -> str:
+    """Primary source first (edgartools ``html()``), then the fallback; both errors are kept."""
+    if rec.html is None:
+        raise FilingDownloadError(f"{rec.accession_no}: record has no html() source")
+    try:
+        return rec.html()
+    except Exception as primary:  # noqa: BLE001 — edgartools raises AttributeError, OSError, ...
+        if fallback is None:
+            raise FilingDownloadError(f"{rec.accession_no}: {type(primary).__name__}: {primary}") from primary
+        logger.warning("%s: primary html() failed (%s: %s) — trying the submissions fallback",
+                       rec.accession_no, type(primary).__name__, primary)
+        try:
+            return fallback(rec)
+        except Exception as second:  # noqa: BLE001
+            raise FilingDownloadError(
+                f"{rec.accession_no}: primary {type(primary).__name__}: {primary}; "
+                f"fallback {type(second).__name__}: {second}"
+            ) from second
+
+
+def _ensure_html(local: Path, rec: FilingRecord, fallback: HtmlFallback | None = None) -> None:
     """Download the raw HTML only when the file is missing (atomic write)."""
     if local.exists():
         return
-    if rec.html is None:
-        raise ValueError(f"{rec.accession_no}: record has no html() source")
-    atomic_write_text(local, rec.html())
+    atomic_write_text(local, _fetch_html(rec, fallback))
     time.sleep(SEC_PAUSE_S)
 
 
@@ -324,21 +385,33 @@ def _manifest_row(rec: FilingRecord, local: Path, root: Path) -> dict:
 
 
 def _acquire_new(
-    settings: Settings, ticker: str, targets: Sequence[FilingRecord], known: set[str]
-) -> list[dict]:
-    """Download (if missing) and describe every target not yet in the manifest."""
+    settings: Settings, ticker: str, targets: Sequence[FilingRecord], known: set[str],
+    fallback: HtmlFallback | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Download (if missing) and describe every target not yet in the manifest.
+
+    Returns ``(rows, failures)``. A filing that cannot be fetched is logged, listed
+    in ``failures`` and skipped — it never aborts its siblings, and it leaves no
+    manifest row or partial file, so the next run tries it again.
+    """
     fresh = [r for r in targets if r.accession_no not in known]
     if not fresh:
-        return []
+        return [], []
     cdir = edgar_dir(settings) / ticker
     cdir.mkdir(parents=True, exist_ok=True)
     root = project_root(settings)
     rows: list[dict] = []
+    failures: list[dict] = []
     for rec in fresh:
         local = _local_html_path(cdir, rec)
-        _ensure_html(local, rec)
-        rows.append(_manifest_row(rec, local, root))
-    return rows
+        try:
+            _ensure_html(local, rec, fallback)
+            rows.append(_manifest_row(rec, local, root))
+        except FilingDownloadError as e:
+            logger.error("%s %s %s: not ingested — %s", ticker, rec.form, rec.filing_date, e)
+            failures.append({"accession_no": rec.accession_no, "form": rec.form,
+                             "filing_date": rec.filing_date.isoformat(), "error": str(e)})
+    return rows, failures
 
 
 def _list_targets(
@@ -358,13 +431,15 @@ def _sync_ticker(
     annual_since: int,
     as_of: date | None,
     existing: Sequence[dict],
-) -> tuple[list[dict], list[dict]]:
+    fallback: HtmlFallback | None = None,
+) -> tuple[list[dict], list[dict], list[dict]]:
     """One ticker: list targets, fetch the accessions not yet held, merge.
 
-    Returns ``(merged manifest rows, newly acquired rows)``."""
+    Returns ``(merged manifest rows, newly acquired rows, failures)``."""
     targets = _list_targets(lister, ticker, annual_since, as_of)
-    new_rows = _acquire_new(settings, ticker, targets, {r["accession_no"] for r in existing})
-    return merge_manifest_rows(existing, new_rows), new_rows
+    new_rows, failures = _acquire_new(
+        settings, ticker, targets, {r["accession_no"] for r in existing}, fallback)
+    return merge_manifest_rows(existing, new_rows), new_rows, failures
 
 
 def download_filings(
@@ -374,6 +449,7 @@ def download_filings(
     annual_since: int = ANNUAL_SINCE,
     as_of: date | str | None = None,
     lister: Lister | None = None,
+    html_fallback: HtmlFallback | None = None,
 ) -> dict:
     """Incrementally acquire filings for the universe, per accession.
 
@@ -384,9 +460,13 @@ def download_filings(
     interruption never loses completed work.
 
     ``lister(ticker, form)`` is the network seam (default: edgartools).
+    ``html_fallback(record) -> html`` is tried when the primary ``html()`` raises
+    (default with the real lister: :func:`submissions_html_fallback`). A filing
+    that still cannot be fetched is skipped and reported, never fatal.
 
     Returns ``{"tickers": {ticker: {"filings": n, "new": [accession...],
-    "cached": bool}}, "total_filings": n, "manifest_path": str}`` where
+    "cached": bool, "failed": [{accession_no, form, filing_date, error}]}},
+    "total_filings": n, "failed_total": n, "manifest_path": str}`` where
     ``cached`` means nothing new was fetched for that ticker.
     """
     settings = settings or get_settings()
@@ -395,7 +475,9 @@ def download_filings(
     if unknown:
         raise KeyError(f"tickers not in FILERS universe: {unknown}")
     bound = parse_as_of(as_of)
-    lister = lister or _edgartools_lister(settings)
+    if lister is None:
+        lister = _edgartools_lister(settings)
+        html_fallback = html_fallback or submissions_html_fallback(_polite_sec_get(settings))
     edgar_dir(settings).mkdir(parents=True, exist_ok=True)
 
     manifest = load_manifest(settings)
@@ -403,7 +485,8 @@ def download_filings(
     summary_tickers: dict[str, dict] = {}
     for ticker in tickers:
         existing = manifest.get(ticker, [])
-        merged, new_rows = _sync_ticker(settings, ticker, lister, annual_since, bound, existing)
+        merged, new_rows, failures = _sync_ticker(
+            settings, ticker, lister, annual_since, bound, existing, html_fallback)
         if new_rows:  # nothing new => the manifest bytes stay exactly as they were
             manifest = {**manifest, ticker: merged}
             atomic_write_text(mpath, json.dumps(manifest, indent=2))
@@ -415,11 +498,14 @@ def download_filings(
             "filings": len(merged),
             "new": new_accessions,
             "cached": not new_accessions,
+            "failed": failures,
         }
     total = sum(s["filings"] for s in summary_tickers.values())
-    logger.info("total: %d filings across %d filers", total, len(summary_tickers))
+    failed_total = sum(len(s["failed"]) for s in summary_tickers.values())
+    logger.info("total: %d filings across %d filers (%d failed)", total, len(summary_tickers), failed_total)
     return {
         "tickers": summary_tickers,
         "total_filings": total,
+        "failed_total": failed_total,
         "manifest_path": str(mpath),
     }

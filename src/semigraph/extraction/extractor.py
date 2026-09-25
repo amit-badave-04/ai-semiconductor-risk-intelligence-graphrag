@@ -29,7 +29,12 @@ from .schemas import ChunkExtraction, CriticVerdict, normalize_category
 logger = logging.getLogger("semigraph.extraction")
 
 from ..universe import FILERS, HIST_ANNUALS, RISK_SECTIONS  # noqa: E402,F401 — re-exported (single source: universe.py)
-from ..versions import annual_effective_accessions, compute_filing_versions, current_quarterly_accession  # noqa: E402
+from ..versions import (  # noqa: E402
+    annual_periods,
+    compute_filing_versions,
+    current_quarterly_accession,
+    effective_annual_sections,
+)
 
 _SCOPE_COLUMNS = ["chunk_id", "ticker", "form", "accession_no", "section_id",
                   "filing_date", "n_tokens", "text", "section_title", "sub_heading"]
@@ -56,26 +61,37 @@ def extractions_jsonl_path(settings: Settings, ticker: str) -> Path:
     return settings.extractions_dir / name
 
 
-def _filing_versions(chunks: pd.DataFrame, annual_form: str, quarterly_form: str | None):
+def _filing_versions(chunks: pd.DataFrame, annual_form: str, quarterly_form: str | None,
+                     sections: dict[str, set[str]]):
     """Version status of every filing that has chunks (see ``semigraph.versions``).
 
     Only filings with content take part, so an unsegmentable filing (ASML's
     2023/24 20-Fs, a Part-III-only 10-K/A) never occupies a history slot or
-    replaces an original. Ordering is by ``filing_date`` (ties: ``accession_no``)
-    — never by the accession string alone: filing agents change accession
-    prefixes (MSFT), so the newest filing can have the smaller number.
+    replaces an original. ``sections`` (accession -> section ids present) lets a
+    partial amendment overlay only the sections it contains. Ordering is by
+    ``filing_date`` (ties: ``accession_no``) — never by the accession string
+    alone: filing agents change accession prefixes (MSFT), so the newest filing
+    can have the smaller number.
     """
     filings = chunks[["accession_no", "form", "filing_date"]].drop_duplicates("accession_no")
     rows = [{"accession_no": r.accession_no, "form": r.form, "filing_date": str(r.filing_date)[:10]}
             for r in filings.itertuples()]
-    return compute_filing_versions(rows, annual_form=annual_form, quarterly_form=quarterly_form)
+    return compute_filing_versions(rows, annual_form=annual_form, quarterly_form=quarterly_form,
+                                   sections=sections)
+
+
+def _rows_of(chunks: pd.DataFrame, accession: str, sections: frozenset[str] | set[str]) -> pd.DataFrame:
+    """Chunks of ``accession`` restricted to ``sections`` (the ones it owns in its period)."""
+    return chunks[(chunks["accession_no"] == accession) & chunks["section_id"].isin(sections)]
 
 
 def extraction_scope(settings: Settings, ticker: str) -> pd.DataFrame:
-    """Latest annual (all kept sections) + the current quarterly + HIST_ANNUALS
-    prior annuals (risk-only). Ported from notebook 12, now version-aware.
+    """Latest annual (its effective sections) + the current quarterly + HIST_ANNUALS
+    prior annuals (risk-only). Ported from notebook 12, now version- and section-aware.
 
-    - A parsed 10-K/A stands in for its original (the original was corrected).
+    - A 10-K/A that restates every section stands in for its original; one that
+      restates only some (AMD's MD&A-only correction) is an overlay: those sections
+      come from the amendment, the rest from the original.
     - A quarterly that a newer annual has rolled forward is no longer current
       and is not worth new spend.
     This scope governs NEW extraction spend only — the graph loader takes every
@@ -90,14 +106,16 @@ def extraction_scope(settings: Settings, ticker: str) -> pd.DataFrame:
     if ch.empty or "form" not in ch.columns:  # filer with no segmentable chunks — skip gracefully
         return pd.DataFrame(columns=_SCOPE_COLUMNS)
     _, annual_form, quarterly_form = FILERS[ticker]
-    versions = _filing_versions(ch, annual_form, quarterly_form)
-    annuals = annual_effective_accessions(versions)
+    sections = {acc: set(g["section_id"]) for acc, g in ch.groupby("accession_no")}
+    versions = _filing_versions(ch, annual_form, quarterly_form, sections)
+    owned = effective_annual_sections(versions, sections)
+    periods = annual_periods(versions)
     parts = []
-    if annuals:
-        parts.append(ch[ch["accession_no"] == annuals[-1]])                      # latest annual: everything
+    if periods:
+        parts += [_rows_of(ch, acc, owned.get(acc, ())) for acc in periods[-1]]        # latest: everything effective
         risk = RISK_SECTIONS[annual_form]
-        hist = annuals[-(1 + HIST_ANNUALS):-1]
-        parts.append(ch[ch["accession_no"].isin(hist) & (ch["section_id"] == risk)])  # history: risks only
+        for period in periods[-(1 + HIST_ANNUALS):-1]:                                   # history: risks only
+            parts += [_rows_of(ch, acc, {risk} & owned.get(acc, frozenset())) for acc in period]
     current_q = current_quarterly_accession(versions) if quarterly_form else None
     if current_q:
         parts.append(ch[ch["accession_no"] == current_q])

@@ -397,7 +397,7 @@ class TestDownloadFilings:
         download_filings(settings, lister=fake)
         assert {t for t, _ in fake.list_calls} == set(E.FILERS)
 
-    def test_a_filing_with_no_html_leaves_no_manifest_row(self, settings):
+    def test_a_filing_that_cannot_be_fetched_is_reported_and_the_rest_still_land(self, settings):
         def broken() -> str:
             raise OSError("404")
 
@@ -407,10 +407,65 @@ class TestDownloadFilings:
         def lister(ticker: str, form: str):
             return good(ticker, form) + [bad]
 
-        with pytest.raises(OSError):
-            download_filings(settings, ["NVDA"], lister=lister)
-        assert "BAD-1" not in {r["accession_no"] for r in load_manifest(settings).get("NVDA", [])}
+        out = download_filings(settings, ["NVDA"], lister=lister)
+
+        accessions = {r["accession_no"] for r in load_manifest(settings).get("NVDA", [])}
+        assert "OK-1" in accessions and "BAD-1" not in accessions       # no manifest row for the failure
         assert not any("BAD-1" in n for n in html_files(settings, "NVDA"))
+        failed = out["tickers"]["NVDA"]["failed"]
+        assert [f["accession_no"] for f in failed] == ["BAD-1"] and "404" in failed[0]["error"]
+        assert out["failed_total"] == 1
+
+    def test_a_failure_in_one_ticker_does_not_stop_the_next_ticker(self, settings):
+        def broken() -> str:
+            raise OSError("boom")
+
+        ok = FakeEdgar({"AMD": [("10-K", "2026-02-04", "AMD-1")]})
+
+        def lister(ticker: str, form: str):
+            if ticker == "NVDA":
+                return [FilingRecord("NVDA", form, date(2026, 3, 1), "BAD-2", 1, "u", html=broken)] if form == "10-K" else []
+            return ok(ticker, form)
+
+        out = download_filings(settings, ["NVDA", "AMD"], lister=lister)
+
+        assert out["tickers"]["AMD"]["new"] == ["AMD-1"]
+        assert out["failed_total"] == 1
+
+    def test_html_fallback_rescues_a_filing_whose_primary_fetch_raises(self, settings):
+        """INTC 2026-07-24: edgartools found no primary document (AttributeError); the
+        submissions metadata names it, so a direct fetch recovers the filing."""
+        def no_primary() -> str:
+            raise AttributeError("'NoneType' object has no attribute 'download'")
+
+        rec = FilingRecord("INTC", "10-Q", date(2026, 7, 24), "0000050863-26-000157", 50863, "u", html=no_primary)
+        used: list[str] = []
+
+        def fallback(r: FilingRecord) -> str:
+            used.append(r.accession_no)
+            return "<html>direct</html>"
+
+        out = download_filings(settings, ["INTC"],
+                               lister=lambda t, f: [rec] if f == "10-Q" else [], html_fallback=fallback)
+
+        assert used == ["0000050863-26-000157"]
+        assert out["tickers"]["INTC"]["new"] == ["0000050863-26-000157"] and out["failed_total"] == 0
+        assert "direct" in next(iter((Path(settings.data_dir) / "raw" / "edgar" / "INTC").glob("*.html"))).read_text(encoding="utf-8")
+
+    def test_when_the_fallback_also_fails_both_errors_are_reported(self, settings):
+        def no_primary() -> str:
+            raise AttributeError("no primary document")
+
+        rec = FilingRecord("INTC", "10-Q", date(2026, 7, 24), "F-1", 1, "u", html=no_primary)
+
+        def fallback(_r: FilingRecord) -> str:
+            raise OSError("403 forbidden")
+
+        out = download_filings(settings, ["INTC"], lister=lambda t, f: [rec] if f == "10-Q" else [],
+                               html_fallback=fallback)
+
+        err = out["tickers"]["INTC"]["failed"][0]["error"]
+        assert "no primary document" in err and "403 forbidden" in err
 
 
 class TestEdgartoolsWrapper:
@@ -553,10 +608,51 @@ class TestAtomicWrite:
 
 
 class TestRecordWithoutHtml:
-    def test_a_target_with_no_html_source_is_refused_explicitly(self, settings):
+    def test_a_target_with_no_html_source_is_reported_not_silently_skipped(self, settings):
         bare = FilingRecord("NVDA", "10-K", date(2026, 2, 25), "BARE-1", 1, "u")
-        with pytest.raises(ValueError, match="no html"):
-            download_filings(settings, ["NVDA"], lister=lambda t, f: [bare] if f == "10-K" else [])
+        out = download_filings(settings, ["NVDA"], lister=lambda t, f: [bare] if f == "10-K" else [])
+        failed = out["tickers"]["NVDA"]["failed"]
+        assert failed[0]["accession_no"] == "BARE-1" and "no html" in failed[0]["error"]
+
+
+class TestSubmissionsFallback:
+    """The real fallback: primaryDocument from the submissions JSON -> direct Archive URL."""
+
+    SUBMISSIONS = {"filings": {"recent": {
+        "accessionNumber": ["0000050863-26-000157"], "primaryDocument": ["intc-20260627.htm"]}}}
+
+    def test_builds_the_archive_url_from_the_primary_document(self):
+        urls: list[str] = []
+
+        def fetch(url: str) -> bytes:
+            urls.append(url)
+            return json.dumps(self.SUBMISSIONS).encode() if "submissions" in url else "<html>ok</html>".encode()
+
+        rec = FilingRecord("INTC", "10-Q", date(2026, 7, 24), "0000050863-26-000157", 50863, "u")
+
+        assert E.submissions_html_fallback(fetch)(rec) == "<html>ok</html>"
+        assert urls == ["https://data.sec.gov/submissions/CIK0000050863.json",
+                        "https://www.sec.gov/Archives/edgar/data/50863/000005086326000157/intc-20260627.htm"]
+
+    def test_the_submissions_document_is_fetched_once_per_cik(self):
+        calls: list[str] = []
+
+        def fetch(url: str) -> bytes:
+            calls.append(url)
+            return json.dumps(self.SUBMISSIONS).encode() if "submissions" in url else b"<html/>"
+
+        fallback = E.submissions_html_fallback(fetch)
+        rec = FilingRecord("INTC", "10-Q", date(2026, 7, 24), "0000050863-26-000157", 50863, "u")
+        fallback(rec)
+        fallback(rec)
+
+        assert sum("submissions" in c for c in calls) == 1
+
+    def test_an_accession_missing_from_recent_is_an_explicit_error(self):
+        fallback = E.submissions_html_fallback(lambda url: json.dumps(self.SUBMISSIONS).encode())
+        rec = FilingRecord("INTC", "10-Q", date(2020, 1, 1), "0000050863-20-000001", 50863, "u")
+        with pytest.raises(LookupError, match="0000050863-20-000001"):
+            fallback(rec)
 
 
 class TestLoadTickerToCik:
