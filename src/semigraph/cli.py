@@ -30,34 +30,89 @@ def _settings():
     return get_settings()
 
 
+def _parse_as_of(value: str | None):
+    """``--as-of`` as a date (None passes through); a bad value is a usage error."""
+    from semigraph.ingestion.edgar import parse_as_of
+
+    try:
+        return parse_as_of(value)
+    except ValueError as e:
+        raise typer.BadParameter(f"--as-of must be an ISO date (YYYY-MM-DD): {e}") from e
+
+
 @app.command()
 def ingest(
     ticker: list[str] = typer.Option(None, "--ticker", "-t",
                                      help="Tickers to ingest (default: full 14-company universe)"),
     skip_download: bool = typer.Option(False, help="Skip EDGAR/XBRL/Federal-Register downloads; only re-parse/re-chunk"),
+    as_of: str = typer.Option(None, "--as-of", help="Only filings/rules published on or before this date (YYYY-MM-DD)"),
+    refresh_xbrl: bool = typer.Option(False, "--refresh-xbrl", help="Re-download Company Facts and re-curate metrics"),
+    refresh_fr: bool = typer.Option(False, "--refresh-fr", help="Re-fetch every BIS rule and re-classify"),
     verbose: bool = typer.Option(False, "-v"),
 ):
     """Download filings + XBRL + export-control rules, then parse and chunk.
 
-    Free of LLM cost; network-bound (SEC fair-access throttled)."""
+    Incremental: only accessions the data lake does not hold are fetched, and
+    chunking appends after existing rows (chunk ids never change). Free of LLM
+    cost; network-bound (SEC fair-access throttled)."""
     _setup_logging(verbose)
     from semigraph.ingestion import edgar, federal_register, xbrl
     from semigraph.parsing import chunker, segmentation
 
+    bound = _parse_as_of(as_of)
     settings = _settings()
     tickers = list(ticker) if ticker else None
     if not skip_download:
         typer.echo("== EDGAR filings ==")
-        typer.echo(json.dumps(edgar.download_filings(settings, tickers), default=str))
+        typer.echo(json.dumps(edgar.download_filings(settings, tickers, as_of=bound), default=str))
         typer.echo("== XBRL company facts -> key metrics ==")
-        typer.echo(json.dumps(xbrl.extract_metrics(settings, tickers), default=str))
+        typer.echo(json.dumps(xbrl.extract_metrics(settings, tickers, refresh=refresh_xbrl), default=str))
         typer.echo("== Federal Register export-control rules ==")
-        rules = federal_register.download_bis_rules(settings)
-        typer.echo(f"{len(rules)} BIS rules cached")
+        rules = federal_register.download_bis_rules(settings, refresh=refresh_fr, as_of=bound)
+        typer.echo(f"{len(rules)} BIS rules ({sum(1 for r in rules if r.get('relevant'))} relevant)")
     typer.echo("== Semantic segmentation ==")
     typer.echo(json.dumps(segmentation.segment_filings(settings, tickers), default=str))
     typer.echo("== Chunking ==")
     typer.echo(json.dumps(chunker.chunk_filings(settings, tickers), default=str))
+
+
+@app.command()
+def freshness(
+    ticker: list[str] = typer.Option(None, "--ticker", "-t"),
+    as_of: str = typer.Option(None, "--as-of", help="Bound both checks by this date (YYYY-MM-DD)"),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """What is newer at the source than the data lake (free, read-only).
+
+    Lists in-scope EDGAR filings the manifest does not hold and compares the
+    stored BIS rules with a live Federal Register count."""
+    _setup_logging(verbose)
+    from semigraph.ingestion import freshness as fresh
+
+    bound = _parse_as_of(as_of)
+    settings = _settings()
+    pending = fresh.pending_filings(settings, list(ticker) if ticker else None, as_of=bound)
+    rules = fresh.federal_register_pending(settings, as_of=bound)
+    if as_json:
+        typer.echo(json.dumps({"pending_filings": pending, "federal_register": rules}, default=str, indent=2))
+        return
+    typer.echo(f"== {len(pending)} in-scope filings on EDGAR not yet ingested ==")
+    for p in pending:
+        typer.echo(f"  {p['ticker']:<6} {p['form']:<7} filed {p['filing_date']}  period {p.get('period_of_report')}  {p['accession_no']}")
+    typer.echo("== Federal Register (BIS rules) ==")
+    typer.echo(f"  stored {rules['stored_count']} (latest {rules['stored_latest_date']}) | live {rules['live_count']} | "
+               f"{rules['new_since_stored']} new since the stored cache")
+
+
+@app.command()
+def snapshot(
+    as_of: str = typer.Option(None, "--as-of", help="As-of date embedded in the id (YYYY-MM-DD)"),
+):
+    """Print the snapshot id of the current data lake (stamped on graph nodes, part of cache keys)."""
+    from semigraph.snapshot import compute_snapshot_id
+
+    typer.echo(compute_snapshot_id(_settings(), _parse_as_of(as_of)))
 
 
 @app.command("build-graph")

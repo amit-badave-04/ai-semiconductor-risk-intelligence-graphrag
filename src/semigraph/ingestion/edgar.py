@@ -1,7 +1,8 @@
-"""SEC EDGAR filing acquisition (ported from notebooks 01 and 12).
+"""SEC EDGAR filing acquisition (ported from notebooks 01 and 12; incremental
+per accession since M1).
 
-Downloads each filer's annual reports (filed >= ``ANNUAL_SINCE``) plus the
-latest quarterly report via edgartools, persisting raw HTML to::
+Downloads each filer's annual reports plus the current fiscal year's
+quarterly reports via edgartools, persisting raw HTML to::
 
     data/raw/edgar/<TICKER>/<FORM>_<filing_date>_<accession_no>.html
 
@@ -9,6 +10,22 @@ latest quarterly report via edgartools, persisting raw HTML to::
 recording provenance in ``data/raw/edgar/manifest_universe.json`` — the
 exact on-disk layout the notebooks created, so the pre-existing data lake
 stays readable and already-downloaded filings are never re-fetched.
+
+Target policy (one pure function, ``select_targets``, shared with
+``freshness.pending_filings`` so "pending" always means "what the next
+download would fetch"):
+
+- every annual-form filing (amendments included, e.g. ``10-K/A``) filed in
+  ``annual_since`` or later;
+- every quarterly-form filing filed after the latest *original* annual
+  filing (all current-fiscal-year quarters, not just the newest one);
+- both bounded above by ``as_of`` (inclusive) when given.
+
+The manifest is merged by ``accession_no``: rows already present are kept
+verbatim (never rewritten, never dropped — even if they fall outside the
+current rules), new rows are appended, and a ticker that gained rows is
+ordered by ``(filing_date, accession_no)``. A ticker with nothing new is left
+byte-for-byte untouched, so a no-op run never changes the manifest.
 
 Form-type reality (notebook 01's filing survey):
 
@@ -23,8 +40,12 @@ request, and downloads sleep 0.15 s to stay well under 10 req/s.
 
 import json
 import logging
+import os
 import time
 import urllib.request
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 
 from ..config import Settings, get_settings
@@ -35,6 +56,50 @@ from ..universe import ANNUAL_SINCE, FILERS  # noqa: E402,F401 — re-exported (
 
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
+SEC_PAUSE_S = 0.15  # stay well under SEC's 10 req/s
+_REPLACE_RETRIES = 3  # OneDrive/AV can briefly lock a file mid-replace on Windows
+
+
+# ---------------------------------------------------------------- records
+
+@dataclass(frozen=True)
+class FilingRecord:
+    """A filing as listed by an EDGAR source — lightweight and network-free.
+
+    ``html`` fetches the primary document (called only when the raw file is
+    missing). ``resolve_source_url`` lets a source defer an expensive URL
+    lookup (edgartools' ``filing.document`` costs a request per filing) until
+    the record is actually a download target.
+    """
+
+    ticker: str
+    form: str
+    filing_date: date
+    accession_no: str
+    cik: int
+    source_url: str = ""
+    period_of_report: str | None = None
+    html: Callable[[], str] | None = field(default=None, compare=False, repr=False)
+    resolve_source_url: Callable[[], str] | None = field(
+        default=None, compare=False, repr=False
+    )
+
+
+Lister = Callable[[str, str], Sequence[FilingRecord]]
+
+
+def parse_as_of(value: date | str | None) -> date | None:
+    """Normalise an ``as_of`` bound (date, ISO string or None) to a date."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value).strip())
+
+
+# --------------------------------------------------------------- paths / IO
 
 def project_root(settings: Settings) -> Path:
     """The directory the notebooks called PROJECT_ROOT — parent of data_dir.
@@ -98,45 +163,208 @@ def load_ticker_to_cik(settings: Settings | None = None) -> dict[str, int]:
     return {row["ticker"]: int(row["cik_str"]) for row in raw.values()}
 
 
-def _acquire_company(
-    settings: Settings, ticker: str, annual_since: int
-) -> list[dict]:
-    """Download annuals (>= annual_since) + latest quarterly for one filer;
-    return manifest rows (ported from notebook 12 acquire_company)."""
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write via a sibling temp file + ``os.replace`` so a crash never leaves
+    a truncated file that later looks 'already downloaded'."""
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        for attempt in range(_REPLACE_RETRIES):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if attempt == _REPLACE_RETRIES - 1:
+                    raise
+                time.sleep(0.2)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ------------------------------------------------------- selection (pure)
+
+def _dedupe_by_accession(records: Iterable[FilingRecord]) -> list[FilingRecord]:
+    seen: set[str] = set()
+    unique: list[FilingRecord] = []
+    for rec in records:
+        if rec.accession_no not in seen:
+            seen.add(rec.accession_no)
+            unique.append(rec)
+    return unique
+
+
+def _quarterly_cutoff(
+    annuals: Sequence[FilingRecord], annual_form: str, annual_since: int
+) -> date:
+    """Quarterlies must be filed strictly after this date.
+
+    Anchored on the latest *original* annual filing (an amendment filed months
+    later, e.g. a Part III 10-K/A, must not drop real 10-Qs). With no annual
+    target at all, fall back to the start of the ``annual_since`` window.
+    """
+    originals = [r for r in annuals if r.form == annual_form] or list(annuals)
+    if originals:
+        return max(r.filing_date for r in originals)
+    return date(annual_since - 1, 12, 31)
+
+
+def select_targets(
+    records: Iterable[FilingRecord],
+    annual_form: str,
+    quarterly_form: str | None,
+    annual_since: int,
+    as_of: date | None,
+) -> list[FilingRecord]:
+    """The filings the corpus should hold, sorted by (filing_date, accession).
+
+    Filters on an explicit form set — ``get_filings(form='10-Q')`` also yields
+    ``10-Q/A`` and ``get_filings(form='20-F')`` also yields ``20-F/A`` — so
+    annual amendments are kept (as in v1) and quarterly amendments are not.
+    """
+    in_window = [r for r in records if as_of is None or r.filing_date <= as_of]
+    annual_forms = {annual_form, f"{annual_form}/A"}
+    annuals = [
+        r for r in in_window
+        if r.form in annual_forms and r.filing_date.year >= annual_since
+    ]
+    quarterlies: list[FilingRecord] = []
+    if quarterly_form:
+        cutoff = _quarterly_cutoff(annuals, annual_form, annual_since)
+        quarterlies = [
+            r for r in in_window
+            if r.form == quarterly_form and r.filing_date > cutoff
+        ]
+    targets = _dedupe_by_accession([*annuals, *quarterlies])
+    return sorted(targets, key=lambda r: (r.filing_date, r.accession_no))
+
+
+def merge_manifest_rows(existing: Sequence[dict], new: Iterable[dict]) -> list[dict]:
+    """Merge by ``accession_no``: existing rows verbatim, new rows appended,
+    result ordered by ``(filing_date, accession_no)``. Inputs are not mutated."""
+    known = {row["accession_no"] for row in existing}
+    added: list[dict] = []
+    for row in new:
+        if row["accession_no"] not in known:
+            known.add(row["accession_no"])
+            added.append(row)
+    return sorted(
+        [*existing, *added], key=lambda r: (r["filing_date"], r["accession_no"])
+    )
+
+
+# ------------------------------------------------------- edgartools source
+
+def _record_from_edgartools(ticker: str, filing) -> FilingRecord:
+    """Wrap an edgartools ``EntityFiling`` without touching the network:
+    ``filing.document`` (the URL) and ``filing.html()`` stay deferred, and the
+    period comes from the stored ``report_date`` — never ``period_of_report``,
+    which fetches the filing homepage per filing (and raises on old filings)."""
+    period = getattr(filing, "report_date", None)
+    return FilingRecord(
+        ticker=ticker,
+        form=str(filing.form),
+        filing_date=parse_as_of(filing.filing_date),  # type: ignore[arg-type]
+        accession_no=str(filing.accession_no),
+        cik=int(filing.cik),
+        period_of_report=str(period) if period else None,
+        html=filing.html,
+        resolve_source_url=lambda: filing.document.url,
+    )
+
+
+def _edgartools_lister(settings: Settings) -> Lister:
+    """The real EDGAR source: ``Company.get_filings(form=...)`` per ticker."""
     import edgar  # heavy import kept local
 
-    name, annual_form, quarterly_form = FILERS[ticker]
-    company = edgar.Company(ticker)
+    edgar.set_identity(_identity(settings))
+    companies: dict[str, object] = {}
+
+    def list_filings(ticker: str, form: str) -> list[FilingRecord]:
+        if ticker not in companies:
+            companies[ticker] = edgar.Company(ticker)
+        company = companies[ticker]
+        return [
+            _record_from_edgartools(ticker, f)
+            for f in company.get_filings(form=form)  # type: ignore[attr-defined]
+        ]
+
+    return list_filings
+
+
+# ------------------------------------------------------------ acquisition
+
+def _local_html_path(cdir: Path, rec: FilingRecord) -> Path:
+    return cdir / f"{rec.form.replace('/', '-')}_{rec.filing_date.isoformat()}_{rec.accession_no}.html"
+
+
+def _ensure_html(local: Path, rec: FilingRecord) -> None:
+    """Download the raw HTML only when the file is missing (atomic write)."""
+    if local.exists():
+        return
+    if rec.html is None:
+        raise ValueError(f"{rec.accession_no}: record has no html() source")
+    atomic_write_text(local, rec.html())
+    time.sleep(SEC_PAUSE_S)
+
+
+def _manifest_row(rec: FilingRecord, local: Path, root: Path) -> dict:
+    source_url = rec.source_url
+    if not source_url and rec.resolve_source_url is not None:
+        source_url = rec.resolve_source_url()
+    return {
+        "ticker": rec.ticker,
+        "cik": rec.cik,
+        "form": rec.form,
+        "filing_date": rec.filing_date.isoformat(),
+        "accession_no": rec.accession_no,
+        "source_url": source_url,
+        "local_path": str(local.resolve().relative_to(root)),
+        "size_bytes": local.stat().st_size,
+    }
+
+
+def _acquire_new(
+    settings: Settings, ticker: str, targets: Sequence[FilingRecord], known: set[str]
+) -> list[dict]:
+    """Download (if missing) and describe every target not yet in the manifest."""
+    fresh = [r for r in targets if r.accession_no not in known]
+    if not fresh:
+        return []
     cdir = edgar_dir(settings) / ticker
     cdir.mkdir(parents=True, exist_ok=True)
-    targets = [
-        f
-        for f in company.get_filings(form=annual_form)
-        if f.filing_date.year >= annual_since
-    ]
-    if quarterly_form:
-        targets.append(company.get_filings(form=quarterly_form).latest(1))
     root = project_root(settings)
-    rows = []
-    for f in targets:
-        local = cdir / f"{f.form.replace('/', '-')}_{f.filing_date}_{f.accession_no}.html"
-        if not local.exists():
-            local.write_text(f.html(), encoding="utf-8")
-            time.sleep(0.15)  # stay well under SEC's 10 req/s
-        rows.append(
-            {
-                "ticker": ticker,
-                "cik": f.cik,
-                "form": f.form,
-                "filing_date": str(f.filing_date),
-                "accession_no": f.accession_no,
-                "source_url": f.document.url,
-                "local_path": str(local.resolve().relative_to(root)),
-                "size_bytes": local.stat().st_size,
-            }
-        )
-    logger.info("%s (%s): %d filings on disk", ticker, name, len(rows))
+    rows: list[dict] = []
+    for rec in fresh:
+        local = _local_html_path(cdir, rec)
+        _ensure_html(local, rec)
+        rows.append(_manifest_row(rec, local, root))
     return rows
+
+
+def _list_targets(
+    lister: Lister, ticker: str, annual_since: int, as_of: date | None
+) -> list[FilingRecord]:
+    _, annual_form, quarterly_form = FILERS[ticker]
+    records = list(lister(ticker, annual_form))
+    if quarterly_form:
+        records.extend(lister(ticker, quarterly_form))
+    return select_targets(records, annual_form, quarterly_form, annual_since, as_of)
+
+
+def _sync_ticker(
+    settings: Settings,
+    ticker: str,
+    lister: Lister,
+    annual_since: int,
+    as_of: date | None,
+    existing: Sequence[dict],
+) -> tuple[list[dict], list[dict]]:
+    """One ticker: list targets, fetch the accessions not yet held, merge.
+
+    Returns ``(merged manifest rows, newly acquired rows)``."""
+    targets = _list_targets(lister, ticker, annual_since, as_of)
+    new_rows = _acquire_new(settings, ticker, targets, {r["accession_no"] for r in existing})
+    return merge_manifest_rows(existing, new_rows), new_rows
 
 
 def download_filings(
@@ -144,46 +372,51 @@ def download_filings(
     tickers: list[str] | None = None,
     *,
     annual_since: int = ANNUAL_SINCE,
+    as_of: date | str | None = None,
+    lister: Lister | None = None,
 ) -> dict:
-    """Acquire filings for the universe (idempotent; ported from notebook 12).
+    """Incrementally acquire filings for the universe, per accession.
 
-    A ticker already present in ``manifest_universe.json`` is skipped
-    entirely (its files are on disk); the manifest is re-written after each
-    newly acquired ticker so interruptions never lose completed work.
+    For each ticker the target set (see module docstring) is listed, every
+    accession not already in ``manifest_universe.json`` is downloaded (HTML
+    only if its file is missing) and merged in; existing rows are never
+    touched. The manifest is written atomically after each ticker so an
+    interruption never loses completed work.
 
-    Returns a summary dict:
-    ``{"tickers": {ticker: {"filings": n, "cached": bool}},
-       "total_filings": n, "manifest_path": str}``
+    ``lister(ticker, form)`` is the network seam (default: edgartools).
+
+    Returns ``{"tickers": {ticker: {"filings": n, "new": [accession...],
+    "cached": bool}}, "total_filings": n, "manifest_path": str}`` where
+    ``cached`` means nothing new was fetched for that ticker.
     """
     settings = settings or get_settings()
-    import edgar  # heavy import kept local
-
-    edgar.set_identity(_identity(settings))
-    edgar_dir(settings).mkdir(parents=True, exist_ok=True)
-
-    manifest = load_manifest(settings)
     tickers = list(tickers) if tickers else list(FILERS)
     unknown = [t for t in tickers if t not in FILERS]
     if unknown:
         raise KeyError(f"tickers not in FILERS universe: {unknown}")
+    bound = parse_as_of(as_of)
+    lister = lister or _edgartools_lister(settings)
+    edgar_dir(settings).mkdir(parents=True, exist_ok=True)
 
+    manifest = load_manifest(settings)
     mpath = manifest_path(settings)
     summary_tickers: dict[str, dict] = {}
     for ticker in tickers:
-        if ticker in manifest:
-            logger.info("%s: %d filings (cached)", ticker, len(manifest[ticker]))
-            summary_tickers[ticker] = {
-                "filings": len(manifest[ticker]),
-                "cached": True,
-            }
-            continue
-        manifest[ticker] = _acquire_company(settings, ticker, annual_since)
-        mpath.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        existing = manifest.get(ticker, [])
+        merged, new_rows = _sync_ticker(settings, ticker, lister, annual_since, bound, existing)
+        if new_rows:  # nothing new => the manifest bytes stay exactly as they were
+            manifest = {**manifest, ticker: merged}
+            atomic_write_text(mpath, json.dumps(manifest, indent=2))
+        new_accessions = [r["accession_no"] for r in new_rows]
+        logger.info(
+            "%s (%s): %d filings, %d new", ticker, FILERS[ticker][0], len(merged), len(new_accessions)
+        )
         summary_tickers[ticker] = {
-            "filings": len(manifest[ticker]),
-            "cached": False,
+            "filings": len(merged),
+            "new": new_accessions,
+            "cached": not new_accessions,
         }
-    total = sum(len(rows) for t, rows in manifest.items() if t in summary_tickers)
+    total = sum(s["filings"] for s in summary_tickers.values())
     logger.info("total: %d filings across %d filers", total, len(summary_tickers))
     return {
         "tickers": summary_tickers,
