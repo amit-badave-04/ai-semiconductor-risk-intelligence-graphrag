@@ -8,6 +8,7 @@ answer computed from older data.
 """
 
 import hashlib
+import json
 from datetime import date
 from pathlib import Path
 
@@ -59,3 +60,27 @@ def compute_snapshot_id(settings: Settings, as_of: date | str | None = None, *,
             digest.update(f"|{section}:{name}:{sha}".encode())
     stamp = as_of_d.strftime("%Y%m%d") if as_of_d else "00000000"
     return f"snap-{stamp}-{digest.hexdigest()[:10]}"
+
+
+def _dates(values) -> list[date]:
+    out = []
+    for v in values:
+        try:
+            out.append(date.fromisoformat(str(v)[:10]))
+        except ValueError:
+            continue
+    return out
+
+
+def newest_lake_date(settings: Settings) -> date | None:
+    """The newest filing date in the manifest or publication date in the BIS rule
+    cache; ``None`` for an empty lake. Used to validate a declared ``--as-of``."""
+    dates: list[date] = []
+    manifest = settings.raw_dir / "edgar" / "manifest_universe.json"
+    if manifest.exists():
+        rows = json.loads(manifest.read_text(encoding="utf-8"))
+        dates += _dates(r.get("filing_date") for filings in rows.values() for r in filings)
+    fr = settings.raw_dir / "federal_register_bis_rules.json"
+    if fr.exists():
+        dates += _dates(r.get("publication_date") for r in json.loads(fr.read_text(encoding="utf-8")).get("results", []))
+    return max(dates) if dates else None

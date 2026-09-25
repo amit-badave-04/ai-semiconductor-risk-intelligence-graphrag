@@ -162,3 +162,91 @@ def test_extract_requires_a_cap_for_a_paid_run(extraction):
     result = runner.invoke(app, ["extract", "--yes"])
 
     assert result.exit_code != 0 and extraction == {}
+
+
+# ------------------------------------------------------------ build-graph orchestration
+
+@pytest.fixture
+def graph_calls(monkeypatch, tmp_path):
+    """Record the order and arguments of every stage `build-graph` drives."""
+    from datetime import date
+
+    from semigraph import cli, snapshot
+    from semigraph.graph import client, loaders, schema, temporal
+
+    log: list[tuple[str, dict]] = []
+
+    def rec(name, result=None):
+        def fake(*args, **kwargs):
+            log.append((name, kwargs))
+            return result
+        return fake
+
+    class FakeDriver:
+        def close(self):
+            log.append(("close", {}))
+
+    monkeypatch.setattr(cli, "_settings", lambda: __import__("semigraph.config", fromlist=["Settings"]).Settings(
+        data_dir=tmp_path / "data", _env_file=None))
+    monkeypatch.setattr(client, "get_driver", lambda settings=None: FakeDriver())
+    monkeypatch.setattr(client, "run_cypher", lambda driver, q, **p: [{"label": "Company", "n": 26}])
+    monkeypatch.setattr(schema, "reset_graph", rec("reset_graph", {"deleted_nodes": 5}))
+    monkeypatch.setattr(schema, "apply_schema", rec("apply_schema", 12))
+    for name in ("load_companies", "load_filings_and_sections", "load_metrics", "load_evidence_spans",
+                 "load_knowledge", "load_export_controls"):
+        monkeypatch.setattr(loaders, name, rec(name, {}))
+    monkeypatch.setattr(loaders, "stamp_snapshot", rec("stamp_snapshot", "x"))
+    monkeypatch.setattr(temporal, "normalize_categories", rec("normalize_categories", 0))
+    monkeypatch.setattr(temporal, "apply_closure", rec("apply_closure", {}))
+    monkeypatch.setattr("semigraph.embeddings.Embedder", lambda *a, **k: object())
+    monkeypatch.setattr(snapshot, "newest_lake_date", lambda settings: date(2026, 9, 24))
+    monkeypatch.setattr(snapshot, "compute_snapshot_id", lambda settings, as_of=None, **k: f"snap-{as_of:%Y%m%d}-test")
+    return log
+
+
+def names(log):
+    return [n for n, _ in log]
+
+
+def test_build_graph_loads_in_dependency_order_and_stamps_the_snapshot(graph_calls):
+    result = runner.invoke(app, ["build-graph"])
+
+    assert result.exit_code == 0, result.output
+    order = names(graph_calls)
+    assert order.index("apply_schema") < order.index("load_companies") < order.index("load_filings_and_sections")
+    assert order.index("load_evidence_spans") < order.index("load_knowledge")     # relation post-pass needs spans
+    assert order.index("normalize_categories") < order.index("load_export_controls")
+    assert order.index("load_export_controls") < order.index("apply_closure") < order.index("stamp_snapshot")
+    assert order[-1] == "close"
+    sid = dict(graph_calls)["load_companies"]["snapshot_id"]
+    assert sid == "snap-20260924-test"          # default as-of = the newest date in the lake
+    assert all(kw.get("snapshot_id") == sid for n, kw in graph_calls
+               if n in ("load_companies", "load_filings_and_sections", "load_metrics", "load_evidence_spans",
+                        "load_knowledge", "load_export_controls"))
+
+
+def test_build_graph_rebuild_resets_before_applying_the_schema(graph_calls):
+    result = runner.invoke(app, ["build-graph", "--rebuild"])
+
+    assert result.exit_code == 0, result.output
+    assert names(graph_calls).index("reset_graph") < names(graph_calls).index("apply_schema")
+
+
+def test_build_graph_without_rebuild_never_resets(graph_calls):
+    runner.invoke(app, ["build-graph"])
+
+    assert "reset_graph" not in names(graph_calls)
+
+
+def test_build_graph_refuses_an_as_of_older_than_the_lake(graph_calls):
+    result = runner.invoke(app, ["build-graph", "--as-of", "2026-06-30"])
+
+    assert result.exit_code != 0
+    assert "newer than --as-of" in result.output and "apply_schema" not in names(graph_calls)
+
+
+def test_build_graph_accepts_an_as_of_on_or_after_the_newest_data(graph_calls):
+    result = runner.invoke(app, ["build-graph", "--as-of", "2026-09-25"])
+
+    assert result.exit_code == 0, result.output
+    assert dict(graph_calls)["load_companies"]["snapshot_id"] == "snap-20260925-test"

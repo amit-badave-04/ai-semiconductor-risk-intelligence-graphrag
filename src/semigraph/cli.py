@@ -157,9 +157,33 @@ def extract(
     resolution.resolve_extractions(settings, tickers)
 
 
+def _graph_counts(driver) -> dict:
+    """Node counts per label (service state excluded) — recorded on the Snapshot node."""
+    from semigraph.graph import client
+
+    rows = client.run_cypher(driver, """MATCH (n) WHERE NOT any(l IN labels(n) WHERE l STARTS WITH 'Svc')
+        RETURN labels(n)[0] AS label, count(*) AS n ORDER BY n DESC""")
+    return {r["label"]: r["n"] for r in rows}
+
+
+def _resolve_as_of(settings, declared):
+    """The snapshot's as-of date: the declared ``--as-of`` (refused when the lake holds
+    anything newer, so a snapshot can never be mislabelled) or the newest date in the lake."""
+    from semigraph.snapshot import newest_lake_date
+
+    newest = newest_lake_date(settings)
+    if declared is not None and newest is not None and newest > declared:
+        raise typer.BadParameter(
+            f"the data lake holds data ({newest}) newer than --as-of {declared}; "
+            "re-ingest with --as-of or declare a later date")
+    return declared or newest
+
+
 @app.command("build-graph")
 def build_graph(
     ticker: list[str] = typer.Option(None, "--ticker", "-t"),
+    rebuild: bool = typer.Option(False, "--rebuild", help="Empty the graph (service state kept) and rebuild from the data lake"),
+    as_of: str = typer.Option(None, "--as-of", help="Declared as-of date of this snapshot; refused if the lake holds newer data"),
     extract: bool = typer.Option(False, help="Run PAID LLM extraction for chunks not yet extracted (asks for confirmation after a cost estimate)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the paid-extraction confirmation prompt"),
     verbose: bool = typer.Option(False, "-v"),
@@ -168,41 +192,49 @@ def build_graph(
 
     Without --extract this spends no API money: it loads the deterministic
     layer, existing extraction jsonl, embeddings (local), export controls,
-    and runs bitemporal closure."""
+    runs bitemporal closure and stamps a Snapshot node. Use --rebuild for a
+    clean full rebuild (required when the vector-index definitions changed)."""
     _setup_logging(verbose)
     from semigraph.embeddings import Embedder
     from semigraph.extraction import extractor, resolution
     from semigraph.graph import client, loaders, schema, temporal
+    from semigraph.snapshot import compute_snapshot_id
 
     settings = _settings()
     tickers = list(ticker) if ticker else None
+    snapshot_as_of = _resolve_as_of(settings, _parse_as_of(as_of))
+    if extract:
+        _, todo = extractor.build_extraction_plan(settings, tickers)
+        est = extractor.estimate_extraction_cost(todo, settings)
+        typer.echo(f"PAID extraction estimate: {json.dumps(est, default=str)}")
+        if not yes and not typer.confirm("Proceed with paid LLM extraction?"):
+            raise typer.Abort()
+        extractor.run_extraction(settings, tickers)
+        resolution.resolve_extractions(settings, tickers)
+    snapshot_id = compute_snapshot_id(settings, snapshot_as_of)   # after extraction: it hashes the records
+    typer.echo(f"snapshot {snapshot_id}")
+
     driver = client.get_driver(settings)
     try:
+        if rebuild:
+            typer.echo(f"== Reset == {json.dumps(schema.reset_graph(driver))}")
         typer.echo("== Schema ==")
         schema.apply_schema(driver)
         typer.echo("== Deterministic layer (companies, filings, sections, XBRL metrics) ==")
-        loaders.load_companies(driver, settings)
-        loaders.load_filings_and_sections(driver, settings, tickers)
-        loaders.load_metrics(driver, settings, tickers)
-
-        if extract:
-            _, todo = extractor.build_extraction_plan(settings, tickers)
-            est = extractor.estimate_extraction_cost(todo)
-            typer.echo(f"PAID extraction estimate: {json.dumps(est, default=str)}")
-            if not yes and not typer.confirm("Proceed with paid LLM extraction?"):
-                raise typer.Abort()
-            extractor.run_extraction(settings, tickers)
-            resolution.resolve_extractions(settings, tickers)
-
+        loaders.load_companies(driver, settings, snapshot_id=snapshot_id)
+        loaders.load_filings_and_sections(driver, settings, tickers, snapshot_id=snapshot_id)
+        loaders.load_metrics(driver, settings, tickers, snapshot_id=snapshot_id)
         embedder = Embedder()
         typer.echo("== Evidence spans (local embeddings) ==")
-        loaders.load_evidence_spans(driver, settings, embedder, tickers)
+        loaders.load_evidence_spans(driver, settings, embedder, tickers, snapshot_id=snapshot_id)
         typer.echo("== Knowledge (relations, risks, products) ==")
-        loaders.load_knowledge(driver, settings, embedder, tickers)
-        typer.echo("== Export controls + AFFECTED_BY ==")
-        loaders.load_export_controls(driver, settings)
+        loaders.load_knowledge(driver, settings, embedder, tickers, snapshot_id=snapshot_id)
+        typer.echo("== Categories + export controls + AFFECTED_BY ==")
+        temporal.normalize_categories(driver)          # before AFFECTED_BY matches on the category
+        loaders.load_export_controls(driver, settings, snapshot_id=snapshot_id)
         typer.echo("== Bitemporal closure ==")
         temporal.apply_closure(driver, settings)
+        loaders.stamp_snapshot(driver, snapshot_id, snapshot_as_of, _graph_counts(driver))
         typer.echo("build-graph complete")
     finally:
         driver.close()

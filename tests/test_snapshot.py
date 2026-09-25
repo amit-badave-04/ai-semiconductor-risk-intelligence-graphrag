@@ -63,3 +63,22 @@ def test_missing_inputs_are_recorded_not_fatal(tmp_path):
 def test_as_of_accepts_iso_string_and_none(lake):
     assert compute_snapshot_id(lake, "2026-09-25") == compute_snapshot_id(lake, date(2026, 9, 25))
     assert compute_snapshot_id(lake, None).startswith("snap-")
+
+
+# ------------------------------------------------ newest date in the lake
+
+from semigraph.snapshot import newest_lake_date  # noqa: E402
+
+
+def test_newest_lake_date_is_the_latest_of_filings_and_rules(lake):
+    (lake.raw_dir / "edgar" / "manifest_universe.json").write_text(json.dumps({
+        "NVDA": [{"accession_no": "a", "filing_date": "2026-08-26"}, {"accession_no": "b", "filing_date": "2026-05-20"}],
+        "AVGO": [{"accession_no": "c", "filing_date": "2026-09-10"}]}))
+    (lake.raw_dir / "federal_register_bis_rules.json").write_text(json.dumps({
+        "results": [{"publication_date": "2026-09-24"}, {"publication_date": "2025-01-01"}]}))
+
+    assert newest_lake_date(lake) == date(2026, 9, 24)
+
+
+def test_newest_lake_date_handles_missing_and_legacy_files(tmp_path):
+    assert newest_lake_date(Settings(data_dir=tmp_path / "nothing", _env_file=None)) is None
