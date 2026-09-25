@@ -1,0 +1,356 @@
+{
+  "what": "Correctness labels for the 28 judge-dependent (open-question) answers of the 20-question benchmark: 7 questions x 2 systems (hybrid, vector) x 2 runs (v1 graph, v2 baseline).",
+  "run_sets": {
+    "v1": "data/processed/eval_runs.jsonl (v1 graph)",
+    "v2": "data/processed/eval_runs.v2-baseline.jsonl (snapshot snap-20260924-7feaaf9bfe)"
+  },
+  "method": "AI-assigned, NOT human. Three independent blind passes (Claude Opus 5.5, Sonnet 5, Opus 5.5) applied one fixed rubric to the answer plus the evidence around each citation; run set and system hidden, order shuffled. A label is kept only when all three agree; otherwise it is 'contested' and excluded from calibration accuracy.",
+  "limits": [
+    "Labellers are the same model family as judge candidates (correlated blind spots).",
+    "The first two passes saw a viewer that showed only the text AFTER a citation marker (wrong for risk/relationship lines); the third pass used the corrected viewer. Unanimity across all three is required.",
+    "28 answers is every open-question answer that exists; growing the benchmark is what adds labels."
+  ],
+  "counts": {
+    "correct": 21,
+    "incorrect": 6,
+    "contested": 1
+  },
+  "labels": [
+    {
+      "run_set": "v1",
+      "id": "Q1",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "4e15bdb4a23f80d1"
+    },
+    {
+      "run_set": "v1",
+      "id": "Q1",
+      "system": "vector",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "15080704aee26834"
+    },
+    {
+      "run_set": "v1",
+      "id": "Q2",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "3358c512070c19d8"
+    },
+    {
+      "run_set": "v1",
+      "id": "Q2",
+      "system": "vector",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "ba2b0920efde890f"
+    },
+    {
+      "run_set": "v1",
+      "id": "Q3",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "d0e901f086a7288a"
+    },
+    {
+      "run_set": "v1",
+      "id": "Q3",
+      "system": "vector",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "d8da8d0b0a28e72c"
+    },
+    {
+      "run_set": "v1",
+      "id": "R3",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "bb24f2b813b12581"
+    },
+    {
+      "run_set": "v1",
+      "id": "R3",
+      "system": "vector",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "d88badccceac9e53"
+    },
+    {
+      "run_set": "v1",
+      "id": "T1",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "3d5fad3fb4be1add"
+    },
+    {
+      "run_set": "v1",
+      "id": "T1",
+      "system": "vector",
+      "label": "incorrect",
+      "votes": {
+        "opus": "incorrect",
+        "sonnet": "incorrect",
+        "opus2": "incorrect"
+      },
+      "answer_sha256_16": "3850b84121738f37"
+    },
+    {
+      "run_set": "v1",
+      "id": "T2",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "f0e6dcc62ad2bc81"
+    },
+    {
+      "run_set": "v1",
+      "id": "T2",
+      "system": "vector",
+      "label": "incorrect",
+      "votes": {
+        "opus": "incorrect",
+        "sonnet": "incorrect",
+        "opus2": "incorrect"
+      },
+      "answer_sha256_16": "7d0b115ee9cbc589"
+    },
+    {
+      "run_set": "v1",
+      "id": "T3",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "c527d4f1a870f4ef"
+    },
+    {
+      "run_set": "v1",
+      "id": "T3",
+      "system": "vector",
+      "label": "incorrect",
+      "votes": {
+        "opus": "incorrect",
+        "sonnet": "incorrect",
+        "opus2": "incorrect"
+      },
+      "answer_sha256_16": "b6974a80d2cc1f94"
+    },
+    {
+      "run_set": "v2",
+      "id": "Q1",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "efd914a6e9c485d3"
+    },
+    {
+      "run_set": "v2",
+      "id": "Q1",
+      "system": "vector",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "39548a7777b1b8e6"
+    },
+    {
+      "run_set": "v2",
+      "id": "Q2",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "9709e6265999ad9c"
+    },
+    {
+      "run_set": "v2",
+      "id": "Q2",
+      "system": "vector",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "191d9a371a660237"
+    },
+    {
+      "run_set": "v2",
+      "id": "Q3",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "45247ebf32b167ce"
+    },
+    {
+      "run_set": "v2",
+      "id": "Q3",
+      "system": "vector",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "2643e4c79d877bfe"
+    },
+    {
+      "run_set": "v2",
+      "id": "R3",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "4eacb8d2de2a449d"
+    },
+    {
+      "run_set": "v2",
+      "id": "R3",
+      "system": "vector",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "5b4b9b18168b5851"
+    },
+    {
+      "run_set": "v2",
+      "id": "T1",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "81f928057dc7fc83"
+    },
+    {
+      "run_set": "v2",
+      "id": "T1",
+      "system": "vector",
+      "label": "incorrect",
+      "votes": {
+        "opus": "incorrect",
+        "sonnet": "incorrect",
+        "opus2": "incorrect"
+      },
+      "answer_sha256_16": "fe7baa97618383af"
+    },
+    {
+      "run_set": "v2",
+      "id": "T2",
+      "system": "hybrid",
+      "label": "contested",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "incorrect",
+        "opus2": "incorrect"
+      },
+      "answer_sha256_16": "51b0f45cd540509f"
+    },
+    {
+      "run_set": "v2",
+      "id": "T2",
+      "system": "vector",
+      "label": "incorrect",
+      "votes": {
+        "opus": "incorrect",
+        "sonnet": "incorrect",
+        "opus2": "incorrect"
+      },
+      "answer_sha256_16": "b4b1b0b03ed34155"
+    },
+    {
+      "run_set": "v2",
+      "id": "T3",
+      "system": "hybrid",
+      "label": "correct",
+      "votes": {
+        "opus": "correct",
+        "sonnet": "correct",
+        "opus2": "correct"
+      },
+      "answer_sha256_16": "97973fbe086f232c"
+    },
+    {
+      "run_set": "v2",
+      "id": "T3",
+      "system": "vector",
+      "label": "incorrect",
+      "votes": {
+        "opus": "incorrect",
+        "sonnet": "incorrect",
+        "opus2": "incorrect"
+      },
+      "answer_sha256_16": "775dc43f3759a6fb"
+    }
+  ]
+}
