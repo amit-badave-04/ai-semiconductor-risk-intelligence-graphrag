@@ -28,24 +28,7 @@ from .schemas import ChunkExtraction, CriticVerdict, normalize_category
 
 logger = logging.getLogger("semigraph.extraction")
 
-# ticker: (canonical name, annual form, quarterly form or None) — ported from
-# notebook 12. The canonical name is the {ticker_name} the extractor prompt
-# tells the LLM to resolve "we"/"our" to.
-FILERS: dict[str, tuple[str, str, str | None]] = {
-    "NVDA": ("Nvidia", "10-K", "10-Q"), "AMD": ("AMD", "10-K", "10-Q"),
-    "INTC": ("Intel", "10-K", "10-Q"), "AVGO": ("Broadcom", "10-K", "10-Q"),
-    "QCOM": ("Qualcomm", "10-K", "10-Q"), "MU": ("Micron", "10-K", "10-Q"),
-    "AAPL": ("Apple", "10-K", "10-Q"), "MSFT": ("Microsoft", "10-K", "10-Q"),
-    "AMZN": ("Amazon", "10-K", "10-Q"), "GOOGL": ("Alphabet", "10-K", "10-Q"),
-    "META": ("Meta", "10-K", "10-Q"),
-    "TSM": ("TSMC", "20-F", None), "ASML": ("ASML", "20-F", None),
-}
-
-RISK_SECTIONS = {"10-K": "I.1A", "10-Q": "II.1A", "20-F": "I.3"}
-
-# how many PRIOR annuals contribute risk-only chunks; 1 = latest + one prior
-# = two time points per company for the bitemporal lineages (notebook 13)
-HIST_ANNUALS = 1
+from ..universe import FILERS, HIST_ANNUALS, RISK_SECTIONS  # noqa: E402,F401 — re-exported (single source: universe.py)
 
 _SCOPE_COLUMNS = ["chunk_id", "ticker", "form", "accession_no", "section_id",
                   "filing_date", "n_tokens", "text", "section_title", "sub_heading"]

@@ -36,32 +36,9 @@ logger = logging.getLogger("semigraph.graph.loaders")
 
 BATCH_SIZE = 100  # UNWIND batch size keeping transactions small (notebooks 09/12)
 
-# ticker: (canonical name, tier) — the 14-company universe (notebook 06).
-# Samsung has no CIK (not an SEC filer) and gets a synthetic negative key.
-UNIVERSE = {
-    "MSFT": ("Microsoft", "Hyperscaler"), "AMZN": ("Amazon", "Hyperscaler"),
-    "GOOGL": ("Alphabet", "Hyperscaler"), "META": ("Meta", "Hyperscaler"),
-    "NVDA": ("Nvidia", "Silicon Designer"), "AMD": ("AMD", "Silicon Designer"),
-    "AVGO": ("Broadcom", "Silicon Designer"), "QCOM": ("Qualcomm", "Silicon Designer"),
-    "INTC": ("Intel", "IDM"), "TSM": ("TSMC", "Manufacturer"), "ASML": ("ASML", "Manufacturer"),
-    "MU": ("Micron", "Memory"), "SSNLF": ("Samsung", "Memory"), "AAPL": ("Apple", "Ecosystem Anchor"),
-}
-
-# ticker: (canonical name, annual form, quarterly form or None) — the 13 SEC
-# filers (notebook 12). TSMC and ASML file 20-F (annual only).
-FILERS = {
-    "NVDA": ("Nvidia", "10-K", "10-Q"), "AMD": ("AMD", "10-K", "10-Q"),
-    "INTC": ("Intel", "10-K", "10-Q"), "AVGO": ("Broadcom", "10-K", "10-Q"),
-    "QCOM": ("Qualcomm", "10-K", "10-Q"), "MU": ("Micron", "10-K", "10-Q"),
-    "AAPL": ("Apple", "10-K", "10-Q"), "MSFT": ("Microsoft", "10-K", "10-Q"),
-    "AMZN": ("Amazon", "10-K", "10-Q"), "GOOGL": ("Alphabet", "10-K", "10-Q"),
-    "META": ("Meta", "10-K", "10-Q"),
-    "TSM": ("TSMC", "20-F", None), "ASML": ("ASML", "20-F", None),
-}
+from ..universe import FILERS, HIST_ANNUALS, RISK_SECTIONS, UNIVERSE  # noqa: E402,F401 — single source: universe.py
 
 RELATION_TYPES = ["SUPPLIES_TO", "DEPENDS_ON", "CUSTOMER_OF", "COMPETES_WITH"]
-RISK_SECTIONS = {"10-K": "I.1A", "10-Q": "II.1A", "20-F": "I.3"}
-HIST_ANNUALS = 1  # prior annuals contributing risk-only chunks (notebook 12)
 
 # rule-title keyword -> evidence-text keywords (notebook 12 stage 7 heuristic)
 TOPIC_KEYWORDS = {

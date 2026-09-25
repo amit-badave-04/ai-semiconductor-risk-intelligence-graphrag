@@ -53,7 +53,7 @@ KEEP_SECTIONS = {
     "10-Q": ["I.2", "II.1A"],
     "20-F": ["I.3", "I.4", "I.5"],
 }
-RISK_SECTIONS = {"10-K": "I.1A", "10-Q": "II.1A", "20-F": "I.3"}
+from ..universe import RISK_SECTIONS  # noqa: E402,F401 — re-exported (single source: universe.py)
 
 # --- Fallback for custom-layout filings with NO inline "Item N." headings
 # (Intel's integrated 10-K): section names ride on running page-headers like

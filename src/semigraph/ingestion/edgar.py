@@ -31,25 +31,7 @@ from ..config import Settings, get_settings
 
 logger = logging.getLogger("semigraph.ingestion.edgar")
 
-# ticker: (canonical name, annual form, quarterly form or None) — notebook 12
-FILERS: dict[str, tuple[str, str, str | None]] = {
-    "NVDA": ("Nvidia", "10-K", "10-Q"),
-    "AMD": ("AMD", "10-K", "10-Q"),
-    "INTC": ("Intel", "10-K", "10-Q"),
-    "AVGO": ("Broadcom", "10-K", "10-Q"),
-    "QCOM": ("Qualcomm", "10-K", "10-Q"),
-    "MU": ("Micron", "10-K", "10-Q"),
-    "AAPL": ("Apple", "10-K", "10-Q"),
-    "MSFT": ("Microsoft", "10-K", "10-Q"),
-    "AMZN": ("Amazon", "10-K", "10-Q"),
-    "GOOGL": ("Alphabet", "10-K", "10-Q"),
-    "META": ("Meta", "10-K", "10-Q"),
-    "TSM": ("TSMC", "20-F", None),
-    "ASML": ("ASML", "20-F", None),
-}
-
-# Annuals filed this calendar year or later (covers the AI capex supercycle)
-ANNUAL_SINCE = 2023
+from ..universe import ANNUAL_SINCE, FILERS  # noqa: E402,F401 — re-exported (single source: universe.py)
 
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
