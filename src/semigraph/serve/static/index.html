@@ -52,8 +52,8 @@
     <textarea id="q" maxlength="500" placeholder="e.g. Which export-control rules affect Nvidia, and which risks did it stop disclosing in its latest 10-K?"></textarea>
     <div class="row">
       <select id="strategy" title="Retrieval strategy">
-        <option value="hybrid">hybrid GraphRAG (graph + XBRL + bitemporal + vector) — benchmark 100% correct</option>
-        <option value="vector">vector-only baseline — 80% correct, 0% on temporal questions</option>
+        <option value="hybrid">hybrid GraphRAG (graph + XBRL + bitemporal + vector) — benchmark 95% correct (19 of 20)</option>
+        <option value="vector">vector-only baseline — 75% correct, 0% on temporal questions</option>
       </select>
       <button class="btn" id="ask">Ask</button>
       <span class="hint" id="limits"></span>
