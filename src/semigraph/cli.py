@@ -294,6 +294,8 @@ def eval_cmd(
     rescore: bool = typer.Option(False, help="Do not answer again: re-score the checkpointed runs (judge calls only)"),
     analyze: bool = typer.Option(False, help="After scoring, label every failing run with the failure taxonomy -> artifacts/error_analysis.json"),
     report_suffix: str = typer.Option("", help="Suffix for eval_report/eval_scores file names (keeps a re-scoring next to the primary report)"),
+    runs_file: str = typer.Option("eval_runs.jsonl", help="Checkpoint log inside data/processed. Use a NEW name per data snapshot: the default holds v1's runs and would be resumed, not re-answered"),
+    max_answer_usd: float = typer.Option(None, "--max-answer-usd", help="Stop before the next paid answer once the answering spend in the runs file reaches this (judge spend is not counted)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the spend confirmation"),
     verbose: bool = typer.Option(False, "-v"),
 ):
@@ -301,7 +303,7 @@ def eval_cmd(
     _setup_logging(verbose)
     from semigraph.artifacts import load_benchmark
     from semigraph.eval.error_analysis import analyze_failures
-    from semigraph.eval.runner import run_benchmark
+    from semigraph.eval.runner import AnswerBudgetExceeded, run_benchmark
     from semigraph.graph import client
 
     settings = _settings()
@@ -319,7 +321,11 @@ def eval_cmd(
         embedder = Embedder()
     try:
         out = run_benchmark(settings, driver, embedder, systems=sys_tuple, limit=limit,
-                            judge_model=judge_model, rescore=rescore, report_suffix=report_suffix)
+                            judge_model=judge_model, rescore=rescore, report_suffix=report_suffix,
+                            runs_file=runs_file, max_answer_usd=max_answer_usd)
+    except AnswerBudgetExceeded as e:
+        typer.echo(f"Stopped: {e}. Nothing further was spent; re-run with a higher cap to resume.", err=True)
+        raise typer.Exit(5) from e
     finally:
         if driver is not None:
             driver.close()

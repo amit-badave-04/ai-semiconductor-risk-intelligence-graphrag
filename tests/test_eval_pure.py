@@ -303,6 +303,61 @@ def test_run_benchmark_rescore_reuses_runs_with_other_judge(tmp_path, fake_answe
     assert (tmp_path / "a" / "eval_report.json").exists()  # primary report untouched
 
 
+# --- a new snapshot's baseline must not resume from (or overwrite) an earlier run log ---
+
+def test_runs_file_keeps_a_new_baseline_apart_from_the_v1_log(tmp_path, fake_answer):
+    settings = Settings(data_dir=tmp_path / "data", _env_file=None)
+    v1 = settings.processed_dir / "eval_runs.jsonl"
+    v1.parent.mkdir(parents=True)
+    v1_row = json.dumps({"id": "N1", "system": "hybrid", "type": "numeric", "q": "q", "answer": "old"})
+    v1.write_text(v1_row + "\n", encoding="utf-8")
+    out = run_benchmark(settings, None, None, limit=1, systems=("hybrid",), judge=ScriptedJudge(),
+                        artifacts_dir=tmp_path / "a", runs_file="eval_runs.v2.jsonl")
+    assert out["results_path"] == settings.processed_dir / "eval_runs.v2.jsonl"
+    assert len(fake_answer) == 1  # N1/hybrid was answered again: the v1 checkpoint is not consulted
+    assert v1.read_text(encoding="utf-8") == v1_row + "\n"  # and never written to
+
+
+def _spending_answer(monkeypatch, prompt_tokens):
+    calls = []
+
+    def _answer(question, driver, embedder, strategy="hybrid", llm=None, **kw):
+        calls.append(strategy)
+        llm.last_usage = {"prompt_tokens": prompt_tokens, "completion_tokens": 0}
+        return {"answer": "x", "cited": set(), "valid_ids": set(), "hallucinated": set(),
+                "context": "c", "retrieval": {"chunks": []}}
+
+    monkeypatch.setattr(runner_mod, "answer", _answer)
+    return calls
+
+
+def test_answer_budget_stops_before_the_next_paid_answer(tmp_path, monkeypatch):
+    calls = _spending_answer(monkeypatch, prompt_tokens=100_000)  # ~$0.20 per answer at list price
+    per_run = runner_mod.usage_cost({"prompt_tokens": 100_000, "completion_tokens": 0})
+    with pytest.raises(runner_mod.AnswerBudgetExceeded):
+        runner_mod.run_systems(BENCH, None, None, ("hybrid",), tmp_path / "runs.jsonl", max_usd=per_run * 1.5)
+    assert len(calls) == 2  # spent after 1 run < cap, after 2 runs >= cap: the third is refused
+    rows = [json.loads(l) for l in (tmp_path / "runs.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 2  # what was bought is checkpointed
+
+
+def test_answer_budget_counts_spend_already_in_the_log_on_resume(tmp_path, monkeypatch):
+    calls = _spending_answer(monkeypatch, prompt_tokens=100_000)
+    per_run = runner_mod.usage_cost({"prompt_tokens": 100_000, "completion_tokens": 0})
+    path = tmp_path / "runs.jsonl"
+    with pytest.raises(runner_mod.AnswerBudgetExceeded):
+        runner_mod.run_systems(BENCH, None, None, ("hybrid",), path, max_usd=per_run * 1.5)
+    with pytest.raises(runner_mod.AnswerBudgetExceeded):
+        runner_mod.run_systems(BENCH, None, None, ("hybrid",), path, max_usd=per_run * 1.5)
+    assert len(calls) == 2  # the resumed call already sees 2 runs of spend and buys nothing more
+
+
+def test_no_answer_budget_means_unbounded(tmp_path, monkeypatch):
+    calls = _spending_answer(monkeypatch, prompt_tokens=100_000)
+    runner_mod.run_systems(BENCH, None, None, ("hybrid",), tmp_path / "runs.jsonl")
+    assert len(calls) == len(BENCH)
+
+
 def test_score_runs_survives_a_failing_judge_call():
     class FlakyJudge(ScriptedJudge):
         def __call__(self, prompt, model_cls, **kw):

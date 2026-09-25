@@ -1,0 +1,57 @@
+{
+  "overall": {
+    "correct": {
+      "hybrid": 0.95,
+      "vector": 0.75
+    },
+    "faithfulness": {
+      "hybrid": 0.8917,
+      "vector": 0.9034
+    },
+    "context_precision": {
+      "hybrid": 0.275,
+      "vector": 0.325
+    },
+    "context_recall": {
+      "hybrid": 0.7454,
+      "vector": 0.6574
+    },
+    "citation_validity": {
+      "hybrid": 1.0,
+      "vector": 0.95
+    },
+    "avg_citations": {
+      "hybrid": 5.4,
+      "vector": 4.15
+    },
+    "avg_cost_usd": {
+      "hybrid": 0.0371,
+      "vector": 0.0231
+    },
+    "avg_latency_s": {
+      "hybrid": 8.5698,
+      "vector": 8.41
+    }
+  },
+  "by_type": {
+    "hybrid": {
+      "dependency": 1.0,
+      "numeric": 1.0,
+      "refusal": 1.0,
+      "regulatory": 1.0,
+      "risk": 0.67,
+      "temporal": 1.0
+    },
+    "vector": {
+      "dependency": 1.0,
+      "numeric": 0.6,
+      "refusal": 1.0,
+      "regulatory": 1.0,
+      "risk": 1.0,
+      "temporal": 0.0
+    }
+  },
+  "n_questions": 20,
+  "scored_runs": 40,
+  "judge_model": "anthropic/claude-sonnet-5"
+}

@@ -102,33 +102,52 @@ class _UsageCapturingLLM:
         return text
 
 
+class AnswerBudgetExceeded(RuntimeError):
+    """The answering spend in the run log reached ``max_usd``; nothing more is bought."""
+
+
 def run_systems(benchmark: list[dict], driver, embedder, systems, results_path: Path,
-                llm=None) -> list[dict]:
+                llm=None, max_usd: float | None = None) -> list[dict]:
     """Answer every (question, system) pair, checkpointed per pair in an
     append-only jsonl (notebook 14 section 3). Returns all logged runs.
 
     Each run row also carries ``latency_s``, ``usage`` and ``cost_usd`` (cost
     and latency per task, from the Agentic_Evals methodology); with an injected
     ``llm`` that exposes no ``last_usage`` they are recorded as None.
+
+    ``max_usd`` caps the ANSWERING spend recorded in ``results_path`` (earlier
+    sessions included, so a resume cannot re-spend it): before each paid answer
+    the log's total is checked and ``AnswerBudgetExceeded`` raised once it has
+    reached the cap. One answer can overshoot by its own cost.
     """
     capture = None
     if llm is None:
         llm = capture = _UsageCapturingLLM()
     results_path.parent.mkdir(parents=True, exist_ok=True)
-    done = set()
+    done, spent = set(), 0.0
     if results_path.exists():
-        done = {(json.loads(l)["id"], json.loads(l)["system"])
-                for l in results_path.open(encoding="utf-8") if l.strip()}
-    logger.info("%d runs checkpointed — resuming", len(done))
+        for line in results_path.open(encoding="utf-8"):
+            if line.strip():
+                row = json.loads(line)
+                done.add((row["id"], row["system"]))
+                spent += row.get("cost_usd") or 0.0
+    logger.info("%d runs checkpointed ($%.3f answering spend) — resuming", len(done), spent)
 
     with results_path.open("a", encoding="utf-8") as sink:
         for q in benchmark:
             for system in systems:
                 if (q["id"], system) in done:
                     continue
+                if max_usd is not None and spent >= max_usd:
+                    raise AnswerBudgetExceeded(
+                        f"answering spend ${spent:.3f} reached the ${max_usd:.2f} cap before {q['id']}/{system}; "
+                        f"{len(done)} runs are checkpointed in {results_path.name}")
                 t0 = time.monotonic()
                 a = answer(q["q"], driver, embedder, strategy=system, llm=llm)
                 usage = getattr(capture or llm, "last_usage", None)
+                cost = usage_cost(usage)
+                spent += cost or 0.0
+                done.add((q["id"], system))
                 sink.write(json.dumps({"id": q["id"], "system": system, "type": q["type"], "q": q["q"],
                                        "answer": a["answer"], "cited": sorted(a["cited"]),
                                        "valid_ids": sorted(a["valid_ids"]),
@@ -136,7 +155,7 @@ def run_systems(benchmark: list[dict], driver, embedder, systems, results_path: 
                                        "context": a["context"],
                                        "chunk_texts": {c["chunk_id"]: c["text"] for c in a["retrieval"]["chunks"]},
                                        "latency_s": round(time.monotonic() - t0, 3),
-                                       "usage": usage, "cost_usd": usage_cost(usage)}) + "\n")
+                                       "usage": usage, "cost_usd": cost}) + "\n")
                 sink.flush()
                 logger.info("  %s/%s done", q["id"], system)
     return [json.loads(l) for l in results_path.open(encoding="utf-8") if l.strip()]
@@ -245,7 +264,8 @@ def run_benchmark(settings, driver, embedder, systems=("hybrid", "vector"),
                   limit: int | None = None, llm=None, judge=None,
                   artifacts_dir: Path | str = Path("artifacts"),
                   judge_model: str | None = None, rescore: bool = False,
-                  report_suffix: str = "") -> dict:
+                  report_suffix: str = "", runs_file: str = "eval_runs.jsonl",
+                  max_answer_usd: float | None = None) -> dict:
     """Run + score the packaged gold benchmark (notebook 14 end to end).
 
     ``llm`` is the injectable plain-text answering callable (see
@@ -258,20 +278,26 @@ def run_benchmark(settings, driver, embedder, systems=("hybrid", "vector"),
     ``report_suffix`` keeps such a re-scoring next to the primary report
     (``eval_report<suffix>.json``).
 
+    ``runs_file`` names the checkpoint log inside ``settings.processed_dir``: a
+    baseline for a NEW data snapshot must use its own file, else it would resume
+    from (and answer nothing new against) the previous snapshot's runs.
+    ``max_answer_usd`` caps the answering spend (see :func:`run_systems`).
+
     Returns {"report", "scored_df", "runs", "results_path", "scores_path",
     "report_path"}.
     """
     benchmark = load_benchmark()
     if limit is not None:
         benchmark = benchmark[:limit]
-    results_path = settings.processed_dir / "eval_runs.jsonl"
+    results_path = settings.processed_dir / runs_file
     artifacts_dir = Path(artifacts_dir)
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     if rescore:
         runs = [json.loads(l) for l in results_path.open(encoding="utf-8") if l.strip()]
     else:
-        runs = run_systems(benchmark, driver, embedder, systems, results_path, llm=llm)
+        runs = run_systems(benchmark, driver, embedder, systems, results_path, llm=llm,
+                           max_usd=max_answer_usd)
     # scope scoring to this invocation's questions/systems (the log may hold
     # more when resuming a fuller earlier run)
     bench_ids = {b["id"] for b in benchmark}
