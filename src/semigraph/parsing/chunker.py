@@ -29,8 +29,11 @@ source_url``.
 Note on chunk ids: this ports notebook 12's convention —
 ``{accession_no}:{section_id}:{seq:04d}`` with ``seq`` counting per
 section. Notebook 04's original NVDA run numbered chunks by global row
-index instead; the shipped ``nvda_chunks.parquet`` keeps those ids and is
-therefore never rewritten (idempotent skip), exactly as notebook 12 did.
+index instead; the shipped ``nvda_chunks.parquet`` keeps those ids. Existing
+rows are therefore NEVER regenerated or renumbered: ``chunk_filings`` is
+append-only per accession (only accessions with no rows yet are chunked, and
+their rows are appended after the existing ones), so seeded citations and
+cached benchmark answers that key on every existing chunk_id stay valid.
 """
 
 import logging
@@ -42,7 +45,7 @@ import pandas as pd
 
 from ..config import Settings, get_settings
 from ..ingestion.edgar import FILERS, load_manifest
-from .segmentation import KEEP_SECTIONS, sections_dir
+from .segmentation import KEEP_SECTIONS, keep_sections_for, sections_dir
 
 logger = logging.getLogger("semigraph.parsing.chunker")
 
@@ -113,7 +116,7 @@ def chunk_filing_elements(
     output — the caller reports it; never crash the batch (ASML 2023/24).
     """
     if keep is None:
-        keep = KEEP_SECTIONS.get(meta["form"], [])
+        keep = keep_sections_for(meta["form"])
     st_rows: list[dict] = []
     chunk_rows: list[dict] = []
     if elements_df.empty:
@@ -215,25 +218,177 @@ def section_texts_path_for(settings: Settings, ticker: str) -> Path:
     return section_texts_dir(settings) / name
 
 
+def _write_parquet_atomic(df: pd.DataFrame, path: Path) -> None:
+    """Write via a sibling temp file + rename so an interrupted run can never
+    leave a truncated parquet where the precious chunk ids used to be."""
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        df.to_parquet(tmp, index=False)
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _load_existing(path: Path, columns: list[str]) -> pd.DataFrame:
+    """Read an existing parquet, or an empty frame with ``columns`` if absent.
+
+    A non-empty parquet missing any expected column is refused: appending to
+    it would silently corrupt rows whose ids other artifacts depend on.
+    """
+    if not path.exists():
+        return pd.DataFrame(columns=columns)
+    df = pd.read_parquet(path)
+    missing = [c for c in columns if c not in df.columns]
+    if len(df) and missing:
+        raise ValueError(
+            f"{path.name}: existing parquet lacks columns {missing} — refusing "
+            "to append (would corrupt existing rows)"
+        )
+    return df
+
+
+def _append_rows(
+    existing: pd.DataFrame, new_rows: list[dict], columns: list[str]
+) -> pd.DataFrame:
+    """``existing`` rows untouched (order, values, dtypes) + ``new_rows`` after.
+
+    Returns a new frame; neither input is mutated.
+    """
+    new_df = pd.DataFrame(new_rows, columns=columns)
+    if existing.empty:
+        return new_df
+    combined = pd.concat(
+        [existing, new_df.reindex(columns=existing.columns)], ignore_index=True
+    )
+    return combined.astype(existing.dtypes.to_dict())
+
+
+def _pending_filings(
+    ticker: str, rows: list[dict], done: set[str], sec_dir: Path
+) -> tuple[list[dict], list[str]]:
+    """Manifest filings not yet chunked that have segmentation output.
+
+    Returns ``(pending manifest rows in manifest order, warnings)``. A filing
+    with no interim sections parquet is reported, not fatal.
+    """
+    pending: list[dict] = []
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for meta in rows:
+        accession = meta["accession_no"]
+        if accession in done or accession in seen:
+            continue
+        seen.add(accession)
+        if not (sec_dir / f"{accession}.parquet").exists():
+            msg = f"{accession}: no interim sections parquet — run segment_filings first"
+            logger.warning("%s %s", ticker, msg)
+            warnings.append(msg)
+            continue
+        pending.append(meta)
+    return pending, warnings
+
+
+def _chunk_pending(
+    ticker: str, pending: list[dict], sec_dir: Path
+) -> tuple[list[dict], list[dict], list[str], list[str]]:
+    """Chunk each pending filing. Returns ``(section_text_rows, chunk_rows,
+    accessions that yielded chunks, warnings)``. A filing that yields nothing
+    is warned about and adds nothing — it never aborts the batch."""
+    st_rows: list[dict] = []
+    ch_rows: list[dict] = []
+    new_accessions: list[str] = []
+    warnings: list[str] = []
+    for meta in pending:
+        accession = meta["accession_no"]
+        try:
+            elements_df = pd.read_parquet(sec_dir / f"{accession}.parquet")
+        except (OSError, ValueError) as exc:
+            msg = f"{accession}: unreadable interim sections parquet ({exc})"
+            logger.warning("%s %s", ticker, msg)
+            warnings.append(msg)
+            continue
+        st, ch = chunk_filing_elements(meta, elements_df)
+        if not ch:
+            msg = (
+                f"{accession} ({meta['form']} {meta['filing_date']}): no "
+                "keep-sections segmented — review layout"
+            )
+            logger.warning("%s %s", ticker, msg)
+            warnings.append(msg)
+            continue
+        st_rows.extend(st)
+        ch_rows.extend(ch)
+        new_accessions.append(accession)
+    return st_rows, ch_rows, new_accessions, warnings
+
+
+def _chunk_ticker(settings: Settings, ticker: str, rows: list[dict]) -> dict:
+    """Append-only chunking for one filer (see :func:`chunk_filings`)."""
+    chunks_path = chunks_path_for(settings, ticker)
+    st_path = section_texts_path_for(settings, ticker)
+    existing = _load_existing(chunks_path, CHUNK_COLUMNS)
+    existing_st = _load_existing(st_path, SECTION_TEXT_COLUMNS)
+    done = set(existing["accession_no"]) if len(existing) else set()
+
+    pending, warnings = _pending_filings(ticker, rows, done, sections_dir(settings))
+    st_rows, ch_rows, new_accessions, chunk_warnings = _chunk_pending(
+        ticker, pending, sections_dir(settings)
+    )
+    warnings = warnings + chunk_warnings
+
+    combined, combined_st = existing, existing_st
+    if new_accessions or not chunks_path.exists():
+        # a re-added accession replaces any orphaned section texts from a
+        # run that died between the two writes; chunk rows are never replaced
+        kept_st = existing_st[~existing_st["accession_no"].isin(new_accessions)]
+        combined_st = _append_rows(kept_st, st_rows, SECTION_TEXT_COLUMNS)
+        combined = _append_rows(existing, ch_rows, CHUNK_COLUMNS)
+        _write_parquet_atomic(combined_st, st_path)  # texts first: a crash just re-chunks
+        _write_parquet_atomic(combined, chunks_path)
+        logger.info(
+            "%s: +%d chunks from %d new filing(s), %d chunks total",
+            ticker, len(ch_rows), len(new_accessions), len(combined),
+        )
+    else:
+        logger.info("%s: chunks up to date (%s)", ticker, chunks_path.name)
+
+    return {
+        "chunks": len(combined),
+        "new_chunks": len(ch_rows),
+        "new_accessions": new_accessions,
+        "sections": len(combined_st) if st_path.exists() else None,
+        "tokens": int(combined["n_tokens"].sum()) if len(combined) else 0,
+        "cached": not new_accessions,
+        "warnings": warnings,
+    }
+
+
 def chunk_filings(
     settings: Settings | None = None, tickers: list[str] | None = None
 ) -> dict:
-    """Chunk every segmented filing (idempotent; ported from notebook 12
-    stage 3).
+    """Chunk every segmented filing, APPEND-ONLY per accession (idempotent).
 
     Reads ``data/interim/sections/<accession_no>.parquet`` (run
-    ``segment_filings`` first) and writes, per filer:
+    ``segment_filings`` first) and maintains, per filer:
 
     - ``data/interim/section_texts/<ticker>_section_texts.parquet``
     - ``data/processed/chunks/<ticker>_chunks.parquet``
 
-    A filer whose chunks parquet already exists (and is non-empty) is
-    skipped, so the notebook-built data lake — including NVDA's
-    notebook-04 chunk ids that the graph's EvidenceSpans key on — is never
-    rewritten.
+    For each filer the existing chunk parquet is read; only manifest
+    accessions that have a sections parquet but NO rows yet in it are chunked,
+    and their rows are appended AFTER the existing ones. Existing rows —
+    including NVDA's legacy ids that the graph's EvidenceSpans, seeded
+    citations and cached benchmark answers key on — keep their values and
+    order exactly; the parquet is never regenerated from scratch, so a new
+    filing for an existing filer needs (and risks) no rebuild. New ids follow
+    ``accession:section:seq`` with ``seq`` counting per section. An accession
+    that yields no keep-sections chunks is reported in ``warnings`` and adds
+    nothing (it is retried on the next run, which is free and warns again).
 
-    Returns ``{ticker: {"chunks": n, "sections": n, "tokens": n,
-    "cached": bool, "warnings": [...]}}``.
+    Returns ``{ticker: {"chunks": total, "new_chunks": n, "new_accessions":
+    [...], "sections": total section texts (None if no section-text file),
+    "tokens": total, "cached": True when there was no new work,
+    "warnings": [...]}}``.
     """
     settings = settings or get_settings()
     manifest = load_manifest(settings)
@@ -242,64 +397,9 @@ def chunk_filings(
             "no acquisition manifest — run semigraph.ingestion.download_filings first"
         )
     tickers = list(tickers) if tickers else [t for t in FILERS if t in manifest]
-    sec_dir = sections_dir(settings)
-    st_dir = section_texts_dir(settings)
-    st_dir.mkdir(parents=True, exist_ok=True)
+    section_texts_dir(settings).mkdir(parents=True, exist_ok=True)
     settings.chunks_dir.mkdir(parents=True, exist_ok=True)
-
-    summary: dict[str, dict] = {}
-    for ticker in tickers:
-        chunks_path = chunks_path_for(settings, ticker)
-        if chunks_path.exists():
-            existing = pd.read_parquet(chunks_path)
-            if len(existing):
-                logger.info("%s: chunks cached (%s)", ticker, chunks_path.name)
-                summary[ticker] = {
-                    "chunks": len(existing),
-                    "sections": None,
-                    "tokens": int(existing["n_tokens"].sum()),
-                    "cached": True,
-                    "warnings": [],
-                }
-                continue
-        st_all, ch_all, warnings = [], [], []
-        for meta in manifest.get(ticker, []):
-            sec_path = sec_dir / f"{meta['accession_no']}.parquet"
-            if not sec_path.exists():
-                msg = (
-                    f"{meta['accession_no']}: no interim sections parquet — "
-                    "run segment_filings first"
-                )
-                logger.warning("%s %s", ticker, msg)
-                warnings.append(msg)
-                continue
-            elements_df = pd.read_parquet(sec_path)
-            st, ch = chunk_filing_elements(meta, elements_df)
-            if not ch:
-                msg = (
-                    f"{meta['form']} {meta['filing_date']}: no keep-sections "
-                    "segmented — review layout"
-                )
-                logger.warning("%s %s", ticker, msg)
-                warnings.append(msg)
-            st_all.extend(st)
-            ch_all.extend(ch)
-        pd.DataFrame(st_all, columns=SECTION_TEXT_COLUMNS).to_parquet(
-            section_texts_path_for(settings, ticker), index=False
-        )
-        pd.DataFrame(ch_all, columns=CHUNK_COLUMNS).to_parquet(
-            chunks_path, index=False
-        )
-        tokens = sum(c["n_tokens"] for c in ch_all)
-        logger.info(
-            "%s: %d chunks / %d sections / %s tokens",
-            ticker, len(ch_all), len(st_all), f"{tokens:,}",
-        )
-        summary[ticker] = {
-            "chunks": len(ch_all),
-            "sections": len(st_all),
-            "tokens": tokens,
-            "cached": False,
-            "warnings": warnings,
-        }
-    return summary
+    return {
+        ticker: _chunk_ticker(settings, ticker, manifest.get(ticker, []))
+        for ticker in tickers
+    }

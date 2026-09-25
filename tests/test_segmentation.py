@@ -11,6 +11,8 @@ import pytest
 from semigraph.parsing.segmentation import (
     KEEP_SECTIONS,
     PAGEHEAD_RE,
+    base_form,
+    keep_sections_for,
     needs_fallback,
     norm_marker,
     segment_by_items,
@@ -96,6 +98,37 @@ class TestFallbackTrigger:
             [el("TitleElement", "Item 1A. Risk Factors"), el("TextElement", PROSE)]
         )
         assert needs_fallback(rows, "10-K") is False
+
+
+class TestAmendmentForms:
+    """A full-document 10-K/A (AMD, 2026-02-04, corrected MD&A figures) has the
+    same layout as its base 10-K, so it must be segmented with the same
+    keep-sections; a Part-III-only amendment simply yields no keep-sections."""
+
+    @pytest.mark.parametrize("form,expected", [
+        ("10-K", "10-K"), ("10-K/A", "10-K"), ("10-Q", "10-Q"), ("10-Q/A", "10-Q"),
+        ("20-F", "20-F"), ("20-F/A", "20-F"),
+    ])
+    def test_base_form_strips_the_amendment_suffix(self, form, expected):
+        assert base_form(form) == expected
+
+    def test_amendment_uses_the_base_forms_keep_sections(self):
+        assert keep_sections_for("10-K/A") == KEEP_SECTIONS["10-K"]
+        assert keep_sections_for("8-K") == []
+
+    def test_full_10ka_does_not_trigger_fallback(self):
+        rows = segment_by_items(
+            [el("TitleElement", "Item 1A. Risk Factors"), el("TextElement", PROSE)]
+        )
+        assert needs_fallback(rows, "10-K/A") is False
+
+    def test_part_iii_only_10ka_has_no_keep_sections_so_triggers_fallback(self):
+        rows = segment_by_items([el("TitleElement", "Item 10. Directors and Officers"), el("TextElement", PROSE)])
+        assert needs_fallback(rows, "10-K/A") is True
+
+    def test_pageheader_fallback_maps_an_amendment_like_its_base_form(self):
+        rows = segment_by_pageheaders([el("TextElement", "Risk Factors44"), el("TextElement", PROSE)], "10-K/A")
+        assert {r["section_id"] for r in rows} == {"I.1A"}
 
 
 # ----------------------------------------------------- page-header fallback

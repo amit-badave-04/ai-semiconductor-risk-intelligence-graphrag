@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # --- LLM cost accounting (USD per million tokens; Claude Sonnet 5 list price) ---
     llm_input_price_per_mtok: float = 2.0
     llm_output_price_per_mtok: float = 10.0
+    # extraction critic (``critic_model``; Claude Haiku 4.5 list price)
+    critic_input_price_per_mtok: float = 1.0
+    critic_output_price_per_mtok: float = 5.0
 
     # --- Web service (semigraph.serve) ---
     environment: str = "development"          # "production" on Fly: stricter defaults

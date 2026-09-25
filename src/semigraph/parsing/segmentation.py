@@ -55,6 +55,18 @@ KEEP_SECTIONS = {
 }
 from ..universe import RISK_SECTIONS  # noqa: E402,F401 — re-exported (single source: universe.py)
 
+
+def base_form(form: str) -> str:
+    """``10-K/A`` -> ``10-K``: an amendment shares the layout, keep-sections and
+    page-header vocabulary of its base form (a Part-III-only amendment simply
+    yields no keep-sections and is treated as unparsed downstream)."""
+    return form[:-2] if form.endswith("/A") else form
+
+
+def keep_sections_for(form: str) -> list[str]:
+    """Section ids worth extracting for ``form`` (amendments use their base form)."""
+    return KEEP_SECTIONS.get(base_form(form), [])
+
 # --- Fallback for custom-layout filings with NO inline "Item N." headings
 # (Intel's integrated 10-K): section names ride on running page-headers like
 # "Risk Factors44" (name + page number).
@@ -127,7 +139,7 @@ def segment_by_pageheaders(elements, form: str) -> list[dict]:
     A PageHeaderElement naming a DIFFERENT section ends the current one
     (page boundary).
     """
-    mapping = PAGEHEAD_MAP.get(form, {})
+    mapping = PAGEHEAD_MAP.get(base_form(form), {})
     sid, cur_name, rows = None, None, []
     for idx, el in enumerate(elements):
         et, text = type(el).__name__, (el.text or "").strip()
@@ -168,7 +180,7 @@ def needs_fallback(rows: list[dict], form: str) -> bool:
     headings (no rows at all), while ASML yields a junk cover-page
     'Item 17 / Item 18' checkbox section — rows exist, but none we keep.
     """
-    keep = set(KEEP_SECTIONS.get(form, []))
+    keep = set(keep_sections_for(form))
     return not any(r["section_id"] in keep for r in rows)
 
 
@@ -229,7 +241,7 @@ def segment_filings(
                 continue
             html = resolve_local_path(settings, meta).read_text(encoding="utf-8")
             df = segment(html, meta["form"])
-            keep = KEEP_SECTIONS.get(meta["form"], [])
+            keep = keep_sections_for(meta["form"])
             if df.empty or not df["section_id"].isin(keep).any():
                 # ASML 2023/24 land here — unmarkable by design: warn + skip
                 logger.warning(

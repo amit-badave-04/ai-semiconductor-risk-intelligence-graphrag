@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..artifacts import read_prompt
-from ..config import Settings
+from ..config import Settings, get_settings
 from ..llm import llm_json as _default_llm
 from .gates import quote_in_chunk
 from .schemas import ChunkExtraction, CriticVerdict, normalize_category
@@ -29,9 +29,19 @@ from .schemas import ChunkExtraction, CriticVerdict, normalize_category
 logger = logging.getLogger("semigraph.extraction")
 
 from ..universe import FILERS, HIST_ANNUALS, RISK_SECTIONS  # noqa: E402,F401 — re-exported (single source: universe.py)
+from ..versions import annual_effective_accessions, compute_filing_versions, current_quarterly_accession  # noqa: E402
 
 _SCOPE_COLUMNS = ["chunk_id", "ticker", "form", "accession_no", "section_id",
                   "filing_date", "n_tokens", "text", "section_title", "sub_heading"]
+
+# Cost-estimate assumptions (token counts per chunk; measured on the NVDA PoC
+# in notebook 12). Prices are NOT here — they come from Settings.
+EXTRACT_OVERHEAD_TOKENS = 800        # instructions + JSON schema, per extractor call
+EXTRACT_OUT_TOKENS_PER_CHUNK = 300   # mostly small/empty JSON
+CRITIC_FRACTION = 0.25               # share of chunks with relations surviving the quote gate
+CRITIC_OVERHEAD_TOKENS = 500         # critic instructions + claims, per critic call
+CRITIC_OUT_TOKENS_PER_CHUNK = 40     # a short list of booleans
+WORST_CASE_MULTIPLIER = 1.5
 
 
 def chunk_parquet_path(settings: Settings, ticker: str) -> Path:
@@ -46,9 +56,32 @@ def extractions_jsonl_path(settings: Settings, ticker: str) -> Path:
     return settings.extractions_dir / name
 
 
+def _filing_versions(chunks: pd.DataFrame, annual_form: str, quarterly_form: str | None):
+    """Version status of every filing that has chunks (see ``semigraph.versions``).
+
+    Only filings with content take part, so an unsegmentable filing (ASML's
+    2023/24 20-Fs, a Part-III-only 10-K/A) never occupies a history slot or
+    replaces an original. Ordering is by ``filing_date`` (ties: ``accession_no``)
+    — never by the accession string alone: filing agents change accession
+    prefixes (MSFT), so the newest filing can have the smaller number.
+    """
+    filings = chunks[["accession_no", "form", "filing_date"]].drop_duplicates("accession_no")
+    rows = [{"accession_no": r.accession_no, "form": r.form, "filing_date": str(r.filing_date)[:10]}
+            for r in filings.itertuples()]
+    return compute_filing_versions(rows, annual_form=annual_form, quarterly_form=quarterly_form)
+
+
 def extraction_scope(settings: Settings, ticker: str) -> pd.DataFrame:
-    """Latest annual (all kept sections) + latest quarterly + HIST_ANNUALS prior
-    annuals (risk-only). Ported from notebook 12."""
+    """Latest annual (all kept sections) + the current quarterly + HIST_ANNUALS
+    prior annuals (risk-only). Ported from notebook 12, now version-aware.
+
+    - A parsed 10-K/A stands in for its original (the original was corrected).
+    - A quarterly that a newer annual has rolled forward is no longer current
+      and is not worth new spend.
+    This scope governs NEW extraction spend only — the graph loader takes every
+    chunk that already has an extraction record, so a filing that ages out of
+    this scope keeps its history in the graph.
+    """
     path = chunk_parquet_path(settings, ticker)
     if not path.exists():
         logger.warning("%s: no chunk parquet at %s — skipping", ticker, path)
@@ -57,18 +90,17 @@ def extraction_scope(settings: Settings, ticker: str) -> pd.DataFrame:
     if ch.empty or "form" not in ch.columns:  # filer with no segmentable chunks — skip gracefully
         return pd.DataFrame(columns=_SCOPE_COLUMNS)
     _, annual_form, quarterly_form = FILERS[ticker]
-    annuals = sorted(ch[ch["form"] == annual_form]["accession_no"].unique(),
-                     key=lambda a: ch[ch["accession_no"] == a]["filing_date"].iloc[0])
+    versions = _filing_versions(ch, annual_form, quarterly_form)
+    annuals = annual_effective_accessions(versions)
     parts = []
     if annuals:
         parts.append(ch[ch["accession_no"] == annuals[-1]])                      # latest annual: everything
         risk = RISK_SECTIONS[annual_form]
         hist = annuals[-(1 + HIST_ANNUALS):-1]
         parts.append(ch[ch["accession_no"].isin(hist) & (ch["section_id"] == risk)])  # history: risks only
-    if quarterly_form:
-        qs = ch[ch["form"] == quarterly_form]
-        if len(qs):
-            parts.append(qs[qs["accession_no"] == qs["accession_no"].max()])
+    current_q = current_quarterly_accession(versions) if quarterly_form else None
+    if current_q:
+        parts.append(ch[ch["accession_no"] == current_q])
     return pd.concat(parts, ignore_index=True).drop_duplicates("chunk_id") if parts else ch.iloc[0:0]
 
 
@@ -95,21 +127,31 @@ def build_extraction_plan(
     return scopes, todo
 
 
-def estimate_extraction_cost(todo: dict[str, pd.DataFrame]) -> dict:
+def estimate_extraction_cost(
+    todo: dict[str, pd.DataFrame], settings: Settings | None = None
+) -> dict:
     """Honest cost estimate for the remaining work — ported from notebook 12.
 
-    Per extractor call = instruction/schema overhead + chunk; the critic
-    (Haiku 4.5, $1/$5 per Mtok) only runs on the ~25% of chunks whose relations
-    survive the quote gate; average output measured from the NVDA PoC
-    (~300 tokens, mostly small/empty JSON). The CLI must show this BEFORE
-    any spend.
+    Per extractor call = instruction/schema overhead + chunk; the critic only
+    runs on the ~25% of chunks whose relations survive the quote gate; average
+    output measured from the NVDA PoC (~300 tokens, mostly small/empty JSON).
+    Prices (USD per Mtok) come from ``settings`` (default: ``get_settings()``):
+    ``llm_input/output_price_per_mtok`` for the extractor model and
+    ``critic_input/output_price_per_mtok`` for the critic, so a model or
+    price change never needs a code edit. The CLI must show this BEFORE any
+    spend.
     """
+    settings = settings or get_settings()
     n_todo = sum(len(s) for s in todo.values())
     chunk_tokens = int(sum(s["n_tokens"].sum() for s in todo.values() if len(s)))
-    OVERHEAD, CRITIC_FRACTION, OUT_PER_CHUNK = 800, 0.25, 300
-    extract_in = (n_todo * OVERHEAD + chunk_tokens) / 1e6 * 3
-    extract_out = n_todo * OUT_PER_CHUNK / 1e6 * 15
-    critic_cost = CRITIC_FRACTION * ((n_todo * 500 + chunk_tokens) / 1e6 * 1 + n_todo * 40 / 1e6 * 5)
+    extract_in = ((n_todo * EXTRACT_OVERHEAD_TOKENS + chunk_tokens) / 1e6
+                  * settings.llm_input_price_per_mtok)
+    extract_out = (n_todo * EXTRACT_OUT_TOKENS_PER_CHUNK / 1e6
+                   * settings.llm_output_price_per_mtok)
+    critic_cost = CRITIC_FRACTION * (
+        (n_todo * CRITIC_OVERHEAD_TOKENS + chunk_tokens) / 1e6 * settings.critic_input_price_per_mtok
+        + n_todo * CRITIC_OUT_TOKENS_PER_CHUNK / 1e6 * settings.critic_output_price_per_mtok
+    )
     likely = extract_in + extract_out + critic_cost
     return {
         "n_chunks": n_todo,
@@ -118,7 +160,7 @@ def estimate_extraction_cost(todo: dict[str, pd.DataFrame]) -> dict:
         "extractor_out_usd": round(extract_out, 2),
         "critic_usd": round(critic_cost, 2),
         "likely_usd": round(likely, 2),
-        "worst_case_usd": round(likely * 1.5, 2),
+        "worst_case_usd": round(likely * WORST_CASE_MULTIPLIER, 2),
         "per_ticker": {t: len(s) for t, s in todo.items()},
     }
 
@@ -144,7 +186,7 @@ def run_extraction(
     """
     llm = llm or _default_llm
     _, todo = build_extraction_plan(settings, tickers)
-    est = estimate_extraction_cost(todo)
+    est = estimate_extraction_cost(todo, settings)
     logger.info(
         "extraction plan: %d chunks remaining (%s chunk tokens) — estimated cost ~$%.2f likely / ~$%.2f worst case",
         est["n_chunks"], f"{est['chunk_tokens']:,}", est["likely_usd"], est["worst_case_usd"],
