@@ -16,9 +16,13 @@ CREATE CONSTRAINT product_name IF NOT EXISTS FOR (p:Product) REQUIRE p.name IS U
 
 CREATE CONSTRAINT exportcontrol_rule IF NOT EXISTS FOR (x:ExportControl) REQUIRE x.rule_id IS UNIQUE;
 
+CREATE CONSTRAINT snapshot_id IF NOT EXISTS FOR (s:Snapshot) REQUIRE s.id IS UNIQUE;
+
 CREATE INDEX company_ticker IF NOT EXISTS FOR (c:Company) ON (c.ticker);
 
 CREATE INDEX filing_date IF NOT EXISTS FOR (f:Filing) ON (f.filing_date);
+
+CREATE INDEX filing_status IF NOT EXISTS FOR (f:Filing) ON (f.status);
 
 CREATE INDEX metric_period IF NOT EXISTS FOR (m:Metric) ON (m.period_end);
 
@@ -31,7 +35,15 @@ CREATE INDEX discloses_temporal IF NOT EXISTS FOR ()-[r:DISCLOSES_RISK]-() ON (r
 CREATE INDEX affected_temporal IF NOT EXISTS FOR ()-[r:AFFECTED_BY]-() ON (r.start_date, r.end_date, r.status);
 
 CREATE VECTOR INDEX evidence_embedding IF NOT EXISTS FOR (e:EvidenceSpan) ON (e.embedding)
+    WITH [e.is_current, e.retrievable, e.filer_cik, e.form, e.valid_from, e.valid_to]
     OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
 
-CREATE VECTOR INDEX risk_embedding IF NOT EXISTS FOR (r:RiskFactor) ON (r.embedding)
+CREATE VECTOR INDEX risk_embedding IF NOT EXISTS FOR (rf:RiskFactor) ON (rf.embedding)
+    WITH [rf.is_current, rf.filer_cik, rf.valid_from, rf.valid_to]
     OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};
+
+CREATE FULLTEXT INDEX evidence_text_ft IF NOT EXISTS FOR (e:EvidenceSpan) ON EACH [e.text]
+    OPTIONS {indexConfig: {`fulltext.analyzer`: 'standard-no-stop-words'}};
+
+CREATE FULLTEXT INDEX risk_summary_ft IF NOT EXISTS FOR (rf:RiskFactor) ON EACH [rf.summary]
+    OPTIONS {indexConfig: {`fulltext.analyzer`: 'standard-no-stop-words'}};

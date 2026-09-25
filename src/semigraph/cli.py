@@ -123,6 +123,40 @@ def snapshot(
     typer.echo(compute_snapshot_id(_settings(), _parse_as_of(as_of)))
 
 
+@app.command()
+def extract(
+    ticker: list[str] = typer.Option(None, "--ticker", "-t"),
+    max_usd: float = typer.Option(None, "--max-usd", help="Refuse to start if the WORST-CASE estimate exceeds this (required unless --dry-run)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the estimate and stop; spends nothing"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """PAID: LLM-extract chunks not yet extracted, then resolve entities.
+
+    Checkpointed per chunk (an interruption never re-bills). Prints the cost
+    estimate first and refuses to start when the worst case exceeds --max-usd."""
+    _setup_logging(verbose)
+    from semigraph.extraction import extractor, resolution
+
+    if max_usd is None and not dry_run:
+        raise typer.BadParameter("--max-usd is required for a paid run (use --dry-run to only see the estimate)")
+    settings = _settings()
+    tickers = list(ticker) if ticker else None
+    _, todo = extractor.build_extraction_plan(settings, tickers)
+    est = extractor.estimate_extraction_cost(todo, settings)
+    typer.echo(f"Extraction estimate: {json.dumps(est, default=str)}")
+    if max_usd is not None and est["worst_case_usd"] > max_usd:
+        typer.echo(f"Worst case ${est['worst_case_usd']} exceeds --max-usd ${max_usd}: nothing was spent.")
+        raise typer.Exit(3)
+    if dry_run:
+        return
+    if not yes and not typer.confirm(f"Spend up to ${est['worst_case_usd']} on {est['n_chunks']} chunks?"):
+        raise typer.Abort()
+    typer.echo(json.dumps(extractor.run_extraction(settings, tickers), default=str))
+    typer.echo("== Entity resolution ==")
+    resolution.resolve_extractions(settings, tickers)
+
+
 @app.command("build-graph")
 def build_graph(
     ticker: list[str] = typer.Option(None, "--ticker", "-t"),

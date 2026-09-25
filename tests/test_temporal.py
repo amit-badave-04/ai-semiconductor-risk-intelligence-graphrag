@@ -4,15 +4,20 @@ No Neo4j: cluster_lineages / compute_temporal_states / category_mapping
 operate on plain arrays and DataFrames.
 """
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from semigraph.graph.temporal import (
+    ANNUAL_FORMS,
     CANONICAL_CATEGORIES,
+    EFFECTIVE_FILING_STATUSES,
     category_mapping,
     cluster_lineages,
     compute_temporal_states,
+    fetch_annual_risks,
 )
 
 
@@ -122,3 +127,103 @@ class TestCategoryMapping:
 
     def test_canonical_spellings_untouched(self):
         assert category_mapping(list(CANONICAL_CATEGORIES)) == []
+
+
+class TestLineageDeterminism:
+    """Lineage ids must not depend on the row order the graph happens to return."""
+
+    @staticmethod
+    def frame():
+        vecs = [E_SUPPLY, E_EXPORT, E_PANDEMIC]
+        rows = []
+        for year, acc in ((2023, "acc-23"), (2024, "acc-24"), (2025, "acc-25"), (2026, "acc-26")):
+            for i, emb in enumerate(vecs):
+                if year == 2026 and i == 2:
+                    continue  # the pandemic risk is dropped in 2026
+                # every risk of a filing shares its filing date: order among them is the tie-break
+                rows.append(risk_row(f"r{i}_{year}", "Nvidia", f"{year}-02-25", acc, emb))
+        return pd.DataFrame(rows)
+
+    @staticmethod
+    def states(updates):
+        return updates.set_index("risk_id")[["lineage_id", "first_seen", "last_seen", "status", "end_date"]]
+
+    @pytest.mark.parametrize("seed", range(8))
+    def test_shuffling_the_input_rows_changes_nothing(self, seed):
+        base = self.frame()
+        expected, _ = compute_temporal_states(base)
+        shuffled = base.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+        actual, _ = compute_temporal_states(shuffled)
+        pd.testing.assert_frame_equal(self.states(actual).sort_index(), self.states(expected).sort_index())
+
+    def test_output_order_is_deterministic_too(self):
+        base = self.frame()
+        a, _ = compute_temporal_states(base)
+        b, _ = compute_temporal_states(base.iloc[::-1].reset_index(drop=True))
+        assert a["risk_id"].tolist() == b["risk_id"].tolist()
+
+    def test_risks_with_the_same_date_are_ordered_by_risk_id(self):
+        # both risks are first seen on the same day: lineage ids must follow risk_id order
+        risks = pd.DataFrame([
+            risk_row("zz", "Intel", "2024-01-26", "acc-24", E_EXPORT),
+            risk_row("aa", "Intel", "2024-01-26", "acc-24", E_SUPPLY),
+        ])
+        updates, _ = compute_temporal_states(risks)
+        by_id = updates.set_index("risk_id")["lineage_id"]
+        assert by_id["aa"] == "50863:0" and by_id["zz"] == "50863:1"
+
+
+class RecordingDriver:
+    """Fake driver capturing the Cypher and parameters of run_cypher calls."""
+
+    def __init__(self, rows=None):
+        self.calls, self.rows = [], rows or []
+
+    def session(self, **config):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def run(self, query, parameters=None, **params):
+        self.calls.append((" ".join(query.split()), params))
+        return [dict(r) for r in self.rows]
+
+
+class TestFetchAnnualRisks:
+    def test_only_effective_annual_filings_of_every_annual_form_are_read(self):
+        drv = RecordingDriver()
+        fetch_annual_risks(drv)
+        query, params = drv.calls[0]
+        assert set(params["forms"]) == {"10-K", "10-K/A", "20-F"} == set(ANNUAL_FORMS)
+        # corrected originals and inert amendments must not feed lineage clustering
+        assert set(params["statuses"]) == {"current", "superseded"} == set(EFFECTIVE_FILING_STATUSES)
+        assert "f.form IN $forms" in query and "f.status IN $statuses" in query
+
+    def test_only_risks_whose_evidence_section_is_owned_feed_lineages(self):
+        # a section restated by a later amendment is 'corrected' on the span: it must not feed a lineage
+        drv = RecordingDriver()
+        fetch_annual_risks(drv)
+        query, params = drv.calls[0]
+        assert "e.status IN $statuses" in query
+
+    def test_risks_from_an_overlay_amendment_are_dated_by_the_filing_it_amends(self):
+        # an Item-7-only 10-K/A filed months later must not advance the company's "latest annual"
+        drv = RecordingDriver()
+        fetch_annual_risks(drv)
+        query, _ = drv.calls[0]
+        assert "OPTIONAL MATCH (f)-[:AMENDS]->(base:Filing)" in query
+        assert "coalesce(base.accession_no, f.accession_no) AS accession_no" in query
+        assert "toString(coalesce(base.filing_date, f.filing_date)) AS filing_date" in query
+
+    def test_rows_come_back_in_a_stable_order(self):
+        drv = RecordingDriver()
+        fetch_annual_risks(drv)
+        query, _ = drv.calls[0]
+        assert re.search(r"ORDER BY cik, filing_date, risk_id, accession_no\s*$", query)
+
+    def test_no_rows_gives_an_empty_frame(self):
+        assert fetch_annual_risks(RecordingDriver()).empty

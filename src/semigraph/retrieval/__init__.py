@@ -6,7 +6,7 @@ Public surface:
 """
 
 from .answerer import (ANSWER_PROMPT, CITE_RE, TextStream, answer, answer_stream,
-                       build_blocks, llm_text, usage_cost)
+                       build_blocks, format_metric_line, llm_text, usage_cost)
 from .retriever import (
     DEFAULT_ANCHOR_CIK,
     detect_anchors,
@@ -24,6 +24,7 @@ __all__ = [
     "answer_stream",
     "build_blocks",
     "detect_anchors",
+    "format_metric_line",
     "hybrid_retrieve",
     "llm_text",
     "usage_cost",

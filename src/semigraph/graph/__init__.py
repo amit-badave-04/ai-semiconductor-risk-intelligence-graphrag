@@ -7,10 +7,10 @@ does not have to ship pandas/pyarrow.
 
 from importlib import import_module
 
-from .client import get_driver, run_cypher
-from .schema import apply_schema
+from .client import DatabaseDriver, get_driver, run_cypher
+from .schema import apply_schema, reset_graph
 
-__all__ = ["apply_schema", "get_driver", "loaders", "run_cypher", "temporal"]
+__all__ = ["DatabaseDriver", "apply_schema", "get_driver", "loaders", "reset_graph", "run_cypher", "temporal"]
 
 
 def __getattr__(name):

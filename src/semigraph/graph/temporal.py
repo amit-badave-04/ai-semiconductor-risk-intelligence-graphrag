@@ -28,6 +28,12 @@ logger = logging.getLogger("semigraph.graph.temporal")
 # cosine similarity above which two summaries are the same recurring risk
 SAME_RISK_SIM = 0.75
 
+# Lineages are clustered over EFFECTIVE annual filings only: every annual form,
+# but never a `corrected` original (its parsed amendment stands in for it) nor an
+# inert `amendment` (unparsed 10-K/A) — see semigraph.versions.
+ANNUAL_FORMS = ("10-K", "10-K/A", "20-F")
+EFFECTIVE_FILING_STATUSES = ("current", "superseded")
+
 # Graph-side canonical category spellings (notebook 13 cell 2 — includes
 # 'Cybersecurity', which the extractor invented often enough to canonize).
 CANONICAL_CATEGORIES = [
@@ -87,12 +93,17 @@ def compute_temporal_states(risks: pd.DataFrame,
     lineage_id / first_seen / last_seen / status / end_date, and per-company
     lineage statistics. A lineage is closed when the company's latest annual
     no longer discloses it AND the company has more than one annual filing.
+
+    Deterministic: risks are ordered by ``[filing_date, risk_id, accession_no]``
+    (stable sort) before the order-sensitive greedy clustering, and companies
+    are visited in key order, so lineage ids depend only on the data — never on
+    the row order the graph query happened to return.
     """
     risks = risks.copy()
     risks["filing_date"] = pd.to_datetime(risks["filing_date"])
     updates, lineage_stats = [], []
-    for (cik, company), grp in risks.groupby(["cik", "company"]):
-        grp = grp.sort_values("filing_date")
+    for (cik, company), grp in risks.groupby(["cik", "company"], sort=True):
+        grp = grp.sort_values(["filing_date", "risk_id", "accession_no"], kind="stable")
         latest_annual = grp["filing_date"].max()
         n_annuals = grp["accession_no"].nunique()
         embs = np.vstack(grp["embedding"].to_numpy())
@@ -140,16 +151,29 @@ def normalize_categories(driver) -> int:
 
 
 def fetch_annual_risks(driver) -> pd.DataFrame:
-    """Risk disclosures evidenced by annual filings (10-K/20-F), with
-    embeddings, for lineage clustering (notebook 13 cell 4)."""
+    """Risk disclosures evidenced by EFFECTIVE annual filings (10-K, 10-K/A,
+    20-F whose ``Filing.status`` is current or superseded), with embeddings,
+    for lineage clustering (notebook 13 cell 4).
+
+    Excluded: ``corrected`` originals and inert ``amendment`` rows, and — via
+    the span's own ``status`` — sections a later amendment restated (a
+    corrected section never feeds a lineage). Risks evidenced in a PARTIAL
+    amendment (an overlay, e.g. an Item-7-only 10-K/A) are dated by the filing
+    it amends, so an amendment filed months later cannot advance the company's
+    "latest annual" and close lineages that were never re-disclosed. The result
+    is ordered so callers see the same frame on every run."""
     rows = run_cypher(driver, """
         MATCH (c:Company)-[:DISCLOSES_RISK]->(rf:RiskFactor)-[:HAS_EVIDENCE]->(e:EvidenceSpan)
               -[:FROM_SECTION]->(:FilingSection)<-[:HAS_SECTION]-(f:Filing)
-        WHERE f.form IN ['10-K', '20-F'] AND rf.embedding IS NOT NULL
+        WHERE f.form IN $forms AND f.status IN $statuses AND e.status IN $statuses
+              AND rf.embedding IS NOT NULL
+        OPTIONAL MATCH (f)-[:AMENDS]->(base:Filing)
         RETURN DISTINCT c.cik AS cik, c.name AS company, rf.risk_id AS risk_id,
                rf.summary AS summary, rf.category AS category, rf.embedding AS embedding,
-               toString(f.filing_date) AS filing_date, f.accession_no AS accession_no
-    """)
+               toString(coalesce(base.filing_date, f.filing_date)) AS filing_date,
+               coalesce(base.accession_no, f.accession_no) AS accession_no
+        ORDER BY cik, filing_date, risk_id, accession_no
+    """, forms=list(ANNUAL_FORMS), statuses=list(EFFECTIVE_FILING_STATUSES))
     return pd.DataFrame(rows)
 
 

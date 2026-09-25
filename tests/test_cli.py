@@ -113,3 +113,52 @@ def test_ingest_exits_nonzero_but_still_parses_when_a_filing_failed(calls, monke
     assert result.exit_code == 2
     assert "0000050863-26-000157" in result.output and "NOT ingested" in result.output
     assert "segment" in calls and "chunk" in calls      # what did land is still parsed
+
+
+# ------------------------------------------------------------------ extract (paid)
+
+@pytest.fixture
+def extraction(monkeypatch):
+    """Fake the paid stage; record whether it ran."""
+    from semigraph.extraction import extractor, resolution
+
+    ran: dict = {}
+    est = {"n_chunks": 660, "chunk_tokens": 230933, "likely_usd": 3.67, "worst_case_usd": 5.51, "per_ticker": {"NVDA": 40}}
+    monkeypatch.setattr(extractor, "build_extraction_plan", lambda settings, tickers=None: ({}, {"NVDA": None}))
+    monkeypatch.setattr(extractor, "estimate_extraction_cost", lambda todo, settings=None: est)
+    monkeypatch.setattr(extractor, "run_extraction", lambda settings, tickers=None: ran.setdefault("extract", {"NVDA": 40}))
+    monkeypatch.setattr(resolution, "resolve_extractions", lambda settings, tickers=None: ran.setdefault("resolve", True))
+    return ran
+
+
+def test_extract_prints_the_estimate_and_runs_within_the_cap(extraction):
+    result = runner.invoke(app, ["extract", "--yes", "--max-usd", "6"])
+
+    assert result.exit_code == 0, result.output
+    assert "3.67" in result.output and "5.51" in result.output
+    assert extraction == {"extract": {"NVDA": 40}, "resolve": True}
+
+
+def test_extract_refuses_to_start_when_the_worst_case_exceeds_the_cap(extraction):
+    result = runner.invoke(app, ["extract", "--yes", "--max-usd", "5"])
+
+    assert result.exit_code == 3
+    assert "exceeds" in result.output and extraction == {}          # nothing was spent
+
+
+def test_extract_asks_before_spending_and_aborts_on_no(extraction):
+    result = runner.invoke(app, ["extract", "--max-usd", "6"], input="n\n")
+
+    assert result.exit_code != 0 and extraction == {}
+
+
+def test_extract_dry_run_never_spends(extraction):
+    result = runner.invoke(app, ["extract", "--dry-run"])
+
+    assert result.exit_code == 0 and "5.51" in result.output and extraction == {}
+
+
+def test_extract_requires_a_cap_for_a_paid_run(extraction):
+    result = runner.invoke(app, ["extract", "--yes"])
+
+    assert result.exit_code != 0 and extraction == {}

@@ -41,9 +41,28 @@ ANSWER_PROMPT = read_prompt("answer")
 CITE_RE = re.compile(r"\[([0-9\-]+:[IVX]+\.[0-9A-Z]+:[0-9]{4})\]")
 
 
+# Currency label for metrics that carry no unit (v1 graphs never stored/selected one; every
+# us-gaap metric is USD). Keeps USD lines byte-identical to the benchmarked v1 wording.
+DEFAULT_UNIT = "USD"
+
+
+def format_metric_line(m: dict) -> str:
+    """One METRICS line: ``- <company> <metric> for period <start>..<end>: <value> <unit>``.
+
+    The unit is the metric's own (``TWD``/``EUR`` for IFRS filers); a missing/empty unit
+    renders as USD, exactly as v1 did, so existing USD lines are unchanged.
+    """
+    unit = m.get("unit") or DEFAULT_UNIT
+    return (f"- {m['company']} {m['metric']} for period {m['period_start']}..{m['period_end']}: "
+            f"{m['value']:,.0f} {unit}")
+
+
 def build_blocks(r: dict) -> tuple[tuple[str, str, str, str, str], str, set[str]]:
     """Assemble prompt blocks + the full context string + the set of valid
-    (citable) chunk ids from a retrieval result. Ported from notebook 14."""
+    (citable) chunk ids from a retrieval result. Ported from notebook 14.
+
+    Output for existing data is byte-identical to v1 (pinned by a golden test); the only
+    permitted change is the unit label of non-USD metrics (:func:`format_metric_line`)."""
     valid_ids = set()
     e_lines = []
     for e in r["edges"]:
@@ -51,8 +70,7 @@ def build_blocks(r: dict) -> tuple[tuple[str, str, str, str, str], str, set[str]
         valid_ids.update(ids)
         e_lines.append(f"- {e['source']} {e['relation']} {e['target']} (status={e.get('status')}) "
                        f"{' '.join('[' + i + ']' for i in ids[:3])}")
-    m_lines = [f"- {m['company']} {m['metric']} for period {m['period_start']}..{m['period_end']}: "
-               f"{m['value']:,.0f} USD" for m in r["metrics"]]
+    m_lines = [format_metric_line(m) for m in r["metrics"]]
     k_lines = []
     for k in r["risks"]:
         valid_ids.add(k["chunk_id"])
@@ -241,7 +259,9 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
                   llm_stream=None, k_chunks: int = 8, hops: int = 2, **stream_kwargs):
     """Streaming variant of :func:`answer` — a generator of event dicts.
 
-    Events, in order: ``{"event": "retrieval", "anchors", "counts"}``, then
+    Events, in order: ``{"event": "retrieval", "anchors", "counts", "anchor_defaulted"}``
+    (``anchor_defaulted`` is True when no company was detected and retrieval fell back to
+    the default anchor — additive; False when the retriever does not report it), then
     ``{"event": "delta", "text"}`` per token batch, finally ``{"event": "done",
     "answer", "citations", "hallucinated", "finish_reason", "usage", "cost_usd",
     "chunk_ids", "context_chars"}``. Citations are post-verified exactly like
@@ -256,7 +276,8 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
         raise ValueError(f"unknown strategy {strategy!r} — use 'hybrid' or 'vector'")
     (e_b, m_b, k_b, t_b, c_b), full_context, valid_ids = build_blocks(r)
     yield {"event": "retrieval", "anchors": r["anchors"],
-           "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")}}
+           "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")},
+           "anchor_defaulted": bool(r.get("anchor_defaulted", False))}
     prompt = ANSWER_PROMPT.format(question=question, edges_block=e_b, metrics_block=m_b,
                                   risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
     stream = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
