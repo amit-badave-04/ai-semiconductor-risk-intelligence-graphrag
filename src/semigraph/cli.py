@@ -179,39 +179,56 @@ def _resolve_as_of(settings, declared):
     return declared or newest
 
 
+def _refuse_partial_extraction(todo: dict, allow_partial: bool) -> None:
+    """A graph built while in-scope chunks of current filings lack extraction records would
+    falsely close risk lineages (the latest annual would look like it dropped them)."""
+    missing = {t: len(rows) for t, rows in todo.items() if len(rows)}
+    if not missing:
+        return
+    detail = ", ".join(f"{t}: {n}" for t, n in sorted(missing.items()))
+    if not allow_partial:
+        typer.echo(f"{sum(missing.values())} in-scope chunks of current filings have no extraction record ({detail}); "
+                   "building now would falsely close risk lineages. Run `semigraph extract` first, "
+                   "or pass --allow-partial to build anyway.")
+        raise typer.Exit(4)
+    typer.echo(f"WARNING: partial build — {sum(missing.values())} in-scope chunks are not extracted ({detail}); "
+               "lineage closure may be wrong for these filers.")
+
+
 @app.command("build-graph")
 def build_graph(
     ticker: list[str] = typer.Option(None, "--ticker", "-t"),
-    rebuild: bool = typer.Option(False, "--rebuild", help="Empty the graph (service state kept) and rebuild from the data lake"),
+    rebuild: bool = typer.Option(False, "--rebuild", help="Empty the graph (service state kept) and rebuild the WHOLE graph from the data lake"),
     as_of: str = typer.Option(None, "--as-of", help="Declared as-of date of this snapshot; refused if the lake holds newer data"),
-    extract: bool = typer.Option(False, help="Run PAID LLM extraction for chunks not yet extracted (asks for confirmation after a cost estimate)"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the paid-extraction confirmation prompt"),
+    allow_partial: bool = typer.Option(False, "--allow-partial", help="Build even if in-scope chunks are not extracted yet"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the --rebuild confirmation prompt"),
     verbose: bool = typer.Option(False, "-v"),
 ):
-    """Apply schema and load the graph from the data lake.
+    """Apply schema and load the graph from the data lake. Spends no API money.
 
-    Without --extract this spends no API money: it loads the deterministic
-    layer, existing extraction jsonl, embeddings (local), export controls,
-    runs bitemporal closure and stamps a Snapshot node. Use --rebuild for a
-    clean full rebuild (required when the vector-index definitions changed)."""
+    Loads the deterministic layer, extraction records, embeddings (local), export
+    controls, runs bitemporal closure and stamps a Snapshot node. Paid extraction is
+    a separate step (`semigraph extract --max-usd N`). --rebuild wipes the target
+    graph first (required when the vector-index definitions changed) and always
+    rebuilds the whole universe."""
     _setup_logging(verbose)
     from semigraph.embeddings import Embedder
-    from semigraph.extraction import extractor, resolution
+    from semigraph.extraction import extractor
     from semigraph.graph import client, loaders, schema, temporal
     from semigraph.snapshot import compute_snapshot_id
 
     settings = _settings()
+    if rebuild and ticker:
+        raise typer.BadParameter("--rebuild always rebuilds the whole graph; it cannot be combined with --ticker")
     tickers = list(ticker) if ticker else None
     snapshot_as_of = _resolve_as_of(settings, _parse_as_of(as_of))
-    if extract:
-        _, todo = extractor.build_extraction_plan(settings, tickers)
-        est = extractor.estimate_extraction_cost(todo, settings)
-        typer.echo(f"PAID extraction estimate: {json.dumps(est, default=str)}")
-        if not yes and not typer.confirm("Proceed with paid LLM extraction?"):
+    _, todo = extractor.build_extraction_plan(settings, tickers)
+    _refuse_partial_extraction(todo, allow_partial)
+    if rebuild and not yes:
+        target = f"{settings.neo4j_uri} database '{settings.neo4j_database}'"
+        if not typer.confirm(f"--rebuild will DELETE every non-service node in {target}. Continue?"):
             raise typer.Abort()
-        extractor.run_extraction(settings, tickers)
-        resolution.resolve_extractions(settings, tickers)
-    snapshot_id = compute_snapshot_id(settings, snapshot_as_of)   # after extraction: it hashes the records
+    snapshot_id = compute_snapshot_id(settings, snapshot_as_of)
     typer.echo(f"snapshot {snapshot_id}")
 
     driver = client.get_driver(settings)

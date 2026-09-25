@@ -199,6 +199,8 @@ def graph_calls(monkeypatch, tmp_path):
     monkeypatch.setattr(temporal, "normalize_categories", rec("normalize_categories", 0))
     monkeypatch.setattr(temporal, "apply_closure", rec("apply_closure", {}))
     monkeypatch.setattr("semigraph.embeddings.Embedder", lambda *a, **k: object())
+    from semigraph.extraction import extractor
+    monkeypatch.setattr(extractor, "build_extraction_plan", lambda settings, tickers=None: ({}, {}))
     monkeypatch.setattr(snapshot, "newest_lake_date", lambda settings: date(2026, 9, 24))
     monkeypatch.setattr(snapshot, "compute_snapshot_id", lambda settings, as_of=None, **k: f"snap-{as_of:%Y%m%d}-test")
     return log
@@ -226,7 +228,7 @@ def test_build_graph_loads_in_dependency_order_and_stamps_the_snapshot(graph_cal
 
 
 def test_build_graph_rebuild_resets_before_applying_the_schema(graph_calls):
-    result = runner.invoke(app, ["build-graph", "--rebuild"])
+    result = runner.invoke(app, ["build-graph", "--rebuild", "--yes"])
 
     assert result.exit_code == 0, result.output
     assert names(graph_calls).index("reset_graph") < names(graph_calls).index("apply_schema")
@@ -250,3 +252,65 @@ def test_build_graph_accepts_an_as_of_on_or_after_the_newest_data(graph_calls):
 
     assert result.exit_code == 0, result.output
     assert dict(graph_calls)["load_companies"]["snapshot_id"] == "snap-20260925-test"
+
+
+# --------------------------------------------- build-graph guardrails (verifier findings 4 and 5)
+
+@pytest.fixture
+def plan(monkeypatch):
+    """Control what `build-graph` believes is left to extract."""
+    from semigraph.extraction import extractor
+
+    state = {"todo": {}}
+    monkeypatch.setattr(extractor, "build_extraction_plan", lambda settings, tickers=None: ({}, state["todo"]))
+    return state
+
+
+class _Rows(list):
+    """Minimal stand-in for a DataFrame in the completeness check (only len() is used)."""
+
+
+def test_build_graph_refuses_while_current_filings_are_partly_unextracted(graph_calls, plan):
+    plan["todo"] = {"MSFT": _Rows(range(41)), "AMD": _Rows(range(17))}
+
+    result = runner.invoke(app, ["build-graph"])
+
+    assert result.exit_code == 4
+    assert "58" in result.output and "MSFT" in result.output and "--allow-partial" in result.output
+    assert "apply_schema" not in names(graph_calls)            # nothing was written
+
+
+def test_build_graph_allow_partial_proceeds_with_a_warning(graph_calls, plan):
+    plan["todo"] = {"MSFT": _Rows(range(3))}
+
+    result = runner.invoke(app, ["build-graph", "--allow-partial"])
+
+    assert result.exit_code == 0, result.output
+    assert "partial" in result.output.lower() and "apply_schema" in names(graph_calls)
+
+
+def test_build_graph_rebuild_rejects_a_ticker_subset(graph_calls, plan):
+    result = runner.invoke(app, ["build-graph", "--rebuild", "--yes", "-t", "NVDA"])
+
+    assert result.exit_code != 0 and "reset_graph" not in names(graph_calls)
+    assert "whole graph" in result.output
+
+
+def test_build_graph_rebuild_asks_for_confirmation_showing_the_target(graph_calls, plan):
+    result = runner.invoke(app, ["build-graph", "--rebuild"], input="n\n")
+
+    assert result.exit_code != 0 and "reset_graph" not in names(graph_calls)
+    assert "bolt://" in result.output          # the operator sees WHICH server is about to be wiped
+
+
+def test_build_graph_rebuild_with_yes_skips_the_prompt(graph_calls, plan):
+    result = runner.invoke(app, ["build-graph", "--rebuild", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert names(graph_calls).index("reset_graph") < names(graph_calls).index("apply_schema")
+
+
+def test_build_graph_has_no_paid_extraction_path_any_more(graph_calls, plan):
+    result = runner.invoke(app, ["build-graph", "--extract"])
+
+    assert result.exit_code != 0            # extraction lives in `semigraph extract` with its --max-usd cap

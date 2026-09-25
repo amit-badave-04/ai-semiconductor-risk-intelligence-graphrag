@@ -1,8 +1,10 @@
 """Snapshot identity — a stable id for everything that defines the served corpus.
 
 A snapshot id changes whenever the as-of date, the filing manifest, any
-extraction record, the Federal Register snapshot, the curated XBRL metrics or
-the code version changes. It is stamped on every graph node the loaders write
+chunk or section-text file (they decide which filings count as parsed and so
+which sections are corrected), any extraction record, the Federal Register
+snapshot, the curated XBRL metrics, the entity dictionary, the code that builds
+the graph, or the code version changes. It is stamped on every graph node the loaders write
 and is part of the answer-cache key, so a data refresh can never serve an
 answer computed from older data.
 """
@@ -32,19 +34,43 @@ def _as_of_date(as_of: date | str | None) -> date | None:
     return date.fromisoformat(as_of)
 
 
+_PACKAGE = Path(__file__).resolve().parent
+# Everything that decides what the graph builder writes: a change here changes the graph.
+_CODE_FILES = (
+    *sorted((_PACKAGE / "graph").glob("*.py")),
+    _PACKAGE / "versions.py", _PACKAGE / "hashing.py", _PACKAGE / "universe.py",
+    _PACKAGE / "artifacts" / "schema.cypher",
+)
+_ENTITIES = _PACKAGE / "artifacts" / "canonical_entities.json"
+
+
+def code_fingerprint(paths=_CODE_FILES) -> str:
+    """sha1 over the content of the graph-building code (missing files are skipped)."""
+    digest = hashlib.sha1()
+    for path in paths:
+        path = Path(path)
+        if path.exists():
+            digest.update(f"{path.name}:{_file_sha1(path)}|".encode())
+    return digest.hexdigest()
+
+
+def _hashes(directory: Path, pattern: str) -> dict[str, str]:
+    return {p.name: _file_sha1(p) for p in sorted(directory.glob(pattern))} if directory.exists() else {}
+
+
 def snapshot_inputs(settings: Settings) -> dict:
     """Content hashes of every input that defines the corpus (None/empty when absent)."""
     manifest = settings.raw_dir / "edgar" / "manifest_universe.json"
     fr = settings.raw_dir / "federal_register_bis_rules.json"
-    extractions = (sorted(settings.extractions_dir.glob("*_extractions.jsonl"))
-                   if settings.extractions_dir.exists() else [])
-    xbrl_dir = settings.processed_dir / "xbrl"
-    metrics = sorted(xbrl_dir.glob("*_key_metrics.parquet")) if xbrl_dir.exists() else []
     return {
         "manifest": _file_sha1(manifest) if manifest.exists() else None,
         "federal_register": _file_sha1(fr) if fr.exists() else None,
-        "extractions": {p.name: _file_sha1(p) for p in extractions},
-        "xbrl_metrics": {p.name: _file_sha1(p) for p in metrics},
+        "extractions": _hashes(settings.extractions_dir, "*_extractions.jsonl"),
+        "xbrl_metrics": _hashes(settings.processed_dir / "xbrl", "*_key_metrics.parquet"),
+        "chunks": _hashes(settings.chunks_dir, "*.parquet"),
+        "section_texts": _hashes(settings.interim_dir / "section_texts", "*.parquet"),
+        "entities": _file_sha1(_ENTITIES) if _ENTITIES.exists() else None,
+        "code": code_fingerprint(),
     }
 
 
@@ -54,8 +80,9 @@ def compute_snapshot_id(settings: Settings, as_of: date | str | None = None, *,
     as_of_d = _as_of_date(as_of)
     inputs = snapshot_inputs(settings)
     digest = hashlib.sha1()
-    digest.update(f"{as_of_d}|{code_version}|{inputs['manifest']}|{inputs['federal_register']}".encode())
-    for section in ("extractions", "xbrl_metrics"):
+    digest.update(f"{as_of_d}|{code_version}|{inputs['manifest']}|{inputs['federal_register']}"
+                  f"|{inputs['entities']}|{inputs['code']}".encode())
+    for section in ("extractions", "xbrl_metrics", "chunks", "section_texts"):
         for name, sha in sorted(inputs[section].items()):
             digest.update(f"|{section}:{name}:{sha}".encode())
     stamp = as_of_d.strftime("%Y%m%d") if as_of_d else "00000000"

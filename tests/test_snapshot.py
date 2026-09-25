@@ -82,3 +82,47 @@ def test_newest_lake_date_is_the_latest_of_filings_and_rules(lake):
 
 def test_newest_lake_date_handles_missing_and_legacy_files(tmp_path):
     assert newest_lake_date(Settings(data_dir=tmp_path / "nothing", _env_file=None)) is None
+
+
+# ------------------------------- inputs that change the graph but were not hashed (verifier finding 3)
+
+from semigraph.snapshot import code_fingerprint  # noqa: E402
+
+
+def test_chunk_parquets_are_part_of_the_snapshot(lake):
+    """Chunking a filing that is already in the manifest changes which filings count as
+    parsed (and so which sections are corrected) — the id must move."""
+    (lake.chunks_dir).mkdir(parents=True)
+    (lake.chunks_dir / "AMD_chunks.parquet").write_bytes(b"chunks-v1")
+    before = compute_snapshot_id(lake, date(2026, 9, 25))
+    (lake.chunks_dir / "AMD_chunks.parquet").write_bytes(b"chunks-v2")
+    assert compute_snapshot_id(lake, date(2026, 9, 25)) != before
+
+
+def test_section_texts_are_part_of_the_snapshot(lake):
+    st = lake.interim_dir / "section_texts"
+    st.mkdir(parents=True)
+    (st / "AMD_section_texts.parquet").write_bytes(b"a")
+    before = compute_snapshot_id(lake, date(2026, 9, 25))
+    (st / "AMD_section_texts.parquet").write_bytes(b"b")
+    assert compute_snapshot_id(lake, date(2026, 9, 25)) != before
+
+
+def test_code_fingerprint_follows_file_content(tmp_path):
+    f = tmp_path / "loader.py"
+    f.write_text("a = 1")
+    first = code_fingerprint([f])
+    f.write_text("a = 2")
+    assert code_fingerprint([f]) != first
+    assert code_fingerprint([f]) == code_fingerprint([f])
+
+
+def test_code_fingerprint_ignores_missing_files(tmp_path):
+    assert code_fingerprint([tmp_path / "gone.py"]) == code_fingerprint([tmp_path / "also-gone.py"])
+
+
+def test_the_snapshot_input_record_includes_code_and_entities(lake):
+    inputs = snapshot_inputs(lake)
+    assert len(inputs["code"]) == 40 and inputs["entities"] is not None
+    assert set(inputs) >= {"manifest", "federal_register", "extractions", "xbrl_metrics", "chunks", "section_texts",
+                           "entities", "code"}
