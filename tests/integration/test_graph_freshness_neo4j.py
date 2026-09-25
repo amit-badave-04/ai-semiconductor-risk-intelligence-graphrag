@@ -206,7 +206,7 @@ def graph(scratch_database, tmp_path_factory):
         lake = build_lake(tmp_path_factory.mktemp("lake"), settings)
         schema.apply_schema(driver)
         driver.execute_query("CALL db.awaitIndexes(120)")
-        snapshot = "snap-20260925-abcdef0123"
+        snapshot = "sgtest-synthetic-snapshot"
         embedder = FakeEmbedder()
         counts = {}
         counts["companies"] = loaders.load_companies(driver, lake, snapshot_id=snapshot)

@@ -363,13 +363,27 @@ def test_rule_edges_query_shape():
     assert "SUPPLIES_TO|DEPENDS_ON|CUSTOMER_OF|COMPETES_WITH" in q
 
 
-def test_hybrid_runs_rule_query_with_cap_and_neighbours_at_default_hops():
+def test_hybrid_runs_rule_query_for_the_anchors_only_with_a_tight_cap():
+    """Rule lines cost ~100 tokens each: 12 rules x (anchor + 16 neighbours) added ~8k tokens per
+    answer. Anchors get the 8 newest relevant rules; neighbour rules are off until M2 ranks them."""
     d = FakeDriver()
     hybrid_retrieve("How does Nvidia depend on TSMC?", d, FakeEmbedder())
     (params,) = d.of("rules")
     assert params["ids"] == [NVDA, TSMC]
-    assert params["per_company"] == RULES_PER_COMPANY == 12
-    assert params["include_neighbours"] is True
+    assert params["per_company"] == RULES_PER_COMPANY == 8
+    assert params["include_neighbours"] is False
+
+
+def test_neighbour_rules_can_be_switched_on_for_deeper_traversals(monkeypatch):
+    from semigraph.retrieval import retriever
+
+    monkeypatch.setattr(retriever, "NEIGHBOUR_RULES", True)
+    d = FakeDriver()
+    hybrid_retrieve("How does Nvidia depend on TSMC?", d, FakeEmbedder())
+    assert d.of("rules")[0]["include_neighbours"] is True
+    d = FakeDriver()
+    hybrid_retrieve("How does Nvidia depend on TSMC?", d, FakeEmbedder(), hops=1)
+    assert d.of("rules")[0]["include_neighbours"] is False       # never beyond hop 1 when hops=1
 
 
 def test_hops_one_keeps_v1_semantics_anchor_rules_only():

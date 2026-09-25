@@ -23,7 +23,8 @@ KIND_EVIDENCE_KEYWORDS: dict[str, list[str]] = {
     "advanced_computing": ["advanced computing", "ai chip", "accelerator", "gpu", "h100", "h200", "h20", "a100"],
     "semiconductor_equipment": ["manufacturing equipment", "semiconductor manufacturing", "lithography"],
     "affiliates_rule": ["entity list", "affiliate"],
-    "licensing_policy": ["license", "licensing", "export control"],
+    # chip/compute licensing phrases only: bare "license"/"export control" appear in nearly every risk text
+    "licensing_policy": ["export license", "license requirement", "licensing requirement", "license exception"],
     "ai_model_controls": ["artificial intelligence", "ai diffusion", "model weights"],
 }
 

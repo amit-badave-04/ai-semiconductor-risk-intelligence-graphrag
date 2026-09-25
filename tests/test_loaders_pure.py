@@ -46,6 +46,11 @@ def states_for(manifest=AMD_MANIFEST, sections=AMD_SECTIONS, ticker="AMD"):
     return loaders.derive_filing_states(manifest, versions, sections), versions
 
 
+def retrievable(states, accession, section):
+    """Is a span of this section of this filing retrievable by default? (retrievability is per SECTION)"""
+    return loaders.span_freshness(states[accession], section).retrievable
+
+
 def chunk_rows(acc, form, filing_date, sections=("I.1", "I.1A"), n=2, ticker="AMD"):
     return [{
         "chunk_id": f"{acc}:{sid}:{k:04d}", "ticker": ticker, "cik": 2488, "form": form,
@@ -71,22 +76,25 @@ class TestFilingStates:
     def test_current_annual_is_open_ended_and_retrievable(self):
         states, _ = states_for()
         s = states["a-26"]
-        assert (s.status, s.is_current, s.retrievable) == ("current", True, True)
+        assert (s.status, s.is_current) == ("current", True)
+        assert all(retrievable(states, "a-26", section) for section in ANNUAL_SECTIONS)
         assert (s.valid_from, s.valid_to) == ("2026-02-04", OPEN_END)
         assert s.superseded_by is None and s.supersede_kind is None
 
-    def test_superseded_annual_stays_retrievable_and_ends_when_replaced(self):
+    def test_superseded_annual_ends_when_replaced_and_only_its_risk_section_stays_retrievable(self):
         states, _ = states_for()
         s = states["a-25"]
         assert (s.status, s.supersede_kind, s.superseded_by) == ("superseded", "rolled", "a-26")
-        assert (s.is_current, s.retrievable) == (False, True)  # historical annual risk text stays searchable
+        assert s.is_current is False
+        assert retrievable(states, "a-25", "I.1A")  # historical annual RISK text stays searchable ...
+        assert not retrievable(states, "a-25", "I.1") and not retrievable(states, "a-25", "II.7")  # ... nothing else
         assert (s.valid_from, s.valid_to) == ("2025-02-05", "2026-02-04")
 
     def test_superseded_quarterly_is_not_retrievable(self):
         states, _ = states_for()
         s = states["q-may"]
         assert (s.status, s.superseded_by) == ("superseded", "q-aug")
-        assert (s.is_current, s.retrievable) == (False, False)
+        assert s.is_current is False and not retrievable(states, "q-may", "II.1A")
         assert s.valid_to == "2026-08-05"
 
     def test_latest_quarterly_is_current(self):
@@ -96,7 +104,8 @@ class TestFilingStates:
     def test_unparsed_amendment_is_inert_and_never_valid(self):
         states, _ = states_for()
         s = states["a-26A"]
-        assert (s.status, s.is_current, s.retrievable) == ("amendment", False, False)
+        assert (s.status, s.is_current) == ("amendment", False)
+        assert not any(retrievable(states, "a-26A", section) for section in ANNUAL_SECTIONS)
         assert s.superseded_by is None
         assert s.valid_to == s.valid_from == "2026-02-04"  # empty interval, never null
 
@@ -104,7 +113,8 @@ class TestFilingStates:
         states, _ = states_for(sections=FULL_AMENDMENT)
         original, amendment = states["a-26"], states["a-26A"]
         assert (original.status, original.supersede_kind, original.superseded_by) == ("corrected", "corrected", "a-26A")
-        assert (original.is_current, original.retrievable) == (False, False)  # corrected originals are NOT retrievable
+        assert original.is_current is False
+        assert not any(retrievable(states, "a-26", section) for section in ANNUAL_SECTIONS)  # corrected originals are NOT retrievable
         assert original.valid_from == original.valid_to == "2026-02-04"
         assert (amendment.status, amendment.is_current, amendment.valid_to) == ("current", True, OPEN_END)
 
@@ -112,7 +122,8 @@ class TestFilingStates:
         manifest = AMD_MANIFEST + [m("q-A", "10-Q/A", "2026-06-01")]
         states, _ = states_for(manifest)
         s = states["q-A"]
-        assert (s.status, s.is_current, s.retrievable, s.valid_to) == ("amendment", False, False, "2026-06-01")
+        assert (s.status, s.is_current, s.valid_to) == ("amendment", False, "2026-06-01")
+        assert not retrievable(states, "q-A", "II.1A")
 
     def test_every_manifest_row_gets_a_state(self):
         states, _ = states_for()
@@ -127,7 +138,7 @@ class TestFilingStates:
     def test_foreign_filer_has_annuals_only(self):
         manifest = [m("f-25", "20-F", "2025-03-05", "ASML"), m("f-26", "20-F", "2026-02-25", "ASML")]
         states, _ = states_for(manifest, {"f-25": {"I.3"}, "f-26": {"I.3"}}, ticker="ASML")
-        assert (states["f-26"].is_current, states["f-25"].retrievable) == (True, True)
+        assert states["f-26"].is_current and retrievable(states, "f-25", "I.3")
 
     def test_new_annual_retires_a_quarterly_that_uses_a_later_smaller_accession(self):
         # MSFT: the filing agent changed accession prefix; order is by date, never by string
@@ -238,13 +249,14 @@ class TestPartialAmendmentOverlay:
         states, _ = self.states(manifest)
         assert span_flags(states, "a-26", "II.7") == ("corrected", False, False, "2026-03-20")
 
-    def test_a_superseded_period_keeps_its_owned_sections_retrievable_but_not_the_corrected_one(self):
+    def test_a_superseded_period_keeps_only_its_owned_risk_section_retrievable(self):
         manifest = AMD_MANIFEST + [m("a-27", "10-K", "2027-02-03")]
         sections = {**MDNA_AMENDMENT, "a-27": ANNUAL_SECTIONS}
         states, _ = states_for(manifest, sections)
-        assert span_flags(states, "a-26", "I.1A") == ("superseded", False, True, "2027-02-03")
-        assert span_flags(states, "a-26A", "II.7") == ("superseded", False, True, "2027-02-03")
-        assert span_flags(states, "a-26", "II.7") == ("corrected", False, False, "2026-02-04")
+        assert span_flags(states, "a-26", "I.1A") == ("superseded", False, True, "2027-02-03")    # owned risk text
+        assert span_flags(states, "a-26", "I.1") == ("superseded", False, False, "2027-02-03")    # owned Business: no
+        assert span_flags(states, "a-26A", "II.7") == ("superseded", False, False, "2027-02-03")  # the overlay's MD&A: no
+        assert span_flags(states, "a-26", "II.7") == ("corrected", False, False, "2026-02-04")    # restated: no
         assert states["a-26A"].superseded_by == "a-27" and states["a-26"].superseded_by == "a-27"
 
     def test_fully_corrected_original_has_no_owned_or_retrievable_span(self):
@@ -254,7 +266,8 @@ class TestPartialAmendmentOverlay:
     def test_quarterly_and_annual_flags_without_amendments_are_unchanged(self):
         states, _ = states_for()
         assert span_flags(states, "q-may", "II.1A") == ("superseded", False, False, "2026-08-05")
-        assert span_flags(states, "a-25", "II.7") == ("superseded", False, True, "2026-02-04")
+        assert span_flags(states, "a-25", "I.1A") == ("superseded", False, True, "2026-02-04")
+        assert span_flags(states, "a-25", "II.7") == ("superseded", False, False, "2026-02-04")
         assert span_flags(states, "q-aug", "II.1A") == ("current", True, True, OPEN_END)
 
     def test_unknown_sections_fall_back_to_filing_level_flags(self):
@@ -284,6 +297,73 @@ class TestPartialAmendmentOverlay:
         states, _ = states_for(manifest, {**MDNA_AMENDMENT, "a-27": ANNUAL_SECTIONS})
         edges = {(e["newer"], e["older"], e["kind"]) for e in loaders.build_supersedes_rows(states)}
         assert {("a-27", "a-26", "rolled"), ("a-27", "a-26A", "rolled")} <= edges
+
+
+class TestRetrievabilityIsPerSection:
+    """PLAN section 4: only historical annual RISK text stays retrievable by default.
+
+    Superseded Business / MD&A must not compete with the current filing ('latest revenue'
+    questions), superseded quarterlies drop out, and a corrected section never comes back.
+    """
+
+    NEXT_ANNUAL = [m("a-27", "10-K", "2027-02-03")]
+    SUPERSEDED_10K = {"I.1": False, "I.1A": True, "II.7": False}  # Business, Risk Factors, MD&A
+
+    def test_a_current_annual_is_retrievable_in_every_section(self):
+        states, _ = states_for()
+        assert {sec: retrievable(states, "a-26", sec) for sec in ANNUAL_SECTIONS} == dict.fromkeys(ANNUAL_SECTIONS, True)
+
+    def test_a_superseded_annual_keeps_only_the_risk_section(self):
+        states, _ = states_for()
+        assert {sec: retrievable(states, "a-25", sec) for sec in ANNUAL_SECTIONS} == self.SUPERSEDED_10K
+
+    def test_a_superseded_annual_mdna_and_business_stay_valid_history_but_leave_the_default_results(self):
+        states, _ = states_for()
+        assert span_flags(states, "a-25", "II.7") == ("superseded", False, False, "2026-02-04")
+        assert span_flags(states, "a-25", "I.1") == ("superseded", False, False, "2026-02-04")
+
+    def test_a_superseded_quarterly_is_retrievable_in_no_section_not_even_its_risk_section(self):
+        states, _ = states_for()
+        assert not any(retrievable(states, "q-may", sec) for sec in ("II.1A", "I.1", "II.2"))
+
+    def test_a_current_quarterly_is_retrievable(self):
+        states, _ = states_for()
+        assert retrievable(states, "q-aug", "II.1A") and retrievable(states, "q-aug", "II.2")
+
+    def test_a_corrected_section_is_not_retrievable_even_when_it_is_the_risk_section(self):
+        # a 10-K/A restating Item 1A (and only that): the original's risk text is corrected, its MD&A is not
+        sections = {**AMD_SECTIONS, "a-26A": {"I.1A"}}
+        states, _ = states_for(sections=sections)
+        assert span_flags(states, "a-26", "I.1A") == ("corrected", False, False, "2026-02-04")
+        assert span_flags(states, "a-26A", "I.1A") == ("current", True, True, OPEN_END)
+        assert retrievable(states, "a-26", "II.7")  # still current: not restated
+
+    def test_a_corrected_section_stays_out_after_its_period_is_superseded(self):
+        sections = {**MDNA_AMENDMENT, "a-26A": {"I.1A"}, "a-27": ANNUAL_SECTIONS}
+        states, _ = states_for(AMD_MANIFEST + self.NEXT_ANNUAL, sections)
+        assert not retrievable(states, "a-26", "I.1A")   # restated by the 10-K/A
+        assert retrievable(states, "a-26A", "I.1A")      # the correction is the period's risk text now: history
+        assert not retrievable(states, "a-26", "II.7")   # not the risk section
+
+    def test_a_full_10_k_a_is_judged_by_the_10_k_risk_section(self):
+        states, _ = states_for(AMD_MANIFEST + self.NEXT_ANNUAL, {**FULL_AMENDMENT, "a-27": ANNUAL_SECTIONS})
+        assert {sec: retrievable(states, "a-26A", sec) for sec in ANNUAL_SECTIONS} == self.SUPERSEDED_10K
+        assert not any(retrievable(states, "a-26", sec) for sec in ANNUAL_SECTIONS)  # the corrected original
+
+    def test_a_20_f_risk_section_is_item_3(self):
+        manifest = [m("f-24", "20-F", "2024-02-28", "ASML"), m("f-25", "20-F", "2025-03-05", "ASML"),
+                    m("f-26", "20-F", "2026-02-25", "ASML")]
+        sections = {"f-24": {"I.3", "I.4", "II.5"}, "f-25": {"I.3", "I.4"}, "f-26": {"I.3", "I.4", "II.5"}}
+        states, _ = states_for(manifest, sections, ticker="ASML")
+        assert retrievable(states, "f-25", "I.3") and retrievable(states, "f-24", "I.3")
+        assert not retrievable(states, "f-25", "I.4") and not retrievable(states, "f-24", "II.5")
+        assert all(retrievable(states, "f-26", sec) for sec in sections["f-26"])  # current: everything
+
+    def test_the_rule_holds_when_the_sections_of_the_filings_are_unknown(self):
+        manifest = [r for r in AMD_MANIFEST if r["accession_no"] != "a-26A"]
+        states = loaders.derive_filing_states(manifest, loaders.versions_for_ticker("AMD", manifest, None))
+        assert retrievable(states, "a-25", "I.1A") and not retrievable(states, "a-25", "II.7")
+        assert retrievable(states, "a-26", "II.7")  # current
 
 
 class TestCurrentFilingsWithoutChunks:
@@ -424,10 +504,19 @@ class TestBuildSpanRows:
         assert row["source_type"] == "sec_filing"
         assert row["section_key"] == "a-26:I.1A" and row["mentions"] == [1]
 
-    def test_historical_annual_span_is_retrievable_but_not_current(self):
+    def test_historical_annual_risk_span_is_retrievable_but_not_current(self):
         row = self.rows()["a-25:I.1A:0000"]
         assert (row["is_current"], row["retrievable"], row["status"], row["valid_to"]) == (
             False, True, "superseded", "2026-02-04")
+
+    def test_historical_annual_business_span_is_neither_current_nor_retrievable(self):
+        row = self.rows()["a-25:I.1:0000"]
+        assert (row["is_current"], row["retrievable"], row["status"], row["valid_to"]) == (
+            False, False, "superseded", "2026-02-04")
+
+    def test_current_annual_spans_are_retrievable_in_every_section(self):
+        rows = self.rows()
+        assert rows["a-26:I.1:0000"]["retrievable"] and rows["a-26:I.1A:0000"]["retrievable"]
 
     def test_superseded_quarterly_span_is_neither_current_nor_retrievable(self):
         row = self.rows()["q-may:I.1A:0000"]
@@ -511,8 +600,10 @@ class TestRuleMatching:
         ("semiconductor_equipment", "advanced lithography tools"),
         ("affiliates_rule", "the Entity List rule"),
         ("affiliates_rule", "our affiliates in China"),
-        ("licensing_policy", "we must obtain a license"),
-        ("licensing_policy", "export controls may change"),
+        ("licensing_policy", "we may be required to obtain export licenses for advanced computing chips"),
+        ("licensing_policy", "a new license requirement applies to shipments to China"),
+        ("licensing_policy", "additional licensing requirements could be imposed on our customers"),
+        ("licensing_policy", "BIS revoked the license exception for these products"),
         ("ai_model_controls", "the AI diffusion framework"),
         ("ai_model_controls", "model weights are controlled"),
     ])
@@ -524,6 +615,12 @@ class TestRuleMatching:
         ("semiconductor_equipment", "advanced computing only"),
         ("ai_model_controls", "a plain license agreement"),
         ("advanced_computing", "product A1000 launches"),  # 'a100' must not match inside a longer token
+        # licensing_policy is about CHIP / COMPUTE licensing: generic export-control boilerplate and
+        # ordinary software licensing must not link a company (Meta, ASML ...) to every licensing rule
+        ("licensing_policy", "We are subject to export controls, sanctions and trade restrictions in many jurisdictions."),
+        ("licensing_policy", "Changes in export control laws could limit our ability to sell products internationally."),
+        ("licensing_policy", "Our export control compliance program may not prevent every violation."),
+        ("licensing_policy", "We license software from third parties under a license agreement."),
     ])
     def test_wrong_topic_evidence_does_not_match(self, kind, text):
         assert not loaders.rule_matches_evidence(rule("r", kind=kind), text)
@@ -579,6 +676,18 @@ class TestSelectAffectedRules:
 
     def test_no_evidence_means_no_edges(self):
         assert loaders.select_affected_rules([], [rule("adv")]) == []
+
+    def test_generic_export_control_risk_text_does_not_link_licensing_rules(self):
+        generic = self.chunks("We are subject to export controls and economic sanctions laws that restrict "
+                              "our business and could harm our results.")
+        licensing = [rule(f"lic-{i}", kind="licensing_policy") for i in range(8)]
+        assert loaders.select_affected_rules(generic, licensing) == []
+
+    def test_chip_licensing_risk_text_links_licensing_rules_with_its_chunk(self):
+        chunks = self.chunks("We are subject to export controls.",
+                             "We may be required to obtain export licenses for advanced computing chips.")
+        picked = loaders.select_affected_rules(chunks, [rule("lic", kind="licensing_policy")])
+        assert [(p["rule_id"], p["chunks"]) for p in picked] == [("lic", ["c1"])]
 
     def test_build_rows_covers_every_exposed_company(self):
         exposures = {1: self.chunks("advanced computing"), 2: self.chunks("nothing relevant")}

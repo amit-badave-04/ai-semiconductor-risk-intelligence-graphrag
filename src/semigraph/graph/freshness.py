@@ -15,6 +15,12 @@ are explicit, never null:
   families) has an empty interval (``valid_to == valid_from``), is not current
   and not retrievable.
 
+Retrievability (the default search filter) is decided PER SECTION: every section
+of a current filing is retrievable, but of a superseded ANNUAL filing only its risk
+section is (historical risk text — the history behind the lineages — stays
+searchable; superseded Business / MD&A must not compete with the current filing).
+Superseded quarterlies, corrected sections and inert filings are never retrievable.
+
 Sections: annual filings are judged per (accession, section). A full
 amendment retires its original as a whole; a PARTIAL amendment (AMD's 10-K/A
 restates only Item 7) is an overlay — the original keeps every section the
@@ -63,7 +69,6 @@ class FilingState:
     supersede_kind: str | None   # rolled | corrected | None
     superseded_by: str | None
     is_current: bool
-    retrievable: bool            # current, or a superseded ANNUAL (historical risk text stays searchable)
     valid_from: str              # the filing date (ISO)
     valid_to: str                # VALID_TO_OPEN while current, else the superseding filing's date
     # --- annual family only, when the sections of every filing are known ---
@@ -79,6 +84,15 @@ class FilingState:
     def restated_on(self, section_id: str) -> str | None:
         return dict(self.restated).get(section_id)
 
+    def retrievable_in(self, section_id: str) -> bool:
+        """Filing-level part of default retrievability, for ONE section: everything of a current
+        filing, and only the risk section (of the form's base form: 10-K/A -> 10-K) of a superseded
+        annual filing. Ownership (a restated section) is applied on top by :func:`span_freshness`."""
+        if self.is_current:
+            return True
+        return (self.status == SUPERSEDED and self.family == ANNUAL
+                and section_id == RISK_SECTIONS.get(self.form.removesuffix("/A")))
+
 
 @dataclass(frozen=True)
 class SpanFreshness:
@@ -89,11 +103,12 @@ class SpanFreshness:
 
 
 def span_freshness(state: FilingState, section_id: str) -> SpanFreshness:
-    """Freshness of one span: filing-level, except that a section the period's
-    amendment restated is ``corrected`` — neither current nor retrievable —
-    and valid until the day it was restated."""
+    """Freshness of one span: status, currency and validity are filing-level, retrievability is
+    per section (see :meth:`FilingState.retrievable_in`), and a section the period's amendment
+    restated is ``corrected`` — neither current nor retrievable — and valid until the day it
+    was restated."""
     if state.owns(section_id):
-        return SpanFreshness(state.status, state.is_current, state.retrievable, state.valid_to)
+        return SpanFreshness(state.status, state.is_current, state.retrievable_in(section_id), state.valid_to)
     return SpanFreshness(CORRECTED, False, False, state.restated_on(section_id) or state.valid_to)
 
 
@@ -110,7 +125,7 @@ def versions_for_ticker(ticker: str, manifest_rows: Iterable[Mapping],
 
 def _inert_state(row: Mapping) -> FilingState:
     """A filing that plays no role: never current, never retrievable, empty validity interval."""
-    return FilingState(row["accession_no"], row["form"], INERT, AMENDMENT, None, None, False, False,
+    return FilingState(row["accession_no"], row["form"], INERT, AMENDMENT, None, None, False,
                        row["filing_date"], row["filing_date"])
 
 
@@ -119,9 +134,7 @@ def _filing_level_state(version: FilingVersion, filing_dates: Mapping[str, str])
     valid_to = VALID_TO_OPEN if version.is_current else (superseder_date or version.filing_date)
     return FilingState(
         version.accession_no, version.form, version.family, version.status, version.supersede_kind,
-        version.superseded_by, version.is_current,
-        version.is_current or (version.status == SUPERSEDED and version.family == ANNUAL),
-        version.filing_date, valid_to)
+        version.superseded_by, version.is_current, version.filing_date, valid_to)
 
 
 def _section_owners(versions: list[FilingVersion], sections: Sections) -> dict[tuple[str, str], str]:

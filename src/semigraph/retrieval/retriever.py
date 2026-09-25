@@ -65,7 +65,11 @@ logger = logging.getLogger("semigraph.retrieval")
 DEFAULT_ANCHOR_CIK = 1045810
 
 # --- tunables (named, and pinned by tests) ---
-RULES_PER_COMPANY = 12          # newest AFFECTED_BY rules per company in the relations block
+RULES_PER_COMPANY = 8           # newest AFFECTED_BY rules per company in the relations block
+# Rules of the anchors' direct neighbours are OFF: each rule line is ~100 tokens and, with ~26 relevant
+# rules, 12 per company over an anchor plus 16 neighbours added ~8k tokens per answer (cost regression
+# vs v1). M2 re-adds them behind a relevance ranking.
+NEIGHBOUR_RULES = False
 ACTIVE_RISKS_PER_ANCHOR = 20    # ANN candidates per anchor company before the Active filter
 ACTIVE_RISKS_TOP = 6            # active-risk rows kept overall, best score first
 EXCERPT_CANDIDATES = 60         # ANN candidates before the MENTIONS-anchor filter
@@ -173,10 +177,10 @@ def _company_edges(driver, anchor_ids: list[int], query: str) -> list[dict]:
 
 
 def _rule_edges(driver, anchor_ids: list[int], hops: int) -> list[dict]:
-    """AFFECTED_BY rows: the anchors' newest rules and, when the traversal reaches
-    beyond hop 1 (``hops >= 2``, as v1 did), their direct company neighbours' rules."""
+    """AFFECTED_BY rows: the anchors' newest rules and, only when ``NEIGHBOUR_RULES`` is on and the
+    traversal reaches beyond hop 1 (``hops >= 2``), their direct company neighbours' rules."""
     return run_cypher(driver, RULE_EDGES_QUERY, ids=anchor_ids,
-                      include_neighbours=hops >= 2, per_company=RULES_PER_COMPANY)
+                      include_neighbours=NEIGHBOUR_RULES and hops >= 2, per_company=RULES_PER_COMPANY)
 
 
 def _active_risks(driver, anchor_ids: list[int], vec: list[float]) -> list[dict]:
