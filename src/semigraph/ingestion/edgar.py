@@ -57,6 +57,7 @@ from ..universe import ANNUAL_SINCE, FILERS  # noqa: E402,F401 — re-exported (
 COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
 SEC_PAUSE_S = 0.15  # stay well under SEC's 10 req/s
+SEC_HTTP_TIMEOUT_S = 60  # a stalled connection must fail (and be reported), not hang ingestion forever
 _REPLACE_RETRIES = 3  # OneDrive/AV can briefly lock a file mid-replace on Windows
 
 
@@ -122,7 +123,7 @@ def _identity(settings: Settings) -> str:
 
 def _sec_get(url: str, user_agent: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": user_agent})
-    return urllib.request.urlopen(req).read()
+    return urllib.request.urlopen(req, timeout=SEC_HTTP_TIMEOUT_S).read()
 
 
 def edgar_dir(settings: Settings) -> Path:
@@ -163,12 +164,16 @@ def load_ticker_to_cik(settings: Settings | None = None) -> dict[str, int]:
     return {row["ticker"]: int(row["cik_str"]) for row in raw.values()}
 
 
-def atomic_write_text(path: Path, text: str) -> None:
-    """Write via a sibling temp file + ``os.replace`` so a crash never leaves
-    a truncated file that later looks 'already downloaded'."""
+def atomic_write(path: Path, write: Callable[[Path], None]) -> None:
+    """``write(tmp)`` to a sibling temp file, then ``os.replace`` it over ``path``.
+
+    A crash or exception mid-write never leaves a truncated ``path`` that later
+    looks 'already done' (the previous file, if any, stays intact), and the temp
+    file is always removed.
+    """
     tmp = path.with_name(path.name + ".tmp")
     try:
-        tmp.write_text(text, encoding="utf-8")
+        write(tmp)
         for attempt in range(_REPLACE_RETRIES):
             try:
                 os.replace(tmp, path)
@@ -179,6 +184,12 @@ def atomic_write_text(path: Path, text: str) -> None:
                 time.sleep(0.2)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """UTF-8 text via :func:`atomic_write` — a crash never leaves a truncated
+    file that later looks 'already downloaded'."""
+    atomic_write(path, lambda tmp: tmp.write_text(text, encoding="utf-8"))
 
 
 # ------------------------------------------------------- selection (pure)
@@ -340,24 +351,42 @@ def submissions_html_fallback(fetch: Callable[[str], bytes]) -> HtmlFallback:
     return primary_document
 
 
+def _has_content(html: object) -> bool:
+    """True for a non-blank string. edgartools' ``filing.html()`` returns None for a
+    PDF, binary or empty primary document — a failed fetch, not a filing."""
+    return isinstance(html, str) and bool(html.strip())
+
+
 def _fetch_html(rec: FilingRecord, fallback: HtmlFallback | None) -> str:
-    """Primary source first (edgartools ``html()``), then the fallback; both errors are kept."""
+    """Primary source first (edgartools ``html()``), then the fallback; both errors are kept.
+
+    A primary that raises, or returns None / blank text, counts as failed; a fallback
+    that yields nothing is a :class:`FilingDownloadError`. Nothing empty is ever written.
+    """
     if rec.html is None:
         raise FilingDownloadError(f"{rec.accession_no}: record has no html() source")
+    cause: Exception | None = None
     try:
-        return rec.html()
+        html = rec.html()
     except Exception as primary:  # noqa: BLE001 — edgartools raises AttributeError, OSError, ...
-        if fallback is None:
-            raise FilingDownloadError(f"{rec.accession_no}: {type(primary).__name__}: {primary}") from primary
-        logger.warning("%s: primary html() failed (%s: %s) — trying the submissions fallback",
-                       rec.accession_no, type(primary).__name__, primary)
-        try:
-            return fallback(rec)
-        except Exception as second:  # noqa: BLE001
-            raise FilingDownloadError(
-                f"{rec.accession_no}: primary {type(primary).__name__}: {primary}; "
-                f"fallback {type(second).__name__}: {second}"
-            ) from second
+        cause = primary
+        primary_error = f"{type(primary).__name__}: {primary}"
+    else:
+        if _has_content(html):
+            return html
+        primary_error = f"html() returned no content ({'None' if html is None else repr(html)[:40]})"
+    if fallback is None:
+        raise FilingDownloadError(f"{rec.accession_no}: {primary_error}") from cause
+    logger.warning("%s: primary %s — trying the submissions fallback", rec.accession_no, primary_error)
+    try:
+        html = fallback(rec)
+    except Exception as second:  # noqa: BLE001
+        raise FilingDownloadError(
+            f"{rec.accession_no}: primary {primary_error}; fallback {type(second).__name__}: {second}"
+        ) from second
+    if not _has_content(html):
+        raise FilingDownloadError(f"{rec.accession_no}: primary {primary_error}; fallback returned no content")
+    return html
 
 
 def _ensure_html(local: Path, rec: FilingRecord, fallback: HtmlFallback | None = None) -> None:
@@ -368,10 +397,35 @@ def _ensure_html(local: Path, rec: FilingRecord, fallback: HtmlFallback | None =
     time.sleep(SEC_PAUSE_S)
 
 
+def _filing_folder_url(rec: FilingRecord) -> str:
+    """The EDGAR Archives folder that holds the filing (always derivable, always truthful)."""
+    return f"https://www.sec.gov/Archives/edgar/data/{rec.cik}/{rec.accession_no.replace('-', '')}/"
+
+
+def _source_url(rec: FilingRecord) -> str:
+    """The filing's document URL, else its Archives folder.
+
+    edgartools' ``filing.document`` is None exactly for the filings that needed the
+    submissions fallback, so the deferred lookup can raise or come back empty; that
+    must never cost the filing its manifest row.
+    """
+    if rec.source_url:
+        return rec.source_url
+    if rec.resolve_source_url is not None:
+        try:
+            url = rec.resolve_source_url()
+        except Exception as e:  # noqa: BLE001 — AttributeError from filing.document.url, network errors, ...
+            logger.warning("%s: source URL lookup failed (%s: %s) — using the filing folder",
+                           rec.accession_no, type(e).__name__, e)
+        else:
+            if isinstance(url, str) and url:
+                return url
+            logger.warning("%s: no source URL available — using the filing folder", rec.accession_no)
+    return _filing_folder_url(rec)
+
+
 def _manifest_row(rec: FilingRecord, local: Path, root: Path) -> dict:
-    source_url = rec.source_url
-    if not source_url and rec.resolve_source_url is not None:
-        source_url = rec.resolve_source_url()
+    source_url = _source_url(rec)
     return {
         "ticker": rec.ticker,
         "cik": rec.cik,
@@ -390,9 +444,11 @@ def _acquire_new(
 ) -> tuple[list[dict], list[dict]]:
     """Download (if missing) and describe every target not yet in the manifest.
 
-    Returns ``(rows, failures)``. A filing that cannot be fetched is logged, listed
-    in ``failures`` and skipped — it never aborts its siblings, and it leaves no
-    manifest row or partial file, so the next run tries it again.
+    Returns ``(rows, failures)``. Anything that goes wrong for one filing — fetch,
+    write, or describing it (the manifest row is built inside the same guard) — is
+    logged, listed in ``failures`` and skipped: it never aborts its siblings or later
+    tickers, and leaves no manifest row. A file already written stays on disk, so the
+    next run reuses it (no re-download) and only retries the row.
     """
     fresh = [r for r in targets if r.accession_no not in known]
     if not fresh:
@@ -407,10 +463,13 @@ def _acquire_new(
         try:
             _ensure_html(local, rec, fallback)
             rows.append(_manifest_row(rec, local, root))
-        except FilingDownloadError as e:
-            logger.error("%s %s %s: not ingested — %s", ticker, rec.form, rec.filing_date, e)
+        except Exception as e:  # noqa: BLE001 — per-filing isolation: one bad filing must not abort the run
+            expected = isinstance(e, FilingDownloadError)
+            error = str(e) if expected else f"{type(e).__name__}: {e}"
+            logger.error("%s %s %s: not ingested — %s", ticker, rec.form, rec.filing_date, error,
+                         exc_info=not expected)
             failures.append({"accession_no": rec.accession_no, "form": rec.form,
-                             "filing_date": rec.filing_date.isoformat(), "error": str(e)})
+                             "filing_date": rec.filing_date.isoformat(), "error": error})
     return rows, failures
 
 

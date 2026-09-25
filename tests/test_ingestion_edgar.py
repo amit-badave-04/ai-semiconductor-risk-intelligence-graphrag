@@ -678,3 +678,251 @@ class TestBackwardCompatibleHelpers:
         row = {"local_path": "data/raw/edgar/NVDA/x.html"}
         assert E.resolve_local_path(settings, row) == E.project_root(settings) / "data/raw/edgar/NVDA/x.html"
         assert isinstance(E.resolve_local_path(settings, row), Path)
+
+
+# ------------------------------------------- per-filing failure isolation
+
+def one_filing_lister(record: FilingRecord, ticker: str = "AMD", form: str = "10-Q"):
+    """A lister that yields ``record`` when asked for ``form`` and nothing otherwise."""
+    return lambda t, f: [record] if (t == ticker and f == form) else []
+
+
+def amd_10q(acc: str, html, resolve=None, source_url: str = "") -> FilingRecord:
+    return FilingRecord("AMD", "10-Q", date(2026, 8, 5), acc, 2488, source_url,
+                        html=html, resolve_source_url=resolve)
+
+
+def amd_files(settings: Settings) -> list[str]:
+    return sorted(p.name for p in (E.edgar_dir(settings) / "AMD").glob("*"))
+
+
+class TestEmptyPrimaryHtml:
+    """edgartools ``filing.html()`` returns None for a PDF / binary / empty primary
+    document. That is a primary failure (so the submissions fallback runs), never a
+    TypeError out of the atomic write that aborts every later ticker."""
+
+    def test_none_from_html_triggers_the_fallback(self, settings):
+        used: list[str] = []
+
+        def fallback(r: FilingRecord) -> str:
+            used.append(r.accession_no)
+            return "<html>direct</html>"
+
+        out = download_filings(settings, ["AMD"], lister=one_filing_lister(amd_10q("A-1", lambda: None, source_url="u")),
+                               html_fallback=fallback)
+
+        assert used == ["A-1"]
+        assert out["tickers"]["AMD"]["new"] == ["A-1"] and out["failed_total"] == 0
+        assert (E.edgar_dir(settings) / "AMD" / "10-Q_2026-08-05_A-1.html").read_text(encoding="utf-8") == "<html>direct</html>"
+
+    def test_none_from_html_without_a_fallback_is_reported_not_fatal(self, settings):
+        out = download_filings(settings, ["AMD"], lister=one_filing_lister(amd_10q("A-2", lambda: None, source_url="u")))
+
+        failed = out["tickers"]["AMD"]["failed"]
+        assert [f["accession_no"] for f in failed] == ["A-2"] and "no content" in failed[0]["error"]
+        assert amd_files(settings) == [] and not E.manifest_path(settings).exists()
+
+    @pytest.mark.parametrize("blank", ["", "   \n\t "])
+    def test_blank_html_and_a_failing_fallback_are_reported_and_siblings_still_land(self, settings, blank):
+        good = FakeEdgar({"AMD": [("10-Q", "2026-08-06", "OK-1")]})
+        bad = amd_10q("BAD-1", lambda: blank, source_url="u")
+
+        def fallback(_r: FilingRecord) -> str:
+            raise OSError("403 forbidden")
+
+        out = download_filings(settings, ["AMD"], lister=lambda t, f: [bad, *good(t, f)], html_fallback=fallback)
+
+        failed = out["tickers"]["AMD"]["failed"]
+        assert [f["accession_no"] for f in failed] == ["BAD-1"]
+        assert "no content" in failed[0]["error"] and "403 forbidden" in failed[0]["error"]
+        assert out["failed_total"] == 1 and out["tickers"]["AMD"]["new"] == ["OK-1"]
+        assert not any("BAD-1" in n for n in amd_files(settings))       # no partial / empty file
+        assert {r["accession_no"] for r in read_manifest(settings)["AMD"]} == {"OK-1"}
+
+    def test_a_fallback_that_yields_nothing_is_a_download_error(self, settings):
+        out = download_filings(settings, ["AMD"], lister=one_filing_lister(amd_10q("A-3", lambda: None, source_url="u")),
+                               html_fallback=lambda _r: "  ")
+
+        err = out["tickers"]["AMD"]["failed"][0]["error"]
+        assert "A-3" in err and "fallback returned no content" in err
+        assert amd_files(settings) == []
+
+
+FOLDER_URL = "https://www.sec.gov/Archives/edgar/data/2488/000000248826000001/"
+
+
+class TestSourceUrlIsNeverFatal:
+    """The submissions fallback exists exactly for filings where edgartools cannot
+    find the primary document — and those are the filings whose ``filing.document``
+    is None, so the deferred URL lookup raises AttributeError."""
+
+    @staticmethod
+    def broken_lookup() -> str:
+        raise AttributeError("'NoneType' object has no attribute 'url'")
+
+    def rec(self, resolve) -> FilingRecord:
+        return amd_10q("0000002488-26-000001", lambda: "<html>ok</html>", resolve)
+
+    def test_a_raising_url_lookup_falls_back_to_the_filing_folder(self, settings):
+        out = download_filings(settings, ["AMD"], lister=one_filing_lister(self.rec(self.broken_lookup)))
+
+        assert out["failed_total"] == 0 and out["tickers"]["AMD"]["new"] == ["0000002488-26-000001"]
+        (row,) = read_manifest(settings)["AMD"]
+        assert row["source_url"] == FOLDER_URL
+
+    @pytest.mark.parametrize("empty", [None, ""])
+    def test_a_falsy_url_lookup_falls_back_to_the_filing_folder(self, settings, empty):
+        download_filings(settings, ["AMD"], lister=one_filing_lister(self.rec(lambda: empty)))
+        assert read_manifest(settings)["AMD"][0]["source_url"] == FOLDER_URL
+
+    def test_no_url_at_all_falls_back_to_the_filing_folder(self, settings):
+        download_filings(settings, ["AMD"], lister=one_filing_lister(self.rec(None)))
+        assert read_manifest(settings)["AMD"][0]["source_url"] == FOLDER_URL
+
+    def test_a_resolved_url_is_still_preferred(self, settings):
+        download_filings(settings, ["AMD"], lister=one_filing_lister(self.rec(lambda: "https://www.sec.gov/x.htm")))
+        assert read_manifest(settings)["AMD"][0]["source_url"] == "https://www.sec.gov/x.htm"
+
+    def test_an_explicit_source_url_is_kept_and_the_lookup_is_not_called(self, settings):
+        def unused() -> str:
+            raise AssertionError("lookup must not run when the URL is already known")
+
+        rec = amd_10q("0000002488-26-000001", lambda: "<html>ok</html>", unused, source_url="https://known/x.htm")
+        download_filings(settings, ["AMD"], lister=one_filing_lister(rec))
+        assert read_manifest(settings)["AMD"][0]["source_url"] == "https://known/x.htm"
+
+    def test_the_run_completes_and_later_tickers_are_processed(self, settings):
+        ok = FakeEdgar({"NVDA": [("10-K", "2026-02-25", "N-1")]})
+        amd = self.rec(self.broken_lookup)
+
+        def lister(ticker: str, form: str):
+            return one_filing_lister(amd)(ticker, form) if ticker == "AMD" else ok(ticker, form)
+
+        out = download_filings(settings, ["AMD", "NVDA"], lister=lister)
+
+        assert out["failed_total"] == 0 and out["tickers"]["NVDA"]["new"] == ["N-1"]
+        assert set(read_manifest(settings)) == {"AMD", "NVDA"}
+
+    def test_a_second_run_does_not_crash_and_downloads_nothing(self, settings):
+        first_calls: list[str] = []
+
+        def html() -> str:
+            first_calls.append("html")
+            return "<html>ok</html>"
+
+        rec = amd_10q("0000002488-26-000001", html, self.broken_lookup)
+        download_filings(settings, ["AMD"], lister=one_filing_lister(rec))
+        before = E.manifest_path(settings).read_bytes()
+        assert first_calls == ["html"]
+
+        def no_fetch(_r: FilingRecord) -> str:
+            raise AssertionError("second run must not download")
+
+        again = download_filings(settings, ["AMD"], lister=one_filing_lister(
+            amd_10q("0000002488-26-000001", lambda: pytest.fail("re-downloaded"), self.broken_lookup)),
+            html_fallback=no_fetch)
+
+        assert again["tickers"]["AMD"]["new"] == [] and again["failed_total"] == 0
+        assert E.manifest_path(settings).read_bytes() == before
+
+
+class TestUnexpectedErrorInsideAFilingIsIsolated:
+    def test_a_non_download_error_is_reported_not_fatal_and_siblings_land(self, settings, monkeypatch):
+        real_row = E._manifest_row
+
+        def flaky_row(rec, local, root):
+            if rec.accession_no == "BOOM-1":
+                raise ValueError("cannot describe this filing")
+            return real_row(rec, local, root)
+
+        monkeypatch.setattr(E, "_manifest_row", flaky_row)
+        good = FakeEdgar({"AMD": [("10-Q", "2026-08-06", "OK-1")]})
+        boom = amd_10q("BOOM-1", lambda: "<html>boom</html>", source_url="u")
+
+        out = download_filings(settings, ["AMD"], lister=lambda t, f: [boom, *good(t, f)])
+
+        failed = out["tickers"]["AMD"]["failed"]
+        assert [f["accession_no"] for f in failed] == ["BOOM-1"]
+        assert "ValueError" in failed[0]["error"] and "cannot describe" in failed[0]["error"]
+        assert out["failed_total"] == 1 and out["tickers"]["AMD"]["new"] == ["OK-1"]
+        assert {r["accession_no"] for r in read_manifest(settings)["AMD"]} == {"OK-1"}
+
+    def test_an_error_after_the_file_was_written_is_recovered_by_the_next_run(self, settings, monkeypatch):
+        """The file is on disk but no manifest row exists: the next run must reuse the file
+        (no download) and add the row instead of crashing on the same filing forever."""
+        real_row = E._manifest_row
+        monkeypatch.setattr(E, "_manifest_row", lambda *a: (_ for _ in ()).throw(RuntimeError("transient")))
+        downloads: list[str] = []
+
+        def html() -> str:
+            downloads.append("html")
+            return "<html>ok</html>"
+
+        rec = amd_10q("R-1", html, source_url="u")
+        first = download_filings(settings, ["AMD"], lister=one_filing_lister(rec))
+
+        assert first["failed_total"] == 1 and "transient" in first["tickers"]["AMD"]["failed"][0]["error"]
+        assert downloads == ["html"] and amd_files(settings) == ["10-Q_2026-08-05_R-1.html"]
+
+        monkeypatch.setattr(E, "_manifest_row", real_row)
+        second = download_filings(settings, ["AMD"], lister=one_filing_lister(rec))
+
+        assert downloads == ["html"]                                    # the existing file was reused
+        assert second["failed_total"] == 0 and second["tickers"]["AMD"]["new"] == ["R-1"]
+        assert read_manifest(settings)["AMD"][0]["accession_no"] == "R-1"
+
+    def test_a_failed_atomic_write_is_reported_not_fatal(self, settings, monkeypatch):
+        def locked(src, dst):
+            raise PermissionError("OneDrive holds the file")
+
+        monkeypatch.setattr(E.time, "sleep", lambda s: None)
+        monkeypatch.setattr(E.os, "replace", locked)
+
+        out = download_filings(settings, ["AMD"], lister=one_filing_lister(amd_10q("W-1", lambda: "<html>ok</html>", source_url="u")))
+
+        failed = out["tickers"]["AMD"]["failed"]
+        assert [f["accession_no"] for f in failed] == ["W-1"] and "PermissionError" in failed[0]["error"]
+        assert amd_files(settings) == []                                # no temp file left behind
+
+
+class TestSecGetTimeout:
+    """A stalled connection must not hang ingestion forever."""
+
+    def test_timeout_is_passed_to_urlopen(self, monkeypatch):
+        import urllib.request
+
+        seen: dict = {}
+
+        class Response:
+            def read(self) -> bytes:
+                return b"payload"
+
+        def fake_urlopen(req, *args, **kwargs):
+            seen.update(req=req, args=args, kwargs=kwargs)
+            return Response()
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+        assert E._sec_get("https://data.sec.gov/x.json", "Jane jane@example.com") == b"payload"
+        assert seen["kwargs"].get("timeout") == E.SEC_HTTP_TIMEOUT_S == 60
+        assert seen["req"].get_header("User-agent") == "Jane jane@example.com"
+
+
+class TestAtomicWriteHelper:
+    def test_a_failing_writer_keeps_the_previous_file_and_leaves_no_temp(self, tmp_path):
+        target = tmp_path / "m.bin"
+        target.write_bytes(b"old")
+
+        def writer(tmp: Path) -> None:
+            tmp.write_bytes(b"partial")
+            raise OSError("disk full")
+
+        with pytest.raises(OSError, match="disk full"):
+            E.atomic_write(target, writer)
+
+        assert target.read_bytes() == b"old" and [p.name for p in tmp_path.iterdir()] == ["m.bin"]
+
+    def test_a_successful_writer_replaces_the_file(self, tmp_path):
+        target = tmp_path / "m.bin"
+        E.atomic_write(target, lambda tmp: tmp.write_bytes(b"new"))
+        assert target.read_bytes() == b"new" and [p.name for p in tmp_path.iterdir()] == ["m.bin"]

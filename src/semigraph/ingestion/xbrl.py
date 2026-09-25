@@ -51,7 +51,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..config import Settings, get_settings
-from .edgar import FILERS, _identity, _sec_get, atomic_write_text, load_manifest, load_ticker_to_cik
+from .edgar import FILERS, _identity, _sec_get, atomic_write, atomic_write_text, load_manifest, load_ticker_to_cik
 
 logger = logging.getLogger("semigraph.ingestion.xbrl")
 
@@ -471,7 +471,9 @@ def extract_metrics(
         curated, supplemented, gaps = _curate_ticker(
             settings, ticker, cik, manifest.get(ticker, []), refresh, fetch, loader
         )
-        curated.to_parquet(out_path, index=False)
+        # atomic: a crash mid-write must not leave a truncated parquet that the
+        # `out_path.exists()` cache check above would treat as a finished result
+        atomic_write(out_path, lambda tmp: curated.to_parquet(tmp, index=False))
         metrics = sorted(curated["metric"].unique()) if len(curated) else []
         logger.info(
             "%s: %d metric-periods (%s)",

@@ -520,3 +520,53 @@ class TestExtractMetrics:
         out = X.extract_metrics(settings, ["TSM"], fetch=FakeSEC(tsm_facts_json()), filing_facts_loader=no_filing_xbrl)
         assert {"rows", "cached", "metrics"} <= set(out["TSM"])
         assert out["TSM"]["metrics"] == ["capex", "net_income", "revenue", "rnd"]
+
+
+class TestAtomicParquetWrite:
+    """A crash mid-write must never leave a truncated parquet that the next run
+    treats as a finished cache hit (``extract_metrics`` skips a filer whose file exists)."""
+
+    ROWS = staticmethod(lambda: manifest_rows(("20-F", "2025-04-17", "0001193125-25-083423")))
+
+    def parquet(self, settings: Settings):
+        return X.xbrl_out_dir(settings) / "TSM_key_metrics.parquet"
+
+    def test_a_write_that_dies_midway_keeps_the_previous_parquet_and_leaves_no_temp_file(self, settings, monkeypatch):
+        write_manifest(settings, self.ROWS())
+        X.extract_metrics(settings, ["TSM"], fetch=FakeSEC(tsm_facts_json()), filing_facts_loader=no_filing_xbrl)
+        before = self.parquet(settings).read_bytes()
+
+        def dies_midway(self_df, path, *args, **kwargs):
+            from pathlib import Path
+            Path(path).write_bytes(b"PAR1-truncated")
+            raise OSError("disk full")
+
+        monkeypatch.setattr(pd.DataFrame, "to_parquet", dies_midway)
+        with pytest.raises(OSError, match="disk full"):
+            X.extract_metrics(settings, ["TSM"], refresh=True, fetch=FakeSEC(tsm_facts_json(with_fy2025=True)),
+                              filing_facts_loader=no_filing_xbrl)
+
+        assert self.parquet(settings).read_bytes() == before
+        assert [p.name for p in X.xbrl_out_dir(settings).iterdir()] == ["TSM_key_metrics.parquet"]
+
+    def test_a_first_write_that_dies_leaves_no_parquet_so_the_next_run_recomputes(self, settings, monkeypatch):
+        write_manifest(settings, self.ROWS())
+
+        def dies_midway(self_df, path, *args, **kwargs):
+            from pathlib import Path
+            Path(path).write_bytes(b"PAR1-truncated")
+            raise OSError("disk full")
+
+        with monkeypatch.context() as broken, pytest.raises(OSError):
+            broken.setattr(pd.DataFrame, "to_parquet", dies_midway)
+            X.extract_metrics(settings, ["TSM"], fetch=FakeSEC(tsm_facts_json()), filing_facts_loader=no_filing_xbrl)
+
+        assert not self.parquet(settings).exists()
+        out = X.extract_metrics(settings, ["TSM"], fetch=FakeSEC(tsm_facts_json()), filing_facts_loader=no_filing_xbrl)
+        assert out["TSM"]["cached"] is False and out["TSM"]["rows"] > 0
+
+    def test_a_successful_write_leaves_only_the_parquet(self, settings):
+        write_manifest(settings, self.ROWS())
+        X.extract_metrics(settings, ["TSM"], fetch=FakeSEC(tsm_facts_json()), filing_facts_loader=no_filing_xbrl)
+        assert [p.name for p in X.xbrl_out_dir(settings).iterdir()] == ["TSM_key_metrics.parquet"]
+        assert len(pd.read_parquet(self.parquet(settings))) > 0
