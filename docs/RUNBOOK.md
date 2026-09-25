@@ -123,12 +123,20 @@ flyctl ips allocate-v4 --shared -a semigraph; flyctl ips allocate-v6 -a semigrap
 
 ## Updating the graph
 
-1. Rebuild locally (notebooks or `semigraph build-graph`), then export in Community format:
-   see [deploy/neo4j/seed/README.md](../deploy/neo4j/seed/README.md).
-2. `cd deploy\neo4j; flyctl deploy --ha=false --remote-only --yes` — the entrypoint detects the new
-   dump hash and reloads it on boot (this replaces the service ledger/cache too, and resets the kill switch to off — run `kill_switch on` again if the demo should stay paused).
-3. The API needs no redeploy; a restart re-seeds the benchmark answers:
-   `flyctl machine restart <id> -a semigraph`.
+1. Refresh and rebuild locally on Neo4j Community (`semigraph ingest`, `freshness`, `extract`,
+   `build-graph --rebuild`, `scripts/verify_graph.py`; see the README), then dump it and prove the dump loads:
+   [deploy/neo4j/seed/README.md](../deploy/neo4j/seed/README.md).
+2. Run the benchmark on the new graph into its own runs file and regenerate the example answers
+   (they carry the snapshot id; the service does NOT seed examples from another snapshot):
+   `semigraph eval --runs-file eval_runs.<snap>.jsonl --report-suffix .<snap> --max-answer-usd 1.75`, then
+   `PYTHONPATH=src python scripts/build_examples.py --runs data/processed/eval_runs.<snap>.jsonl --snapshot <snap id>`.
+3. `python -m scripts.kill_switch on`, then `cd deploy\neo4j; flyctl deploy --ha=false --remote-only --yes` — the
+   entrypoint detects the new dump hash and reloads it on boot (this replaces the service ledger/cache and resets the
+   kill switch to off). Then from the repo root `flyctl deploy --ha=false --remote-only --yes` (new examples.json),
+   verify (`/healthz`, `/api/stats` shows the new snapshot id, an example click is served cached), then `kill_switch off`.
+4. Rollback: `flyctl deploy --image registry.fly.io/<app>:<previous deployment tag>` for each app (find the tags in
+   `flyctl releases -a <app>`); the older DB image carries the older seed and reloads it. Keep the previous dump outside git
+   (`data/backups/`). The Turnstile gate rejects scripted clients, so a live paid question can only be tested from a browser.
 
 ## Troubleshooting
 

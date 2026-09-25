@@ -59,6 +59,26 @@ Claude Sonnet 5 answering and judging ([`artifacts/eval_report.json`](artifacts/
 | numeric questions | **100 %** | 80 % (XBRL metrics vs prose) |
 | context precision (relevant share of retrieved chunks) | 0.275 | 0.325 |
 
+**v1.1 re-measurement (2026-09-26)** — the same 20 questions on the graph rebuilt from data through
+2026-09-25 (snapshot `snap-20260924-7feaaf9bfe`: 74 filings, 166 BIS rules), Sonnet 5 answering and
+judging ([`artifacts/eval_report.v2-baseline.json`](artifacts/eval_report.v2-baseline.json)); the
+tables above are v1's original measurement and are kept as history:
+
+| metric | hybrid GraphRAG | vector-only baseline |
+|---|---|---|
+| correctness | **95 %** (19 / 20; 13 / 13 mechanical) | 75 % |
+| faithfulness | 0.892 | 0.903 |
+| citation validity | **100 %** | 95 % |
+| temporal / numeric questions | **100 % / 100 %** | 0 % / 60 % |
+| context precision / recall | 0.275 / 0.745 | 0.325 / 0.657 |
+| answer cost (list price, provider-reported tokens) | $0.037 | $0.023 |
+
+Read honestly: the single hybrid miss (TSMC supply-chain risks) is a *judge-unstable* item — the same
+answer passed 1 of 3 re-judgings, and three independent blind labellers all rated it correct
+([`artifacts/judge_labels.json`](artifacts/judge_labels.json); AI-assigned, not human). The vector
+numeric drop is the freshness model working as designed: a superseded annual report's MD&A is no
+longer retrievable by default, and vector-only has no XBRL metric block to fall back on.
+
 **Cross-judge re-scoring** — the same 40 answers re-judged by a *different model family* (Claude
 Haiku 4.5) on 2026-09-09, with the new context-recall metric
 ([`artifacts/eval_report.haiku.json`](artifacts/eval_report.haiku.json)):
@@ -286,10 +306,15 @@ uv sync --extra serve                    # .venv with the SDK, pipeline and web-
 copy .env.example .env                   # Anthropic key, Neo4j password, SEC user-agent
 uv run pytest -q                         # 162 tests, LLM mocked, zero spend
 
-# pipeline (Neo4j Desktop started)
-uv run semigraph ingest                  # EDGAR + XBRL + Federal Register -> parse -> chunk (no LLM cost)
-uv run semigraph build-graph --extract   # PAID extraction (prints an estimate and asks first), then loads the graph
+# pipeline (Neo4j Community 2026.07 or Desktop started; NEO4J_URI / NEO4J_PASSWORD / NEO4J_DATABASE in .env)
+uv run semigraph ingest --as-of 2026-09-25     # EDGAR + XBRL + ALL BIS rules -> parse -> chunk (append-only ids; no LLM cost)
+uv run semigraph freshness --as-of 2026-09-25  # what EDGAR / the Federal Register have that the lake lacks (0 = up to date)
+uv run semigraph extract --dry-run             # estimate only; then `extract --max-usd 6` (PAID, checkpointed, resumable)
+uv run semigraph build-graph --rebuild --yes   # versioned FULL rebuild (refuses while chunks are unextracted)
+PYTHONPATH=src python scripts/verify_graph.py  # 10 freshness/integrity invariants, read-only
 uv run semigraph query "Which export-control rules affect Nvidia?"
+# new data snapshot -> new benchmark log (the default eval_runs.jsonl holds v1's runs and would only be resumed):
+uv run semigraph eval --runs-file eval_runs.mysnapshot.jsonl --report-suffix .mysnapshot --max-answer-usd 1.75
 
 # web service locally (torch-free embedder built once, ~1.1 GB, fidelity-checked)
 uv run python scripts/build_onnx_embedder.py
