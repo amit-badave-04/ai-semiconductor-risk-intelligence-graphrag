@@ -332,3 +332,33 @@ def test_stats_report_the_snapshot_the_service_is_serving(client):
 
 def test_stats_without_a_snapshot_report_null(client):
     assert client.get("/api/stats").json()["snapshot"] is None
+
+
+# ---------------------------------------------- evidence drawer exposes freshness (the AMD 10-K/A case)
+
+def test_evidence_returns_freshness_so_the_ui_can_flag_a_corrected_paragraph(client, monkeypatch):
+    seen = {}
+
+    def fake_run_cypher(driver, query, **params):
+        seen["query"], seen["params"] = query, params
+        return [{"chunk_id": CID, "text": "31% increase in unit shipments", "source_url": "https://sec.gov/x",
+                 "section_key": "0000002488-26-000018:II.7", "section_title": "MD&A",
+                 "accession_no": "0000002488-26-000018", "form": "10-K", "filing_date": "2026-02-04",
+                 "filer": "AMD", "mentions": [], "status": "corrected", "is_current": False,
+                 "retrievable": False, "valid_to": "2026-02-04", "superseded_by": None,
+                 "corrected_by": "0000002488-26-000021"}]
+
+    monkeypatch.setattr(routes, "run_cypher", fake_run_cypher)
+
+    body = client.get(f"/api/evidence/{CID}").json()
+
+    assert body["status"] == "corrected" and body["is_current"] is False
+    assert body["corrected_by"] == "0000002488-26-000021" and body["valid_to"] == "2026-02-04"
+    for needed in ("e.status", "e.is_current", "e.valid_to", "AMENDS"):
+        assert needed in seen["query"]
+    assert seen["params"] == {"id": CID}
+
+
+def test_evidence_404_when_the_chunk_is_unknown(client, monkeypatch):
+    monkeypatch.setattr(routes, "run_cypher", lambda driver, query, **p: [])
+    assert client.get(f"/api/evidence/{CID}").status_code == 404

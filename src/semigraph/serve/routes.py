@@ -39,6 +39,21 @@ MSG_RATE = "Too many questions from your address — please wait a few minutes."
 MSG_BUSY = "The service is busy answering other questions — try again in a moment."
 
 
+# The citation drawer: the excerpt, where it comes from, and its FRESHNESS — a paragraph a later
+# amendment restated is ``corrected`` and names the amending filing (AMD's 10-K/A, Item 7).
+EVIDENCE_QUERY = """MATCH (e:EvidenceSpan {chunk_id: $id})
+OPTIONAL MATCH (e)-[:FROM_SECTION]->(s:FilingSection)<-[:HAS_SECTION]-(f:Filing)<-[:FILED]-(c:Company)
+OPTIONAL MATCH (e)-[:MENTIONS]->(m:Company)
+OPTIONAL MATCH (amender:Filing)-[:AMENDS]->(f)
+WITH e, s, f, c, collect(DISTINCT m.name) AS mentions, collect(DISTINCT amender.accession_no) AS amenders
+RETURN e.chunk_id AS chunk_id, e.text AS text, e.source_url AS source_url,
+       s.section_key AS section_key, s.title AS section_title, f.accession_no AS accession_no,
+       f.form AS form, toString(f.filing_date) AS filing_date, c.name AS filer,
+       e.status AS status, e.is_current AS is_current, e.retrievable AS retrievable,
+       toString(e.valid_to) AS valid_to, f.superseded_by AS superseded_by,
+       CASE WHEN e.status = 'corrected' THEN head(amenders) END AS corrected_by, mentions"""
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., max_length=4000)
     strategy: str = "hybrid"
@@ -117,14 +132,7 @@ async def evidence(chunk_id: str, request: Request):
     _read_gate(request)
     if not CHUNK_ID_RE.match(chunk_id):
         raise HTTPException(status_code=400, detail="malformed chunk id")
-    rows = await run_in_threadpool(run_cypher, request.app.state.driver, """
-        MATCH (e:EvidenceSpan {chunk_id: $id})
-        OPTIONAL MATCH (e)-[:FROM_SECTION]->(s:FilingSection)<-[:HAS_SECTION]-(f:Filing)<-[:FILED]-(c:Company)
-        OPTIONAL MATCH (e)-[:MENTIONS]->(m:Company)
-        RETURN e.chunk_id AS chunk_id, e.text AS text, e.source_url AS source_url,
-               s.section_key AS section_key, s.title AS section_title, f.accession_no AS accession_no,
-               f.form AS form, toString(f.filing_date) AS filing_date, c.name AS filer,
-               collect(DISTINCT m.name) AS mentions""", id=chunk_id)
+    rows = await run_in_threadpool(run_cypher, request.app.state.driver, EVIDENCE_QUERY, id=chunk_id)
     if not rows:
         raise HTTPException(status_code=404, detail="no evidence span with that id")
     return rows[0]
