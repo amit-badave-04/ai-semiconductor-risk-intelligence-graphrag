@@ -167,3 +167,30 @@ def test_answer_stream_mid_stream_failure_yields_error_with_usage(monkeypatch):
     assert [e["event"] for e in events] == ["retrieval", "delta", "error"]
     assert events[-1]["partial"] == "part" and events[-1]["usage"]["prompt_tokens"] == 40
     assert events[-1]["cost_usd"] == pytest.approx(40 * 2 / 1e6 + 3 * 10 / 1e6)
+
+
+# ---------------------------------------------- snapshot-aware cache (data refreshes must not serve old answers)
+
+def test_cache_key_without_a_snapshot_is_the_legacy_key():
+    import hashlib
+    legacy = hashlib.sha256("hybrid|what about nvidia".encode()).hexdigest()[:32]
+    assert store.cache_key("What about Nvidia?", "hybrid") == legacy
+    assert store.cache_key("What about Nvidia?", "hybrid", "") == legacy
+
+
+def test_cache_key_changes_with_the_snapshot():
+    a = store.cache_key("What about Nvidia?", "hybrid", "snap-20260924-aaaaaaaaaa")
+    b = store.cache_key("What about Nvidia?", "hybrid", "snap-20260925-bbbbbbbbbb")
+    assert a != b and a != store.cache_key("What about Nvidia?", "hybrid")
+    assert a == store.cache_key("what about  nvidia", "hybrid", "snap-20260924-aaaaaaaaaa")
+
+
+@pytest.mark.parametrize("doc,snapshot,expected", [
+    ({"snapshot_id": "snap-1", "examples": [1]}, "snap-1", True),      # regenerated for this graph
+    ({"snapshot_id": "snap-1", "examples": [1]}, "snap-2", False),     # answers from another data generation
+    ({"examples": [1]}, "snap-2", False),                              # v1-era file: no snapshot label
+    ({"examples": [1]}, "", True),                                     # no snapshot known: legacy behaviour
+    ({"snapshot_id": "snap-1", "examples": [1]}, "", True),
+])
+def test_examples_are_seeded_only_for_the_graph_they_were_generated_from(doc, snapshot, expected):
+    assert store.examples_match_snapshot(doc, snapshot) is expected

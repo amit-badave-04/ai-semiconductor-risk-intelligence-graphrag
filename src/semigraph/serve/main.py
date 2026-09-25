@@ -15,7 +15,7 @@ from .. import __version__
 from ..artifacts import load_examples
 from ..config import get_settings
 from ..embeddings import Embedder
-from ..graph.client import run_cypher
+from ..graph.client import DatabaseDriver, run_cypher
 from ..graph.schema import apply_schema
 from .guard import RateLimiter
 from .routes import router
@@ -34,8 +34,9 @@ def connect_with_retry(settings):
     deadline = time.monotonic() + CONNECT_RETRY_S
     while True:
         try:
-            driver = GraphDatabase.driver(settings.neo4j_uri,
-                                          auth=(settings.neo4j_user, settings.neo4j_password))
+            driver = DatabaseDriver(GraphDatabase.driver(settings.neo4j_uri,
+                                                         auth=(settings.neo4j_user, settings.neo4j_password)),
+                                    settings.neo4j_database)
             driver.verify_connectivity()
             logger.info("neo4j reachable at %s", settings.neo4j_uri)
             return driver
@@ -59,11 +60,18 @@ def bootstrap(settings):
     driver = connect_with_retry(settings)
     apply_schema(driver)              # idempotent — also rebuilds after a dump restore
     store.ensure_indexes(driver)
-    n = store.seed_examples(driver, load_examples()["examples"])
-    logger.info("seeded %d benchmark answers into the cache", n)
+    snapshot = store.current_snapshot(driver)
+    snapshot_id = (snapshot or {}).get("id", "")
+    examples = load_examples()
+    if store.examples_match_snapshot(examples, snapshot_id):
+        n = store.seed_examples(driver, examples["examples"], snapshot_id)
+        logger.info("seeded %d benchmark answers into the cache (snapshot %s)", n, snapshot_id or "none")
+    else:
+        logger.warning("example answers were generated from another data snapshot than %s — NOT seeded; "
+                       "regenerate them with `semigraph eval` before publishing", snapshot_id)
     embedder = Embedder()
     embedder.encode_query("warm-up: export controls and HBM supply")
-    return driver, embedder, graph_stats(driver)
+    return driver, embedder, graph_stats(driver), snapshot
 
 
 @contextlib.asynccontextmanager
@@ -74,11 +82,13 @@ async def lifespan(app: FastAPI):
     elif settings.is_production and not settings.turnstile_secret_key:
         logger.warning("production without Turnstile: cost is bounded only by the daily ceiling (%d) and the per-IP window",
                        settings.max_queries_per_day)
-    driver, embedder, stats = await run_in_threadpool(bootstrap, settings)
+    driver, embedder, stats, snapshot = await run_in_threadpool(bootstrap, settings)
     app.state.settings = settings
     app.state.driver = driver
     app.state.embedder = embedder
     app.state.graph_stats = stats
+    app.state.snapshot = snapshot
+    app.state.snapshot_id = (snapshot or {}).get("id", "")
     app.state.rate_limiter = RateLimiter(settings.rate_limit_questions, settings.rate_limit_window_seconds)
     app.state.free_rate_limiter = RateLimiter(settings.free_rate_limit_questions,
                                               settings.rate_limit_window_seconds)

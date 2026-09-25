@@ -303,3 +303,32 @@ def test_read_endpoints_are_rate_limited(client):
     codes = [client.get("/api/stats").status_code for _ in range(n + 1)]
     assert codes[:-1] == [200] * n and codes[-1] == 429
     assert client.get("/api/evidence/not-a-chunk").status_code == 429  # same window
+
+
+def test_a_cached_answer_is_not_served_after_the_data_snapshot_changes(client, fakes, monkeypatch):
+    """The cache key includes the snapshot id: after a data refresh yesterday's answer is a miss."""
+    monkeypatch.setattr(store, "put_answer",
+                        lambda d, **kw: fakes.answers.__setitem__(
+                            store.cache_key(kw["question"], kw["strategy"], kw.get("snapshot_id", "")),
+                            {"answer": kw["answer"], "source": "live", "citations": kw["citations"],
+                             "hallucinated": kw["hallucinated"]}))
+    client.app.state.snapshot_id = "snap-20260924-aaaaaaaaaa"
+    first = parse_sse(client.post("/api/ask", json={"question": "Who does Nvidia depend on for HBM?"}).text)
+    assert first[-1]["event"] == "done" and not first[-1].get("cached")
+
+    again = parse_sse(client.post("/api/ask", json={"question": "Who does Nvidia depend on for HBM?"}).text)
+    assert again[-1].get("cached") is True                       # same snapshot: served from cache
+
+    client.app.state.snapshot_id = "snap-20260925-bbbbbbbbbb"   # the graph was rebuilt from newer data
+    after = parse_sse(client.post("/api/ask", json={"question": "Who does Nvidia depend on for HBM?"}).text)
+    assert not after[-1].get("cached")                           # miss: computed from the new data
+
+
+def test_stats_report_the_snapshot_the_service_is_serving(client):
+    client.app.state.snapshot = {"id": "snap-20260924-7feaaf9bfe", "as_of": "2026-09-24"}
+    body = client.get("/api/stats").json()
+    assert body["snapshot"] == {"id": "snap-20260924-7feaaf9bfe", "as_of": "2026-09-24"}
+
+
+def test_stats_without_a_snapshot_report_null(client):
+    assert client.get("/api/stats").json()["snapshot"] is None

@@ -105,7 +105,7 @@ async def stats(request: Request):
     st, s = request.app.state, request.app.state.settings
     ledger = await _ledger_cached(st)
     paused = await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch)
-    return {"graph": st.graph_stats, "ledger": ledger, "paused": paused,
+    return {"graph": st.graph_stats, "snapshot": getattr(st, "snapshot", None), "ledger": ledger, "paused": paused,
             "limits": {"max_queries_per_day": s.max_queries_per_day,
                        "per_ip": f"{s.rate_limit_questions} per {s.rate_limit_window_seconds // 60} min",
                        "max_question_chars": s.max_question_chars},
@@ -137,12 +137,13 @@ async def ask(body: AskRequest, request: Request):
     strategy = guard.validate_strategy(body.strategy)
     ip = guard.client_ip(request, s.client_ip_header)
     iph = guard.ip_hash(ip)
+    snapshot_id = getattr(st, "snapshot_id", "")
 
     # Free tier (cache hits) has its own, wider window — and it is the first gate,
     # so an unauthenticated client cannot write a ledger row without passing it.
     if not st.free_rate_limiter.allow(iph):
         raise HTTPException(status_code=429, detail=MSG_RATE)
-    cached = await run_in_threadpool(store.get_answer, st.driver, store.cache_key(question, strategy),
+    cached = await run_in_threadpool(store.get_answer, st.driver, store.cache_key(question, strategy, snapshot_id),
                                      s.answer_cache_ttl_hours)
     if cached:
         await run_in_threadpool(store.log_query, st.driver, ip_hash=iph, strategy=strategy, cached=True)
@@ -158,10 +159,10 @@ async def ask(body: AskRequest, request: Request):
         raise HTTPException(status_code=403, detail=MSG_BOT)
     if not st.rate_limiter.allow(iph):
         raise HTTPException(status_code=429, detail=MSG_RATE)
-    return EventSourceResponse(_paid_stream(st, question, strategy, iph), ping=15, sep="\n")
+    return EventSourceResponse(_paid_stream(st, question, strategy, iph, snapshot_id), ping=15, sep="\n")
 
 
-def _paid_stream(st, question: str, strategy: str, iph: str):
+def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = ""):
     """Sync generator (runs in the threadpool): slot -> retrieval -> LLM deltas -> done.
 
     The concurrency slot is taken INSIDE the generator so it is released by the
@@ -183,7 +184,7 @@ def _paid_stream(st, question: str, strategy: str, iph: str):
                 if ev["answer"].strip() and ev["finish_reason"] != "length":
                     store.put_answer(st.driver, question=question, strategy=strategy, answer=ev["answer"],
                                      citations=ev["citations"], hallucinated=ev["hallucinated"],
-                                     usage=ev["usage"], cost_usd=ev["cost_usd"])
+                                     usage=ev["usage"], cost_usd=ev["cost_usd"], snapshot_id=snapshot_id)
                 logger.info("answered strategy=%s citations=%d hallucinated=%d cost=%s",
                             strategy, len(ev["citations"]), len(ev["hallucinated"]), ev["cost_usd"])
             elif ev["event"] == "error":

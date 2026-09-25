@@ -20,9 +20,28 @@ from neo4j import Driver
 from ..graph.client import run_cypher
 
 
-def cache_key(question: str, strategy: str) -> str:
+def cache_key(question: str, strategy: str, snapshot_id: str = "") -> str:
+    """Answer-cache key. The data snapshot id is part of it, so a refresh of the graph can
+    never serve an answer computed from older data (no snapshot = the legacy key)."""
     norm = " ".join(question.lower().split()).rstrip("?.! ")
-    return hashlib.sha256(f"{strategy}|{norm}".encode()).hexdigest()[:32]
+    prefix = f"{snapshot_id}|" if snapshot_id else ""
+    return hashlib.sha256(f"{prefix}{strategy}|{norm}".encode()).hexdigest()[:32]
+
+
+def current_snapshot(driver: Driver) -> dict | None:
+    """The newest ``Snapshot`` node of the served graph: ``{"id", "as_of"}`` or None."""
+    rows = run_cypher(driver, """MATCH (s:Snapshot) RETURN s.id AS id, toString(s.as_of) AS as_of
+        ORDER BY s.created_at DESC LIMIT 1""")
+    return rows[0] if rows else None
+
+
+def examples_match_snapshot(examples_doc: dict, snapshot_id: str) -> bool:
+    """Seeded example answers were generated from ONE graph; they are served as cached
+    answers only when the service runs that same snapshot (a file without a snapshot label
+    predates versioning and is stale against any snapshot-stamped graph)."""
+    if not snapshot_id:
+        return True
+    return examples_doc.get("snapshot_id") == snapshot_id
 
 
 def _now() -> str:
@@ -97,22 +116,23 @@ def get_answer(driver: Driver, key: str, ttl_hours: int) -> dict | None:
 
 def put_answer(driver: Driver, *, question: str, strategy: str, answer: str,
                citations: list[str], hallucinated: list[str], usage: dict | None = None,
-               cost_usd: float | None = None, source: str = "live") -> None:
+               cost_usd: float | None = None, source: str = "live", snapshot_id: str = "") -> None:
     usage = usage or {}
     run_cypher(driver, """MERGE (a:SvcAnswer {key: $key})
         SET a.question = $question, a.strategy = $strategy, a.answer = $answer,
             a.citations = $citations, a.hallucinated = $hallucinated, a.source = $source,
             a.usage_prompt = $pt, a.usage_completion = $ct, a.cost_usd = $cost, a.created_at = $ts""",
-               key=cache_key(question, strategy), question=question, strategy=strategy,
+               key=cache_key(question, strategy, snapshot_id), question=question, strategy=strategy,
                answer=answer, citations=citations, hallucinated=hallucinated, source=source,
                pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, ts=_now())
 
 
-def seed_examples(driver: Driver, examples: list[dict]) -> int:
+def seed_examples(driver: Driver, examples: list[dict], snapshot_id: str = "") -> int:
     """Pre-load the benchmarked hybrid answers so example clicks are free."""
     for ex in examples:
         put_answer(driver, question=ex["question"], strategy="hybrid", answer=ex["answer"],
-                   citations=ex["citations"], hallucinated=ex["hallucinated"], source="benchmark")
+                   citations=ex["citations"], hallucinated=ex["hallucinated"], source="benchmark",
+                   snapshot_id=snapshot_id)
     return len(examples)
 
 
