@@ -30,7 +30,9 @@ def completion_params(model: str, max_tokens: int) -> dict:
 # depends on LiteLLM's price map (fetched over the network at import; it does not yet list these models).
 # Values are LiteLLM's cost map on 2026-09-26; the providers' own price pages were not consulted.
 KNOWN_PRICES_PER_MTOK = {
-    "openai/gpt-6-luna": (0.20, 0.50),
+    # 0.10 is LiteLLM's short-context input price. A probe that priced a 1M-token prompt returned 0.20 (a long-context
+    # tier), which was wrongly copied here first and overstated Luna's cost up to 2x; corrected 2026-09-26.
+    "openai/gpt-6-luna": (0.10, 0.50),
     "anthropic/claude-sonnet-5": (2.00, 10.00),
     "anthropic/claude-haiku-4-5": (1.00, 5.00),
 }

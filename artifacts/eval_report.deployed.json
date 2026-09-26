@@ -12,7 +12,7 @@
   "escalation_rate": 0.0,
   "errors": 0,
   "truncated": 0,
-  "avg_cost_usd": 0.007541150000000001,
+  "avg_cost_usd": 0.00669,
   "avg_latency_s": 5.9963,
   "avg_completion_tokens": 572.9,
   "judged": {
@@ -34,5 +34,6 @@
   },
   "escalated": 0,
   "escalated_ids": [],
-  "total_cost_usd": 0.150823
+  "total_cost_usd": 0.1339,
+  "cost_note": "Recomputed 2026-09-26 from the saved token counts with GPT-6 Luna at 0.10/0.50 USD per M tokens; the first table used 0.20 for input (a long-context tier), which had produced avg 0.00754."
 }

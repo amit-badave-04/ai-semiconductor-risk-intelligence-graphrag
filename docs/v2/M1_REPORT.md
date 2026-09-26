@@ -1,6 +1,6 @@
 # M1 (v1.1 / v1.2) report — 2026-09-25/26
 
-Branch `v2` (base tag `v1-final`). **M1 is complete and deployed** at https://semigraph.fly.dev: fresh data through
+Branch `v2` (base tag `v1-final`). **M1 is deployed but only partly complete** (see [REVIEW_2026-09-26.md](REVIEW_2026-09-26.md): the plan's model gate failed, calibration used AI labels, and the dropped-risk layer is not trustworthy on the flagship Nvidia case; the agent, upload, frontend and scale work are M2-M5 and are not started) at https://semigraph.fly.dev: fresh data through
 2026-09-25, the correctness fixes, the section-level freshness model, the rebuilt graph on Neo4j Community 2026.07.1, and
 a cheaper answering path (GPT-6 Luna by default, Sonnet 5 for change-over-time questions and rejected drafts; details and
 evidence in [BAKEOFF.md](BAKEOFF.md)). Section "M1 completion" at the end lists what was added after the first version of this report.
@@ -51,7 +51,7 @@ Edge lines 1,561 → 1,438 in total (Nvidia questions 86 → 79); metrics identi
 | Baseline benchmark on the new graph (approved, Sonnet 5 answering and judging) | hybrid 19/20 (13/13 mechanical, citations 100 %), vector 15/20; answers $1.2 (`artifacts/eval_report.v2-baseline.json`) |
 | Judge calibration | `artifacts/judge_labels.json`: 28 open-question answers labelled by three blind AI passes (**AI-assigned, not human**), 21 correct / 6 incorrect / 1 contested; the Sonnet judge agrees on 26 of 27 firm labels, v1's saved Haiku judge on 11 of 14 (one lenient error), so a cheap judge is not a drop-in for correctness |
 | Model bake-off | 7 candidates on identical saved contexts; see [BAKEOFF.md](BAKEOFF.md); about $1.7 |
-| Deployed path evaluated end to end (final code, after the review fixes) | 13/13 mechanical, 100 % citations, 6/7 open (Sonnet-only 7/7 by the same majority judge, 19/20 by the single-vote one), $0.0075 per answer vs $0.037, 6.0 s vs 8.6 s; a judgement call, not a gate pass |
+| Deployed path evaluated end to end (final code, after the review fixes) | 13/13 mechanical, 100 % citations, 6/7 open (Sonnet-only 7/7 by the same majority judge, 19/20 by the single-vote one), $0.0067 per answer vs $0.037, 6.0 s vs 8.6 s; a judgement call, not a gate pass |
 | Redeploy | DB image with the new seed and API image deployed; verified: `/healthz`, `/api/stats` snapshot id, cached example click, AMD corrected/current evidence rows, live-DB retrieval through a tunnel (79 Nvidia edges, 0 non-retrievable chunks returned) |
 | Production model switch | `LLM_MODEL=openai/gpt-6-luna`, `ESCALATION_MODEL=anthropic/claude-sonnet-5`, `OPENAI_API_KEY` staged as Fly secrets and deployed with the API |
 | Git | branch `v2` and tag `v1-final` pushed to origin; `master` untouched |

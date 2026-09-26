@@ -76,4 +76,4 @@ def test_deployed_models_are_priced_without_asking_litellm(monkeypatch):
     monkeypatch.setattr(ans.litellm, "cost_per_token", unreachable)
     luna = ans.usage_cost({"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}, model="openai/gpt-6-luna")
     sonnet = ans.usage_cost({"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}, model="anthropic/claude-sonnet-5")
-    assert luna == pytest.approx(0.20 + 0.50) and sonnet == pytest.approx(2.0 + 10.0)
+    assert luna == pytest.approx(0.10 + 0.50) and sonnet == pytest.approx(2.0 + 10.0)

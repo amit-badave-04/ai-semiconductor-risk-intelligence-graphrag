@@ -6,7 +6,7 @@ gate pass**: no candidate cleared the pre-registered gate (open-question correct
 and Luna passed the free gates only after a scoring correction described below. Measured on the 20-question benchmark
 through the deployed code path: 13/13 mechanical, 100 % citation validity, 6/7 open questions by the majority-of-3 judge
 (the Sonnet baseline scores 7/7 under the same measurement, and 19/20 under the single-vote judge used in the first
-baseline report), **$0.0075 per answer against $0.037, 6.0 s average against 8.6 s**. The one open miss is judge-unstable
+baseline report), **$0.0067 per answer against $0.037, 6.0 s average against 8.6 s**. The one open miss is judge-unstable
 (see finding 2), which is why the call is judgement rather than arithmetic.
 Reverting is two settings: `LLM_MODEL` and `ESCALATION_MODEL` both `anthropic/claude-sonnet-5` (one model in both roles streams
 live exactly as v1 did, with no double payment), or clear `ESCALATION_MODEL`.
@@ -84,7 +84,7 @@ only matched the benchmark's own wording (now: a change verb plus a disclosure n
 noun, also route). Also fixed: the documented rollback now really restores live streaming, a failed draft is logged with its error, the
 draft fails fast (one attempt, no provider retries, 30 s), the deployed models are priced from a local table, and an abandoned answer
 still writes a ledger row. After the fixes the bake-off was re-scored offline (Luna unchanged: 13/13, 0.00 rejected; Haiku worsens to
-0.20) and the deployed path re-measured: 13/13, 100 % citations, 17 cheap / 3 routed, 0 escalations, 6/7 open, $0.0075 per answer.
+0.20) and the deployed path re-measured: 13/13, 100 % citations, 17 cheap / 3 routed, 0 escalations, 6/7 open, $0.0067 per answer.
 
 ## Limits
 
