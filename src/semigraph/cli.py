@@ -363,6 +363,7 @@ def bakeoff_cmd(
     _setup_logging(verbose)
     from semigraph.artifacts import load_benchmark
     from semigraph.eval import bakeoff as bo
+    from semigraph.eval.runner import data_as_of
     from semigraph.llm import llm_json
     from semigraph.retrieval.answerer import usage_cost
 
@@ -376,7 +377,7 @@ def bakeoff_cmd(
         prices = [(m, *bo.model_prices(m)) for m in candidates]
     except Exception as e:  # noqa: BLE001
         raise typer.BadParameter(f"a model has no price in LiteLLM's cost map ({e}); refusing to spend blind") from e
-    n_open = sum(1 for b in benchmark if b["type"] != "refusal" and not b.get("expect"))
+    n_open = bo.open_question_count(benchmark)
     est = bo.estimate(base, prices, votes=votes, open_questions=n_open)
     typer.echo(f"Bake-off estimate: {json.dumps(est, default=str)}")
     if dry_run:
@@ -398,7 +399,7 @@ def bakeoff_cmd(
     try:
         report = bo.run_bakeoff(base, benchmark, live, complete=bo.litellm_complete, judge=llm_json,
                                 runs_path=settings.processed_dir / "bakeoff.jsonl", max_usd=answers_cap, votes=votes,
-                                price=usage_cost, previous=previous)
+                                price=usage_cost, previous=previous, as_of=data_as_of(settings))
     except bo.AnswerBudgetExceeded as e:
         typer.echo(f"Stopped: {e}. Nothing further was spent; answers so far are checkpointed.", err=True)
         raise typer.Exit(5) from e
@@ -425,11 +426,12 @@ def eval_deployed_cmd(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
     verbose: bool = typer.Option(False, "-v"),
 ):
-    """Run the 20-question benchmark through the DEPLOYED path: router, cheap draft, verifier, escalation. (PAID)"""
+    """Run the benchmark benchmark through the DEPLOYED path: router, cheap draft, verifier, escalation. (PAID)"""
     _setup_logging(verbose)
     from semigraph.artifacts import load_benchmark
     from semigraph.embeddings import Embedder
     from semigraph.eval import bakeoff as bo
+    from semigraph.eval.runner import data_as_of
     from semigraph.graph import client
     from semigraph.llm import llm_json
 
@@ -439,7 +441,7 @@ def eval_deployed_cmd(
     if not escalation_model:
         raise typer.BadParameter("no escalation model: pass --escalation-model or set ESCALATION_MODEL")
     benchmark = load_benchmark()
-    n_open = sum(1 for b in benchmark if b["type"] != "refusal" and not b.get("expect"))
+    n_open = bo.open_question_count(benchmark)
     judge_usd = n_open * votes * bo.JUDGE_CALL_USD
     typer.echo(f"eval-deployed: {len(benchmark)} questions, default {model}, escalation {escalation_model}; "
                f"answers capped at ${max_usd:.2f}, judge worst case ${judge_usd:.2f}")
@@ -455,7 +457,7 @@ def eval_deployed_cmd(
     finally:
         driver.close()
     report = {"model": model, "escalation_model": escalation_model, "votes": votes,
-              **bo.score_deployed(rows, benchmark, llm_json, votes=votes)}
+              **bo.score_deployed(rows, benchmark, llm_json, votes=votes, as_of=data_as_of(settings))}
     out = Path("artifacts") / report_name
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     j = report["judged"]
