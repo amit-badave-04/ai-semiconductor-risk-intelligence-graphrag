@@ -457,6 +457,11 @@ def eval_deployed_cmd(
     typer.echo(f"report -> {out}")
 
 
+def _notable(filing: dict) -> list[str]:
+    """A filing's notes minus the routine "aligned N% onto M HTML blocks" line (selected by content, never by position)."""
+    return [n for n in filing.get("notes", []) if not n.startswith("aligned ")]
+
+
 def _echo_risk_item_report(report: dict, gate: float) -> None:
     """Per-filing table for `risk-items`; a filing under the coverage gate is flagged LOW, never hidden."""
     typer.echo(f"{'ticker':<6} {'form':<7} {'filed':<11} {'section':<8} {'items':>5} {'head':>5} {'para':>5} "
@@ -465,7 +470,7 @@ def _echo_risk_item_report(report: dict, gate: float) -> None:
     for ticker, t in report.items():
         for f in t["filings"]:
             flags = ("LOW" if f["low_coverage"] else "") + (" SUSPECT" if f.get("section_suspect") else "") \
-                + (" NOTE" if len(f.get("notes", [])) > 1 else "")
+                + (" NOTE" if _notable(f) else "")
             summ = str(f["summary_excluded"]) if f.get("summary_found", f["summary_excluded"] > 0) else "-"
             typer.echo(f"{ticker:<6} {f['form']:<7} {f['filing_date']:<11} {f['section_id']:<8} {f['n_items']:>5} "
                        f"{f['n_headline']:>5} {f['n_paragraph']:>5} {100 * f['coverage']:>6.1f}  {f['method']:<10} "
@@ -474,7 +479,7 @@ def _echo_risk_item_report(report: dict, gate: float) -> None:
                 below.append(f"{ticker} {f['form']} {f['filing_date']} ({100 * f['coverage']:.1f}%)")
             if f.get("section_suspect"):
                 suspect.append(f"{ticker} {f['form']} {f['filing_date']} ({f.get('section_chars', '?')} chars)")
-            notes += [f"  {ticker} {f['filing_date']}: {n}" for n in f.get("notes", [])[1:]]
+            notes += [f"  {ticker} {f['filing_date']}: {n}" for n in _notable(f)]
         for s in t["skipped"]:
             typer.echo(f"{ticker:<6} {s['form']:<7} {s['filing_date']:<11} SKIPPED: {s['reason']} ({s['accession_no']})")
     for line in notes:

@@ -917,3 +917,59 @@ def test_real_nvda_fy26_yields_one_item_per_summary_bullet():
     ends = [it.char_end for it in res.items]
     starts = [it.char_start for it in res.items]
     assert all(s2 >= e1 for e1, s2 in zip(ends, starts[1:]))          # sorted, disjoint
+
+
+# --- review follow-ups (Opus review of 59de9fc): paragraph-mode guard, zero-item filings, stale files, CLI notes ---
+
+def _detection(method="bold", coverage=0.96, low=False):
+    return ri.DetectionResult(items=(), unit_kind=method, coverage=coverage, method=method, summary_found=False,
+                              summary_excluded=0, low_coverage=low, n_candidates=0, aligned_ratio=1.0,
+                              notes=("aligned 100% onto 3 HTML blocks",))
+
+
+def test_a_paragraph_mode_pair_uses_the_tighter_length_guard():
+    # 70% of the prior length: fine for headline units (>= 60%), suspect when paragraph units tile the section
+    assert ri._length_note(700, 1000, ri.SECTION_LENGTH_WARN) is None
+    assert ri._length_note(700, 1000, ri.SECTION_LENGTH_WARN_PARAGRAPH) is not None
+    assert ri._length_note(1400, 1000, ri.SECTION_LENGTH_WARN_PARAGRAPH) is not None      # over-extended: 1/0.8 = 1.25x
+    assert ri._length_note(1000, 0, ri.SECTION_LENGTH_WARN_PARAGRAPH) is None
+
+
+def test_a_filing_whose_units_all_vanished_is_low_coverage_never_a_clean_zero(tmp_path):
+    report = ri._filing_report({"accession_no": "a", "form": "20-F", "filing_date": "2025-01-01"}, "I.3",
+                               _detection(method="paragraph", coverage=1.0), [], 5000, n_merged=4)
+    assert report["low_coverage"] is True and report["coverage"] == 0.0 and report["n_items"] == 0
+    assert any("no items" in n for n in report["notes"])
+
+
+def test_rewriting_a_ticker_that_now_yields_nothing_removes_its_stale_files(tmp_path):
+    from types import SimpleNamespace
+
+    settings = SimpleNamespace(interim_dir=tmp_path)
+    folder = tmp_path / "risk_items"
+    folder.mkdir()
+    (folder / "XYZ_risk_items.parquet").write_bytes(b"old")
+    (folder / "XYZ_risk_items_quality.json").write_text("{}", encoding="utf-8")
+    summary = ri._ticker_summary(settings, "XYZ", [], [], [], [], True)
+    assert summary["written"] is False and not list(folder.glob("XYZ_*"))
+
+
+def test_a_coverage_only_run_leaves_existing_files_alone(tmp_path):
+    from types import SimpleNamespace
+
+    folder = tmp_path / "risk_items"
+    folder.mkdir()
+    (folder / "XYZ_risk_items.parquet").write_bytes(b"old")
+    ri._ticker_summary(SimpleNamespace(interim_dir=tmp_path), "XYZ", [], [], [], [], False)
+    assert (folder / "XYZ_risk_items.parquet").exists()
+
+
+def test_the_cli_table_shows_every_note_except_the_routine_alignment_line(capsys):
+    from semigraph import cli
+
+    filing = {"form": "10-K", "filing_date": "2025-01-01", "section_id": "I.1A", "n_items": 3, "n_headline": 3,
+              "n_paragraph": 0, "coverage": 0.95, "method": "bold", "summary_excluded": 0, "low_coverage": False,
+              "section_suspect": False, "notes": ["paragraph units tile the section by construction", "aligned 90% onto 5 HTML blocks"]}
+    cli._echo_risk_item_report({"XYZ": {"filings": [filing], "skipped": [], "warnings": []}}, 0.9)
+    out = capsys.readouterr().out
+    assert "paragraph units tile the section" in out and "aligned 90%" not in out

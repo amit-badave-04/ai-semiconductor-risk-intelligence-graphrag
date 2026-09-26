@@ -104,10 +104,10 @@ from lxml import html as lxml_html
 
 from ..config import Settings, get_settings
 from ..hashing import content_hash
-from .risk_item_quality import quality_path_for, write_quality
 from ..ingestion.edgar import load_manifest, resolve_local_path
 from ..universe import FILERS, RISK_SECTIONS
 from .chunker import _write_parquet_atomic, chunks_path_for, section_texts_path_for
+from .risk_item_quality import quality_path_for, write_quality
 from .segmentation import base_form
 
 logger = logging.getLogger("semigraph.parsing.risk_items")
@@ -148,6 +148,9 @@ ANCHOR_MIN_KEY = 20
 MAX_ANCHORS = 8
 
 SECTION_LENGTH_WARN = 0.6      # a risk section under 60% (or over 1/0.6 x) of the prior filing's length: parse suspect
+# Paragraph units tile the section by construction, so coverage can never expose an over-extended section: the length
+# guard is the only check, and it is tighter (80%) whenever either filing of the pair is parsed into paragraphs.
+SECTION_LENGTH_WARN_PARAGRAPH = 0.8
 
 ITEM_COLUMNS = [
     "item_id", "accession_no", "ticker", "filer_cik", "form", "filing_date", "section_id", "seq",
@@ -1025,15 +1028,18 @@ def _item_rows(ticker: str, meta: dict, section_id: str, items: Sequence[Detecte
 def _filing_report(meta: dict, section_id: str, result: DetectionResult, items: Sequence[DetectedItem],
                    section_chars: int, n_merged: int) -> dict:
     n_head = sum(1 for it in items if it.unit_kind == "headline")
+    empty = not items
+    notes = list(result.notes) + (["no items survived (every unit lacked a chunk span or none were found): the filing cannot be compared"]
+                                  if empty else [])
     return {
         "accession_no": meta["accession_no"], "form": meta["form"], "filing_date": meta["filing_date"],
         "section_id": section_id, "n_items": len(items), "n_headline": n_head,
         "n_paragraph": len(items) - n_head, "n_unchunked_merged": n_merged, "section_suspect": False,
-        "coverage": round(result.coverage, 4),
+        "coverage": 0.0 if empty else round(result.coverage, 4),
         "method": result.method, "summary_found": result.summary_found,
-        "summary_excluded": result.summary_excluded, "low_coverage": result.low_coverage,
+        "summary_excluded": result.summary_excluded, "low_coverage": result.low_coverage or empty,
         "aligned_ratio": round(result.aligned_ratio, 4), "section_chars": section_chars,
-        "notes": list(result.notes),
+        "notes": notes,
     }
 
 
@@ -1042,9 +1048,9 @@ def _annual_rows(manifest_rows: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda r: (r["filing_date"], r["accession_no"]))
 
 
-def _length_note(text_len: int, prior_chars: int | None) -> str | None:
-    """A risk section far from the prior filing's length: one of the two parses is suspect."""
-    if not prior_chars or SECTION_LENGTH_WARN <= text_len / prior_chars <= 1 / SECTION_LENGTH_WARN:
+def _length_note(text_len: int, prior_chars: int | None, warn: float = SECTION_LENGTH_WARN) -> str | None:
+    """A risk section far from the prior filing's length (under ``warn`` or over 1/``warn`` x): one of the two parses is suspect."""
+    if not prior_chars or warn <= text_len / prior_chars <= 1 / warn:
         return None
     return (f"risk section is {text_len / prior_chars:.0%} of the prior filing's length "
             f"({text_len} vs {prior_chars} chars): one of the two section parses may be truncated or "
@@ -1060,6 +1066,9 @@ def _ticker_summary(settings: Settings, ticker: str, rows: list[dict], filings: 
         write_quality(quality_path_for(path.parent, ticker), ticker, filings)
     elif not rows:
         warnings.append("no risk items produced")
+        if write:      # never leave an earlier run's items (or their quality flags) behind for the loader to read
+            path.unlink(missing_ok=True)
+            quality_path_for(path.parent, ticker).unlink(missing_ok=True)
     return {
         "n_items": len(rows), "path": str(path), "written": bool(write and rows),
         "filings": filings, "skipped": skipped, "warnings": warnings,
@@ -1086,6 +1095,7 @@ def _build_ticker(settings: Settings, ticker: str, manifest_rows: list[dict], wr
         {(r.accession_no, r.section_id): r.text for r in texts.itertuples(index=False)} if texts is not None else {}
     )
     prior_chars: int | None = None
+    prior_method: str | None = None
     for meta in _annual_rows(manifest_rows):
         sid = RISK_SECTIONS[base_form(meta["form"])]
         text = section_by_key.get((meta["accession_no"], sid))
@@ -1100,14 +1110,15 @@ def _build_ticker(settings: Settings, ticker: str, manifest_rows: list[dict], wr
         file_spans = spans.get((meta["accession_no"], sid), [])
         items, n_merged = _absorb_unchunked(result.items, file_spans, text)
         report = _filing_report(meta, sid, result, items, len(text), n_merged)
-        if note := _length_note(len(text), prior_chars):
+        warn = SECTION_LENGTH_WARN_PARAGRAPH if "paragraph" in (result.method, prior_method) else SECTION_LENGTH_WARN
+        if note := _length_note(len(text), prior_chars, warn):
             for r in (report, filings[-1]):      # the pair is suspect: flag both filings
                 r["notes"].append(note)
                 r["section_suspect"] = True
             warnings.append(f"{meta['accession_no']}: {note}")
             logger.warning("%s %s: %s", ticker, meta["accession_no"], note)
-        prior_chars = len(text)
-        if result.low_coverage:
+        prior_chars, prior_method = len(text), result.method
+        if report["low_coverage"]:
             logger.warning("%s %s %s: LOW COVERAGE %.1f%% (%s, %d items)", ticker, meta["form"],
                            meta["filing_date"], 100 * result.coverage, result.method, len(items))
         rows.extend(_item_rows(ticker, meta, sid, items, file_spans))
