@@ -76,7 +76,8 @@ from numbers import Integral
 from typing import Any
 
 import numpy as np
-from rapidfuzz import process
+from rapidfuzz import fuzz, process
+from rapidfuzz.utils import default_process
 from rapidfuzz.distance import Indel
 
 from .align_text import SectionIndex, at_least, in_range, lex_exact, split_sentences, word_tokens
@@ -91,7 +92,10 @@ _BOUND_SLACK = 1e-9        # the Indel similarity upper-bounds the difflib ratio
 
 @dataclass(frozen=True)
 class PassageParams:
-    """Every threshold of the passage layer. STARTING values, to be calibrated on the sentence gold.
+    """Every threshold of the passage layer. Chosen on the six DEVELOPMENT pairs of the frozen sentence gold
+    (``scripts/tune_passages.py``; sha256 af1e810d): ``present_min_ratio`` 75 and ``reword_min`` 0.35 gave precision 0.906 /
+    recall 0.829 of the removed+added sentences there (starting values 85 / 0.60 gave 0.75 / 0.90); the structural switches
+    ``decompose_uncertain`` and ``suppress_added_with_counterpart`` are on. Held-out numbers: ``scripts/verify_temporal.py``.
 
     ``present_min_ratio``: ``partial_ratio`` (0-100) at which a sentence counts as still present in
     the other section (the aligner's ``absence_min_ratio``); ``max_probe_chars``: the sentence prefix
@@ -99,17 +103,27 @@ class PassageParams:
     (0-1) from which an absent sentence with a counterpart is ``reworded`` rather than
     ``removed`` / ``added``. ``min_sentence_chars``: shorter sentences are never classified.
     ``max_passage_chars``: a passage is closed at a sentence boundary before exceeding it.
+    ``decompose_uncertain``: items the aligner left ``uncertain`` (treated as present) are decomposed too.
+    ``suppress_added_with_counterpart``: a newer sentence that has a counterpart (``reword_min``) in the older section
+    is not ``added`` (the older side would call it ``reworded``), even when no older passage quoted it.
+    ``partial_min`` (0-100, 0 = off): a sentence of the other section whose ``partial_ratio`` against the sentence is at
+    least this value is ALSO a counterpart (paraphrases share too few words for ``reword_min`` but still contain a
+    matching span; measured on this project's filings, unrelated sentence pairs of one filing peak at 61).
     """
 
-    present_min_ratio: float = 85.0
-    reword_min: float = 0.60
+    present_min_ratio: float = 75.0
+    reword_min: float = 0.35
     min_sentence_chars: int = 40
-    max_passage_chars: int = 1200
+    max_passage_chars: int = 450
     max_probe_chars: int = 600
+    decompose_uncertain: bool = True
+    suppress_added_with_counterpart: bool = True
+    partial_min: float = 0.0
 
     def __post_init__(self) -> None:
         in_range("present_min_ratio", self.present_min_ratio, 0.0, 100.0, open_low=True)
         in_range("reword_min", self.reword_min, 0.0, 1.0, open_low=True)
+        in_range("partial_min", self.partial_min, 0.0, 100.0)
         at_least("min_sentence_chars", self.min_sentence_chars, 1)
         at_least("max_passage_chars", self.max_passage_chars, self.min_sentence_chars)
         at_least("max_probe_chars", self.max_probe_chars, self.min_sentence_chars)
@@ -158,6 +172,7 @@ class _Filing:
         self.spans = split_sentences(text)
         self._index = SectionIndex(text)
         self._tokens = [word_tokens(text[a:b]) for a, b in self.spans]
+        self._texts = [text[a:b] for a, b in self.spans]
         self._chunks = _read_chunks(chunk_spans)
 
     def contains(self, sentence: str) -> bool:
@@ -174,6 +189,18 @@ class _Filing:
         tokens = word_tokens(sentence)
         if not tokens or not self._tokens:
             return None
+        lexical = self._lexical_counterpart(tokens)
+        if lexical is not None or not self.params.partial_min:
+            return lexical
+        return self._partial_counterpart(sentence)
+
+    def _partial_counterpart(self, sentence: str) -> tuple[int, float] | None:
+        """Best sentence by ``partial_ratio`` (0-100) when at least ``partial_min``; the score is returned on 0-1."""
+        hit = process.extractOne(sentence, self._texts, scorer=fuzz.partial_ratio, processor=default_process,
+                                 score_cutoff=self.params.partial_min)
+        return None if hit is None else (int(hit[2]), float(hit[1]) / 100.0)
+
+    def _lexical_counterpart(self, tokens: tuple[str, ...]) -> tuple[int, float] | None:
         bound = process.cdist([tokens], self._tokens, scorer=Indel.normalized_similarity,
                               dtype=np.float64, workers=1)[0]
         floor = self.params.reword_min
@@ -254,8 +281,10 @@ def _classify(text: str, base: int, own: _Filing, other: _Filing, reported: _Spa
         elif reported is None:
             hit = other.counterpart(sentence)
             out.append(_Sentence(a, b, "removed") if hit is None else _Sentence(a, b, "reworded", *hit))
+        elif reported.covers(base + a) or (own.params.suppress_added_with_counterpart and other.counterpart(sentence)):
+            out.append(_Sentence(a, b, None))
         else:
-            out.append(_Sentence(a, b, None if reported.covers(base + a) else "added"))
+            out.append(_Sentence(a, b, "added"))
     return out
 
 
@@ -337,10 +366,12 @@ def compute_passages(older_items: Sequence[Mapping[str, Any]], newer_items: Sequ
     new_by_id = {d.item_id: d for d in result.newer}
 
     def older_wanted(d) -> bool:
-        return d.label in OLDER_DECOMPOSED
+        return d.label in OLDER_DECOMPOSED or (params.decompose_uncertain and d.label == "uncertain")
 
     def newer_wanted(d) -> bool:
         partner = old_by_id.get(d.matched_older_id)
+        if params.decompose_uncertain and d.label == "uncertain":
+            return True
         return d.label == "carried" and not (partner is not None and partner.label == "unchanged")
 
     passages: list[Passage] = []

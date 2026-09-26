@@ -239,12 +239,14 @@ def freeze_gold(out_dir: Path, target: Path, adjudicated: dict[str, str] | None 
 
     Two layers under the one hash: ``pairs`` (item labels) and ``sentences`` (sentence labels with the section spans that
     scoring needs; ``{}`` when no sentence report exists). ``adjudicated`` maps item ids and sentence ids (separate
-    namespaces) to the adjudicator's label for the disputed ones. ``contested`` lists sentence ids a second check
+    namespaces) to the adjudicator's label for the disputed ones; an item id that sits on both sides of consecutive
+    pairs is keyed ``"older|<id>"`` / ``"newer|<id>"`` (the side-prefixed key wins). ``contested`` lists sentence ids a second check
     disagreed on at a boundary case: they stay frozen with their label but are left out of the scoring records."""
     adjudicated = adjudicated or {}
     labels: dict[str, dict] = {}
     for rep in _reports(out_dir, sentences=False):
-        merged = {**rep["consensus"], **{k: v for k, v in adjudicated.items() if k in rep["needs_adjudication"]}}
+        resolved = {k: adjudicated.get(f"{rep['side']}|{k}", adjudicated.get(k)) for k in rep["needs_adjudication"]}
+        merged = {**rep["consensus"], **{k: v for k, v in resolved.items() if v is not None}}
         labels[f"{rep['pair_id']}|{rep['side']}"] = {"split": rep["split"], "labels": merged,
                                                     "alpha": rep["alpha"], "pairwise_agreement": rep["pairwise_agreement"]}
     disputed = frozenset(contested or ())

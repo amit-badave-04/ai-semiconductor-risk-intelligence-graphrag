@@ -484,3 +484,17 @@ def test_the_freeze_command_reads_adjudications_and_contested_ids_from_a_json_fi
     assert lri.main(["freeze", "--out", str(tmp_path), "--out-file", str(target), "--adjudications", str(adjudications)]) == 0
     entry = json.loads(target.read_text(encoding="utf-8"))["sentences"][f"{PID}|older"]
     assert entry["labels"][sid(OLDER, 0, 1)] == "removed" and entry["contested"] == [sid(OLDER, 0, 0)]
+
+
+def test_item_adjudications_may_be_keyed_by_side_when_one_item_id_sits_on_two_sides(tmp_path):
+    """An item is the newer item of one pair and the older item of the next: its id alone cannot carry two labels."""
+    older_rep = {"pair_id": "P1", "side": "older", "split": "held_out", "annotators": ["a", "b"], "consensus": {},
+                 "needs_adjudication": ["x:i1"], "unlabelled": [], "pairwise_agreement": 0.5, "alpha": 0.0, "rejected": {},
+                 "votes": {"x:i1": {"a": "reworded", "b": "unchanged"}}}
+    newer_rep = {**older_rep, "pair_id": "P0", "side": "newer", "votes": {"x:i1": {"a": "new", "b": "carried"}}}
+    for rep in (older_rep, newer_rep):
+        (tmp_path / f"{rep['pair_id']}.{rep['side']}.report.json").write_text(json.dumps(rep), encoding="utf-8")
+    target = tmp_path / "gold.json"
+    lri.freeze_gold(tmp_path, target, {"older|x:i1": "reworded", "newer|x:i1": "carried"})
+    pairs = json.loads(target.read_text(encoding="utf-8"))["pairs"]
+    assert pairs["P1|older"]["labels"] == {"x:i1": "reworded"} and pairs["P0|newer"]["labels"] == {"x:i1": "carried"}
