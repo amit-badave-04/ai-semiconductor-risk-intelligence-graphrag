@@ -56,16 +56,16 @@ def test_the_status_of_a_gated_row_is_the_status_of_the_plan_rate_gate(row, kwar
 
 def test_a_passing_class_gets_the_factual_wording_and_any_other_status_gets_the_plans_text_changed_fallback():
     passing, failing = table(removed=(9, 1))["rows"]["removed_item"], table(removed=(1, 2))["rows"]["removed_item"]
-    assert passing["licensed_wording"].startswith("Removed (text-verified)")
+    assert passing["licensed_wording"].startswith("No longer appears as a separate risk factor")
     assert failing["licensed_wording"].startswith("'Text changed' only") and "M1B_PLAN B" in failing["licensed_wording"]
-    assert "removed" in failing["licensed_wording"] and "Removed (text-verified)" not in failing["licensed_wording"]
+    assert "removed" in failing["licensed_wording"] and "No longer appears as a separate" not in failing["licensed_wording"]
     insufficient = table(new=(3, 0))["rows"]["new_item"]
     assert insufficient["status"] == INSUFFICIENT and insufficient["licensed_wording"].startswith("'Text changed' only")
 
 
 def test_the_passage_wording_never_says_the_company_dropped_the_risk_even_when_it_passes():
     passing = table(older=(20, 1))["rows"]["removed_passage"]
-    assert passing["status"] == PASS and "no longer appears" in passing["licensed_wording"]
+    assert passing["status"] == PASS and "wording was not found" in passing["licensed_wording"]
     assert "never: the company dropped the risk factor" in passing["licensed_wording"]
 
 

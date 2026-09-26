@@ -29,23 +29,23 @@ CLAIMS = {
     "removed_item": {
         "unit": "item", "claim": "this older risk factor was removed: it is not disclosed anywhere in the newer risk section",
         "definition": "older items the alignment labelled removed: k of n are removed in the gold",
-        "licensed": "Removed (text-verified): this risk factor of the older filing no longer appears in the newer filing's risk section.",
+        "licensed": "No longer appears as a separate risk factor (the text check found no matching text; parts of its content may be covered inside other risk factors).",
         "subject": "this risk factor's text", "verb": "removed"},
     "new_item": {
         "unit": "item", "claim": "this newer risk factor is new: it is not disclosed anywhere in the older risk section",
         "definition": "newer items the alignment labelled new: k of n are new in the gold",
-        "licensed": "Added (text-verified): this risk factor is new in the newer filing's risk section.",
+        "licensed": "No matching risk factor found in the earlier filing (new, or a restructured older risk factor).",
         "subject": "this risk factor's text", "verb": "new"},
     "removed_passage": {
         "unit": "passage", "claim": "this sentence of the older filing no longer appears in the newer risk section",
         "definition": "predicted removed passages of the sampled items: k of n cover mostly gold-removed sentences",
-        "licensed": "This sentence of the older filing no longer appears in the newer filing's risk section (never: the company dropped the "
-                    "risk factor, unless the whole item is removed).",
+        "licensed": "This sentence's wording was not found in the newer filing (a differently worded version of the same statement may exist); "
+                    "never: the company dropped the risk factor, unless the whole item is listed as no longer appearing.",
         "subject": "this passage's text", "verb": "removed"},
     "added_passage": {
         "unit": "passage", "claim": "this passage is new in the newer filing: it does not appear in the older risk section",
         "definition": "predicted added passages of the sampled items: k of n cover mostly gold-added sentences",
-        "licensed": "This passage is new in the newer filing's risk section: it does not appear in the older filing's.",
+        "licensed": "This sentence's wording was not found in the older filing (a differently worded version of the same statement may exist).",
         "subject": "this passage's text", "verb": "added"},
 }
 NOTES = (
