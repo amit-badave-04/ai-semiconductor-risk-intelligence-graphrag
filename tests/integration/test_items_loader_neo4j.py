@@ -13,6 +13,7 @@ text check could not settle, i.e. an ``uncertain`` older-side decision of a comp
 
 import importlib.util
 import json
+import shutil
 import sys
 from datetime import date
 from pathlib import Path
@@ -383,6 +384,10 @@ def real(scratch_database, tmp_path_factory):
                 session.run("UNWIND $rows AS r MERGE (e:EvidenceSpan {chunk_id: r.chunk_id}) SET e.accession_no = r.accession_no, "
                             "e.section_id = r.section_id, e.text = r.text", rows=chunks.to_dict("records")).consume()
         out = tmp_path_factory.mktemp("real_alignment")            # never over the real data/interim/risk_alignment
+        cache = Path("data/interim/risk_alignment/passage_adjudications.jsonl")
+        if not cache.exists():
+            pytest.skip("no bought passage verdicts (semigraph align-items --adjudicate-passages): the flagship Hong Kong sentence needs them")
+        shutil.copy(cache, out / cache.name)                       # replay the bought verdicts (deterministic, free); the real cache is never written
         run = items.run_align_items(settings, tickers, out_dir=out)
         totals = item_loader.load_risk_items(driver, settings, tickers, snapshot_id=snapshot, alignment_directory=out)
         yield {"driver": driver, "settings": settings, "summary": run.summary, "totals": totals, "alignment": out}
@@ -432,11 +437,6 @@ class TestRealNvidiaAndIntel:
         # the retriever owner); their citation ids (chunk 0257 of the FY25 Item 1A) are in the block and citable.
         assert f"{FY25}:I.1A:0257" in valid and f"{FY25}:I.1A:0257" in block
 
-    @pytest.mark.xfail(strict=True, reason=(
-        "OPEN, reported to the retriever/answerer owner (gate H): context_layout.PASSAGE_QUOTE_CHARS = 300 quotes only the START of a "
-        "removed passage while the stored passages are ~1,100 characters, so the NAC sentence (passage r006) and the China / Hong Kong "
-        "sentence (passage r005) never reach the answer model. Fix: a smaller max_passage_chars in graph/passages.py, or quote the "
-        "sentence of each passage that overlaps the question most. This test flips (XPASS strict) the day the flagship text is in the block."))
     def test_the_flagship_sentences_reach_the_answer_context(self, real):
         items_, pairs = self.temporal(real, NVDA_CIK)
         question = "What happened to the Notified Advanced Computing process and the transition out of China and Hong Kong?"
