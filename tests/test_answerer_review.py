@@ -162,8 +162,8 @@ def test_the_passages_render_inside_the_temporal_block_after_the_item_lists_with
 
 
 def test_the_passage_headings_say_wording_not_found_with_the_hedge_and_never_gone_or_new():
-    """Held-out gold, sentence level: removed passages are right about 0.84 of the time (about 1 in 6 is still stated in
-    different words), added passages about 0.92. The headings carry that as a hedge; the old 'that no longer appear' and
+    """Held-out gold, sentence level: removed passages are right about 0.88 of the time (6 of 51 are still stated in
+    different words), added passages about 0.98. The headings carry that as a hedge; the old 'that no longer appear' and
     'that are new' are gone."""
     block = passages_context()[0].temporal_block
     assert "that no longer appear" not in block and "that are new" not in block

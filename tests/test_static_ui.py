@@ -72,7 +72,7 @@ def test_page_states_how_reliable_change_claims_are_in_plain_words_with_the_meas
         "no longer appears as a separate risk factor", "4 of 4", "folded into another risk factor",   # removed items
         "Not matched", "could not settle", "never shown as removed",                                  # unsettled items
         "No matching risk factor found in the earlier filing", "6 of 12", "already disclosed earlier",   # new or restructured
-        "wording was not found", "1 in 6", "different words",                                          # sentences
+        "wording was not found", "6 of the 51", "1 of 48", "different words",                         # sentences
         "small",                                                                                     # the samples are small
     ):
         assert fragment in note, fragment

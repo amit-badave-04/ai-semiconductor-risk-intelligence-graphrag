@@ -29,7 +29,7 @@ of 4 cases, but 2 of the 4 were absorbed into another risk factor (annotators la
 longer appears as a separate risk factor", never "removed" or "text verified absent". A newer item called ``new`` was new in
 only 6 of 12 (the rest were ``carried``: already disclosed earlier, e.g. split out of an older item), so the heading says "no
 matching risk factor found in the earlier filing (new, or a restructured older risk factor)". Removed passages (sentences) are
-right about 0.84 of the time (about 1 in 6 is still stated in different words), added passages about 0.92, so both say the
+right about 0.88 of the time (6 of 51 are still stated in different words), added passages about 0.98 (1 of 48), so both say the
 wording "was not found" and that a differently worded version may exist. Only a heading's LABEL may be relied on by a reader
 (:func:`removal_supported_ids`); the sub-headings are not part of ``template_fingerprint()`` (only ``CONTEXT_HEADERS`` is).
 

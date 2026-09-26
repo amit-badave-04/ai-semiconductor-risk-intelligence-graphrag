@@ -1,0 +1,1538 @@
+{
+  "caveats": [
+    "Held-out labels are sampled partly from algorithm output (every item the algorithm marks removed or new, and the items in its uncertainty band, are labelled), so held-out recall is biased upward; read it as an upper bound, not an estimate.",
+    "Development pairs were used to design and tune the algorithm: their numbers are informative only, not gates.",
+    "The sentence gold is a seeded sample of items per pair: passage metrics cover only the sampled items.",
+    "Rate gates never pass on fewer than 5 positives; named-case checks (flagship, coverage, false-drop guard) are exact.",
+    "The held-out split has been inspected before (see held_out_inspections): later held-out numbers are post-inspection numbers, not a blind test."
+  ],
+  "coverage": {
+    "below_threshold": [],
+    "excluded": [
+      {
+        "pair_id": "ASML-0000937966-25-000009-0001628280-26-011378",
+        "reason": "older filing's risk section text looks truncated or over-extended (length far from its neighbour's)"
+      },
+      {
+        "pair_id": "INTC-0000050863-24-000010-0000050863-25-000009",
+        "reason": "older filing's risk items cover only 75.8% of its risk section text"
+      },
+      {
+        "pair_id": "INTC-0000050863-25-000009-0000050863-26-000011",
+        "reason": "older filing's risk items cover only 75.7% of its risk section text"
+      }
+    ],
+    "n_comparable": 29,
+    "unscored": []
+  },
+  "false_drop_guard": {
+    "n_checked": 4,
+    "skipped_no_headline": 0,
+    "status": "PASS",
+    "threshold": 90,
+    "violations": []
+  },
+  "gates": {
+    "false_drop_guard": {
+      "detail": {
+        "n_violations": 0
+      },
+      "n": 4,
+      "status": "PASS",
+      "threshold": 90
+    },
+    "item_drop_precision_heldout": {
+      "interval": [
+        0.06149,
+        0.792345
+      ],
+      "n": 3,
+      "status": "FAIL",
+      "threshold": 0.9,
+      "value": 0.333333
+    },
+    "item_drop_recall_heldout": {
+      "interval": [
+        0.022417,
+        0.470895
+      ],
+      "n": 8,
+      "status": "FAIL",
+      "threshold": 0.8,
+      "value": 0.125
+    },
+    "item_new_precision_heldout": {
+      "interval": [
+        0.253778,
+        0.746222
+      ],
+      "n": 12,
+      "status": "FAIL",
+      "threshold": 0.9,
+      "value": 0.5
+    },
+    "nvda_flagship_items": {
+      "detail": {
+        "false_new": 0,
+        "false_removed": 0,
+        "missed_new": 0,
+        "missed_removed": 0
+      },
+      "n": 47,
+      "status": "PASS"
+    },
+    "nvda_flagship_passages": {
+      "detail": {
+        "must_hit": {
+          "AI Diffusion": true,
+          "Notified Advanced Computing": true,
+          "out of China and Hong Kong": true
+        }
+      },
+      "n": 3,
+      "status": "PASS"
+    },
+    "passage_added_precision_heldout": {
+      "interval": [
+        0.891005,
+        0.996313
+      ],
+      "n": 48,
+      "status": "PASS",
+      "threshold": 0.9,
+      "value": 0.979167
+    },
+    "passage_drop_precision_heldout": {
+      "interval": [
+        0.766189,
+        0.94495
+      ],
+      "n": 51,
+      "status": "FAIL",
+      "threshold": 0.9,
+      "value": 0.882353
+    },
+    "passage_drop_recall_heldout": {
+      "interval": [
+        0.828241,
+        0.993887
+      ],
+      "n": 29,
+      "status": "PASS",
+      "threshold": 0.8,
+      "value": 0.965517
+    },
+    "unit_coverage": {
+      "detail": {
+        "below_threshold": [],
+        "n_excluded": 3
+      },
+      "n": 29,
+      "status": "PASS",
+      "threshold": 0.9
+    }
+  },
+  "held_out_inspections": [
+    {
+      "alignment_digest": "1e22d75fbc6efdcf81fdc1915423275e5e55a2e3aa264a485f320be861d617f8",
+      "alignment_max_passage_chars": 1391,
+      "consequence": "The split was inspected before everything committed after that run (the below-zone candidate stage, the semantic candidates, adjudication prompt pas-v3 and the 'Not matched' category among them): held-out numbers of any later run are post-inspection numbers, not a blind test. A blind claim needs a new held-out gold that no alignment has been scored against.",
+      "date": "2026-09-26",
+      "gold_files": {
+        "risk_items_gold.json": "af1e810d0c3fb406040d5d2f6e6d38d3080ee8f1ef1fdd50a95404f7fd416448",
+        "risk_items_gold_heldout.json": "dbd980ff615a0443fb1e0689bd0a39238e798b462df6bd7cc95fbf5fee9e7526"
+      },
+      "held_out_pairs": {
+        "item": 23,
+        "sentence": 6
+      },
+      "viewed": "The whole held-out report of the first evaluation run: item-level and passage-level precision and recall with Wilson intervals, the false-positive and false-negative item and sentence ids of the 23 held-out item pairs and the 6 held-out sentence pairs, the confusion matrices, and the four held-out gate verdicts (item drop precision FAIL, item drop recall FAIL, passage drop precision FAIL, passage drop recall PASS)."
+    },
+    {
+      "alignment_digest": "754f7358c635b85fb648b590e2b5e259042bbfcc85dd1363e4e68c0df6036fa7",
+      "alignment_max_passage_chars": 1391,
+      "date": "2026-09-26",
+      "gold_files": {
+        "risk_items_gold.json": "af1e810d0c3fb406040d5d2f6e6d38d3080ee8f1ef1fdd50a95404f7fd416448",
+        "risk_items_gold_heldout.json": "dbd980ff615a0443fb1e0689bd0a39238e798b462df6bd7cc95fbf5fee9e7526"
+      },
+      "held_out_pairs": {
+        "item": 23,
+        "sentence": 6
+      },
+      "viewed": "The held-out gates, the item-level and passage-level precision and recall with the false-positive and false-negative ids, and the narration table of this run's report."
+    }
+  ],
+  "inputs": {
+    "alignment_max_passage_chars": 1391,
+    "alignment_sha256": {
+      "AAPL_decisions.parquet": "b3c1f540048b30a0a94c401759bf9d5c0801f8144b3ffe4467dad3d83d3fe8ca",
+      "AAPL_pairs.parquet": "07045db8ee5ffcf85907c7654e5b47a0f3889abb1fbcf169b76810afeb805126",
+      "AAPL_passages.parquet": "525c874d9ea7c2245b8b159467f0982c9201c062462a5b9342d17cfedcf908b8",
+      "AMD_decisions.parquet": "1ad69c2746f15b5e1dbbba1439f5c959dc9a1745910e0660c577e1083ca187dc",
+      "AMD_pairs.parquet": "f15db95e4ee9abd1fe03eed014f3ac1aabfeaf9971ddb2eb84dd012617b0a8c3",
+      "AMD_passages.parquet": "b113b80f074a843366e246fc9ebd6cddd40ba375f3d579b5cdc3ffd04ffd14a0",
+      "AMZN_decisions.parquet": "08df4068c1966201c0dc7df8cbab7234414a79c3c7c6fe763bb489b9a491d9bf",
+      "AMZN_pairs.parquet": "79c9d6fca8814a0b6b1940232c8a0d780f67f45dc2603b0af3cae9135c3e86a4",
+      "AMZN_passages.parquet": "e2df93e0ef889b1a1cbe0045777368a7e17b1a7255834ee1df3c01e67973a016",
+      "ASML_decisions.parquet": "4c295de498b29813fcddfd7069cdabdec824024ec4fe06e3d87ad7cab95ef73e",
+      "ASML_pairs.parquet": "dfcc76effde32d32a015cd28258808cf8dcc6ba022f4967e2198ba5a9ca7ba0f",
+      "ASML_passages.parquet": "365374fe0028f76661b4d48315d353284c9a4c52207bb71868a7174abec4f201",
+      "AVGO_decisions.parquet": "54a1bc455e4573a324c48653faf6478d375cb832b73785485cb6aa6dc2c0d94b",
+      "AVGO_pairs.parquet": "6543194ae928e87dd6995df3fbcfa6125d638ac6dce58d9748df018853f029f1",
+      "AVGO_passages.parquet": "e0d87b7faf238aea0d723c0f7841b46d09d3ce78a88ad836034f55f313886c55",
+      "GOOGL_decisions.parquet": "a6466d6e9966b98fd85cd65d4fe740c6bd89f8423a3a43fe9bc94e78fee13182",
+      "GOOGL_pairs.parquet": "751528a1cb4aa00570145b42711b08d2181b288592c146164845a58d6f49b68e",
+      "GOOGL_passages.parquet": "df9d57c108957e80b6ccd0e467cacbb23f513233a92df1cdde21d33ffb0f6998",
+      "INTC_decisions.parquet": "4c295de498b29813fcddfd7069cdabdec824024ec4fe06e3d87ad7cab95ef73e",
+      "INTC_pairs.parquet": "e16d42cf492525a782ef556e5eaf6b23b9b8b9d4883e842c29c6595cea0302e8",
+      "INTC_passages.parquet": "365374fe0028f76661b4d48315d353284c9a4c52207bb71868a7174abec4f201",
+      "META_decisions.parquet": "ef095c3a93a17e187039476929611f74b6c8ded0c71d1389818c63172142df1e",
+      "META_pairs.parquet": "e6c033d8c4f99d88f166837b19bb5d4b5887c5ad513ac218bbf6a2e695bde33a",
+      "META_passages.parquet": "7648604e56ed2258adf68545219ca91bc540c5f90a0f0d49d4b2a3478eafb4ed",
+      "MSFT_decisions.parquet": "b1607e87907603c98ca4523ee0546f7f36eb3f8960e3d69c5d11491f9077701c",
+      "MSFT_pairs.parquet": "ba2326097672f728f2aed6cc0ce3099dc51e037a8eb937ced621fe3dae95d795",
+      "MSFT_passages.parquet": "fd192218d079122174e2e4748165d9ecaa9f07710a69fbb8d18f3b216c4d7635",
+      "MU_decisions.parquet": "a4c66716ccdf709ca610c701353770f8f2fa0dae4b6e93e46e4b4db7b7f5ae9f",
+      "MU_pairs.parquet": "81816c9bf631392c651fc48e6d060cce2eb05bb9692edb8204f6217954c93d54",
+      "MU_passages.parquet": "86b009e83606cfa60c791f570c4839e3c3fd1aeec4f6dc2611122437a7c927d4",
+      "NVDA_decisions.parquet": "5d1e4af94742dac681f91e5faffac886b9502f6dfa8037b2f3e690e578c6dd0e",
+      "NVDA_pairs.parquet": "a45d151f4cb1027ba22f449de25051585c4cc8b11adcd816d09c354cd137075e",
+      "NVDA_passages.parquet": "85487f43363dae783822e01fb0c2cac6d961198fdbdc335eee045aabe8465799",
+      "QCOM_decisions.parquet": "3baacbbca534c6e0b09ac9658ad0e2e7d7b8d4738aeb6c616625233645f3fbfa",
+      "QCOM_pairs.parquet": "b7220866ba923e07780d16cf8dea758852ed02f1f1a6fc7d0422595819a32103",
+      "QCOM_passages.parquet": "c1d13134bdcf00adae0477b120087995d99c77e1fcf775a32ffc276ee6c2ee51",
+      "TSM_decisions.parquet": "9d0b46204c00c8c519141f00db9676ec5da7ee8eae7733128ec8b8f41169c4ad",
+      "TSM_pairs.parquet": "dbc6bfcbb6f121405a06ed7068c369f5e33be46fda7da2c0d04b18189a979dc8",
+      "TSM_passages.parquet": "6a5549387f4fbe42f62a5c7bd1c74b7674973d6480c7a3dbae20a855675f8005"
+    },
+    "all_gold_pinned": true,
+    "allow_unpinned_gold": false,
+    "flagship_needles": [
+      "Notified Advanced Computing",
+      "out of China and Hong Kong",
+      "AI Diffusion"
+    ],
+    "flagship_pair": "NVDA-0001045810-25-000023-0001045810-26-000021",
+    "gold_files": {
+      "risk_items_gold.json": "af1e810d0c3fb406040d5d2f6e6d38d3080ee8f1ef1fdd50a95404f7fd416448",
+      "risk_items_gold_heldout.json": "dbd980ff615a0443fb1e0689bd0a39238e798b462df6bd7cc95fbf5fee9e7526"
+    },
+    "gold_pins": {
+      "risk_items_gold.json": {
+        "kind": "risk_items_gold",
+        "pinned_sha256": "af1e810d0c3fb406040d5d2f6e6d38d3080ee8f1ef1fdd50a95404f7fd416448",
+        "sha256": "af1e810d0c3fb406040d5d2f6e6d38d3080ee8f1ef1fdd50a95404f7fd416448",
+        "split": "development",
+        "status": "pinned"
+      },
+      "risk_items_gold_heldout.json": {
+        "kind": "risk_items_gold",
+        "pinned_sha256": "dbd980ff615a0443fb1e0689bd0a39238e798b462df6bd7cc95fbf5fee9e7526",
+        "sha256": "dbd980ff615a0443fb1e0689bd0a39238e798b462df6bd7cc95fbf5fee9e7526",
+        "split": "held_out",
+        "status": "pinned"
+      }
+    },
+    "gold_sha256": "63a99aace48eb67ef73b063090867a260838b23f45353176e9f4de50657e1790"
+  },
+  "item_level": {
+    "newer_new": {
+      "development": {
+        "false_negative_ids": [],
+        "false_positive_ids": [],
+        "fn": 0,
+        "fp": 0,
+        "gold_positive": 2,
+        "n_gold_items": 195,
+        "n_pairs": 6,
+        "precision": 1.0,
+        "precision_ci": [
+          0.342372,
+          1.0
+        ],
+        "predicted_positive": 2,
+        "recall": 1.0,
+        "recall_ci": [
+          0.342372,
+          1.0
+        ],
+        "tp": 2,
+        "uncertain": 0,
+        "uncertain_gold_removed": 0,
+        "uncertain_rate": 0.0,
+        "unlabelled_positive": 0,
+        "unpredicted": 0
+      },
+      "held_out": {
+        "false_negative_ids": [],
+        "false_positive_ids": [
+          "0000002488-24-000012:I.1A:i029",
+          "0000950170-24-087843:I.1A:i020",
+          "0001193125-26-323660:I.1A:i001",
+          "0001193125-26-323660:I.1A:i011",
+          "0001326801-24-000012:I.1A:i032",
+          "0001652044-24-000022:I.1A:i011"
+        ],
+        "fn": 0,
+        "fp": 6,
+        "gold_positive": 6,
+        "n_gold_items": 158,
+        "n_pairs": 23,
+        "precision": 0.5,
+        "precision_ci": [
+          0.253778,
+          0.746222
+        ],
+        "predicted_positive": 12,
+        "recall": 1.0,
+        "recall_ci": [
+          0.609657,
+          1.0
+        ],
+        "tp": 6,
+        "uncertain": 7,
+        "uncertain_gold_removed": 0,
+        "uncertain_rate": 0.044304,
+        "unlabelled_positive": 0,
+        "unpredicted": 0
+      }
+    },
+    "older_removed": {
+      "development": {
+        "false_negative_ids": [],
+        "false_positive_ids": [],
+        "fn": 0,
+        "fp": 0,
+        "gold_positive": 1,
+        "n_gold_items": 198,
+        "n_pairs": 6,
+        "precision": 1.0,
+        "precision_ci": [
+          0.206543,
+          1.0
+        ],
+        "predicted_positive": 1,
+        "recall": 1.0,
+        "recall_ci": [
+          0.206543,
+          1.0
+        ],
+        "tp": 1,
+        "uncertain": 0,
+        "uncertain_gold_removed": 0,
+        "uncertain_rate": 0.0,
+        "unlabelled_positive": 0,
+        "unpredicted": 0
+      },
+      "held_out": {
+        "false_negative_ids": [
+          "0000002488-24-000012:I.1A:i017",
+          "0001045810-23-000017:I.1A:i014",
+          "0001193125-23-107214:I.3:i019",
+          "0001652044-23-000016:I.1A:i025",
+          "0001730168-23-000096:I.1A:i022",
+          "0001730168-23-000096:I.1A:i038",
+          "0001730168-23-000096:I.1A:i047"
+        ],
+        "false_positive_ids": [
+          "0001730168-23-000096:I.1A:i044",
+          "0001730168-23-000096:I.1A:i048"
+        ],
+        "fn": 7,
+        "fp": 2,
+        "gold_positive": 8,
+        "n_gold_items": 171,
+        "n_pairs": 23,
+        "precision": 0.333333,
+        "precision_ci": [
+          0.06149,
+          0.792345
+        ],
+        "predicted_positive": 3,
+        "recall": 0.125,
+        "recall_ci": [
+          0.022417,
+          0.470895
+        ],
+        "tp": 1,
+        "uncertain": 18,
+        "uncertain_gold_removed": 7,
+        "uncertain_rate": 0.105263,
+        "unlabelled_positive": 0,
+        "unpredicted": 0
+      }
+    }
+  },
+  "kind": "temporal_eval",
+  "narration": {
+    "fallback": "M1B_PLAN B fallback ('text changed' only), applied per claim class",
+    "min_positives": 5,
+    "notes": [
+      "Precision is measured on the held-out gold only and counts the predictions the gold can verify; 'unscored' predictions (no gold label, or a passage that covers no gold sentence) are not in it. A null 'unscored' means the report predates that count.",
+      "Every gated row uses the plan's threshold (precision >= 0.90) and never passes on fewer than 5 predictions.",
+      "The held-out split was inspected before the later alignment stages (see held_out_inspections): these are post-inspection numbers, not a blind test.",
+      "Passages and sentences are correlated within a risk item, so the intervals (Wilson, independent trials) are too narrow for them."
+    ],
+    "order": [
+      "removed_item",
+      "new_item",
+      "unsettled_item",
+      "removed_passage",
+      "added_passage",
+      "reworded_passage"
+    ],
+    "rows": {
+      "added_passage": {
+        "breakdown": {
+          "sentences_predicted_added_by_gold_label": {
+            "added": 60,
+            "reworded": 1
+          }
+        },
+        "ci": [
+          0.891005,
+          0.996313
+        ],
+        "claim": "this passage is new in the newer filing: it does not appear in the older risk section",
+        "definition": "predicted added passages of the sampled items: k of n cover mostly gold-added sentences",
+        "gate": "passage_added_precision_heldout",
+        "k": 47,
+        "licensed_wording": "This sentence's wording was not found in the older filing (a differently worded version of the same statement may exist).",
+        "n": 48,
+        "precision": 0.979167,
+        "status": "PASS",
+        "threshold": 0.9,
+        "unit": "passage",
+        "unscored": 0
+      },
+      "new_item": {
+        "breakdown": null,
+        "ci": [
+          0.253778,
+          0.746222
+        ],
+        "claim": "this newer risk factor is new: it is not disclosed anywhere in the older risk section",
+        "definition": "newer items the alignment labelled new: k of n are new in the gold",
+        "gate": "item_new_precision_heldout",
+        "k": 6,
+        "licensed_wording": "'Text changed' only (M1B_PLAN B fallback ('text changed' only), applied per claim class): say that this risk factor's text differs between the filings, not that it was new.",
+        "n": 12,
+        "precision": 0.5,
+        "status": "FAIL",
+        "threshold": 0.9,
+        "unit": "item",
+        "unscored": 0
+      },
+      "removed_item": {
+        "breakdown": null,
+        "ci": [
+          0.06149,
+          0.792345
+        ],
+        "claim": "this older risk factor was removed: it is not disclosed anywhere in the newer risk section",
+        "definition": "older items the alignment labelled removed: k of n are removed in the gold",
+        "gate": "item_drop_precision_heldout",
+        "k": 1,
+        "licensed_wording": "'Text changed' only (M1B_PLAN B fallback ('text changed' only), applied per claim class): say that this risk factor's text differs between the filings, not that it was removed.",
+        "n": 3,
+        "precision": 0.333333,
+        "status": "FAIL",
+        "threshold": 0.9,
+        "unit": "item",
+        "unscored": 0
+      },
+      "removed_passage": {
+        "breakdown": {
+          "sentences_predicted_removed_by_gold_label": {
+            "removed": 70,
+            "reworded": 8
+          }
+        },
+        "ci": [
+          0.766189,
+          0.94495
+        ],
+        "claim": "this sentence of the older filing no longer appears in the newer risk section",
+        "definition": "predicted removed passages of the sampled items: k of n cover mostly gold-removed sentences",
+        "gate": "passage_drop_precision_heldout",
+        "k": 45,
+        "licensed_wording": "'Text changed' only (M1B_PLAN B fallback ('text changed' only), applied per claim class): say that this passage's text differs between the filings, not that it was removed.",
+        "n": 51,
+        "precision": 0.882353,
+        "status": "FAIL",
+        "threshold": 0.9,
+        "unit": "passage",
+        "unscored": 0
+      },
+      "reworded_passage": {
+        "breakdown": {
+          "sentences_predicted_reworded_by_gold_label": {
+            "present": 4,
+            "removed": 2,
+            "reworded": 13
+          },
+          "strict": {
+            "ci": [
+              0.4601,
+              0.846358
+            ],
+            "k": 13,
+            "n": 19,
+            "precision": 0.684211
+          }
+        },
+        "ci": [
+          0.686054,
+          0.970642
+        ],
+        "claim": "the older and the newer wording of this passage are shown: the sentence still has a counterpart",
+        "definition": "gold sentences covered by a reworded passage: k of n are not removed in the gold (the counterpart exists); 'strict' counts those the gold labels reworded (an edit, not a near copy)",
+        "gate": null,
+        "k": 17,
+        "licensed_wording": "The older and the newer wording of the same passage are shown side by side; the size of the change is not characterised.",
+        "n": 19,
+        "precision": 0.894737,
+        "status": "REPORTED",
+        "threshold": null,
+        "unit": "sentence",
+        "unscored": null
+      },
+      "unsettled_item": {
+        "breakdown": {
+          "gold_removed": 7,
+          "gold_still_present": 11
+        },
+        "ci": null,
+        "claim": "this older risk factor is neither verified removed nor verified present",
+        "definition": "older items left unsettled by the alignment; no precision (the claim asserts neither direction), the breakdown shows what they are in the gold",
+        "gate": null,
+        "k": null,
+        "licensed_wording": "Not matched: the text check could not verify whether this older risk factor still appears in the newer filing; it is not verified as removed and not verified as present.",
+        "n": 18,
+        "precision": null,
+        "status": "REPORTED",
+        "threshold": null,
+        "unit": "item",
+        "unscored": null
+      }
+    },
+    "split": "held_out",
+    "threshold": 0.9
+  },
+  "overall": "FAIL",
+  "pairs": [
+    {
+      "comparable": true,
+      "coverage_newer": 0.9812,
+      "coverage_older": 0.981,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "AAPL-0000320193-23-000106-0000320193-24-000123",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9824,
+      "coverage_older": 0.9812,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 9,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 10,
+        "tp": 1,
+        "uncertain": 0
+      },
+      "pair_id": "AAPL-0000320193-24-000123-0000320193-25-000079",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9431,
+      "coverage_older": 0.932,
+      "newer_new": {
+        "fn": 0,
+        "fp": 1,
+        "n": 11,
+        "tp": 2,
+        "uncertain": 1
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 9,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "AMD-0000002488-23-000047-0000002488-24-000012",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9484,
+      "coverage_older": 0.9431,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 8,
+        "tp": 1,
+        "uncertain": 2
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 1,
+        "fp": 0,
+        "n": 10,
+        "tp": 0,
+        "uncertain": 3
+      },
+      "pair_id": "AMD-0000002488-24-000012-0000002488-25-000012",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9533,
+      "coverage_older": 0.9484,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 42,
+        "tp": 1,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 44,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "AMD-0000002488-25-000012-0000002488-26-000018",
+      "scored": true,
+      "split": "development",
+      "split_newer": "development"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9762,
+      "coverage_older": 0.9746,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "AMZN-0001018724-23-000004-0001018724-24-000008",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9764,
+      "coverage_older": 0.9762,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "AMZN-0001018724-24-000008-0001018724-25-000004",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9715,
+      "coverage_older": 0.9764,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "AMZN-0001018724-25-000004-0001018724-26-000004",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": false,
+      "not_compared_reason": "older filing's risk section text looks truncated or over-extended (length far from its neighbour's)",
+      "pair_id": "ASML-0000937966-25-000009-0001628280-26-011378",
+      "scored": false
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9245,
+      "coverage_older": 0.9289,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 10,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 3,
+        "fp": 2,
+        "n": 19,
+        "tp": 0,
+        "uncertain": 6
+      },
+      "pair_id": "AVGO-0001730168-23-000096-0001730168-24-000139",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.929,
+      "coverage_older": 0.9245,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 11,
+        "tp": 1,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 11,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "AVGO-0001730168-24-000139-0001730168-25-000121",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.993,
+      "coverage_older": 0.9927,
+      "newer_new": {
+        "fn": 0,
+        "fp": 1,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 1,
+        "fp": 0,
+        "n": 7,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "GOOGL-0001652044-23-000016-0001652044-24-000022",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9937,
+      "coverage_older": 0.993,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 7,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "GOOGL-0001652044-24-000022-0001652044-25-000014",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9935,
+      "coverage_older": 0.9937,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 1,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "GOOGL-0001652044-25-000014-0001652044-26-000018",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": false,
+      "not_compared_reason": "older filing's risk items cover only 75.8% of its risk section text",
+      "pair_id": "INTC-0000050863-24-000010-0000050863-25-000009",
+      "scored": false
+    },
+    {
+      "comparable": false,
+      "not_compared_reason": "older filing's risk items cover only 75.7% of its risk section text",
+      "pair_id": "INTC-0000050863-25-000009-0000050863-26-000011",
+      "scored": false
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9763,
+      "coverage_older": 0.9758,
+      "newer_new": {
+        "fn": 0,
+        "fp": 1,
+        "n": 7,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "META-0001326801-23-000013-0001326801-24-000012",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9762,
+      "coverage_older": 0.9763,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "META-0001326801-24-000012-0001326801-25-000017",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9769,
+      "coverage_older": 0.9762,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 48,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 48,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "META-0001326801-25-000017-0001628280-26-003942",
+      "scored": true,
+      "split": "development",
+      "split_newer": "development"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9925,
+      "coverage_older": 0.9919,
+      "newer_new": {
+        "fn": 0,
+        "fp": 1,
+        "n": 8,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 7,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "MSFT-0000950170-23-035122-0000950170-24-087843",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9922,
+      "coverage_older": 0.9925,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 11,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "MSFT-0000950170-24-087843-0000950170-25-100235",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9896,
+      "coverage_older": 0.9922,
+      "newer_new": {
+        "fn": 0,
+        "fp": 2,
+        "n": 11,
+        "tp": 0,
+        "uncertain": 2
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 8,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "MSFT-0000950170-25-100235-0001193125-26-323660",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.959,
+      "coverage_older": 0.9582,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 7,
+        "tp": 1,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "MU-0000723125-23-000054-0000723125-24-000027",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9626,
+      "coverage_older": 0.959,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 33,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 33,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "MU-0000723125-24-000027-0000723125-25-000028",
+      "scored": true,
+      "split": "development",
+      "split_newer": "development"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9586,
+      "coverage_older": 0.9452,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 1,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "NVDA-0001045810-23-000017-0001045810-24-000029",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9603,
+      "coverage_older": 0.9586,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 23,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 24,
+        "tp": 1,
+        "uncertain": 0
+      },
+      "pair_id": "NVDA-0001045810-24-000029-0001045810-25-000023",
+      "scored": true,
+      "split": "development",
+      "split_newer": "development"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.96,
+      "coverage_older": 0.9603,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 24,
+        "tp": 1,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 23,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "NVDA-0001045810-25-000023-0001045810-26-000021",
+      "scored": true,
+      "split": "development",
+      "split_newer": "development"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9871,
+      "coverage_older": 0.987,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "QCOM-0000804328-23-000055-0000804328-24-000075",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9407,
+      "coverage_older": 0.9871,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 5,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "QCOM-0000804328-24-000075-0000804328-25-000085",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9863,
+      "coverage_older": 0.9866,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 1,
+        "fp": 0,
+        "n": 7,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "TSM-0001193125-23-107214-0001193125-24-099840",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9874,
+      "coverage_older": 0.9863,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 6,
+        "tp": 0,
+        "uncertain": 1
+      },
+      "pair_id": "TSM-0001193125-24-099840-0001193125-25-083423",
+      "scored": true,
+      "split": "held_out",
+      "split_newer": "held_out"
+    },
+    {
+      "comparable": true,
+      "coverage_newer": 0.9881,
+      "coverage_older": 0.9874,
+      "newer_new": {
+        "fn": 0,
+        "fp": 0,
+        "n": 25,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "not_compared_reason": null,
+      "older_removed": {
+        "fn": 0,
+        "fp": 0,
+        "n": 26,
+        "tp": 0,
+        "uncertain": 0
+      },
+      "pair_id": "TSM-0001193125-25-083423-0001628280-26-025362",
+      "scored": true,
+      "split": "development",
+      "split_newer": "development"
+    }
+  ],
+  "passage_level": {
+    "newer": {
+      "development": {
+        "confusion": {
+          "added": {
+            "added": 140,
+            "present": 6
+          },
+          "present": {
+            "present": 705
+          },
+          "reworded": {
+            "added": 8,
+            "present": 49
+          }
+        },
+        "ignored_passages": 300,
+        "n_gold_positive": 146,
+        "n_gold_sentences": 908,
+        "n_pairs": 6,
+        "passage": {
+          "fp": 8,
+          "n_gold_runs": 48,
+          "n_predicted": 101,
+          "precision": 0.920792,
+          "precision_ci": [
+            0.851427,
+            0.95932
+          ],
+          "recall": 0.916667,
+          "recall_ci": [
+            0.804464,
+            0.967117
+          ],
+          "recalled": 44,
+          "tp": 93,
+          "unverifiable": 0
+        },
+        "sentence": {
+          "false_negative_ids": [
+            "0000002488-26-000018:I.1A:i027#s002",
+            "0000002488-26-000018:I.1A:i027#s022",
+            "0000002488-26-000018:I.1A:i027#s044",
+            "0000723125-25-000028:I.1A:i010#s008",
+            "0001045810-26-000021:I.1A:i016#s102",
+            "0001628280-26-003942:I.1A:i014#s012"
+          ],
+          "false_positive_ids": [
+            "0000002488-26-000018:I.1A:i027#s031",
+            "0001045810-25-000023:I.1A:i002#s028",
+            "0001045810-25-000023:I.1A:i002#s038",
+            "0001045810-26-000021:I.1A:i010#s008",
+            "0001045810-26-000021:I.1A:i016#s065",
+            "0001045810-26-000021:I.1A:i016#s104",
+            "0001628280-26-003942:I.1A:i014#s005",
+            "0001628280-26-003942:I.1A:i014#s013"
+          ],
+          "fn": 6,
+          "fp": 8,
+          "precision": 0.945946,
+          "precision_ci": [
+            0.896968,
+            0.972359
+          ],
+          "recall": 0.958904,
+          "recall_ci": [
+            0.913246,
+            0.981032
+          ],
+          "tp": 140
+        },
+        "uncertain": 0,
+        "uncertain_rate": 0.0
+      },
+      "held_out": {
+        "confusion": {
+          "added": {
+            "added": 60,
+            "present": 3
+          },
+          "present": {
+            "present": 419
+          },
+          "reworded": {
+            "added": 1,
+            "present": 45
+          }
+        },
+        "ignored_passages": 470,
+        "n_gold_positive": 63,
+        "n_gold_sentences": 528,
+        "n_pairs": 6,
+        "passage": {
+          "fp": 1,
+          "n_gold_runs": 28,
+          "n_predicted": 48,
+          "precision": 0.979167,
+          "precision_ci": [
+            0.891005,
+            0.996313
+          ],
+          "recall": 0.928571,
+          "recall_ci": [
+            0.773543,
+            0.980188
+          ],
+          "recalled": 26,
+          "tp": 47,
+          "unverifiable": 0
+        },
+        "sentence": {
+          "false_negative_ids": [
+            "0000723125-24-000027:I.1A:i025#s012",
+            "0000950170-25-100235:I.1A:i012#s007",
+            "0001326801-24-000012:I.1A:i005#s018"
+          ],
+          "false_positive_ids": [
+            "0000723125-24-000027:I.1A:i013#s014"
+          ],
+          "fn": 3,
+          "fp": 1,
+          "precision": 0.983607,
+          "precision_ci": [
+            0.912809,
+            0.9971
+          ],
+          "recall": 0.952381,
+          "recall_ci": [
+            0.869088,
+            0.983674
+          ],
+          "tp": 60
+        },
+        "uncertain": 0,
+        "uncertain_rate": 0.0
+      }
+    },
+    "older": {
+      "development": {
+        "confusion": {
+          "present": {
+            "present": 689,
+            "removed": 1,
+            "reworded": 15
+          },
+          "removed": {
+            "removed": 63,
+            "reworded": 1
+          },
+          "reworded": {
+            "present": 11,
+            "removed": 13,
+            "reworded": 28
+          }
+        },
+        "ignored_passages": 307,
+        "n_gold_positive": 64,
+        "n_gold_sentences": 821,
+        "n_pairs": 6,
+        "passage": {
+          "fp": 11,
+          "n_gold_runs": 31,
+          "n_predicted": 52,
+          "precision": 0.784314,
+          "precision_ci": [
+            0.653734,
+            0.875062
+          ],
+          "recall": 0.967742,
+          "recall_ci": [
+            0.838055,
+            0.994283
+          ],
+          "recalled": 30,
+          "tp": 40,
+          "unverifiable": 1
+        },
+        "sentence": {
+          "false_negative_ids": [
+            "0001045810-24-000029:I.1A:i002#s069"
+          ],
+          "false_positive_ids": [
+            "0000002488-25-000012:I.1A:i002#s005",
+            "0000002488-25-000012:I.1A:i002#s014",
+            "0001045810-24-000029:I.1A:i002#s001",
+            "0001045810-24-000029:I.1A:i002#s002",
+            "0001045810-24-000029:I.1A:i002#s006",
+            "0001045810-24-000029:I.1A:i002#s007",
+            "0001045810-24-000029:I.1A:i002#s025",
+            "0001045810-24-000029:I.1A:i002#s035",
+            "0001045810-24-000029:I.1A:i002#s052",
+            "0001045810-24-000029:I.1A:i002#s058",
+            "0001045810-24-000029:I.1A:i002#s083",
+            "0001045810-25-000023:I.1A:i015#s055",
+            "0001045810-25-000023:I.1A:i015#s074",
+            "0001045810-25-000023:I.1A:i015#s102"
+          ],
+          "fn": 1,
+          "fp": 14,
+          "precision": 0.818182,
+          "precision_ci": [
+            0.717635,
+            0.888488
+          ],
+          "recall": 0.984375,
+          "recall_ci": [
+            0.916657,
+            0.997237
+          ],
+          "tp": 63
+        },
+        "uncertain": 0,
+        "uncertain_rate": 0.0
+      },
+      "held_out": {
+        "confusion": {
+          "present": {
+            "present": 427,
+            "reworded": 4
+          },
+          "removed": {
+            "removed": 70,
+            "reworded": 2
+          },
+          "reworded": {
+            "present": 9,
+            "removed": 8,
+            "reworded": 13
+          }
+        },
+        "ignored_passages": 450,
+        "n_gold_positive": 72,
+        "n_gold_sentences": 533,
+        "n_pairs": 6,
+        "passage": {
+          "fp": 6,
+          "n_gold_runs": 29,
+          "n_predicted": 51,
+          "precision": 0.882353,
+          "precision_ci": [
+            0.766189,
+            0.94495
+          ],
+          "recall": 0.965517,
+          "recall_ci": [
+            0.828241,
+            0.993887
+          ],
+          "recalled": 28,
+          "tp": 45,
+          "unverifiable": 0
+        },
+        "sentence": {
+          "false_negative_ids": [
+            "0000002488-24-000012:I.1A:i006#s001",
+            "0000950170-24-087843:I.1A:i015#s012"
+          ],
+          "false_positive_ids": [
+            "0000002488-24-000012:I.1A:i001#s003",
+            "0000002488-24-000012:I.1A:i041#s002",
+            "0000002488-24-000012:I.1A:i041#s008",
+            "0000950170-24-087843:I.1A:i004#s000",
+            "0000950170-24-087843:I.1A:i010#s012",
+            "0000950170-24-087843:I.1A:i015#s016",
+            "0000950170-24-087843:I.1A:i015#s018",
+            "0001730168-23-000096:I.1A:i037#s000"
+          ],
+          "fn": 2,
+          "fp": 8,
+          "precision": 0.897436,
+          "precision_ci": [
+            0.810454,
+            0.947107
+          ],
+          "recall": 0.972222,
+          "recall_ci": [
+            0.904256,
+            0.992349
+          ],
+          "tp": 70
+        },
+        "uncertain": 0,
+        "uncertain_rate": 0.0
+      }
+    }
+  },
+  "passage_offsets": {
+    "checked": 1630,
+    "matched": 1630
+  },
+  "thresholds": {
+    "coverage": 0.9,
+    "guard_ratio": 90,
+    "min_positives": 5,
+    "precision": 0.9,
+    "recall": 0.8
+  },
+  "unknown_labels": {}
+}
