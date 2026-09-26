@@ -251,11 +251,12 @@ def test_a_model_below_the_baseline_on_open_questions_does_not_clear_the_gates(t
 
 # --- context-aware verifier and reuse of earlier judgements ---
 
-def test_an_uncited_figure_grounded_in_the_context_is_not_an_escalation_when_contexts_are_given():
+def test_an_uncited_figure_is_an_escalation_even_when_it_is_grounded_but_still_scores_as_correct():
+    """XBRL figures are citable ([xbrl:...]) since M1b, so a correct but uncited figure is escalated: the answer must cite it."""
     rows = [answer_row("N2", "Nvidia's revenue was $215.9 billion.", [])]
     without = bo.score_mechanical(rows, BENCH)
     with_ctx = bo.score_mechanical(rows, BENCH, contexts={"N2": context()})
-    assert without["escalation_rate"] == 1.0 and with_ctx["escalation_rate"] == 0.0
+    assert without["escalation_rate"] == 1.0 and with_ctx["escalation_rate"] == 1.0
     assert with_ctx["mechanical"] == {"passed": 1, "of": 1}
 
 

@@ -160,7 +160,6 @@ _OPENING_REFUSAL_RE = re.compile(
     rf"^\W*(?:(?:based on|according to|from|given|in)\s+)?{_CLAUSE}{{0,80}}?\b{_SOURCE_NOUN}\b{_CLAUSE}{{0,60}}?{_NEGATION}|"
     rf"^\W*(?:I|we)\s+(?:cannot|can{_A}?t|am unable to|are unable to)\s+(?:be )?(?:determin|answer|find)", re.I)
 _REFUSAL_MAX_CHARS = 1200
-_METRIC_ANSWER_MAX_CHARS = 400
 
 # --- clauses: the unit a refusal, a metric answer and a removal claim are judged in ------------------------------------
 # A sentence end (followed by a capital, digit or bullet: "U.S. revenue" does not split), a semicolon, a line break, or a
@@ -197,19 +196,6 @@ def refusal_shaped(text: str) -> bool:
     t = text.strip()
     return (len(t) <= _REFUSAL_MAX_CHARS and not money_values(t) and not _PERCENT_RE.search(t)
             and bool(_OPENING_REFUSAL_RE.search(t)) and all(_is_limitation(c) for c in _clauses(t)))
-
-
-def _pure_metric_answer(text: str, context: str) -> bool:
-    """A short, percentage-free statement whose every amount is in the retrieved context IN ITS CURRENCY, and that does
-    not continue past the figure's sentence with a claim of its own (only further figures or limitations)."""
-    t = text.strip()
-    if len(t) > _METRIC_ANSWER_MAX_CHARS or _PERCENT_RE.search(t):
-        return False
-    amounts = _amounts(t)
-    known = _known_amounts(context)
-    if not amounts or not all(_amount_known(a, known) for a in amounts):
-        return False
-    return all(_amounts(c) or _is_limitation(c) for c in _clauses(t))
 
 
 # --- numeric grounding ---------------------------------------------------------------------------------------------------
@@ -525,7 +511,7 @@ def verify_answer(text: str, cited: set[str], valid_ids: set[str], finish_reason
     if cited - valid_ids:
         reasons.append("invalid_citation")
     checks = answer_checks(text, cited, valid_ids, context, sources=sources, question=question)
-    if not checks.has_citation and not checks.is_refusal and (context is None or not _pure_metric_answer(text, context)):
+    if not checks.has_citation and not checks.is_refusal:
         reasons.append("no_citation")
     if not checks.numbers_grounded:
         reasons.append("ungrounded_number")

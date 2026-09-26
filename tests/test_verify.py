@@ -62,10 +62,10 @@ METRICS_CTX = ("RELATIONSHIPS:\n(none)\n\nMETRICS:\n- Nvidia revenue for period 
                "DROPPED RISK LINEAGES:\n(none)\n\nEXCERPTS:\n[a:I.1:0001]\nRevenue was $60,922 million.\n")
 
 
-def test_an_uncited_figure_found_in_the_metrics_block_passes():
-    assert verify_answer("Nvidia's revenue was about $215.9 billion.", set(), VALID, "stop", context=METRICS_CTX) == []
-    assert verify_answer("Revenue was $60,922,000,000.", set(), VALID, "stop", context=METRICS_CTX) == []
-    assert verify_answer("It was $60.9 billion.", set(), VALID, "stop", context=METRICS_CTX) == []
+def test_an_uncited_figure_found_in_the_metrics_block_still_needs_a_citation():
+    """XBRL figures carry citable ids now: grounded is not enough, the answer must cite the metric line."""
+    for text in ("Nvidia's revenue was about $215.9 billion.", "Revenue was $60,922,000,000.", "It was $60.9 billion."):
+        assert verify_answer(text, set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
 
 
 def test_an_uncited_figure_not_in_the_context_still_fails():

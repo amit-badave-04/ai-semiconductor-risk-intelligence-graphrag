@@ -99,14 +99,14 @@ def test_without_an_escalation_model_the_answer_streams_live_exactly_as_before()
     assert "escalated" not in events[-1] and "answered_by" not in events[-1]
 
 
-def test_an_uncited_dollar_figure_found_in_the_retrieved_metrics_is_released_not_escalated(monkeypatch):
+def test_an_uncited_dollar_figure_is_escalated_even_when_it_is_in_the_retrieved_metrics(monkeypatch):
     retrieval = {**RETRIEVAL, "metrics": [{"company": "Nvidia", "metric": "revenue", "period_start": "2025-01-27",
                                            "period_end": "2026-01-25", "value": 215938000000.0}]}
     monkeypatch.setattr(answerer_mod, "hybrid_retrieve", lambda *a, **kw: retrieval)
     strong = Stream([GOOD], model="strong/m")
     events = run(Stream(["Nvidia's revenue for that year was $215.9 billion."], model="cheap/m"), strong)
-    assert kinds(events) == ["retrieval", "delta", "done"] and not strong.iterated
-    assert events[-1]["escalated"] is False
+    assert events[1]["event"] == "escalated" and events[1]["reasons"] == ["no_citation"]     # grounded, but it must cite the xbrl id
+    assert events[-1]["escalated"] is True
 
 
 def test_an_uncited_dollar_figure_that_is_not_in_the_retrieved_context_is_still_escalated(monkeypatch):

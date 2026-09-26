@@ -168,10 +168,9 @@ def test_without_a_context_nothing_is_examined():
     assert c.numbers_checked == 0 and c.numbers_grounded is True
 
 
-def test_an_uncited_figure_in_another_currency_does_not_pass_as_a_grounded_metric_answer():
-    """The short-uncited-metric-answer rule used its own, currency-blind grounding: it goes through the same check now."""
+def test_a_figure_in_another_currency_is_ungrounded_and_a_correct_one_still_needs_its_citation():
     assert reasons("TSMC's revenue was $3.81 trillion.") == ["no_citation", "ungrounded_number"]
-    assert reasons("TSMC's revenue was NT$3.81 trillion.") == []
+    assert reasons("TSMC's revenue was NT$3.81 trillion.") == ["no_citation"]
 
 
 # =========================================================================================================== M1
@@ -329,27 +328,13 @@ def test_further_limitations_do_not_defeat_a_refusal(text):
     assert refusal_shaped(text) is True
 
 
-def test_a_pure_metric_answer_must_not_continue_past_the_figure_with_another_claim():
-    assert reasons("Revenue was $215.9 billion.") == []
-    claim = "Nvidia's revenue was $215.938 billion. Nvidia also plans to acquire Intel next year."
-    assert reasons(claim) == ["no_citation"]
-    same_sentence = "Nvidia's revenue was $215.938 billion; Nvidia also plans to acquire Intel next year."
-    assert reasons(same_sentence) == ["no_citation"]
-    conj = "Nvidia's revenue was $215.938 billion, and Nvidia plans to acquire Intel next year."
-    assert reasons(conj) == ["no_citation"]
-
-
-def test_a_pure_metric_answer_may_carry_a_limitation_or_a_second_figure():
-    assert reasons("Nvidia's revenue was $215.938 billion, up from a base the context does not give.") == []
-    assert reasons("Nvidia's revenue was $215.938 billion. The context does not state the change.") == []
-
-
-def test_the_pure_metric_exemption_survives_and_the_checks_still_flag_the_missing_citation():
-    """Decision recorded: a short, fully grounded, uncited metric statement is still RELEASED (no ``no_citation`` reason),
-    but its ``checks`` report ``has_citation`` False, so it is not cached and the page shows a warning."""
-    text = "Nvidia's revenue was $215.938 billion."
-    assert reasons(text) == []
-    c = checks(text)
+def test_an_uncited_metric_statement_is_never_released_as_verified():
+    """Decision (review, W-J): with citable xbrl ids there is no exemption for a short uncited figure; 'released' means
+    'passed'. The cheap draft escalates and the strong model cites the metric line."""
+    for text in ("Revenue was $215.9 billion.", "Nvidia's revenue was $215.938 billion, up from a base the context does not give.",
+                 "Nvidia's revenue was $215.938 billion. Nvidia also plans to acquire Intel next year."):
+        assert "no_citation" in reasons(text)
+    c = checks("Nvidia's revenue was $215.938 billion.")
     assert c.has_citation is False and failed_check_names(c.as_dict()) == ["no_citation"]
 
 
@@ -363,9 +348,3 @@ def test_the_pure_metric_exemption_survives_and_the_checks_still_flag_the_missin
 def test_a_negated_fact_about_the_world_after_a_refusal_is_still_a_claim(text):
     assert refusal_shaped(text) is False
     assert reasons(text) == ["no_citation"]
-
-
-def test_a_pure_metric_answer_cannot_continue_with_a_negated_claim_about_the_world():
-    text = "Nvidia's revenue was $215.938 billion; Nvidia does not sell to Huawei."
-    assert reasons(text) == ["no_citation"]
-    assert reasons("Nvidia's revenue was $215.938 billion; the context does not state the change.") == []
