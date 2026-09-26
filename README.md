@@ -11,7 +11,7 @@ verbatim filing excerpt — and answers multi-hop supply-chain and export-contro
 citations that are verified before they are shown.
 
 **🔗 Live demo:** https://semigraph.fly.dev/ — click any of the 20 benchmark questions (free, cached)
-or ask your own (one streamed Claude Sonnet 5 call, bot-gated and capped per day). Every citation
+or ask your own (a verified GPT-6 Luna answer, escalated to Claude Sonnet 5 when the check fails or the question is about change over time; bot-gated and capped per day). Every citation
 chip opens the SEC excerpt it points to. The owner parks the demo when it is not in use; if the page
 does not load, it is offline (see [Operations](#operations-start--stop)).
 
@@ -115,7 +115,7 @@ on the roadmap below with the paid re-benchmark it requires.
 | Layer | Choice | Reasoning |
 |---|---|---|
 | Graph database | **Neo4j Community 2026.07**, self-hosted on Fly.io with a volume (local development: Neo4j Desktop) | The retrieval code needs native vector indexes and the Cypher 25 `SEARCH` clause; Community supports both. AuraDB Free would be $0 but pauses after 72 h idle and needs an account created by hand; self-hosting is a one-line `NEO4J_URI` swap away and costs ≈ $0.60/month when stopped. |
-| LLM | **Claude Sonnet 5** via LiteLLM for extraction, answering and the primary judges; **Claude Haiku 4.5** as extraction critic, relevance/recall judge, and second-opinion judge | The benchmark numbers belong to Sonnet 5; the product caps cost instead of downgrading the model. Haiku gives an independent judge family cheaply. |
+| LLM | **Answering (v1.2): GPT-6 Luna by default, Claude Sonnet 5 for questions about change over time and for any draft the verifier rejects**, via LiteLLM; **Claude Sonnet 5** extracts and judges, **Claude Haiku 4.5** is the extraction critic and relevance/recall judge | A seven-model bake-off on identical retrieved contexts ([docs/v2/BAKEOFF.md](docs/v2/BAKEOFF.md)) found Luna matching Sonnet on every question type except multi-year risk evolution, at $0.0013 instead of $0.037 per answer; the deployed path measures 19/20 at $0.0069 per answer. Changing it back is two settings. |
 | Query embeddings | `Qwen/Qwen3-Embedding-0.6B` — sentence-transformers in the pipeline, an **8-bit weight-only ONNX** build in the service (no torch) | Open-source, 1024-dim, 32k context. The quantized build scores cosine 0.998 min / 0.999 mean against the original on the benchmark questions ([`artifacts/onnx_embedder_fidelity.json`](artifacts/onnx_embedder_fidelity.json)); the community int8 / q4 exports were rejected at 0.87 / 0.94. |
 | SEC ingestion | `edgartools`, `sec-parser`, the XBRL Company Facts API | Section-aware parsing with fallbacks for custom layouts (Intel has no item headings; ASML files 20-F). Financial numbers are XBRL-only. |
 | Extraction | Sonnet extractor → verbatim-quote gate → Haiku critic, checkpointed per chunk | A relationship only enters the graph if its evidence quote is found verbatim in the chunk. |
@@ -277,8 +277,10 @@ An independent review of the service diff found three real defects before launch
 client-IP header, ledger writes before any gate, spend lost on mid-stream failure); all were fixed
 and are covered by tests. Decisions with their measurements: [adr/0001-production-stack.md](adr/0001-production-stack.md).
 
-Measured on the live deployment: a live hybrid answer streams in 15–20 s and costs $0.035–0.056
-(12–21k prompt tokens); cached answers return in 0.2–0.3 s. The API machine stays warm while online
+Measured on v1 (Sonnet-only): a live hybrid answer streams in 15–20 s and costs $0.035–0.056
+(12–21k prompt tokens); cached answers return in 0.2–0.3 s. Measured on the v1.2 answering path (benchmark,
+local): about $0.0069 per answer on average and 6 s, because a cheap draft is verified before it is shown (the
+first token appears after generation, not during it). The API machine stays warm while online
 (a cold start would cost about 10 s). Both machines online ≈ $17/month; parked ≈ $0.75/month.
 
 ## Operations (START / STOP)

@@ -138,6 +138,17 @@ flyctl ips allocate-v4 --shared -a semigraph; flyctl ips allocate-v6 -a semigrap
    `flyctl releases -a <app>`); the older DB image carries the older seed and reloads it. Keep the previous dump outside git
    (`data/backups/`). The Turnstile gate rejects scripted clients, so a live paid question can only be tested from a browser.
 
+## Answering models (v1.2)
+
+`LLM_MODEL` (default `openai/gpt-6-luna`) drafts every answer; `ESCALATION_MODEL` (`anthropic/claude-sonnet-5`) answers
+questions about change over time directly and re-answers any draft the verifier rejects (empty, truncated, a citation
+outside the retrieved context, or no citation unless it is a refusal or every dollar figure is in the METRICS block).
+A draft is buffered until it passes, so the first token appears after generation. Provider keys are Fly secrets
+(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`); push names with `python -m scripts.push_fly_secrets --only LLM_MODEL,ESCALATION_MODEL[,OPENAI_API_KEY] [--env .env]`
+then `flyctl deploy`. **Revert to Sonnet only:** set `LLM_MODEL=anthropic/claude-sonnet-5` and clear `ESCALATION_MODEL`
+(`flyctl secrets unset ESCALATION_MODEL -a semigraph`), or set both to Sonnet. Check the models from inside the container without
+the bot gate: `flyctl ssh console -a semigraph -C "python -c ..."` calling `litellm.completion(**completion_params(model, n))`.
+
 ## Troubleshooting
 
 - `/healthz` 503 → the API cannot reach Neo4j: `flyctl status -a semigraph-neo4j` (machine must be
