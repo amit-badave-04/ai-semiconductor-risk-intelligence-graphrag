@@ -160,3 +160,19 @@ def test_packet_carries_the_items_the_full_newer_text_and_the_rules():
     assert packet["newer_section_text"] == NEW_TEXT
     assert "removed" in packet["instructions"] and "quote" in packet["instructions"]
     assert "algorithm" not in json.dumps(packet).lower() or "never" in packet["instructions"].lower()
+
+
+# --- remaining item-level edges ---
+
+def test_an_unknown_side_and_a_duplicate_label_are_rejected_by_the_item_validator():
+    with pytest.raises(ValueError, match="side"):
+        gold.validate_annotation([], OLD, NEW_TEXT, side="sideways")
+    dup = [label("a:I.1A:i001", "unchanged", quote=LONG_QUOTE_1), label("a:I.1A:i001", "unchanged", quote=LONG_QUOTE_1)]
+    v = gold.validate_annotation(dup, OLD, NEW_TEXT, side="older")
+    assert v.accepted == {"a:I.1A:i001": "unchanged"} and "duplicate" in v.rejected[0][1]
+
+
+def test_majority_of_no_votes_is_none_and_freeze_refuses_a_gold_that_already_carries_a_hash(tmp_path):
+    assert gold.majority_label([]) is None
+    with pytest.raises(ValueError, match="sha256"):
+        gold.freeze({"labels": {}, "sha256": "x"}, tmp_path / "g.json")

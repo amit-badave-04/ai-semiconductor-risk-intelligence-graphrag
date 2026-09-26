@@ -106,3 +106,41 @@ def test_pairs_with_an_untrustworthy_side_are_marked_not_compared_and_get_no_pac
 
 def test_without_quality_data_pairs_stay_comparable_for_backwards_compatibility():
     assert all(p["comparable"] for p in lri.consecutive_pairs(items_df()))
+
+
+# --- the risk section is chosen by the items' section id (the lake holds several sections per accession) ---------
+
+def with_business_first(sections):
+    business = pd.DataFrame([{"accession_no": a, "section_id": "I.1", "text": f"Item 1. Business text of {a}."}
+                             for a in sections["accession_no"].unique()])
+    return pd.concat([business, sections], ignore_index=True)
+
+
+def test_packets_carry_the_risk_section_of_each_filing_not_the_first_section_listed(tmp_path):
+    sections = with_business_first(sections_df())
+    lri.write_packets(lri.consecutive_pairs(items_df()), items_df(), sections, tmp_path)
+    older = json.loads((tmp_path / "NVDA-acc-25-acc-26.older.packet.json").read_text(encoding="utf-8"))
+    newer = json.loads((tmp_path / "NVDA-acc-25-acc-26.newer.packet.json").read_text(encoding="utf-8"))
+    assert older["newer_section_text"].endswith("manufacturing capacity.") and "Business" not in older["newer_section_text"]
+    assert newer["other_section_text"].startswith(Q1) and "Business" not in newer["other_section_text"]
+
+
+def test_the_risk_section_is_a_unique_lookup_or_a_loud_error():
+    sections = with_business_first(sections_df())
+    assert lri._risk_section_text(items_df(), sections, "acc-24") == Q1 + " " + Q2
+    with pytest.raises(KeyError, match="no section text"):
+        lri._risk_section_text(items_df(), sections[sections["section_id"] != "I.1A"], "acc-24")
+    mixed = items_df()
+    mixed.loc[mixed["item_id"] == "acc-24:I.1A:i001", "section_id"] = "II.7"
+    with pytest.raises(KeyError, match="which section"):
+        lri._risk_section_text(mixed, sections, "acc-24")
+
+
+def test_collect_reports_an_unreadable_label_file_by_name(tmp_path):
+    lri.write_packets(lri.consecutive_pairs(items_df()), items_df(), sections_df(), tmp_path)
+    (tmp_path / "NVDA-acc-25-acc-26.older.a.labels.json").write_text("{oops", encoding="utf-8")
+    with pytest.raises(ValueError, match="a.labels.json is not valid JSON"):
+        lri.collect("NVDA-acc-25-acc-26", "older", tmp_path)
+    (tmp_path / "NVDA-acc-25-acc-26.older.a.labels.json").write_text('{"item_id": "x"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON list"):
+        lri.collect("NVDA-acc-25-acc-26", "older", tmp_path)
