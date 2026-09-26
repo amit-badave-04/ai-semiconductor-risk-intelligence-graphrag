@@ -615,6 +615,7 @@ def select_pairs(rows: list[dict], question: str, periods: Mapping[str, list], *
         company = history[0].get("company")
         picked: list[dict] = []
         selection = "latest"
+        missed: str | None = None                 # a named year with no pair: the notice is finished once the fallback is known
         if mode == "named" and named:
             wanted = set(named)
             for keep in (lambda r: r.get("older_fy") in wanted and r.get("newer_fy") in wanted,
@@ -625,10 +626,8 @@ def select_pairs(rows: list[dict], question: str, periods: Mapping[str, list], *
             selection = "named"
             if not picked:
                 loaded = [fy for r in history for fy in (r.get("older_fy"), r.get("newer_fy")) if fy is not None]
-                notices.append({"cik": cik, "company": company, "text": (
-                    f"no annual-filing comparison covering fiscal {_fiscal_list(named)} is in the graph for {company} (annual "
-                    f"filings loaded: fiscal {', '.join(map(str, sorted(set(loaded)))) or 'unknown'}); the latest comparison "
-                    "is shown instead")})
+                missed = (f"no annual-filing comparison covering fiscal {_fiscal_list(named)} is in the graph for {company} "
+                          f"(annual filings loaded: fiscal {', '.join(map(str, sorted(set(loaded)))) or 'unknown'})")
         elif mode == "multi":
             readable = [r for r in history if _guarded(r)]
             picked, selection = readable[:max_pairs], "multi"
@@ -638,6 +637,10 @@ def select_pairs(rows: list[dict], question: str, periods: Mapping[str, list], *
         if not picked:
             picked = [r for r in history if r.get("is_current") and _guarded(r)][:1]
             selection = "latest"
+            if missed:                              # never promise a comparison that is not shown
+                tail = ("the latest comparison is shown instead" if picked
+                        else "no readable comparison of the latest annual filings is available either")
+                notices.append({"cik": cik, "company": company, "text": f"{missed}; {tail}"})
         chosen += [_chosen(r, selection) for r in reversed(picked)]
     return chosen, notices
 

@@ -124,6 +124,16 @@ def test_years_with_no_pair_in_the_graph_show_the_latest_pair_and_say_so():
         assert part in notice["text"], part
 
 
+def test_the_notice_does_not_promise_a_latest_comparison_when_the_current_pair_cannot_be_read():
+    """Found by the Neo4j integration review: a Micron-shaped filer whose current pair has no risk items on either side."""
+    rows = [annual(ACC["n25"], ACC["n26"], 2025, 2026, is_current=True, older_has_items=False, newer_has_items=False)]
+    pairs, notices = choose("Did Nvidia remove any risk factors between FY2020 and FY2021?", rows)
+    assert pairs == []
+    (notice,) = notices
+    assert "no annual-filing comparison covering fiscal 2020 and 2021" in notice["text"]
+    assert "is shown instead" not in notice["text"] and "no readable comparison of the latest annual filings" in notice["text"]
+
+
 def test_named_pairs_are_capped_and_returned_oldest_first():
     q = "Which risk factors were removed between 2023 and 2026?"
     pairs, _ = choose(q, nvda_history())

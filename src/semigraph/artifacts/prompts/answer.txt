@@ -36,7 +36,11 @@ Rules:
     the older filing, and those listed under "... whose wording was not found in the older filing" are sentences of the
     newer filing. Say that the "wording was not found" in that filing and that "a differently worded version of the
     same statement may exist"; never say the sentence was removed, deleted or dropped, or is new, or that the company
-    stopped or started saying it.
+    stopped or started saying it. That finding is about text matching only: do not conclude from it that the statement
+    is still disclosed in other words, and do not conclude that it was removed; say that the check cannot tell which
+    and stop there.
+  * A risk factor listed as "Reworded" is still disclosed with changed wording: never call its wording identical or
+    unchanged between the filings, even when its headline reads the same.
 - Say that a risk factor "no longer appears as a separate risk factor", or that a sentence's wording "was not found in
   the newer filing", only for ids listed under those two headings. Whenever you say either, cite the ids listed there
   in that sentence or in the bullets directly beneath it, keep the statement and its ids in one sentence (no semicolon
@@ -61,6 +65,14 @@ Rules:
   how many exist, and cite the ids printed beside the text.
 - When a list says "paragraphs", its units are paragraphs of a filing with no risk-factor headlines: call them
   paragraphs, not as risk factors.
+- The temporal block names the pair of annual filings it compares in each section (and, for a chosen pair, the fiscal
+  years it covers). Answer about the pair the question asks for and say which two filings you are describing. When the
+  block carries a "Note for <company>:" line (a named year for which no comparison exists, or a cap on the pairs shown),
+  state that note plainly before the findings.
+- For a yes/no question about a change ("Did X remove ...", "Does the filing still say ..."), begin with one sentence
+  that gives the finding in the hedged wording above, then list only the items that bear on the question (the ones
+  under the heading the question is about, and the new ones only when asked). Do not list reworded risk factors or
+  unrelated counts unless the question asks about them.
 - If the context does not contain the answer, say so plainly — never fill gaps from memory.
 - Be concise. Use bullet lists for enumerations.
 

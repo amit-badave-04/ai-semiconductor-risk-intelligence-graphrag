@@ -13,31 +13,43 @@ Contract (docs/v2/M1B_PLAN.md D and G)
                    chunk_ids, counterpart_chunk_ids?})   with (item:RiskItem)-[:HAS_PASSAGE]->(passage)      [L.7]
 
 Corpus
-    Nvidia  n25 10-K (superseded)  n26 10-K (current)  q25 10-Q (superseded; the current annual also rolled over it)
+    Nvidia  n24 10-K (FY2024, superseded)  n25 10-K (FY2025, superseded)  n26 10-K (FY2026, current)
+            q25 10-Q (superseded; the current annual also rolled over it)
             older items: o1 removed, o2 removed, o3 unchanged, o4 reworded, o5 merged, o6 removed in an EARLIER pair,
                          qi (an item of the 10-Q, 'removed_in' the current annual - must never be read as a removal),
                          o7 UNSETTLED (headline), o8 UNSETTLED (paragraph, no headline), o9 unsettled in an EARLIER pair,
                          qu (a 10-Q item whose 'unsettled_in' is the current annual - never read)
             newer items: n3 carried, n4 reworded, n5 merged target, n7 NEW (headline), n8 NEW (paragraph, no headline)
+            the FY2024 -> FY2025 pair (n25 rolled over n24; multi-pair retrieval, L.12): x1 removed, x2 UNSETTLED, x3 reworded
+                         (-> o11), and the n25 items o10 NEW and o11; the n24 items sit at seq 21+ so no chunk id of theirs
+                         is the id of the FY2024 passage 'o4:r000@old'
+            annual XBRL: the revenue facts of FY2024 / FY2025 / FY2026 are stamped (REPORTS_METRIC.accession_no) with the
+                         10-K that first disclosed them, which is how ANNUAL_PAIRS_QUERY finds a filing's fiscal year; earlier
+                         years name filings this graph does not hold
     AMD     a25 10-K, a26 10-K (current): one unchanged item each  -> a comparison in which nothing changed
             a26x 10-K/A current, no items (the partial-amendment overlay shape)
+            annual revenue for both filings + a QUARTERLY fact stamped with a26 whose period ends in a LATER year
     Micron  m26 10-K current rolled over m25 10-K, NEITHER has items -> no comparison at all ("no data")
+            m24 10-K (has one item) rolled over by m25: the FY2024 -> FY2025 pair has items on ONE side only
     Intel   t25 10-K current rolled over t24 10-K, items_compared=false, t25 has NO items -> "comparison not available"
     ASML    l25 10-K current rolled over l24 10-K, items_compared=false, both sides have items (one with a stale removed_in
-            and one with a stale unsettled_in)
-    Passages (Nvidia pair): removed x3 + reworded x1 in o4, added x1 in n4, one removed passage of a DIFFERENT pair (EARLIER)
+            and one with a stale unsettled_in); l24 has no XBRL, so it has no fiscal year
+    Passages (Nvidia pair): removed x3 + reworded x1 in o4, added x1 in n4; one removed passage of the FY2024 -> FY2025 pair
 """
 
 import pytest
 
+from semigraph.retrieval import retriever as R
 from semigraph.retrieval.answerer import build_blocks, metrics_lines, sources_from_context
-from semigraph.retrieval.context_layout import removal_supported_ids
+from semigraph.retrieval.context_layout import removal_supported_ids, temporal_block
 from semigraph.retrieval.retriever import (
+    ANNUAL_PAIRS_QUERY,
     METRIC_PERIODS_FETCHED,
     METRICS_QUERY,
     PASSAGES_QUERY,
     RULE_EDGES_QUERY,
     TEMPORAL_QUERY,
+    TEMPORAL_SELECTED_QUERY,
     mentioned_periods,
     run_cypher,
     select_passages,
@@ -49,10 +61,10 @@ from semigraph.serve import routes
 NVDA, AMD, MICRON, INTEL, ASML = 1045810, 2488, 723125, 50863, 937966
 N25, N26, Q25 = "0001045810-25-000023", "0001045810-26-000021", "0001045810-25-000099"
 A25, A26, A26X = "0000002488-25-000010", "0000002488-26-000018", "0000002488-26-000021"
-M25, M26 = "0000723125-25-000030", "0000723125-26-000031"
+M24, M25, M26 = "0000723125-24-000023", "0000723125-25-000030", "0000723125-26-000031"
 T24, T25 = "0000050863-25-000010", "0000050863-26-000011"
 L24, L25 = "0000937966-25-000010", "0000937966-26-000011"
-EARLIER = "0001045810-24-000029"
+EARLIER = N24 = "0001045810-24-000029"      # the FY2024 10-K: the filing of the older pair of the FY2024 -> FY2025 comparison
 
 
 def item(item_id, acc, cik, seq, headline, *, kind="headline", is_new=False, removed_in=None, unsettled_in=None, length=1000,
@@ -90,33 +102,52 @@ ITEMS = [
     item("l2", L25, ASML, 2, "Newer ASML risk", is_new=True, current=True),
     item("a1", A25, AMD, 1, "Competition"),
     item("a2", A26, AMD, 1, "Competition", current=True),
+    # the FY2024 -> FY2025 comparison of Nvidia (n25 rolled over n24): its own removed / unsettled / new / reworded items
+    item("x1", N24, NVDA, 21, "Wafer supply commitments", removed_in=N25, length=1500),
+    item("x2", N24, NVDA, 22, "Channel inventory exposure", unsettled_in=N25, length=900),
+    item("x3", N24, NVDA, 23, "Earlier wording of customer credit exposure"),
+    item("o10", N25, NVDA, 20, "Regulatory scrutiny of AI systems", is_new=True, length=1300),
+    item("o11", N25, NVDA, 24, "Customer credit exposure"),
+    item("m1", M24, MICRON, 1, "Older Micron risk"),             # the FY2024 10-K has items, its successor m25 has none
 ]
 SUCCEEDED = [
     {"old": "o3", "new": "n3", "kind": "unchanged", "se": 1.0, "sl": 1.0, "by": "hash"},
     {"old": "o4", "new": "n4", "kind": "reworded", "se": 0.91, "sl": 0.62, "by": "rules"},
     {"old": "o5", "new": "n5", "kind": "merged", "se": 0.8, "sl": 0.5, "by": "luna"},
     {"old": "a1", "new": "a2", "kind": "unchanged", "se": 1.0, "sl": 1.0, "by": "hash"},
+    {"old": "x3", "new": "o11", "kind": "reworded", "se": 0.88, "sl": 0.55, "by": "rules"},          # FY2024 -> FY2025
 ]
 COMPANIES = [{"cik": NVDA, "name": "Nvidia"}, {"cik": AMD, "name": "AMD"}, {"cik": MICRON, "name": "Micron"},
              {"cik": INTEL, "name": "Intel"}, {"cik": ASML, "name": "ASML"}]
 FILINGS = [
-    (NVDA, N25, "10-K", "2025-02-26", False), (NVDA, N26, "10-K", "2026-02-25", True), (NVDA, Q25, "10-Q", "2025-11-20", False),
+    (NVDA, N24, "10-K", "2024-02-21", False), (NVDA, N25, "10-K", "2025-02-26", False), (NVDA, N26, "10-K", "2026-02-25", True),
+    (NVDA, Q25, "10-Q", "2025-11-20", False),
     (AMD, A25, "10-K", "2025-02-05", False), (AMD, A26, "10-K", "2026-02-04", True), (AMD, A26X, "10-K/A", "2026-02-04", True),
-    (MICRON, M25, "10-K", "2025-10-08", False), (MICRON, M26, "10-K", "2026-10-07", True),
+    (MICRON, M24, "10-K", "2024-10-09", False), (MICRON, M25, "10-K", "2025-10-08", False), (MICRON, M26, "10-K", "2026-10-07", True),
     (INTEL, T24, "10-K", "2025-02-14", False), (INTEL, T25, "10-K", "2026-02-13", True),
     (ASML, L24, "20-F", "2025-02-12", False), (ASML, L25, "20-F", "2026-02-11", True),
 ]
 NOT_COMPARED = {(T25, T24): "the older filing's section is suspect (coverage 0.62)",
                 (L25, L24): "the older filing's section text runs into sustainability chapters"}
-SUPERSEDES = [(N26, N25, "rolled"), (N26, Q25, "rolled"), (A26, A25, "rolled"), (M26, M25, "rolled"),
-              (T25, T24, "rolled"), (L25, L24, "rolled")]
+SUPERSEDES = [(N26, N25, "rolled"), (N25, N24, "rolled"), (N26, Q25, "rolled"), (A26, A25, "rolled"), (M26, M25, "rolled"),
+              (M25, M24, "rolled"), (T25, T24, "rolled"), (L25, L24, "rolled")]
 CHUNK = f"{N26}:I.1A:0003"
+
+
+# The 10-K that FIRST disclosed a fiscal year's figures (the accession rides on the REPORTS_METRIC edge). The three fiscal years whose
+# 10-K this graph holds name it, which is how ANNUAL_PAIRS_QUERY finds a filing's fiscal year; the older years name filings that
+# are not in the graph (the evidence query's optional join then returns no form).
+FIRST_DISCLOSED_IN = {2024: N24, 2025: N25, 2026: N26}
+
+
+def fact(cik, metric_name, start, end, accn, value=1.0):
+    return {"id": f"{cik}:{metric_name}:{end}", "cik": cik, "metric": metric_name, "value": value, "start": start, "end": end,
+            "accn": accn}
 
 
 def metric(metric_name, year, value):
     end = f"{year}-01-26"
-    return {"id": f"{NVDA}:{metric_name}:{end}", "metric": metric_name, "value": value, "start": f"{year - 1}-01-27",
-            "end": end, "accn": f"0001045810-{year % 100}-000001"}
+    return fact(NVDA, metric_name, f"{year - 1}-01-27", end, FIRST_DISCLOSED_IN.get(year, f"0001045810-{year % 100}-000001"), value)
 
 
 # The paragraph unit n8 starts 27 characters into its first chunk: the chunk's tail belongs to the previous unit.
@@ -138,11 +169,23 @@ PASSAGES = [
     {"passage_id": "n4:a000", "kind": "added", "item": "n4", "older": N25, "newer": N26, "cik": NVDA,
      "text": "In April 2025 the government required licenses for H20.", "counterpart": None, "similarity": None,
      "chunks": [f"{N26}:I.1A:0350"]},
+    # a passage of the FY2024 -> FY2025 pair: never read for the FY2025 -> FY2026 pair, read (and only) for the pair it names
     {"passage_id": "o4:r000@old", "kind": "removed", "item": "o4", "older": EARLIER, "newer": N25, "cik": NVDA,
-     "text": "A removed passage of a DIFFERENT pair.", "counterpart": None, "similarity": None, "chunks": [f"{EARLIER}:I.1A:0001"]},
+     "text": "A removed passage of the FY2024 to FY2025 pair.", "counterpart": None, "similarity": None,
+     "chunks": [f"{EARLIER}:I.1A:0001"]},
 ]
 METRICS = ([metric("revenue", y, 10.0 * (y - 2020)) for y in range(2021, 2027)]         # six fiscal years
-           + [metric("rnd", 2026, 9.0), metric("rnd", 2025, 7.0)])
+           + [metric("rnd", 2026, 9.0), metric("rnd", 2025, 7.0)]
+           # the other filers' annual revenue, each fact stamped with the 10-K it came from. Fiscal years end in late December
+           # (AMD, Intel, ASML) or on the Thursday closest to August 31 (Micron). ASML's l24 has NO facts: no fiscal year.
+           + [fact(AMD, "revenue", "2023-12-31", "2024-12-28", A25, 25.8), fact(AMD, "revenue", "2024-12-29", "2025-12-27", A26, 34.6),
+              # a QUARTERLY fact (90 days) stamped with a26 whose period ends in a LATER year than the annual: it must never
+              # decide a filing's fiscal year (the year of its period end would be 2026, not 2025)
+              fact(AMD, "revenue_q", "2025-12-28", "2026-03-28", A26, 7.4),
+              fact(MICRON, "revenue", "2023-08-31", "2024-08-29", M24, 25.1), fact(MICRON, "revenue", "2024-08-30", "2025-08-28", M25, 37.4),
+              fact(MICRON, "revenue", "2025-08-29", "2026-09-03", M26, 45.0),
+              fact(INTEL, "revenue", "2023-12-31", "2024-12-28", T24, 53.1), fact(INTEL, "revenue", "2024-12-29", "2025-12-27", T25, 52.9),
+              fact(ASML, "revenue", "2025-01-01", "2025-12-31", L25, 32.7)])
 RULES = [
     {"id": "2026-19537", "title": "Implementation of Additional Export Controls", "day": "2026-03-12",
      "url": "https://www.federalregister.gov/d/2026-19537", "kind": "entity_list", "topics": ["china"], "abstract": "abs",
@@ -166,10 +209,10 @@ def build(driver):
         s.run("UNWIND $rows AS e MATCH (o:RiskItem {item_id: e.old}), (n:RiskItem {item_id: e.new}) "
               "CREATE (o)-[:SUCCEEDED_BY {kind: e.kind, sim_embed: e.se, sim_lex: e.sl, decided_by: e.by}]->(n)",
               rows=SUCCEEDED).consume()
-        s.run("UNWIND $rows AS m MATCH (c:Company {cik: $cik}) "
+        s.run("UNWIND $rows AS m MATCH (c:Company {cik: m.cik}) "
               "CREATE (c)-[:REPORTS_METRIC {accession_no: m.accn}]->(:Metric {metric_id: m.id, metric: m.metric, "
               "concept: 'Revenues', value: m.value, unit: 'USD', period_start: date(m.start), period_end: date(m.end)})",
-              rows=METRICS, cik=NVDA).consume()
+              rows=METRICS).consume()
         s.run("UNWIND $rows AS r CREATE (:ExportControl {rule_id: r.id, title: r.title, date: date(r.day), url: r.url, "
               "kind: r.kind, topics: r.topics, relevant: true, abstract: r.abstract})", rows=RULES).consume()
         s.run("UNWIND $rows AS r MATCH (c:Company {cik: $cik}), (x:ExportControl {rule_id: r.id}) "
@@ -322,8 +365,11 @@ class TestEvidenceQueries:
     def test_an_xbrl_fact_resolves_to_its_metric_company_and_first_disclosing_accession(self, driver):
         (row,) = run_cypher(driver, routes.XBRL_EVIDENCE_QUERY, id=f"{NVDA}:revenue:2026-01-26")
         assert row["value"] == 60.0 and row["unit"] == "USD" and row["company"] == "Nvidia" and row["cik"] == NVDA
-        assert row["accession_no"] == "0001045810-26-000001"          # the edge's accession; that filing is not in this graph
-        assert row["form"] is None and row["period_start"] == "2025-01-27"
+        assert row["accession_no"] == N26 and row["form"] == "10-K"      # the edge's accession: the FY2026 10-K, which IS in this graph
+        assert row["period_start"] == "2025-01-27" and row["filing_date"] == "2026-02-25"
+        (older,) = run_cypher(driver, routes.XBRL_EVIDENCE_QUERY, id=f"{NVDA}:revenue:2023-01-26")
+        assert older["value"] == 30.0 and older["accession_no"] == "0001045810-23-000001"   # the edge's accession ...
+        assert older["form"] is None and older["period_start"] == "2022-01-27"             # ... of a filing that is NOT in this graph
 
     def test_an_unknown_xbrl_fact_and_an_unknown_rule_resolve_to_nothing(self, driver):
         assert run_cypher(driver, routes.XBRL_EVIDENCE_QUERY, id=f"{NVDA}:revenue:1999-01-01") == []
@@ -537,3 +583,296 @@ class TestPeriodAwareMetrics:
         assert heads == [f"Nvidia: fiscal year ended {y}-01-26" for y in (2026, 2025, 2024, 2022, 2021)]
         assert any("2022-01-26" in ln and "computed: +100.0% vs fiscal year ended 2021-01-26" in ln for ln in lines)
         assert f"xbrl:{NVDA}:revenue:2022-01-26" in ids and f"xbrl:{NVDA}:revenue:2021-01-26" in ids
+
+
+# --------------------------------------------------------------------------- multi-pair retrieval (M1B_PLAN L.12)
+# The graph holds the text comparison of every consecutive annual-filing pair; the retriever reads the pair(s) a question names
+# (fiscal years) or spans (several annual reports) and, for anything else, the current pair exactly as it always did.
+
+Q_2425 = "Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?"
+Q_2526 = "Did Nvidia remove any risk factors between its FY2025 and FY2026 annual reports?"
+Q_MULTI = "How has Nvidia's disclosed risk profile evolved across its recent annual reports?"
+Q_NO_PAIR = "Did Nvidia remove any risk factors between FY2020 and FY2021?"
+COVERS = "covers the fiscal year ended {older} -> the fiscal year ended {newer} (shown because the question names these fiscal years)"
+ZERO_TOTALS = {"removed": 0, "unsettled": 0, "new": 0, "reworded": 0}
+
+
+class _Embedder:
+    def encode_query(self, question):
+        return [0.0, 0.0]
+
+
+@pytest.fixture
+def retrieve(driver, monkeypatch):
+    """``hybrid_retrieve`` over the scratch graph, with every query it issues recorded. The two vector-index queries are answered
+    with no rows (the scratch graph has no vector indexes); everything else, the pair selection included, runs for real."""
+    calls: list[tuple[str, dict]] = []
+    real = R.run_cypher
+
+    def spy(drv, query, **params):
+        calls.append((query, params))
+        return [] if query in (R.ACTIVE_RISKS_QUERY, R.EXCERPTS_QUERY) else real(drv, query, **params)
+
+    monkeypatch.setattr(R, "run_cypher", spy)
+
+    def go(question):
+        calls.clear()
+        return R.hybrid_retrieve(question, driver, _Embedder())
+
+    go.calls = calls
+    go.issued = lambda query: [params for q, params in calls if q == query]
+    return go
+
+
+def render(result):
+    """``(temporal block, full context, citable ids)`` exactly as the answerer builds them from a retrieval result."""
+    blocks, context, valid = build_blocks(result)
+    return blocks.temporal_block, context, valid
+
+
+def block_of(driver, question, rows, pairs=None, cik=NVDA):
+    """The temporal block of ``rows`` (rows of TEMPORAL_QUERY or TEMPORAL_SELECTED_QUERY) as select_temporal, select_passages and
+    temporal_block make it, with no retrieval step in between."""
+    items, chosen = select_temporal(rows, question, pairs=pairs)
+    read = [{"cik": cik, "older": p["older_accession"], "newer": p["newer_accession"]} for p in chosen if p["compared"]]
+    passages, chosen = select_passages(run_cypher(driver, PASSAGES_QUERY, pairs=read), chosen, question)
+    return temporal_block(items, chosen, passages)[0]
+
+
+def selected_alone(driver, question, newer, pairs=None):
+    """The pair whose newer filing is ``newer`` asked for on its own: TEMPORAL_SELECTED_QUERY with that one accession."""
+    return block_of(driver, question, run_cypher(driver, TEMPORAL_SELECTED_QUERY, ids=[NVDA], newer_accessions=[newer]), pairs)
+
+
+def current_pair(driver, question):
+    """The block of the current pair as it was before pairs could be chosen: TEMPORAL_QUERY."""
+    return block_of(driver, question, run_cypher(driver, TEMPORAL_QUERY, ids=[NVDA]))
+
+
+class TestAnnualPairsQuery:
+    def rows(self, driver, *ciks):
+        return run_cypher(driver, ANNUAL_PAIRS_QUERY, ids=list(ciks))
+
+    def by_pair(self, driver, *ciks):
+        return {(r["older_accession"], r["newer_accession"]): r for r in self.rows(driver, *ciks)}
+
+    def test_every_annual_pair_of_a_company_comes_back_newest_first_never_the_10q_pair(self, driver):
+        rows = self.rows(driver, NVDA)
+        assert [(r["older_accession"], r["newer_accession"]) for r in rows] == [(N25, N26), (N24, N25)]     # not (Q25, N26)
+        assert [(r["older_form"], r["newer_form"]) for r in rows] == [("10-K", "10-K")] * 2
+        assert [(r["older_date"], r["newer_date"]) for r in rows] == [("2025-02-26", "2026-02-25"), ("2024-02-21", "2025-02-26")]
+        assert [(r["company"], r["cik"]) for r in rows] == [("Nvidia", NVDA)] * 2
+
+    def test_each_side_carries_the_fiscal_year_of_the_annual_period_end_its_own_facts_report(self, driver):
+        rows = self.rows(driver, NVDA)
+        assert [(r["older_fy"], r["newer_fy"]) for r in rows] == [(2025, 2026), (2024, 2025)]
+        assert [(r["older_period_end"], r["newer_period_end"]) for r in rows] == [("2025-01-26", "2026-01-26"),
+                                                                                  ("2024-01-26", "2025-01-26")]
+
+    def test_only_the_current_annual_is_current_and_a_stamped_or_unstamped_edge_both_mean_compared(self, driver):
+        rows = self.rows(driver, NVDA)
+        assert [r["is_current"] for r in rows] == [True, False]
+        assert all(r["compared"] is True and r["not_compared_reason"] is None for r in rows)     # N26->N25 stamped true, N25->N24 unstamped
+
+    def test_both_sides_of_the_nvidia_pairs_have_risk_items(self, driver):
+        assert all(r["older_has_items"] is True and r["newer_has_items"] is True for r in self.rows(driver, NVDA))
+
+    def test_a_quarterly_fact_stamped_with_a_filing_never_decides_its_fiscal_year(self, driver):
+        (row,) = self.rows(driver, AMD)
+        assert (row["older_fy"], row["newer_fy"]) == (2024, 2025)
+        assert (row["older_period_end"], row["newer_period_end"]) == ("2024-12-28", "2025-12-27")
+        # the fixture is discriminating: the quarterly fact IS on that accession and its period ends in a LATER year
+        (quarter,) = run_cypher(driver, "MATCH (:Company {cik: $c})-[r:REPORTS_METRIC {accession_no: $a}]->(m:Metric {metric: 'revenue_q'}) "
+                                        "RETURN m.period_end.year AS year, duration.inDays(m.period_start, m.period_end).days AS days",
+                                c=AMD, a=A26)
+        assert quarter == {"year": 2026, "days": 90}
+
+    def test_the_guard_columns_say_which_side_of_each_pair_has_risk_items(self, driver):
+        pairs = self.by_pair(driver, MICRON, INTEL, ASML)
+        has_items = {key: (r["older_has_items"], r["newer_has_items"]) for key, r in pairs.items()}
+        assert has_items == {(M25, M26): (False, False),         # no comparison at all
+                             (M24, M25): (True, False),          # one side only: Micron's FY2024 10-K has items, its successor has none
+                             (T24, T25): (True, False),          # Intel: not compared, and the newer side has none
+                             (L24, L25): (True, True)}           # ASML: not compared although both sides have items
+
+    def test_the_loaders_not_compared_stamp_and_its_reason_ride_along_and_the_rest_are_compared(self, driver):
+        pairs = self.by_pair(driver, NVDA, AMD, MICRON, INTEL, ASML)
+        assert len(pairs) == 7                                      # the 10-K/A overlay and the 10-Q pair are not annual pairs
+        assert {key: r["compared"] for key, r in pairs.items() if not r["compared"]} == {(T24, T25): False, (L24, L25): False}
+        assert pairs[(T24, T25)]["not_compared_reason"] == NOT_COMPARED[(T25, T24)]
+        assert pairs[(L24, L25)]["not_compared_reason"] == NOT_COMPARED[(L25, L24)]
+
+    def test_a_filing_whose_xbrl_is_not_in_the_graph_has_no_fiscal_year(self, driver):
+        row = self.by_pair(driver, ASML)[(L24, L25)]
+        assert (row["older_fy"], row["older_period_end"]) == (None, None)
+        assert (row["newer_fy"], row["newer_period_end"]) == (2025, "2025-12-31")
+        assert row["is_current"] is True and row["older_form"] == "20-F"
+
+    def test_micron_fiscal_years_follow_its_august_period_ends(self, driver):
+        pairs = self.by_pair(driver, MICRON)
+        assert (pairs[(M24, M25)]["older_fy"], pairs[(M24, M25)]["newer_fy"]) == (2024, 2025)
+        assert (pairs[(M25, M26)]["older_fy"], pairs[(M25, M26)]["newer_fy"]) == (2025, 2026)
+        assert [k for k, r in pairs.items() if r["is_current"]] == [(M25, M26)]
+
+
+class TestNamedPairRetrieval:
+    def test_fy2024_and_fy2025_read_only_that_pair_and_none_of_the_fy2025_to_fy2026_items(self, retrieve):
+        r = retrieve(Q_2425)
+        assert retrieve.issued(TEMPORAL_QUERY) == [] and retrieve.issued(ANNUAL_PAIRS_QUERY) == [{"ids": [NVDA]}]
+        assert retrieve.issued(TEMPORAL_SELECTED_QUERY) == [{"ids": [NVDA], "newer_accessions": [N25]}]
+        (pair,) = r["temporal_pairs"]
+        assert (pair["older_accession"], pair["newer_accession"], pair["selection"]) == (N24, N25, "named")
+        assert (pair["older_fy"], pair["newer_fy"], pair["queryable"], pair["compared"]) == (2024, 2025, True, True)
+        assert r["temporal_notices"] == [] and pair["totals"] == {"removed": 1, "unsettled": 1, "new": 1, "reworded": 1}
+        assert {(i["change"], i["item_id"]) for i in r["temporal"]} == {("removed", "x1"), ("unsettled", "x2"), ("new", "o10"),
+                                                                        ("reworded", "o11")}
+        assert [p["passage_id"] for p in r["temporal_passages"]] == ["o4:r000@old"]          # the passages of THIS pair only
+
+    def test_fy2024_and_fy2025_block_names_both_filings_the_years_and_the_removed_item(self, retrieve):
+        block, context, valid = render(retrieve(Q_2425))
+        lines = block.splitlines()
+        assert lines[0] == (f"Nvidia: 10-K filed 2024-02-21 (accession {N24}) compared with 10-K filed 2025-02-26 (accession {N25})")
+        assert lines[1] == COVERS.format(older="2024-01-26", newer="2025-01-26")
+        assert f'- "Wafer supply commitments" [{N24}:I.1A:0021]' in lines
+        assert any(ln.startswith(f'- "Customer credit exposure" (earlier wording: "Earlier wording of customer credit exposure"') for ln in lines)
+        assert "Note for" not in block and block.count("\n\n") == 0                    # one section
+        for other_pair in ("China licensing risk", "Hong Kong transition", "Sovereign AI demand", "Licensing exposure of a customer channel",
+                           "Notified Advanced Computing", N26):
+            assert other_pair not in block, other_pair
+        assert {f"{N24}:I.1A:0021", f"{N24}:I.1A:0022", f"{N24}:I.1A:0001", f"{N25}:I.1A:0020"} <= valid
+        # the removal check reads the removed item and the removed passage of THIS pair, never its unsettled, new or reworded ones
+        assert removal_supported_ids(context) == {f"{N24}:I.1A:0021", f"{N24}:I.1A:0001"}
+
+    def test_fy2025_and_fy2026_read_only_the_latest_pair_and_its_block_is_the_pair_asked_for_alone(self, retrieve, driver):
+        r = retrieve(Q_2526)
+        assert retrieve.issued(TEMPORAL_SELECTED_QUERY) == [{"ids": [NVDA], "newer_accessions": [N26]}]
+        (pair,) = r["temporal_pairs"]
+        assert (pair["older_accession"], pair["newer_accession"], pair["selection"]) == (N25, N26, "named")
+        block = render(r)[0]
+        covers = COVERS.format(older="2025-01-26", newer="2026-01-26")
+        assert [ln for ln in block.splitlines() if ln.startswith("covers the fiscal year")] == [covers]
+        # byte-identical to the pair asked for on its own (TEMPORAL_SELECTED_QUERY with just N26, the same chosen pair) ...
+        chosen, notices = R.select_pairs(run_cypher(driver, ANNUAL_PAIRS_QUERY, ids=[NVDA]), Q_2526, mentioned_periods(Q_2526))
+        assert notices == [] and [p["newer_accession"] for p in chosen] == [N26]
+        assert block == selected_alone(driver, Q_2526, N26, pairs=chosen)
+        # ... and, but for the one line that says why it was chosen, to what every question read before pairs could be chosen
+        without_covers = block.replace(covers + "\n", "", 1)
+        assert without_covers == selected_alone(driver, Q_2526, N26) == current_pair(driver, Q_2526)
+        assert f"(accession {N24})" not in block and "Wafer supply commitments" not in block and "Regulatory scrutiny of AI" not in block
+
+    def test_a_multi_year_question_reads_both_pairs_oldest_first_each_with_its_own_items_totals_and_passages(self, retrieve):
+        r = retrieve(Q_MULTI)
+        assert retrieve.issued(TEMPORAL_QUERY) == []
+        assert retrieve.issued(TEMPORAL_SELECTED_QUERY) == [{"ids": [NVDA], "newer_accessions": [N25, N26]}]
+        assert [(p["older_accession"], p["newer_accession"], p["selection"]) for p in r["temporal_pairs"]] == [
+            (N24, N25, "multi"), (N25, N26, "multi")]
+        assert r["temporal_notices"] == []                     # exactly two comparisons are loaded: nothing was left out
+        assert [p["totals"] for p in r["temporal_pairs"]] == [{"removed": 1, "unsettled": 1, "new": 1, "reworded": 1},
+                                                              {"removed": 2, "unsettled": 2, "new": 3, "reworded": 1}]
+        block = render(r)[0]
+        first, second = block.split("\n\n")
+        assert first.splitlines()[0].startswith(f"Nvidia: 10-K filed 2024-02-21 (accession {N24})")
+        assert second.splitlines()[0].startswith(f"Nvidia: 10-K filed 2025-02-26 (accession {N25})")
+        assert "spans several annual reports" in first and "spans several annual reports" in second
+        for text in ("Wafer supply commitments", "Regulatory scrutiny of AI systems", "Channel inventory exposure",
+                     "A removed passage of the FY2024 to FY2025 pair."):
+            assert text in first and text not in second, text
+        for text in ("China licensing risk", "Sovereign AI demand", "Licensing exposure of a customer channel",
+                     "Notified Advanced Computing"):
+            assert text in second and text not in first, text
+
+    def test_the_removal_check_of_a_two_pair_context_holds_both_removed_lists_and_neither_new_item(self, retrieve):
+        _, context, valid = render(retrieve(Q_MULTI))
+        supported = removal_supported_ids(context)
+        assert {f"{N24}:I.1A:0021", f"{N24}:I.1A:0001"} <= supported                   # the older pair: removed item, removed passage
+        assert {f"{N25}:I.1A:0001", f"{N25}:I.1A:0002", f"{N25}:I.1A:0210"} <= supported       # the newer pair: removed items and passage
+        new_items = {f"{N25}:I.1A:0020", f"{N26}:I.1A:0007", f"{N26}:I.1A:0008", f"{N26}:I.1A:0009"}    # o10 (older pair), n7-n9 (newer)
+        unsettled_and_reworded = {f"{N24}:I.1A:0022", f"{N25}:I.1A:0010", f"{N25}:I.1A:0012", f"{N24}:I.1A:0023", f"{N26}:I.1A:0004"}
+        assert new_items <= valid and unsettled_and_reworded <= valid          # citable ...
+        assert not (new_items | unsettled_and_reworded) & supported            # ... and never a removal
+
+    def test_a_named_year_the_graph_has_no_pair_for_shows_the_latest_pair_after_a_notice_that_says_so(self, retrieve, driver):
+        r = retrieve(Q_NO_PAIR)
+        assert retrieve.issued(TEMPORAL_SELECTED_QUERY) == [{"ids": [NVDA], "newer_accessions": [N26]}]
+        (pair,) = r["temporal_pairs"]
+        assert (pair["older_accession"], pair["newer_accession"], pair["selection"]) == (N25, N26, "latest")
+        notice = ("no annual-filing comparison covering fiscal 2020 and 2021 is in the graph for Nvidia (annual filings loaded: "
+                  "fiscal 2024, 2025, 2026); the latest comparison is shown instead")
+        assert r["temporal_notices"] == [{"cik": NVDA, "company": "Nvidia", "text": notice}]
+        block = render(r)[0]
+        first, rest = block.split("\n", 1)
+        assert first == f"Note for Nvidia: {notice}."
+        assert "covers the fiscal year" not in block                                    # the latest pair was not "named"
+        assert rest == current_pair(driver, Q_NO_PAIR)                                  # what it always read, after the note
+
+    def test_a_filing_with_no_xbrl_is_never_matched_by_year_and_the_notice_lists_only_the_known_years(self, retrieve):
+        r = retrieve("Did ASML remove any risk factors in its FY2024 annual report?")        # l24 has no fiscal year; l25 is FY2025
+        (notice,) = r["temporal_notices"]
+        assert "covering fiscal 2024" in notice["text"] and "annual filings loaded: fiscal 2025)" in notice["text"]
+        (pair,) = r["temporal_pairs"]
+        assert (pair["older_accession"], pair["newer_accession"], pair["selection"]) == (L24, L25, "latest")
+
+    def test_a_pair_with_risk_items_on_one_side_only_is_not_available_with_the_reason_and_no_temporal_row_is_read(self, retrieve):
+        r = retrieve("Did Micron remove any risk factors between its FY2024 and FY2025 annual reports?")
+        assert retrieve.issued(TEMPORAL_SELECTED_QUERY) == [] and retrieve.issued(TEMPORAL_QUERY) == []
+        assert retrieve.issued(PASSAGES_QUERY) == []
+        assert r["temporal"] == [] and r["temporal_passages"] == [] and r["temporal_notices"] == []
+        (pair,) = r["temporal_pairs"]
+        reason = f"no risk items were loaded for the 10-K filed 2025-10-08 (accession {M25})"
+        assert (pair["older_accession"], pair["newer_accession"]) == (M24, M25) and pair["selection"] == "named"
+        assert (pair["queryable"], pair["compared"], pair["not_compared_reason"], pair["totals"]) == (False, False, reason, ZERO_TOTALS)
+        assert render(r)[0].splitlines() == [
+            f"Micron: 10-K filed 2024-10-09 (accession {M24}) compared with 10-K filed 2025-10-08 (accession {M25})",
+            COVERS.format(older="2024-08-29", newer="2025-08-28"), f"comparison not available ({reason})"]
+
+    def test_a_notice_does_not_promise_a_latest_comparison_when_none_can_be_read(self, retrieve):
+        r = retrieve("Did Micron remove any risk factors between FY2020 and FY2021?")       # m26 -> m25: neither side has risk items
+        assert r["temporal_pairs"] == [] and retrieve.issued(TEMPORAL_SELECTED_QUERY) == []
+        (notice,) = r["temporal_notices"]
+        assert "no annual-filing comparison covering fiscal 2020 and 2021" in notice["text"]
+        assert "is shown instead" not in notice["text"]
+
+    def test_a_pair_the_loader_marked_not_compared_passes_through_with_its_own_reason_and_reads_no_item(self, retrieve):
+        r = retrieve("Did Intel remove any risk factors between its FY2024 and FY2025 annual reports?")
+        assert retrieve.issued(TEMPORAL_SELECTED_QUERY) == [{"ids": [INTEL], "newer_accessions": [T25]}]     # asked: the query says why
+        assert r["temporal"] == [] and r["temporal_notices"] == []                          # t1 / t2 carry stale flags: not read
+        (pair,) = r["temporal_pairs"]
+        assert (pair["compared"], pair["queryable"], pair["totals"]) == (False, True, ZERO_TOTALS)
+        assert pair["not_compared_reason"] == NOT_COMPARED[(T25, T24)]
+        block = render(r)[0]
+        assert block.splitlines() == [
+            f"Intel: 10-K filed 2025-02-14 (accession {T24}) compared with 10-K filed 2026-02-13 (accession {T25})",
+            COVERS.format(older="2024-12-28", newer="2025-12-27"), f"comparison not available ({NOT_COMPARED[(T25, T24)]})"]
+
+    def test_a_not_compared_pair_with_items_on_both_sides_and_stale_flags_is_the_same_and_matched_by_its_known_year(self, retrieve):
+        r = retrieve("Did ASML remove any risk factors between its FY2024 and FY2025 annual reports?")
+        assert r["temporal"] == []                                                # l1 removed_in, l3 unsettled_in, l2 is_new: ignored
+        (pair,) = r["temporal_pairs"]                                             # l25's year (2025) is named; l24 has no fiscal year
+        assert (pair["older_accession"], pair["newer_accession"], pair["selection"]) == (L24, L25, "named")
+        assert (pair["compared"], pair["totals"], pair["not_compared_reason"]) == (False, ZERO_TOTALS, NOT_COMPARED[(L25, L24)])
+        block = render(r)[0]
+        assert f"comparison not available ({NOT_COMPARED[(L25, L24)]})" in block
+        assert "covers the fiscal year ended an unknown date -> the fiscal year ended 2025-12-31" in block
+        assert "Older ASML" not in block and "none found" not in block and "Removed" not in block
+
+
+class TestQuestionsThatNameNoPairKeepTheCurrentPairQuery:
+    @pytest.mark.parametrize("question", [
+        "What changed in Nvidia's risk factors?",                              # a risk-change question that names no year
+        "How does Nvidia depend on TSMC?",
+        "What was Nvidia's revenue in fiscal 2025?",                           # names a year, but asks about a metric, not a disclosure
+        "By what percentage did Nvidia's revenue change from the fiscal year ended January 26, 2025 to the fiscal year ended "
+        "January 26, 2026?",
+    ])
+    def test_the_current_pair_query_is_issued_and_nothing_else_about_pairs(self, retrieve, driver, question):
+        r = retrieve(question)
+        pair_queries = [(q, p) for q, p in retrieve.calls if q in (TEMPORAL_QUERY, TEMPORAL_SELECTED_QUERY, ANNUAL_PAIRS_QUERY)]
+        assert [q for q, _ in pair_queries] == [TEMPORAL_QUERY]
+        (params,) = [p for _, p in pair_queries]
+        assert set(params) == {"ids"} and params["ids"][0] == NVDA
+        (pair,) = r["temporal_pairs"]
+        assert (pair["older_accession"], pair["newer_accession"]) == (N25, N26) and "selection" not in pair
+        assert r["temporal_notices"] == []
+        block = render(r)[0]
+        assert "covers the fiscal year" not in block and "Note for" not in block
+        assert block == current_pair(driver, question)
