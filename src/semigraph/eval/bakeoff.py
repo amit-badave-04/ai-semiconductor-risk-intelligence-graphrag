@@ -405,7 +405,7 @@ def score_deployed(rows: list[dict], benchmark: list[dict], judge, *, votes: int
     ``judge_prompt_version`` names the correctness-judge prompt that graded the open questions (``runner.JUDGE_PROMPT_VERSION``)."""
     score = score_mechanical([{**r, "model": "deployed"} for r in rows], benchmark)
     score["judge_prompt_version"] = JUDGE_PROMPT_VERSION
-    score["judged"] = judge_open(rows, benchmark, judge, votes=votes, model=judge_model, as_of=as_of)
+    score["judged"] = judge_open(rows, benchmark, judge, votes=votes, model=judge_model, as_of=as_of, detail=True)   # keep every vote's reason
     routes: dict[str, int] = {}
     for r in rows:
         routes[r.get("routed") or "none"] = routes.get(r.get("routed") or "none", 0) + 1

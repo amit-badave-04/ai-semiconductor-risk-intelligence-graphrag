@@ -361,6 +361,7 @@ def test_score_deployed_counts_routes_escalations_and_judges_the_open_questions(
     assert s["mechanical"] == {"passed": 2, "of": 2} and s["judged"]["open_correct"] == 1
     assert s["total_cost_usd"] == pytest.approx(0.061) and s["avg_cost_usd"] == pytest.approx(0.061 / 3)
     assert s["checks_failed"] == {} and s["rows_without_checks"] == ["N2", "D1", "T1"]     # no checks recorded is not "clean"
+    assert set(s["judged"]["details"]) == set(s["judged"]["votes"]) and s["judged"]["details"]["T1"][0]["reason"]   # every vote's reason is kept
     assert s["judge_prompt_version"] == JUDGE_PROMPT_VERSION       # the report says which judge prompt graded the open questions
 
 
