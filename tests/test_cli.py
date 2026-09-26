@@ -382,7 +382,7 @@ def test_align_items_defaults_to_no_adjudication_a_half_dollar_cap_and_every_tic
     result = runner.invoke(app, ["align-items"])
 
     assert result.exit_code == 0, result.output
-    assert align_run["calls"] == [{"tickers": None, "adjudicate": False, "max_usd": 0.5, "dry_run": False}]
+    assert align_run["calls"] == [{"tickers": None, "adjudicate": False, "adjudicate_passages": False, "max_usd": 0.5, "dry_run": False}]
 
 
 def test_align_items_prints_the_per_pair_table_the_not_compared_reason_and_the_files_written(align_run):

@@ -442,6 +442,7 @@ def test_default_params_are_the_values_chosen_on_the_development_gold():
     assert (p.present_min_ratio, p.reword_min, p.min_sentence_chars, p.max_passage_chars, p.max_probe_chars) == (
         75.0, 0.35, 40, 450, 600)
     assert p.decompose_uncertain is True and p.suppress_added_with_counterpart is True and p.partial_min == 0.0
+    assert p.reword_confident == 0.60 and p.has_band and not PassageParams(**LEGACY).has_band          # the legacy dict has no band
     assert p.max_probe_chars == AlignParams().max_term_chars
     legacy = PassageParams(**LEGACY)
     assert legacy.present_min_ratio == AlignParams().absence_min_ratio          # the starting value was the aligner's rule
@@ -696,7 +697,10 @@ class TestRealNvidiaFy25ToFy26WithTheShippedDefaults:
 
     @pytest.mark.xfail(reason="KNOWN (2026-09-26): at reword_min 0.35 the Hong-Kong-transition sentence gets a false lexical "
                               "counterpart (sim 0.367, a different sentence about HK warehousing) and is called reworded, not removed. "
-                              "Fix planned: lexical band [0.35, 0.60) resolved by a verbatim-quote-checked LLM adjudication.", strict=True)
+                              "Built: the lexical band [0.35, 0.60) is settled by cached model verdicts (`semigraph align-items "
+                              "--adjudicate-passages`, code-checked in graph/passage_adjudicate.py); WITHOUT verdicts the sentence stays "
+                              "band-reworded by design (never a removal it cannot support), so this stays xfail here. With a `different` "
+                              "verdict it is removed: tests/test_passage_bands.py.", strict=True)
     def test_the_nac_and_hong_kong_sentences_are_in_removed_passages_no_longer_than_the_cap(self, tuned):
         removed = [p for p in tuned if p.kind == "removed"]
         nac = [p for p in removed if "Notified Advanced Computing" in p.text]
