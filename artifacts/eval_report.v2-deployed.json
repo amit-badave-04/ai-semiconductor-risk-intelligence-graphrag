@@ -1,0 +1,100 @@
+{
+  "model": "openai/gpt-6-luna",
+  "escalation_model": "anthropic/claude-sonnet-5",
+  "votes": 3,
+  "n": 60,
+  "mechanical": {
+    "passed": 38,
+    "of": 41
+  },
+  "failed_ids": [
+    "R1",
+    "U2",
+    "X3"
+  ],
+  "citation_validity": 1.0,
+  "escalation_rate": 0.016666666666666666,
+  "errors": 0,
+  "truncated": 1,
+  "avg_cost_usd": 0.013761383333333333,
+  "avg_latency_s": 5.4123833333333335,
+  "avg_completion_tokens": 488.05,
+  "judged": {
+    "open_correct": 10,
+    "open_of": 23,
+    "votes": {
+      "R3": 3,
+      "T1": 0,
+      "T2": 0,
+      "T3": 0,
+      "Q1": 0,
+      "Q2": 3,
+      "Q3": 3,
+      "X1": 3,
+      "X2": 3,
+      "X3": 3,
+      "X4": 0,
+      "T4": 1,
+      "T5": 0,
+      "T6": 0,
+      "T7": 0,
+      "T8": 0,
+      "T9": 3,
+      "T10": 3,
+      "T11": 0,
+      "T12": 0,
+      "T13": 3,
+      "T14": 0,
+      "T15": 2
+    },
+    "errors": {}
+  },
+  "routes": {
+    "cheap": 45,
+    "strong": 15
+  },
+  "escalated": 1,
+  "escalated_ids": [
+    "X1"
+  ],
+  "checks_failed": {
+    "T1": [
+      "unsupported_removal_claim"
+    ],
+    "T3": [
+      "unsupported_removal_claim"
+    ],
+    "X1": [
+      "ungrounded_number"
+    ],
+    "T4": [
+      "unsupported_removal_claim"
+    ],
+    "T6": [
+      "unsupported_removal_claim"
+    ],
+    "T7": [
+      "unsupported_removal_claim"
+    ],
+    "T8": [
+      "unsupported_removal_claim"
+    ],
+    "T10": [
+      "unsupported_removal_claim"
+    ],
+    "T11": [
+      "unsupported_removal_claim"
+    ],
+    "T13": [
+      "unsupported_removal_claim"
+    ],
+    "T14": [
+      "unsupported_removal_claim"
+    ],
+    "T15": [
+      "unsupported_removal_claim"
+    ]
+  },
+  "rows_without_checks": [],
+  "total_cost_usd": 0.8256830000000001
+}

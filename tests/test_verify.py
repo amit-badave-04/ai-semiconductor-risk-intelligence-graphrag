@@ -124,3 +124,22 @@ def test_an_uncited_grounded_figure_is_accepted_only_for_a_short_answer_without_
     assert verify_answer(long_answer, set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
     assert verify_answer("Revenue was $215.9 billion, up 5%.", set(), VALID, "stop",
                          context=METRICS_CTX) == ["no_citation", "ungrounded_number"]
+
+
+# --- found in the 60-question deployed run (2026-09-27): a correct refusal in wording the benchmark pattern missed ---
+
+@pytest.mark.parametrize("text", [
+    "The provided context identifies Jensen Huang as NVIDIA’s CEO but contains no earnings-call transcript or remarks, "
+    "so it doesn’t establish what he said on the most recent call.",                       # U2, Luna
+    "The context contains no such figure.",
+    "The filings do not establish who the supplier is.",
+    "The excerpts don't identify a Samsung filing.",
+])
+def test_refusal_pattern_accepts_contains_no_and_does_not_establish(text):
+    assert REFUSAL_RE.search(text)
+
+
+@pytest.mark.parametrize("text", ["Nvidia's filings establish that it depends on TSMC [a:I.1:0001].", "Nvidia's context is large.",
+                                  "Revenue identified in the filing was $215.9 billion."])
+def test_the_wider_refusal_pattern_still_ignores_positive_statements(text):
+    assert not REFUSAL_RE.search(text)
