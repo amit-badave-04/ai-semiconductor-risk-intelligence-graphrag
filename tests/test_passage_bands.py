@@ -333,7 +333,7 @@ def test_the_engine_can_be_asked_repeatedly_and_stays_consistent():
 
 def test_the_shipped_band_is_060_and_none_switches_it_off():
     p = PassageParams()
-    assert p.reword_confident == 0.60 and p.reword_min == 0.35 and p.band_candidates == 5
+    assert p.reword_confident == 0.50 and p.reword_min == 0.35 and p.band_candidates == 5
     assert PassageParams(reword_confident=None).reword_confident is None
     assert "sentence_reworded_band" in DECIDED_BY and "sentence_absent_llm" in DECIDED_BY and "sentence_reworded_llm" in DECIDED_BY
 

@@ -442,7 +442,7 @@ def test_default_params_are_the_values_chosen_on_the_development_gold():
     assert (p.present_min_ratio, p.reword_min, p.min_sentence_chars, p.max_passage_chars, p.max_probe_chars) == (
         75.0, 0.35, 40, 450, 600)
     assert p.decompose_uncertain is True and p.suppress_added_with_counterpart is True and p.partial_min == 0.0
-    assert p.reword_confident == 0.60 and p.has_band and not PassageParams(**LEGACY).has_band          # the legacy dict has no band
+    assert p.reword_confident == 0.50 and p.has_band and not PassageParams(**LEGACY).has_band          # the legacy dict has no band
     assert p.max_probe_chars == AlignParams().max_term_chars
     legacy = PassageParams(**LEGACY)
     assert legacy.present_min_ratio == AlignParams().absence_min_ratio          # the starting value was the aligner's rule

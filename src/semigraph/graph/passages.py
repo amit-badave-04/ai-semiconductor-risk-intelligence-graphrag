@@ -32,7 +32,7 @@ The lexical BAND (measured 2026-09-26 on the frozen development gold: precision 
 ``reword_min`` 0.35). A low floor buys recall but creates FALSE counterparts: Nvidia's "we transitioned some operations
 ... out of China and Hong Kong" (gold: removed) matches an unrelated FY26 sentence about Hong Kong warehousing at
 0.367 and is called reworded, while real paraphrases below the floor are called removed. Word overlap alone cannot tell the two
-apart between ``reword_min`` and ``reword_confident`` (default 0.35 and 0.60), so a sentence whose best counterpart lies in
+apart between ``reword_min`` and ``reword_confident`` (default 0.35 and 0.50), so a sentence whose best counterpart lies in
 ``[reword_min, reword_confident)`` is a BAND sentence, settled outside this module by a cheap model whose answer is checked
 by code (``graph/passage_adjudicate.py``) and handed in as ``band_verdicts`` (band key -> ``BandVerdict``):
 
@@ -154,7 +154,7 @@ class PassageParams:
     decompose_uncertain: bool = True
     suppress_added_with_counterpart: bool = True
     partial_min: float = 0.0
-    reword_confident: float | None = 0.60
+    reword_confident: float | None = 0.50
     band_candidates: int = 5
     max_candidate_chars: int = 1200
 
