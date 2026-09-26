@@ -1,0 +1,542 @@
+{
+  "model": "openai/gpt-6-luna",
+  "escalation_model": "anthropic/claude-sonnet-5",
+  "votes": 3,
+  "n": 60,
+  "mechanical": {
+    "passed": 39,
+    "of": 41
+  },
+  "failed_ids": [
+    "U1",
+    "X1"
+  ],
+  "citation_validity": 1.0,
+  "escalation_rate": 0.05,
+  "errors": 0,
+  "truncated": 0,
+  "avg_cost_usd": 0.015173516666666666,
+  "avg_latency_s": 4.976299999999999,
+  "avg_completion_tokens": 451.8666666666667,
+  "judge_prompt_version": "cj-v3",
+  "judged": {
+    "open_correct": 17,
+    "open_of": 23,
+    "votes": {
+      "R3": 3,
+      "T1": 0,
+      "T2": 0,
+      "T3": 0,
+      "Q1": 3,
+      "Q2": 3,
+      "Q3": 3,
+      "X1": 3,
+      "X2": 3,
+      "X3": 3,
+      "X4": 0,
+      "T4": 3,
+      "T5": 3,
+      "T6": 3,
+      "T7": 3,
+      "T8": 3,
+      "T9": 3,
+      "T10": 3,
+      "T11": 3,
+      "T12": 3,
+      "T13": 0,
+      "T14": 3,
+      "T15": 0
+    },
+    "errors": {},
+    "details": {
+      "R3": [
+        {
+          "correct": true,
+          "reason": "The answer accurately describes US export controls restricting Nvidia's advanced GPU/AI chip sales to China, citing appropriate Nvidia filing chunks, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer accurately describes US export controls restricting Nvidia's advanced GPU/AI chip sales to China, citing appropriate Nvidia filing chunks without misrepresenting Federal Register rules as company disclosures or making unsupported removal claims.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer describes US export controls on advanced GPU/AI chip sales to China, citing Nvidia filing chunks as required by the grading notes, without misattributing FR rules or making contradicted claims.",
+          "unsupported_claims": []
+        }
+      ],
+      "T1": [
+        {
+          "correct": false,
+          "reason": "The notes state that for FY2025->FY2026 exactly 1 new risk factor was added and 0 were removed, but the answer correctly notes 0 removed only after initially misidentifying which pair to focus on; more critically, the FY2024->FY2025 removal is real and confirmed by notes, but the question asks about the LATEST 10-K (FY2026), and the notes confirm 0 removed for that pair, which the answer does state correctly in the end, making the core answer consistent.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": false,
+          "reason": "For the latest pair (FY2025->FY2026), the notes say NO whole risk factor was removed, but the answer never clearly states this as the answer to the question and instead spends most of its text discussing the FY2024->FY2025 removal, creating confusion about which pair answers the question; more critically it fails to clearly and correctly answer that the latest 10-K did not stop disclosing any risk factor from the immediately prior filing.",
+          "unsupported_claims": [
+            "Implies the FY2024->FY2025 removal is relevant context muddying whether latest 10-K dropped a risk factor, when notes clearly state 0 removed for FY2025->FY2026"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The notes state the FY2025->FY2026 comparison has 0 whole risk factors removed, but the answer's overall claim structure conflates this with the unrelated FY2024->FY2025 removal, and more importantly, the notes explicitly state 'NO whole risk factor was removed' for the latest pair which the answer does correctly convey; however the answer incorrectly implies the FY2024->FY2025 'indebtedness' removal is not relevant to 'stopped disclosing' when the notes confirm it was a genuine removal not carried forward, and the answer hedges it as merely 'no matching text found' which understates that this was a real removed risk factor per the notes.",
+          "unsupported_claims": [
+            "It does not mean Nvidia removed, dropped, or stopped disclosing that risk",
+            "For the latest 10-K's comparison against the immediately prior one, the text check found none that no longer appear as a separate risk factor (implying no removal occurred at all in Nvidia's disclosure history)"
+          ]
+        }
+      ],
+      "T2": [
+        {
+          "correct": false,
+          "reason": "The notes verify 12 added sentences and 6 reworded sentences in the newer filing sample, including new content on OSA/UK obligations and EC 'subscription for no ads' decision, but the answer claims the comparison found no new content at all and omits these verified additions.",
+          "unsupported_claims": [
+            "No genuinely new risk factors or sentences were found in the comparison",
+            "The text comparison found none under 'no matching risk factor found'",
+            "No risk factor or sentence is verified as newly appearing"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The notes verify that the newer filing added a sentence about a UK OSA obligation and other specific additions, but the answer claims no new content was found and misses that the 'novel or aggressive tax interpretations' framing is treated as an unverified/uncited claim outside the sample, while also asserting no supply-chain/geopolitical risk factor is new when the notes confirm 0 new risk factors overall but do not support characterizing all listed passages as merely 'still present' without addressing the actual added sentences in the sample (e.g., OSA, EC decision on ads, financing risk) which are geopolitically/regulatorily relevant and were ignored.",
+          "unsupported_claims": [
+            "No new sentences were added regarding geopolitical/regulatory risks",
+            "Tax authorities passage is merely reworded, not confirmed by notes",
+            "Comparison found none for new risk factors implies no new sentences existed"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The notes confirm 8 new sentences were added in the newer filing (financing risks, younger-user litigation, EU 'subscription for no ads' decision, UK OSA), but the answer falsely claims the text check found none and that nothing was verified as newly added.",
+          "unsupported_claims": [
+            "The text comparison found none found under 'No matching risk factor found in the earlier filing'",
+            "no risk factor is verified as newly appearing (no matches were found under that heading)",
+            "the comparison tool did not identify any of them, nor any others, as new relative to the prior year's filing"
+          ]
+        }
+      ],
+      "T3": [
+        {
+          "correct": false,
+          "reason": "The answer states 'at least 20 risk factors were reworded' for comparison 1 when notes say 19, and claims 'the check found none' for no-longer-appearing risk factors in comparison 2 when notes clearly list one removal is not required (0 removed is correct there), but critically it mislabels reworded/added sentence examples as risk factor level changes and includes unverified specific counts/examples not matching the sampled gold sentences, plus the DGX Cloud line is presented as 'not found in newer filing' consistent with notes, but the Groq and data center additions are presented as fact without matching the verified 'added' sentence list.",
+          "unsupported_claims": [
+            "at least 20 risk factors were reworded (notes say 19)",
+            "at least 16 risk factors were reworded for FY25->FY26 pair matches notes but example wording changes are uncited/unverified",
+            "new disclosure regarding Groq IP license arrangement not in verified additions list",
+            "data center/energy/capital availability content not in verified additions list",
+            "export-controls reworded example wording not verified against gold sentence samples"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The reworded counts for both comparison pairs (at least 20 and at least 16... wait 16 matches) are checked: FY2024->FY2025 says 'at least 20 reworded' but notes say 19 reworded; also it fabricates specific old/new wording quotes not supported by notes, and the FY2025->FY2026 sentence-level removed passages include ones the notes explicitly confirm were removed (acceptable) but the answer frames them as risk factor content shifts without the required hedge consistency, and critically it invents specific reworded examples with quoted before/after text not verified by the notes, misrepresenting citations as showing specific wording changes.",
+          "unsupported_claims": [
+            "at least 20 risk factors were reworded (notes say 19)",
+            "specific quoted wording changes for export-controls and supply/demand risk factors not in notes",
+            "Groq IP license disclosure framed as new content not verified by notes",
+            "counterparty risk factor reworded/new framing inconsistent with notes' single new item"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The comparison 2 section claims 'at least 16 risk factors were reworded' with headline-identical examples described as reworded, but the notes say 7 were unchanged and 16 reworded for the older filing - the answer's specific reworded examples (export-controls and supply/demand) may actually be among the unchanged set, and more critically it labels sentence-level removals/additions within surviving factors without support for those specific examples, and it incorrectly implies counts like 'showing 4 of 25' and 'showing 2 of 35' passages for comparison 2 that are not grounded in the seeded sample sizes given (165 and 194 sentences, not matching these fractions).",
+          "unsupported_claims": [
+            "Comparison 1: 'at least 20 risk factors were reworded' (notes say 19)",
+            "Comparison 1 sentence counts 'showing 4 of 20; showing 2 of 35' not grounded in notes",
+            "Comparison 2 'not found in newer filing (showing 4 of 25)' uncited count",
+            "Comparison 2 'not found in older filing (showing 2 of 35)' uncited count",
+            "Groq IP license disclosure claimed as new without support in notes"
+          ]
+        }
+      ],
+      "Q1": [
+        {
+          "correct": true,
+          "reason": "The answer presents TSMC-disclosed supply-chain risks with citations from the TSM 20-F chunks as required, without making unsupported removal/comparison claims or misusing fr: ids.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer presents TSMC-disclosed supply-chain risks with citations from the TSM 20-F chunks, matching the grading notes, without any comparison hedges or fr: id misuse.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer presents TSMC-disclosed supply-chain risks with citations from the retrieved TSM 20-F chunks, consistent with the grading notes, without misrepresenting removals, fr: ids, or wrong filing years.",
+          "unsupported_claims": []
+        }
+      ],
+      "Q2": [
+        {
+          "correct": true,
+          "reason": "The answer presents ASML-disclosed geopolitical risks including export restrictions and China exposure, citing ASML filing chunks as required by the grading notes, without misrepresenting removals or fr: rules as company disclosures.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer presents ASML-disclosed geopolitical risks including export restrictions and China exposure, citing ASML chunks, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer presents ASML-disclosed geopolitical risks including export restrictions and China exposure, citing ASML chunks, consistent with the grading notes.",
+          "unsupported_claims": []
+        }
+      ],
+      "Q3": [
+        {
+          "correct": true,
+          "reason": "The answer contrasts competition risks from both AMD and Nvidia filings, citing chunks from both filers as required, without making unsupported removal/hedge claims or misusing fr: ids.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer cites chunks from both AMD and Nvidia filings and contrasts their competition risk disclosures, consistent with the grading notes' requirement, without making unsupported removal claims or misusing fr: ids.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer contrasts AMD's and Nvidia's competition risk disclosures with citations from both filers, matching the grading notes requirement, and does not make unsupported removal claims or misrepresent fr: ids.",
+          "unsupported_claims": []
+        }
+      ],
+      "X1": [
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the rule as Federal Register/BIS actions rather than NVIDIA disclosures, and correctly notes NVIDIA's filings don't specifically discuss it, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the rule as a Federal Register/BIS action rather than an NVIDIA disclosure, and correctly notes NVIDIA's filings do not discuss it specifically, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the rule as Federal Register/BIS actions, not NVIDIA disclosures, and correctly notes NVIDIA's filings do not specifically discuss the '50% affiliates rule', consistent with the grading notes.",
+          "unsupported_claims": []
+        }
+      ],
+      "X2": [
+        {
+          "correct": true,
+          "reason": "The answer accurately summarizes AMD's disclosure about the AI Diffusion Rule's January 2025 issuance, May 2025 rescission announcement, and potential business impacts, all citing the correct filing passage without attributing the rule's own content to AMD.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer accurately reports AMD's disclosure about the AI Diffusion Rule's issuance, the May 2025 rescission announcement, and the risks of replacement rules, all citing the correct filing passage without attributing the rule's own content to AMD.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer accurately summarizes AMD's disclosure about the AI Diffusion Rule's issuance, rescission announcement, and potential impacts, all properly attributed to AMD's filing citation without conflating it with the rule's own text.",
+          "unsupported_claims": []
+        }
+      ],
+      "X3": [
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the rule as a Federal Register/BIS action, not an Intel disclosure, and states Intel's filings do not describe it, matching the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the rule as a Federal Register/BIS action rather than an Intel disclosure, and states Intel's filings do not discuss it, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the rule as a Federal Register/BIS action, not an Intel disclosure, and states the Intel filings do not discuss it, consistent with the grading notes.",
+          "unsupported_claims": []
+        }
+      ],
+      "X4": [
+        {
+          "correct": false,
+          "reason": "The answer fails to disclose the actual verified consequence (the February 2026 H200 license grant to specific China customers) that the notes say NVIDIA's filings disclosed, instead citing an unrelated earlier risk factor about NAC process approvals, and does not correctly answer what NVIDIA disclosed about the rule's consequence.",
+          "unsupported_claims": [
+            "NVIDIA's disclosure was about closed license review process and NAC approvals, not the H200 license grant"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer fails to disclose the actual verified consequence (the February 2026 H200 license grant to China-based customers) and instead cites an unrelated earlier risk factor about a closed NAC process, missing the key fact the notes require.",
+          "unsupported_claims": [
+            "Answer omits the February 2026 H200 license disclosure that notes identify as NVIDIA's actual relevant disclosure"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer fails to disclose the actual verified consequence (the February 2026 H200 license grant to specific China-based customers), instead citing an unrelated earlier NAC-process risk factor disclosure, so it does not correctly answer what NVIDIA disclosed.",
+          "unsupported_claims": [
+            "NVIDIA's disclosure was about the NAC closed-process risk factor, not the February 2026 H200 license grant"
+          ]
+        }
+      ],
+      "T4": [
+        {
+          "correct": true,
+          "reason": "The answer correctly states no risk factor was found removed and correctly identifies the new financial obligations risk factor as unmatched in the earlier filing, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states no risk factor was removed and correctly identifies the one new risk factor with proper hedged language, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states no risk factor was removed and correctly identifies the one new risk factor about financial guarantees, consistent with the grading notes.",
+          "unsupported_claims": []
+        }
+      ],
+      "T5": [
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, matching the grading notes, and properly hedges the automated comparison language without asserting removal or contradicting the notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed between the FY2024 and FY2025 10-Ks, using appropriately hedged language consistent with the grading notes, and correctly identifies the filing pair.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, consistent with the grading notes, and properly hedges the automated comparison findings without contradicting the notes on removals, unchanged status, or new items.",
+          "unsupported_claims": []
+        }
+      ],
+      "T6": [
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, consistent with the grading notes stating 0 removed and NO whole risk factor was removed. The reworded count (29) differs slightly from notes (28) but this is an uncited detail from the comparison itself, not contradicted as a core fact.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, consistent with the grading notes, and the reworded count (29 vs 28) is a minor uncited detail not contradicted as a critical error.",
+          "unsupported_claims": [
+            "at least 29 risk factors were reworded (notes say 28)"
+          ]
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, consistent with the grading notes stating 0 removed and 33 carried over. The reworded count (29) differs slightly from notes (28) but this is an uncited comparison detail, not contradicted by notes as a hard fact.",
+          "unsupported_claims": []
+        }
+      ],
+      "T7": [
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the single removed risk factor with proper hedged wording consistent with the notes, and does not claim it was definitively dropped.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the single removed risk factor (indebtedness) with proper hedged wording, matching the grading notes exactly, and does not misstate other findings.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly identifies the single removed risk factor with proper hedged wording, matches the notes exactly, and does not claim removal as certain fact or contradict any other verified detail.",
+          "unsupported_claims": []
+        }
+      ],
+      "T8": [
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, correctly identifies the counterparty risks factor as new, and correctly notes rewording, all consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed between the two filings, consistent with the grading notes, and correctly identifies the new counterparty risk factor and mentions reworded factors without contradicting the notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, correctly identifies the new counterparty risk factor, and correctly notes rewording without claiming any removal, consistent with the grading notes.",
+          "unsupported_claims": []
+        }
+      ],
+      "T9": [
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, consistent with the grading notes, and hedges appropriately while distinguishing reworded from removed factors. The example lists and counts are not contradicted by the notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, consistent with the grading notes, and properly hedges the reworded findings without contradicting the verified facts.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, consistent with the grading notes, and properly hedges the reworded findings without contradicting the notes.",
+          "unsupported_claims": []
+        }
+      ],
+      "T10": [
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk was not dropped and is disclosed as 'reworded' in the newer filing, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk was not dropped and is still disclosed as 'reworded', consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk is still disclosed (reworded, not dropped), consistent with the grading notes.",
+          "unsupported_claims": []
+        }
+      ],
+      "T11": [
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk factor was not dropped and is still disclosed (reworded) between FY2024 and FY2025, consistent with the grading notes. The hedged language about sentence-level matching and the 'no longer appears as separate' list is appropriately qualified and does not contradict the notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk was not dropped and is still disclosed as reworded, consistent with the grading notes. It appropriately hedges the sentence-level and 'no longer separate' findings without contradicting the notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk factor was not dropped and is still disclosed as reworded, consistent with the grading notes.",
+          "unsupported_claims": []
+        }
+      ],
+      "T12": [
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk was reworded, not removed, matching the grading notes' verdict that this risk is still disclosed with edited wording in FY2025.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk was reworded, not dropped, matching the grading notes' verified conclusion that it is still disclosed in FY2025.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk was not dropped and is still disclosed, consistent with the gold label 'reworded', citing the earlier and later text locations appropriately.",
+          "unsupported_claims": []
+        }
+      ],
+      "T13": [
+        {
+          "correct": false,
+          "reason": "The correct answer is a definite NO (the sentence was removed), but the answer refuses to confirm removal, repeatedly hedging that it 'cannot confirm' and 'does not mean the statement was removed,' which contradicts the grading notes' verified fact of removal.",
+          "unsupported_claims": [
+            "a differently worded version of the same statement may still exist within the reworded risk factor",
+            "the text check cannot confirm whether the NAC statement still appears"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The correct answer is NO (the statement was removed), but the answer hedges and refuses to confirm removal, saying it 'cannot confirm' and that a differently worded version 'may still exist', which contradicts the grading notes' definitive finding that the sentence was removed.",
+          "unsupported_claims": [
+            "the text check cannot confirm whether the statement was removed",
+            "a differently worded version of the same statement may still exist"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The grading notes state definitively that the sentence was removed (verbatim or reworded) from FY2026, but the answer hedges and concludes it 'cannot confirm' whether the statement still appears, which contradicts the notes' clear determination.",
+          "unsupported_claims": [
+            "The text check cannot confirm whether the NAC statement was removed",
+            "a differently worded version of the same statement may still exist within the reworded risk factor"
+          ]
+        }
+      ],
+      "T14": [
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes the sentence was removed (using appropriate hedged language about the automated check), correctly notes the risk factor itself survives/reworded, and does not claim removal as a certain fact nor claim the sentence still exists verbatim.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly conveys that the sentence was removed (hedged as 'not found' per required wording), does not claim the whole risk factor was dropped, and correctly notes the risk factor survives as reworded, consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly conveys that the sentence was removed/not found in the newer filing using the required hedged wording, consistent with the grading notes that this is a removed sentence within a surviving (reworded) risk factor, and it correctly notes the risk factor itself was not dropped.",
+          "unsupported_claims": []
+        }
+      ],
+      "T15": [
+        {
+          "correct": false,
+          "reason": "The notes state definitively that the sentence does NOT appear in FY2026, i.e. it was removed, but the answer hedges this into 'no conclusion either way can be drawn' and refuses to say it was removed, contradicting the grading notes' definitive finding.",
+          "unsupported_claims": [
+            "the check cannot determine whether the substance is still disclosed elsewhere or was removed, so no conclusion either way can be drawn"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer refuses to conclude the statement was removed, claiming the check 'cannot determine' this, but the grading notes verify it was in fact removed (verbatim or reworded) from FY2026 - so the answer fails to give the correct answer of NO/removed.",
+          "unsupported_claims": [
+            "the check cannot determine whether the substance is still disclosed elsewhere or was removed, so no conclusion either way can be drawn",
+            "this does not establish that the statement was removed"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The grading notes state the sentence was REMOVED (verified fact), but the answer explicitly refuses to conclude removal, saying 'this does not establish that the statement was removed' and treats it as inconclusive, which contradicts the notes.",
+          "unsupported_claims": [
+            "the check cannot determine whether the substance is still disclosed elsewhere or was removed, so no conclusion either way can be drawn",
+            "this does not establish that the statement was removed \u2014 only that matching text was not located"
+          ]
+        }
+      ]
+    }
+  },
+  "routes": {
+    "cheap": 45,
+    "strong": 15
+  },
+  "escalated": 3,
+  "escalated_ids": [
+    "R1",
+    "U2",
+    "X1"
+  ],
+  "checks_failed": {
+    "T1": [
+      "unsupported_removal_claim"
+    ],
+    "T3": [
+      "unsupported_removal_claim"
+    ],
+    "X1": [
+      "ungrounded_number"
+    ],
+    "T6": [
+      "no_citation"
+    ],
+    "T7": [
+      "unsupported_removal_claim"
+    ],
+    "T13": [
+      "unsupported_removal_claim"
+    ],
+    "T14": [
+      "unsupported_removal_claim"
+    ],
+    "T15": [
+      "unsupported_removal_claim"
+    ]
+  },
+  "rows_without_checks": [],
+  "total_cost_usd": 0.910411
+}

@@ -143,3 +143,22 @@ def test_refusal_pattern_accepts_contains_no_and_does_not_establish(text):
                                   "Revenue identified in the filing was $215.9 billion."])
 def test_the_wider_refusal_pattern_still_ignores_positive_statements(text):
     assert not REFUSAL_RE.search(text)
+
+
+# --- found in the second 60-question deployed run (2026-09-27): U1 "does not give Samsung's total annual revenue" ---
+
+@pytest.mark.parametrize("text", [
+    "The provided context does not give Samsung’s total annual revenue.",                        # U1, Luna
+    "The context does not directly state Samsung's revenue.",
+    "The filings do not have a Samsung annual report.",
+    "The excerpts do not list a Samsung revenue figure.",
+    "The knowledge graph does not describe that filing.",
+])
+def test_refusal_pattern_accepts_a_negated_give_have_list_or_describe_with_an_optional_adverb(text):
+    assert REFUSAL_RE.search(text)
+
+
+@pytest.mark.parametrize("text", ["Samsung gives no guidance in Qualcomm's filing [a:I.1:0001].", "Qualcomm lists Samsung as a licensee [a:I.1:0001].",
+                                  "The filing has a Samsung section."])
+def test_the_wider_refusal_pattern_still_ignores_positive_statements_about_giving_listing_or_having(text):
+    assert not REFUSAL_RE.search(text)

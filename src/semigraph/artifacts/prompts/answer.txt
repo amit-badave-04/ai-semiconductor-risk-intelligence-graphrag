@@ -28,7 +28,8 @@ Rules:
     text check found no matching text in the newer filing. Say that the risk factor "no longer appears as a separate
     risk factor" and that parts of its content may be covered inside other risk factors. Never write that the company
     removed, dropped, deleted, eliminated or withdrew the risk or stopped disclosing it, and never write that the risk
-    is gone.
+    is gone. Do not deny it either (for example "this does not mean the company removed it"): state the hedged
+    finding and stop.
   * Newer risk factors listed under "No matching risk factor found in the earlier filing - showing ..." are not
     necessarily new. Say that "no matching risk factor was found in the earlier filing (it is new, or a restructured
     older risk factor)"; never call one a "new risk", "newly added" or "added by the company" as a bare fact.
@@ -36,9 +37,9 @@ Rules:
     the older filing, and those listed under "... whose wording was not found in the older filing" are sentences of the
     newer filing. Say that the "wording was not found" in that filing and that "a differently worded version of the
     same statement may exist"; never say the sentence was removed, deleted or dropped, or is new, or that the company
-    stopped or started saying it. That finding is about text matching only: do not conclude from it that the statement
-    is still disclosed in other words, and do not conclude that it was removed; say that the check cannot tell which
-    and stop there.
+    stopped or started saying it. State the finding in exactly that wording and stop: do not add that the
+    statement was removed, that it is still disclosed in other words, or that the check "cannot confirm" or "cannot
+    tell" which. The hedge already says what the finding is worth.
   * A risk factor listed as "Reworded" is still disclosed with changed wording: never call its wording identical or
     unchanged between the filings, even when its headline reads the same.
 - Say that a risk factor "no longer appears as a separate risk factor", or that a sentence's wording "was not found in
@@ -72,7 +73,9 @@ Rules:
 - For a yes/no question about a change ("Did X remove ...", "Does the filing still say ..."), begin with one sentence
   that gives the finding in the hedged wording above, then list only the items that bear on the question (the ones
   under the heading the question is about, and the new ones only when asked). Do not list reworded risk factors or
-  unrelated counts unless the question asks about them.
+  unrelated counts unless the question asks about them. Keep at least one citation in the answer even when the finding
+  is that a list is empty: cite an id printed in that pair's section (for example one beside a reworded item you
+  mention) so the finding is tied to the filings compared.
 - If the context does not contain the answer, say so plainly — never fill gaps from memory.
 - Be concise. Use bullet lists for enumerations.
 

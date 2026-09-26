@@ -73,7 +73,8 @@ _TERMS = (r"(?:disclos\w*|report(?:s|ed|ing)?|stat(?:e|es|ed|ing)|acknowledg\w*|
 _TERM_RE = re.compile(rf"\b{_TERMS}\b", re.I)
 _NEGATION_RE = re.compile(r"\b(?:not|no|never|neither|nor|without|none|nothing|cannot)\b|n['’]t\b", re.I)
 _ATTRIBUTION_WINDOW_WORDS = 8     # how far after the company name a saying verb / filing noun still refers to it
-_NEGATION_WINDOW_WORDS = 3        # a negation this close to the company..term span cancels the attribution
+_NEGATION_WINDOW_WORDS = 3        # a negation this close AFTER the company..term span cancels the attribution
+_NEGATION_LEFT_WORDS = 4          # ... and this close BEFORE it ("not as part of Nvidia's own filings")
 
 
 def _hyphens_as_spaces(text: str) -> str:
@@ -112,7 +113,7 @@ _STATEMENT_START_RE = re.compile(r"[,;]|\band\b", re.I)
 
 
 def _negated(clause: str, start: int, end: int) -> bool:
-    left = clause[:start].split()[-_NEGATION_WINDOW_WORDS:]
+    left = clause[:start].split()[-_NEGATION_LEFT_WORDS:]
     right = clause[end:].split()[:_NEGATION_WINDOW_WORDS]
     if _NEGATION_RE.search(" ".join(left) + " " + clause[start:end] + " " + " ".join(right)):
         return True

@@ -53,9 +53,10 @@ from .textutil import plain_spaces as _plain_spaces
 # Wordings that mark a deliberate "the corpus cannot answer this" reply. Started as the notebook 14 pattern;
 # widened after the model bake-off showed correct refusals worded "do not state ..." / "I can’t determine ..."
 # (typographic apostrophe) failing it. ``A`` accepts straight and typographic apostrophes.
+_REFUSAL_VERBS = "contain|include|provide|give|state|mention|specify|show|report|establish|identify|list|say|describe|have"
 REFUSAL_RE = re.compile(
-    r"(does|do) not (contain|include|provide|state|mention|specify|show|report|establish|identify)|"
-    rf"do(?:es)?{_A}?n{_A}?t (contain|include|provide|state|mention|specify|establish|identify)|"
+    rf"(does|do) not (?:\w+ )?({_REFUSAL_VERBS})|"
+    rf"do(?:es)?{_A}?n{_A}?t (?:\w+ )?({_REFUSAL_VERBS})|"
     r"(contains?|includes?|provides?) no\b|"
     r"not available|no (information|data|filings)|"
     rf"(cannot|can{_A}?t|can not|unable to) (be )?(determin|answer|find)|"
@@ -276,6 +277,21 @@ def _amount_status(amount: _Amount, known: list[tuple[float, str | None]], asked
     return "echoed" if _amount_known(amount, asked_known) else "unmatched"
 
 
+_QUOTED_SPAN_RE = re.compile(r'["“”]([^"“”\n]{2,120})["“”]')
+
+
+def _squash(text: str) -> str:
+    return " ".join(text.lower().split()).strip(" .,;:!?\"'“”‘’")
+
+
+def _quoted_from_question(text: str, position: int, question: str) -> bool:
+    """True when the figure at position sits inside a QUOTED phrase that the question itself contains verbatim: the answer is
+    naming the thing the asker named ("a 'BIS 50% affiliates rule'"), not asserting the asker's figure. A figure quoted with other
+    words, or stated outside a quote, is still an echo."""
+    asked = _squash(question)
+    return any(m.start() <= position < m.end() and _squash(m.group(1)) in asked for m in _QUOTED_SPAN_RE.finditer(text))
+
+
 def _check_figures(text: str, cited: set[str], context: str, sources: Mapping[str, str], question: str) -> _Figures:
     """Every amount and percentage of ``text`` against the context; what only the question states is ``echoed``."""
     known, asked_amounts = _known_amounts(context), _amounts(question)
@@ -284,10 +300,14 @@ def _check_figures(text: str, cited: set[str], context: str, sources: Mapping[st
     asked_percent = _plain_percentages(question) + [
         float(v.replace(",", "")) for v in _COMPUTED_PERCENT_RE.findall(question)]
     found: list[tuple[int, str, str]] = []
+    def status_of(position: int, status: str) -> str:
+        return "quoted" if status == "echoed" and _quoted_from_question(text, position, question) else status
+
     for a in _amounts(text):
-        found.append((a.start, a.shown, _amount_status(a, known, asked_amounts)))
+        found.append((a.start, a.shown, status_of(a.start, _amount_status(a, known, asked_amounts))))
     for m in _PERCENT_VALUE_RE.finditer(text):
-        found.append((m.start(), m.group(0).strip(), _percent_status(text, m, computed, cited_percent, asked_percent)))
+        found.append((m.start(), m.group(0).strip(),
+                      status_of(m.start(), _percent_status(text, m, computed, cited_percent, asked_percent))))
     unmatched: list[str] = []
     echoed: list[str] = []
     for _, shown, status in sorted(found):

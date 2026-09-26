@@ -112,3 +112,24 @@ def test_a_source_limitation_that_names_the_company_is_not_an_attribution(senten
 ])
 def test_a_limitation_does_not_excuse_a_later_positive_attribution(sentence):
     assert misattributed_sentences(sentence, ["Intel"]) == [sentence]
+
+
+# --- X1 (second deployed run): "not as part of Nvidia's own filings" is a negation four words before the company ---
+
+@pytest.mark.parametrize("sentence", [
+    'The context shows a Federal Register rule titled "Expansion of End-User Controls", linked to Nvidia only by keyword match, '
+    "not as part of Nvidia's own filings %s." % FR,
+    "This is a Federal Register rule, not from Nvidia's 10-K %s." % FR,
+    "The rule is a BIS action and not part of Nvidia's annual report %s." % FR,
+])
+def test_a_negation_up_to_four_words_before_the_company_cancels_the_attribution(sentence):
+    assert misattributed_sentences(sentence, NV) == []
+
+
+@pytest.mark.parametrize("sentence", [
+    "The rule is a BIS action, but in fact as part of Nvidia's own filings it is listed %s." % FR,
+    "Not every rule is covered, yet Nvidia's 10-K lists this one %s." % FR,
+    "Nvidia's 10-K, which is not short, lists the BIS rule %s." % FR,
+])
+def test_a_negation_that_is_not_about_the_attribution_does_not_excuse_it(sentence):
+    assert misattributed_sentences(sentence, NV) == [sentence]

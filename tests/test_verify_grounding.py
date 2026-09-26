@@ -212,3 +212,23 @@ def test_checks_are_json_serialisable():
         "citations_retrieved": True, "numbers_grounded": True, "numbers_checked": 0, "unmatched_numbers": [],
         "echoed_numbers": [], "pseudo_citations": [], "has_citation": True, "is_refusal": False,
         "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+
+
+# --- X1 (second deployed run): a figure inside the NAME of a thing the question named, quoted back, is not an echoed claim ---
+
+def test_a_figure_inside_a_quoted_phrase_copied_from_the_question_is_not_an_echoed_number():
+    from semigraph.retrieval.verify import answer_checks
+
+    question = "What did NVIDIA disclose about the BIS 50% affiliates rule?"
+    text = 'The context has no NVIDIA disclosure about a "BIS 50% affiliates rule." [fr:2025-19001]'
+    checks = answer_checks(text, {"fr:2025-19001"}, {"fr:2025-19001"}, "context without the figure", sources={}, question=question)
+    assert checks.echoed_numbers == () and checks.unmatched_numbers == ()
+
+
+def test_a_figure_the_question_states_is_still_echoed_when_the_answer_asserts_it_outside_a_quote():
+    from semigraph.retrieval.verify import answer_checks
+
+    question = "Did Nvidia's revenue grow 50% last year?"
+    for text in ("Yes, revenue grew 50% [x:1:1].", 'Yes, "revenue grew 50%" [x:1:1].', 'The answer is "yes": it grew 50% [x:1:1].'):
+        checks = answer_checks(text, {"x:1:1"}, {"x:1:1"}, "context without the figure", sources={}, question=question)
+        assert checks.echoed_numbers == ("50%",), text

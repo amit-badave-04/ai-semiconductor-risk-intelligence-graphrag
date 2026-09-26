@@ -13,10 +13,23 @@ from semigraph.retrieval.context_layout import PASSAGES_REMOVED_PHRASE, REMOVED_
 FLAT = re.sub(r"\s+", " ", ANSWER_PROMPT)
 
 
-def test_a_wording_not_found_finding_is_never_extended_to_still_disclosed_or_removed():
-    assert "do not conclude from it that the statement is still disclosed in other words" in FLAT
-    assert "do not conclude that it was removed" in FLAT
-    assert "the check cannot tell which and stop there" in FLAT
+def test_a_wording_not_found_finding_is_stated_as_is_without_a_conclusion_or_a_cannot_confirm():
+    """Second deployed run: the first version of this rule made the model write "the check cannot tell / no conclusion either way",
+    which the judge (rightly) read as refusing the finding; the hedge already says what the finding is worth."""
+    assert "State the finding in exactly that wording and stop" in FLAT
+    assert "do not add that the statement was removed, that it is still disclosed in other words" in FLAT
+    assert 'or that the check "cannot confirm" or "cannot tell" which' in FLAT
+    assert "The hedge already says what the finding is worth" in FLAT
+
+
+def test_an_empty_list_finding_still_carries_a_citation_from_the_pairs_section():
+    """Second deployed run (T6): a truthful "none found" answer had nothing to cite and failed the no_citation check."""
+    assert "Keep at least one citation in the answer even when the finding is that a list is empty" in FLAT
+    assert "cite an id printed in that pair's section" in FLAT
+
+
+def test_a_no_longer_appears_finding_is_not_denied_either():
+    assert 'Do not deny it either (for example "this does not mean the company removed it")' in FLAT
 
 
 def test_a_reworded_risk_factor_is_never_called_identical_or_unchanged():
