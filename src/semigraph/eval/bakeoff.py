@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ..llm import TRANSIENT
 from ..llm_shape import completion_params
-from ..retrieval.answerer import ANSWER_PROMPT, CITE_RE, usage_cost
+from ..retrieval.answerer import ANSWER_PROMPT, CITE_RE, answer_stream, usage_cost
 from ..retrieval.verify import verify_answer
 from .runner import JUDGE_PROMPT, NUM_PAT, REFUSAL_PAT, AnswerBudgetExceeded, Correct, parse_numbers  # noqa: F401
 
@@ -306,3 +306,64 @@ def model_prices(model: str) -> tuple[float, float]:
     i = litellm.cost_per_token(model=model, prompt_tokens=1_000_000, completion_tokens=0)[0]
     o = litellm.cost_per_token(model=model, prompt_tokens=0, completion_tokens=1_000_000)[1]
     return i, o
+
+
+# --- the deployed configuration, end to end ---------------------------------------------------------------
+
+def run_deployed(benchmark: list[dict], driver, embedder, path: Path, *, model: str, escalation_model: str,
+                 max_usd: float | None, max_tokens: int = ANSWER_MAX_TOKENS, timeout: int = 90) -> list[dict]:
+    """Answer every benchmark question through ``answer_stream`` exactly as the service does (router, cheap
+    draft, verifier, escalation), recording the route, the total cost of ALL attempts and the latency.
+
+    Checkpointed per question and capped like :func:`answer_candidates`."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = _read_rows(path)
+    done = {r["id"]: r for r in existing}
+    spent = sum(r.get("cost_usd") or 0.0 for r in existing)
+    with path.open("a", encoding="utf-8") as sink:
+        for q in benchmark:
+            if q["id"] in done:
+                continue
+            if max_usd is not None and spent >= max_usd:
+                raise AnswerBudgetExceeded(f"spend ${spent:.3f} reached the ${max_usd:.2f} cap before {q['id']}")
+            t0 = time.monotonic()
+            events = list(answer_stream(q["q"], driver, embedder, strategy="hybrid", model=model, escalation_model=escalation_model,
+                                        max_tokens=max_tokens, timeout=timeout))
+            row = _deployed_row(q, events, round(time.monotonic() - t0, 3))
+            spent += row["cost_usd"] or 0.0
+            sink.write(json.dumps(row) + "\n")
+            sink.flush()
+            done[q["id"]] = row
+    return [done[q["id"]] for q in benchmark if q["id"] in done]
+
+
+def _deployed_row(q: dict, events: list[dict], latency: float) -> dict:
+    terminal = next((e for e in reversed(events) if e["event"] in ("done", "error")), None)
+    base = {"id": q["id"], "type": q["type"], "q": q["q"], "answer": "", "cited": [], "hallucinated": [], "valid_ids": [],
+            "finish_reason": None, "usage": None, "cost_usd": 0.0, "latency_s": latency, "routed": None, "escalated": False}
+    if terminal is None or terminal["event"] == "error":
+        e = terminal or {}
+        return {**base, "error": e.get("detail", "no terminal event"), "usage": e.get("usage"), "cost_usd": e.get("cost_usd") or 0.0}
+    cited = sorted(terminal["citations"])
+    return {**base, "answer": terminal["answer"], "cited": cited, "hallucinated": terminal["hallucinated"],
+            "valid_ids": sorted(set(cited) - set(terminal["hallucinated"])), "finish_reason": terminal.get("finish_reason"),
+            "usage": terminal.get("usage"), "cost_usd": terminal.get("cost_usd") or 0.0, "routed": terminal.get("routed"),
+            "escalated": bool(terminal.get("escalated")), "answered_by": terminal.get("answered_by"),
+            "escalation_reasons": terminal.get("escalation_reasons")}
+
+
+def score_deployed(rows: list[dict], benchmark: list[dict], judge, *, votes: int = 3, judge_model: str | None = None) -> dict:
+    """Score the deployed configuration: correctness (mechanical + majority-vote judge on the open questions),
+    citation validity, and how the traffic was routed and what it cost. Escalation is what actually happened."""
+    score = score_mechanical([{**r, "model": "deployed"} for r in rows], benchmark)
+    score["judged"] = judge_open(rows, benchmark, judge, votes=votes, model=judge_model)
+    routes: dict[str, int] = {}
+    for r in rows:
+        routes[r.get("routed") or "none"] = routes.get(r.get("routed") or "none", 0) + 1
+    costs = [r["cost_usd"] or 0.0 for r in rows]
+    score.pop("escalation_ids", None)   # recomputed without the retrieved contexts: not what the service did
+    score.update({"routes": routes, "escalated": sum(1 for r in rows if r.get("escalated")),
+                  "escalation_rate": (sum(1 for r in rows if r.get("escalated")) / len(rows)) if rows else 0.0,
+                  "escalated_ids": [r["id"] for r in rows if r.get("escalated")],
+                  "total_cost_usd": sum(costs), "avg_cost_usd": sum(costs) / len(rows) if rows else 0.0})
+    return score

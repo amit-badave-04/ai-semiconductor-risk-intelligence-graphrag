@@ -53,7 +53,7 @@
     <div class="row">
       <select id="strategy" title="Retrieval strategy">
         <option value="hybrid">hybrid GraphRAG (graph + XBRL + bitemporal + vector) — benchmark 95% correct (19 of 20)</option>
-        <option value="vector">vector-only baseline — 75% correct, 0% on temporal questions</option>
+        <option value="vector">vector-only baseline — 75% correct with Sonnet 5, 0% on temporal questions</option>
       </select>
       <button class="btn" id="ask">Ask</button>
       <span class="hint" id="limits"></span>
@@ -107,7 +107,7 @@ async function loadStats() {
       `<span><b>${g.deleted_risk_lineages}</b> dropped risk lineages</span><span><b>${n.ExportControl || 0}</b> BIS rules</span>` +
       `<span>live questions today <b>${s.ledger.today.paid}</b> / ${s.limits.max_queries_per_day}</span>` +
       (s.paused ? `<span class="badge warn">live questions paused</span>` : "");
-    $("limits").textContent = `limit: ${s.limits.per_ip} per address · model: ${s.models.llm.split("/").pop()}`;
+    const short = (m) => m.split("/").pop(); $("limits").textContent = `limit: ${s.limits.per_ip} per address · model: ${short(s.models.llm)}` + (s.models.escalation ? ` (verified; ${short(s.models.escalation)} for change-over-time questions and rejected drafts)` : "");
   } catch (e) { $("stats").textContent = "statistics unavailable"; }
 }
 

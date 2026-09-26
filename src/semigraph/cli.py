@@ -406,5 +406,56 @@ def bakeoff_cmd(
     typer.echo(f"report -> {out}")
 
 
+@app.command("eval-deployed")
+def eval_deployed_cmd(
+    model: str = typer.Option(None, help="Cheap default model (default: LLM_MODEL from settings)"),
+    escalation_model: str = typer.Option(None, help="Strong model for routed/rejected answers (default: ESCALATION_MODEL from settings)"),
+    max_usd: float = typer.Option(..., "--max-usd", help="Hard cap on answering spend (the judge is estimated separately and printed)"),
+    votes: int = typer.Option(3, help="Correctness-judge votes per open answer (majority)"),
+    runs_file: str = typer.Option("eval_deployed.jsonl", help="Checkpoint log inside data/processed"),
+    report_name: str = typer.Option("eval_report.deployed.json", help="Report file name inside artifacts/"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Run the 20-question benchmark through the DEPLOYED path: router, cheap draft, verifier, escalation. (PAID)"""
+    _setup_logging(verbose)
+    from semigraph.artifacts import load_benchmark
+    from semigraph.embeddings import Embedder
+    from semigraph.eval import bakeoff as bo
+    from semigraph.graph import client
+    from semigraph.llm import llm_json
+
+    settings = _settings()
+    model = model or settings.llm_model
+    escalation_model = escalation_model or settings.escalation_model
+    if not escalation_model:
+        raise typer.BadParameter("no escalation model: pass --escalation-model or set ESCALATION_MODEL")
+    benchmark = load_benchmark()
+    n_open = sum(1 for b in benchmark if b["type"] != "refusal" and not b.get("expect"))
+    judge_usd = n_open * votes * bo.JUDGE_CALL_USD
+    typer.echo(f"eval-deployed: {len(benchmark)} questions, default {model}, escalation {escalation_model}; "
+               f"answers capped at ${max_usd:.2f}, judge worst case ${judge_usd:.2f}")
+    if not yes and not typer.confirm("Proceed?"):
+        raise typer.Abort()
+    driver = client.get_driver(settings)
+    try:
+        rows = bo.run_deployed(benchmark, driver, Embedder(), settings.processed_dir / runs_file, model=model,
+                               escalation_model=escalation_model, max_usd=max_usd)
+    except bo.AnswerBudgetExceeded as e:
+        typer.echo(f"Stopped: {e}. Nothing further was spent; answers so far are checkpointed.", err=True)
+        raise typer.Exit(5) from e
+    finally:
+        driver.close()
+    report = {"model": model, "escalation_model": escalation_model, "votes": votes,
+              **bo.score_deployed(rows, benchmark, llm_json, votes=votes)}
+    out = Path("artifacts") / report_name
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    j = report["judged"]
+    typer.echo(json.dumps({k: report[k] for k in ("mechanical", "citation_validity", "routes", "escalated", "escalated_ids",
+                                                   "avg_cost_usd", "total_cost_usd", "avg_latency_s", "errors")}, indent=2, default=str))
+    typer.echo(f"open questions correct: {j['open_correct']}/{j['open_of']}  votes {j['votes']}")
+    typer.echo(f"report -> {out}")
+
+
 if __name__ == "__main__":
     app()

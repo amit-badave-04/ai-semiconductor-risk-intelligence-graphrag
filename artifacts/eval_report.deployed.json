@@ -1,0 +1,38 @@
+{
+  "model": "openai/gpt-6-luna",
+  "escalation_model": "anthropic/claude-sonnet-5",
+  "votes": 3,
+  "n": 20,
+  "mechanical": {
+    "passed": 13,
+    "of": 13
+  },
+  "failed_ids": [],
+  "citation_validity": 1.0,
+  "escalation_rate": 0.0,
+  "errors": 0,
+  "truncated": 0,
+  "avg_cost_usd": 0.00690485,
+  "avg_latency_s": 6.0355,
+  "avg_completion_tokens": 570.9,
+  "judged": {
+    "open_correct": 6,
+    "open_of": 7,
+    "votes": {
+      "R3": 3,
+      "T1": 3,
+      "T2": 3,
+      "T3": 3,
+      "Q1": 0,
+      "Q2": 3,
+      "Q3": 3
+    }
+  },
+  "routes": {
+    "cheap": 17,
+    "strong": 3
+  },
+  "escalated": 0,
+  "escalated_ids": [],
+  "total_cost_usd": 0.138097
+}

@@ -136,6 +136,7 @@ def test_stats_reports_limits_and_models(client):
     body = client.get("/api/stats").json()
     assert body["limits"]["max_queries_per_day"] == 3
     assert body["models"]["embedder"] == "fake-embedder"
+    assert body["models"]["escalation"] is None   # not configured on the test double
 
 
 def test_evidence_rejects_malformed_ids(client):

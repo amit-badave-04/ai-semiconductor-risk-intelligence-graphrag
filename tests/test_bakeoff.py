@@ -272,3 +272,64 @@ def test_a_previous_judgement_made_with_a_different_vote_count_is_not_reused(tmp
     bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=judge,
                    runs_path=tmp_path / "b.jsonl", max_usd=None, votes=5, price=lambda u, m: 0.001, previous=first)
     assert judge.calls == 10  # baseline + the model, 5 votes each, one open question
+
+
+# --- the deployed configuration, end to end (answer_stream with router + verifier + escalation) ---
+
+def _fake_answer_stream(script):
+    """answer_stream double: script maps a question -> the list of events to emit after 'retrieval'."""
+    calls = []
+
+    def stream(question, driver, embedder, strategy="hybrid", **kw):
+        calls.append((question, kw))
+        yield {"event": "retrieval", "anchors": {}, "counts": {}}
+        yield from script[question]
+    return stream, calls
+
+
+def _done(text, cited, *, cost=0.001, routed="cheap", escalated=False, by="cheap/m", reasons=None, hallucinated=()):
+    return {"event": "done", "answer": text, "citations": list(cited), "hallucinated": list(hallucinated),
+            "finish_reason": "stop", "usage": {"prompt_tokens": 10, "completion_tokens": 5}, "cost_usd": cost,
+            "routed": routed, "escalated": escalated, "answered_by": by, **({"escalation_reasons": reasons} if reasons else {})}
+
+
+def test_run_deployed_records_the_route_cost_and_checkpoints(tmp_path, monkeypatch):
+    stream, calls = _fake_answer_stream({
+        "Revenue FY26?": [_done("It was $215.9 billion.", [])],
+        "Dropped risks?": [_done("Yes, several.", [VALID[0]], routed="strong", by="strong/m", cost=0.03)]})
+    monkeypatch.setattr(bo, "answer_stream", stream)
+    bench = [b for b in BENCH if b["id"] in ("N2", "T1")]
+    rows = bo.run_deployed(bench, None, None, tmp_path / "d.jsonl", model="cheap/m", escalation_model="strong/m", max_usd=None)
+    assert [r["id"] for r in rows] == ["N2", "T1"] and rows[1]["routed"] == "strong" and rows[1]["cost_usd"] == 0.03
+    assert calls[0][1]["model"] == "cheap/m" and calls[0][1]["escalation_model"] == "strong/m" and calls[0][1]["max_tokens"] == bo.ANSWER_MAX_TOKENS
+    assert len((tmp_path / "d.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+    bo.run_deployed(bench, None, None, tmp_path / "d.jsonl", model="cheap/m", escalation_model="strong/m", max_usd=None)
+    assert len(calls) == 2  # resumed: nothing bought twice
+
+
+def test_run_deployed_stops_at_the_cap(tmp_path, monkeypatch):
+    stream, calls = _fake_answer_stream({b["q"]: [_done("x", [], cost=0.02)] for b in BENCH})
+    monkeypatch.setattr(bo, "answer_stream", stream)
+    with pytest.raises(AnswerBudgetExceeded):
+        bo.run_deployed(BENCH, None, None, tmp_path / "d.jsonl", model="c/m", escalation_model="s/m", max_usd=0.03)
+    assert len(calls) == 2
+
+
+def test_run_deployed_turns_a_stream_error_into_a_failed_row(tmp_path, monkeypatch):
+    stream, _ = _fake_answer_stream({"Revenue FY26?": [{"event": "error", "detail": "boom", "usage": None, "cost_usd": 0.004}]})
+    monkeypatch.setattr(bo, "answer_stream", stream)
+    [row] = bo.run_deployed([BENCH[0]], None, None, tmp_path / "d.jsonl", model="c/m", escalation_model="s/m", max_usd=None)
+    assert row["error"] == "boom" and row["answer"] == "" and row["cost_usd"] == 0.004
+
+
+def test_score_deployed_counts_routes_escalations_and_judges_the_open_questions():
+    rows = [{"id": "N2", "answer": "It was $215.9 billion.", "cited": [], "hallucinated": [], "valid_ids": [], "finish_reason": "stop",
+             "usage": {"prompt_tokens": 10, "completion_tokens": 5}, "cost_usd": 0.001, "latency_s": 2.0, "routed": "cheap", "escalated": False},
+            {"id": "D1", "answer": "TSMC [%s]" % VALID[0], "cited": [VALID[0]], "hallucinated": [], "valid_ids": VALID, "finish_reason": "stop",
+             "usage": None, "cost_usd": 0.03, "latency_s": 9.0, "routed": "cheap", "escalated": True, "answered_by": "strong/m"},
+            {"id": "T1", "answer": "Yes [%s]" % VALID[0], "cited": [VALID[0]], "hallucinated": [], "valid_ids": VALID, "finish_reason": "stop",
+             "usage": None, "cost_usd": 0.03, "latency_s": 9.0, "routed": "strong", "escalated": False}]
+    s = bo.score_deployed(rows, BENCH, VoteJudge([True]), votes=3)
+    assert s["routes"] == {"cheap": 2, "strong": 1} and s["escalated"] == 1
+    assert s["mechanical"] == {"passed": 2, "of": 2} and s["judged"]["open_correct"] == 1
+    assert s["total_cost_usd"] == pytest.approx(0.061) and s["avg_cost_usd"] == pytest.approx(0.061 / 3)
