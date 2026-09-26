@@ -14,6 +14,14 @@ PROVENANCE OF THE GOLDENS (changed deliberately in M1b; the v1 note said "do not
 - ``GOLDEN_TEMPORAL`` gained the "Not matched" section (older items the text check could not settle, ``unsettled_in``), written by
   hand from the wording the owner specified: it sits after the removed items and before the added ones, claims nothing
   (no "removed" as a fact), and cites the OLDER filing's chunk ids like a removed item. ``CONTEXT_HEADERS`` is untouched.
+- ``GOLDEN_TEMPORAL``'s item headings were re-worded BY HAND (M1b hedging pass) to be exactly as strong as the held-out
+  precision of each claim (2 blind annotators, ties adjudicated): an older item called removed was gone as a STANDALONE risk
+  factor in 4 of 4 cases but 2 were absorbed into another risk factor, so its heading is now "No longer appears as a separate
+  risk factor (the text check found no matching text ...; parts of their content may be covered inside other risk factors)";
+  a newer item called new was new in only 6 of 12 (the rest were restructured older text), so its heading is now "No
+  matching risk factor found in the earlier filing (new, or a restructured older risk factor)". The "Not matched" and
+  "Reworded" headings and ``CONTEXT_HEADERS`` are byte-identical to before; the answer prompt changed with them, so the
+  ``template_fingerprint`` changed and saved example answers must be regenerated.
 
 No Neo4j, no network, no real LLM.
 """
@@ -160,13 +168,13 @@ GOLDEN_RISKS = (
 
 GOLDEN_TEMPORAL = (
     'Nvidia: 10-K filed 2025-02-26 (accession 0001045810-25-000023) compared with 10-K filed 2026-02-25 (accession 0001045810-26-000021)\n'
-    'Removed - showing 2 of 21 risk factors (text verified absent from the later filing):\n'
+    'No longer appears as a separate risk factor - showing 2 of 21 risk factors (the text check found no matching text in the newer filing; parts of their content may be covered inside other risk factors):\n'
     '- "We may not be able to sell to China without an export license" [0001045810-25-000023:I.1A:0210] [0001045810-25-000023:I.1A:0211]\n'
     '- "Our Hong Kong operations may face transition risks" [0001045810-25-000023:I.1A:0230]\n'
     'Not matched (the text check could not verify whether these older risk factors still appear; they may have been removed or absorbed into another risk factor) - showing 2 of 9:\n'
     '- "Changes in export licensing requirements could reduce our data center sales" [0001045810-25-000023:I.1A:0260] [0001045810-25-000023:I.1A:0261]\n'
     '- "Our international operations subject us to currency risk" [0001045810-25-000023:I.1A:0290]\n'
-    'Added - showing 1 of 12 risk factors (new in the later filing):\n'
+    'No matching risk factor found in the earlier filing - showing 1 of 12 risk factors (new, or a restructured older risk factor):\n'
     '- "We depend on a small number of customers for a large share of revenue" [0001045810-26-000021:I.1A:0350]\n'
     'Reworded - showing 1 of 9 risk factors (still disclosed, wording changed):\n'
     '- "Acquisitions and strategic investments may not deliver expected benefits" (earlier wording: "We may not realize the benefits of acquisitions"; decided by luna) earlier [0001045810-25-000023:I.1A:0140] later [0001045810-26-000021:I.1A:0347]'

@@ -40,6 +40,10 @@ def test_node_unit_tests_pass():
     "one Claude call",                      # the answer model is configured, not always Claude
     "dropped risk lineages",                # the old stat counted edges, not lineages
     "deleted_risk_lineages",
+    "text-verified removed",                # held-out gold: 2 of 4 "removed" items were merged into another risk factor
+    "text verified absent", "verified absent",
+    "removed lists do not support",         # the claim-check copy now names the "no longer appears" lists
+    "stop disclosing in its latest",        # the placeholder question presupposed the claim the service cannot make
 ])
 def test_page_never_carries_the_withdrawn_claims(page, stale):
     assert stale not in page
@@ -51,9 +55,33 @@ def test_header_separates_verbatim_evidence_from_keyword_matched_rules(page):
 
 
 def test_page_reads_the_new_stat_and_says_accuracy_is_withdrawn(page):
-    assert "removed_risk_items" in page
-    assert "text-verified removed risk items" in page
+    assert "removed_risk_items" in page                       # the API key is the contract; only the copy changed
+    assert "risk factors that no longer stand alone (text check)" in page
+    assert "paragraphs that no longer stand alone (text check)" in page
     assert "withdrawn" in page and "re-measurement" in page
+
+
+def test_page_states_how_reliable_change_claims_are_in_plain_words_with_the_measured_counts(page):
+    """The held-out gold (2 blind annotators, ties adjudicated): the four classes of change claim and what each measured.
+    The counts are small samples and are stated as counts, never as percentages (the page must never carry "100% correct")."""
+    match = re.search(r'<p id="reliability">(.*?)</p>', page, re.S)
+    assert match and "How reliable are change claims?" in match.group(1)
+    assert page.index('<p id="reliability">') > page.index("<footer>")                      # the method / limits area
+    note = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", match.group(1)))
+    for fragment in (
+        "no longer appears as a separate risk factor", "4 of 4", "folded into another risk factor",   # removed items
+        "Not matched", "could not settle", "never shown as removed",                                  # unsettled items
+        "No matching risk factor found in the earlier filing", "6 of 12", "already disclosed earlier",   # new or restructured
+        "wording was not found", "1 in 6", "different words",                                          # sentences
+        "small",                                                                                     # the samples are small
+    ):
+        assert fragment in note, fragment
+    assert "%" not in note and "verified" not in note.replace("could not be verified", "")   # counts, not percentages; no "verified"
+
+
+def test_the_placeholder_question_asks_for_risk_factors_that_no_longer_appear_not_ones_the_company_stopped_disclosing(page):
+    placeholder = re.search(r'id="q"[^>]*placeholder="([^"]*)"', page).group(1)
+    assert "no longer appear" in placeholder and "stop disclosing" not in placeholder
 
 
 def test_vector_option_is_kept_and_labelled_as_a_baseline(page):

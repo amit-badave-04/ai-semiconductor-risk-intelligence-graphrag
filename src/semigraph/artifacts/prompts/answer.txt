@@ -16,31 +16,49 @@ Rules:
 - EXTERNAL REGULATORY EVENTS are Federal Register rules that a keyword heuristic linked to a company. They are NOT
   part of the company's filings: never describe one as something the company disclosed, reported, said or
   acknowledged. Call it a Federal Register rule and cite it as [fr:...].
-- The REMOVED / ADDED / REWORDED lists are verified against the text of the later filing, but every list is capped and
-  its true total is stated ("showing 8 of 21"). When the total is larger than the number shown, give the stated total
-  with "at least" before it and present the listed items as examples, never as the complete list; never say "only" or
-  "all". A reworded risk is still disclosed. Write such a total as a lead-in line that ends with a colon, followed by
-  one bullet per listed item (for example "At least 21 risk factors were removed, of which 8 are listed:").
-- Never say a risk factor was dropped or removed unless it is listed under the removed items ("Removed - showing ...").
-  Whenever you say something was removed, cite the removed-list ids in that sentence or in the bullets directly beneath
-  it, and state removals in their own sentence or bullet: do not combine a removal with an addition or a reworded item
-  under one citation. When no risk factor is listed as removed and no "Not matched" list is shown, say so plainly ("No
-  risk factors were removed"); when a "Not matched" list is shown, say that none was verified as removed and that the
-  listed ones could not be verified.
+- The REMOVED / ADDED / REWORDED block is the output of an AUTOMATED TEXT COMPARISON of two filings, not of a reading of
+  them: its title and its list headings are labels for what the comparison found, not proof of what the company did.
+  Every list is capped and its true total is stated ("showing 8 of 21"). When the total is larger than the number
+  shown, give the stated total with "at least" before it and present the listed items as examples, never as the complete
+  list; never say "only" or "all". A reworded risk is still disclosed. Write such a total as a lead-in line that ends
+  with a colon, followed by one bullet per listed item (for example "At least 21 risk factors no longer appear as
+  separate risk factors (parts of their content may be covered inside other risk factors), of which 8 are listed:").
+- Each list has its own hedge, and you must use it:
+  * Older risk factors listed under "No longer appears as a separate risk factor - showing ..." are ones for which the
+    text check found no matching text in the newer filing. Say that the risk factor "no longer appears as a separate
+    risk factor" and that parts of its content may be covered inside other risk factors. Never write that the company
+    removed, dropped, deleted, eliminated or withdrew the risk or stopped disclosing it, and never write that the risk
+    is gone.
+  * Newer risk factors listed under "No matching risk factor found in the earlier filing - showing ..." are not
+    necessarily new. Say that "no matching risk factor was found in the earlier filing (it is new, or a restructured
+    older risk factor)"; never call one a "new risk", "newly added" or "added by the company" as a bare fact.
+  * Sentences listed under "Passages of surviving ... whose wording was not found in the newer filing" are sentences of
+    the older filing, and those listed under "... whose wording was not found in the older filing" are sentences of the
+    newer filing. Say that the "wording was not found" in that filing and that "a differently worded version of the
+    same statement may exist"; never say the sentence was removed, deleted or dropped, or is new, or that the company
+    stopped or started saying it.
+- Say that a risk factor "no longer appears as a separate risk factor", or that a sentence's wording "was not found in
+  the newer filing", only for ids listed under those two headings. Whenever you say either, cite the ids listed there
+  in that sentence or in the bullets directly beneath it, keep the statement and its ids in one sentence (no semicolon
+  between them), and state it in its own sentence or bullet: do not combine it with an addition or a reworded item
+  under one citation. When "No longer appears as a separate risk factor" shows none found and no "Not matched" list
+  is shown, say plainly that the text check found none ("The text check found no risk factor that no longer appears
+  as a separate risk factor"); when a "Not matched" list is shown, say that none was verified as no longer appearing
+  and that the listed ones could not be verified.
   When no comparison is shown, say that none is available. A company shown as "comparison not available (reason)" has
   no comparison at all: say that, with the reason, and never say that nothing changed.
 - A "Not matched (...)" list holds OLDER risk factors that the text check could not settle: it found some, but not enough,
-  matching text in the later filing, or could not decide. They are not verified as removed and not verified as still
-  present. Never call one removed, dropped, deleted or gone, not even as "may have been removed"; say that it "could
-  not be verified" whether the risk factor still appears. Keep them out of every removal statement, never combine them
-  with removed items under one citation, cite the ids printed beside each one, give the shown-of-total counts (with "at
-  least" before the total when more exist than are shown) and present the listed items as examples. Call the units
-  paragraphs when the items are paragraphs.
-- "Passages of surviving ..." lists hold sentences or paragraphs INSIDE risk items that still exist. Describe a removed
-  passage only as what its text shows: "this sentence of the older filing no longer appears in the newer Item 1A"; never
-  say the company dropped, withdrew or stopped disclosing a risk because of a passage. An added passage is text that is
-  new in the later filing; a reworded passage shows the older and the newer wording. Call them passages (or sentences),
-  say how many are shown of how many exist, and cite the ids printed beside the text.
+  matching text in the newer filing, or could not decide. They are not verified as removed and not verified as still
+  present. Never call one removed, dropped, deleted or gone, not even as "may have been removed", and never say that it
+  no longer appears; say that it "could not be verified" whether the risk factor still appears. Keep them out of every
+  removal statement, never combine them under one citation with the items listed under "No longer appears as a
+  separate ...", cite the ids printed beside each one, give the shown-of-total counts (with "at least" before the total
+  when more exist than are shown) and present the listed items as examples. Call the units paragraphs when the items
+  are paragraphs.
+- "Passages of surviving ..." lists hold sentences or paragraphs INSIDE risk items that still exist. They are evidence
+  about wording only: never say the company dropped, withdrew or stopped disclosing a risk because of a passage. A
+  reworded passage shows the older and the newer wording. Call them passages (or sentences), say how many are shown of
+  how many exist, and cite the ids printed beside the text.
 - When a list says "paragraphs", its units are paragraphs of a filing with no risk-factor headlines: call them
   paragraphs, not as risk factors.
 - If the context does not contain the answer, say so plainly — never fill gaps from memory.

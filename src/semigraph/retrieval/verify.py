@@ -14,11 +14,14 @@ terminal ``done`` event, so answers that cannot escalate still report what they 
   claim: it cannot see a real value attached to the wrong fiscal year.
 - pseudo-citations: bracketed text that is not a citation id (``[Reported Metrics]``, ``[id1; id2]``).
 - uncited answers: no citation and not a refusal (``has_citation`` / ``is_refusal``).
-- removal claims: a sentence that says a risk disclosure was dropped / removed / "no longer appears" may cite only ids
-  listed under the temporal block's REMOVED lists (:func:`context_layout.removal_supported_ids`). The ids of the "Not
-  matched" list (older items the text check could not settle) are citable but never support a removal, and the check is
-  deliberately not softened for hedged wording ("may have been removed"): the answer prompt tells the model to say those
-  items "could not be verified" instead.
+- removal claims: a sentence that says a risk disclosure was dropped / removed / "no longer appears" (or that its wording
+  "was not found in the newer filing", the hedge the answer prompt teaches for a removed passage) may cite only ids
+  listed under the temporal block's REMOVED lists (:func:`context_layout.removal_supported_ids`: the items that "no longer
+  appear as a separate risk factor" and the passages whose wording "was not found in the newer filing"). The ids of the "Not
+  matched" list (older items the text check could not settle) and of the NEW / ADDED lists are citable but never support a
+  removal, and the check is deliberately not softened for hedged wording ("may have been removed"): the answer prompt tells
+  the model to say those items "could not be verified" instead. "Not found in the OLDER filing" (the added-passage hedge) is
+  not a removal claim. Judged clause by clause: the statement and its ids must share one clause (no semicolon between them).
 
 :func:`failed_check_names` is the ONE predicate for "this answer failed a check": the service (cache, log), example
 seeding and the page all read it, so they cannot disagree.
@@ -308,9 +311,27 @@ def _pseudo_citations(text: str, cited: set[str], valid_ids: set[str]) -> tuple[
 
 # A clause that says a disclosure went away: "dropped the risk", "no longer appears", "removed from the 10-K". The verb
 # alone is not enough ("revenue dropped 5%" claims nothing about a disclosure), so it must also speak of a disclosure.
+# The alternatives after ``stopped ...`` are the hedged wording the answer prompt teaches for a REMOVED item or passage ("its
+# wording was not found in the newer filing", "the text check found no matching text", "does not appear in the newer
+# filing"): they say the text is missing from the NEWER filing, so they need the same removed-list citation as "no longer
+# appears". The direction matters. "Not found in the OLDER / earlier filing" is the hedge of an ADDED passage and "no matching
+# risk factor found in the earlier filing" that of a NEW item: neither claims a removal, so a clause that places the search in
+# the older filing is never a match. A filing named otherwise ("the 10-K for the fiscal year ended January 25, 2026", "the
+# latest 10-K") has no known direction and counts as a claim: an added-passage hedge worded that way is escalated for
+# nothing, the safe side. A refusal ("the figure was not found in the filings": no wording / sentence / risk subject) is not
+# matched at all.
+_NEWER_FILING = r"(?:the\s+)?(?:newer|later|more\s+recent)\b"
+_NOT_IN_OLDER = r"(?![^.;\[\]]{0,80}?\bin\s+(?:the\s+)?(?:older|earlier|prior|previous)\b)"
+_NOT_FOUND = r"(?:not|\w+n['’]t)\s+(?:be\s+)?found\b"
+_MISSING_WORDING_SUBJECT = r"(?:wording|sentences?|passages?|statements?|language|paragraphs?|risk\s+factors?|risks?)"
 _REMOVAL_RE = re.compile(
     r"\b(?:drop(?:s|ped|ping)?|remov(?:e|es|ed|ing|al|als)|no longer|eliminat(?:e|es|ed|ing)|delet(?:e|es|ed|ing|ion)|"
-    r"discontinu(?:e|es|ed|ing)|omit(?:s|ted|ting)?|(?:stopped|ceased)\s+(?:to\s+)?(?:disclos|report|mention|includ|list)\w*)\b",
+    r"discontinu(?:e|es|ed|ing)|omit(?:s|ted|ting)?|(?:stopped|ceased)\s+(?:to\s+)?(?:disclos|report|mention|includ|list)\w*|"
+    rf"{_NOT_FOUND}\s+in\s+{_NEWER_FILING}|(?:does|do|did)\s+not\s+appear\s+in\s+{_NEWER_FILING}|"
+    rf"{_MISSING_WORDING_SUBJECT}\b[^.;\[\]]{{0,60}}?\b{_NOT_FOUND}{_NOT_IN_OLDER}|"
+    rf"no\s+match(?:ing|ed)\s+(?:text|wording|risk\s+factors?|paragraphs?|passages?|sentences?)\b[^.;\[\]]{{0,80}}?"
+    rf"\bin\s+{_NEWER_FILING}|"
+    rf"text\s+check\b[^.;\[\]]{{0,40}}?\bno\s+match(?:ing|ed)\s+(?:text|wording)\b{_NOT_IN_OLDER})\b",
     re.I)
 _DISCLOSURE_RE = re.compile(
     r"\b(?:risks?|risk factors?|passages?|sentences?|paragraphs?|disclos\w*|wording|language|text|filings?|10-K|20-F|"
@@ -320,7 +341,10 @@ _BRACKETED_RE = re.compile(r"\[[^\[\]\n]*\]")
 # been removed", "never dropped", "No risk factors were removed", "None of NVIDIA's risk factors were dropped", "Zero of the
 # 24 ... were removed". The "no" of "no longer" is itself a removal verb, so it is never the quantifier.
 _NEGATED_BEFORE_RE = re.compile(r"(?:\bnot|\bnever|\bnor|\bneither|\bwithout|\brather than|n['’]t)\s+(?:\w+\s+){0,2}$", re.I)
-_NONE_QUANTIFIER_RE = re.compile(r"\b(?:no(?!\s+longer\b)|none|zero|nothing|neither|not\s+any|not\s+a\s+single)\b", re.I)
+_NONE_QUANTIFIER_RE = re.compile(
+    r"\b(?:no(?!\s+(?:longer|match\w*)\b)|none|zero|nothing|neither|not\s+any|not\s+a\s+single)\b", re.I)
+# ("no matching text" is the answer prompt's own hedge for a removed item, "for which the text check found no matching text,
+#  no longer appears ...": that "no" is the check's finding, not a "no risk factors were removed" quantifier.)
 _QUANTIFIER_WINDOW_WORDS = 12       # how far before the verb a "no ... were removed" subject may start
 _SHORT_HEADING_WORDS = 6            # "**Dropped:**", "Removed risk factors:": a heading needs no disclosure noun of its own
 _MAX_REMOVAL_SENTENCE_CHARS = 200

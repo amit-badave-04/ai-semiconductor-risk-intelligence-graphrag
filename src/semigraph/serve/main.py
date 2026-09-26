@@ -51,10 +51,13 @@ def connect_with_retry(settings):
 def graph_stats(driver) -> dict:
     """The public /api/stats graph block.
 
-    ``removed_risk_items`` counts ``RiskItem`` nodes whose text was verified absent from a newer filing
-    (``removed_in`` set) and that are headline units (real risk factors); ``removed_paragraphs`` counts the removed
+    ``removed_risk_items`` counts ``RiskItem`` nodes for which the text check found no matching text in a newer filing
+    (``removed_in`` set) and that are headline units (real risk factors); ``removed_paragraphs`` counts the same for
     PARAGRAPH units (a 20-F filer's, or a filing with no risk-factor headlines: they are not risk factors and the page says
     so); ``risk_items`` is the total. All three are 0 on a graph built before RiskItems existed.
+    The key names are the API contract and stay; the PAGE words the two counts as "risk factors / paragraphs that no longer
+    stand alone (text check)", because held-out gold showed that such an item is gone as a standalone risk factor but that
+    some (2 of 4 checked) were merged into another risk factor rather than dropped: the counts are not "verified removals".
     The old ``deleted_risk_lineages`` (a count of ``DISCLOSES_RISK`` edges, not lineages) is deliberately gone.
     """
     labels = run_cypher(driver, """MATCH (n) WITH labels(n)[0] AS label, count(*) AS n

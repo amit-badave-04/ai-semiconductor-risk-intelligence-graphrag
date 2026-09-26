@@ -87,8 +87,16 @@ test("an unsupported removal claim is a warning badge and names the sentence", (
   const s = summary({ ...CLEAN, unsupported_removal_claim: true, unsupported_removal_sentences: ["Nvidia dropped its export-control risk."] });
   const b = badge(s, /removal/i);
   assert.ok(b && b.cls === "warn");
-  assert.match(s.warnings.join("\n"), /removed lists/);
+  assert.match(s.warnings.join("\n"), /"no longer appears" lists/);
   assert.match(s.warnings.join("\n"), /Nvidia dropped its export-control risk\./);
+  assert.doesNotMatch(b.text, /removed lists/);
+});
+
+test("the checks hint points at the change-claim reliability note and never calls the comparison verified", () => {
+  const s = summary(CLEAN);
+  assert.match(s.hint, /automatic text comparison/);
+  assert.match(s.hint, /How reliable are change claims\?/);
+  assert.doesNotMatch(s.hint, /text-verified|verified absent/);
 });
 
 test("a removal claim flag without sentences still warns", () => {
@@ -121,6 +129,7 @@ test("checksPassed is one predicate: a refusal with no citation passes, an uncit
 
 test("the new escalation reasons read in plain words", () => {
   assert.match(api.reasonText("unsupported_removal_claim"), /removal claim/);
+  assert.match(api.reasonText("unsupported_removal_claim"), /"no longer appears" lists/);
   assert.match(api.reasonText("ungrounded_number"), /number not found in the retrieved context/);
   assert.match(api.escalationStatus({ reasons: ["unsupported_removal_claim"] }), /removal claim/);
 });

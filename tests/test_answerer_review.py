@@ -2,6 +2,8 @@
 period-aware METRICS, the removal-claim check on the real block, the prompt rules and the template fingerprint.
 Pure: no database, no network, no model."""
 
+import re
+
 import pytest
 
 import semigraph.retrieval.answerer as answerer_mod
@@ -17,6 +19,8 @@ from semigraph.retrieval.answerer import (
 from semigraph.retrieval.context_layout import (
     NOT_COMPARED_PREFIX,
     PASSAGE_QUOTE_CHARS,
+    PASSAGES_ADDED_PHRASE,
+    PASSAGES_REMOVED_PHRASE,
     REMOVED_ITEMS_PREFIX,
     UNSETTLED_ITEMS_PREFIX,
     removal_supported_ids,
@@ -25,6 +29,13 @@ from semigraph.retrieval.verify import answer_checks, verify_answer
 
 NVDA = 1045810
 OLD, NEW = "0001045810-25-000023", "0001045810-26-000021"
+NEW_LABEL = "No matching risk factor found in the earlier filing"
+_HEDGE = "a differently worded version of the same statement may exist"
+# The two passage headings, written out by hand (the writer builds them from the same constants; this pins the words).
+REMOVED_PASSAGES_HEADING = ("Passages of surviving risk factors whose wording was not found in the newer filing "
+                            "(showing {shown} of {total}; " + _HEDGE + "):")
+ADDED_PASSAGES_HEADING = ("Passages of surviving risk factors whose wording was not found in the older filing "
+                          "(showing {shown} of {total}; " + _HEDGE + "):")
 
 
 def retrieval(**layers):
@@ -82,7 +93,7 @@ def test_a_not_compared_company_and_a_compared_one_sit_side_by_side():
     block = temporal([item("new", "N", newer=[f"{NEW}:I.1A:0001"])],
                      [pair(totals={"removed": 0, "new": 1, "reworded": 0}), intel])[0].temporal_block
     first, second = block.split("\n\n")
-    assert first.startswith("Nvidia:") and "Added - showing 1 of 1" in first
+    assert first.startswith("Nvidia:") and f"{NEW_LABEL} - showing 1 of 1" in first
     assert second.startswith("Intel:") and "comparison not available (section suspect)" in second
 
 
@@ -92,8 +103,19 @@ def test_section_lines_say_risk_factors_for_headline_units_and_paragraphs_for_pa
     heads = temporal([item("removed", "A", [f"{OLD}:I.1A:0001"])], [pair(totals={"removed": 1, "new": 0, "reworded": 0})])[0].temporal_block
     paras = temporal([item("removed", "", [f"{OLD}:I.1A:0001"], unit_kind="paragraph")],
                      [pair(totals={"removed": 1, "new": 0, "reworded": 0})])[0].temporal_block
-    assert "Removed - showing 1 of 1 risk factors (text verified absent from the later filing):" in heads
-    assert "Removed - showing 1 of 1 paragraphs (text verified absent from the later filing):" in paras
+    assert ("No longer appears as a separate risk factor - showing 1 of 1 risk factors (the text check found no matching "
+            "text in the newer filing; parts of their content may be covered inside other risk factors):") in heads
+    # a paragraph is not a risk factor: the label, the noun and the note all say paragraph
+    assert ("No longer appears as a separate paragraph - showing 1 of 1 paragraphs (the text check found no matching text "
+            "in the newer filing; parts of their content may be covered inside other paragraphs):") in paras
+    assert "separate risk factor" not in paras
+
+
+def test_a_list_of_mixed_units_says_risk_factor_or_paragraph():
+    items = [item("new", "A", newer=[f"{NEW}:I.1A:0001"]), item("new", "", newer=[f"{NEW}:I.1A:0002"], unit_kind="paragraph")]
+    block = temporal(items, [pair(totals={"removed": 0, "new": 2, "reworded": 0})])[0].temporal_block
+    assert ("No matching risk factor or paragraph found in the earlier filing - showing 2 of 2 risk factors and paragraphs "
+            "(new, or a restructured older risk factor or paragraph):") in block
 
 
 def test_a_headline_less_paragraph_unit_is_labelled_by_its_first_sentence_cut_at_160_characters():
@@ -133,10 +155,21 @@ def passages_context():
 def test_the_passages_render_inside_the_temporal_block_after_the_item_lists_with_their_totals():
     block = passages_context()[0].temporal_block
     lines = block.splitlines()
-    assert lines[-6] == "Passages of surviving risk factors that no longer appear (showing 1 of 12):"
-    assert "Passages of surviving risk factors that are new (showing 1 of 6):" in lines
+    assert lines[-6] == REMOVED_PASSAGES_HEADING.format(shown=1, total=12)
+    assert ADDED_PASSAGES_HEADING.format(shown=1, total=6) in lines
     assert "Passages of surviving risk factors that were reworded (showing 1 of 5):" in lines
-    assert block.index("Reworded - none found.") < block.index("Passages of surviving risk factors that no longer appear")
+    assert block.index("Reworded - none found.") < block.index(REMOVED_PASSAGES_HEADING.format(shown=1, total=12))
+
+
+def test_the_passage_headings_say_wording_not_found_with_the_hedge_and_never_gone_or_new():
+    """Held-out gold, sentence level: removed passages are right about 0.84 of the time (about 1 in 6 is still stated in
+    different words), added passages about 0.92. The headings carry that as a hedge; the old 'that no longer appear' and
+    'that are new' are gone."""
+    block = passages_context()[0].temporal_block
+    assert "that no longer appear" not in block and "that are new" not in block
+    assert "a differently worded version of the same statement may exist" in REMOVED_PASSAGES_HEADING
+    assert "a differently worded version of the same statement may exist" in ADDED_PASSAGES_HEADING
+    assert "newer filing" in REMOVED_PASSAGES_HEADING and "older filing" in ADDED_PASSAGES_HEADING
 
 
 def test_a_removed_passage_names_its_item_quotes_its_text_and_cites_its_own_chunk_ids():
@@ -199,7 +232,7 @@ def test_passages_of_paragraph_units_say_paragraphs_and_are_labelled_by_the_unit
     p = passage("removed", NAC, chunk_ids=OLD_IDS, headline="", item_unit_kind="paragraph",
                 lead_text="Our business is subject to complex export laws. More.")
     block = temporal([], [pair(passage_totals={"removed": 1, "added": 0, "reworded": 0})], [p])[0].temporal_block
-    assert "Passages of surviving paragraphs that no longer appear (showing 1 of 1):" in block
+    assert REMOVED_PASSAGES_HEADING.format(shown=1, total=1).replace("risk factors", "paragraphs") in block
     assert '- in "Our business is subject to complex export laws.":' in block
 
 
@@ -349,7 +382,7 @@ def test_the_unsettled_heading_is_not_a_removed_heading_so_the_reader_never_coun
 
 def test_the_removed_list_stays_supported_when_an_unsettled_list_follows_it():
     blocks, context, _ = unsettled_context()
-    assert blocks.temporal_block.index("Removed - showing") < blocks.temporal_block.index("Not matched (")
+    assert blocks.temporal_block.index(REMOVED_ITEMS_PREFIX) < blocks.temporal_block.index("Not matched (")
     assert REMOVED_ITEM in removal_supported_ids(context) and UNSETTLED_ITEM not in removal_supported_ids(context)
 
 
@@ -456,20 +489,48 @@ def test_build_blocks_reads_the_named_periods_from_the_retrieval_result():
 # ---------------------------------------------------------------------------------- the prompt and its fingerprint
 
 @pytest.mark.parametrize("fragment", [
-    "unless it is listed under the removed", "REMOVED / ADDED / REWORDED",                  # only the removed ITEMS list is "dropped"
-    "this sentence of the older filing no longer appears in the newer Item 1A",             # passages are said as passages
+    # the removed ITEMS list: worded as "no longer appears as a separate risk factor", never as a bare removal
+    'listed under "No longer appears as a separate risk factor - showing ..."', "REMOVED / ADDED / REWORDED",
+    "parts of its content may be covered inside other risk factors",
+    'Never write that the company removed, dropped, deleted, eliminated or withdrew the risk',
+    "never write that the risk is gone",
+    # the newer items: "no matching risk factor found in the earlier filing", never a bare "new risk"
+    "no matching risk factor was found in the earlier filing (it is new, or a restructured older risk factor)",
+    'never call one a "new risk"',
+    # passages: "wording was not found", never a removal or an addition as a fact
+    'the "wording was not found" in that filing', "a differently worded version of the same statement may exist",
     "Passages of surviving", "never say the company dropped",
     "paragraphs", "not as risk factors",                                                     # paragraph units
     "comparison not available",                                                              # a pair that was not compared
+    # the block's titles are labels of an automated text comparison, not verdicts
+    "AUTOMATED TEXT COMPARISON", "labels for what the comparison found, not proof of what the company did",
     # the unsettled ("Not matched") list: never called removed, said to be unverified
     'A "Not matched (...)" list holds OLDER risk factors that the text check could not settle',
     'Never call one removed, dropped, deleted or gone, not even as "may have been removed"',
     'it "could not be verified" whether the risk factor still appears',
-    "none was verified as removed",
+    "none was verified as no longer appearing",
     "Keep them out of every removal statement",
 ])
 def test_the_prompt_carries_the_review_rules(fragment):
     assert fragment in " ".join(ANSWER_PROMPT.split())          # the rules are line-wrapped in the template file
+
+
+def test_every_heading_the_prompt_quotes_is_the_heading_the_writer_prints():
+    """The prompt teaches the model the hedge attached to each list by quoting its heading, and the removal check reads the
+    same headings back: a heading changed in one place and not the other would teach the model a list that does not exist."""
+    flat = " ".join(ANSWER_PROMPT.split())
+    block = passages_context()[0].temporal_block + "\n" + temporal(
+        [item("removed", "R", [f"{OLD}:I.1A:0001"]), item("unsettled", "U", [f"{OLD}:I.1A:0002"]),
+         item("new", "N", newer=[f"{NEW}:I.1A:0003"])],
+        [pair(totals={"removed": 1, "unsettled": 1, "new": 1, "reworded": 0})])[0].temporal_block
+    quoted = ("No longer appears as a separate risk factor", NEW_LABEL, "Not matched (",
+              "whose wording was not found in the newer filing", "whose wording was not found in the older filing")
+    for label in quoted:
+        assert label in flat and label in block, label
+    # ... and they are the very constants the reader (removal_supported_ids) matches on
+    assert REMOVED_ITEMS_PREFIX + "risk factor" == quoted[0]
+    assert PASSAGES_REMOVED_PHRASE == quoted[3] and PASSAGES_ADDED_PHRASE == quoted[4]
+    assert UNSETTLED_ITEMS_PREFIX == quoted[2]
 
 
 def test_the_prompt_placeholders_are_unchanged():
@@ -567,9 +628,11 @@ def test_a_standalone_uncited_count_of_removals_is_flagged_so_the_prompt_puts_it
 
 def test_the_prompt_tells_the_model_to_cite_removals_where_it_states_them():
     flat = " ".join(ANSWER_PROMPT.split())
-    assert "cite the removed-list ids in that sentence or in the bullets directly beneath it" in flat
-    assert "state removals in their own sentence or bullet" in flat
+    assert "cite the ids listed there in that sentence or in the bullets directly beneath it" in flat
+    assert "state it in its own sentence or bullet" in flat
+    assert "keep the statement and its ids in one sentence" in flat                     # the check judges a clause with its ids
     assert 'of which 8 are listed")' not in flat          # the old uncited example sentence
+    assert "were removed, of which" not in flat           # the lead-in example no longer states a removal as a fact
 
 
 def test_a_nested_list_under_a_removal_bullet_is_judged_with_its_children():
@@ -582,3 +645,143 @@ def test_a_removal_heading_reaches_bullets_after_a_blank_line_but_not_a_paragrap
     text = (f"**Removed risk factors:**\n\n- Hong Kong transition risk [{REMOVED_ITEM}]\n\n"
             f"Nvidia dropped its export-control risk factor [{KEPT_ITEM}].")
     assert claims_of(text) == ("Nvidia dropped its export-control risk factor [" + KEPT_ITEM + "].",)
+
+
+# ---------------------------------------------------------------------------------- the hedged wording and the claim check
+# (M1b hedging pass: the model is taught to say "no longer appears as a separate risk factor" and "wording was not found in
+# the newer filing"; the check must accept that wording for the ids of the matching removed lists and flag it for anything else)
+
+NEW_ITEM = f"{NEW}:I.1A:0500"
+ADDED_PASSAGE = f"{NEW}:I.1A:0350"
+
+
+def hedged_context():
+    """One removed item, one 'Not matched' item, one new item, one removed passage and one added passage."""
+    items = [item("removed", "Hong Kong transition risk", [REMOVED_ITEM]), item("unsettled", "Export licensing risk", [UNSETTLED_ITEM]),
+             item("new", "Sovereign AI", newer=[NEW_ITEM])]
+    p = pair(totals={"removed": 1, "unsettled": 1, "new": 1, "reworded": 0}, passage_totals={"removed": 1, "added": 1, "reworded": 0})
+    passages = [passage("removed", NAC, chunk_ids=OLD_IDS), passage("added", "New sentence about licences.", chunk_ids=[ADDED_PASSAGE])]
+    return build_blocks(retrieval(temporal=items, temporal_pairs=[p], temporal_passages=passages))
+
+
+def hedged_claims(text):
+    _, context, valid = hedged_context()
+    return checks_of(text, context, valid).removal_claims
+
+
+def test_only_the_removed_items_and_the_removed_passages_support_removal_wording_under_the_new_headings():
+    _, context, _ = hedged_context()
+    supported = removal_supported_ids(context)
+    assert supported == {REMOVED_ITEM, *OLD_IDS}
+    assert not {UNSETTLED_ITEM, NEW_ITEM, ADDED_PASSAGE} & supported          # not matched, a new item, an added passage
+
+
+SUPPORTED_HEDGED_REMOVALS = [
+    f"The Hong Kong transition risk no longer appears as a separate risk factor (parts of its content may be covered inside "
+    f"other risk factors) [{REMOVED_ITEM}].",
+    f"The text check found no matching text for the Hong Kong transition risk in the newer filing [{REMOVED_ITEM}].",
+    f"The text check found no matching text for the Hong Kong transition risk [{REMOVED_ITEM}].",
+    f"This sentence's wording was not found in the newer filing (a differently worded version of the same statement may exist) "
+    f"[{OLD_IDS[0]}] [{OLD_IDS[1]}].",
+    f"The wording of the NAC sentence was not found in the newer Item 1A [{OLD_IDS[0]}].",
+    f"The wording of the NAC sentence could not be found in the newer filing [{OLD_IDS[0]}].",
+    f"The wording of the NAC sentence wasn't found in the filing for the fiscal year ended January 25, 2026 [{OLD_IDS[0]}].",
+    f"At least 21 risk factors no longer appear as separate risk factors (parts of their content may be covered inside other "
+    f"risk factors), of which 8 are listed:\n\n- Hong Kong transition risk [{REMOVED_ITEM}]",
+]
+
+
+def _as_unsettled(text):
+    """The same sentence, citing a 'Not matched' item instead of the removed item / removed passage it was written for."""
+    for removed_id in (REMOVED_ITEM, *OLD_IDS):
+        text = text.replace(f"[{removed_id}]", f"[{UNSETTLED_ITEM}]")
+    return text
+
+
+@pytest.mark.parametrize("text", SUPPORTED_HEDGED_REMOVALS)
+def test_the_hedged_removal_wording_is_supported_when_it_cites_the_matching_removed_lists(text):
+    assert hedged_claims(text) == ()
+    _, context, valid = hedged_context()
+    assert verify_answer(text, set(CITE_RE.findall(text)), valid, "stop", context=context,
+                         sources=sources_from_context(context)) == []
+
+
+@pytest.mark.parametrize("text", SUPPORTED_HEDGED_REMOVALS)
+def test_every_supported_hedged_removal_is_flagged_when_it_cites_a_not_matched_id_instead(text):
+    """The discriminating twin of the test above: a sentence that only passes because the check never recognised it as a
+    removal claim would pass here too (a 'Not matched' item is NOT verified removed, whatever the wording)."""
+    twin = _as_unsettled(text)
+    assert twin != text and UNSETTLED_ITEM in twin
+    assert len(hedged_claims(twin)) == 1, twin
+
+
+@pytest.mark.parametrize("text", [
+    f"The export licensing risk no longer appears as a separate risk factor [{UNSETTLED_ITEM}].",                 # Not matched
+    f"The text check found no matching text for the export licensing risk in the newer filing [{UNSETTLED_ITEM}].",
+    f"The export licensing risk could not be found in the newer filing [{UNSETTLED_ITEM}].",
+    f"The wording of the export licensing risk wasn't found in the newer filing [{UNSETTLED_ITEM}].",
+    # a filing named by date or as 'latest': the direction is unknown, so the wording counts as a removal claim (the safe side)
+    f"This sentence's wording was not found in the 10-K for the fiscal year ended January 25, 2026 [{UNSETTLED_ITEM}].",
+    f"This sentence's wording was not found in Nvidia's latest 10-K [{UNSETTLED_ITEM}].",
+    # the hedge itself puts "no matching text" 8 words before "no longer": it must not read as a "no ..." survival statement
+    f"The export licensing risk, for which the text check found no matching text, no longer appears as a separate risk "
+    f"factor [{UNSETTLED_ITEM}].",
+    f"Sovereign AI no longer appears as a separate risk factor [{NEW_ITEM}].",                                      # a NEW item
+    f"This sentence's wording was not found in the newer filing [{UNSETTLED_ITEM}].",                             # Not matched
+    f"This sentence's wording was not found in the newer filing [{ADDED_PASSAGE}].",                              # an ADDED passage
+    f"The risk factor's wording does not appear in the newer filing [{UNSETTLED_ITEM}].",
+    "This sentence's wording was not found in the newer filing.",                                                  # no citation
+    f"The export licensing risk was not found in the more recent filing [{UNSETTLED_ITEM}].",
+    f"At least 21 risk factors no longer appear as separate risk factors (parts of their content may be covered inside other "
+    f"risk factors), of which 8 are listed:\n\n- Hong Kong transition risk [{REMOVED_ITEM}]\n- Export licensing [{UNSETTLED_ITEM}]",
+])
+def test_the_hedged_removal_wording_is_still_flagged_for_any_other_id_or_none(text):
+    assert len(hedged_claims(text)) == 1, text
+    _, context, valid = hedged_context()
+    assert "unsupported_removal_claim" in verify_answer(text, set(CITE_RE.findall(text)), valid, "stop", context=context,
+                                                        sources=sources_from_context(context))
+
+
+@pytest.mark.parametrize("text", [
+    f"No matching risk factor was found in the earlier filing for Sovereign AI (it is new, or a restructured older risk "
+    f"factor) [{NEW_ITEM}].",
+    f"This sentence's wording was not found in the older filing (a differently worded version of the same statement may exist) "
+    f"[{ADDED_PASSAGE}].",
+    f"The Hong Kong risk no longer appears as a separate risk factor [{REMOVED_ITEM}]; Sovereign AI has no matching risk "
+    f"factor in the earlier filing [{NEW_ITEM}].",
+    f"The text check could not verify whether the export licensing risk still appears [{UNSETTLED_ITEM}].",
+    "The retrieved filings do not contain that figure, so it was not found in the filings.",                          # a refusal
+    f"This sentence's wording wasn't found in the earlier filing [{ADDED_PASSAGE}].",
+    f"This sentence's wording could not be found in the older filing [{ADDED_PASSAGE}].",
+    f"The text check found no matching text in the earlier filing for the Sovereign AI paragraph [{NEW_ITEM}].",
+])
+def test_the_new_and_added_hedges_and_a_plain_not_found_are_not_removal_claims(text):
+    """"not found in the OLDER filing" is the added-passage hedge and "no matching risk factor in the earlier filing" the new-item
+    hedge: neither says anything went away, so neither may be flagged."""
+    assert hedged_claims(text) == ()
+
+
+def test_the_example_sentences_the_prompt_quotes_pass_the_check_they_are_meant_to_satisfy():
+    """The prompt and the check must not drift apart: the sentences the prompt quotes as good wording are pulled out of the
+    prompt text itself and judged against the hedged context."""
+    flat = " ".join(ANSWER_PROMPT.split())
+    lead_in = re.search(r'for example "(At least \d+ risk factors no longer appear[^"]*?:)"', flat)
+    none_found = re.search(r'\("(The text check found no risk factor that no longer appears[^"]*)"\)', flat)
+    new_hedge = re.search(r'Say that "(no matching risk factor was found in the earlier filing[^"]*)"', flat)
+    assert lead_in and none_found and new_hedge, "the prompt no longer quotes its example sentences"
+    assert hedged_claims(f"{lead_in.group(1)}\n\n- Hong Kong transition risk [{REMOVED_ITEM}]") == ()
+    assert len(hedged_claims(f"{lead_in.group(1)}\n\n- Export licensing risk [{UNSETTLED_ITEM}]")) == 1
+    assert hedged_claims(none_found.group(1) + ".") == ()                                # a survival statement, no ids needed
+    assert hedged_claims(f"The Sovereign AI risk factor: {new_hedge.group(1)} [{NEW_ITEM}].") == ()
+    # ... and the two hedges named in the prompt's rules, written as sentences of their own
+    assert hedged_claims(f'This sentence: "wording was not found" in the newer filing [{OLD_IDS[0]}].') == ()
+    assert hedged_claims("Its wording was not found in the older filing (a differently worded version may exist).") == ()
+
+
+def test_the_new_and_removed_hedges_together_pass_every_check_when_each_cites_its_own_list():
+    _, context, valid = hedged_context()
+    text = (f"The Hong Kong transition risk no longer appears as a separate risk factor [{REMOVED_ITEM}].\n"
+            f"No matching risk factor was found in the earlier filing for Sovereign AI (new, or restructured) [{NEW_ITEM}].\n"
+            f"The text check could not verify whether the export licensing risk still appears [{UNSETTLED_ITEM}].")
+    assert verify_answer(text, set(CITE_RE.findall(text)), valid, "stop", context=context,
+                         sources=sources_from_context(context)) == []

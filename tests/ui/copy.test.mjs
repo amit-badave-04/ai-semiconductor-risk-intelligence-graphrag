@@ -11,10 +11,14 @@ const STATS = {
   models: { llm: "openai/gpt-6-luna", escalation: "anthropic/claude-sonnet-5" },
 };
 
-test("the stats line counts text-verified removed risk items", () => {
+// The API key stays `removed_risk_items` (the contract), but the copy must not say "removed" or "verified": held-out gold found
+// that an item the pipeline calls removed is gone as a STANDALONE risk factor, and 2 of 4 were merged into another risk factor.
+const STAT_LABEL = "risk factors that no longer stand alone \\(text check\\)";
+
+test("the stats line counts risk factors that no longer stand alone, not text-verified removals", () => {
   const html = api.statsHtml(STATS);
-  assert.match(html, /<b>41<\/b> text-verified removed risk items/);
-  assert.doesNotMatch(html, /dropped risk lineages/);
+  assert.match(html, new RegExp(`<b>41</b> ${STAT_LABEL}`));
+  assert.doesNotMatch(html, /dropped risk lineages|text-verified|removed risk items|verified absent/);
   assert.match(html, /<b>74<\/b> filings/);
   assert.match(html, /<b>166<\/b> BIS rules/);
 });
@@ -22,14 +26,14 @@ test("the stats line counts text-verified removed risk items", () => {
 test("the removed-item count is omitted when the API does not report it", () => {
   const legacy = { ...STATS, graph: { ...STATS.graph, removed_risk_items: undefined, deleted_risk_lineages: 495 } };
   const html = api.statsHtml(legacy);
-  assert.doesNotMatch(html, /removed risk items/);
+  assert.doesNotMatch(html, /no longer stand alone/);
   assert.doesNotMatch(html, /495/, "the old edge count must never be shown as lineages");
   assert.doesNotMatch(html, /undefined|NaN/);
 });
 
 test("a zero count is shown, not treated as missing", () => {
   const html = api.statsHtml({ ...STATS, graph: { ...STATS.graph, removed_risk_items: 0 } });
-  assert.match(html, /<b>0<\/b> text-verified removed risk items/);
+  assert.match(html, new RegExp(`<b>0</b> ${STAT_LABEL}`));
 });
 
 test("a paused service is flagged and a sparse stats object does not throw", () => {
@@ -81,8 +85,9 @@ test("shortModel drops the provider prefix", () => {
 
 test("removed paragraphs are counted apart from removed risk factors", () => {
   const html = api.statsHtml({ ...STATS, graph: { ...STATS.graph, removed_risk_items: 41, removed_paragraphs: 7 } });
-  assert.match(html, /<b>41<\/b> text-verified removed risk items/);
-  assert.match(html, /<b>7<\/b> text-verified removed paragraphs/);
+  assert.match(html, new RegExp(`<b>41</b> ${STAT_LABEL}`));
+  assert.match(html, /<b>7<\/b> paragraphs that no longer stand alone \(text check\)/);
+  assert.doesNotMatch(html, /text-verified|removed paragraphs/);
 });
 
 test("a graph with no removed paragraphs (or an API that does not report them) shows no paragraph count", () => {

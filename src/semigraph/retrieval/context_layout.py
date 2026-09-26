@@ -8,16 +8,30 @@ constant here and the writer builds its lines from the same constants, so the tw
 The temporal block (docs/v2/M1B_PLAN.md L.7), per compared company::
 
     <company>: <form> filed <date> (accession ...) compared with <form> filed <date> (accession ...)
-    Removed - showing 2 of 21 risk factors (text verified absent from the later filing):
+    No longer appears as a separate risk factor - showing 2 of 21 risk factors (the text check found no matching text in the
+    newer filing; parts of their content may be covered inside other risk factors):
     - "<headline or first sentence>" [chunk id] [chunk id]
     Not matched (the text check could not verify whether these older risk factors still appear; they may have been removed or
     absorbed into another risk factor) - showing 6 of 14:
     - "<headline or first sentence>" [older chunk id]
-    Added - ... / Reworded - ...
-    Passages of surviving risk factors that no longer appear (showing 4 of 12):
+    No matching risk factor found in the earlier filing - showing 1 of 12 risk factors (new, or a restructured older risk factor):
+    Reworded - ...
+    Passages of surviving risk factors whose wording was not found in the newer filing (showing 4 of 12; a differently worded
+    version of the same statement may exist):
     - in "<containing item>": "<quoted text>" [chunk id]
-    Passages of surviving risk factors that are new (showing N of M): ...
+    Passages of surviving risk factors whose wording was not found in the older filing (showing N of M; a differently worded
+    version of the same statement may exist): ...
     Passages of surviving risk factors that were reworded (showing N of M): ...
+
+WHY THE HEADINGS ARE HEDGED (M1b held-out gold: 2 blind annotators, ties adjudicated). Every heading is exactly as strong as the
+measured precision of the claim beneath it. An older item the pipeline calls ``removed`` was gone as a STANDALONE risk factor in 4
+of 4 cases, but 2 of the 4 were absorbed into another risk factor (annotators label those ``merged``), so the heading says "no
+longer appears as a separate risk factor", never "removed" or "text verified absent". A newer item called ``new`` was new in
+only 6 of 12 (the rest were ``carried``: already disclosed earlier, e.g. split out of an older item), so the heading says "no
+matching risk factor found in the earlier filing (new, or a restructured older risk factor)". Removed passages (sentences) are
+right about 0.84 of the time (about 1 in 6 is still stated in different words), added passages about 0.92, so both say the
+wording "was not found" and that a differently worded version may exist. Only a heading's LABEL may be relied on by a reader
+(:func:`removal_supported_ids`); the sub-headings are not part of ``template_fingerprint()`` (only ``CONTEXT_HEADERS`` is).
 
 The "Not matched" section lists OLDER items the text check could not settle (``RiskItem.unsettled_in``): they are neither
 verified present nor verified gone, the heading claims nothing, they cite the older filing's chunk ids like removed items, and
@@ -62,20 +76,32 @@ PASSAGE_WHERE_CHARS = 100           # the containing item's label beside a passa
 # --- the labels the reader matches on (and the writer builds from) ---
 NOT_COMPARED_PREFIX = "comparison not available"
 UNSETTLED_CHANGE = "unsettled"                               # the ``change`` of an older item the text check could not settle
-_ITEM_SECTIONS = (("removed", "Removed", "text verified absent from the later filing"),
-                  (UNSETTLED_CHANGE, "Not matched", ""),     # label and note unused: _unsettled_section writes its own heading
-                  ("new", "Added", "new in the later filing"),
-                  ("reworded", "Reworded", "still disclosed, wording changed"))
-REMOVED_ITEMS_PREFIX = "Removed - showing "                 # the removed ITEMS list (an item that is gone)
+# The item lists. ``{unit}`` / ``{units}`` are the noun of the listed units ("risk factor" / "paragraph"): a paragraph unit of a
+# filing with no headlines is not a risk factor, and the heading never says it is. Each heading says only what the check found
+# (see the module docstring for the measured precision behind every hedge).
+REMOVED_ITEMS_PREFIX = "No longer appears as a separate "   # + "<unit>": the removed ITEMS list (no matching text found)
 UNSETTLED_ITEMS_PREFIX = "Not matched ("                    # the unsettled ITEMS list (verified neither present nor gone)
+NEW_ITEMS_PREFIX = "No matching "                           # + "<unit> found in the earlier filing": the newer items (new, or restructured)
+_ITEM_SECTIONS = (
+    ("removed", REMOVED_ITEMS_PREFIX + "{unit}",
+     "the text check found no matching text in the newer filing; parts of their content may be covered inside other {units}"),
+    (UNSETTLED_CHANGE, "Not matched", ""),                   # label and note unused: _unsettled_section writes its own heading
+    ("new", NEW_ITEMS_PREFIX + "{unit} found in the earlier filing", "new, or a restructured older {unit}"),
+    ("reworded", "Reworded", "still disclosed, wording changed"))
+_UNIT_SINGULAR = {"risk factors": "risk factor", "paragraphs": "paragraph",
+                  "risk factors and paragraphs": "risk factor or paragraph"}
 # The heading claims nothing: "removed" appears only as a possibility, never as a fact. The unit noun is fixed on purpose (the
 # wording is the owner's); a list of paragraph units is told to the model by the answer prompt.
 _UNSETTLED_HEADING = (UNSETTLED_ITEMS_PREFIX + "the text check could not verify whether these older risk factors still appear; they "
                       "may have been removed or absorbed into another risk factor) - showing {shown} of {total}:")
-PASSAGES_PREFIX = "Passages of surviving "                  # "... risk factors that no longer appear (showing N of M):"
-PASSAGES_REMOVED_PHRASE = "that no longer appear"           # the removed PASSAGES list (a sentence that is gone)
-_PASSAGE_SECTIONS = (("removed", PASSAGES_REMOVED_PHRASE), ("added", "that are new"),
-                     ("reworded", "that were reworded"))
+PASSAGES_PREFIX = "Passages of surviving "                  # "... risk factors whose wording was not found in the newer filing (...):"
+# The two lists differ in the LAST word pair ("newer" / "older"), and the reader matches the whole phrase, so an added passage
+# (whose wording was not found in the OLDER filing) can never be read as a removal.
+PASSAGES_REMOVED_PHRASE = "whose wording was not found in the newer filing"   # the removed PASSAGES list (an older sentence with no match)
+PASSAGES_ADDED_PHRASE = "whose wording was not found in the older filing"      # the added PASSAGES list (a newer sentence with no match)
+_PASSAGE_HEDGE = "; a differently worded version of the same statement may exist"
+_PASSAGE_SECTIONS = (("removed", PASSAGES_REMOVED_PHRASE, _PASSAGE_HEDGE), ("added", PASSAGES_ADDED_PHRASE, _PASSAGE_HEDGE),
+                     ("reworded", "that were reworded", ""))
 _ITEM_LINE_PREFIX = "- "
 
 
@@ -164,18 +190,20 @@ def _pair_sections(pair: Mapping, mine: list[Mapping], passages: list[Mapping], 
         if change == UNSETTLED_CHANGE:
             lines += _unsettled_section(group, total, valid_ids)
             continue
+        units = _noun(group)
+        label, note = (text.format(unit=_UNIT_SINGULAR[units], units=units) for text in (label, note))
         if not group and not total:
             lines.append(f"{label} - none found.")
             continue
-        lines.append(f"{label} - showing {len(group)} of {total} {_noun(group)} ({note}):")
+        lines.append(f"{label} - showing {len(group)} of {total} {units} ({note}):")
         lines += [_item_line(i, valid_ids) for i in group]
     totals = pair.get("passage_totals") or {}
-    for kind, phrase in _PASSAGE_SECTIONS:
+    for kind, phrase, hedge in _PASSAGE_SECTIONS:
         group = [p for p in passages if p.get("kind") == kind]
         total = totals.get(kind, len(group))
         if not group and not total:
             continue                 # no passage layer for this kind: say nothing rather than "none"
-        lines.append(f"{PASSAGES_PREFIX}{_noun(group)} {phrase} (showing {len(group)} of {total}):")
+        lines.append(f"{PASSAGES_PREFIX}{_noun(group)} {phrase} (showing {len(group)} of {total}{hedge}):")
         lines += [_passage_line(p, valid_ids) for p in group]
     return lines
 
@@ -205,7 +233,10 @@ def temporal_block(items: list[dict], pairs: list[dict], passages: Sequence[Mapp
 
 
 def removal_supported_ids(context: str) -> set[str]:
-    """The citation ids that appear under a REMOVED list of the temporal block: a removed item or a removed passage.
+    """The citation ids that appear under a REMOVED list of the temporal block: an item that "no longer appears as a separate
+    risk factor" (:data:`REMOVED_ITEMS_PREFIX`) or a passage whose wording "was not found in the newer filing"
+    (:data:`PASSAGES_REMOVED_PHRASE`). The lists of NEW items and ADDED passages (whose wording was not found in the OLDER filing)
+    are not among them.
 
     A sentence that claims a removal may cite only these (docs/v2/M1B_PLAN.md L.7: a passage that is gone is not "the
     company dropped the risk", and a surviving item is not gone). The ids under the "Not matched" list (older items the text

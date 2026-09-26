@@ -35,7 +35,7 @@
   #drawer pre { white-space:pre-wrap; font:13px/1.55 inherit; background:var(--bg); padding:12px; border-radius:8px; border:1px solid var(--line) }
   #dFresh { margin:8px 0 } #dFresh .hint { margin-top:2px }
   dl.facts { display:grid; grid-template-columns:max-content 1fr; gap:4px 14px; margin:10px 0; font-size:13px } dl.facts dt { color:var(--muted) } dl.facts dd { margin:0; word-break:break-word }
-  .err { color:var(--bad) } footer { max-width:1100px; margin:0 auto; padding:0 20px 40px; color:var(--muted); font-size:12px }
+  .err { color:var(--bad) } footer { max-width:1100px; margin:0 auto; padding:0 20px 40px; color:var(--muted); font-size:12px } footer p { margin:10px 0 0 }
   a { color:var(--accent) }
 </style>
 </head>
@@ -52,7 +52,7 @@
   </section>
   <section class="card">
     <h2>Ask the graph</h2>
-    <textarea id="q" maxlength="500" placeholder="e.g. Which export-control rules affect Nvidia, and which risks did it stop disclosing in its latest 10-K?"></textarea>
+    <textarea id="q" maxlength="500" placeholder="e.g. Which export-control rules affect Nvidia, and which risk factors no longer appear as separate risk factors in its latest 10-K?"></textarea>
     <div class="row">
       <select id="strategy" title="Retrieval strategy">
         <option value="hybrid">hybrid GraphRAG (graph + XBRL + text-checked risk changes + vector search)</option>
@@ -79,6 +79,7 @@
 </aside>
 <footer>
   Live questions cost real money (<span id="costNote">one or two model calls each</span>), so they are rate-limited per address and capped per day; benchmark questions are served from a saved evaluation run. Financial figures come from XBRL facts, not from model parsing. Each answer is checked so that every cited id was retrieved and every number matches the retrieved context; those checks do not prove that a sentence is supported by the passage it cites, so read the source. Source code and methodology: <a href="https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag">GitHub</a>.
+  <p id="reliability"><b>How reliable are change claims?</b> Statements about what changed between two annual filings come from an automatic text comparison, and each kind is worded only as strongly as it held up when two people checked a small held-out sample by hand (the samples are small, so read the counts as rough guides). <b>A risk factor labelled &ldquo;no longer appears as a separate risk factor&rdquo;:</b> 4 of 4 checked cases were gone as a standalone risk factor, but 2 of the 4 had been folded into another risk factor rather than dropped, so it does not mean the company stopped disclosing the risk. <b>&ldquo;Not matched&rdquo;:</b> the text check could not settle these older risk factors, so they are never shown as removed. <b>&ldquo;No matching risk factor found in the earlier filing&rdquo;:</b> only 6 of 12 checked cases were really new; the other 6 were already disclosed earlier, for example split out of an older risk factor. <b>A sentence whose &ldquo;wording was not found&rdquo; in the other filing:</b> about 1 in 6 sentences flagged as missing from the newer filing was still stated in different words (sentences flagged as new did better, about 1 in 12).</p>
 </footer>
 <script>
 /* ===== Pure helpers: no DOM access, unit-tested by tests/ui/*.test.mjs (node --test). Keep them first. ===== */
@@ -119,7 +120,7 @@ const REASONS = {
   invalid_citation: "a cited id was not in the retrieved context", no_citation: "no citation",
   ungrounded_number: "a number not found in the retrieved context (or stated only in your question)",
   pseudo_citation: "bracketed text that is not a citation",
-  unsupported_removal_claim: "a removal claim the removed lists do not support",
+  unsupported_removal_claim: "a removal claim that the retrieved \"no longer appears\" lists do not support",
   draft_error: "the draft model failed",
 };
 const reasonText = (r) => REASONS[r] || String(r).replace(/_/g, " ");
@@ -186,15 +187,15 @@ function checksSummary(ev) {
     else if (c.numbers_checked > 0) badges.push({ text: "numbers matched the retrieved context", cls: "ok" });
     else badges.push({ text: "no figures to check", cls: "" });
   }
-  if (c && c.unsupported_removal_claim === true) badges.push({ text: "claims a removal the removed lists do not support", cls: "warn" });
+  if (c && c.unsupported_removal_claim === true) badges.push({ text: "claims a removal that the \"no longer appears\" lists do not support", cls: "warn" });
   if (unmatched.length) warnings.push(`Numbers not found in the retrieved context: ${unmatched.join(", ")}`);
   if (echoed.length) warnings.push(`A figure taken from your question, not verified: ${echoed.join(", ")}`);
   if (c && list(c.pseudo_citations).length) warnings.push(`Bracketed text that is not a citation and cannot be verified: ${list(c.pseudo_citations).join(", ")}`);
   if (c && c.unsupported_removal_claim === true) {
     const sentences = list(c.unsupported_removal_sentences);
-    warnings.push(`A sentence claims a removal that the removed lists of the retrieved context do not support${sentences.length ? ": " + sentences.join(" / ") : ""}`);
+    warnings.push(`A sentence claims a removal that the "no longer appears" lists of the retrieved context do not support${sentences.length ? ": " + sentences.join(" / ") : ""}`);
   }
-  const hint = "These checks confirm that each cited id was retrieved and that numbers match the retrieved context (a figure only your question states is never counted as a match); they do not prove that a sentence is supported by the passage it cites. Only amounts with a currency ($, €, USD, EUR, NT$, TWD) and percentages are checked: a bare number such as \"190 billion\" is not. Click a chip to read the source.";
+  const hint = "These checks confirm that each cited id was retrieved and that numbers match the retrieved context (a figure only your question states is never counted as a match); they do not prove that a sentence is supported by the passage it cites. Only amounts with a currency ($, €, USD, EUR, NT$, TWD) and percentages are checked: a bare number such as \"190 billion\" is not. Statements about what changed between two filings come from an automatic text comparison and are worded with hedges: see \"How reliable are change claims?\" at the bottom of the page. Click a chip to read the source.";
   return { badges, warnings, hint };
 }
 
@@ -245,9 +246,11 @@ function statsHtml(s) {
   const g = (s && s.graph) || {}, n = g.nodes || {}, today = (s && s.ledger && s.ledger.today) || {}, lim = (s && s.limits) || {};
   const item = (v, label) => `<span><b>${esc(formatNumber(v))}</b> ${label}</span>`;
   const parts = [item(n.Company || 0, "companies"), item(n.Filing || 0, "filings"), item(n.EvidenceSpan || 0, "evidence spans"), item(n.RiskFactor || 0, "risk disclosures")];
-  if (typeof g.removed_risk_items === "number") parts.push(item(g.removed_risk_items, "text-verified removed risk items"));
+  // The API keys keep their names (removed_risk_items / removed_paragraphs), but the copy claims only what the text check found:
+  // held-out gold showed such an item is gone as a STANDALONE risk factor, and some had been merged into another one.
+  if (typeof g.removed_risk_items === "number") parts.push(item(g.removed_risk_items, "risk factors that no longer stand alone (text check)"));
   // Paragraph units (20-F filers, filings with no risk-factor headlines) are not risk factors: counted and named apart.
-  if (typeof g.removed_paragraphs === "number" && g.removed_paragraphs > 0) parts.push(item(g.removed_paragraphs, "text-verified removed paragraphs"));
+  if (typeof g.removed_paragraphs === "number" && g.removed_paragraphs > 0) parts.push(item(g.removed_paragraphs, "paragraphs that no longer stand alone (text check)"));
   parts.push(item(n.ExportControl || 0, "BIS rules"));
   parts.push(`<span>live questions today <b>${esc(today.paid == null ? "?" : today.paid)}</b> / ${esc(lim.max_queries_per_day == null ? "?" : lim.max_queries_per_day)}</span>`);
   if (s && s.paused) parts.push(`<span class="badge warn">live questions paused</span>`);

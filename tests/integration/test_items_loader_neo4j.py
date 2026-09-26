@@ -430,7 +430,7 @@ class TestRealNvidiaAndIntel:
         blocks, context, valid = build_blocks({"anchors": {}, "edges": [], "metrics": [], "risks": [], "chunks": [], "temporal": items_,
                                                "temporal_pairs": pairs, "temporal_passages": passages})
         block = blocks.temporal_block
-        for needle in ("that no longer appear", "Commercial arrangements"):
+        for needle in ("whose wording was not found in the newer filing", "Commercial arrangements"):   # heading re-worded in the M1b hedging pass
             assert needle in block, f"{needle!r} missing from the block: {block[:6000]!r}"
         # The block quotes a passage only up to PASSAGE_QUOTE_CHARS (300) while the stored passages are ~1,000 characters: the NAC and
         # Hong Kong sentences sit in the MIDDLE of two such passages, so their TEXT is clipped out of the rendered block (reported to

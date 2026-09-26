@@ -199,16 +199,35 @@ def test_no_riskitem_data_means_the_block_is_none():
     assert temporal_block([], []) == "(none)"
 
 
+REMOVED_LABEL = "No longer appears as a separate risk factor"
+NEW_LABEL = "No matching risk factor found in the earlier filing"
+REMOVED_NOTE = ("the text check found no matching text in the newer filing; parts of their content may be covered inside "
+                "other risk factors")
+
+
 def test_a_comparison_with_no_changes_says_so_instead_of_none():
     block = temporal_block([], [pair()])
     assert block.splitlines()[0].startswith("Nvidia: 10-K filed 2025-02-26 (accession 0001045810-25-000023) compared with")
-    assert "Removed - none found" in block and "Added - none found" in block and "Reworded - none found" in block
+    assert f"{REMOVED_LABEL} - none found." in block and f"{NEW_LABEL} - none found." in block
+    assert "Reworded - none found" in block
     assert block != "(none)"
 
 
 def test_the_true_totals_are_stated_beside_the_capped_lists():
     block = temporal_block([item("removed", "A", [f"{OLD}:I.1A:0001"])], [pair(totals={"removed": 21, "new": 0, "reworded": 0})])
-    assert "Removed - showing 1 of 21" in block
+    assert f"{REMOVED_LABEL} - showing 1 of 21" in block
+
+
+def test_the_removed_and_new_headings_carry_the_hedge_and_never_the_bare_verdict_words():
+    """Held-out gold (M1b): an older item the pipeline calls removed is gone as a STANDALONE risk factor in 4 of 4 cases but 2
+    of the 4 were absorbed into another risk factor; a newer item called new is new in only 6 of 12 (the rest are restructured
+    older text). The headings are written by hand from that evidence (see the module docstring of context_layout)."""
+    block = temporal_block([item("removed", "R", [f"{OLD}:I.1A:0001"]), item("new", "N", newer=[f"{NEW}:I.1A:0003"])],
+                           [pair(totals={"removed": 1, "new": 1, "reworded": 0})])
+    assert (f"{REMOVED_LABEL} - showing 1 of 1 risk factors ({REMOVED_NOTE}):") in block.splitlines()
+    assert (f"{NEW_LABEL} - showing 1 of 1 risk factors (new, or a restructured older risk factor):") in block.splitlines()
+    for stale in ("Removed -", "Added -", "text verified absent", "new in the later filing"):
+        assert stale not in block, stale
 
 
 def test_chunk_ids_of_shown_items_join_the_valid_ids_and_only_three_are_printed_per_side():
@@ -267,9 +286,10 @@ def test_the_unsettled_section_comes_after_removed_and_before_added_then_reworde
     items = [item("removed", "R", [f"{OLD}:I.1A:0001"]), item("unsettled", "U", [f"{OLD}:I.1A:0002"]),
              item("new", "N", newer=[f"{NEW}:I.1A:0003"]), item("reworded", "W", [f"{OLD}:I.1A:0004"], [f"{NEW}:I.1A:0004"])]
     block = temporal_block(items, [pair(totals={"removed": 1, "unsettled": 1, "new": 1, "reworded": 1})])
-    marks = ["Removed - showing 1 of 1", "Not matched (", "Added - showing 1 of 1", "Reworded - showing 1 of 1"]
+    marks = [f"{REMOVED_LABEL} - showing 1 of 1", "Not matched (", f"{NEW_LABEL} - showing 1 of 1", "Reworded - showing 1 of 1"]
     assert [block.index(m) for m in marks] == sorted(block.index(m) for m in marks)
-    assert block.index('- "R"') < block.index("Not matched (") < block.index('- "U"') < block.index("Added - ") < block.index('- "N"')
+    assert (block.index('- "R"') < block.index("Not matched (") < block.index('- "U"') < block.index(NEW_LABEL)
+            < block.index('- "N"'))
 
 
 def test_the_unsettled_heading_never_says_removed_dropped_or_absent_as_a_fact():
@@ -296,7 +316,7 @@ def test_the_totals_are_stated_beside_the_capped_unsettled_list():
 def test_no_unsettled_items_means_no_section_at_all_not_a_none_found_line():
     for totals in ({"removed": 0, "unsettled": 0, "new": 0, "reworded": 0}, {"removed": 0, "new": 0, "reworded": 0}):   # or a payload without the key
         block = temporal_block([], [pair(totals=totals)])
-        assert "Not matched" not in block and "Removed - none found" in block
+        assert "Not matched" not in block and f"{REMOVED_LABEL} - none found." in block
 
 
 def test_a_headline_less_unsettled_paragraph_is_labelled_by_its_first_sentence():

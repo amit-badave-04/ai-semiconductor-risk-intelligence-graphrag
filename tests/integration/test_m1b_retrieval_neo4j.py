@@ -406,8 +406,10 @@ class TestUnsettledItems:
         at = lines.index(UNSETTLED_HEADING)
         assert lines[at + 1:at + 3] == [f'- "Licensing exposure of a customer channel" [{N25}:I.1A:0010]',
                                         f'- "(untitled paragraph, section I.1A)" [{N25}:I.1A:0012]']
-        assert next(i for i, ln in enumerate(lines) if ln.startswith("Removed - showing")) < at
-        assert at < next(i for i, ln in enumerate(lines) if ln.startswith("Added - showing"))
+        # (headings re-worded in the M1b hedging pass: "Removed - showing" -> "No longer appears as a separate ...",
+        #  "Added - showing" -> "No matching ... found in the earlier filing")
+        assert next(i for i, ln in enumerate(lines) if ln.startswith("No longer appears as a separate ")) < at
+        assert at < next(i for i, ln in enumerate(lines) if ln.startswith("No matching ") and " found in the earlier filing - showing" in ln)
         assert {f"{N25}:I.1A:0010", f"{N25}:I.1A:0012"} <= valid
         supported = removal_supported_ids(context)
         assert {f"{N25}:I.1A:0001", f"{N25}:I.1A:0002"} <= supported
@@ -458,8 +460,9 @@ class TestPassagesQuery:
         blocks, context, valid = build_blocks({"anchors": {}, "edges": [], "metrics": [], "risks": [], "chunks": [],
                                                "temporal": items, "temporal_pairs": pairs, "temporal_passages": passages})
         block = blocks.temporal_block
-        assert "Passages of surviving risk factors that no longer appear (showing 3 of 3):" in block
-        assert "Passages of surviving risk factors that are new (showing 1 of 1):" in block
+        hedge = "a differently worded version of the same statement may exist"
+        assert f"Passages of surviving risk factors whose wording was not found in the newer filing (showing 3 of 3; {hedge}):" in block
+        assert f"Passages of surviving risk factors whose wording was not found in the older filing (showing 1 of 1; {hedge}):" in block
         assert "Passages of surviving risk factors that were reworded (showing 1 of 1):" in block
         assert (f'- in "Old wording of customer concentration": "The Notified Advanced Computing, or NAC, process has not '
                 f'resulted in approvals for exports to China." [{N25}:I.1A:0210] [{N25}:I.1A:0211]') in block
@@ -493,7 +496,8 @@ class TestParagraphLead:
                               "temporal_pairs": pairs})[0].temporal_block
         assert f'- "We depend on TSMC for wafers." [{N26}:I.1A:0008]' in block
         assert f'- "(untitled paragraph, section I.1A)" [{N26}:I.1A:0009]' in block
-        assert "Added - showing 3 of 3 risk factors and paragraphs (new in the later filing):" in block
+        assert ("No matching risk factor or paragraph found in the earlier filing - showing 3 of 3 risk factors and paragraphs "
+                "(new, or a restructured older risk factor or paragraph):") in block
 
 
 # --------------------------------------------------------------------------- period-aware metrics

@@ -1,7 +1,11 @@
 """``graph_stats`` (the public /api/stats graph block): counts what the page says it counts, no edge-count mislabelled.
 
 Changed by the review (M3): a paragraph unit (a 20-F filer's, or a filing with no risk-factor headlines) is not a risk
-factor, so ``removed_risk_items`` counts removed HEADLINE units and ``removed_paragraphs`` the removed paragraph units."""
+factor, so ``removed_risk_items`` counts removed HEADLINE units and ``removed_paragraphs`` the removed paragraph units.
+
+Changed by the M1b hedging pass: the KEYS stay (they are the API contract) but what they count is documented as "the text check
+found no matching text in a newer filing", not "verified absent": held-out gold found such an item gone as a standalone risk
+factor in 4 of 4 cases, with 2 of the 4 merged into another risk factor. The page words them "no longer stand alone (text check)"."""
 
 from semigraph.serve import main
 
@@ -81,3 +85,8 @@ def test_service_nodes_stay_out_of_the_public_counts(monkeypatch):
     fake = FakeGraph({"Company": 26})
     stats_with(monkeypatch, fake)
     assert any("NOT label STARTS WITH 'Svc'" in q for q in fake.queries)
+
+
+def test_the_stats_documentation_does_not_call_the_removed_count_verified():
+    doc = " ".join((main.graph_stats.__doc__ or "").split())
+    assert "verified absent" not in doc and "no matching text" in doc and "no longer stand alone" in doc
