@@ -360,6 +360,21 @@ def test_score_deployed_counts_routes_escalations_and_judges_the_open_questions(
     assert s["routes"] == {"cheap": 2, "strong": 1} and s["escalated"] == 1
     assert s["mechanical"] == {"passed": 2, "of": 2} and s["judged"]["open_correct"] == 1
     assert s["total_cost_usd"] == pytest.approx(0.061) and s["avg_cost_usd"] == pytest.approx(0.061 / 3)
+    assert s["checks_failed"] == {} and s["rows_without_checks"] == ["N2", "D1", "T1"]     # no checks recorded is not "clean"
+
+
+def test_a_deployed_row_carries_the_services_checks_and_the_score_lists_the_failing_ones(tmp_path, monkeypatch):
+    clean = {"citations_retrieved": True, "numbers_grounded": True, "unmatched_numbers": [], "has_citation": True}
+    bad = {**clean, "numbers_grounded": False, "unmatched_numbers": ["$5"]}
+    stream, _ = _fake_answer_stream({
+        "Revenue FY26?": [{**_done("It was $215.9 billion.", []), "checks": clean}],
+        "Dropped risks?": [{**_done("Yes [%s]" % VALID[0], [VALID[0]]), "checks": bad}]})
+    monkeypatch.setattr(bo, "answer_stream", stream)
+    bench = [b for b in BENCH if b["id"] in ("N2", "T1")]
+    rows = bo.run_deployed(bench, None, None, tmp_path / "d.jsonl", model="c/m", escalation_model="s/m", max_usd=None)
+    assert rows[0]["checks"] == clean and rows[1]["checks"] == bad
+    s = bo.score_deployed(rows, BENCH, VoteJudge([True]), votes=3)
+    assert s["checks_failed"] == {"T1": ["ungrounded_number"]} and s["rows_without_checks"] == []
 
 
 # --- saved (pre-M1b) contexts stay readable, but old dropped-lineage text is never relabelled "text-verified" ---

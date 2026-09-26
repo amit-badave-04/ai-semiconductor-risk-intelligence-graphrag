@@ -21,7 +21,7 @@ from ..llm import TRANSIENT
 from ..llm_shape import completion_params
 from ..retrieval.answerer import (ANSWER_PROMPT, CITE_RE, CONTEXT_HEADERS, LEGACY_CONTEXT_HEADERS, NONE_BLOCK,
                                   ContextBlocks, answer_stream, render_prompt, sources_from_context, usage_cost)
-from ..retrieval.verify import verify_answer
+from ..retrieval.verify import failed_check_names, verify_answer
 from .expect import check_expectation
 from .runner import (JUDGE_MAX_TOKENS, JUDGE_PROMPT, NUM_PAT, REFUSAL_PAT, AnswerBudgetExceeded, Correct,  # noqa: F401
                      needs_judge, parse_numbers, render_judge_prompt)
@@ -388,7 +388,13 @@ def _deployed_row(q: dict, events: list[dict], latency: float) -> dict:
             "valid_ids": sorted(set(cited) - set(terminal["hallucinated"])), "finish_reason": terminal.get("finish_reason"),
             "usage": terminal.get("usage"), "cost_usd": terminal.get("cost_usd") or 0.0, "routed": terminal.get("routed"),
             "escalated": bool(terminal.get("escalated")), "answered_by": terminal.get("answered_by"),
-            "escalation_reasons": terminal.get("escalation_reasons")}
+            "escalation_reasons": terminal.get("escalation_reasons"), "checks": terminal.get("checks")}
+
+
+def failed_checks_of(rows: list[dict]) -> dict[str, list[str]]:
+    """Question id -> the names of the answer checks the SERVICE reported as failed for that deployed row (retrieved
+    citations, grounded numbers, removal claims, ...). Rows without checks are absent here: see ``rows_without_checks``."""
+    return {r["id"]: names for r in rows if (names := failed_check_names(r.get("checks")))}
 
 
 def score_deployed(rows: list[dict], benchmark: list[dict], judge, *, votes: int = 3, judge_model: str | None = None,
@@ -406,5 +412,7 @@ def score_deployed(rows: list[dict], benchmark: list[dict], judge, *, votes: int
     score.update({"routes": routes, "escalated": sum(1 for r in rows if r.get("escalated")),
                   "escalation_rate": (sum(1 for r in rows if r.get("escalated")) / len(rows)) if rows else 0.0,
                   "escalated_ids": [r["id"] for r in rows if r.get("escalated")],
+                  "checks_failed": failed_checks_of(rows),
+                  "rows_without_checks": [r["id"] for r in rows if not r.get("checks") and not r.get("error")],
                   "total_cost_usd": sum(costs), "avg_cost_usd": sum(costs) / len(rows) if rows else 0.0})
     return score

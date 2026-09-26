@@ -462,7 +462,8 @@ def eval_deployed_cmd(
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     j = report["judged"]
     typer.echo(json.dumps({k: report[k] for k in ("mechanical", "citation_validity", "routes", "escalated", "escalated_ids",
-                                                   "avg_cost_usd", "total_cost_usd", "avg_latency_s", "errors")}, indent=2, default=str))
+                                                   "checks_failed", "rows_without_checks", "avg_cost_usd", "total_cost_usd",
+                                                   "avg_latency_s", "errors")}, indent=2, default=str))
     typer.echo(f"open questions correct: {j['open_correct']}/{j['open_of']}  votes {j['votes']}")
     typer.echo(f"report -> {out}")
 

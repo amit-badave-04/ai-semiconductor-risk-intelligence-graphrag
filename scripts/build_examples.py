@@ -54,18 +54,30 @@ def refused_examples(doc: dict) -> list[tuple[str, str]]:
     return [(e["id"], reason) for e in doc["examples"] if (reason := refusal_reason(e))]
 
 
+def deployed_checks(run: dict) -> dict:
+    """The ``checks`` the service reported on the ``done`` event of a deployed-path run (``semigraph eval-deployed``): the
+    very object the seeding rule reads, so nothing is recomputed. A run without them cannot be seeded."""
+    checks = run.get("checks")
+    if not checks:
+        raise ValueError("the deployed run has no checks (re-run `semigraph eval-deployed` with the current code)")
+    return dict(checks)
+
+
 def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *, source: str,
-                   strict: bool = False) -> dict:
+                   strict: bool = False, deployed: bool = False) -> dict:
     """One example per benchmark question, in benchmark order, from its hybrid run, each with its computed ``checks``.
+
+    With ``deployed`` the runs are ``eval-deployed`` rows (router, cheap draft, verifier, escalation) and carry the
+    service's own ``checks`` instead of a context to recompute them from.
 
     An example whose checks fail is written all the same (seeding refuses it; see :func:`refused_examples`); with
     ``strict`` the build raises instead, listing every one."""
     if not SNAPSHOT_RE.match(snapshot_id):
         raise ValueError(f"not a snapshot id: {snapshot_id!r} (expected snap-YYYYMMDD-<10 hex>)")
-    hybrid = {r["id"]: r for r in runs if r["system"] == "hybrid"}
+    hybrid = {r["id"]: r for r in runs if deployed or r["system"] == "hybrid"}
     missing = [b["id"] for b in benchmark if b["id"] not in hybrid]
     if missing:
-        raise ValueError(f"no hybrid run for benchmark question(s): {', '.join(missing)}")
+        raise ValueError(f"no {'deployed' if deployed else 'hybrid'} run for benchmark question(s): {', '.join(missing)}")
     examples = []
     for b in benchmark:
         r = hybrid[b["id"]]
@@ -74,7 +86,7 @@ def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *,
         if r["hallucinated"]:
             raise ValueError(f"{b['id']}: hallucinated citations {r['hallucinated']}")
         try:
-            checks = compute_checks(r, b["q"])
+            checks = deployed_checks(r) if deployed else compute_checks(r, b["q"])
         except ValueError as e:
             raise ValueError(f"{b['id']}: {e}") from e
         examples.append({"id": b["id"], "type": b["type"], "question": b["q"], "answer": r["answer"],
@@ -91,6 +103,8 @@ def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--runs", type=Path, required=True, help="benchmark runs jsonl (from `semigraph eval --runs-file`)")
+    ap.add_argument("--deployed", action="store_true",
+                    help="--runs is an `eval-deployed` file: rows carry the service's own checks (no context needed)")
     ap.add_argument("--snapshot", required=True, help="snapshot id of the graph those runs were answered against")
     ap.add_argument("--source", default=None, help="provenance line stored in the file")
     ap.add_argument("--out", type=Path, default=EXAMPLES_PATH)
@@ -99,9 +113,11 @@ def main() -> int:
     args = ap.parse_args()
     runs = [json.loads(line) for line in args.runs.read_text(encoding="utf-8").splitlines() if line.strip()]
     benchmark = json.loads(BENCHMARK_PATH.read_text(encoding="utf-8"))
-    source = args.source or f"benchmark run {args.runs.name}, hybrid system, Claude Sonnet 5"
+    default_source = (f"deployed-path benchmark run {args.runs.name} (router, cheap draft, verifier, escalation)" if args.deployed
+                      else f"benchmark run {args.runs.name}, hybrid system, Claude Sonnet 5")
+    source = args.source or default_source
     try:
-        doc = build_examples(runs, benchmark, args.snapshot, source=source, strict=args.strict)
+        doc = build_examples(runs, benchmark, args.snapshot, source=source, strict=args.strict, deployed=args.deployed)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

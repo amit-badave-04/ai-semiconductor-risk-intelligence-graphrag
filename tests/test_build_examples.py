@@ -166,3 +166,46 @@ def test_an_empty_answer_is_refused():
 def test_snapshot_must_look_like_a_real_snapshot_id():
     with pytest.raises(ValueError, match="snapshot"):
         be.build_examples(runs(), BENCH, "latest", source="s")
+
+
+# --- examples from a DEPLOYED-path run (`semigraph eval-deployed`): the rows carry the service's own ``checks`` ---
+
+CLEAN = {"citations_retrieved": True, "numbers_grounded": True, "numbers_checked": 1, "unmatched_numbers": [],
+         "echoed_numbers": [], "pseudo_citations": [], "has_citation": True, "is_refusal": False,
+         "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+REFUSAL = {**CLEAN, "numbers_checked": 0, "has_citation": False, "is_refusal": True}
+
+
+def deployed(id_, answer=OK_ANSWER, cited=(REV,), checks=CLEAN, **over):
+    return {"id": id_, "type": "x", "q": "q", "answer": answer, "cited": list(cited), "hallucinated": [],
+            "checks": checks, "routed": "cheap", "escalated": False, **over}
+
+
+def deployed_runs(**over):
+    return [deployed("N1", **over), deployed("U1", answer="The context does not contain Samsung's revenue.", cited=(),
+                                              checks=REFUSAL)]
+
+
+def test_deployed_rows_become_examples_with_the_checks_the_service_reported():
+    doc = be.build_examples(deployed_runs(), BENCH, SNAP, source="deployed run", deployed=True)
+    assert [e["id"] for e in doc["examples"]] == ["N1", "U1"] and doc["examples"][0]["checks"] == CLEAN
+    assert be.refused_examples(doc) == [] and doc["template_fingerprint"] == template_fingerprint()
+
+
+def test_deployed_examples_are_exactly_what_the_service_accepts_when_seeding(monkeypatch):
+    monkeypatch.setattr(store, "put_answer", lambda driver, **kw: None)
+    doc = be.build_examples(deployed_runs(), BENCH, SNAP, source="s", deployed=True)
+    assert store.seed_examples(object(), doc["examples"], SNAP).seeded_ids == ("N1", "U1")
+
+
+def test_a_deployed_row_without_checks_cannot_become_an_example():
+    with pytest.raises(ValueError, match="no checks"):
+        be.build_examples([deployed("N1", checks=None), deployed("U1", checks=REFUSAL)], BENCH, SNAP, source="s", deployed=True)
+
+
+def test_a_deployed_row_that_failed_its_checks_is_written_but_listed_as_refused():
+    bad = {**CLEAN, "numbers_grounded": False, "unmatched_numbers": ["$190 billion"]}
+    doc = be.build_examples(deployed_runs(checks=bad), BENCH, SNAP, source="s", deployed=True)
+    assert [i for i, _ in be.refused_examples(doc)] == ["N1"]
+    with pytest.raises(ValueError, match="N1"):
+        be.build_examples(deployed_runs(checks=bad), BENCH, SNAP, source="s", deployed=True, strict=True)
