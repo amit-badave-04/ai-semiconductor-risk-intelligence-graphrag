@@ -1,0 +1,77 @@
+"""Deterministic routing: questions about how disclosures CHANGED go straight to the strong model.
+
+Evidence (docs/v2 bake-off): every cheaper model failed the 'evolved across annual reports' question that
+Sonnet answered, while matching Sonnet on the numeric, dependency, regulatory and risk questions.
+"""
+
+import json
+from pathlib import Path
+
+import pytest
+
+import semigraph.retrieval.answerer as answerer_mod
+from semigraph.retrieval.answerer import answer_stream
+from semigraph.retrieval.router import needs_strong_model
+
+BENCH = json.loads((Path(__file__).resolve().parents[1] / "src/semigraph/artifacts/benchmark.json").read_text(encoding="utf-8"))
+
+
+def test_every_temporal_benchmark_question_is_routed_to_the_strong_model():
+    temporal = [b for b in BENCH if b["type"] == "temporal"]
+    assert len(temporal) == 3
+    assert all(needs_strong_model(b["q"]) for b in temporal), [b["id"] for b in temporal if not needs_strong_model(b["q"])]
+
+
+def test_no_other_benchmark_question_is_routed_to_the_strong_model():
+    over_routed = [b["id"] for b in BENCH if b["type"] != "temporal" and needs_strong_model(b["q"])]
+    assert over_routed == []
+
+
+@pytest.mark.parametrize("q", [
+    "How has Nvidia's risk profile changed over time?",
+    "Which risks did Intel stop disclosing after 2024?",
+    "What is new in AMD's latest risk factors compared to the prior year?",
+    "Show the trend in Broadcom's export-control disclosures.",
+    "Were any Micron risks removed from the latest 10-K?",
+])
+def test_other_phrasings_of_change_over_time_are_routed_to_the_strong_model(q):
+    assert needs_strong_model(q)
+
+
+@pytest.mark.parametrize("q", ["What is Nvidia's revenue?", "Who manufactures AMD's chips?", "Which BIS rules apply to Nvidia?", ""])
+def test_ordinary_questions_are_not(q):
+    assert not needs_strong_model(q)
+
+
+# --- wiring into answer_stream ---
+
+CID = "0001045810-24-000029:I.1:0001"
+RETRIEVAL = {"anchors": {"Nvidia": 1045810}, "edges": [], "metrics": [], "risks": [], "temporal": [],
+             "chunks": [{"chunk_id": CID, "score": 0.9, "text": "HBM text", "source_url": "u"}]}
+
+
+class Stream:
+    def __init__(self, parts, model):
+        self.parts, self.model, self.usage, self.finish_reason, self.iterated = parts, model, {"prompt_tokens": 100, "completion_tokens": 10}, "stop", False
+
+    def __iter__(self):
+        self.iterated = True
+        yield from self.parts
+
+
+def test_a_temporal_question_skips_the_cheap_draft_and_streams_the_strong_model_live(monkeypatch):
+    monkeypatch.setattr(answerer_mod, "hybrid_retrieve", lambda *a, **kw: RETRIEVAL)
+    cheap, strong = Stream([f"draft [{CID}]"], "cheap/m"), Stream(["Risks ", f"evolved [{CID}]."], "strong/m")
+    events = list(answer_stream("How has Nvidia's risk profile evolved?", None, None, llm_stream=lambda p: cheap,
+                                escalation_model="strong/m", escalation_stream=lambda p: strong))
+    assert [e["event"] for e in events] == ["retrieval", "delta", "delta", "done"] and not cheap.iterated
+    done = events[-1]
+    assert done["routed"] == "strong" and done["escalated"] is False and done["answered_by"] == "strong/m"
+
+
+def test_an_ordinary_question_still_takes_the_cheap_path(monkeypatch):
+    monkeypatch.setattr(answerer_mod, "hybrid_retrieve", lambda *a, **kw: RETRIEVAL)
+    cheap, strong = Stream([f"HBM [{CID}]."], "cheap/m"), Stream(["x"], "strong/m")
+    events = list(answer_stream("Who supplies HBM?", None, None, llm_stream=lambda p: cheap,
+                                escalation_model="strong/m", escalation_stream=lambda p: strong))
+    assert not strong.iterated and events[-1]["answered_by"] == "cheap/m" and events[-1]["routed"] == "cheap"

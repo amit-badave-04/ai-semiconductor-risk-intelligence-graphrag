@@ -33,6 +33,7 @@ from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
 from ..llm_shape import completion_params
 from .retriever import hybrid_retrieve, vector_retrieve
+from .router import needs_strong_model
 from .verify import verify_answer
 
 logger = logging.getLogger("semigraph.answerer")
@@ -328,7 +329,7 @@ def _drain(stream) -> tuple[str, str | None]:
     return "".join(parts), None
 
 
-def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_model, stream_kwargs, **ctx):
+def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_model, stream_kwargs, context, **ctx):
     """Cheap draft -> deterministic verification -> release it, or escalate to the strong model.
 
     The draft is buffered, so a draft the verifier rejects is never shown. A clean draft is released in one
@@ -338,10 +339,10 @@ def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_mo
     text, error = _drain(draft)
     draft_model = getattr(draft, "model", None)
     reasons = ["draft_error"] if error else verify_answer(
-        text, set(CITE_RE.findall(text)), ctx["valid_ids"], getattr(draft, "finish_reason", None))
+        text, set(CITE_RE.findall(text)), ctx["valid_ids"], getattr(draft, "finish_reason", None), context=context)
     if not reasons:
         yield {"event": "delta", "text": text}
-        yield _done_event(text, draft, extra={"escalated": False, "answered_by": draft_model}, **ctx)
+        yield _done_event(text, draft, extra={"escalated": False, "answered_by": draft_model, "routed": "cheap"}, **ctx)
         return
     logger.info("draft rejected (%s) - escalating to %s", ",".join(reasons), escalation_model)
     yield {"event": "escalated", "reasons": reasons, "from": draft_model, "to": escalation_model}
@@ -349,7 +350,7 @@ def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_mo
     strong = escalation_stream(prompt) if escalation_stream else TextStream(prompt, model=escalation_model, **strong_kwargs)
     draft_usage = getattr(draft, "usage", None)
     carry = {"usage": draft_usage, "cost_usd": usage_cost(draft_usage, draft_model) if draft_usage else None,
-             "extra": {"escalated": True, "escalation_reasons": reasons,
+             "extra": {"escalated": True, "escalation_reasons": reasons, "routed": "cheap",
                        "answered_by": getattr(strong, "model", None) or escalation_model}}
     yield from _live_events(strong, carry=carry, **ctx)
 
@@ -368,11 +369,12 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
     ``answer``. ``llm_stream`` is injectable: ``callable(prompt) ->
     iterable[str]`` (defaults to :class:`TextStream` with ``stream_kwargs``).
 
-    With ``escalation_model`` set the draft is buffered and verified before anything is shown (see
-    :func:`_draft_then_escalate`): the deltas then arrive after generation, an ``escalated`` event
-    precedes the strong model's live stream when the draft is rejected, and ``done`` additionally
-    carries ``escalated`` / ``answered_by`` (and ``escalation_reasons``). Without it the behaviour is
-    unchanged: the model streams live.
+    With ``escalation_model`` set, questions about change over time (:func:`needs_strong_model`) stream the
+    strong model live (``routed: "strong"``); every other question's draft is buffered and verified before
+    anything is shown (see :func:`_draft_then_escalate`): the deltas then arrive after generation, an
+    ``escalated`` event precedes the strong model's live stream when the draft is rejected, and ``done``
+    additionally carries ``escalated`` / ``answered_by`` / ``routed`` (and ``escalation_reasons``). Without an
+    escalation model the behaviour is unchanged: the model streams live.
     """
     if strategy == "hybrid":
         r = hybrid_retrieve(question, driver, embedder, k_chunks=k_chunks, hops=hops)
@@ -388,9 +390,16 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
                                   risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
     ctx = {"question": question, "strategy": strategy, "valid_ids": valid_ids,
            "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "context_chars": len(full_context)}
+    if escalation_model and needs_strong_model(question):
+        strong = (escalation_stream(prompt) if escalation_stream else
+                  TextStream(prompt, model=escalation_model, **{k: v for k, v in stream_kwargs.items() if k != "model"}))
+        extra = {"escalated": False, "routed": "strong", "answered_by": getattr(strong, "model", None) or escalation_model}
+        yield from _live_events(strong, carry={"extra": extra}, **ctx)
+        return
     if escalation_model:
         yield from _draft_then_escalate(prompt, llm_stream=llm_stream, escalation_stream=escalation_stream,
-                                        escalation_model=escalation_model, stream_kwargs=stream_kwargs, **ctx)
+                                        escalation_model=escalation_model, stream_kwargs=stream_kwargs,
+                                        context=full_context, **ctx)
         return
     stream = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
     yield from _live_events(stream, **ctx)
