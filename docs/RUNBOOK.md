@@ -123,7 +123,7 @@ flyctl ips allocate-v4 --shared -a semigraph; flyctl ips allocate-v6 -a semigrap
 
 ## Updating the graph
 
-1. Refresh and rebuild locally on Neo4j Community (`semigraph ingest`, `freshness`, `extract`,
+1. Refresh and rebuild locally on Neo4j Community (`semigraph ingest`, `freshness`, `extract`, `risk-items`, `align-items`,
    `build-graph --rebuild`, `scripts/verify_graph.py`; see the README), then dump it and prove the dump loads:
    [deploy/neo4j/seed/README.md](../deploy/neo4j/seed/README.md).
 2. Run the benchmark on the new graph into its own runs file and regenerate the example answers

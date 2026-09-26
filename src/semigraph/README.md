@@ -95,7 +95,8 @@ semigraph eval         [--limit N] [--systems hybrid,vector] [--judge-model M] [
 | `extraction.resolution` | canonical-dictionary + fuzzy entity resolution (08, 12) |
 | `graph.client` / `graph.schema` | driver, `run_cypher`, schema DDL application (05) |
 | `graph.loaders` | idempotent MERGE loaders: deterministic layer, evidence spans, knowledge, export controls (06, 09, 12) |
-| `graph.temporal` | bitemporal lineage clustering + closure (pure core + thin appliers), as-of queries (13) |
+| `graph.temporal` | Active/Historical status of extracted risk factors by current filing, as-of queries (pure Cypher appliers) |
+| `graph.alignment`, `graph.passages`, `graph.items`, `graph.item_loader`, `graph.adjudicate` | text-verified change layer: risk items aligned between consecutive annual filings, removed/reworded/added passages, RiskItem/RiskPassage loading (M1b) |
 | `retrieval.retriever` | entity-first `hybrid_retrieve` (graph + XBRL + bitemporal + scoped vector) and `vector_retrieve` baseline — **SEARCH clause everywhere** (10, 14) |
 | `retrieval.answerer` | `build_blocks` + `answer` with citation post-verification and full-context return (11, 14); `answer_stream` / `TextStream` for streamed, usage-accounted answers |
 | `serve` | FastAPI web service (`uvicorn semigraph.serve.main:app`): SSE answers, evidence lookup, Neo4j-persisted rate/daily/kill-switch controls — needs the `serve` extra |

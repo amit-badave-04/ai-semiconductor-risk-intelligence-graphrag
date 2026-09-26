@@ -364,8 +364,12 @@ uv run pytest -q                         # over 1,000 tests, LLM mocked, zero sp
 uv run semigraph ingest --as-of 2026-09-25     # EDGAR + XBRL + ALL BIS rules -> parse -> chunk (append-only ids; no LLM cost)
 uv run semigraph freshness --as-of 2026-09-25  # what EDGAR / the Federal Register have that the lake lacks (0 = up to date)
 uv run semigraph extract --dry-run             # estimate only; then `extract --max-usd 6` (PAID, checkpointed, resumable)
-uv run semigraph build-graph --rebuild --yes   # versioned FULL rebuild (refuses while chunks are unextracted)
-PYTHONPATH=src python scripts/verify_graph.py  # 10 freshness/integrity invariants, read-only
+uv run semigraph risk-items --coverage         # free: detect risk items per annual filing; LOW / SUSPECT filings are 'not compared'
+uv run semigraph risk-items                    # write data/interim/risk_items/*.parquet (+ per-filing quality sidecars)
+uv run semigraph align-items --dry-run         # free: what changed between consecutive annual filings (text-verified); --adjudicate is optional and ~$0.01
+uv run semigraph align-items                   # write data/interim/risk_alignment/*.parquet
+uv run semigraph build-graph --rebuild --yes   # versioned FULL rebuild (refuses while chunks are unextracted or alignment is stale)
+PYTHONPATH=src python scripts/verify_graph.py  # freshness + item-layer invariants, read-only
 uv run semigraph query "Which export-control rules affect Nvidia?"
 # new data snapshot -> new benchmark log (the default eval_runs.jsonl holds v1's runs and would only be resumed):
 uv run semigraph eval --runs-file eval_runs.mysnapshot.jsonl --report-suffix .mysnapshot --max-answer-usd 1.75

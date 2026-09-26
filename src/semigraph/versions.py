@@ -4,8 +4,9 @@ Pure, deterministic, no LLM. Two axes are deliberately kept apart:
 
 - this module decides which filing VERSION (and which of its SECTIONS) is
   current; it is document versioning;
-- ``graph.temporal`` decides whether a risk LINEAGE is Active or Deleted
-  (fact validity).
+- ``graph.temporal`` decides whether a RiskFactor is Active (from the current annual filing) or Historical, and
+  ``graph.items`` / ``graph.alignment`` decide what changed between two annual filings (text-verified risk items and
+  passages); nothing here or there ever infers a "dropped" risk from LLM summaries.
 
 Rules (per company, per annual/quarterly form family):
 

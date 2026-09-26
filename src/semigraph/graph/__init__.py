@@ -1,4 +1,4 @@
-"""Neo4j graph layer: client, schema DDL, loaders, bitemporal closure.
+"""Neo4j graph layer: client, schema DDL, loaders, current-filing status and the text-verified item layer.
 
 ``loaders`` and ``temporal`` pull in pandas (pipeline-only); they are resolved
 lazily so the web service image — which only needs ``client`` and ``schema`` —

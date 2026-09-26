@@ -1,7 +1,7 @@
 """Filing-version (supersession) rules — pure, deterministic, no LLM.
 
 Two axes are kept apart on purpose: this module decides which FILING VERSION is
-current; risk-lineage validity (Active/Deleted) stays in temporal.py.
+current; whether a risk factor is Active or Historical stays in temporal.py.
 """
 
 import random

@@ -60,7 +60,7 @@ reasoning in the messages).
 
 - **Graph (Neo4j Desktop 2026.05, bolt://localhost:7687)**: 13 filers + ecosystem companies, 59 filings,
   ~2,500 EvidenceSpans (1024-dim Qwen3 embeddings), ~8,100 RiskFactors in temporal lineages
-  (495 Deleted with end_dates), 731 XBRL metrics, 13 ExportControl rules, 21 AFFECTED_BY edges.
+  (v1 counted 495 "Deleted" lineages; that layer is retired: most of those were still in the filing, see docs/v2/REVIEW_2026-09-26.md), 731 XBRL metrics, 13 ExportControl rules, 21 AFFECTED_BY edges.
 - **Notebooks 00–14**: every stage proven end-to-end; all run clean. Each ends with an assertion cell.
 - **Artifacts**: `schema.cypher`, `canonical_entities.json` (26 entities), `prompts/` (extractor, critic),
   `benchmark.json` (20 questions), `eval_report.json`, `eval_scores.json`.
