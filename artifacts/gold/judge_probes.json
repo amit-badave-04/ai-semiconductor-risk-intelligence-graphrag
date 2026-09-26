@@ -1,0 +1,255 @@
+{
+  "as_of": "2026-09-24",
+  "description": "Adversarial acceptance probes for the correctness judge (scripts/judge_acceptance.py). expected_correct is a fact about the answer's relation to the grading notes named in notes_from (basis says which). Frozen: edit only with review and re-pin PINNED_PROBES_SHA256 in the script.",
+  "dropped_after_review": [
+    {
+      "id": "real-T5",
+      "observed": "cj-v2 run of 2026-09-27: 1 of 3 votes 'correct'; the two 'incorrect' votes gave contradictory reasons (one says the notes' removed sentence is 'not a newer-vs-older mismatch'), i.e. judge noise on sentence detail.",
+      "reason": "Labelled 'expected correct' because its core finding (no Meta risk factor removed) matches the notes, but on review the answer is not a clean probe: it lists sentence-level 'wording not found' items the notes cannot verify (they cover a 6-item sample) and it words the added passages as 'New language on ...', which the answer prompt forbids. A judge may fairly grade it either way, so it cannot pin the instrument.",
+      "rule": "Dropped by the probe set's owner before any further judge run; the observation is kept here, not hidden."
+    }
+  ],
+  "kind": "judge_probes",
+  "probes": [
+    {
+      "answer": "## Yes — several risk factors present in earlier Nvidia 10-Ks were dropped from the latest one\n\nAccording to the bitemporal risk lineage data, the following risk themes were disclosed in prior Nvidia 10-Ks (mostly FY2023–FY2025 filings) but do **not** appear as active disclosures in the latest 10-K:\n\n- **Data privacy compliance risk**: U.S. federal and state data privacy laws imposing obligations and statutory fines for noncompliance — disclosed 2023-02-24 through 2025-02-26, then dropped [0001045810-26-000021 lineage data].\n- **China export/NAC licensing risk**: The NAC (National Verified Access Control) process not resulting in approvals for exports to China, with onerous D1/D4 country licensing — disclosed only in the 2025-02-26 filing, then dropped.\n- **Litigation/regulatory proceedings risk**: Ongoing legal, administrative and regulatory proceedings, claims, demands and investigations related to shareholder and consumer matters — disclosed 2025-02-26, then dropped.\n- **China/Hong Kong operational transition risk**: Past export controls forcing Nvidia to transition operations out of China and Hong Kong, with risk of future costly transitions — disclosed 2023-02-24 through 2025-02-26, then dropped. This theme is corroborated in the source excerpts, e.g., discussion of transitioning \"certain testing, validation, and supply and distribution operations out of China and Hong Kong\" [0001045810-25-000023:I.1A:0257] and similar 2023 language [0001045810-23-000017:I.1A:0051].\n- **Cross-border data transfer risk**: Legal challenges to cross-border data transfer mechanisms, with no assurance of lawful data transfer — disclosed 2023-02-24 through 2025-02-26, then dropped.\n- **Worldwide licensing/inventory risk**: Additional worldwide licensing requirements potentially causing significant inventory provisions and excess purchase obligations — disclosed only in 2025-02-26, then dropped.\n- **Future IC licensing risk**: Licensing requirements applying to future NVIDIA integrated circuits meeting certain performance thresholds — disclosed 2025-02-26, then dropped.\n- **Internal AI use risk**: Risks, costs, and challenges of leveraging AI internally — disclosed 2025-02-26, then dropped.\n- **Acquisition/macroeconomic risk**: Negative changes in general economic conditions affecting acquisitions — disclosed 2025-02-26, then dropped.\n- **Sensitive data processing risk**: Processing sensitive, confidential, or personal data subject to privacy/security laws potentially damaging reputation — disclosed 2023-02-24 through 2025-02-26, then dropped.\n\n### Context/caveat\n- The latest 10-K/10-Q explicitly states that, aside from newly listed risk factors, \"there have been no material changes from the risk factors previously described\" in the prior Annual Report and Quarterly Report [0001045810-26-000075:II.1A:0000]. This suggests some of the above topics may be consolidated, reworded, or incorporated by reference elsewhere rather than fully eliminated in substance — but per the discrete risk-lineage tracking, these specific factor statements are no longer separately disclosed as of the latest filing.\n- Some risks (e.g., GFN security breach risk) remain consistently disclosed across filings, unchanged [0001045810-26-000021:I.1A:0344] [0001",
+      "basis": "The notes say exactly 1 whole risk factor was removed in FY2024->FY2025 (the indebtedness one) and NO whole risk factor was removed in FY2025->FY2026 (1 new), with the removed statements being sentences inside surviving risk factors, yet the answer lists ten risk factors as dropped from the latest 10-K.",
+      "expected_correct": false,
+      "id": "legacy-T1",
+      "kind": "legacy_wrong",
+      "notes_from": {
+        "temporal_legacy": "T1"
+      },
+      "question": "Did Nvidia stop disclosing any risk factors in its latest 10-K that appeared in earlier 10-Ks?",
+      "source": "git HEAD:src/semigraph/artifacts/examples.json (the v1 served answer), id T1",
+      "valid_ids": [
+        "0001045810-23-000017:I.1A:0051",
+        "0001045810-25-000023:I.1A:0257",
+        "0001045810-26-000021:I.1A:0344",
+        "0001045810-26-000075:II.1A:0000"
+      ]
+    },
+    {
+      "answer": "## Nvidia's Risk Profile Evolution\n\n**Financial scale has grown dramatically alongside risk complexity**, providing context for why risk disclosures have shifted:\n- Revenue grew from $10.9B (FY2020) to $215.9B (FY2026), with net income rising from $4.3B to $120.1B over the same period [Reported Metrics].\n- R&D spend nearly doubled year-over-year most recently ($12.9B → $18.5B), reflecting expanding technical and competitive complexity [Reported Metrics].\n\n**Currently active risks (latest 10-K) emphasize systemic and counterparty exposure:**\n- Supply-chain concentration and embeddedness — Nvidia's ubiquity in customers' supply chains means a product/service compromise could harm many customers at once [0001045810-26-000021:I.1A:0343].\n- Geographic concentration of foundries/suppliers creates \"unknown risk exposure\" [0001045810-26-000021:I.1A:0345].\n- Financial/counterparty risk from long-term capacity purchase obligations and financial guarantees, where customers/partners could fail to meet commitments [0001045810-26-000021:I.1A:0349].\n- Cybersecurity risk specifically tied to acquisitions [0001045810-26-000021:I.1A:0347].\n- Macroeconomic uncertainty (recession, inflation, tariffs) [0001045810-26-000021:I.1A:0341].\n- Litigation, investigations, and regulatory proceedings [0001045810-26-000021:I.1A:0334].\n- GFN (GeForce NOW) security breaches remain a persistent disclosed risk, appearing in both the FY2025 and FY2026 filings with nearly identical language, indicating this is a stable, recurring concern rather than a new one [0001045810-25-000023:I.1A:0247] [0001045810-26-000021:I.1A:0344].\n\n**Export control risk has become more prominent and specific.** Nvidia is now explicitly tied to a cluster of named U.S. export administration actions (UAE favorable treatment, IC designer status extensions, advanced computing license policy revisions, China validated end-user revocations, due-diligence rule amendments) [0001045810-26-000021:I.1:0323] [0001045810-26-000021:I.1:0324] [0001045810-26-000021:I.1A:0353] [0001045810-26-000021:I.1A:0354]. Nvidia is also now disclosed as dependent on OpenAI, a new dependency relationship not previously highlighted [0001045810-26-000075:II.1A:0001].\n\n**Notable risk lineages dropped from the latest annual report** (previously disclosed, no longer active):\n- Data privacy: U.S. federal/state data privacy law obligations and statutory fines (disclosed FY2023–FY2025, now dropped).\n- Cross-border data transfer legal challenges (FY2023–FY2025, dropped).\n- Processing of sensitive/personal data under privacy laws (FY2023–FY2025, dropped).\n- Several granular China export-control risks that appeared only briefly (disclosed and dropped within FY2025 alone): NAC process failures for China exports, additional licensing causing inventory provisions, licensing requirements for future ICs meeting performance thresholds, and forced operational transitions out of China/Hong Kong.\n- Shareholder/regulatory litigation risk language (disclosed and dropped within FY2025).\n- AI-related internal-use risk and M&A-related macroeconomic risk language (disclosed and dropped within FY2025",
+      "basis": "The notes say NO whole risk factor was removed in FY2025->FY2026 (1 new: 'Commercial arrangements expose us to counterparty risks') and that removed statements were sentences inside surviving risk factors, yet the answer lists 'notable risk lineages dropped from the latest annual report' as removed risk factors.",
+      "expected_correct": false,
+      "id": "legacy-T3",
+      "kind": "legacy_wrong",
+      "notes_from": {
+        "temporal_legacy": "T3"
+      },
+      "question": "How has Nvidia's disclosed risk profile evolved across its recent annual reports?",
+      "source": "git HEAD:src/semigraph/artifacts/examples.json (the v1 served answer), id T3",
+      "valid_ids": [
+        "0001045810-25-000023:I.1A:0247",
+        "0001045810-26-000021:I.1:0323",
+        "0001045810-26-000021:I.1:0324",
+        "0001045810-26-000021:I.1A:0334",
+        "0001045810-26-000021:I.1A:0341",
+        "0001045810-26-000021:I.1A:0343",
+        "0001045810-26-000021:I.1A:0344",
+        "0001045810-26-000021:I.1A:0345",
+        "0001045810-26-000021:I.1A:0347",
+        "0001045810-26-000021:I.1A:0349",
+        "0001045810-26-000021:I.1A:0353",
+        "0001045810-26-000021:I.1A:0354",
+        "0001045810-26-000075:II.1A:0001"
+      ]
+    },
+    {
+      "answer": "Based on the automated text comparison between Nvidia's fiscal year ended January 26, 2025 10-K (accession 0001045810-25-000023) and its fiscal year ended January 25, 2026 10-K (accession 0001045810-26-000021), no risk factor was found under the \"no longer appears as a separate risk factor\" heading.\n\n- The text check found no risk factor that no longer appears as a separate risk factor [0001045810-26-000021:I.1A:0349].\n- There is no \"Not matched\" list shown for this comparison, so there are no additional risk factors whose status could not be verified.\n- The comparison did identify at least 1 risk factor with no matching risk factor found in the earlier filing, meaning it is new or a restructured older risk factor: \"Commercial arrangements expose us to counterparty risks.\" [0001045810-26-000021:I.1A:0349]\n- At least 16 risk factors were reworded (still disclosed, wording changed), of which 4 are listed as examples:\n  - \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business.\" [0001045810-26-000021:I.1A:0353] [0001045810-26-000021:I.1A:0354] [0001045810-26-000021:I.1A:0355]\n  - \"Long manufacturing lead times and uncertain supply and capacity availability, combined with a failure to estimate customer demand accurately, has led and could lead to mismatches between supply and demand.\" [0001045810-26-000021:I.1A:0337] [0001045810-26-000021:I.1A:0338]\n  - \"We may not be able to realize the potential benefits of business investments or acquisitions...\" [0001045810-26-000021:I.1A:0347]\n  - \"Business disruptions could harm our operations, lead to a decline in revenue and increase our costs.\" [0001045810-26-000021:I.1A:0345]\n\nIn short: the evidence does not show any risk factor being removed between these two annual reports; instead, the comparison found rewording of existing risk factors and one item with no matching risk factor in the earlier filing, which is new or a restructured older risk factor rather than a confirmed addition.",
+      "basis": "The notes say NO whole risk factor was removed, 1 is new ('Commercial arrangements expose us to counterparty risks.', chunk 0001045810-26-000021:I.1A:0349) and 16 were reworded: the answer says none removed, hedges that same item as 'no matching risk factor found in the earlier filing (new or restructured)' and counts at least 16 reworded.",
+      "expected_correct": true,
+      "id": "real-T8",
+      "kind": "deployed_real",
+      "notes_from": {
+        "benchmark": "T8"
+      },
+      "question": "Did Nvidia remove any risk factors between its FY2025 and FY2026 annual reports?",
+      "source": "data/processed/eval_runs.v2-deployed.jsonl, id T8",
+      "valid_ids": [
+        "0001045810-26-000021:I.1A:0337",
+        "0001045810-26-000021:I.1A:0338",
+        "0001045810-26-000021:I.1A:0345",
+        "0001045810-26-000021:I.1A:0347",
+        "0001045810-26-000021:I.1A:0349",
+        "0001045810-26-000021:I.1A:0353",
+        "0001045810-26-000021:I.1A:0354",
+        "0001045810-26-000021:I.1A:0355"
+      ]
+    },
+    {
+      "answer": "No, AMD did not stop disclosing this risk factor. The automated text comparison between AMD's 10-K filed 2025-02-05 (covering fiscal year ended December 28, 2024) and its 10-K filed 2026-02-04 (covering fiscal year ended December 27, 2025) found that this risk factor was **reworded, not removed**:\n\n- \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property.\" is listed among the risk factors that are still disclosed but whose wording changed, with earlier wording matching the headline in the fiscal year ended December 28, 2024 filing [0000002488-25-000012:I.1A:0015] and later appearing in the fiscal year ended December 27, 2025 filing [0000002488-26-000018:I.1A:0014] [0000002488-26-000018:I.1A:0015].\n\nA reworded risk factor is still disclosed — it was not dropped. The \"No longer appears as a separate risk factor\" list for this comparison shows none found, meaning the text check found no risk factor from the fiscal year ended December 28, 2024 filing that no longer appears as a separate risk factor in the fiscal year ended December 27, 2025 filing.",
+      "basis": "The notes' correct answer is NO, the AMD risk factor is still disclosed with the gold label 'reworded': the answer says reworded, not removed, citing the FY2024 chunk 0000002488-25-000012:I.1A:0015 and the FY2025 chunks, and adds only the check's hedged 'none found' statement, which the notes do not contradict.",
+      "expected_correct": true,
+      "id": "real-T10",
+      "kind": "deployed_real",
+      "notes_from": {
+        "benchmark": "T10"
+      },
+      "question": "Did AMD stop disclosing its risk about \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property.\" between its FY2024 and FY2025 annual reports?",
+      "source": "data/processed/eval_runs.v2-deployed.jsonl, id T10",
+      "valid_ids": [
+        "0000002488-25-000012:I.1A:0015",
+        "0000002488-26-000018:I.1A:0014",
+        "0000002488-26-000018:I.1A:0015"
+      ]
+    },
+    {
+      "answer": "No, Micron did not stop disclosing this risk factor between its fiscal year ended August 29, 2024 and fiscal year ended August 28, 2025 annual reports.\n\n- The automated text comparison classifies this risk factor as \"reworded,\" not removed: the headline \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments\" appears in both filings with identical wording, earlier at [0000723125-24-000027:I.1A:0036] and later at [0000723125-25-000028:I.1A:0038].\n- This risk factor is one of at least 29 risk factors marked as reworded (still disclosed, wording changed) between the two filings, of which 4 are listed as examples, including this one [0000723125-24-000027:I.1A:0036] [0000723125-25-000028:I.1A:0038].\n- The comparison's \"No longer appears as a separate risk factor\" list shows none found, meaning the text check found no risk factor that no longer appears as a separate risk factor between these two filings.\n- One sentence from within this risk factor in the earlier filing — the capital-expenditure estimate for 2025 — had its wording not found in the newer filing: \"We estimate capital expenditures in 2025 for property, plant, and equipment, net of proceeds from government incentives, to be around mid-30% range of revenue for the year\" [0000723125-24-000027:I.1A:0036]. This means a differently worded version of that statement may exist in the newer filing; it does not mean the risk factor or that statement was removed.\n- In the current (fiscal year ended August 28, 2025) filing, the underlying risk is expressed across several related risk-factor statements, including that Micron's cash flows may not be sufficient and it may be unable to access external financing to fund operations, make debt payments, refinance debt, pay dividends, or make capital investments [0000723125-25-000028:I.1A:0038], and that inability to generate sufficient cash flows or financing could materially adversely affect Micron's business, results of operations, or financial condition [0000723125-25-000028:I.1A:0038].\n\nIn short, this risk factor is still disclosed in the fiscal year ended August 28, 2025 10-K, though the automated comparison found it reworded rather than identical, and one supporting sentence's wording was not found in the newer filing (a differently worded version may exist) [0000723125-24-000027:I.1A:0036] [0000723125-25-000028:I.1A:0038].",
+      "basis": "The notes' correct answer is NO, the Micron risk factor is still disclosed with the gold label 'reworded': the answer says exactly that, and its extras (the check's count of at least 29 reworded, one sentence whose 'wording was not found' with 'a differently worded version may exist') are hedged findings the notes neither support nor contradict.",
+      "expected_correct": true,
+      "id": "real-T11",
+      "kind": "deployed_real",
+      "notes_from": {
+        "benchmark": "T11"
+      },
+      "question": "Did Micron stop disclosing its risk about \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.\" between its FY2024 and FY2025 annual reports?",
+      "source": "data/processed/eval_runs.v2-deployed.jsonl, id T11",
+      "valid_ids": [
+        "0000723125-24-000027:I.1A:0036",
+        "0000723125-25-000028:I.1A:0038"
+      ]
+    },
+    {
+      "answer": "Based on the text-verified comparison between Nvidia's 10-K filed 2025-02-26 (covering the fiscal year ended January 26, 2025) and its 10-K filed 2026-02-25 (covering the fiscal year ended January 25, 2026), this addresses the FY2025-to-FY2026 comparison, not a FY2024-to-FY2025 comparison — no comparison covering that specific period is present in the context.\n\nFor the comparison that is available:\n\n- The text check found no risk factor that no longer appears as a separate risk factor between these two filings [0001045810-26-000021:I.1A:0349].\n- At least 1 risk factor had no matching risk factor found in the earlier filing, of which 1 is listed: \"Commercial arrangements expose us to counterparty risks.\" [0001045810-26-000021:I.1A:0349]. This is not necessarily a new risk factor — it is new, or a restructured older risk factor.\n- At least 16 risk factors were reworded (still disclosed, wording changed), of which 4 are listed as examples:\n  - The export-control/complex-laws risk factor [0001045810-26-000021:I.1A:0353] [0001045810-26-000021:I.1A:0354] [0001045810-26-000021:I.1A:0355]\n  - The supply/demand mismatch risk factor [0001045810-26-000021:I.1A:0337] [0001045810-26-000021:I.1A:0338]\n  - The business investments/acquisitions risk factor [0001045810-26-000021:I.1A:0347]\n  - The business disruptions risk factor [0001045810-26-000021:I.1A:0345]\n- Additionally, at least 25 passages of surviving risk factors had wording not found in the newer filing (8 shown as examples), and at least 35 passages had wording not found in the older filing (4 shown as examples); these reflect wording differences only, and a differently worded version of the same statement may exist in either case [0001045810-25-000023:I.1A:0257] [0001045810-26-000021:I.1A:0337].\n\n**Answer:** The context does not contain a risk-factor comparison specifically between the FY2024 (fiscal year ended January 28, 2024) and FY2025 (fiscal year ended January 26, 2025) annual reports, so I cannot say whether Nvidia removed any risk factors between those two filings. The only text-verified comparison available is between the fiscal year ended January 26, 2025 filing and the fiscal year ended January 25, 2026 filing, and in that comparison the text check found no risk factor that no longer appears as a separate risk factor [0001045810-26-000021:I.1A:0349].",
+      "basis": "The notes describe the FY2024->FY2025 pair (10-Ks filed 2024-02-21 and 2025-02-26) and give the correct answer 'YES, exactly 1 risk factor' removed (the indebtedness one), but the answer says no comparison for that pair is available and analyses the FY2025->FY2026 pair instead.",
+      "expected_correct": false,
+      "id": "real-T7",
+      "kind": "deployed_real",
+      "notes_from": {
+        "benchmark": "T7"
+      },
+      "question": "Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?",
+      "source": "data/processed/eval_runs.v2-deployed.jsonl, id T7",
+      "valid_ids": [
+        "0001045810-25-000023:I.1A:0257",
+        "0001045810-26-000021:I.1A:0337",
+        "0001045810-26-000021:I.1A:0338",
+        "0001045810-26-000021:I.1A:0345",
+        "0001045810-26-000021:I.1A:0347",
+        "0001045810-26-000021:I.1A:0349",
+        "0001045810-26-000021:I.1A:0353",
+        "0001045810-26-000021:I.1A:0354",
+        "0001045810-26-000021:I.1A:0355"
+      ]
+    },
+    {
+      "answer": "No, Nvidia did not stop disclosing this risk between its fiscal year ended January 26, 2025 annual report and its fiscal year ended January 25, 2026 annual report.\n\n- The text comparison found no risk factors that \"no longer appear as a separate risk factor\" between these two filings, so this risk was not identified as dropped [0001045810-26-000021:I.1A:0347].\n- Instead, the acquisitions/investments risk factor is listed under \"Reworded - showing 4 of 16 risk factors (still disclosed, wording changed),\" meaning it is still disclosed but with revised wording between the earlier filing [0001045810-25-000023:I.1A:0250] and the later filing [0001045810-26-000021:I.1A:0347].\n- Specifically, one reworded passage shows the earlier sentence \"our investments in publicly traded companies could create volatility in our results and may generate losses up to the value of the investment\" [0001045810-25-000023:I.1A:0250] was changed to \"Our investments in companies could create volatility and fluctuations in our results\" in the newer filing [0001045810-26-000021:I.1A:0347].\n- The risk factor remains among Nvidia's currently active disclosed risks, described as \"Acquisitions and investments involve significant challenges and risks that could impair Nvidia's ability to grow its business or develop/sell products\" [0001045810-26-000021:I.1A:0347].\n\nIn short, this is a reworded risk factor, not a discontinued one — a reworded risk is still considered disclosed.",
+      "basis": "The notes' correct answer (NO, reworded) is for the FY2024 (10-K filed 2024-02-21, chunk 0001045810-24-000029:I.1A:0146) to FY2025 (filed 2025-02-26) pair, and the answer reaches the same yes/no but for the FY2025->FY2026 pair (fiscal years ended January 2025 and January 2026, citing only -25-000023 and -26-000021 chunks), which the question does not ask about.",
+      "expected_correct": false,
+      "id": "real-T12",
+      "kind": "deployed_real",
+      "notes_from": {
+        "benchmark": "T12"
+      },
+      "question": "Did Nvidia stop disclosing its risk about \"We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.\" between its FY2024 and FY2025 annual reports?",
+      "source": "data/processed/eval_runs.v2-deployed.jsonl, id T12",
+      "valid_ids": [
+        "0001045810-25-000023:I.1A:0250",
+        "0001045810-26-000021:I.1A:0347"
+      ]
+    },
+    {
+      "answer": "Based on the automated text comparison between Meta's two most recent annual reports (10-K filed 2025-01-30 covering fiscal year ended December 31, 2024, and 10-K filed 2026-01-29 covering fiscal year ended December 31, 2025):\n\n- Yes, Meta removed the risk factor on advertising revenue concentration and marketer spending. It is disclosed in the earlier filing [0001326801-25-000017:I.1A:0010], but Meta no longer discloses it in the newer filing, so this risk was dropped.\n\n- At least 32 risk factors were reworded (still disclosed, but with changed wording), of which 3 are listed:\n  - The risk factor on complex and evolving U.S. and foreign privacy/data/AI regulations [0001326801-25-000017:I.1A:0035] [0001628280-26-003942:I.1A:0038]\n  - The risk factor on inaccuracies in community and other metrics [0001326801-25-000017:I.1A:0025] [0001628280-26-003942:I.1A:0027]\n  - The risk factor on retaining/adding users and engagement levels [0001326801-25-000017:I.1A:0007] [0001628280-26-003942:I.1A:0007]\n\n**Conclusion:** Meta removed one risk factor between these two filings, the advertising revenue concentration risk factor; the other risk factors were carried over, most of them reworded.",
+      "basis": "The notes say NO whole risk factor was removed and 48 of 48 were carried over, yet the answer states as a plain fact that Meta removed the advertising revenue concentration risk factor.",
+      "expected_correct": false,
+      "id": "syn-T5-removed-advertising",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "T5"
+      },
+      "question": "Did Meta remove any risk factors between its FY2024 and FY2025 annual reports?",
+      "source": "written for this test in the style of data/processed/eval_runs.v2-deployed.jsonl id T5; ids from that row",
+      "valid_ids": [
+        "0001326801-25-000017:I.1A:0010",
+        "0001326801-25-000017:I.1A:0035",
+        "0001628280-26-003942:I.1A:0038",
+        "0001326801-25-000017:I.1A:0025",
+        "0001628280-26-003942:I.1A:0027",
+        "0001326801-25-000017:I.1A:0007",
+        "0001628280-26-003942:I.1A:0007"
+      ]
+    },
+    {
+      "answer": "Based on the automated text comparison between Nvidia's 10-K filed 2024-02-21 (covering the fiscal year ended January 28, 2024) and its 10-K filed 2025-02-26 (covering the fiscal year ended January 26, 2025):\n\n- The text check found no risk factor that no longer appears as a separate risk factor between these two filings [0001045810-25-000023:I.1A:0257].\n- No matching risk factor found in the earlier filing: none found, meaning the check identified no risk factor in the newer filing that lacks a match in the earlier filing.\n- At least 19 risk factors were reworded (still disclosed, wording changed) between the two filings.\n\nIn summary, the text comparison did not identify any risk factor as removed between these two annual reports; the changes identified were rewordings of risk factors that remain disclosed.",
+      "basis": "The notes say exactly 1 risk factor was removed in FY2024->FY2025 (the indebtedness one) and the correct answer is YES, yet the answer, in the hedged wording, reports that the text check found none and that no risk factor was identified as removed.",
+      "expected_correct": false,
+      "id": "syn-T7-none-removed-hedged",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "T7"
+      },
+      "question": "Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?",
+      "source": "written for this test in the style of data/processed/eval_runs.v2-deployed.jsonl id T7; ids from that row",
+      "valid_ids": [
+        "0001045810-25-000023:I.1A:0257"
+      ]
+    },
+    {
+      "answer": "Based on the automated text comparison between Nvidia's fiscal year ended January 26, 2025 10-K (accession 0001045810-25-000023) and its fiscal year ended January 25, 2026 10-K (accession 0001045810-26-000021):\n\n- Yes, Nvidia removed one risk factor: \"Commercial arrangements expose us to counterparty risks.\" It was disclosed in the earlier filing and Nvidia stopped disclosing it in the newer filing.\n- At least 16 risk factors were reworded (still disclosed, wording changed), of which 4 are listed as examples:\n  - \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business.\" [0001045810-26-000021:I.1A:0353] [0001045810-26-000021:I.1A:0354] [0001045810-26-000021:I.1A:0355]\n  - \"Long manufacturing lead times and uncertain supply and capacity availability, combined with a failure to estimate customer demand accurately, has led and could lead to mismatches between supply and demand.\" [0001045810-26-000021:I.1A:0337] [0001045810-26-000021:I.1A:0338]\n  - \"We may not be able to realize the potential benefits of business investments or acquisitions...\" [0001045810-26-000021:I.1A:0347]\n  - \"Business disruptions could harm our operations, lead to a decline in revenue and increase our costs.\" [0001045810-26-000021:I.1A:0345]\n\nIn short: Nvidia dropped the counterparty-risk risk factor between these two annual reports; the other risk factors remain disclosed, most of them reworded.",
+      "basis": "The notes say NO whole risk factor was removed and that 'Commercial arrangements expose us to counterparty risks.' is the 1 NEW risk factor of FY2026, yet the answer states that Nvidia removed it.",
+      "expected_correct": false,
+      "id": "syn-T8-removed-new-item",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "T8"
+      },
+      "question": "Did Nvidia remove any risk factors between its FY2025 and FY2026 annual reports?",
+      "source": "written for this test in the style of data/processed/eval_runs.v2-deployed.jsonl id T8; ids from that row",
+      "valid_ids": [
+        "0001045810-26-000021:I.1A:0353",
+        "0001045810-26-000021:I.1A:0354",
+        "0001045810-26-000021:I.1A:0355",
+        "0001045810-26-000021:I.1A:0337",
+        "0001045810-26-000021:I.1A:0338",
+        "0001045810-26-000021:I.1A:0347",
+        "0001045810-26-000021:I.1A:0345"
+      ]
+    },
+    {
+      "answer": "Yes, Micron stopped disclosing this risk factor between its fiscal year ended August 29, 2024 and fiscal year ended August 28, 2025 annual reports.\n\n- The risk factor \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments\" appears in the earlier filing [0000723125-24-000027:I.1A:0036] but no longer appears in the fiscal year ended August 28, 2025 filing.\n- Micron dropped it from its risk disclosures in the newer filing, so this risk is no longer disclosed.\n\nIn short, this risk factor was removed between the two annual reports.",
+      "basis": "The notes' correct answer is NO: the cash-flow and financing risk factor is still disclosed in FY2025 with the gold label 'reworded', yet the answer states that Micron stopped disclosing it.",
+      "expected_correct": false,
+      "id": "syn-T11-stopped-reworded",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "T11"
+      },
+      "question": "Did Micron stop disclosing its risk about \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.\" between its FY2024 and FY2025 annual reports?",
+      "source": "written for this test in the style of data/processed/eval_runs.v2-deployed.jsonl id T11; ids from that row",
+      "valid_ids": [
+        "0000723125-24-000027:I.1A:0036"
+      ]
+    },
+    {
+      "answer": "Based on the automated text comparison between AMD's 10-K filed 2025-02-05 (covering the fiscal year ended December 28, 2024) and its 10-K filed 2026-02-04 (covering the fiscal year ended December 27, 2025):\n\n- No risk factors were found to no longer appear as a separate risk factor. The text check found none in this category [0000002488-25-000012:I.1A:0019].\n\n- At least 1 risk factor has no matching risk factor found in the earlier filing:\n  - \"We may be required to satisfy financial obligations under guarantees and other commercial commitments.\" [0000002488-26-000018:I.1A:0029]\n  This is not a new risk factor: it was carried over unchanged from the fiscal year 2024 filing, and the missing match is only a limitation of the text check.\n\n- At least 28 risk factors were reworded (still disclosed, with changed wording), of which 4 are listed as examples:\n  - The export regulations/trade protection risk factor [0000002488-26-000018:I.1A:0019] [0000002488-26-000018:I.1A:0020] [0000002488-26-000018:I.1A:0021]\n  - The environmental laws/conflict minerals risk factor [0000002488-26-000018:I.1A:0024] [0000002488-26-000018:I.1A:0025] [0000002488-26-000018:I.1A:0026]\n  - The acquisitions/joint ventures/investments risk factor [0000002488-26-000018:I.1A:0030] [0000002488-26-000018:I.1A:0031] [0000002488-26-000018:I.1A:0032]\n  - The worldwide operations political/legal/economic risk factor [0000002488-26-000018:I.1A:0034] [0000002488-26-000018:I.1A:0035] [0000002488-26-000018:I.1A:0036]\n\nIn summary, no risk factor was verified as no longer appearing between these two filings, and all previously disclosed risk topics remain disclosed in some form.",
+      "basis": "The notes list 'We may be required to satisfy financial obligations under guarantees and other commercial commitments.' as the 1 NEW risk factor of the FY2025 filing (41 others were carried over), yet the answer states it was carried over unchanged from the FY2024 filing.",
+      "expected_correct": false,
+      "id": "syn-T4-carried-over-unchanged",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "T4"
+      },
+      "question": "Did AMD remove any risk factors between its FY2024 and FY2025 annual reports?",
+      "source": "written for this test in the style of data/processed/eval_runs.v2-deployed.jsonl id T4; ids from that row",
+      "valid_ids": [
+        "0000002488-25-000012:I.1A:0019",
+        "0000002488-26-000018:I.1A:0029",
+        "0000002488-26-000018:I.1A:0019",
+        "0000002488-26-000018:I.1A:0020",
+        "0000002488-26-000018:I.1A:0021",
+        "0000002488-26-000018:I.1A:0024",
+        "0000002488-26-000018:I.1A:0025",
+        "0000002488-26-000018:I.1A:0026",
+        "0000002488-26-000018:I.1A:0030",
+        "0000002488-26-000018:I.1A:0031",
+        "0000002488-26-000018:I.1A:0032",
+        "0000002488-26-000018:I.1A:0034",
+        "0000002488-26-000018:I.1A:0035",
+        "0000002488-26-000018:I.1A:0036"
+      ]
+    }
+  ],
+  "sha256": "997ea65fbce48b8fb0168066016d340ab8ef1f5323e63246f8850f1600d24ba9"
+}

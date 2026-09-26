@@ -55,10 +55,21 @@ def test_the_prompt_states_that_other_bracketed_labels_are_not_citations():
 def test_the_prompt_states_the_removal_and_federal_register_and_figure_rules():
     p = render_judge_prompt(ITEM, "x", valid_ids=[], as_of=None)
     low = p.lower()
-    assert "removed" in low and "dropped" in low and "added" in low and "reworded" in low
-    assert "grading notes do not support" in low
+    assert "removed" in low and "dropped" in low and "deleted" in low and "reworded" in low
+    assert "the notes do not support that" in low                      # rule 1 (cj-v2): a plain-fact removal claim the notes do not support
     assert "federal register" in low and "fr:" in low and "disclosed" in low
     assert "figure" in low and "contradict" in low
+    assert "filing pair" in low and "no comparison is available" in low     # rule 4 (cj-v2): the wrong fiscal year / pair
+
+
+def test_the_prompt_describes_the_hedged_comparison_wording_the_service_is_required_to_use():
+    """cj-v2: the judge must not punish the required hedges ('no matching risk factor found', 'wording was not found', 'no longer
+    appears as a separate risk factor') and must still catch a hedge the notes contradict (rule 2)."""
+    low = render_judge_prompt(ITEM, "x", valid_ids=[], as_of=None).lower()
+    for phrase in ("no longer appears as a separate risk factor", "no matching risk factor found", "wording was not found",
+                   "a differently worded version", "required wording, not evasion", "consistent with the notes"):
+        assert phrase in low, phrase
+    assert "presents a hedged finding in a way the notes contradict" in low
 
 
 def test_a_missing_as_of_and_missing_notes_are_stated_not_silently_dropped():
@@ -76,7 +87,7 @@ def test_a_long_id_list_is_capped_to_keep_the_prompt_small():
 
 def test_the_prompt_is_small():
     p = render_judge_prompt({**ITEM, "judge_notes": ""}, "", valid_ids=[], as_of="2026-09-25")
-    assert len(p) < 2600            # the fixed part of a judge call (cost: it is sent up to 3 times per answer)
+    assert len(p) < 3800            # the fixed part of a judge call (cost: it is sent up to 3 times per answer); cj-v2 added the hedge section
 
 
 def test_the_verdict_schema_gains_unsupported_claims_with_an_empty_default():

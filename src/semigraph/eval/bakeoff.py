@@ -23,8 +23,8 @@ from ..retrieval.answerer import (ANSWER_PROMPT, CITE_RE, CONTEXT_HEADERS, LEGAC
                                   ContextBlocks, answer_stream, render_prompt, sources_from_context, usage_cost)
 from ..retrieval.verify import failed_check_names, verify_answer
 from .expect import check_expectation
-from .runner import (JUDGE_MAX_TOKENS, JUDGE_PROMPT, NUM_PAT, REFUSAL_PAT, AnswerBudgetExceeded, Correct,  # noqa: F401
-                     needs_judge, parse_numbers, render_judge_prompt)
+from .runner import (JUDGE_MAX_TOKENS, JUDGE_PROMPT, JUDGE_PROMPT_VERSION, NUM_PAT, REFUSAL_PAT,  # noqa: F401
+                     AnswerBudgetExceeded, Correct, needs_judge, parse_numbers, render_judge_prompt)
 
 logger = logging.getLogger("semigraph.bakeoff")
 
@@ -401,8 +401,10 @@ def score_deployed(rows: list[dict], benchmark: list[dict], judge, *, votes: int
                    as_of: str | None = None) -> dict:
     """Score the deployed configuration: correctness (mechanical + majority-vote judge on the open questions and the
     misattribution probes), citation validity, and how the traffic was routed and what it cost. Escalation is what
-    actually happened. ``as_of`` is the data date the judge is told (see ``runner.data_as_of``; None = "not stated")."""
+    actually happened. ``as_of`` is the data date the judge is told (see ``runner.data_as_of``; None = "not stated").
+    ``judge_prompt_version`` names the correctness-judge prompt that graded the open questions (``runner.JUDGE_PROMPT_VERSION``)."""
     score = score_mechanical([{**r, "model": "deployed"} for r in rows], benchmark)
+    score["judge_prompt_version"] = JUDGE_PROMPT_VERSION
     score["judged"] = judge_open(rows, benchmark, judge, votes=votes, model=judge_model, as_of=as_of)
     routes: dict[str, int] = {}
     for r in rows:

@@ -1,88 +1,429 @@
 {
   "as_of": "2026-09-24",
   "errors": {},
-  "estimated_cost_usd": 0.0858,
-  "examples_snapshot": "snap-20260924-7feaaf9bfe",
+  "estimated_cost_usd": 0.417,
+  "judge_prompt_version": "cj-v3",
+  "leniency_failures": [],
   "model": "anthropic/claude-sonnet-5",
+  "n_probes": 12,
   "notes_sha256": {
-    "T1": "7e307ab8b6ca637a92e8a3edf28c0a6e1c985f9780f380cd83d2055a4f4bad40",
-    "T3": "7e307ab8b6ca637a92e8a3edf28c0a6e1c985f9780f380cd83d2055a4f4bad40"
+    "legacy-T1": "7e307ab8b6ca637a92e8a3edf28c0a6e1c985f9780f380cd83d2055a4f4bad40",
+    "legacy-T3": "7e307ab8b6ca637a92e8a3edf28c0a6e1c985f9780f380cd83d2055a4f4bad40",
+    "real-T10": "8a50a226d15f56761cd941ed67b19c781beb2ce1ece6b434ce294c90f04981cd",
+    "real-T11": "5d75c9a8aaa05d9b1f58f9367d434cf39e9484ae100934bc453a075ff8322911",
+    "real-T12": "e7a38b97ccc37232a749ae0728efc53f6be28b25e1b33288055bf2f4763f289e",
+    "real-T7": "e567b1a3f259bd76a21d29d9da92c8351ac3c66213ae347258f1acdcb95643b0",
+    "real-T8": "b9f538be7b2106ed07fcaf5eb9be269f3c5dabd278794fdca8c8ac9bb96e69cb",
+    "syn-T11-stopped-reworded": "5d75c9a8aaa05d9b1f58f9367d434cf39e9484ae100934bc453a075ff8322911",
+    "syn-T4-carried-over-unchanged": "0f0d20664b8b12c641dda12c1c4333da9c8e9a720818ffe42ea592b75077cd32",
+    "syn-T5-removed-advertising": "422ebc211d10e496061738969ecce922436b0360294108d5c869ec919becc1ed",
+    "syn-T7-none-removed-hedged": "e567b1a3f259bd76a21d29d9da92c8351ac3c66213ae347258f1acdcb95643b0",
+    "syn-T8-removed-new-item": "b9f538be7b2106ed07fcaf5eb9be269f3c5dabd278794fdca8c8ac9bb96e69cb"
   },
   "notes_source": "temporal",
-  "open_correct": 0,
-  "prompt_sha256": "3f5bdd2e557ad7cc05c5b5b7b3cb67c30c84e5b839c9a2e89fd79a705808022b",
+  "probes_file": "artifacts\\gold\\judge_probes.json",
+  "probes_pinned": true,
+  "probes_sha256": "997ea65fbce48b8fb0168066016d340ab8ef1f5323e63246f8850f1600d24ba9",
+  "prompt_sha256": "e5b727c722dac1eb77db16721cc945f8d42a037558a6ac6e71e037564f8c637d",
   "results": {
-    "T1": [
-      {
-        "correct": false,
-        "reason": "The answer fabricates numerous whole risk-factor removals (data privacy, litigation, cross-border data transfer, internal AI use, acquisition risk, etc.) that are not supported by the grading notes, which specify only one risk factor removed (FY2024->FY2025: indebtedness) and one added (FY2026: counterparty risk), plus specific sentence-level removals that survive within retained risk factors.",
-        "unsupported_claims": [
-          "Data privacy compliance risk dropped from latest 10-K",
-          "China/Hong Kong operational transition risk factor dropped",
-          "Cross-border data transfer risk factor dropped",
-          "Litigation/regulatory proceedings risk factor dropped",
-          "Internal AI use risk factor dropped as whole risk factor"
-        ]
-      },
-      {
-        "correct": false,
-        "reason": "The answer fabricates numerous 'dropped risk factor' claims (data privacy, litigation, internal AI use, acquisition risk, etc.) that are not supported by the grading notes, which specify only one risk factor removed (FY2023->FY2024) and one new (FY2025->FY2026), plus specific removed sentences that survive within retained risk factors, not as dropped factors.",
-        "unsupported_claims": [
-          "Data privacy compliance risk factor dropped",
-          "China export/NAC licensing risk factor dropped",
-          "Litigation/regulatory proceedings risk factor dropped",
-          "China/Hong Kong operational transition risk factor dropped (framed as factor, not sentence)",
-          "Cross-border data transfer risk factor dropped"
-        ]
-      },
-      {
-        "correct": false,
-        "reason": "The answer fabricates multiple 'dropped risk factor' claims not supported by the grading notes, which specify only one risk factor removed (indebtedness) between FY2024/FY2025 and one added (counterparty risk) between FY2025/FY2026, with three specific sentences removed while their risk factors survived; it also misrepresents removed sentences as dropped whole risk factors.",
-        "unsupported_claims": [
-          "Data privacy compliance risk was dropped as a risk factor",
-          "China export/NAC licensing risk was dropped as a risk factor",
-          "Litigation/regulatory proceedings risk was dropped as a risk factor",
-          "China/Hong Kong operational transition risk was dropped as a risk factor",
-          "Cross-border data transfer risk was dropped as a risk factor"
-        ]
-      }
-    ],
-    "T3": [
-      {
-        "correct": false,
-        "reason": "The answer fabricates numerous specific removed risk factors/sentences (data privacy, cross-border data transfer, NAC process, shareholder litigation, etc.) that are not supported by the grading notes, and treats risk factor content as dropped rather than the notes' verified sentence-level changes, plus adds unverified financial figures.",
-        "unsupported_claims": [
-          "Data privacy risk factor dropped (FY2023-FY2025)",
-          "Cross-border data transfer risk factor dropped",
-          "Shareholder/regulatory litigation risk language dropped within FY2025",
-          "AI-related internal-use risk and M&A macroeconomic risk dropped within FY2025",
-          "Revenue/net income/R&D figures presented as verified Reported Metrics"
-        ]
-      },
-      {
-        "correct": false,
-        "reason": "The answer fabricates multiple risk-factor removals (data privacy, cross-border data transfer, NAC process, shareholder litigation, AI internal-use risk) that are not supported by the grading notes, which only verify one whole risk factor removed (indebtedness, FY2024->FY2025) and one added (counterparty risk, FY2025->FY2026), plus specific sentence-level removals unrelated to these claims.",
-        "unsupported_claims": [
-          "Data privacy risk factor dropped from latest report",
-          "Cross-border data transfer legal challenges risk factor dropped",
-          "Processing of sensitive/personal data risk factor dropped",
-          "NAC process risk factor disclosed and dropped within FY2025",
-          "Shareholder/regulatory litigation risk factor disclosed and dropped within FY2025"
-        ]
-      },
-      {
-        "correct": false,
-        "reason": "The answer fabricates numerous unsupported removal claims (data privacy, cross-border data transfer, NAC process, shareholder litigation, etc.) not in the grading notes, and describes removed sentences as dropped risk factors, contradicting the notes' explicit instruction.",
-        "unsupported_claims": [
-          "Data privacy risk factor disclosed FY2023-FY2025 then dropped",
-          "Cross-border data transfer legal challenges dropped",
-          "Processing of sensitive/personal data risk dropped",
-          "NAC process and China export risks 'disclosed and dropped within FY2025 alone'",
-          "Shareholder/regulatory litigation and AI-internal-use risks disclosed and dropped within FY2025"
-        ]
-      }
-    ]
+    "legacy-T1": {
+      "expected_correct": false,
+      "kind": "legacy_wrong",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The answer flatly asserts numerous risk factors (data privacy, litigation, cross-border data transfer, sensitive data processing, etc.) were 'dropped' or 'no longer appear,' without hedging, which contradicts the notes' single verified removal (indebtedness, FY2024->FY2025) and the FY2025->FY2026 finding of only 1 new factor and 0 removed factors.",
+          "unsupported_claims": [
+            "Data privacy compliance risk disclosed then dropped",
+            "China/Hong Kong operational transition risk theme dropped",
+            "Litigation/regulatory proceedings risk disclosed 2025 then dropped",
+            "Cross-border data transfer risk disclosed then dropped",
+            "Sensitive data processing risk disclosed then dropped"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer flatly asserts multiple risk factors were 'dropped' or 'do not appear' in the latest filing without hedging, contradicting the grading notes which state only one risk factor was removed between FY2024/FY2025 (indebtedness) and zero were removed between FY2025/FY2026 (only 1 new one added).",
+          "unsupported_claims": [
+            "Data privacy compliance risk was dropped from latest 10-K",
+            "China export/NAC licensing risk was dropped",
+            "Litigation/regulatory proceedings risk was dropped",
+            "Cross-border data transfer risk was dropped",
+            "Worldwide licensing/inventory risk and future IC licensing risk were dropped"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer flatly asserts numerous risk factors were 'dropped' or no longer appear, without hedging, when the notes only support one removal per filing pair (indebtedness risk FY2024->FY2025, none whole-factor removed FY2025->FY2026) and only sentence-level removals within surviving factors for the specified quotes.",
+          "unsupported_claims": [
+            "Data privacy compliance risk...dropped",
+            "China export/NAC licensing risk...dropped as a whole risk factor",
+            "Litigation/regulatory proceedings risk...dropped",
+            "China/Hong Kong operational transition risk...dropped as a whole factor",
+            "Cross-border data transfer risk, Worldwide licensing risk, IC licensing risk, AI use risk, Acquisition risk, Sensitive data risk all dropped"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    },
+    "legacy-T3": {
+      "expected_correct": false,
+      "kind": "legacy_wrong",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The answer states as plain fact that multiple risk factors (data privacy, cross-border transfer, NAC process, AI-related internal-use risk, etc.) were 'dropped' or 'no longer active', which is not supported by the notes; notes only confirm one risk factor removed (FY2024->FY2025 indebtedness) and one new (FY2026 counterparty risk), with sentence-level removals being sentences within surviving risk factors, not dropped risk factors.",
+          "unsupported_claims": [
+            "Data privacy risk factor dropped from latest report",
+            "Cross-border data transfer risk factor dropped",
+            "NAC process risk factor disclosed and dropped within FY2025",
+            "AI-related internal-use risk dropped within FY2025",
+            "Shareholder/regulatory litigation risk language dropped within FY2025"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer asserts as plain fact that multiple risk factors (data privacy, cross-border transfer, sensitive data, various China export-control items, shareholder litigation, AI-related internal-use risk) were 'dropped' or removed, which the grading notes do not support (only one risk factor removal and one addition are verified across the two comparisons, and none match these claims).",
+          "unsupported_claims": [
+            "Data privacy risk factor dropped from latest report",
+            "Cross-border data transfer legal challenges dropped",
+            "Processing of sensitive/personal data risk dropped",
+            "Shareholder/regulatory litigation risk language dropped",
+            "AI-related internal-use risk and M&A macroeconomic risk dropped"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer states as plain fact that multiple risk factors (data privacy, cross-border data transfer, NAC process, shareholder litigation, AI internal-use risk) were 'dropped' or 'no longer active', but the notes only support one removed risk factor (indebtedness, FY2024->FY2025) and one new risk factor (counterparty risk, FY2025->FY2026), with no other risk-factor-level removals verified.",
+          "unsupported_claims": [
+            "Data privacy risk factor dropped from latest report",
+            "Cross-border data transfer risk factor dropped",
+            "Processing of sensitive/personal data risk factor dropped",
+            "Shareholder/regulatory litigation risk language dropped",
+            "AI-related internal-use risk dropped within FY2025"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    },
+    "real-T10": {
+      "expected_correct": true,
+      "kind": "deployed_real",
+      "majority_correct": true,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk was reworded, not dropped, matching the gold label, and cites the correct filings and ids consistent with the grading notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk factor was reworded, not removed, matching the gold label 'reworded' and citing the correct filings and chunk ids.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk was reworded, not dropped, matching the grading notes, and cites the correct filings and IDs consistent with the verified facts.",
+          "unsupported_claims": []
+        }
+      ],
+      "votes_correct": 3
+    },
+    "real-T11": {
+      "expected_correct": true,
+      "kind": "deployed_real",
+      "majority_correct": true,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": true,
+          "reason": "The answer correctly states the risk factor was not dropped and is still disclosed (reworded) in FY2025, consistent with the grading notes, and appropriately hedges the automated comparison findings without contradicting the verified facts.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes the risk factor is still disclosed (reworded, not removed), consistent with the grading notes, and cites the correct filing pair and IDs.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes the risk factor is still disclosed (reworded, not removed) in FY2025, consistent with the grading notes, and appropriately hedges the sentence-level and comparison findings.",
+          "unsupported_claims": []
+        }
+      ],
+      "votes_correct": 3
+    },
+    "real-T12": {
+      "expected_correct": false,
+      "kind": "deployed_real",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The question asks about the FY2024 vs FY2025 10-Ks, but the answer discusses the FY2025 vs FY2026 10-Ks instead, comparing the wrong filing pair.",
+          "unsupported_claims": [
+            "compares fiscal year ended January 26, 2025 report and fiscal year ended January 25, 2026 report instead of FY2024 vs FY2025 as asked"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer discusses the wrong filing pair (FY2025/FY2026 10-Ks) instead of the FY2024/FY2025 pair asked about in the question, even though it reaches the correct conclusion (still disclosed).",
+          "unsupported_claims": [
+            "Compares fiscal year ended January 26, 2025 and January 25, 2026 filings instead of FY2024 and FY2025 as asked"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer discusses FY2025 vs FY2026 filings, but the question asks about FY2024 vs FY2025 filings; it addresses the wrong filing pair.",
+          "unsupported_claims": [
+            "Compares fiscal year ended January 26, 2025 to fiscal year ended January 25, 2026, not FY2024 vs FY2025 as asked"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    },
+    "real-T7": {
+      "expected_correct": false,
+      "kind": "deployed_real",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The answer addresses the wrong filing pair (FY2025 vs FY2026 instead of FY2024 vs FY2025) and falsely claims no comparison for the requested pair exists, contradicting the grading notes which confirm exactly 1 risk factor was removed between FY2024 and FY2025.",
+          "unsupported_claims": [
+            "This addresses the FY2025-to-FY2026 comparison, not FY2024-to-FY2025",
+            "The context does not contain a risk-factor comparison specifically between FY2024 and FY2025",
+            "I cannot say whether Nvidia removed any risk factors between those two filings"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer addresses the wrong filing pair (FY2025 vs FY2026 instead of FY2024 vs FY2025) and explicitly claims no comparison for the asked pair is available, when the grading notes confirm exactly 1 risk factor was removed between FY2024 and FY2025.",
+          "unsupported_claims": [
+            "This addresses the FY2025-to-FY2026 comparison, not FY2024-to-FY2025",
+            "The context does not contain a risk-factor comparison specifically between FY2024 and FY2025",
+            "I cannot say whether Nvidia removed any risk factors between those two filings"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer addresses the wrong filing pair (FY2025 vs FY2026) and explicitly states it cannot answer the FY2024-to-FY2025 comparison the question asked about, even though the grading notes confirm that exact comparison was verified and found one risk factor removed.",
+          "unsupported_claims": [
+            "This addresses the FY2025-to-FY2026 comparison, not a FY2024-to-FY2025 comparison",
+            "I cannot say whether Nvidia removed any risk factors between those two filings",
+            "the text check found no risk factor that no longer appears as a separate risk factor between these two filings"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    },
+    "real-T8": {
+      "expected_correct": true,
+      "kind": "deployed_real",
+      "majority_correct": true,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, correctly identifies the counterparty risks factor as new (consistent with notes), and appropriately hedges the 'new/restructured' language without contradicting the notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, correctly identifies the counterparty risks factor as new, and appropriately hedges the 'new' finding without contradicting the notes.",
+          "unsupported_claims": []
+        },
+        {
+          "correct": true,
+          "reason": "The answer correctly concludes no risk factor was removed, correctly identifies the counterparty risks item as new/unmatched with appropriate hedging, and the reworded examples are consistent with the notes' description of reworded factors.",
+          "unsupported_claims": []
+        }
+      ],
+      "votes_correct": 3
+    },
+    "syn-T11-stopped-reworded": {
+      "expected_correct": false,
+      "kind": "synthetic",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The answer states as plain fact that the risk factor was dropped/removed and no longer disclosed, but the grading notes confirm it is still disclosed in reworded form in FY2025.",
+          "unsupported_claims": [
+            "Micron stopped disclosing this risk factor between FY2024 and FY2025",
+            "This risk factor was removed between the two annual reports",
+            "Micron dropped it from its risk disclosures in the newer filing"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer states as plain fact that the risk factor was dropped/removed and is no longer disclosed, but the grading notes confirm it was merely reworded and is still disclosed in FY2025.",
+          "unsupported_claims": [
+            "Micron stopped disclosing this risk factor between FY2024 and FY2025",
+            "no longer appears in the fiscal year ended August 28, 2025 filing",
+            "Micron dropped it from its risk disclosures",
+            "this risk factor was removed between the two annual reports"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The notes confirm this risk factor is still disclosed (reworded) in FY2025, but the answer states as plain fact that it was dropped/removed and no longer disclosed, contradicting the grading notes.",
+          "unsupported_claims": [
+            "Yes, Micron stopped disclosing this risk factor between FY2024 and FY2025",
+            "the risk factor no longer appears in the fiscal year ended August 28, 2025 filing",
+            "Micron dropped it from its risk disclosures",
+            "this risk is no longer disclosed",
+            "this risk factor was removed between the two annual reports"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    },
+    "syn-T4-carried-over-unchanged": {
+      "expected_correct": false,
+      "kind": "synthetic",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The answer falsely claims the new financial obligations guarantee risk factor was 'carried over unchanged from the fiscal year 2024 filing' when the grading notes explicitly identify it as a new risk factor in the FY2025 filing.",
+          "unsupported_claims": [
+            "The guarantees/commercial commitments risk factor was carried over unchanged from FY2024",
+            "This is not a new risk factor"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer incorrectly claims the new financial guarantees risk factor was 'carried over unchanged' from FY2024, when the grading notes explicitly state it is new to FY2025.",
+          "unsupported_claims": [
+            "The financial obligations/guarantees risk factor was carried over unchanged from the fiscal year 2024 filing"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer falsely claims the new risk factor about guarantees/commercial commitments 'was carried over unchanged from the fiscal year 2024 filing,' contradicting the grading notes which explicitly state this is a new risk factor not present in FY2024.",
+          "unsupported_claims": [
+            "The guarantees/commitments risk factor 'was carried over unchanged from the fiscal year 2024 filing'"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    },
+    "syn-T5-removed-advertising": {
+      "expected_correct": false,
+      "kind": "synthetic",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The answer asserts as plain fact that a risk factor was removed/dropped, but the grading notes state 0 risk factors were removed and explicitly conclude NO risk factor was removed between these two reports.",
+          "unsupported_claims": [
+            "Meta removed the risk factor on advertising revenue concentration and marketer spending",
+            "this risk was dropped",
+            "Meta no longer discloses it in the newer filing"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer states as plain fact that a risk factor was removed, but the grading notes explicitly confirm zero risk factors were removed (all 48 carried over).",
+          "unsupported_claims": [
+            "Meta removed the risk factor on advertising revenue concentration and marketer spending",
+            "Meta removed one risk factor between these two filings"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer asserts as plain fact that a risk factor was removed/dropped, but the grading notes explicitly state 0 risk factors were removed and the correct answer is that NO risk factor was removed.",
+          "unsupported_claims": [
+            "Meta removed the risk factor on advertising revenue concentration and marketer spending",
+            "this risk was dropped",
+            "Meta removed one risk factor between these two filings"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    },
+    "syn-T7-none-removed-hedged": {
+      "expected_correct": false,
+      "kind": "synthetic",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The notes confirm exactly 1 risk factor (indebtedness) was removed between FY2024 and FY2025 10-Ks, but the answer states the text check found none removed and no risk factor was dropped, directly contradicting the verified removal.",
+          "unsupported_claims": [
+            "The text check found no risk factor that no longer appears as a separate risk factor",
+            "the text comparison did not identify any risk factor as removed between these two annual reports"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The notes confirm exactly 1 risk factor (indebtedness) was removed between FY2024 and FY2025 10-Ks, but the answer claims the text check found no removed risk factor at all, directly contradicting the verified fact.",
+          "unsupported_claims": [
+            "The text check found no risk factor that no longer appears as a separate risk factor",
+            "the text comparison did not identify any risk factor as removed between these two annual reports"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The notes confirm exactly one risk factor (indebtedness) was removed between FY2024 and FY2025 filings, but the answer states no risk factor was removed, directly contradicting the grading notes.",
+          "unsupported_claims": [
+            "The text check found no risk factor that no longer appears as a separate risk factor",
+            "the text comparison did not identify any risk factor as removed between these two annual reports"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    },
+    "syn-T8-removed-new-item": {
+      "expected_correct": false,
+      "kind": "synthetic",
+      "majority_correct": false,
+      "outcome": "ok",
+      "verdicts": [
+        {
+          "correct": false,
+          "reason": "The answer falsely claims 'Commercial arrangements expose us to counterparty risks' was removed, when the grading notes state this is a NEW risk factor added in FY2026, and it incorrectly asserts a risk factor was removed when the verified answer is that none were removed.",
+          "unsupported_claims": [
+            "Nvidia removed one risk factor: 'Commercial arrangements expose us to counterparty risks.'",
+            "It was disclosed in the earlier filing and Nvidia stopped disclosing it in the newer filing.",
+            "Nvidia dropped the counterparty-risk risk factor between these two annual reports"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer falsely claims 'Commercial arrangements expose us to counterparty risks' was removed, when the grading notes explicitly state this is the one NEW risk factor added in the newer filing, and the correct answer is that NO risk factor was removed.",
+          "unsupported_claims": [
+            "Nvidia removed the risk factor 'Commercial arrangements expose us to counterparty risks'",
+            "It was disclosed in the earlier filing and Nvidia stopped disclosing it in the newer filing",
+            "Nvidia dropped the counterparty-risk risk factor between these two annual reports"
+          ]
+        },
+        {
+          "correct": false,
+          "reason": "The answer incorrectly claims 'Commercial arrangements expose us to counterparty risks' was removed, when the grading notes explicitly identify this as the one NEW risk factor added in FY2026, and the notes confirm NO risk factor was removed.",
+          "unsupported_claims": [
+            "Nvidia removed one risk factor: 'Commercial arrangements expose us to counterparty risks.'",
+            "It was disclosed in the earlier filing and Nvidia stopped disclosing it in the newer filing.",
+            "Nvidia dropped the counterparty-risk risk factor between these two annual reports"
+          ]
+        }
+      ],
+      "votes_correct": 0
+    }
   },
+  "strictness_failures": [],
   "verdict": "PASS",
   "votes": 3
 }

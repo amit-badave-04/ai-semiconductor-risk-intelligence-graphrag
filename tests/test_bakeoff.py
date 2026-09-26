@@ -5,7 +5,7 @@ import json
 import pytest
 
 from semigraph.eval import bakeoff as bo
-from semigraph.eval.runner import AnswerBudgetExceeded
+from semigraph.eval.runner import JUDGE_PROMPT_VERSION, AnswerBudgetExceeded
 from semigraph.retrieval.answerer import build_blocks
 
 VALID = ["0001-25-000001:I.1:0001", "0001-25-000001:II.7:0002"]
@@ -361,6 +361,7 @@ def test_score_deployed_counts_routes_escalations_and_judges_the_open_questions(
     assert s["mechanical"] == {"passed": 2, "of": 2} and s["judged"]["open_correct"] == 1
     assert s["total_cost_usd"] == pytest.approx(0.061) and s["avg_cost_usd"] == pytest.approx(0.061 / 3)
     assert s["checks_failed"] == {} and s["rows_without_checks"] == ["N2", "D1", "T1"]     # no checks recorded is not "clean"
+    assert s["judge_prompt_version"] == JUDGE_PROMPT_VERSION       # the report says which judge prompt graded the open questions
 
 
 def test_a_deployed_row_carries_the_services_checks_and_the_score_lists_the_failing_ones(tmp_path, monkeypatch):

@@ -72,6 +72,11 @@ class Recall(BaseModel):
 FAITH_PROMPT = read_prompt("faith_judge")
 REL_PROMPT = read_prompt("relevance_judge")
 JUDGE_PROMPT = read_prompt("correctness_judge")
+# Names the correctness_judge.txt in force. "cj-v1" was the prompt before 2026-09-27 (it penalised the hedged comparison wording the
+# service is required to use); "cj-v2" added the hedged-wording section and rules 1-5 (acceptance run 2026-09-27: one leniency failure, a plain "carried over unchanged" claim about an item the notes list as new); "cj-v3" closes that direction in rule 2. Bump it with EVERY change to the prompt: it is
+# recorded in the deployed-eval score and in the judge acceptance report (scripts/judge_acceptance.py), so a score is never read
+# against a different instrument than the one that graded it.
+JUDGE_PROMPT_VERSION = "cj-v3"
 RECALL_PROMPT = read_prompt("recall_judge")
 
 # Verbatim notebook 14 programmatic patterns (the refusal wording is shared with the serving-side verifier).

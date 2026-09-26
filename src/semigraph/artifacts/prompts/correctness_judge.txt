@@ -7,14 +7,22 @@ GRADING NOTES (verified facts): {notes}
 CITATIONS: {ids}
 Every id listed above was mechanically verified to exist in the retrieved sources, so do NOT judge whether an id exists. Ids starting "fr:" are Federal Register rules (government documents), "xbrl:" ids are reported financial facts, the rest are filing passages. Any other bracketed label in the answer (for example [Reported Metrics]) is NOT a citation and was not verified: treat the claim it follows as uncited.
 
+HOW THE ANSWERING SYSTEM WORDS A COMPARISON OF TWO FILINGS. It compares the two filings with an automated text check and is required to hedge what that check finds:
+- "no longer appears as a separate risk factor" (with "parts of its content may be covered inside other risk factors"), and "the text check found none": a finding that the check matched no text in the newer filing. It is NOT a claim that the company dropped or stopped disclosing the risk.
+- "no matching risk factor found in the earlier filing (it is new, or a restructured older risk factor)": a hedged finding, not a claim that the risk factor is new.
+- "wording was not found" in the other filing, "a differently worded version of the same statement may exist": a hedged finding about a sentence.
+- Counts and lists of reworded, unmatched or listed items ("at least 16 risk factors were reworded, of which 4 are listed") come from the comparison itself and are usually not in the grading notes.
+A hedge is the required wording, not evasion. Judge it by whether it is CONSISTENT with the notes.
+
 ANSWER:
 {a}
 
 The answer is incorrect if any of these holds:
-1. It says a risk factor, passage or sentence was removed, dropped, added, new or reworded, and the grading notes do not support that specific claim. Removal is the claim an earlier system got wrong: if the notes say something is still disclosed, or list no removal, a removal claim is wrong.
-2. It presents a Federal Register or BIS rule (an "fr:" id) as something the company disclosed, reported or said.
-3. It states a figure or fiscal year that the grading notes contradict.
-4. It does not answer the question, or contradicts the grading notes.
-Otherwise it is correct.
+1. It states as a plain fact that a risk factor, passage or sentence was removed, dropped, deleted or that the company stopped disclosing or saying it, and the notes do not support that: if the notes say something is still disclosed, or list no removal, such a claim is wrong. It is equally incorrect if it says nothing was removed when the notes list a removal that the question asks about.
+2. It presents a hedged finding in a way the notes contradict: for example "wording was not found in the newer filing" for a sentence the notes say is present in the newer filing, or "no matching risk factor found" for an item the notes say is carried over unchanged, or "found none" when the notes list removals of the kind asked about. The opposite direction is equally wrong: it states that an item was carried over, is unchanged, is "not new" or is still present when the notes list that item as new (or as removed), even when it says so to explain away a hedged finding.
+3. It presents a Federal Register or BIS rule (an "fr:" id) as something the company disclosed, reported or said.
+4. It states a figure that the notes contradict, or describes a different fiscal year, filing or filing pair from the one the question asks about (for example the newest pair when the question names the two earlier fiscal years), or says no comparison is available for the pair the notes describe.
+5. It does not answer the question, or contradicts the grading notes.
+Details the notes neither support nor contradict (an example list of reworded items, a count from the comparison, a quoted sentence) are NOT a reason to mark the answer incorrect. Otherwise it is correct.
 
-Reply ONLY with JSON: {{"correct": true/false, "reason": "one or two sentences", "unsupported_claims": ["at most 5 claims, each under 20 words, that the notes contradict or do not support"]}}
+Reply ONLY with JSON: {{"correct": true/false, "reason": "one or two sentences", "unsupported_claims": ["at most 5 claims, each under 20 words, that the notes contradict"]}}
