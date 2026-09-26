@@ -8,6 +8,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from semigraph.parsing import risk_item_quality
+
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "label_risk_items.py"
 spec = importlib.util.spec_from_file_location("label_risk_items", SCRIPT)
 lri = importlib.util.module_from_spec(spec)
@@ -154,3 +156,28 @@ def test_newer_side_packets_carry_their_own_coherent_instructions(tmp_path):
     assert "unchanged" not in newer and "merged" not in newer and "removed" not in newer      # the older-side vocabulary
     older = json.loads((tmp_path / "NVDA-acc-25-acc-26.older.packet.json").read_text(encoding="utf-8"))["instructions"]
     assert "unchanged" in older and "removed" in older and "carried" not in older
+
+
+def test_packets_can_be_restricted_to_selected_items_per_pair_and_side(tmp_path):
+    pairs = lri.consecutive_pairs(items_df())
+    select = {"NVDA-acc-25-acc-26": {"older": ["acc-25:I.1A:i002"], "newer": []}}
+    written = lri.write_packets(pairs, items_df(), sections_df(), tmp_path, select=select)
+    assert {p.name for p in written} == {"NVDA-acc-25-acc-26.older.packet.json"}          # empty side: no packet; other pair: skipped
+    older = json.loads(written[0].read_text(encoding="utf-8"))
+    assert [i["item_id"] for i in older["older_items"]] == ["acc-25:I.1A:i002"]
+    assert older["newer_section_text"].endswith("manufacturing capacity.")               # the FULL other section stays
+
+
+def test_the_packets_command_reads_a_selection_file(tmp_path):
+    items_dir, sections_dir = tmp_path / "items", tmp_path / "sections"
+    items_dir.mkdir(); sections_dir.mkdir()
+    items_df().to_parquet(items_dir / "NVDA_risk_items.parquet")
+    sections_df().to_parquet(sections_dir / "NVDA_section_texts.parquet")
+    risk_item_quality.write_quality(risk_item_quality.quality_path_for(items_dir, "NVDA"), "NVDA", [
+        {"accession_no": acc, "coverage": 0.96, "low_coverage": False, "section_suspect": False} for acc in ("acc-24", "acc-25", "acc-26")])
+    selection = tmp_path / "sel.json"
+    selection.write_text(json.dumps({"NVDA-acc-24-acc-25": {"older": ["acc-24:I.1A:i001"], "newer": ["acc-25:I.1A:i002"]}}), encoding="utf-8")
+    out = tmp_path / "out"
+    assert lri.main(["packets", "--select-file", str(selection), "--items-dir", str(items_dir), "--sections-dir", str(sections_dir),
+                     "--out", str(out)]) == 0
+    assert sorted(p.name for p in out.glob("*.packet.json")) == ["NVDA-acc-24-acc-25.newer.packet.json", "NVDA-acc-24-acc-25.older.packet.json"]

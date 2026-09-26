@@ -63,19 +63,30 @@ def _items_of(items: pd.DataFrame, accession: str, *, with_offsets: bool = False
     return out
 
 
-def write_packets(pairs: list[dict], items: pd.DataFrame, sections: pd.DataFrame, out_dir: Path) -> list[Path]:
-    """One packet per pair and side: older items vs the newer section, and newer items vs the older section."""
+def write_packets(pairs: list[dict], items: pd.DataFrame, sections: pd.DataFrame, out_dir: Path,
+                  select: dict | None = None) -> list[Path]:
+    """One packet per pair and side: older items vs the newer section, and newer items vs the older section.
+
+    ``select`` (``{pair_id: {"older": [item ids], "newer": [item ids]}}``) restricts the packets to those items: a pair
+    that is not listed is skipped and a side with no selected item gets no packet. The other filing's FULL section text
+    always stays in the packet (a labeller must search all of it)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
-    for pair in (p for p in pairs if p.get("comparable", True)):
+    for pair in (p for p in pairs if p.get("comparable", True) and (select is None or p["pair_id"] in select)):
         older_text = risk_section_text(items, sections, pair["older_accession"])
         newer_text = risk_section_text(items, sections, pair["newer_accession"])
         older_items, newer_items = _items_of(items, pair["older_accession"]), _items_of(items, pair["newer_accession"])
         meta = {"pair_id": pair["pair_id"], "ticker": pair["ticker"], "split": split_of(pair["pair_id"])}
+        if select is not None:
+            wanted = select[pair["pair_id"]]
+            older_items = [i for i in older_items if i["item_id"] in set(wanted.get("older", ()))]
+            newer_items = [i for i in newer_items if i["item_id"] in set(wanted.get("newer", ()))]
         older = gold.build_packet({**meta, "side": "older"}, older_items, newer_text)
         newer = {"pair": {**meta, "side": "newer"}, "side": "newer", "items": newer_items, "other_section_text": older_text,
                  "instructions": gold.NEWER_LABELLING_INSTRUCTIONS}
         for side, packet in (("older", older), ("newer", newer)):
+            if not (packet["older_items"] if side == "older" else packet["items"]):
+                continue
             path = out_dir / f"{pair['pair_id']}.{side}.packet.json"
             path.write_text(json.dumps(packet, ensure_ascii=False, indent=1), encoding="utf-8")
             written.append(path)
@@ -268,7 +279,8 @@ def _cmd_packets(args) -> int:
         pairs = [q for q in pairs if q["pair_id"] in DEV_PAIRS]
     if args.pair_id:
         pairs = [q for q in pairs if q["pair_id"] in set(args.pair_id)]
-    for path in write_packets(pairs, items, sections, args.out):
+    select = json.loads(args.select_file.read_text(encoding="utf-8")) if args.select_file else None
+    for path in write_packets(pairs, items, sections, args.out, select=select):
         print(path)
     return 0
 
@@ -326,6 +338,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--pair-id", action="append")
     p.add_argument("--dev", action="store_true", help="only the six development pairs")
     p.add_argument("--ticker", "-t", action="append")
+    p.add_argument("--select-file", type=Path, default=None,
+                   help="JSON {pair_id: {older: [item ids], newer: [item ids]}}: label only these items (held-out sampling)")
     c = sub.add_parser("collect")
     c.add_argument("--pair-id", required=True)
     c.add_argument("--side", choices=("older", "newer"), required=True)
