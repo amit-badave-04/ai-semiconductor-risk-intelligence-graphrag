@@ -47,7 +47,8 @@ NONE_BLOCK = "(none)"
 MAX_CHUNK_IDS_PER_ITEM = 3          # ids printed per side of a temporal item, per passage (and per relation edge)
 HEADLINE_MAX_CHARS = 240
 LEAD_MAX_CHARS = 160                # a headline-less paragraph unit is labelled with its first sentence, cut here
-PASSAGE_QUOTE_CHARS = 300           # a passage is quoted up to here (the stored passage can be ~1,200 characters)
+PASSAGE_QUOTE_CHARS = 450           # a passage is quoted up to here: graph/passages.py closes a passage at max_passage_chars = 450
+                                    # (only a single sentence longer than that stays whole and is clipped here)
 PASSAGE_WHERE_CHARS = 100           # the containing item's label beside a passage
 
 # --- the labels the reader matches on (and the writer builds from) ---

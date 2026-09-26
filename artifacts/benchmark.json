@@ -113,19 +113,19 @@
     "id": "T1",
     "type": "temporal",
     "q": "Did Nvidia stop disclosing any risk factors in its latest 10-K that appeared in earlier 10-Ks?",
-    "judge_notes": "Correct answer affirms YES \u2014 dozens of risk lineages were closed/dropped \u2014 ideally with examples."
+    "judge_notes": "VERIFIED against the full text of the filings (source-text gold sha256 af1e810d). Nvidia FY2024 (10-K filed 2024-02-21) vs FY2025 (10-K filed 2025-02-26), risk section only. Older filing, 24 risk factors labelled: 4 unchanged, 19 reworded, 0 merged into another risk factor, 1 removed. Newer filing, 23 labelled: 23 carried over from the older filing, 0 new. Removed: exactly 1 risk factor: 'Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling ou...' (FY2024 chunks 0001045810-24-000029:I.1A:0162). No risk factor is new. Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 24 risk factors, 231 sentences labelled): 15 removed, 24 reworded, 192 present. Removed: \"This risk may increase as a result of our platform strategy.\"; \"If our existing suppliers are unable to scale their capabilities to meet our supply needs, we may require additional ...\"; \"Demand for our data center systems and products surged in fiscal year 2024.\"; \"Entering fiscal year 2025, we are gathering customer demand indications across several product transitions.\"; \"We have demand visibility for our new data center products ramping later in fiscal year 2025.\"; \"Our purchase commitments and obligations for inventory and manufacturing capacity at the end of fiscal year 2024 were...\"; \"Supply of Hopper architecture products is improving, and demand remains very strong.\"; \"We expect our next-generation products to be supply-constrained based upon demand indications.\"; and 7 more. Newer filing sentences (a seeded SAMPLE of 6 of 23 risk factors, 261 sentences labelled): 38 added, 19 reworded, 204 present. Added: \"our customers' ability to invest in AI infrastructure.\"; \"Our expanding product portfolio and varying component compatibility and quality may lead to increased inventory levels.\"; \"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new ...\"; \"For example, our gross margins in the second quarter of fiscal year 2025 were negatively impacted by inventory provis...\"; \"We incur significant engineering development resources for new products, and changes to our product roadmap may impac...\"; \"Customers may delay purchasing existing products as we increase the frequency of new products or may not be able to a...\"; \"We have a small number of partners that are involved in system integration with our key customers.\"; \"As our system design becomes increasingly complex, system integrators may be unable to meet specifications of our key...\"; and 30 more. Claims about sentences outside this sample are not verified by this note. Nvidia FY2025 (10-K filed 2025-02-26) vs FY2026 (10-K filed 2026-02-25), risk section only. Older filing, 23 risk factors labelled: 7 unchanged, 16 reworded, 0 merged into another risk factor, 0 removed. Newer filing, 24 labelled: 23 carried over from the older filing, 1 new. NO whole risk factor was removed. 1 new: 'Commercial arrangements expose us to counterparty risks.' (FY2026 chunks 0001045810-26-000021:I.1A:0349). Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 23 risk factors, 165 sentences labelled): 30 removed, 8 reworded, 127 present. Removed: \"We offer enterprise customers NVIDIA DGX Cloud services, which include cloud-based infrastructure, software and servi...\"; \"NVIDIA DGX Cloud services may not be successful and will take time, resources, and investment.\"; \"The licensing requirements also apply to any future NVIDIA integrated circuit achieving certain peak performance and ...\"; \"There are also now licensing requirements to export a wide array of products, including networking products, destined...\"; \"On October 23, 2023, the USG informed us that the licensing requirements were effective immediately for shipments of ...\"; \"Blackwell systems, such as GB200 NVL 72 and NVL 36 as well as B200 are also subject to these requirements and therefo...\"; \"To date, we have not received licenses to ship these restricted products to China.\"; \"Any system that incorporates one or more of the covered integrated circuits, or ICs, (including but not limited to NV...\"; and 22 more. Newer filing sentences (a seeded SAMPLE of 6 of 24 risk factors, 194 sentences labelled): 35 added, 10 reworded, 149 present. Added: \"Many of these companies may not achieve profitability in the near term, or at all, and there is no guarantee that we ...\"; \"We are finalizing an investment and partnership agreement with OpenAI.\"; \"There is no assurance that we will enter into an investment and partnership agreement with OpenAI or that a transacti...\"; \"In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and...\"; \"As a result of these requirements, we incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associa...\"; \"In August 2025, the USG granted licenses that would allow us to ship certain H20 products to certain China-based cust...\"; \"We generated approximately $60 million in H20 revenue under those licenses.\"; \"USG officials expressed an expectation that the USG will receive 15% or more of the revenue generated from licensed s...\"; and 27 more. Claims about sentences outside this sample are not verified by this note. Sentence level (FY2025 -> FY2026): these statements were removed although the risk factor containing them survives: \"For example, the Notified Advanced Computing, or \u201cNAC,\u201d process has not resulted in approvals for exports of products to customers in China.\" \"Following these 2022 export controls, we transitioned some operations, including certain testing, validation, and supply and distribution operations out of China and Hong Kong.\" \"The AI Diffusion IFR would confer special benefits on select \u201cUniversal Verified End Users\u201d, or UVEU, and lesser benefits on \u201cNational Verified End Users\u201d, or NVEU.\" These consecutive pairs are not in the gold, so nothing is verified about them: FY2023 -> FY2024. Correct answer: reports at most the removals and additions verified above, describes removed sentences as sentences (never as dropped risk factors), and treats any other claim that a risk factor was dropped, removed, added or new as unsupported and incorrect."
   },
   {
     "id": "T2",
     "type": "temporal",
     "q": "What new supply-chain or geopolitical risks appeared in Meta's most recent annual report?",
-    "judge_notes": "Should list plausible Meta risks with citations from Meta chunks; 'newly appeared' framing acknowledged."
+    "judge_notes": "VERIFIED against the full text of the filings (source-text gold sha256 af1e810d). Meta FY2024 (10-K filed 2025-01-30) vs FY2025 (10-K filed 2026-01-29), risk section only. Older filing, 48 risk factors labelled: 16 unchanged, 32 reworded, 0 merged into another risk factor, 0 removed. Newer filing, 48 labelled: 48 carried over from the older filing, 0 new. NO whole risk factor was removed. No risk factor is new. Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 48 risk factors, 124 sentences labelled): 1 removed, 5 reworded, 118 present. Removed: \"The adequacy decision concludes that the United States ensures an adequate level of protection for personal data tran...\". Newer filing sentences (a seeded SAMPLE of 6 of 48 risk factors, 158 sentences labelled): 12 added, 6 reworded, 140 present. Added: \"From time to time we may also seek to raise additional capital through debt, equity, or other financing arrangements ...\"; \"Such financings may not be available on favorable terms or at all.\"; \"If we are unable to obtain adequate financing when needed, our ability to finance our business operations and initiat...\"; \"We have seen an increase in litigation and threatened claims related to the provision of our services to younger user...\"; \"In April 2025, the European Commission issued a final decision that our \"subscription for no ads\" model does not comp...\"; \"We made significant modifications to LPA since the European Commission issued its final decision.\"; \"We have appealed the European Commission's decision but further modifications to our model may be imposed during the ...\"; \"In the UK, the OSA establishes similar types of obligations.\"; and 4 more. Claims about sentences outside this sample are not verified by this note. These consecutive pairs are not in the gold, so nothing is verified about them: FY2022 -> FY2023, FY2023 -> FY2024. Correct answer: reports at most the removals and additions verified above, describes removed sentences as sentences (never as dropped risk factors), and treats any other claim that a risk factor was dropped, removed, added or new as unsupported and incorrect."
   },
   {
     "id": "T3",
     "type": "temporal",
     "q": "How has Nvidia's disclosed risk profile evolved across its recent annual reports?",
-    "judge_notes": "Should discuss evolution (e.g., growing AI/export-control emphasis) grounded in cited Nvidia chunks from multiple years."
+    "judge_notes": "VERIFIED against the full text of the filings (source-text gold sha256 af1e810d). Nvidia FY2024 (10-K filed 2024-02-21) vs FY2025 (10-K filed 2025-02-26), risk section only. Older filing, 24 risk factors labelled: 4 unchanged, 19 reworded, 0 merged into another risk factor, 1 removed. Newer filing, 23 labelled: 23 carried over from the older filing, 0 new. Removed: exactly 1 risk factor: 'Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling ou...' (FY2024 chunks 0001045810-24-000029:I.1A:0162). No risk factor is new. Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 24 risk factors, 231 sentences labelled): 15 removed, 24 reworded, 192 present. Removed: \"This risk may increase as a result of our platform strategy.\"; \"If our existing suppliers are unable to scale their capabilities to meet our supply needs, we may require additional ...\"; \"Demand for our data center systems and products surged in fiscal year 2024.\"; \"Entering fiscal year 2025, we are gathering customer demand indications across several product transitions.\"; \"We have demand visibility for our new data center products ramping later in fiscal year 2025.\"; \"Our purchase commitments and obligations for inventory and manufacturing capacity at the end of fiscal year 2024 were...\"; \"Supply of Hopper architecture products is improving, and demand remains very strong.\"; \"We expect our next-generation products to be supply-constrained based upon demand indications.\"; and 7 more. Newer filing sentences (a seeded SAMPLE of 6 of 23 risk factors, 261 sentences labelled): 38 added, 19 reworded, 204 present. Added: \"our customers' ability to invest in AI infrastructure.\"; \"Our expanding product portfolio and varying component compatibility and quality may lead to increased inventory levels.\"; \"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new ...\"; \"For example, our gross margins in the second quarter of fiscal year 2025 were negatively impacted by inventory provis...\"; \"We incur significant engineering development resources for new products, and changes to our product roadmap may impac...\"; \"Customers may delay purchasing existing products as we increase the frequency of new products or may not be able to a...\"; \"We have a small number of partners that are involved in system integration with our key customers.\"; \"As our system design becomes increasingly complex, system integrators may be unable to meet specifications of our key...\"; and 30 more. Claims about sentences outside this sample are not verified by this note. Nvidia FY2025 (10-K filed 2025-02-26) vs FY2026 (10-K filed 2026-02-25), risk section only. Older filing, 23 risk factors labelled: 7 unchanged, 16 reworded, 0 merged into another risk factor, 0 removed. Newer filing, 24 labelled: 23 carried over from the older filing, 1 new. NO whole risk factor was removed. 1 new: 'Commercial arrangements expose us to counterparty risks.' (FY2026 chunks 0001045810-26-000021:I.1A:0349). Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 23 risk factors, 165 sentences labelled): 30 removed, 8 reworded, 127 present. Removed: \"We offer enterprise customers NVIDIA DGX Cloud services, which include cloud-based infrastructure, software and servi...\"; \"NVIDIA DGX Cloud services may not be successful and will take time, resources, and investment.\"; \"The licensing requirements also apply to any future NVIDIA integrated circuit achieving certain peak performance and ...\"; \"There are also now licensing requirements to export a wide array of products, including networking products, destined...\"; \"On October 23, 2023, the USG informed us that the licensing requirements were effective immediately for shipments of ...\"; \"Blackwell systems, such as GB200 NVL 72 and NVL 36 as well as B200 are also subject to these requirements and therefo...\"; \"To date, we have not received licenses to ship these restricted products to China.\"; \"Any system that incorporates one or more of the covered integrated circuits, or ICs, (including but not limited to NV...\"; and 22 more. Newer filing sentences (a seeded SAMPLE of 6 of 24 risk factors, 194 sentences labelled): 35 added, 10 reworded, 149 present. Added: \"Many of these companies may not achieve profitability in the near term, or at all, and there is no guarantee that we ...\"; \"We are finalizing an investment and partnership agreement with OpenAI.\"; \"There is no assurance that we will enter into an investment and partnership agreement with OpenAI or that a transacti...\"; \"In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and...\"; \"As a result of these requirements, we incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associa...\"; \"In August 2025, the USG granted licenses that would allow us to ship certain H20 products to certain China-based cust...\"; \"We generated approximately $60 million in H20 revenue under those licenses.\"; \"USG officials expressed an expectation that the USG will receive 15% or more of the revenue generated from licensed s...\"; and 27 more. Claims about sentences outside this sample are not verified by this note. Sentence level (FY2025 -> FY2026): these statements were removed although the risk factor containing them survives: \"For example, the Notified Advanced Computing, or \u201cNAC,\u201d process has not resulted in approvals for exports of products to customers in China.\" \"Following these 2022 export controls, we transitioned some operations, including certain testing, validation, and supply and distribution operations out of China and Hong Kong.\" \"The AI Diffusion IFR would confer special benefits on select \u201cUniversal Verified End Users\u201d, or UVEU, and lesser benefits on \u201cNational Verified End Users\u201d, or NVEU.\" These consecutive pairs are not in the gold, so nothing is verified about them: FY2023 -> FY2024. Correct answer: reports at most the removals and additions verified above, describes removed sentences as sentences (never as dropped risk factors), and treats any other claim that a risk factor was dropped, removed, added or new as unsupported and incorrect."
   },
   {
     "id": "Q1",
@@ -169,5 +169,781 @@
     "id": "U2",
     "type": "refusal",
     "q": "What did Nvidia's CEO say on the most recent earnings call?"
+  },
+  {
+    "id": "NG01",
+    "type": "numeric",
+    "q": "By what percentage did Nvidia's total revenue change from the fiscal year ended January 26, 2025 to the fiscal year ended January 25, 2026?",
+    "expect": {
+      "pct": 65.5,
+      "direction": "up"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "NVDA",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1045810:revenue:2026-01-25",
+      "xbrl:1045810:revenue:2025-01-26"
+    ]
+  },
+  {
+    "id": "NG02",
+    "type": "numeric",
+    "q": "By what percentage did AMD's net income change from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025?",
+    "expect": {
+      "pct": 164.2,
+      "direction": "up"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "AMD",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:2488:net_income:2025-12-27",
+      "xbrl:2488:net_income:2024-12-28"
+    ]
+  },
+  {
+    "id": "NG03",
+    "type": "numeric",
+    "q": "By what percentage did Intel's total revenue change from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025?",
+    "expect": {
+      "pct": -0.5,
+      "direction": "down"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "INTC",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:50863:revenue:2025-12-27",
+      "xbrl:50863:revenue:2024-12-28"
+    ]
+  },
+  {
+    "id": "NG04",
+    "type": "numeric",
+    "q": "By what percentage did Micron's research and development expense change from the fiscal year ended August 29, 2024 to the fiscal year ended August 28, 2025?",
+    "expect": {
+      "pct": 10.7,
+      "direction": "up"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "MU",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:723125:rnd:2025-08-28",
+      "xbrl:723125:rnd:2024-08-29"
+    ]
+  },
+  {
+    "id": "NG05",
+    "type": "numeric",
+    "q": "By what percentage did Broadcom's total revenue change from the fiscal year ended November 3, 2024 to the fiscal year ended November 2, 2025?",
+    "expect": {
+      "pct": 23.9,
+      "direction": "up"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "AVGO",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1730168:revenue:2025-11-02",
+      "xbrl:1730168:revenue:2024-11-03"
+    ]
+  },
+  {
+    "id": "NG06",
+    "type": "numeric",
+    "q": "By what percentage did Qualcomm's net income change from the fiscal year ended September 25, 2022 to the fiscal year ended September 24, 2023?",
+    "expect": {
+      "pct": -44.1,
+      "direction": "down"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "QCOM",
+    "window": "older",
+    "metric_ids": [
+      "xbrl:804328:net_income:2023-09-24",
+      "xbrl:804328:net_income:2022-09-25"
+    ]
+  },
+  {
+    "id": "NG07",
+    "type": "numeric",
+    "q": "By what percentage did Meta's research and development expense change from the fiscal year ended December 31, 2024 to the fiscal year ended December 31, 2025?",
+    "expect": {
+      "pct": 30.8,
+      "direction": "up"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "META",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1326801:rnd:2025-12-31",
+      "xbrl:1326801:rnd:2024-12-31"
+    ]
+  },
+  {
+    "id": "NG08",
+    "type": "numeric",
+    "q": "By what percentage did Microsoft's total revenue change from the fiscal year ended June 30, 2024 to the fiscal year ended June 30, 2025?",
+    "expect": {
+      "pct": 14.9,
+      "direction": "up"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "MSFT",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:789019:revenue:2025-06-30",
+      "xbrl:789019:revenue:2024-06-30"
+    ]
+  },
+  {
+    "id": "NG09",
+    "type": "numeric",
+    "q": "By what percentage did Amazon's net income change from the fiscal year ended December 31, 2024 to the fiscal year ended December 31, 2025?",
+    "expect": {
+      "pct": 31.1,
+      "direction": "up"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "AMZN",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1018724:net_income:2025-12-31",
+      "xbrl:1018724:net_income:2024-12-31"
+    ]
+  },
+  {
+    "id": "NG10",
+    "type": "numeric",
+    "q": "By what percentage did Alphabet's total revenue change from the fiscal year ended December 31, 2021 to the fiscal year ended December 31, 2022?",
+    "expect": {
+      "pct": 9.8,
+      "direction": "up"
+    },
+    "gold": "xbrl",
+    "subtype": "yoy",
+    "ticker": "GOOGL",
+    "window": "older",
+    "metric_ids": [
+      "xbrl:1652044:revenue:2022-12-31",
+      "xbrl:1652044:revenue:2021-12-31"
+    ]
+  },
+  {
+    "id": "NG11",
+    "type": "numeric",
+    "q": "What were Nvidia's total revenue and net income for the fiscal year ended January 25, 2026?",
+    "expect": {
+      "values": [
+        215938000000.0,
+        120067000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "pair",
+    "ticker": "NVDA",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1045810:revenue:2026-01-25",
+      "xbrl:1045810:net_income:2026-01-25"
+    ]
+  },
+  {
+    "id": "NG12",
+    "type": "numeric",
+    "q": "What were AMD's total revenue and research and development expense for the fiscal year ended December 28, 2024?",
+    "expect": {
+      "values": [
+        25785000000.0,
+        6456000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "pair",
+    "ticker": "AMD",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:2488:revenue:2024-12-28",
+      "xbrl:2488:rnd:2024-12-28"
+    ]
+  },
+  {
+    "id": "NG13",
+    "type": "numeric",
+    "q": "What were Meta's total revenue and net income for the fiscal year ended December 31, 2025?",
+    "expect": {
+      "values": [
+        200966000000.0,
+        60458000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "pair",
+    "ticker": "META",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1326801:revenue:2025-12-31",
+      "xbrl:1326801:net_income:2025-12-31"
+    ]
+  },
+  {
+    "id": "NG14",
+    "type": "numeric",
+    "q": "What were Apple's total revenue and net income for the fiscal year ended September 28, 2024?",
+    "expect": {
+      "values": [
+        391035000000.0,
+        93736000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "pair",
+    "ticker": "AAPL",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:320193:revenue:2024-09-28",
+      "xbrl:320193:net_income:2024-09-28"
+    ]
+  },
+  {
+    "id": "NG15",
+    "type": "numeric",
+    "q": "What were Micron's total revenue and capital expenditures for the fiscal year ended August 28, 2025?",
+    "expect": {
+      "values": [
+        37378000000.0,
+        15857000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "pair",
+    "ticker": "MU",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:723125:revenue:2025-08-28",
+      "xbrl:723125:capex:2025-08-28"
+    ]
+  },
+  {
+    "id": "NG16",
+    "type": "numeric",
+    "q": "What were Broadcom's total revenue and net income for the fiscal year ended October 29, 2023?",
+    "expect": {
+      "values": [
+        35819000000.0,
+        14082000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "pair",
+    "ticker": "AVGO",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1730168:revenue:2023-10-29",
+      "xbrl:1730168:net_income:2023-10-29"
+    ]
+  },
+  {
+    "id": "NG17",
+    "type": "numeric",
+    "q": "What were Nvidia's research and development expense for the fiscal years ended January 25, 2026 and January 29, 2023?",
+    "expect": {
+      "values": [
+        18497000000.0,
+        7339000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "years",
+    "ticker": "NVDA",
+    "window": "older",
+    "metric_ids": [
+      "xbrl:1045810:rnd:2026-01-25",
+      "xbrl:1045810:rnd:2023-01-29"
+    ]
+  },
+  {
+    "id": "NG18",
+    "type": "numeric",
+    "q": "What were Intel's net income for the fiscal years ended December 27, 2025 and December 30, 2023?",
+    "expect": {
+      "values": [
+        -267000000.0,
+        1689000000.0
+      ],
+      "direction": "down"
+    },
+    "gold": "xbrl",
+    "subtype": "years",
+    "ticker": "INTC",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:50863:net_income:2025-12-27",
+      "xbrl:50863:net_income:2023-12-30"
+    ]
+  },
+  {
+    "id": "NG19",
+    "type": "numeric",
+    "q": "What were Qualcomm's total revenue for the fiscal years ended September 28, 2025 and September 26, 2021?",
+    "expect": {
+      "values": [
+        44284000000.0,
+        33566000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "years",
+    "ticker": "QCOM",
+    "window": "older",
+    "metric_ids": [
+      "xbrl:804328:revenue:2025-09-28",
+      "xbrl:804328:revenue:2021-09-26"
+    ]
+  },
+  {
+    "id": "NG20",
+    "type": "numeric",
+    "q": "What were Microsoft's net income for the fiscal years ended June 30, 2025 and June 30, 2023?",
+    "expect": {
+      "values": [
+        101832000000.0,
+        72361000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "years",
+    "ticker": "MSFT",
+    "window": "older",
+    "metric_ids": [
+      "xbrl:789019:net_income:2025-06-30",
+      "xbrl:789019:net_income:2023-06-30"
+    ]
+  },
+  {
+    "id": "NG21",
+    "type": "numeric",
+    "q": "What were Amazon's total revenue for the fiscal years ended December 31, 2025 and December 31, 2022?",
+    "expect": {
+      "values": [
+        716924000000.0,
+        513983000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "years",
+    "ticker": "AMZN",
+    "window": "older",
+    "metric_ids": [
+      "xbrl:1018724:revenue:2025-12-31",
+      "xbrl:1018724:revenue:2022-12-31"
+    ]
+  },
+  {
+    "id": "NG22",
+    "type": "numeric",
+    "q": "What were Alphabet's research and development expense for the fiscal years ended December 31, 2025 and December 31, 2023?",
+    "expect": {
+      "values": [
+        61087000000.0,
+        45427000000.0
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "years",
+    "ticker": "GOOGL",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1652044:rnd:2025-12-31",
+      "xbrl:1652044:rnd:2023-12-31"
+    ]
+  },
+  {
+    "id": "NG23",
+    "type": "numeric",
+    "q": "What was TSMC's total revenue for the fiscal year ended December 31, 2025, and in which currency is it reported?",
+    "expect": {
+      "value": 3809054300000.0,
+      "any_of": [
+        "TWD",
+        "NT$",
+        "New Taiwan dollar"
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "currency",
+    "ticker": "TSM",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:1046179:revenue:2025-12-31"
+    ]
+  },
+  {
+    "id": "NG24",
+    "type": "numeric",
+    "q": "What was ASML's net income for the fiscal year ended December 31, 2025, and in which currency is it reported?",
+    "expect": {
+      "value": 9609400000.0,
+      "any_of": [
+        "EUR",
+        "euro",
+        "\u20ac"
+      ]
+    },
+    "gold": "xbrl",
+    "subtype": "currency",
+    "ticker": "ASML",
+    "window": "recent",
+    "metric_ids": [
+      "xbrl:937966:net_income:2025-12-31"
+    ]
+  },
+  {
+    "id": "X1",
+    "type": "misattribution",
+    "q": "What did NVIDIA disclose about the BIS 50% affiliates rule?",
+    "expect": {
+      "not_company_disclosure": [
+        "NVIDIA",
+        "Nvidia"
+      ]
+    },
+    "judge_notes": "VERIFIED (searched all 479 NVIDIA 10-K and 10-Q chunks in the corpus for 'affiliates rule', 'Affiliates of Certain Listed Entities', '50 percent', '50% or more', 'at least 50', 'owned 50', 'Validated End-User', 'VEU': no match). The '50% affiliates rule' is the BIS interim final rule 'Expansion of End-User Controls To Cover Affiliates of Certain Listed Entities' [fr:2025-19001] (published 2025-09-30), suspended for one year by [fr:2025-19846] (published 2025-11-12; the suspension ends 2026-11-09). It is a BIS / Federal Register action, NOT an NVIDIA disclosure: NVIDIA's filings in the corpus do not discuss it (they discuss export controls and the Entity List generally, e.g. 0001045810-26-000021:I.1A:0353). Correct answer: says the rule is a BIS Federal Register action (cited as fr:), says NVIDIA's filings do not discuss it, and does not attribute the rule or its content to NVIDIA. An answer that says NVIDIA disclosed, reported or described this rule is incorrect."
+  },
+  {
+    "id": "X2",
+    "type": "misattribution",
+    "q": "What did AMD disclose about the BIS AI Diffusion Rule?",
+    "expect": {
+      "not_company_disclosure": [
+        "AMD",
+        "Advanced Micro Devices"
+      ]
+    },
+    "judge_notes": "VERIFIED (a probe where the filing DOES discuss the rule). AMD's FY2025 10-K (filed 2026-02-04) says in Item 1A (0000002488-26-000018:I.1A:0020) that in January 2025 BIS issued a final rule commonly referred to as the 'AI Diffusion Rule' that would have imposed new restrictions on the export, reexport and in-country transfer of certain advanced semiconductor devices and technology, and that in May 2025 BIS announced its intention to rescind it, publish a regulation formalizing the rescission and issue replacement rules in the future, which may limit AMD's ability to do business, require new export licenses, delay shipments or force changes in compliance processes and product designs. AMD's later 10-Qs repeat this (0000002488-26-000076:II.1A:0021, 0000002488-26-000123:II.1A:0022). The rule itself is the Federal Register document 'Framework for Artificial Intelligence Diffusion' [fr:2025-00636] (published 2025-01-15). Correct answer: reports what AMD says about the rule, citing those filing passages, and cites the rule's own text as fr:, keeping the two apart. An answer that says AMD's filings do not mention the rule is incorrect; one that attributes the rule's own content (country tiers, AI model weight controls) to AMD's disclosure is incorrect."
+  },
+  {
+    "id": "X3",
+    "type": "misattribution",
+    "q": "What did Intel disclose about the BIS revocation of Validated End-User authorizations in China?",
+    "expect": {
+      "not_company_disclosure": [
+        "Intel"
+      ]
+    },
+    "judge_notes": "VERIFIED (searched all 372 Intel 10-K and 10-Q chunks in the corpus for 'Validated', 'VEU', 'Dalian': no match). The rule is 'Revocation of Validated End-User Authorizations in the People's Republic of China' [fr:2025-16735] (published 2025-09-02, effective 2025-12-31); it removes Intel Semiconductor (Dalian) Ltd, Samsung China Semiconductor Co. Ltd and SK hynix Semiconductor (China) Ltd from the VEU list. It is a BIS / Federal Register action naming Intel's former Dalian entity, NOT an Intel disclosure: Intel's filings in the corpus do not discuss it. Correct answer: says the rule is a BIS Federal Register action (cited as fr:), says Intel's filings do not discuss it, and does not attribute the rule to Intel's disclosure. An answer that says Intel disclosed, reported or described this revocation is incorrect."
+  },
+  {
+    "id": "X4",
+    "type": "misattribution",
+    "q": "What did NVIDIA disclose about the BIS license review policy for advanced computing chips published in January 2026?",
+    "expect": {
+      "not_company_disclosure": [
+        "NVIDIA",
+        "Nvidia"
+      ]
+    },
+    "judge_notes": "VERIFIED (a partial case). The rule is 'Revision to License Review Policy for Advanced Computing Commodities' [fr:2026-00789] (published 2026-01-15): BIS changes the review of exports of the Nvidia H200 and equivalent chips to China and Macau from a presumption of denial to case-by-case review. NVIDIA's filings do NOT discuss the rule or the policy change (searched all NVIDIA chunks for 'case-by-case', 'presumption of denial', 'license review policy': no match). They do disclose a consequence: in February 2026 the US government granted a license to ship small amounts of H200 products to specific China-based customers, with no revenue generated under it to date and an inspection in the United States required before any shipment (0001045810-26-000021:I.1:0323, 0001045810-26-000021:I.1A:0355, 0001045810-26-000021:II.7:0368). Correct answer: separates the two, saying the policy change is a BIS Federal Register rule (cited as fr:) and that NVIDIA's disclosure concerns the February 2026 H200 license. An answer that says NVIDIA disclosed the policy revision itself is incorrect."
+  },
+  {
+    "id": "T4",
+    "type": "temporal",
+    "q": "Did AMD remove any risk factors between its FY2024 and FY2025 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). AMD FY2024 (10-K filed 2025-02-05) vs FY2025 (10-K filed 2026-02-04), risk section only. Older filing, 44 risk factors labelled: 13 unchanged, 28 reworded, 3 merged into another risk factor, 0 removed. Newer filing, 42 labelled: 41 carried over from the older filing, 1 new. NO whole risk factor was removed. 1 new: 'We may be required to satisfy financial obligations under guarantees and other commercial commitments.' (FY2025 chunks 0000002488-26-000018:I.1A:0029). Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 44 risk factors, 97 sentences labelled): 10 removed, 4 reworded, 83 present. Removed: \"In addition, we are entering markets with current and new competitors who may be able to adapt more quickly to custom...\"; \"For example, the AI market is subject to rapid technological change, product obsolescence, frequent new product intro...\"; \"While we see significant opportunity in AI, we expect intense competition from companies such as Nvidia in the supply...\"; \"Increased adoption of Arm-based semiconductor designs could lead to further growth and development of the Arm ecosystem.\"; \"We may also face delays or disruptions in research and development efforts, or we may be required to invest significa...\"; \"In addition, the semiconductor industry has seen several mergers and acquisitions over the last number of years.\"; \"Further consolidation could adversely impact our business due to there being fewer suppliers, customers and partners ...\"; \"If competitors introduce competitive new products into the market before us, demand for our products could be adverse...\"; and 2 more. Newer filing sentences (a seeded SAMPLE of 6 of 42 risk factors, 108 sentences labelled): 39 added, 5 reworded, 64 present. Added: \"For example, there is currently an industry-wide memory shortage as the demand for such components has outpaced supply.\"; \"The price of memory has also increased as a result of the shortage.\"; \"We are subject to U.S. laws and regulations, including the Export Administration Regulations (EAR) administered by th...\"; \"These restrictions may limit our ability to sell certain products or technologies in these markets or to certain cust...\"; \"Evolving U.S. government policy toward semiconductor exports, particularly in the context of national security and fo...\"; \"U.S. export restrictions on semiconductors and semiconductor technology to China and Chinese customers negatively imp...\"; \"In April 2025, the U.S. government implemented a new license requirement for the export of certain semiconductor prod...\"; \"This restriction impacts our AMD Instinct\u2122 MI308 products.\"; and 31 more. Claims about sentences outside this sample are not verified by this note. A sentence inside a surviving risk factor can be removed without the risk factor being removed: never describe a surviving or reworded risk factor as dropped. Only this consecutive pair was labelled; other years are not covered. Correct answer: NO risk factor was removed between these two reports.",
+    "gold": "source_text",
+    "subtype": "removed_any",
+    "pair_id": "AMD-0000002488-25-000012-0000002488-26-000018",
+    "ticker": "AMD",
+    "verified_answer": "no",
+    "facts": {
+      "removed": [],
+      "new": [
+        {
+          "item_id": "0000002488-26-000018:I.1A:i035",
+          "headline": "We may be required to satisfy financial obligations under guarantees and other commercial commitments.",
+          "chunk_ids": [
+            "0000002488-26-000018:I.1A:0029"
+          ]
+        }
+      ],
+      "older_counts": {
+        "merged": 3,
+        "reworded": 28,
+        "unchanged": 13
+      },
+      "newer_counts": {
+        "carried": 41,
+        "new": 1
+      }
+    }
+  },
+  {
+    "id": "T5",
+    "type": "temporal",
+    "q": "Did Meta remove any risk factors between its FY2024 and FY2025 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Meta FY2024 (10-K filed 2025-01-30) vs FY2025 (10-K filed 2026-01-29), risk section only. Older filing, 48 risk factors labelled: 16 unchanged, 32 reworded, 0 merged into another risk factor, 0 removed. Newer filing, 48 labelled: 48 carried over from the older filing, 0 new. NO whole risk factor was removed. No risk factor is new. Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 48 risk factors, 124 sentences labelled): 1 removed, 5 reworded, 118 present. Removed: \"The adequacy decision concludes that the United States ensures an adequate level of protection for personal data tran...\". Newer filing sentences (a seeded SAMPLE of 6 of 48 risk factors, 158 sentences labelled): 12 added, 6 reworded, 140 present. Added: \"From time to time we may also seek to raise additional capital through debt, equity, or other financing arrangements ...\"; \"Such financings may not be available on favorable terms or at all.\"; \"If we are unable to obtain adequate financing when needed, our ability to finance our business operations and initiat...\"; \"We have seen an increase in litigation and threatened claims related to the provision of our services to younger user...\"; \"In April 2025, the European Commission issued a final decision that our \"subscription for no ads\" model does not comp...\"; \"We made significant modifications to LPA since the European Commission issued its final decision.\"; \"We have appealed the European Commission's decision but further modifications to our model may be imposed during the ...\"; \"In the UK, the OSA establishes similar types of obligations.\"; and 4 more. Claims about sentences outside this sample are not verified by this note. A sentence inside a surviving risk factor can be removed without the risk factor being removed: never describe a surviving or reworded risk factor as dropped. Only this consecutive pair was labelled; other years are not covered. Correct answer: NO risk factor was removed between these two reports.",
+    "gold": "source_text",
+    "subtype": "removed_any",
+    "pair_id": "META-0001326801-25-000017-0001628280-26-003942",
+    "ticker": "META",
+    "verified_answer": "no",
+    "facts": {
+      "removed": [],
+      "new": [],
+      "older_counts": {
+        "reworded": 32,
+        "unchanged": 16
+      },
+      "newer_counts": {
+        "carried": 48
+      }
+    }
+  },
+  {
+    "id": "T6",
+    "type": "temporal",
+    "q": "Did Micron remove any risk factors between its FY2024 and FY2025 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Micron FY2024 (10-K filed 2024-10-04) vs FY2025 (10-K filed 2025-10-03), risk section only. Older filing, 33 risk factors labelled: 5 unchanged, 28 reworded, 0 merged into another risk factor, 0 removed. Newer filing, 33 labelled: 33 carried over from the older filing, 0 new. NO whole risk factor was removed. No risk factor is new. Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 33 risk factors, 111 sentences labelled): 4 removed, 5 reworded, 102 present. Removed: \"Management\u2019s Discussion and Analysis of Financial Condition and Results of Operations \u2013 Overview \u2013 Industry Condition...\"; \"For example, in 2023, we recorded aggregate charges of $1.83 billion to write down the carrying value of our inventor...\"; \"For example, we have signed a non-binding preliminary memorandum of terms with the U.S. Department of Commerce to rec...\"; \"These preliminary terms may not result in us receiving funding.\". Newer filing sentences (a seeded SAMPLE of 6 of 33 risk factors, 93 sentences labelled): 9 added, 4 reworded, 80 present. Added: \"In periods of shortage, we may be required to incur increased costs in order to meet our contractual commitments and ...\"; \"Among our end markets, approximately one-half of our total revenue was concentrated in the data center end market.\"; \"In addition, any consolidation of our customers or consolidation of significant end markets could limit the opportuni...\"; \"On July 4, 2025, the One Big Beautiful Bill Act (\u201cOBBBA\u201d) was enacted, introducing broad changes to the U.S. tax code...\"; \"The aggregate impact of the OBBBA remains uncertain.\"; \"We will continue to monitor future developments, including regulatory guidance and interpretations, which could have ...\"; \"On November 27, 2024, Singapore enacted legislation to implement Pillar Two, which will apply to us starting in 2026.\"; \"We continue to monitor for additional guidance and legislative changes related to Pillar Two in the jurisdictions whe...\"; and 1 more. Claims about sentences outside this sample are not verified by this note. A sentence inside a surviving risk factor can be removed without the risk factor being removed: never describe a surviving or reworded risk factor as dropped. Only this consecutive pair was labelled; other years are not covered. Correct answer: NO risk factor was removed between these two reports.",
+    "gold": "source_text",
+    "subtype": "removed_any",
+    "pair_id": "MU-0000723125-24-000027-0000723125-25-000028",
+    "ticker": "MU",
+    "verified_answer": "no",
+    "facts": {
+      "removed": [],
+      "new": [],
+      "older_counts": {
+        "reworded": 28,
+        "unchanged": 5
+      },
+      "newer_counts": {
+        "carried": 33
+      }
+    }
+  },
+  {
+    "id": "T7",
+    "type": "temporal",
+    "q": "Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Nvidia FY2024 (10-K filed 2024-02-21) vs FY2025 (10-K filed 2025-02-26), risk section only. Older filing, 24 risk factors labelled: 4 unchanged, 19 reworded, 0 merged into another risk factor, 1 removed. Newer filing, 23 labelled: 23 carried over from the older filing, 0 new. Removed: exactly 1 risk factor: 'Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling ou...' (FY2024 chunks 0001045810-24-000029:I.1A:0162). No risk factor is new. Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 24 risk factors, 231 sentences labelled): 15 removed, 24 reworded, 192 present. Removed: \"This risk may increase as a result of our platform strategy.\"; \"If our existing suppliers are unable to scale their capabilities to meet our supply needs, we may require additional ...\"; \"Demand for our data center systems and products surged in fiscal year 2024.\"; \"Entering fiscal year 2025, we are gathering customer demand indications across several product transitions.\"; \"We have demand visibility for our new data center products ramping later in fiscal year 2025.\"; \"Our purchase commitments and obligations for inventory and manufacturing capacity at the end of fiscal year 2024 were...\"; \"Supply of Hopper architecture products is improving, and demand remains very strong.\"; \"We expect our next-generation products to be supply-constrained based upon demand indications.\"; and 7 more. Newer filing sentences (a seeded SAMPLE of 6 of 23 risk factors, 261 sentences labelled): 38 added, 19 reworded, 204 present. Added: \"our customers' ability to invest in AI infrastructure.\"; \"Our expanding product portfolio and varying component compatibility and quality may lead to increased inventory levels.\"; \"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new ...\"; \"For example, our gross margins in the second quarter of fiscal year 2025 were negatively impacted by inventory provis...\"; \"We incur significant engineering development resources for new products, and changes to our product roadmap may impac...\"; \"Customers may delay purchasing existing products as we increase the frequency of new products or may not be able to a...\"; \"We have a small number of partners that are involved in system integration with our key customers.\"; \"As our system design becomes increasingly complex, system integrators may be unable to meet specifications of our key...\"; and 30 more. Claims about sentences outside this sample are not verified by this note. A sentence inside a surviving risk factor can be removed without the risk factor being removed: never describe a surviving or reworded risk factor as dropped. Only this consecutive pair was labelled; other years are not covered. Correct answer: YES, exactly 1 risk factor (the ones listed) and no other.",
+    "gold": "source_text",
+    "subtype": "removed_any",
+    "pair_id": "NVDA-0001045810-24-000029-0001045810-25-000023",
+    "ticker": "NVDA",
+    "verified_answer": "yes",
+    "facts": {
+      "removed": [
+        {
+          "item_id": "0001045810-24-000029:I.1A:i022",
+          "headline": "Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling ou...",
+          "chunk_ids": [
+            "0001045810-24-000029:I.1A:0162"
+          ]
+        }
+      ],
+      "new": [],
+      "older_counts": {
+        "reworded": 19,
+        "unchanged": 4,
+        "removed": 1
+      },
+      "newer_counts": {
+        "carried": 23
+      }
+    }
+  },
+  {
+    "id": "T8",
+    "type": "temporal",
+    "q": "Did Nvidia remove any risk factors between its FY2025 and FY2026 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Nvidia FY2025 (10-K filed 2025-02-26) vs FY2026 (10-K filed 2026-02-25), risk section only. Older filing, 23 risk factors labelled: 7 unchanged, 16 reworded, 0 merged into another risk factor, 0 removed. Newer filing, 24 labelled: 23 carried over from the older filing, 1 new. NO whole risk factor was removed. 1 new: 'Commercial arrangements expose us to counterparty risks.' (FY2026 chunks 0001045810-26-000021:I.1A:0349). Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 23 risk factors, 165 sentences labelled): 30 removed, 8 reworded, 127 present. Removed: \"We offer enterprise customers NVIDIA DGX Cloud services, which include cloud-based infrastructure, software and servi...\"; \"NVIDIA DGX Cloud services may not be successful and will take time, resources, and investment.\"; \"The licensing requirements also apply to any future NVIDIA integrated circuit achieving certain peak performance and ...\"; \"There are also now licensing requirements to export a wide array of products, including networking products, destined...\"; \"On October 23, 2023, the USG informed us that the licensing requirements were effective immediately for shipments of ...\"; \"Blackwell systems, such as GB200 NVL 72 and NVL 36 as well as B200 are also subject to these requirements and therefo...\"; \"To date, we have not received licenses to ship these restricted products to China.\"; \"Any system that incorporates one or more of the covered integrated circuits, or ICs, (including but not limited to NV...\"; and 22 more. Newer filing sentences (a seeded SAMPLE of 6 of 24 risk factors, 194 sentences labelled): 35 added, 10 reworded, 149 present. Added: \"Many of these companies may not achieve profitability in the near term, or at all, and there is no guarantee that we ...\"; \"We are finalizing an investment and partnership agreement with OpenAI.\"; \"There is no assurance that we will enter into an investment and partnership agreement with OpenAI or that a transacti...\"; \"In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and...\"; \"As a result of these requirements, we incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associa...\"; \"In August 2025, the USG granted licenses that would allow us to ship certain H20 products to certain China-based cust...\"; \"We generated approximately $60 million in H20 revenue under those licenses.\"; \"USG officials expressed an expectation that the USG will receive 15% or more of the revenue generated from licensed s...\"; and 27 more. Claims about sentences outside this sample are not verified by this note. A sentence inside a surviving risk factor can be removed without the risk factor being removed: never describe a surviving or reworded risk factor as dropped. Only this consecutive pair was labelled; other years are not covered. Correct answer: NO risk factor was removed between these two reports.",
+    "gold": "source_text",
+    "subtype": "removed_any",
+    "pair_id": "NVDA-0001045810-25-000023-0001045810-26-000021",
+    "ticker": "NVDA",
+    "verified_answer": "no",
+    "facts": {
+      "removed": [],
+      "new": [
+        {
+          "item_id": "0001045810-26-000021:I.1A:i012",
+          "headline": "Commercial arrangements expose us to counterparty risks.",
+          "chunk_ids": [
+            "0001045810-26-000021:I.1A:0349"
+          ]
+        }
+      ],
+      "older_counts": {
+        "reworded": 16,
+        "unchanged": 7
+      },
+      "newer_counts": {
+        "carried": 23,
+        "new": 1
+      }
+    }
+  },
+  {
+    "id": "T9",
+    "type": "temporal",
+    "q": "Did TSMC remove any risk factors between its FY2024 and FY2025 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). TSMC FY2024 (20-F filed 2025-04-17) vs FY2025 (20-F filed 2026-04-16), risk section only. Older filing, 26 risk factors labelled: 11 unchanged, 14 reworded, 1 merged into another risk factor, 0 removed. Newer filing, 25 labelled: 25 carried over from the older filing, 0 new. NO whole risk factor was removed. No risk factor is new. Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 26 risk factors, 95 sentences labelled): 6 removed, 6 reworded, 83 present. Removed: \"The varying reciprocal tariffs, except those on Chinese goods, were then paused until July 9, 2025; imports subject t...\"; \"Semiconductors were not subject to the reciprocal tariffs announced on April 2, 2025.\"; \"However, given ongoing discussions between the United States and its trading partners, there remains significant unce...\"; \"For example, the U.S. tightened its export control measures against Huawei Technology Co.\"; \"Ltd. and its affiliates (collectively, \u201cHuawei\u201d) in 2020.\"; \"To comply with relevant laws and regulations, we have discontinued shipment of products to Huawei since September 2020.\". Newer filing sentences (a seeded SAMPLE of 6 of 25 risk factors, 95 sentences labelled): 14 added, 13 reworded, 68 present. Added: \"Collection of the reciprocal tariffs was delayed until August 2025, and while they excluded semiconductors, semicondu...\"; \"While the ruling removes IEEPA as a basis for tariffs, its broader impact on the U.S.\u2019s tariff and trade agenda, inte...\"; \"Following the Supreme Court ruling, the U.S. imposed a replacement tariff under Section 122 of the Trade Act of 1974 ...\"; \"Also, in April 2025, the U.S. government initiated a Section 232 investigation related to imports of Semiconductor It...\"; \"As a result, the U.S. issues a proclamation imposing a 25% ad valorem tariff on the import of certain advanced comput...\"; \"Further, in January 2026, the U.S. announced it had reached a trade and investment agreement with Taiwan which would ...\"; \"The agreement also grants preferential Section 232 treatment for Taiwanese semiconductor producers investing in U.S. ...\"; \"However, details regarding the impacts of the U.S. Supreme Court decision\"; and 6 more. Claims about sentences outside this sample are not verified by this note. A sentence inside a surviving risk factor can be removed without the risk factor being removed: never describe a surviving or reworded risk factor as dropped. Only this consecutive pair was labelled; other years are not covered. Correct answer: NO risk factor was removed between these two reports.",
+    "gold": "source_text",
+    "subtype": "removed_any",
+    "pair_id": "TSM-0001193125-25-083423-0001628280-26-025362",
+    "ticker": "TSM",
+    "verified_answer": "no",
+    "facts": {
+      "removed": [],
+      "new": [],
+      "older_counts": {
+        "reworded": 14,
+        "unchanged": 11,
+        "merged": 1
+      },
+      "newer_counts": {
+        "carried": 25
+      }
+    }
+  },
+  {
+    "id": "T10",
+    "type": "temporal",
+    "q": "Did AMD stop disclosing its risk about \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property.\" between its FY2024 and FY2025 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Correct answer: NO, AMD did not stop disclosing this risk. The risk factor \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property.\" (FY2024 (10-K filed 2025-02-05), chunks 0000002488-25-000012:I.1A:0015) is still disclosed in FY2025 (10-K filed 2026-02-04): its gold label is 'reworded' (the same risk is disclosed in edited wording); a labeller quoted the matching newer text and the quote was machine-checked. The location of that newer text is not recorded in the gold. An answer that says the risk was dropped, removed or is no longer disclosed is incorrect; a reworded risk factor is still disclosed.",
+    "gold": "source_text",
+    "subtype": "stop_disclosing",
+    "pair_id": "AMD-0000002488-25-000012-0000002488-26-000018",
+    "ticker": "AMD",
+    "verified_answer": "no",
+    "facts": {
+      "item_id": "0000002488-25-000012:I.1A:i018",
+      "headline": "Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property.",
+      "label": "reworded",
+      "older_chunk_ids": [
+        "0000002488-25-000012:I.1A:0015"
+      ],
+      "newer_location": "not recorded in the gold"
+    }
+  },
+  {
+    "id": "T11",
+    "type": "temporal",
+    "q": "Did Micron stop disclosing its risk about \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.\" between its FY2024 and FY2025 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Correct answer: NO, Micron did not stop disclosing this risk. The risk factor \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.\" (FY2024 (10-K filed 2024-10-04), chunks 0000723125-24-000027:I.1A:0036) is still disclosed in FY2025 (10-K filed 2025-10-03): its gold label is 'reworded' (the same risk is disclosed in edited wording); a labeller quoted the matching newer text and the quote was machine-checked. The location of that newer text is not recorded in the gold. An answer that says the risk was dropped, removed or is no longer disclosed is incorrect; a reworded risk factor is still disclosed.",
+    "gold": "source_text",
+    "subtype": "stop_disclosing",
+    "pair_id": "MU-0000723125-24-000027-0000723125-25-000028",
+    "ticker": "MU",
+    "verified_answer": "no",
+    "facts": {
+      "item_id": "0000723125-24-000027:I.1A:i026",
+      "headline": "We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.",
+      "label": "reworded",
+      "older_chunk_ids": [
+        "0000723125-24-000027:I.1A:0036"
+      ],
+      "newer_location": "not recorded in the gold"
+    }
+  },
+  {
+    "id": "T12",
+    "type": "temporal",
+    "q": "Did Nvidia stop disclosing its risk about \"We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.\" between its FY2024 and FY2025 annual reports?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Correct answer: NO, Nvidia did not stop disclosing this risk. The risk factor \"We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.\" (FY2024 (10-K filed 2024-02-21), chunks 0001045810-24-000029:I.1A:0146) is still disclosed in FY2025 (10-K filed 2025-02-26): its gold label is 'reworded' (the same risk is disclosed in edited wording); a labeller quoted the matching newer text and the quote was machine-checked. The location of that newer text is not recorded in the gold. An answer that says the risk was dropped, removed or is no longer disclosed is incorrect; a reworded risk factor is still disclosed.",
+    "gold": "source_text",
+    "subtype": "stop_disclosing",
+    "pair_id": "NVDA-0001045810-24-000029-0001045810-25-000023",
+    "ticker": "NVDA",
+    "verified_answer": "no",
+    "facts": {
+      "item_id": "0001045810-24-000029:I.1A:i010",
+      "headline": "We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.",
+      "label": "reworded",
+      "older_chunk_ids": [
+        "0001045810-24-000029:I.1A:0146"
+      ],
+      "newer_location": "not recorded in the gold"
+    }
+  },
+  {
+    "id": "T13",
+    "type": "temporal",
+    "q": "Does NVIDIA's FY2026 10-K still say that the Notified Advanced Computing (NAC) process has not resulted in approvals for exports of products to customers in China, or was that statement removed?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Correct answer: NO. This statement of NVIDIA's FY2025 (10-K filed 2025-02-26) risk section \"For example, the Notified Advanced Computing, or \u201cNAC,\u201d process has not resulted in approvals for exports of products to customers in China.\" does NOT appear, verbatim or reworded, anywhere in the FY2026 (10-K filed 2026-02-25) risk section (gold sentence label: removed; sentence id 0001045810-25-000023:I.1A:i015#s078; machine-checked against the whole newer section). The risk factor containing it (\"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversel...\", 0001045810-25-000023:I.1A:i015) SURVIVES in FY2026 (item-level gold label: reworded): this is a removed sentence, not a removed risk factor. An answer that says FY2026 still contains the statement is incorrect, and so is one that says the whole risk factor was dropped.",
+    "gold": "source_text",
+    "subtype": "passage",
+    "pair_id": "NVDA-0001045810-25-000023-0001045810-26-000021",
+    "ticker": "NVDA",
+    "verified_answer": "no",
+    "facts": {
+      "key": "nac",
+      "needle": "Notified Advanced Computing",
+      "sentence_ids": [
+        "0001045810-25-000023:I.1A:i015#s078"
+      ],
+      "labels": [
+        "removed"
+      ],
+      "item_id": "0001045810-25-000023:I.1A:i015",
+      "item_label": "reworded"
+    }
+  },
+  {
+    "id": "T14",
+    "type": "temporal",
+    "q": "Does NVIDIA's FY2026 10-K still say that it transitioned some operations out of China and Hong Kong after the 2022 export controls, or was that statement removed?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Correct answer: NO. This statement of NVIDIA's FY2025 (10-K filed 2025-02-26) risk section \"Following these 2022 export controls, we transitioned some operations, including certain testing, validation, and supply and distribution operations out of China and Hong Kong.\" does NOT appear, verbatim or reworded, anywhere in the FY2026 (10-K filed 2026-02-25) risk section (gold sentence label: removed; sentence id 0001045810-25-000023:I.1A:i015#s070; machine-checked against the whole newer section). The risk factor containing it (\"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversel...\", 0001045810-25-000023:I.1A:i015) SURVIVES in FY2026 (item-level gold label: reworded): this is a removed sentence, not a removed risk factor. An answer that says FY2026 still contains the statement is incorrect, and so is one that says the whole risk factor was dropped.",
+    "gold": "source_text",
+    "subtype": "passage",
+    "pair_id": "NVDA-0001045810-25-000023-0001045810-26-000021",
+    "ticker": "NVDA",
+    "verified_answer": "no",
+    "facts": {
+      "key": "hk",
+      "needle": "out of China and Hong Kong",
+      "sentence_ids": [
+        "0001045810-25-000023:I.1A:i015#s070"
+      ],
+      "labels": [
+        "removed"
+      ],
+      "item_id": "0001045810-25-000023:I.1A:i015",
+      "item_label": "reworded"
+    }
+  },
+  {
+    "id": "T15",
+    "type": "temporal",
+    "q": "Does NVIDIA's FY2026 10-K still say that the AI Diffusion IFR would confer special benefits on select \"Universal Verified End Users\" (UVEU), or was that statement removed?",
+    "judge_notes": "VERIFIED against the full text of both filings (source-text gold sha256 af1e810d). Correct answer: NO. This statement of NVIDIA's FY2025 (10-K filed 2025-02-26) risk section \"The AI Diffusion IFR would confer special benefits on select \u201cUniversal Verified End Users\u201d, or UVEU, and lesser benefits on \u201cNational Verified End Users\u201d, or NVEU.\" does NOT appear, verbatim or reworded, anywhere in the FY2026 (10-K filed 2026-02-25) risk section (gold sentence label: removed; sentence id 0001045810-25-000023:I.1A:i015#s060; machine-checked against the whole newer section). 12 labelled sentences mention 'AI Diffusion' (8 removed, 4 still present): only the removed ones are gone from FY2026 (10-K filed 2026-02-25). The risk factor containing it (\"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversel...\", 0001045810-25-000023:I.1A:i015) SURVIVES in FY2026 (item-level gold label: reworded): this is a removed sentence, not a removed risk factor. An answer that says FY2026 still contains the statement is incorrect, and so is one that says the whole risk factor was dropped.",
+    "gold": "source_text",
+    "subtype": "passage",
+    "pair_id": "NVDA-0001045810-25-000023-0001045810-26-000021",
+    "ticker": "NVDA",
+    "verified_answer": "no",
+    "facts": {
+      "key": "ai_diffusion",
+      "needle": "Universal Verified End Users",
+      "sentence_ids": [
+        "0001045810-25-000023:I.1A:i015#s060"
+      ],
+      "labels": [
+        "removed"
+      ],
+      "item_id": "0001045810-25-000023:I.1A:i015",
+      "item_label": "reworded"
+    }
   }
 ]

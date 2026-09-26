@@ -165,7 +165,20 @@ def test_passage_chunk_ids_become_citable_and_only_three_are_printed():
     assert valid_ids == set(ids[:3])
 
 
-def test_a_long_passage_is_quoted_up_to_300_characters_on_one_line():
+def test_a_passage_up_to_the_stored_cap_is_quoted_whole_and_the_quote_limit_matches_it():
+    """graph/passages.py cuts a passage at max_passage_chars (450), so the block must quote 450 characters: with 300 the NAC and
+    Hong Kong sentences in the middle of a stored passage were clipped out of the answer context."""
+    from semigraph.graph.passages import PassageParams
+
+    assert PASSAGE_QUOTE_CHARS >= PassageParams().max_passage_chars == 450
+    text = "The Notified Advanced Computing, or NAC, process " + "has not resulted in approvals. " * 12   # ~420 characters
+    assert 400 < len(text) <= 450
+    block = temporal([], [pair(passage_totals={"removed": 1, "added": 0, "reworded": 0})],
+                     [passage("removed", text, chunk_ids=OLD_IDS)])[0].temporal_block
+    assert text.strip() in block and "..." not in block.split("Passages", 1)[1].split("[", 1)[0]
+
+
+def test_a_long_passage_is_quoted_up_to_the_limit_on_one_line():
     text = "First line of the passage.\nSecond line " + "word " * 200
     block = temporal([], [pair(passage_totals={"removed": 1, "added": 0, "reworded": 0})],
                      [passage("removed", text, chunk_ids=OLD_IDS)])[0].temporal_block

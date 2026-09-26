@@ -1,9 +1,20 @@
-Judge whether the answer is a correct response to the question, given the grading notes.
+Judge whether the ANSWER is a correct response to the QUESTION, using the GRADING NOTES as the source of truth.
 
 QUESTION: {q}
-GRADING NOTES: {notes}
+DATA AS OF: {as_of}. Filings and rules up to that date are real: a recent year or accession number is not a reason to doubt an answer.
+GRADING NOTES (verified facts): {notes}
+
+CITATIONS: {ids}
+Every id listed above was mechanically verified to exist in the retrieved sources, so do NOT judge whether an id exists. Ids starting "fr:" are Federal Register rules (government documents), "xbrl:" ids are reported financial facts, the rest are filing passages. Any other bracketed label in the answer (for example [Reported Metrics]) is NOT a citation and was not verified: treat the claim it follows as uncited.
 
 ANSWER:
 {a}
 
-Reply ONLY with JSON: {{"correct": true/false, "reason": "..."}}
+The answer is incorrect if any of these holds:
+1. It says a risk factor, passage or sentence was removed, dropped, added, new or reworded, and the grading notes do not support that specific claim. Removal is the claim an earlier system got wrong: if the notes say something is still disclosed, or list no removal, a removal claim is wrong.
+2. It presents a Federal Register or BIS rule (an "fr:" id) as something the company disclosed, reported or said.
+3. It states a figure or fiscal year that the grading notes contradict.
+4. It does not answer the question, or contradicts the grading notes.
+Otherwise it is correct.
+
+Reply ONLY with JSON: {{"correct": true/false, "reason": "one or two sentences", "unsupported_claims": ["at most 5 claims, each under 20 words, that the notes contradict or do not support"]}}

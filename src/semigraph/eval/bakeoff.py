@@ -11,6 +11,7 @@ Gates (docs/v2/PLAN.md): 100% on the mechanical questions, citation validity 100
 no provider errors, and judged correctness on the open questions no worse than the baseline measured the same way.
 """
 
+import hashlib
 import json
 import logging
 import time
@@ -22,7 +23,8 @@ from ..retrieval.answerer import (ANSWER_PROMPT, CITE_RE, CONTEXT_HEADERS, LEGAC
                                   ContextBlocks, answer_stream, render_prompt, sources_from_context, usage_cost)
 from ..retrieval.verify import verify_answer
 from .expect import check_expectation
-from .runner import JUDGE_PROMPT, NUM_PAT, REFUSAL_PAT, AnswerBudgetExceeded, Correct, parse_numbers  # noqa: F401
+from .runner import (JUDGE_MAX_TOKENS, JUDGE_PROMPT, NUM_PAT, REFUSAL_PAT, AnswerBudgetExceeded, Correct,  # noqa: F401
+                     needs_judge, parse_numbers, render_judge_prompt)
 
 logger = logging.getLogger("semigraph.bakeoff")
 
@@ -207,29 +209,48 @@ def _mechanical_kind(item: dict) -> bool:
     return item["type"] == "refusal" or bool(item.get("expect"))
 
 
-def judge_open(rows: list[dict], benchmark: list[dict], judge, *, votes: int = 3, model: str | None = None) -> dict:
-    """Correctness of the OPEN questions (no deterministic expectation) by majority of ``votes`` judge calls.
+def open_question_count(benchmark: list[dict]) -> int:
+    """How many benchmark questions the correctness judge is paid for (open questions and misattribution probes)."""
+    return sum(1 for b in benchmark if needs_judge(b))
 
-    One vote is not trustworthy: the same answer flipped 1-of-3 in this project's own re-judging. A judge call
-    that raises counts as a "not correct" vote. Provider-error rows are not sent to the judge."""
+
+def judge_open(rows: list[dict], benchmark: list[dict], judge, *, votes: int = 3, model: str | None = None,
+               as_of: str | None = None, detail: bool = False) -> dict:
+    """Correctness of the questions that need the judge (the OPEN questions and the misattribution probes; every other
+    question is deterministic) by majority of ``votes`` judge calls, with the prompt of ``render_judge_prompt``.
+
+    One vote is not trustworthy: the same answer flipped 1-of-3 in this project's own re-judging. A judge call that
+    raises counts as a "not correct" vote AND is recorded in ``errors`` (id -> errored votes), so a caller that treats
+    "incorrect" as the good outcome can tell a graded verdict from a provider failure. ``detail`` adds ``details`` (id -> one
+    entry per vote: the verdict with its reason and unsupported claims, or the error). Provider-error rows are not judged."""
     by_id = {b["id"]: b for b in benchmark}
-    tally, correct, total = {}, 0, 0
+    tally, errors, details, correct, total = {}, {}, {}, 0, 0
     for r in rows:
         item = by_id[r["id"]]
-        if _mechanical_kind(item):
+        if not needs_judge(item):
             continue
         total += 1
-        n_true = 0
+        n_true, n_err, entries = 0, 0, []
         if not r.get("error"):
-            prompt = JUDGE_PROMPT.format(q=item["q"], notes=item.get("judge_notes", ""), a=r["answer"][:4000])
+            prompt = render_judge_prompt(item, r["answer"], valid_ids=r.get("valid_ids") or (), as_of=as_of)
             for _ in range(votes):
                 try:
-                    n_true += bool(judge(prompt, Correct, model=model, max_tokens=300).correct)
+                    verdict = judge(prompt, Correct, model=model, max_tokens=JUDGE_MAX_TOKENS)
                 except Exception as e:  # noqa: BLE001
                     logger.warning("judge vote failed for %s: %s", r["id"], e)
+                    n_err += 1
+                    entries.append({"error": f"{type(e).__name__}: {str(e)[:160]}"})
+                    continue
+                n_true += bool(verdict.correct)
+                entries.append({"correct": bool(verdict.correct), "reason": verdict.reason,
+                                "unsupported_claims": list(verdict.unsupported_claims)})
         tally[r["id"]] = n_true
+        if n_err:
+            errors[r["id"]] = n_err
+        details[r["id"]] = entries
         correct += n_true * 2 > votes
-    return {"open_correct": correct, "open_of": total, "votes": tally}
+    out = {"open_correct": correct, "open_of": total, "votes": tally, "errors": errors}
+    return {**out, "details": details} if detail else out
 
 
 # --- estimate --------------------------------------------------------------------------------------------
@@ -273,34 +294,45 @@ def baseline_as_row(base: dict) -> dict:
             "usage": base.get("usage"), "cost_usd": base.get("cost_usd"), "latency_s": base.get("latency_s")}
 
 
-def _reusable(previous: dict | None, votes: int, entry: dict | None) -> dict | None:
-    """A judgement from an earlier report, valid only for the same vote count (the answers never change)."""
-    if previous and previous.get("votes") == votes and entry and entry.get("judged"):
+def judge_stamp(benchmark: list[dict], as_of: str | None, judge_model: str | None) -> str:
+    """sha256 over everything that decides a verdict besides the answer: the judge prompt template, the token budget, the as-of
+    date, the judging model and the grading notes of every question the judge is paid for."""
+    notes = {b["id"]: b.get("judge_notes") or "" for b in benchmark if needs_judge(b)}
+    payload = {"prompt": JUDGE_PROMPT, "max_tokens": JUDGE_MAX_TOKENS, "as_of": as_of, "model": judge_model, "notes": notes}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _reusable(previous: dict | None, votes: int, entry: dict | None, stamp: str) -> dict | None:
+    """A judgement from an earlier report, valid only for the same vote count AND the same judge stamp (the answers never
+    change, the instrument does: a report without a stamp, such as one made by the pre-M1b judge, is never reused)."""
+    if previous and previous.get("votes") == votes and previous.get("judge_stamp") == stamp and entry and entry.get("judged"):
         return entry["judged"]
     return None
 
 
 def run_bakeoff(base_rows: list[dict], benchmark: list[dict], models: list[str], *, complete, judge, runs_path: Path,
                 max_usd: float | None, votes: int = 3, price=usage_cost, judge_model: str | None = None,
-                previous: dict | None = None) -> dict:
+                previous: dict | None = None, as_of: str | None = None) -> dict:
     """Answer, score for free, then judge only what cleared the free gates. The baseline is judged the same way.
 
-    ``previous`` is an earlier report whose judgements are reused (same vote count) instead of bought again."""
+    ``previous`` is an earlier report whose judgements are reused (same vote count) instead of bought again;
+    ``as_of`` is the data date the correctness judge is told (None = "not stated")."""
     rows = answer_candidates(base_rows, models, complete, runs_path, max_usd=max_usd, price=price)
     contexts = {b["id"]: b["context"] for b in base_rows}
     baseline_rows = [baseline_as_row(b) for b in base_rows]
     baseline = score_mechanical(baseline_rows, benchmark, contexts)
     baseline["gates_failed"] = passes_free_gates(baseline)
-    baseline["judged"] = (_reusable(previous, votes, (previous or {}).get("baseline"))
-                          or judge_open(baseline_rows, benchmark, judge, votes=votes, model=judge_model))
-    report = {"votes": votes, "baseline": baseline, "models": {}}
+    stamp = judge_stamp(benchmark, as_of, judge_model)
+    baseline["judged"] = (_reusable(previous, votes, (previous or {}).get("baseline"), stamp)
+                          or judge_open(baseline_rows, benchmark, judge, votes=votes, model=judge_model, as_of=as_of))
+    report = {"votes": votes, "judge_stamp": stamp, "baseline": baseline, "models": {}}
     for model in models:
         mine = [r for r in rows if r["model"] == model]
         score = score_mechanical(mine, benchmark, contexts)
         score["gates_failed"] = passes_free_gates(score)
         score["judged"] = None if score["gates_failed"] else (
-            _reusable(previous, votes, ((previous or {}).get("models") or {}).get(model))
-            or judge_open(mine, benchmark, judge, votes=votes, model=judge_model))
+            _reusable(previous, votes, ((previous or {}).get("models") or {}).get(model), stamp)
+            or judge_open(mine, benchmark, judge, votes=votes, model=judge_model, as_of=as_of))
         score["clears_all_gates"] = bool(score["judged"]) and score["judged"]["open_correct"] >= baseline["judged"]["open_correct"]
         report["models"][model] = score
     return report
@@ -359,11 +391,13 @@ def _deployed_row(q: dict, events: list[dict], latency: float) -> dict:
             "escalation_reasons": terminal.get("escalation_reasons")}
 
 
-def score_deployed(rows: list[dict], benchmark: list[dict], judge, *, votes: int = 3, judge_model: str | None = None) -> dict:
-    """Score the deployed configuration: correctness (mechanical + majority-vote judge on the open questions),
-    citation validity, and how the traffic was routed and what it cost. Escalation is what actually happened."""
+def score_deployed(rows: list[dict], benchmark: list[dict], judge, *, votes: int = 3, judge_model: str | None = None,
+                   as_of: str | None = None) -> dict:
+    """Score the deployed configuration: correctness (mechanical + majority-vote judge on the open questions and the
+    misattribution probes), citation validity, and how the traffic was routed and what it cost. Escalation is what
+    actually happened. ``as_of`` is the data date the judge is told (see ``runner.data_as_of``; None = "not stated")."""
     score = score_mechanical([{**r, "model": "deployed"} for r in rows], benchmark)
-    score["judged"] = judge_open(rows, benchmark, judge, votes=votes, model=judge_model)
+    score["judged"] = judge_open(rows, benchmark, judge, votes=votes, model=judge_model, as_of=as_of)
     routes: dict[str, int] = {}
     for r in rows:
         routes[r.get("routed") or "none"] = routes.get(r.get("routed") or "none", 0) + 1

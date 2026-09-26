@@ -156,7 +156,7 @@ def test_judge_open_uses_a_majority_and_only_open_questions():
             answer_row("N2", "$215.9 billion [%s]" % VALID[1], [VALID[1]])]
     judge = VoteJudge([True, False, True])
     out = bo.judge_open(rows, BENCH, judge, votes=3)
-    assert out == {"open_correct": 1, "open_of": 1, "votes": {"T1": 2}} and judge.calls == 3
+    assert out == {"open_correct": 1, "open_of": 1, "votes": {"T1": 2}, "errors": {}} and judge.calls == 3
 
 
 def test_judge_open_survives_a_failing_judge_call():
@@ -164,7 +164,7 @@ def test_judge_open_survives_a_failing_judge_call():
         raise RuntimeError("judge down")
 
     out = bo.judge_open([answer_row("T1", "x", [VALID[0]])], BENCH, flaky, votes=3)
-    assert out["open_correct"] == 0 and out["votes"] == {"T1": 0}
+    assert out["open_correct"] == 0 and out["votes"] == {"T1": 0} and out["errors"] == {"T1": 3}
 
 
 # --- estimate ---
@@ -267,6 +267,29 @@ def test_run_bakeoff_reuses_a_previous_judgement_instead_of_paying_again(tmp_pat
     again = bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=judge,
                            runs_path=tmp_path / "b.jsonl", max_usd=None, votes=3, price=lambda u, m: 0.001, previous=first)
     assert judge.calls == 0 and again["models"]["m/good"]["judged"] == first["models"]["m/good"]["judged"]
+
+
+def test_a_report_is_stamped_with_the_judge_prompt_and_the_grading_notes(tmp_path):
+    report = bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=VoteJudge([True]),
+                            runs_path=tmp_path / "b.jsonl", max_usd=None, votes=3, price=lambda u, m: 0.001)
+    assert report["judge_stamp"] == bo.judge_stamp(BENCH, None, None)
+    assert bo.judge_stamp(BENCH, None, None) != bo.judge_stamp(BENCH, "2026-09-25", None)               # the as-of date is in the prompt
+    changed = [{**b, "judge_notes": "different notes"} if b["id"] == "T1" else b for b in BENCH]
+    assert bo.judge_stamp(changed, None, None) != bo.judge_stamp(BENCH, None, None)                    # so are the notes
+    assert bo.judge_stamp(BENCH, None, "other/model") != bo.judge_stamp(BENCH, None, None)             # and the judging model
+
+
+def test_a_judgement_made_under_another_prompt_or_notes_or_without_a_stamp_is_never_reused(tmp_path):
+    """The old bakeoff.json holds verdicts from the circular judge: reusing them would defeat the new instrument."""
+    first = bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=VoteJudge([True]),
+                           runs_path=tmp_path / "b.jsonl", max_usd=None, votes=3, price=lambda u, m: 0.001)
+    unstamped = {k: v for k, v in first.items() if k != "judge_stamp"}
+    stale = {**first, "judge_stamp": "0" * 64}
+    for previous in (unstamped, stale):
+        judge = VoteJudge([True])
+        bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=judge, runs_path=tmp_path / "b.jsonl",
+                       max_usd=None, votes=3, price=lambda u, m: 0.001, previous=previous)
+        assert judge.calls == 6          # baseline + the model, judged again
 
 
 def test_a_previous_judgement_made_with_a_different_vote_count_is_not_reused(tmp_path):

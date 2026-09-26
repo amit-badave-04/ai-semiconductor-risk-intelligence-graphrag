@@ -18,7 +18,7 @@ BENCH = json.loads((Path(__file__).resolve().parents[1] / "src/semigraph/artifac
 
 def test_every_temporal_benchmark_question_is_routed_to_the_strong_model():
     temporal = [b for b in BENCH if b["type"] == "temporal"]
-    assert len(temporal) == 3
+    assert len(temporal) >= 3       # T1-T3 plus the source-text temporal questions merged by scripts/build_temporal_questions.py
     assert all(needs_strong_model(b["q"]) for b in temporal), [b["id"] for b in temporal if not needs_strong_model(b["q"])]
 
 

@@ -1,4 +1,6 @@
 {
+  "status": "superseded",
+  "superseded_reason": "labelled by AI annotators who saw only the retrieved context; they rated the served wrong T1/T3 answers correct (docs/v2/REVIEW_2026-09-26.md)",
   "what": "Correctness labels for the 28 judge-dependent (open-question) answers of the 20-question benchmark: 7 questions x 2 systems (hybrid, vector) x 2 runs (v1 graph, v2 baseline).",
   "run_sets": {
     "v1": "data/processed/eval_runs.jsonl (v1 graph)",

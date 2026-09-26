@@ -10,15 +10,20 @@ A question's ``expect`` object holds one or more of these keys; ALL that are pre
 - ``direction`` (``up`` / ``down``): the answer must use a word of that direction. The number parsers read magnitudes
   (``-267`` and ``267`` are the same to them), so the sign of a ``value`` / ``pct`` is checked here, not there. It only
   qualifies another key.
+- ``not_company_disclosure``: a list of company names (``["NVIDIA", "Nvidia"]``). No clause that cites a Federal Register
+  rule (``[fr:...]``) may attribute it to one of those companies (see ``misattributed_sentences``: precision-first, so
+  the misattribution probes are graded by this guard AND the judge).
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+
+from ..retrieval.ids import CHUNK_ID_PATTERN, FR_ID_PATTERN
 
 VALUE_TOLERANCE = 0.005
 PCT_TOLERANCE_POINTS = 0.1
 _PCT_RE = re.compile(r"([-+]?\d[\d,]*(?:\.\d+)?)\s*%")
-_KEYS = ("value", "values", "pct", "any_of")
+_KEYS = ("value", "values", "pct", "any_of", "not_company_disclosure")
 _DIRECTION_RE = {
     "up": re.compile(r"\b(increas\w*|grew|grow\w*|rose|ris(?:e|es|en|ing)|up|higher|gain\w*|expand\w*)\b|\+\s*\$?\d", re.I),
     "down": re.compile(r"\b(decreas\w*|declin\w*|fell|fall\w*|drop\w*|down|lower|reduc\w*|contract\w*|loss(?:es)?|negative)\b"
@@ -54,6 +59,87 @@ def _states_amount(answer: str, target: float) -> bool:
     return any(abs(v - abs(target)) / abs(target) < VALUE_TOLERANCE for v in parse_numbers(answer))
 
 
+# --- not_company_disclosure --------------------------------------------------------------------------------------
+
+_FR_CITE_RE = re.compile(rf"\[{FR_ID_PATTERN}\]")
+_CHUNK_CITE_RE = re.compile(rf"\[{CHUNK_ID_PATTERN}\]")
+_ANY_CITE_RE = re.compile(r"\[[^\[\]\n]{1,80}\]")
+_CITES_ONLY_RE = re.compile(r"^\s*(?:\[[^\[\]\n]{1,80}\]\s*)+\.?\s*$")
+_SENTENCE_END_RE = re.compile(r"(?<!\.[A-Z]\.)(?<=[.!?])\s+")            # not after "U.S."
+_CLAUSE_RE = re.compile(r";|\b(?:while|whereas|but|however|although|though)\b", re.I)
+# what "the company said" looks like: a saying verb, or a document the company files (its 10-K, annual report, filing)
+_TERMS = (r"(?:disclos\w*|report(?:s|ed|ing)?|stat(?:e|es|ed|ing)|acknowledg\w*|announc\w*|describ\w*|mention\w*|warn\w*|"
+          r"highlight\w*|say|says|said|cite[sd]?|fil(?:e|es|ed|ing|ings)|10-K|10-Q|20-F|annual report)")
+_TERM_RE = re.compile(rf"\b{_TERMS}\b", re.I)
+_NEGATION_RE = re.compile(r"\b(?:not|no|never|neither|nor|without|none|nothing|cannot)\b|n['’]t\b", re.I)
+_ATTRIBUTION_WINDOW_WORDS = 8     # how far after the company name a saying verb / filing noun still refers to it
+_NEGATION_WINDOW_WORDS = 3        # a negation this close to the company..term span cancels the attribution
+
+
+def _company_pattern(companies: Sequence[str]) -> str:
+    if not isinstance(companies, Sequence) or isinstance(companies, str) or not companies \
+            or not all(isinstance(c, str) and c.strip() for c in companies):
+        raise ValueError(f"not_company_disclosure needs a non-empty list of company names, got {companies!r}")
+    return "|".join(re.escape(c) for c in sorted(companies, key=len, reverse=True))
+
+
+def _sentences(text: str) -> list[str]:
+    """Sentences of ``text`` (a line break also ends one); a fragment that is only citations belongs to the sentence before it."""
+    out: list[str] = []
+    for line in text.splitlines():
+        for frag in _SENTENCE_END_RE.split(line.strip()):
+            if not frag:
+                continue
+            if out and _CITES_ONLY_RE.match(frag):
+                out[-1] += " " + frag
+            else:
+                out.append(frag)
+    return out
+
+
+def _negated(clause: str, start: int, end: int) -> bool:
+    left = clause[:start].split()[-_NEGATION_WINDOW_WORDS:]
+    right = clause[end:].split()[:_NEGATION_WINDOW_WORDS]
+    return bool(_NEGATION_RE.search(" ".join(left) + " " + clause[start:end] + " " + " ".join(right)))
+
+
+def _clause_attributes(clause: str, company: str) -> bool:
+    """True when ``clause`` (citations removed) has the company as the source of a saying verb or filing noun, unnegated:
+    ``<company> ... disclosed`` / ``<company>'s 10-K`` (within a few words) or ``disclosed by <company>`` / ``according to
+    <company>``. A rule that "states that <company> is affected" (the company is the object) is not an attribution."""
+    forward = re.compile(rf"\b(?:{company})\b(?:['’]s)?", re.I)
+    for m in forward.finditer(clause):
+        tail = clause[m.end():]
+        words = tail.split()[:_ATTRIBUTION_WINDOW_WORDS]
+        reach = len(" ".join(words))
+        term = _TERM_RE.search(tail[:reach + 1])
+        if term and not _negated(clause, m.start(), m.end() + term.end()):
+            return True
+    passive = re.compile(rf"(?:\b{_TERMS}\b\W+(?:\w+\W+){{0,3}}by\W+(?:the\W+)?|\baccording to\W+(?:the\W+)?)\b(?:{company})\b", re.I)
+    return any(not _negated(clause, m.start(), m.end()) for m in passive.finditer(clause))
+
+
+def misattributed_sentences(answer: str, companies: Sequence[str]) -> list[str]:
+    """The sentences of ``answer`` that present a Federal Register rule as ``companies``' own disclosure.
+
+    A clause counts only when it cites an ``[fr:...]`` id, its sentence cites NO filing passage (a sentence that also
+    cites the company's own filing may truthfully say the filing discusses the rule's subject), a listed company is the
+    source of a saying verb or filing noun in it, and no negation sits next to that phrase. The clauses of a sentence
+    are split at ``;`` and contrast words (while, whereas, but, however, although, though), so "NVIDIA's 10-K covers
+    export controls, while the BIS rule [fr:...] is separate" is not flagged. Known limits (left to the judge): an
+    attribution with a chunk citation or with no citation, and an attribution in a clause that does not itself cite the rule."""
+    company = _company_pattern(companies)
+    flagged = []
+    for sentence in _sentences(answer):
+        if _CHUNK_CITE_RE.search(sentence):
+            continue
+        for clause in _CLAUSE_RE.split(sentence):
+            if _FR_CITE_RE.search(clause) and _clause_attributes(_ANY_CITE_RE.sub("", clause), company):
+                flagged.append(sentence)
+                break
+    return flagged
+
+
 def check_expectation(expect: Mapping, answer: str) -> bool:
     """True when the answer satisfies every expectation key in ``expect``; ValueError when it has none."""
     if not any(k in expect for k in _KEYS):
@@ -61,6 +147,8 @@ def check_expectation(expect: Mapping, answer: str) -> bool:
     if "direction" in expect and expect["direction"] not in _DIRECTION_RE:
         raise ValueError(f"expect.direction must be 'up' or 'down', got {expect['direction']!r}")
     checks = []
+    if "not_company_disclosure" in expect:
+        checks.append(not misattributed_sentences(answer, expect["not_company_disclosure"]))
     if "value" in expect:
         checks.append(_states_amount(answer, expect["value"]))
     if "values" in expect:
