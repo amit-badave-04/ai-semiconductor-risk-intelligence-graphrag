@@ -184,7 +184,8 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
         return
     try:
         for ev in answer_stream(question, st.driver, st.embedder, strategy=strategy,
-                                timeout=s.llm_request_timeout_s, max_tokens=s.llm_answer_max_tokens):
+                                timeout=s.llm_request_timeout_s, max_tokens=s.llm_answer_max_tokens,
+                                escalation_model=s.escalation_model or None):
             if ev["event"] in ("done", "error"):
                 store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False,
                                 usage=ev.get("usage"), cost_usd=ev.get("cost_usd"))

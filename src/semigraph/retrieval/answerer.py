@@ -33,6 +33,7 @@ from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
 from ..llm_shape import completion_params
 from .retriever import hybrid_retrieve, vector_retrieve
+from .verify import verify_answer
 
 logger = logging.getLogger("semigraph.answerer")
 
@@ -266,8 +267,96 @@ def answer(question: str, driver, embedder, strategy: str = "hybrid",
             "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "retrieval": r}
 
 
+def _sum_usage(a: dict | None, b: dict | None) -> dict | None:
+    """Token usage of two attempts added together (None when neither is known)."""
+    if a is None or b is None:
+        return a or b
+    return {"prompt_tokens": a.get("prompt_tokens", 0) + b.get("prompt_tokens", 0),
+            "completion_tokens": a.get("completion_tokens", 0) + b.get("completion_tokens", 0)}
+
+
+def _done_event(text: str, stream, *, question, strategy, valid_ids, chunk_ids, context_chars,
+                usage=None, cost_usd=None, extra=None) -> dict:
+    """The terminal ``done`` event for a finished answer (usage/cost default to the stream's own)."""
+    cited = set(CITE_RE.findall(text))
+    own_usage = getattr(stream, "usage", None)
+    return {"event": "done", "question": question, "strategy": strategy, "answer": text,
+            "citations": sorted(cited), "hallucinated": sorted(cited - valid_ids),
+            "finish_reason": getattr(stream, "finish_reason", None),
+            "usage": usage if usage is not None else own_usage,
+            "cost_usd": cost_usd if cost_usd is not None else usage_cost(own_usage, getattr(stream, "model", None)),
+            "chunk_ids": chunk_ids, "context_chars": context_chars, **(extra or {})}
+
+
+def _live_events(stream, *, question, strategy, valid_ids, chunk_ids, context_chars, carry=None):
+    """Stream ``stream`` to the client as deltas, then the terminal ``done`` (or ``error``) event.
+
+    ``carry`` folds an earlier, rejected attempt into the totals: ``{"usage", "cost_usd", "extra"}``
+    (``extra`` keys such as ``escalated`` are merged into ``done``)."""
+    carry = carry or {}
+    parts = []
+
+    def totals():
+        usage = getattr(stream, "usage", None)
+        cost = usage_cost(usage, getattr(stream, "model", None))
+        prior = carry.get("cost_usd")
+        return _sum_usage(carry.get("usage"), usage), (cost if prior is None else round((cost or 0.0) + prior, 6))
+
+    try:
+        for delta in stream:
+            parts.append(delta)
+            yield {"event": "delta", "text": delta}
+    except Exception as e:  # noqa: BLE001 — surface, with whatever spend is known
+        usage, cost = totals()
+        yield {"event": "error", "detail": f"{type(e).__name__}: {e}", "partial": "".join(parts),
+               "usage": usage, "cost_usd": cost, "strategy": strategy}
+        return
+    usage, cost = totals()
+    yield _done_event("".join(parts), stream, question=question, strategy=strategy, valid_ids=valid_ids,
+                      chunk_ids=chunk_ids, context_chars=context_chars, usage=usage, cost_usd=cost,
+                      extra=carry.get("extra"))
+
+
+def _drain(stream) -> tuple[str, str | None]:
+    """Consume a stream silently; returns (text, error description or None)."""
+    parts = []
+    try:
+        for delta in stream:
+            parts.append(delta)
+    except Exception as e:  # noqa: BLE001
+        return "".join(parts), f"{type(e).__name__}: {e}"
+    return "".join(parts), None
+
+
+def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_model, stream_kwargs, **ctx):
+    """Cheap draft -> deterministic verification -> release it, or escalate to the strong model.
+
+    The draft is buffered, so a draft the verifier rejects is never shown. A clean draft is released in one
+    delta; a rejected one is announced with an ``escalated`` event (reasons included) and the strong model
+    then streams live. Both attempts' tokens and cost land in the terminal event."""
+    draft = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
+    text, error = _drain(draft)
+    draft_model = getattr(draft, "model", None)
+    reasons = ["draft_error"] if error else verify_answer(
+        text, set(CITE_RE.findall(text)), ctx["valid_ids"], getattr(draft, "finish_reason", None))
+    if not reasons:
+        yield {"event": "delta", "text": text}
+        yield _done_event(text, draft, extra={"escalated": False, "answered_by": draft_model}, **ctx)
+        return
+    logger.info("draft rejected (%s) - escalating to %s", ",".join(reasons), escalation_model)
+    yield {"event": "escalated", "reasons": reasons, "from": draft_model, "to": escalation_model}
+    strong_kwargs = {k: v for k, v in stream_kwargs.items() if k != "model"}
+    strong = escalation_stream(prompt) if escalation_stream else TextStream(prompt, model=escalation_model, **strong_kwargs)
+    draft_usage = getattr(draft, "usage", None)
+    carry = {"usage": draft_usage, "cost_usd": usage_cost(draft_usage, draft_model) if draft_usage else None,
+             "extra": {"escalated": True, "escalation_reasons": reasons,
+                       "answered_by": getattr(strong, "model", None) or escalation_model}}
+    yield from _live_events(strong, carry=carry, **ctx)
+
+
 def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
-                  llm_stream=None, k_chunks: int = 8, hops: int = 2, **stream_kwargs):
+                  llm_stream=None, k_chunks: int = 8, hops: int = 2, *,
+                  escalation_model: str | None = None, escalation_stream=None, **stream_kwargs):
     """Streaming variant of :func:`answer` — a generator of event dicts.
 
     Events, in order: ``{"event": "retrieval", "anchors", "counts", "anchor_defaulted"}``
@@ -278,6 +367,12 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
     "chunk_ids", "context_chars"}``. Citations are post-verified exactly like
     ``answer``. ``llm_stream`` is injectable: ``callable(prompt) ->
     iterable[str]`` (defaults to :class:`TextStream` with ``stream_kwargs``).
+
+    With ``escalation_model`` set the draft is buffered and verified before anything is shown (see
+    :func:`_draft_then_escalate`): the deltas then arrive after generation, an ``escalated`` event
+    precedes the strong model's live stream when the draft is rejected, and ``done`` additionally
+    carries ``escalated`` / ``answered_by`` (and ``escalation_reasons``). Without it the behaviour is
+    unchanged: the model streams live.
     """
     if strategy == "hybrid":
         r = hybrid_retrieve(question, driver, embedder, k_chunks=k_chunks, hops=hops)
@@ -291,22 +386,11 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
            "anchor_defaulted": bool(r.get("anchor_defaulted", False))}
     prompt = ANSWER_PROMPT.format(question=question, edges_block=e_b, metrics_block=m_b,
                                   risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
-    stream = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
-    parts = []
-    try:
-        for delta in stream:
-            parts.append(delta)
-            yield {"event": "delta", "text": delta}
-    except Exception as e:  # noqa: BLE001 — surface, with whatever spend is known
-        usage = getattr(stream, "usage", None)
-        yield {"event": "error", "detail": f"{type(e).__name__}: {e}", "partial": "".join(parts),
-               "usage": usage, "cost_usd": usage_cost(usage, getattr(stream, "model", None)), "strategy": strategy}
-        return
-    text = "".join(parts)
-    cited = set(CITE_RE.findall(text))
-    usage = getattr(stream, "usage", None)
-    yield {"event": "done", "question": question, "strategy": strategy, "answer": text,
-           "citations": sorted(cited), "hallucinated": sorted(cited - valid_ids),
-           "finish_reason": getattr(stream, "finish_reason", None), "usage": usage,
-           "cost_usd": usage_cost(usage, getattr(stream, "model", None)),
+    ctx = {"question": question, "strategy": strategy, "valid_ids": valid_ids,
            "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "context_chars": len(full_context)}
+    if escalation_model:
+        yield from _draft_then_escalate(prompt, llm_stream=llm_stream, escalation_stream=escalation_stream,
+                                        escalation_model=escalation_model, stream_kwargs=stream_kwargs, **ctx)
+        return
+    stream = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
+    yield from _live_events(stream, **ctx)

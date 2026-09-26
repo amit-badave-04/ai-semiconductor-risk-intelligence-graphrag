@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # --- LLM (LiteLLM model strings; Sonnet extracts/answers, Haiku critiques) ---
     anthropic_api_key: str = ""
     llm_model: str = "anthropic/claude-sonnet-5"
+    # Stronger model a rejected cheap draft escalates to (empty = no escalation: llm_model streams live).
+    escalation_model: str = ""
     critic_model: str = "anthropic/claude-haiku-4-5"
 
     # --- Neo4j Desktop local instance ---

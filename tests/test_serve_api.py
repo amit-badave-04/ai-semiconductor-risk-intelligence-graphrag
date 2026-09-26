@@ -42,6 +42,7 @@ class FakeSettings:
     turnstile_required = False
     read_rate_limit_per_minute = 5
     llm_model = "anthropic/claude-sonnet-5"
+    escalation_model = ""
 
 
 class Fakes:
@@ -362,3 +363,28 @@ def test_evidence_returns_freshness_so_the_ui_can_flag_a_corrected_paragraph(cli
 def test_evidence_404_when_the_chunk_is_unknown(client, monkeypatch):
     monkeypatch.setattr(routes, "run_cypher", lambda driver, query, **p: [])
     assert client.get(f"/api/evidence/{CID}").status_code == 404
+
+
+def test_the_route_hands_the_configured_escalation_model_to_the_answerer(client, monkeypatch):
+    seen = {}
+
+    def capture(question, driver, embedder, strategy="hybrid", **kw):
+        seen.update(kw)
+        yield from fake_answer_stream(question, driver, embedder, strategy)
+
+    monkeypatch.setattr(routes, "answer_stream", capture)
+    monkeypatch.setattr(FakeSettings, "escalation_model", "anthropic/claude-sonnet-5")
+    client.post("/api/ask", json={"question": Q})
+    assert seen["escalation_model"] == "anthropic/claude-sonnet-5"
+
+
+def test_no_escalation_model_means_the_answerer_is_told_none(client, monkeypatch):
+    seen = {}
+
+    def capture(question, driver, embedder, strategy="hybrid", **kw):
+        seen.update(kw)
+        yield from fake_answer_stream(question, driver, embedder, strategy)
+
+    monkeypatch.setattr(routes, "answer_stream", capture)
+    client.post("/api/ask", json={"question": Q + " again"})
+    assert seen["escalation_model"] is None

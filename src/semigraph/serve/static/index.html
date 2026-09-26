@@ -139,6 +139,7 @@ async function ask() {
     for (const l of chunk.split("\n")) { if (l.startsWith("event:")) event = l.slice(6).trim(); else if (l.startsWith("data:")) data += l.slice(5).trim(); }
     if (!data) return; const ev = JSON.parse(data);
     if (event === "retrieval") { const c = ev.counts; setStatus(`anchors: ${Object.keys(ev.anchors).join(", ") || "none (defaults to Nvidia)"} · ${c.edges} relationships · ${c.metrics} XBRL metrics · ${c.risks} active risks · ${c.temporal} dropped lineages · ${c.chunks} excerpts — generating…`); }
+    else if (event === "escalated") { setStatus("the first draft did not pass verification — answering again with the stronger model…"); }
     else if (event === "delta") { text += ev.text; $("answer").innerHTML = renderMarkdown(text); }
     else if (event === "done") { text = ev.answer; $("answer").innerHTML = renderMarkdown(text); finish(ev); }
     else if (event === "error") { setStatus(ev.detail, "err"); }
@@ -159,6 +160,7 @@ function finish(ev) {
     const u = ev.usage || {};
     meta += `<span class="badge">${u.prompt_tokens || "?"} in / ${u.completion_tokens || "?"} out tokens${u.estimated ? " (est.)" : ""}</span>` + (ev.cost_usd != null ? `<span class="badge">≈ $${ev.cost_usd.toFixed(3)}</span>` : "");
     setStatus("done");
+    if (ev.answered_by) meta += `<span class="badge">answered by ${esc(String(ev.answered_by).split("/").pop())}${ev.escalated ? " · escalated after a failed check" : " · draft verified"}</span>`;
     if (ev.finish_reason === "length") meta += `<span class="badge warn">answer truncated by the token budget</span>`;
   }
   meta += `<span class="badge">${cites.length} citations</span>` + (hall.length ? `<span class="badge bad">${hall.length} citation(s) not in retrieved context</span>` : `<span class="badge ok">all citations verified against retrieved context</span>`);
