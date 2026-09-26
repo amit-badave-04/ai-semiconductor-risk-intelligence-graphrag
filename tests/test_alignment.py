@@ -22,6 +22,7 @@ from rapidfuzz import fuzz
 
 from semigraph.extraction.gates import normalize as gates_normalize
 from semigraph.extraction.gates import quote_in_chunk
+from semigraph.graph import align_text as at
 from semigraph.graph import alignment as al
 from semigraph.graph.alignment import (
     AlignParams,
@@ -149,7 +150,7 @@ def cos_pair(older_text, newer_text, cos):
 
 def test_norm_matches_the_extraction_gate_normaliser():
     for sample in ["  Hello   WORLD ", "It’s a “quoted”\n\nline", 'He said "yes" and it\'s fine.']:
-        assert al._norm(sample) == gates_normalize(sample)
+        assert at.norm(sample) == gates_normalize(sample)
 
 
 def test_split_sentences_handles_glued_text_bullets_and_abbreviations():
@@ -684,11 +685,11 @@ def test_lexical_score_is_symmetric_word_level_difflib():
     b = tuple("we depend on one foundry partner only for wafers today".split())
     expected = 0.5 * (SequenceMatcher(None, a, b, autojunk=False).ratio()
                       + SequenceMatcher(None, b, a, autojunk=False).ratio())
-    assert al._lex_exact(a, b) == pytest.approx(expected)
-    assert al._lex_exact(a, b) == pytest.approx(al._lex_exact(b, a))
-    assert al._lex_exact(a, a) == 1.0
-    assert al._lex_exact(a, tuple("zzz yyy".split())) == 0.0
-    assert al._lex_exact((), a) == 0.0
+    assert at.lex_exact(a, b) == pytest.approx(expected)
+    assert at.lex_exact(a, b) == pytest.approx(at.lex_exact(b, a))
+    assert at.lex_exact(a, a) == 1.0
+    assert at.lex_exact(a, tuple("zzz yyy".split())) == 0.0
+    assert at.lex_exact((), a) == 0.0
 
 
 def test_lexical_prefilter_is_a_pure_speedup():
@@ -699,7 +700,7 @@ def test_lexical_prefilter_is_a_pure_speedup():
     matrix = al._lex_matrix(toks[:7], toks[7:], floor)
     for i, a in enumerate(toks[:7]):
         for j, b in enumerate(toks[7:]):
-            exact = al._lex_exact(a, b)
+            exact = at.lex_exact(a, b)
             if np.isnan(matrix[i, j]):
                 assert exact < floor
             else:
@@ -850,8 +851,8 @@ def test_the_body_is_the_text_after_the_headline_even_when_whitespace_differs():
 
 def test_normalisation_offsets_map_every_character_back_to_the_source():
     messy = "  It’s   a “Quoted”\n\nLine  ONE.  "
-    norm, offsets = al._norm_with_offsets(messy)
-    assert norm == al._norm(messy) and len(offsets) == len(norm)
+    norm, offsets = at.norm_with_offsets(messy)
+    assert norm == at.norm(messy) and len(offsets) == len(norm)
     for ch, src in zip(norm, offsets):
         assert ch == " " or messy[src].lower() == ch
 
@@ -878,18 +879,18 @@ def test_probes_are_unique_specific_and_ordered_longest_first():
     item = al._prepare([make("o1", (SUPPLY[0], body))], "older")[0]
     probes = al._probes(item, frozenset(), AlignParams())
     assert probes[0] == SUPPLY[0] and len(probes) == 3
-    assert len({al._norm(p) for p in probes}) == 3
+    assert len({at.norm(p) for p in probes}) == 3
     assert all(len(p) >= 40 for p in probes)
     assert len(probes[1]) >= len(probes[2])
 
 
 def test_a_blank_needle_never_hits():
-    assert al._SectionIndex("some section text").probe("   ", 85.0, 100) is None
+    assert at.SectionIndex("some section text").probe("   ", 85.0, 100) is None
 
 
 def test_the_quote_falls_back_to_the_matched_range_inside_a_giant_sentence():
     giant = "word " * 400
-    index = al._SectionIndex(f"Intro. {giant}the distinctive phrase sits deep inside this giant sentence without a period {giant}")
+    index = at.SectionIndex(f"Intro. {giant}the distinctive phrase sits deep inside this giant sentence without a period {giant}")
     hit = index.probe("the distinctive phrase sits deep inside this giant sentence without a period", 85.0, 120)
     assert hit and len(hit.quote) <= 120 and "distinctive phrase" in hit.quote
     assert index.text[hit.span[0]:hit.span[1]] == hit.quote
@@ -1038,11 +1039,11 @@ def test_real_nvda_paragraph_units_fy25_to_fy26(nvda_sections):
     s = summarize(res)
     assert elapsed < 120
     assert s["older"]["total"] == len(older) and s["newer"]["total"] == len(newer)
-    fy26_norm = al._norm(fy26)
+    fy26_norm = at.norm(fy26)
     for d in res.older:
         if d.label == "removed":                      # independent check of the guarantee
             unit = next(u for u in older if u["item_id"] == d.item_id)
-            assert al._norm(unit["text"])[:80] not in fy26_norm
+            assert at.norm(unit["text"])[:80] not in fy26_norm
             assert d.evidence.search_terms
     kept = s["older"]["unchanged"] + s["older"]["reworded"]
     assert kept >= 0.8 * len(older)
@@ -1054,7 +1055,7 @@ def test_real_nvda_paragraph_units_fy25_to_fy26(nvda_sections):
     dropped = d.evidence.dropped_sentences
     assert any("Notified Advanced Computing" in sentence for sentence in dropped)      # the audited NAC text
     assert any("we transitioned some operations" in sentence for sentence in dropped)  # the audited Hong Kong text
-    assert all(al._norm(sentence) not in fy26_norm for sentence in dropped)
+    assert all(at.norm(sentence) not in fy26_norm for sentence in dropped)
     # without an embedding that heavily edited 26k-char paragraph (lexical 0.72) is left to adjudication
     lexical_only = by_id(align(older, newer, fy26).older)[nac_unit["item_id"]]
     assert lexical_only.label == "uncertain" and lexical_only.matched_newer_id == d.matched_newer_id

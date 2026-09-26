@@ -66,19 +66,17 @@ sentences: 5% edits 100%, 10% 99%, 15% 93%, 20% 64%, 30% 0%); items still ``unce
 adjudication must be treated as present, never Deleted; alignment quality is bounded by the
 unit detector's segmentation.
 
-Size: over the 800-line soft ceiling on purpose. Value objects, text helpers, pairing, probing
-and the public API form one surface owned by one milestone step and about 130 lines are
-documentation; if it grows, split the text helpers + section index + probes into their own module.
+Size: under the 800-line ceiling since the text-level helpers (normalisation, sentence splitting,
+the word-level lexical score, ``SectionIndex`` and its verbatim ``Hit``) moved to
+``graph/align_text.py``, which ``graph/passages.py`` (the sentence-level change layer) reuses.
+``split_sentences`` is re-exported from here for existing importers. About 130 lines of this file
+are documentation.
 """
 
 import logging
-import re
-from bisect import bisect_right
 from collections import Counter
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
-from difflib import SequenceMatcher
-from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -88,6 +86,18 @@ from rapidfuzz.utils import default_process
 from scipy.optimize import linear_sum_assignment
 
 from ..hashing import content_hash
+from .align_text import (
+    TOKEN_RE,
+    Hit,
+    SectionIndex,
+    at_least,
+    in_range,
+    lex_exact,
+    norm,
+    sentence_texts,
+    word_tokens,
+)
+from .align_text import split_sentences as split_sentences        # noqa: F401  (re-exported public name)
 
 logger = logging.getLogger("semigraph.graph.alignment")
 
@@ -103,17 +113,6 @@ _ASSIGN_TIE_EPS = 1e-6     # position-locality tie-break, far below any similari
 # --------------------------------------------------------------------------
 # parameters and value objects
 # --------------------------------------------------------------------------
-
-def _in_range(name: str, value: float, low: float, high: float, *, open_low: bool = False) -> None:
-    ok = (low < value if open_low else low <= value) and value <= high     # NaN fails both
-    if not ok:
-        raise ValueError(f"{name} must be in {'(' if open_low else '['}{low}, {high}], got {value!r}")
-
-
-def _at_least(name: str, value: int, minimum: int) -> None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ValueError(f"{name} must be an integer >= {minimum}, got {value!r}")
-
 
 @dataclass(frozen=True)
 class AlignParams:
@@ -149,22 +148,22 @@ class AlignParams:
     max_dropped_sentences: int = 200
 
     def __post_init__(self) -> None:
-        _in_range("headline_min_ratio", self.headline_min_ratio, 0.0, 100.0, open_low=True)
-        _in_range("absence_min_ratio", self.absence_min_ratio, 0.0, 100.0, open_low=True)
+        in_range("headline_min_ratio", self.headline_min_ratio, 0.0, 100.0, open_low=True)
+        in_range("absence_min_ratio", self.absence_min_ratio, 0.0, 100.0, open_low=True)
         for name in ("embed_accept", "lex_accept", "embed_reject", "lex_only_accept", "lex_only_reject"):
-            _in_range(name, getattr(self, name), 0.0, 1.0)
+            in_range(name, getattr(self, name), 0.0, 1.0)
         if self.embed_reject > self.embed_accept:
             raise ValueError("embed_reject must not exceed embed_accept")
         if self.lex_only_reject > self.lex_only_accept:
             raise ValueError("lex_only_reject must not exceed lex_only_accept")
-        _at_least("min_headline_tokens", self.min_headline_tokens, 1)
-        _at_least("min_body_tokens", self.min_body_tokens, 0)
-        _at_least("min_term_chars", self.min_term_chars, 1)
-        _at_least("max_term_chars", self.max_term_chars, self.min_term_chars)
-        _at_least("n_longest_sentences", self.n_longest_sentences, 1)
-        _at_least("min_probe_hits", self.min_probe_hits, 1)
-        _at_least("max_quote_chars", self.max_quote_chars, 1)
-        _at_least("max_dropped_sentences", self.max_dropped_sentences, 0)
+        at_least("min_headline_tokens", self.min_headline_tokens, 1)
+        at_least("min_body_tokens", self.min_body_tokens, 0)
+        at_least("min_term_chars", self.min_term_chars, 1)
+        at_least("max_term_chars", self.max_term_chars, self.min_term_chars)
+        at_least("n_longest_sentences", self.n_longest_sentences, 1)
+        at_least("min_probe_hits", self.min_probe_hits, 1)
+        at_least("max_quote_chars", self.max_quote_chars, 1)
+        at_least("max_dropped_sentences", self.max_dropped_sentences, 0)
 
 
 @dataclass(frozen=True)
@@ -227,75 +226,6 @@ class AlignmentResult:
 
 
 # --------------------------------------------------------------------------
-# text helpers
-# --------------------------------------------------------------------------
-
-_NORM_RE = re.compile(r"[\s’'\"“”]+")        # identical to extraction.gates (not imported: it pulls in litellm)
-_TOKEN_RE = re.compile(r"\w+")
-_SENTENCE_BREAK = re.compile(
-    r"\n+"                                            # line / paragraph breaks
-    r"|•"                                             # inline bullet glyph
-    r"|(?<=[a-z0-9][.!?])(?=[A-Z])"                   # glued sentences: "cash flows.Further"
-    r"|(?<!\b[A-Z]\.)(?<=[.!?])\s+(?=[A-Z“\"‘(])"     # ordinary boundary, never after "U.S."
-)
-
-
-def _norm(text: str) -> str:
-    """Whitespace/quote-collapsed, casefolded text (the ``extraction.gates.normalize`` rule)."""
-    return _NORM_RE.sub(" ", text).strip().lower()
-
-
-def _norm_with_offsets(text: str) -> tuple[str, list[int]]:
-    """``_norm(text)`` plus, per normalised character, the index of its source character in ``text``."""
-    segments: list[tuple[int, int]] = []
-    start = 0
-    for match in _NORM_RE.finditer(text):
-        if match.start() > start:
-            segments.append((start, match.start()))
-        start = match.end()
-    if len(text) > start:
-        segments.append((start, len(text)))
-    parts: list[str] = []
-    offsets: list[int] = []
-    for k, (a, b) in enumerate(segments):
-        if k:
-            parts.append(" ")
-            offsets.append(segments[k - 1][1])
-        low = text[a:b].lower()
-        parts.append(low)
-        offsets.extend(range(a, b) if len(low) == b - a else (min(a + i, b - 1) for i in range(len(low))))
-    return "".join(parts), offsets
-
-
-def split_sentences(text: str) -> list[tuple[int, int]]:
-    """Sentence ``(start, end)`` offsets into ``text``, whitespace-trimmed.
-
-    Splits on line breaks, bullet glyphs, ordinary sentence ends and sentence ends glued to the
-    next sentence without a space (which the filings' HTML flattening produces); never after an
-    initial such as "U.S.".
-    """
-    spans: list[tuple[int, int]] = []
-    pos = 0
-    for match in _SENTENCE_BREAK.finditer(text):
-        _push_span(text, pos, match.start(), spans)
-        pos = match.end()
-    _push_span(text, pos, len(text), spans)
-    return spans
-
-
-def _push_span(text: str, start: int, end: int, spans: list[tuple[int, int]]) -> None:
-    segment = text[start:end]
-    stripped = segment.strip()
-    if stripped:
-        lead = len(segment) - len(segment.lstrip())
-        spans.append((start + lead, start + lead + len(stripped)))
-
-
-def _sentences(text: str) -> list[str]:
-    return [text[a:b] for a, b in split_sentences(text)]
-
-
-# --------------------------------------------------------------------------
 # items
 # --------------------------------------------------------------------------
 
@@ -347,24 +277,14 @@ def _prepare(rows: Sequence[Mapping[str, Any]], side: str) -> list[_Item]:
             idx=idx, item_id=item_id, headline=headline, text=text, body=body,
             text_hash=_clean(row.get("text_hash")) or content_hash(text),
             body_hash=content_hash(body) if body else "",
-            tokens=tuple(_TOKEN_RE.findall(text.lower())),
-            headline_tokens=len(_TOKEN_RE.findall(headline)), norm=_norm(text)))
+            tokens=word_tokens(text),
+            headline_tokens=len(TOKEN_RE.findall(headline)), norm=norm(text)))
     return items
 
 
 # --------------------------------------------------------------------------
 # scores
 # --------------------------------------------------------------------------
-
-@lru_cache(maxsize=8192)
-def _lex_exact(a: tuple[str, ...], b: tuple[str, ...]) -> float:
-    """Word-level difflib ratio (greedy block matching), averaged over both argument orders."""
-    if not a or not b:
-        return 0.0
-    forward = SequenceMatcher(None, a, b, autojunk=False).ratio()
-    backward = SequenceMatcher(None, b, a, autojunk=False).ratio()
-    return 0.5 * (forward + backward)
-
 
 def _lex_matrix(o_tokens: Sequence[tuple[str, ...]], n_tokens: Sequence[tuple[str, ...]],
                 floor: float, mask: np.ndarray | None = None) -> np.ndarray:
@@ -383,7 +303,7 @@ def _lex_matrix(o_tokens: Sequence[tuple[str, ...]], n_tokens: Sequence[tuple[st
     if mask is not None:
         todo &= mask
     for i, j in zip(*np.nonzero(todo)):
-        out[i, j] = _lex_exact(o_tokens[i], n_tokens[j])
+        out[i, j] = lex_exact(o_tokens[i], n_tokens[j])
     return out
 
 
@@ -485,10 +405,10 @@ def _step_headline(older, newer, o_free, n_free, params) -> list[_Pair]:
     allowed = ratios >= params.headline_min_ratio
     score = np.zeros(ratios.shape)
     for r, c in zip(*np.nonzero(allowed)):       # equal headlines: the closer body wins
-        score[r, c] = ratios[r, c] / 100.0 + 0.01 * _lex_exact(older[o_free[r]].tokens, newer[n_free[c]].tokens)
+        score[r, c] = ratios[r, c] / 100.0 + 0.01 * lex_exact(older[o_free[r]].tokens, newer[n_free[c]].tokens)
     # equal bodies were paired by the previous step, so a headline pair here always has differing bodies
     return [_Pair(o_free[r], n_free[c], "reworded", "headline",
-                  lex_sim=_lex_exact(older[o_free[r]].tokens, newer[n_free[c]].tokens))
+                  lex_sim=lex_exact(older[o_free[r]].tokens, newer[n_free[c]].tokens))
             for r, c in _assign_pairs(score, allowed)]
 
 
@@ -564,71 +484,24 @@ def _pair_items(older: Sequence[_Item], newer: Sequence[_Item],
 # --------------------------------------------------------------------------
 
 @dataclass(frozen=True)
-class _Hit:
-    term: str
-    score: float
-    quote: str
-    span: tuple[int, int]
-
-
-class _SectionIndex:
-    """A section text prepared for verbatim quoting and whole-haystack fuzzy probing."""
-
-    def __init__(self, text: str) -> None:
-        self.text = text
-        self._norm, self._offsets = _norm_with_offsets(text)
-        self._spans = split_sentences(text)
-        self._starts = [a for a, _ in self._spans]
-
-    def probe(self, needle: str, min_ratio: float, max_quote: int, *, fuzzy: bool = True) -> _Hit | None:
-        """Best occurrence of one sentence-sized needle: exact after normalisation, else fuzzy."""
-        needle_norm = _norm(needle)
-        if not needle_norm:
-            return None
-        pos = self._norm.find(needle_norm)
-        if pos >= 0:
-            start, end, score = pos, pos + len(needle_norm), 100.0
-        elif fuzzy and len(self._norm) >= len(needle_norm):
-            found = fuzz.partial_ratio_alignment(needle_norm, self._norm, score_cutoff=min_ratio)
-            if found is None or found.score < min_ratio:
-                return None
-            start, end, score = found.dest_start, found.dest_end, float(found.score)
-        else:
-            return None
-        quote, span = self._quote(start, end, max_quote)
-        return _Hit(needle, score, quote, span)
-
-    def _quote(self, start: int, end: int, max_quote: int) -> tuple[str, tuple[int, int]]:
-        """The whole sentence(s) around the matched normalised range, verbatim (capped)."""
-        first, last = self._offsets[start], self._offsets[end - 1] + 1
-        i = max(bisect_right(self._starts, first) - 1, 0)
-        j = max(bisect_right(self._starts, last - 1) - 1, 0)
-        q_start = min(self._spans[i][0], first) if self._spans else first
-        q_end = max(self._spans[j][1], last) if self._spans else last
-        if q_end - q_start > max_quote:
-            q_start, q_end = first, min(last, first + max_quote)
-        return self.text[q_start:q_end], (q_start, q_end)
-
-
-@dataclass(frozen=True)
 class _Absence:
     probes: tuple[str, ...]
-    hits: tuple[_Hit, ...]
+    hits: tuple[Hit, ...]
 
 
 def _probes(item: _Item, boilerplate: frozenset[str], params: AlignParams) -> tuple[str, ...]:
     """The headline plus the longest body sentences (each long enough to be specific, none boilerplate)."""
     probes: list[str] = []
-    if len(item.headline) >= params.min_term_chars and _norm(item.headline) not in boilerplate:
+    if len(item.headline) >= params.min_term_chars and norm(item.headline) not in boilerplate:
         probes.append(item.headline)
-    sentences = _sentences(item.body)
+    sentences = sentence_texts(item.body)
     ranked = sorted(range(len(sentences)), key=lambda k: (-len(sentences[k]), k))
     chosen: list[str] = []
     for k in ranked:
         sentence = sentences[k]
-        if len(sentence) < params.min_term_chars or _norm(sentence) in boilerplate:
+        if len(sentence) < params.min_term_chars or norm(sentence) in boilerplate:
             continue
-        if _norm(sentence) in {_norm(p) for p in probes + chosen}:
+        if norm(sentence) in {norm(p) for p in probes + chosen}:
             continue
         chosen.append(sentence)
         if len(chosen) == params.n_longest_sentences:
@@ -636,7 +509,7 @@ def _probes(item: _Item, boilerplate: frozenset[str], params: AlignParams) -> tu
     return tuple(p[:params.max_term_chars] for p in probes + chosen)
 
 
-def _run_absence(item: _Item, index: _SectionIndex, boilerplate: frozenset[str],
+def _run_absence(item: _Item, index: SectionIndex, boilerplate: frozenset[str],
                  params: AlignParams) -> _Absence:
     probes = _probes(item, boilerplate, params)
     hits = tuple(h for h in (index.probe(p, params.absence_min_ratio, params.max_quote_chars) for p in probes)
@@ -664,7 +537,7 @@ def _probe_verdict(evidence: Evidence, params: AlignParams) -> str:
 
 def _locate_item(quote: str, items: Sequence[_Item]) -> str | None:
     """The first counterpart item whose text contains the quoted passage."""
-    needle = _norm(quote)
+    needle = norm(quote)
     return next((item.item_id for item in items if needle and needle in item.norm), None)
 
 
@@ -677,9 +550,9 @@ def _with_absence(base: Evidence, absence: _Absence, counterpart: Sequence[_Item
         quote_item_id=_locate_item(best.quote, counterpart) if best else None)
 
 
-def _partner_quote(n: _Item, index: _SectionIndex, params: AlignParams) -> _Hit | None:
+def _partner_quote(n: _Item, index: SectionIndex, params: AlignParams) -> Hit | None:
     """A verbatim quote for a reworded pair: the newer item's headline or first long sentence."""
-    first_sentence = next(iter(_sentences(n.body)), "")
+    first_sentence = next(iter(sentence_texts(n.body)), "")
     for candidate in (n.headline, first_sentence):
         if len(candidate) >= params.min_term_chars:
             hit = index.probe(candidate[:params.max_term_chars], 100.0, params.max_quote_chars, fuzzy=False)
@@ -688,12 +561,12 @@ def _partner_quote(n: _Item, index: _SectionIndex, params: AlignParams) -> _Hit 
     return None
 
 
-def _dropped_sentences(o: _Item, index: _SectionIndex, params: AlignParams) -> tuple[str, ...]:
+def _dropped_sentences(o: _Item, index: SectionIndex, params: AlignParams) -> tuple[str, ...]:
     """Sentences of the older item verifiably absent from the whole newer section (audit trail)."""
     dropped: list[str] = []
     if params.max_dropped_sentences == 0:
         return ()
-    for sentence in _sentences(o.text):
+    for sentence in sentence_texts(o.text):
         if len(sentence) < params.min_term_chars:
             continue
         if index.probe(sentence[:params.max_term_chars], params.absence_min_ratio, params.max_quote_chars) is None:
@@ -711,7 +584,7 @@ def _pair_evidence(o: _Item, n: _Item, pair: _Pair) -> Evidence:
     return Evidence(embed_sim=pair.embed_sim, lex_sim=pair.lex_sim, headline_ratio=_headline_ratio(o, n))
 
 
-def _older_paired(o: _Item, n: _Item, pair: _Pair, index: _SectionIndex, params: AlignParams) -> OlderDecision:
+def _older_paired(o: _Item, n: _Item, pair: _Pair, index: SectionIndex, params: AlignParams) -> OlderDecision:
     evidence = _pair_evidence(o, n, pair)
     if pair.label == "reworded":
         hit = _partner_quote(n, index, params)
@@ -738,7 +611,7 @@ def _older_unpaired(o: _Item, near: _Nearest | None, absence: _Absence, newer: S
 
 
 def _older_decisions(older: Sequence[_Item], newer: Sequence[_Item], pairs: Sequence[_Pair],
-                     nearest: Mapping[int, _Nearest], index: _SectionIndex, boilerplate: frozenset[str],
+                     nearest: Mapping[int, _Nearest], index: SectionIndex, boilerplate: frozenset[str],
                      params: AlignParams) -> list[OlderDecision]:
     pair_by_o = {p.o: p for p in pairs}
     decisions = []
@@ -757,7 +630,7 @@ def _older_decisions(older: Sequence[_Item], newer: Sequence[_Item], pairs: Sequ
 
 
 def _newer_hints(newer: Sequence[_Item], older: Sequence[_Item], pairs: Sequence[_Pair],
-                 older_index: _SectionIndex | None, boilerplate: frozenset[str],
+                 older_index: SectionIndex | None, boilerplate: frozenset[str],
                  params: AlignParams) -> dict[str, Evidence]:
     """Per newer item: pair scores, plus (when the older section text is known) the absence check of
     the item against it. Reused when adjudication changes what a newer item is."""
@@ -830,10 +703,10 @@ def align(older: Sequence[Mapping[str, Any]], newer: Sequence[Mapping[str, Any]]
     if not isinstance(newer_section_text, str):
         raise TypeError("newer_section_text must be a string")
     o_items, n_items = _prepare(older, "older"), _prepare(newer, "newer")
-    boilerplate = frozenset(_norm(s) for s in boilerplate_sentences)
+    boilerplate = frozenset(norm(s) for s in boilerplate_sentences)
     pairs, nearest = _pair_items(o_items, n_items, embed, params)
-    newer_index = _SectionIndex(newer_section_text)
-    older_index = None if older_section_text is None else _SectionIndex(older_section_text)
+    newer_index = SectionIndex(newer_section_text)
+    older_index = None if older_section_text is None else SectionIndex(older_section_text)
     older_decisions = _older_decisions(o_items, n_items, pairs, nearest, newer_index, boilerplate, params)
     hints = _newer_hints(n_items, o_items, pairs, older_index, boilerplate, params)
     result = AlignmentResult(tuple(older_decisions),

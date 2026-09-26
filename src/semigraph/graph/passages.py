@@ -1,0 +1,366 @@
+"""Passages: the change layer below the risk item (M1b plan L.2).
+
+Item-level alignment (``graph/alignment.py``) says which risk items survive; it cannot say what
+changed inside a surviving item (NVIDIA's single 26k-character export-control risk factor is
+``reworded`` in both filings while its NAC sentence and its AI Diffusion IFR paragraphs disappear).
+This module decomposes the items that changed into contiguous, verbatim ``Passage`` slices of each
+filing's section text, each classified against the WHOLE other section:
+
+* ``removed``  : a sentence of an older ``reworded`` / ``merged`` item that occurs nowhere in the
+  newer section, not even reworded;
+* ``reworded`` : the same, but a near counterpart exists (both sides quoted, similarity recorded);
+* ``added``    : the mirror image, from the newer side: a sentence of a ``carried`` newer item that
+  occurs nowhere in the older section and has no counterpart there.
+
+Pure and deterministic (no I/O, no network, no LLM); the caller supplies rows, the alignment
+result, the two section texts and the chunk spans.
+
+Classification of one sentence (whitespace-trimmed sentences from ``split_sentences``; sentences
+shorter than ``min_sentence_chars`` are headings or fragments and are never classified):
+
+1. PRESENT: a near-verbatim occurrence anywhere in the other section, ``partial_ratio`` >=
+   ``present_min_ratio`` on the first ``max_probe_chars`` characters. This is exactly the rule of
+   ``alignment._dropped_sentences`` (default 85 / 600), so a tense-only edit ("impact" ->
+   "impacted") is PRESENT and never reported, and the absent sentences of an item equal its
+   ``Evidence.dropped_sentences`` (tested).
+2. otherwise the best counterpart is the sentence of the other section with the highest word-level
+   lexical similarity (``align_text.lex_exact``, the aligner's own lexical score; ties go to the
+   earliest sentence). At or above ``reword_min`` the sentence is ``reworded``; below it ``removed``
+   (older side) or ``added`` (newer side).
+
+Runs: consecutive classified sentences of one kind in one item form one passage; a PRESENT sentence
+(or, on the newer side, one whose rewording is already reported from the older side) ends the run,
+so does a change of kind. A short sentence between two sentences of a run rides along inside the
+verbatim slice but never starts or ends a passage. A run is closed before its slice would exceed
+``max_passage_chars`` (cut at a sentence boundary; a single longer sentence stays whole). A
+``reworded`` run only continues while the counterparts are adjacent (the same or the next sentence
+of the other section), so ``counterpart_span`` is one contiguous slice; ``similarity`` is the
+weakest sentence link of the run.
+
+Decisions the plan did not specify (all covered by tests):
+
+* Which items are decomposed. Older: decision ``reworded`` or ``merged`` (``unchanged`` has
+  identical text, ``removed`` / ``uncertain`` belong to the item layer). Newer: ``carried`` unless
+  its partner is ``unchanged``; ``new`` and ``uncertain`` items are never decomposed. A carried item
+  without a resolvable partner id is decomposed too (its text was found in the older section).
+* ``added`` suppression. The plan says a newer sentence with a counterpart "is already reported
+  from the older side as reworded". That is applied literally: the older side runs first and a newer
+  sentence is NOT added only when its section offset lies inside the ``counterpart_span`` of a
+  reworded passage. A newer sentence that merely resembles an older sentence stays ``added`` when
+  nothing reports it: the resembled older sentence survives verbatim elsewhere, sits in a
+  ``removed`` / ``uncertain`` older item or outside every item, or is paired with another newer
+  sentence. Measured on the six development pairs: 58 of the 390 added sentences (15%) resemble an
+  older sentence at ``reword_min`` or more that nothing quotes.
+* Ordering: older-side passages (removed and reworded) in older-filing item order then position,
+  followed by added passages in newer-filing item order then position; ``seq`` is 0-based per item
+  and kind.
+* ``chunk_ids`` are the chunks of the passage's OWN filing whose half-open character range overlaps
+  the passage (zero-length chunks are ignored), in text order.
+* The item text must be a slice of its section starting at ``char_start`` (checked; a violation
+  raises ``ValueError``) so that passage offsets are section-text offsets.
+
+All thresholds are STARTING values (``PassageParams``), to be calibrated on the sentence-level gold
+before any number is reported. Limitations: a sentence edited by ~15% or more of its words can be
+absent although it is still there in edited form (the ``reworded`` class exists for that); the
+probe looks only at the first ``max_probe_chars`` characters of a sentence, so an edit confined to
+the tail of a longer sentence is not seen; a number-only update of a sentence ("12%" -> "22%")
+falls below ``reword_min`` when the sentence is short and is then reported as removed plus added;
+``reworded`` also holds when the counterpart is a sentence that already existed in the older filing.
+"""
+
+from bisect import bisect_right
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from numbers import Integral
+from typing import Any
+
+import numpy as np
+from rapidfuzz import process
+from rapidfuzz.distance import Indel
+
+from .align_text import SectionIndex, at_least, in_range, lex_exact, split_sentences, word_tokens
+from .alignment import AlignmentResult
+
+KINDS = ("removed", "reworded", "added")
+KIND_CODE = {"removed": "r", "reworded": "w", "added": "a"}      # passage_id infix
+DECIDED_BY = ("sentence_absent", "sentence_reworded")
+OLDER_DECOMPOSED = ("reworded", "merged")
+_BOUND_SLACK = 1e-9        # the Indel similarity upper-bounds the difflib ratio; float slack only
+
+
+@dataclass(frozen=True)
+class PassageParams:
+    """Every threshold of the passage layer. STARTING values, to be calibrated on the sentence gold.
+
+    ``present_min_ratio``: ``partial_ratio`` (0-100) at which a sentence counts as still present in
+    the other section (the aligner's ``absence_min_ratio``); ``max_probe_chars``: the sentence prefix
+    that is probed (the aligner's ``max_term_chars``). ``reword_min``: word-level lexical similarity
+    (0-1) from which an absent sentence with a counterpart is ``reworded`` rather than
+    ``removed`` / ``added``. ``min_sentence_chars``: shorter sentences are never classified.
+    ``max_passage_chars``: a passage is closed at a sentence boundary before exceeding it.
+    """
+
+    present_min_ratio: float = 85.0
+    reword_min: float = 0.60
+    min_sentence_chars: int = 40
+    max_passage_chars: int = 1200
+    max_probe_chars: int = 600
+
+    def __post_init__(self) -> None:
+        in_range("present_min_ratio", self.present_min_ratio, 0.0, 100.0, open_low=True)
+        in_range("reword_min", self.reword_min, 0.0, 1.0, open_low=True)
+        at_least("min_sentence_chars", self.min_sentence_chars, 1)
+        at_least("max_passage_chars", self.max_passage_chars, self.min_sentence_chars)
+        at_least("max_probe_chars", self.max_probe_chars, self.min_sentence_chars)
+
+
+@dataclass(frozen=True)
+class Passage:
+    """A contiguous, verbatim slice of one filing's section text that changed (see module docstring).
+
+    ``item_id``: the older item for ``removed`` / ``reworded``, the NEWER item for ``added``.
+    ``char_start`` / ``char_end`` and ``text`` refer to that item's own filing; ``counterpart_*``
+    (``reworded`` only) to the other filing's section. ``similarity`` is the weakest sentence link.
+    """
+
+    passage_id: str
+    kind: str
+    item_id: str
+    seq: int
+    text: str
+    char_start: int
+    char_end: int
+    counterpart_text: str | None
+    counterpart_span: tuple[int, int] | None
+    similarity: float | None
+    chunk_ids: tuple[str, ...]
+    decided_by: str
+
+
+@dataclass(frozen=True)
+class _Sentence:
+    start: int                   # offsets inside the item text
+    end: int
+    kind: str | None             # removed | reworded | added; None = present / already reported elsewhere
+    cp: int | None = None        # reworded: index of the counterpart sentence in the other section
+    sim: float | None = None
+
+
+class _Filing:
+    """One section text prepared for near-verbatim probing, counterpart search and chunk mapping."""
+
+    def __init__(self, text: str, chunk_spans: Sequence[tuple[str, int, int]], params: PassageParams) -> None:
+        if not isinstance(text, str):
+            raise TypeError("section text must be a string")
+        self.text = text
+        self.params = params
+        self.spans = split_sentences(text)
+        self._index = SectionIndex(text)
+        self._tokens = [word_tokens(text[a:b]) for a, b in self.spans]
+        self._chunks = _read_chunks(chunk_spans)
+
+    def contains(self, sentence: str) -> bool:
+        """Near-verbatim occurrence of ``sentence`` anywhere in this section (the aligner's absence rule)."""
+        p = self.params
+        return self._index.probe(sentence[:p.max_probe_chars], p.present_min_ratio, p.max_probe_chars) is not None
+
+    def counterpart(self, sentence: str) -> tuple[int, float] | None:
+        """Best sentence of this section by word-level lexical similarity, if at least ``reword_min``.
+
+        Exact: candidates are visited by descending Indel bound (an upper bound of the difflib ratio)
+        and the walk stops when no remaining candidate can beat the best; ties go to the earliest.
+        """
+        tokens = word_tokens(sentence)
+        if not tokens or not self._tokens:
+            return None
+        bound = process.cdist([tokens], self._tokens, scorer=Indel.normalized_similarity,
+                              dtype=np.float64, workers=1)[0]
+        floor = self.params.reword_min
+        best_idx, best = -1, 0.0
+        for j in np.argsort(-bound, kind="stable"):
+            if bound[j] < max(floor, best) - _BOUND_SLACK:
+                break
+            sim = lex_exact(tokens, self._tokens[j])
+            if sim >= floor and (sim > best or (sim == best and j < best_idx)):
+                best_idx, best = int(j), sim
+        return None if best_idx < 0 else (best_idx, best)
+
+    def chunk_ids(self, start: int, end: int) -> tuple[str, ...]:
+        return tuple(cid for cs, ce, cid in self._chunks if cs < end and ce > start)
+
+
+def _read_chunks(chunk_spans: Sequence[tuple[str, int, int]]) -> list[tuple[int, int, str]]:
+    chunks = []
+    for span in chunk_spans:
+        try:
+            cid, start, end = span
+            entry = (int(start), int(end), str(cid))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"chunk spans must be (chunk_id, char_start, char_end) triples, got {span!r}") from exc
+        if entry[1] > entry[0]:
+            chunks.append(entry)
+    return sorted(chunks)
+
+
+def _read_item(row: Mapping[str, Any], section: str) -> tuple[str, str, int]:
+    """(item_id, text, char_start) of a row whose text is verified to be a slice of ``section``."""
+    item_id, text, start = row.get("item_id"), row.get("text"), row.get("char_start")
+    if not isinstance(item_id, str) or not item_id:
+        raise ValueError("item row has no usable 'item_id'")
+    if not isinstance(text, str):
+        raise ValueError(f"item {item_id!r} has no 'text'")
+    if isinstance(start, bool) or not isinstance(start, Integral):
+        raise ValueError(f"item {item_id!r} has no integer 'char_start' (section-text offset)")
+    start = int(start)
+    if start < 0 or section[start:start + len(text)] != text:
+        raise ValueError(f"item {item_id!r}: text is not a slice of its section at char_start={start}")
+    return item_id, text, start
+
+
+class _Spans:
+    """Section-text ranges already quoted as the counterpart of a reworded passage."""
+
+    def __init__(self, spans: Sequence[tuple[int, int]]) -> None:
+        merged: list[list[int]] = []
+        for start, end in sorted(spans):
+            if merged and start <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+        self._starts = [m[0] for m in merged]
+        self._ends = [m[1] for m in merged]
+
+    def covers(self, pos: int) -> bool:
+        i = bisect_right(self._starts, pos) - 1
+        return i >= 0 and pos < self._ends[i]
+
+
+def _classify(text: str, base: int, own: _Filing, other: _Filing, reported: _Spans | None) -> list[_Sentence]:
+    """Classify every long-enough sentence of an item against the whole other section.
+
+    Older side (``reported`` is None): absent sentences are ``reworded`` with their best counterpart
+    or ``removed``. Newer side: an absent sentence is ``added`` unless the older side already quotes
+    it (its section offset lies in a reworded passage's ``counterpart_span``), which is exactly "already
+    reported from the older side as reworded".
+    """
+    out: list[_Sentence] = []
+    for a, b in split_sentences(text):
+        sentence = text[a:b]
+        if len(sentence) < own.params.min_sentence_chars:
+            continue
+        if other.contains(sentence):
+            out.append(_Sentence(a, b, None))
+        elif reported is None:
+            hit = other.counterpart(sentence)
+            out.append(_Sentence(a, b, "removed") if hit is None else _Sentence(a, b, "reworded", *hit))
+        else:
+            out.append(_Sentence(a, b, None if reported.covers(base + a) else "added"))
+    return out
+
+
+def _extends(run: list[_Sentence], nxt: _Sentence, params: PassageParams) -> bool:
+    last = run[-1]
+    if nxt.kind != last.kind or nxt.end - run[0].start > params.max_passage_chars:
+        return False
+    return nxt.kind != "reworded" or (nxt.cp - last.cp) in (0, 1)
+
+
+def _runs(sentences: Sequence[_Sentence], params: PassageParams) -> list[list[_Sentence]]:
+    runs: list[list[_Sentence]] = []
+    current: list[_Sentence] = []
+    for s in sentences:
+        if s.kind is None:
+            current = []
+        elif current and _extends(current, s, params):
+            current.append(s)
+        else:
+            current = [s]
+            runs.append(current)
+    return runs
+
+
+def _passage(run: list[_Sentence], item_id: str, seq: int, text: str, base: int, own: _Filing,
+             other: _Filing) -> Passage:
+    kind = run[0].kind
+    start, end = base + run[0].start, base + run[-1].end
+    counterpart_text = counterpart_span = similarity = None
+    if kind == "reworded":
+        counterpart_span = (other.spans[run[0].cp][0], other.spans[run[-1].cp][1])
+        counterpart_text = other.text[counterpart_span[0]:counterpart_span[1]]
+        similarity = min(s.sim for s in run)
+    return Passage(
+        passage_id=f"{item_id}:{KIND_CODE[kind]}{seq:03d}", kind=kind, item_id=item_id, seq=seq,
+        text=text[run[0].start:run[-1].end], char_start=start, char_end=end,
+        counterpart_text=counterpart_text, counterpart_span=counterpart_span, similarity=similarity,
+        chunk_ids=own.chunk_ids(start, end),
+        decided_by="sentence_reworded" if kind == "reworded" else "sentence_absent")
+
+
+def _item_passages(row: Mapping[str, Any], own: _Filing, other: _Filing,
+                   reported: _Spans | None = None) -> list[Passage]:
+    item_id, text, base = _read_item(row, own.text)
+    sentences = _classify(text, base, own, other, reported)
+    seq: Counter[str] = Counter()
+    out = []
+    for run in _runs(sentences, own.params):
+        out.append(_passage(run, item_id, seq[run[0].kind], text, base, own, other))
+        seq[run[0].kind] += 1
+    return out
+
+
+def _select(rows: Sequence[Mapping[str, Any]], decisions: Mapping[str, Any], side: str,
+            wanted) -> list[Mapping[str, Any]]:
+    """The rows (in filing order) whose decision is to be decomposed; every such decision needs a row."""
+    row_ids = {row.get("item_id") for row in rows}
+    missing = sorted(i for i, d in decisions.items() if wanted(d) and i not in row_ids)
+    if missing:
+        raise ValueError(f"{side} decision(s) without an item row: {missing}")
+    return [row for row in rows if row.get("item_id") in decisions and wanted(decisions[row["item_id"]])]
+
+
+def compute_passages(older_items: Sequence[Mapping[str, Any]], newer_items: Sequence[Mapping[str, Any]],
+                     result: AlignmentResult, older_section_text: str, newer_section_text: str,
+                     older_chunk_spans: Sequence[tuple[str, int, int]] = (),
+                     newer_chunk_spans: Sequence[tuple[str, int, int]] = (),
+                     params: PassageParams = PassageParams()) -> tuple[Passage, ...]:
+    """Removed / reworded / added passages of the items that changed between two consecutive filings.
+
+    ``*_items``: rows with ``item_id``, ``text`` and ``char_start`` (the section-text offset of the
+    item; the text must be the slice of its section from there), in filing order. ``result``: the
+    ``align`` output for the same items. ``*_chunk_spans``: ``(chunk_id, char_start, char_end)`` of
+    the chunks of that filing's section (what ``parsing.risk_items`` maps items with).
+    """
+    older, newer = _Filing(older_section_text, older_chunk_spans, params), _Filing(newer_section_text,
+                                                                                     newer_chunk_spans, params)
+    old_by_id = {d.item_id: d for d in result.older}
+    new_by_id = {d.item_id: d for d in result.newer}
+
+    def older_wanted(d) -> bool:
+        return d.label in OLDER_DECOMPOSED
+
+    def newer_wanted(d) -> bool:
+        partner = old_by_id.get(d.matched_older_id)
+        return d.label == "carried" and not (partner is not None and partner.label == "unchanged")
+
+    passages: list[Passage] = []
+    for row in _select(older_items, old_by_id, "older", older_wanted):
+        passages.extend(_item_passages(row, older, newer))
+    reported = _Spans([p.counterpart_span for p in passages if p.kind == "reworded"])
+    for row in _select(newer_items, new_by_id, "newer", newer_wanted):
+        passages.extend(_item_passages(row, newer, older, reported))
+    return tuple(passages)
+
+
+def summarize_passages(passages: Sequence[Passage]) -> dict:
+    """Counts per kind and per item, plus the total passage characters."""
+    by_kind = Counter(p.kind for p in passages)
+    per_item: dict[str, Counter[str]] = {}
+    for p in passages:
+        per_item.setdefault(p.item_id, Counter())[p.kind] += 1
+    return {
+        "total": len(passages),
+        "by_kind": {kind: by_kind.get(kind, 0) for kind in KINDS},
+        "by_item": {item: {k: c[k] for k in KINDS if c[k]} for item, c in per_item.items()},
+        "chars": sum(len(p.text) for p in passages),
+    }
