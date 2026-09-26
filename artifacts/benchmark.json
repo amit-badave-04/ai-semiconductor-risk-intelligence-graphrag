@@ -686,7 +686,8 @@
         "carried": 41,
         "new": 1
       }
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T5",
@@ -708,7 +709,8 @@
       "newer_counts": {
         "carried": 48
       }
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T6",
@@ -730,7 +732,8 @@
       "newer_counts": {
         "carried": 33
       }
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T7",
@@ -761,7 +764,8 @@
       "newer_counts": {
         "carried": 23
       }
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T8",
@@ -792,7 +796,8 @@
         "carried": 23,
         "new": 1
       }
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T9",
@@ -815,7 +820,8 @@
       "newer_counts": {
         "carried": 25
       }
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T10",
@@ -835,7 +841,8 @@
         "0000002488-25-000012:I.1A:0015"
       ],
       "newer_location": "not recorded in the gold"
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T11",
@@ -855,7 +862,8 @@
         "0000723125-24-000027:I.1A:0036"
       ],
       "newer_location": "not recorded in the gold"
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T12",
@@ -875,7 +883,8 @@
         "0001045810-24-000029:I.1A:0146"
       ],
       "newer_location": "not recorded in the gold"
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T13",
@@ -898,7 +907,8 @@
       ],
       "item_id": "0001045810-25-000023:I.1A:i015",
       "item_label": "reworded"
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T14",
@@ -921,7 +931,8 @@
       ],
       "item_id": "0001045810-25-000023:I.1A:i015",
       "item_label": "reworded"
-    }
+    },
+    "split": "development"
   },
   {
     "id": "T15",
@@ -944,6 +955,7 @@
       ],
       "item_id": "0001045810-25-000023:I.1A:i015",
       "item_label": "reworded"
-    }
+    },
+    "split": "development"
   }
 ]

@@ -287,6 +287,22 @@ class Rows(list):
         return None
 
 
+class Tx:
+    """A managed transaction: every statement it runs is logged on the driver and on the transaction itself."""
+
+    def __init__(self, driver):
+        self.driver, self.statements, self.state = driver, [], "open"
+
+    def run(self, query, parameters=None, **params):
+        text = " ".join(query.split())
+        self.driver.log.append((text, params))
+        self.statements.append((text, params))
+        drv = self.driver
+        if drv.fail_on and drv.fail_on in text and drv.fail_tx in (None, drv.transactions.index(self)):
+            raise RuntimeError(f"injected failure at: {drv.fail_on}")
+        return Rows(drv.reply(text, params))
+
+
 class Session:
     def __init__(self, driver):
         self.driver = driver
@@ -297,15 +313,28 @@ class Session:
     def __exit__(self, *exc):
         return False
 
-    def run(self, query, parameters=None, **params):
+    def run(self, query, parameters=None, **params):        # an auto-commit statement: outside any transaction
         text = " ".join(query.split())
         self.driver.log.append((text, params))
+        self.driver.autocommit.append(text)
         return Rows(self.driver.reply(text, params))
+
+    def execute_write(self, work, *args, **kwargs):
+        tx = Tx(self.driver)
+        self.driver.transactions.append(tx)
+        try:
+            result = work(tx, *args, **kwargs)
+        except BaseException:
+            tx.state = "rolled back"
+            raise
+        tx.state = "committed"
+        return result
 
 
 class FakeDriver:
-    def __init__(self, missing_supersedes=(), risk_evidence=()):
+    def __init__(self, missing_supersedes=(), risk_evidence=(), fail_on=None, fail_tx=None):
         self.log, self.missing, self.evidence = [], set(missing_supersedes), list(risk_evidence)
+        self.transactions, self.autocommit, self.fail_on, self.fail_tx = [], [], fail_on, fail_tx
 
     def session(self, **config):
         return Session(self)
@@ -317,6 +346,8 @@ class FakeDriver:
             return [{"n": 7}]
         if "RETURN rf.risk_id AS risk_id" in text:
             return self.evidence
+        if "IN $ciks" in text and "DETACH DELETE" in text:
+            return [{"n": 4 if "RiskItem" in text else 2}]
         return []
 
     def statements(self):
@@ -414,3 +445,99 @@ class TestLoadRiskItems:
         with pytest.raises(items.AlignItemsError, match="unknown filings"):
             il.load_risk_items(driver, loader_env, [ZZZ], snapshot_id="snap-x")
         assert driver.log == []
+
+
+# --------------------------------------------------------------------------- one transaction per ticker, stale stamps, orphans
+
+class TestAtomicLoad:
+    """A ticker's load is ONE transaction: the clear, every write, the SUPERSEDES stamps and the OF_ITEM links commit together or not
+    at all (a crash after the clear used to leave a half-loaded layer stamped with the new snapshot)."""
+
+    def test_one_ticker_is_one_transaction_holding_the_clear_and_every_write_and_it_commits(self, loader_env):
+        driver = FakeDriver(risk_evidence=[{"risk_id": "r1", "chunk_id": f"{A26}:I.1A:0003"}])
+        il.load_risk_items(driver, loader_env, [ZZZ], snapshot_id="snap-x")
+        (tx,) = driver.transactions
+        assert tx.state == "committed" and driver.autocommit == [] and len(tx.statements) == len(driver.log)
+        texts = [t for t, _ in tx.statements]
+        for needle in ("DETACH DELETE p", "MERGE (i:RiskItem", "MERGE (o)-[s:SUCCEEDED_BY]", "MERGE (p:RiskPassage", "SET s.items_compared"):
+            assert any(needle in t for t in texts), needle
+        # the SPANS count and the RiskFactor evidence read must see the transaction's own uncommitted writes
+        assert any("RETURN count(r)" in t for t in texts) and any("RETURN rf.risk_id" in t for t in texts)
+        assert any("OF_ITEM" in t and "MERGE" in t for t in texts)
+
+    def test_a_failure_after_the_clear_rolls_the_ticker_back_and_nothing_commits(self, loader_env):
+        driver = FakeDriver(fail_on="MERGE (p:RiskPassage")
+        with pytest.raises(RuntimeError, match="injected"):
+            il.load_risk_items(driver, loader_env, [ZZZ], snapshot_id="snap-x")
+        (tx,) = driver.transactions
+        assert tx.state == "rolled back" and driver.autocommit == []
+        assert any("DELETE" in t for t, _ in tx.statements)                # the clear ran INSIDE the transaction that was rolled back
+
+    def test_a_missing_supersedes_edge_rolls_the_whole_ticker_back(self, loader_env):
+        driver = FakeDriver(missing_supersedes=[(A26, A25)])
+        with pytest.raises(items.AlignItemsError, match="no SUPERSEDES edge"):
+            il.load_risk_items(driver, loader_env, [ZZZ], snapshot_id="snap-x")
+        (tx,) = driver.transactions
+        assert tx.state == "rolled back" and driver.autocommit == []
+
+    def test_the_writes_never_leave_the_transaction_through_the_helpers_that_open_their_own_session(self):
+        import inspect
+
+        source = inspect.getsource(il)
+        assert "_run_batched(" not in source and "run_cypher(" not in source and "_clear_layer" not in source
+
+    @pytest.fixture
+    def two(self, tmp_path, monkeypatch):
+        settings = lakefix.build_lake(tmp_path)
+        lakefix.build_lake(tmp_path, ticker="YYY", cik=1000)
+        items.run_align_items(settings, ["YYY", ZZZ])
+        monkeypatch.setattr(il, "_load_manifest", lambda s: {})
+        monkeypatch.setattr(il, "_current_by_item", lambda s, m, t, df: {r: False for r in df["item_id"]})
+        return settings
+
+    def test_each_ticker_has_its_own_transaction_and_a_failure_in_the_second_leaves_the_first_committed(self, two):
+        driver = FakeDriver(fail_on="MERGE (p:RiskPassage", fail_tx=1)
+        with pytest.raises(RuntimeError, match="injected"):
+            il.load_risk_items(driver, two, ["YYY", ZZZ], snapshot_id="snap-x")
+        assert [tx.state for tx in driver.transactions] == ["committed", "rolled back"]
+
+    def test_the_stale_comparison_stamps_of_the_tickers_filing_edges_are_removed_before_the_current_pairs_are_stamped(self, loader_env):
+        driver = FakeDriver()
+        il.load_risk_items(driver, loader_env, [ZZZ], snapshot_id="snap-x")
+        st = driver.statements()
+        clear = position(st, "REMOVE s.items_compared, s.not_compared_reason")
+        assert clear < position(st, "SET s.items_compared")
+        assert "(:Company {cik: $cik})-[:FILED]->(:Filing)-[s:SUPERSEDES]->(:Filing)" in st[clear]
+        assert "s.kind" not in st[clear] and "MERGE" not in st[clear] and "DELETE" not in st[clear]
+
+    def test_a_full_load_deletes_the_item_layer_of_a_ticker_whose_risk_item_file_is_gone_in_its_own_transaction_after_the_loads(self, two):
+        driver = FakeDriver()
+        totals = il.load_risk_items(driver, two, None, snapshot_id="snap-x")
+        assert [tx.state for tx in driver.transactions] == ["committed"] * 3
+        purge = driver.transactions[-1].statements
+        assert len(purge) == 3 and all("$ciks" in t or "NOT c.cik" in t for t, _ in purge)
+        assert all(params["ciks"] == [lakefix.CIK, 1000] for _, params in purge)
+        assert totals["purged_items"] == 4 and totals["purged_passages"] == 2
+        deleting = [t for t, _ in purge if "DETACH DELETE" in t]
+        assert any("RiskPassage" in t for t in deleting) and any("RiskItem" in t for t in deleting)
+        assert all("filer_cik IS NULL OR NOT" in t for t in deleting)                 # a node with no filer is nobody's layer either
+
+    def test_a_load_of_named_tickers_never_deletes_another_tickers_layer(self, two):
+        driver = FakeDriver()
+        totals = il.load_risk_items(driver, two, [ZZZ], snapshot_id="snap-x")
+        assert len(driver.transactions) == 1 and not any("$ciks" in t for t, _ in driver.log)
+        assert totals["purged_items"] == totals["purged_passages"] == 0
+
+    def test_pruning_can_be_forced_or_forbidden_explicitly(self, two):
+        forced = FakeDriver()
+        il.load_risk_items(forced, two, [ZZZ], snapshot_id="snap-x", prune_missing=True)
+        assert any("$ciks" in t for t, _ in forced.log)
+        forbidden = FakeDriver()
+        il.load_risk_items(forbidden, two, None, snapshot_id="snap-x", prune_missing=False)
+        assert not any("$ciks" in t for t, _ in forbidden.log) and len(forbidden.transactions) == 2
+
+    def test_a_failed_ticker_stops_the_load_before_anything_is_pruned(self, two):
+        driver = FakeDriver(fail_on="MERGE (p:RiskPassage", fail_tx=1)
+        with pytest.raises(RuntimeError):
+            il.load_risk_items(driver, two, None, snapshot_id="snap-x")
+        assert not any("$ciks" in t for t, _ in driver.log)

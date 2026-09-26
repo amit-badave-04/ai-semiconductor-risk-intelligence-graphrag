@@ -315,3 +315,30 @@ def test_the_dry_run_writes_nothing(world, tmp_path, capsys):
                      str(world["sections_dir"]), "--flagship-pair", fx.FLAG, "--xbrl-dir", str(world["xbrl_dir"]),
                      "--out", str(out), "--dry-run"]) == 0
     assert not out.exists() and "12 questions" in capsys.readouterr().out
+
+
+# --- every question is labelled with the split its pair belongs to (M1B_PLAN L.10) -----------------------------------------------
+
+def test_every_question_is_labelled_as_development_split_because_only_development_pairs_feed_it(world):
+    qs = _questions(world)
+    assert len(qs) == 12 and {q["split"] for q in qs} == {"development"}
+
+
+def test_the_label_comes_from_the_split_the_gold_records_for_the_pair_never_from_a_constant(world):
+    doc = json.loads(world["gold"].read_text(encoding="utf-8"))
+    facts = {q["pair_id"] for q in btq.build_questions(doc, _corpus(world), flagship_pair=fx.FLAG)}
+    assert facts and all(doc["pairs"][f"{p}|older"]["split"] == "development" for p in facts)
+    with pytest.raises(ValueError, match="development"):
+        btq.label_split({"id": "T4", "pair_id": next(iter(facts))}, {"pairs": {f"{next(iter(facts))}|older": {"split": "held_out"}}})
+
+
+def test_the_output_document_and_both_benchmark_copies_carry_the_development_label(world, tmp_path):
+    args, a, b = _merge_args(world, tmp_path)
+    assert btq.main(args) == 0
+    doc = json.loads((tmp_path / "tq.json").read_text(encoding="utf-8"))
+    assert doc["split"] == "development" and "not held-out" in doc["split_note"] and "L.10" in doc["split_note"]
+    assert {q["split"] for q in doc["questions"]} == {"development"}
+    assert a.read_bytes() == b.read_bytes()
+    merged = {e["id"]: e for e in json.loads(a.read_bytes().decode("utf-8"))}
+    assert {merged[f"T{n}"]["split"] for n in range(4, 16)} == {"development"}
+    assert "split" not in merged["T1"] and "split" not in merged["U1"]           # the legacy entries keep their exact shape

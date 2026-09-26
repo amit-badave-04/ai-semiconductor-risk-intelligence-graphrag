@@ -230,6 +230,33 @@ def verify_frozen(path: Path | str) -> bool:
     return recorded == hashlib.sha256(_canonical(doc).encode("utf-8")).hexdigest()
 
 
+# ``verify_frozen`` trusts the hash stored INSIDE the file, so a gold rewritten together with its hash passes it. The two frozen
+# gold files are therefore pinned here: the sha256 each ``(kind, split)`` must have. A new gold is pinned by a reviewed edit of
+# this mapping in the commit that freezes it (until then ``scripts/verify_temporal.py --allow-unpinned-gold``).
+KNOWN_GOLD_SHA256: Mapping[tuple[str, str], str] = {
+    ("risk_items_gold", "development"): "af1e810d0c3fb406040d5d2f6e6d38d3080ee8f1ef1fdd50a95404f7fd416448",
+    ("risk_items_gold", "held_out"): "dbd980ff615a0443fb1e0689bd0a39238e798b462df6bd7cc95fbf5fee9e7526",
+}
+
+
+def gold_split(doc: Mapping) -> str:
+    """The split of a gold file: the ``split`` of ALL its pair and sentence entries when they agree, else ``mixed`` (or ``empty``)."""
+    splits = {e.get("split") for table in ("pairs", "sentences") for e in (doc.get(table) or {}).values()}
+    if not splits:
+        return "empty"
+    return str(next(iter(splits))) if len(splits) == 1 else "mixed"
+
+
+def check_pinned(path: Path | str) -> dict:
+    """Compare a gold file's recorded sha256 with the pin of its ``(kind, split)``: ``pinned`` (equal), ``mismatch`` (a pin exists
+    and differs) or ``unpinned`` (no pin: a new gold, or a file that mixes splits). Call ``verify_frozen`` first (tamper check)."""
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    kind, split, recorded = str(doc.get("kind")), gold_split(doc), doc.get("sha256")
+    pin = KNOWN_GOLD_SHA256.get((kind, split))
+    status = "unpinned" if pin is None else "pinned" if recorded == pin else "mismatch"
+    return {"kind": kind, "split": split, "sha256": recorded, "pinned_sha256": pin, "status": status}
+
+
 def score_predictions(gold: Mapping[str, str], predicted: Mapping[str, str]) -> Metrics:
     """Score an algorithm's labels (item -> unchanged/reworded/merged/removed/uncertain) against the gold.
 

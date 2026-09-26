@@ -2,6 +2,8 @@
   "kind": "temporal_questions",
   "gold_sha256": "af1e810d0c3fb406040d5d2f6e6d38d3080ee8f1ef1fdd50a95404f7fd416448",
   "seed": 20260927,
+  "split": "development",
+  "split_note": "Every question and the refreshed legacy T1-T3 notes are built from DEVELOPMENT-split pairs, the pairs the alignment was designed and tuned on: results on them are development results, not held-out ones (docs/v2/M1B_PLAN.md L.10).",
   "generator": "scripts/build_temporal_questions.py",
   "legacy_notes": {
     "T1": "VERIFIED against the full text of the filings (source-text gold sha256 af1e810d). Nvidia FY2024 (10-K filed 2024-02-21) vs FY2025 (10-K filed 2025-02-26), risk section only. Older filing, 24 risk factors labelled: 4 unchanged, 19 reworded, 0 merged into another risk factor, 1 removed. Newer filing, 23 labelled: 23 carried over from the older filing, 0 new. Removed: exactly 1 risk factor: 'Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling ou...' (FY2024 chunks 0001045810-24-000029:I.1A:0162). No risk factor is new. Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 24 risk factors, 231 sentences labelled): 15 removed, 24 reworded, 192 present. Removed: \"This risk may increase as a result of our platform strategy.\"; \"If our existing suppliers are unable to scale their capabilities to meet our supply needs, we may require additional ...\"; \"Demand for our data center systems and products surged in fiscal year 2024.\"; \"Entering fiscal year 2025, we are gathering customer demand indications across several product transitions.\"; \"We have demand visibility for our new data center products ramping later in fiscal year 2025.\"; \"Our purchase commitments and obligations for inventory and manufacturing capacity at the end of fiscal year 2024 were...\"; \"Supply of Hopper architecture products is improving, and demand remains very strong.\"; \"We expect our next-generation products to be supply-constrained based upon demand indications.\"; and 7 more. Newer filing sentences (a seeded SAMPLE of 6 of 23 risk factors, 261 sentences labelled): 38 added, 19 reworded, 204 present. Added: \"our customers' ability to invest in AI infrastructure.\"; \"Our expanding product portfolio and varying component compatibility and quality may lead to increased inventory levels.\"; \"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new ...\"; \"For example, our gross margins in the second quarter of fiscal year 2025 were negatively impacted by inventory provis...\"; \"We incur significant engineering development resources for new products, and changes to our product roadmap may impac...\"; \"Customers may delay purchasing existing products as we increase the frequency of new products or may not be able to a...\"; \"We have a small number of partners that are involved in system integration with our key customers.\"; \"As our system design becomes increasingly complex, system integrators may be unable to meet specifications of our key...\"; and 30 more. Claims about sentences outside this sample are not verified by this note. Nvidia FY2025 (10-K filed 2025-02-26) vs FY2026 (10-K filed 2026-02-25), risk section only. Older filing, 23 risk factors labelled: 7 unchanged, 16 reworded, 0 merged into another risk factor, 0 removed. Newer filing, 24 labelled: 23 carried over from the older filing, 1 new. NO whole risk factor was removed. 1 new: 'Commercial arrangements expose us to counterparty risks.' (FY2026 chunks 0001045810-26-000021:I.1A:0349). Sentence level: Older filing sentences (a seeded SAMPLE of 6 of 23 risk factors, 165 sentences labelled): 30 removed, 8 reworded, 127 present. Removed: \"We offer enterprise customers NVIDIA DGX Cloud services, which include cloud-based infrastructure, software and servi...\"; \"NVIDIA DGX Cloud services may not be successful and will take time, resources, and investment.\"; \"The licensing requirements also apply to any future NVIDIA integrated circuit achieving certain peak performance and ...\"; \"There are also now licensing requirements to export a wide array of products, including networking products, destined...\"; \"On October 23, 2023, the USG informed us that the licensing requirements were effective immediately for shipments of ...\"; \"Blackwell systems, such as GB200 NVL 72 and NVL 36 as well as B200 are also subject to these requirements and therefo...\"; \"To date, we have not received licenses to ship these restricted products to China.\"; \"Any system that incorporates one or more of the covered integrated circuits, or ICs, (including but not limited to NV...\"; and 22 more. Newer filing sentences (a seeded SAMPLE of 6 of 24 risk factors, 194 sentences labelled): 35 added, 10 reworded, 149 present. Added: \"Many of these companies may not achieve profitability in the near term, or at all, and there is no guarantee that we ...\"; \"We are finalizing an investment and partnership agreement with OpenAI.\"; \"There is no assurance that we will enter into an investment and partnership agreement with OpenAI or that a transacti...\"; \"In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and...\"; \"As a result of these requirements, we incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associa...\"; \"In August 2025, the USG granted licenses that would allow us to ship certain H20 products to certain China-based cust...\"; \"We generated approximately $60 million in H20 revenue under those licenses.\"; \"USG officials expressed an expectation that the USG will receive 15% or more of the revenue generated from licensed s...\"; and 27 more. Claims about sentences outside this sample are not verified by this note. Sentence level (FY2025 -> FY2026): these statements were removed although the risk factor containing them survives: \"For example, the Notified Advanced Computing, or “NAC,” process has not resulted in approvals for exports of products to customers in China.\" \"Following these 2022 export controls, we transitioned some operations, including certain testing, validation, and supply and distribution operations out of China and Hong Kong.\" \"The AI Diffusion IFR would confer special benefits on select “Universal Verified End Users”, or UVEU, and lesser benefits on “National Verified End Users”, or NVEU.\" These consecutive pairs are not in the gold, so nothing is verified about them: FY2023 -> FY2024. Correct answer: reports at most the removals and additions verified above, describes removed sentences as sentences (never as dropped risk factors), and treats any other claim that a risk factor was dropped, removed, added or new as unsupported and incorrect.",
@@ -39,7 +41,8 @@
           "carried": 41,
           "new": 1
         }
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T5",
@@ -61,7 +64,8 @@
         "newer_counts": {
           "carried": 48
         }
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T6",
@@ -83,7 +87,8 @@
         "newer_counts": {
           "carried": 33
         }
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T7",
@@ -114,7 +119,8 @@
         "newer_counts": {
           "carried": 23
         }
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T8",
@@ -145,7 +151,8 @@
           "carried": 23,
           "new": 1
         }
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T9",
@@ -168,7 +175,8 @@
         "newer_counts": {
           "carried": 25
         }
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T10",
@@ -188,7 +196,8 @@
           "0000002488-25-000012:I.1A:0015"
         ],
         "newer_location": "not recorded in the gold"
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T11",
@@ -208,7 +217,8 @@
           "0000723125-24-000027:I.1A:0036"
         ],
         "newer_location": "not recorded in the gold"
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T12",
@@ -228,7 +238,8 @@
           "0001045810-24-000029:I.1A:0146"
         ],
         "newer_location": "not recorded in the gold"
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T13",
@@ -251,7 +262,8 @@
         ],
         "item_id": "0001045810-25-000023:I.1A:i015",
         "item_label": "reworded"
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T14",
@@ -274,7 +286,8 @@
         ],
         "item_id": "0001045810-25-000023:I.1A:i015",
         "item_label": "reworded"
-      }
+      },
+      "split": "development"
     },
     {
       "id": "T15",
@@ -297,7 +310,8 @@
         ],
         "item_id": "0001045810-25-000023:I.1A:i015",
         "item_label": "reworded"
-      }
+      },
+      "split": "development"
     }
   ]
 }

@@ -30,8 +30,14 @@ Nodes and edges (every one stamped with the build's ``snapshot_id``):
 another starts or continues its OWN lineage.
 
 The loader REPLACES the item layer of the tickers it loads (their passages, SUCCEEDED_BY / IN_SECTION / SPANS / OF_ITEM edges,
-items no longer in the parquet and the ``removed_in`` / ``unsettled_in`` / ``is_new`` flags are rewritten), so a re-run after a
-changed alignment never keeps a drop it no longer makes. Missing or stale alignment files stop it with "run semigraph align-items first".
+items no longer in the parquet, the ``removed_in`` / ``unsettled_in`` / ``is_new`` flags and the ``items_compared`` stamps of the
+ticker's filing edges are rewritten), so a re-run after a changed alignment never keeps a drop it no longer makes or a comparison
+that no longer exists. Missing or stale alignment files stop it with "run semigraph align-items first".
+
+Each ticker is loaded in ONE transaction (the clear, every write, the SUPERSEDES stamps and the OF_ITEM links commit together or roll
+back together): a crash never leaves a half-loaded layer stamped with the new snapshot. A load of ALL tickers (``tickers=None``)
+then deletes, in its own transaction, the RiskItem / RiskPassage nodes of any filer that has no risk-item file any more (and the
+stamps of its filing edges); a load of named tickers never touches the others (``prune_missing`` forces or forbids it).
 """
 
 import logging
@@ -44,7 +50,6 @@ import pandas as pd
 from neo4j import Driver
 
 from ..config import Settings, get_settings
-from .client import run_cypher
 from .freshness import span_freshness
 from .items import (
     AlignItemsError,
@@ -54,7 +59,7 @@ from .items import (
     require_alignment,
     table_path,
 )
-from .loaders import _load_manifest, _read_chunks, _resolve_snapshot_id, _run_batched, _ticker_freshness
+from .loaders import BATCH_SIZE, _load_manifest, _read_chunks, _resolve_snapshot_id, _ticker_freshness
 
 logger = logging.getLogger("semigraph.graph.item_loader")
 
@@ -169,7 +174,17 @@ _CLEAR = (
     "MATCH (:RiskItem {filer_cik: $cik})-[r:SUCCEEDED_BY|IN_SECTION|SPANS]->() DELETE r",
     "MATCH (:RiskFactor)-[r:OF_ITEM]->(:RiskItem {filer_cik: $cik}) DELETE r",
     "MATCH (i:RiskItem {filer_cik: $cik}) WHERE NOT i.item_id IN $keep DETACH DELETE i",
+    # the comparison stamps of the ticker's filing edges: a pair that is no longer consecutive keeps none, the current ones are set below
+    "MATCH (:Company {cik: $cik})-[:FILED]->(:Filing)-[s:SUPERSEDES]->(:Filing) REMOVE s.items_compared, s.not_compared_reason",
 )
+
+# A full load: the layer of every filer that has no risk-item file (or no filer at all) goes, with the stamps of its filing edges.
+_PURGE_ITEMS = "MATCH (i:RiskItem) WHERE i.filer_cik IS NULL OR NOT i.filer_cik IN $ciks DETACH DELETE i RETURN count(i) AS n"
+_PURGE_PASSAGES = "MATCH (p:RiskPassage) WHERE p.filer_cik IS NULL OR NOT p.filer_cik IN $ciks DETACH DELETE p RETURN count(p) AS n"
+_PURGE_STAMPS = ("MATCH (c:Company)-[:FILED]->(:Filing)-[s:SUPERSEDES]->(:Filing) WHERE NOT c.cik IN $ciks "
+                 "AND (s.items_compared IS NOT NULL OR s.not_compared_reason IS NOT NULL) "
+                 "REMOVE s.items_compared, s.not_compared_reason")
+_SPANS_COUNT_CYPHER = "MATCH (:RiskItem {filer_cik: $cik})-[r:SPANS]->() RETURN count(r) AS n"
 
 _ITEM_CYPHER = """UNWIND $rows AS row
     MERGE (i:RiskItem {item_id: row.item_id})
@@ -217,19 +232,51 @@ _OF_ITEM_CYPHER = """UNWIND $rows AS row
     MERGE (rf)-[r:OF_ITEM]->(i) SET r.snapshot_id = $snapshot_id"""
 
 
-def _clear_layer(driver: Driver, cik: int, keep: Sequence[str]) -> None:
-    with driver.session() as session:
-        for statement in _CLEAR:
-            session.run(statement, cik=cik, keep=list(keep)).consume()
+def _rows(tx, query: str, **params) -> list[dict]:
+    return [dict(r) for r in tx.run(query, **params)]
 
 
-def _stamp_supersedes(driver: Driver, rows: list[dict]) -> list[dict]:
+def _run_batched_tx(tx, query: str, rows: list[dict], batch_size: int = BATCH_SIZE, **params) -> None:
+    """Run an UNWIND query over rows in small batches INSIDE the transaction ``tx`` (params go with every batch)."""
+    for i in range(0, len(rows), batch_size):
+        tx.run(query, rows=rows[i:i + batch_size], **params).consume()
+
+
+def _stamp_supersedes(tx, rows: list[dict]) -> list[dict]:
     """SET the flags on the existing edges (batched); returns the pairs that have no SUPERSEDES edge."""
     matched: set[tuple[str, str]] = set()
-    with driver.session() as session:
-        for i in range(0, len(rows), 100):
-            matched |= {(r["newer"], r["older"]) for r in session.run(_SUPERSEDES_CYPHER, rows=rows[i:i + 100])}
+    for i in range(0, len(rows), BATCH_SIZE):
+        matched |= {(r["newer"], r["older"]) for r in _rows(tx, _SUPERSEDES_CYPHER, rows=rows[i:i + BATCH_SIZE])}
     return [r for r in rows if (r["newer"], r["older"]) not in matched]
+
+
+def _write_ticker(tx, cik: int, ticker: str, layer: ItemLayer, snapshot_id: str) -> dict[str, int]:
+    """Everything the load of one ticker does, as ONE transaction (``execute_write`` commits it, or rolls all of it back when anything
+    raises): replace the old layer, write the new one, stamp SUPERSEDES, link the RiskFactors. The SPANS count and the RiskFactor
+    evidence are read here too: they must see the transaction's own uncommitted writes."""
+    keep = [r["item_id"] for r in layer.items]
+    for statement in _CLEAR:
+        tx.run(statement, cik=cik, keep=keep).consume()
+    for query, rows in ((_ITEM_CYPHER, layer.items), (_IN_SECTION_CYPHER, layer.in_section), (_SPANS_CYPHER, layer.spans),
+                        (_SUCCEEDED_CYPHER, layer.succeeded_by), (_PASSAGE_CYPHER, layer.passages)):
+        _run_batched_tx(tx, query, rows, snapshot_id=snapshot_id)
+    missing = _stamp_supersedes(tx, layer.supersedes)
+    if missing:
+        raise AlignItemsError(f"{ticker}: no SUPERSEDES edge between the filings of {len(missing)} pair(s), e.g. "
+                              f"{missing[0]['older']} -> {missing[0]['newer']}: the manifest and the risk-item files disagree")
+    linked = _rows(tx, _SPANS_COUNT_CYPHER, cik=cik)[0]["n"]
+    of_item = of_item_rows(_rows(tx, _RISK_EVIDENCE_CYPHER, cik=cik), layer.items)
+    _run_batched_tx(tx, _OF_ITEM_CYPHER, of_item, snapshot_id=snapshot_id)
+    return {"spans": linked, "of_item": len(of_item)}
+
+
+def _purge_unlisted(tx, ciks: list[int]) -> dict[str, int]:
+    """Delete the item layer of every filer that is not in ``ciks`` (their RiskItems and RiskPassages, with every edge, and the
+    comparison stamps of their filing edges). One transaction: nothing is half-purged."""
+    items = _rows(tx, _PURGE_ITEMS, ciks=ciks)
+    passages = _rows(tx, _PURGE_PASSAGES, ciks=ciks)
+    tx.run(_PURGE_STAMPS, ciks=ciks).consume()
+    return {"purged_items": items[0]["n"] if items else 0, "purged_passages": passages[0]["n"] if passages else 0}
 
 
 def _read_ticker(settings: Settings, ticker: str,
@@ -250,46 +297,53 @@ def _current_by_item(settings: Settings, manifest: dict, ticker: str, items: pd.
     return {r.item_id: span_freshness(states[r.accession_no], r.section_id).is_current for r in items.itertuples()}
 
 
+def _load_ticker(driver: Driver, settings: Settings, manifest: dict, ticker: str, snapshot_id: str,
+                 alignment_directory: Path | None) -> tuple[int, ItemLayer, dict[str, int]]:
+    """Read one ticker's tables and load its layer in a single write transaction. Returns ``(cik, layer, written)``."""
+    items, pairs, decisions, passages = _read_ticker(settings, ticker, alignment_directory)
+    layer = build_item_layer(ticker, items, pairs, decisions, passages, _current_by_item(settings, manifest, ticker, items))
+    cik = int(items["filer_cik"].iloc[0])
+    with driver.session() as session:
+        written = session.execute_write(_write_ticker, cik, ticker, layer, snapshot_id)
+    return cik, layer, written
+
+
 def load_risk_items(driver: Driver, settings: Settings | None = None, tickers: Sequence[str] | None = None, *,
-                    snapshot_id: str | None = None, alignment_directory: Path | None = None) -> dict[str, int]:
-    """Load the item layer of ``tickers`` (default: every ticker with a risk-item file). Requires ``align-items`` output (read from
-    ``alignment_directory``, default the lake's ``risk_alignment``), the Filing / FilingSection / EvidenceSpan nodes (and, for
-    ``OF_ITEM``, the RiskFactors). Returns counts."""
+                    snapshot_id: str | None = None, alignment_directory: Path | None = None,
+                    prune_missing: bool | None = None) -> dict[str, int]:
+    """Load the item layer of ``tickers`` (default: every ticker with a risk-item file), one transaction per ticker. Requires
+    ``align-items`` output (read from ``alignment_directory``, default the lake's ``risk_alignment``), the Filing / FilingSection /
+    EvidenceSpan nodes (and, for ``OF_ITEM``, the RiskFactors). ``prune_missing`` (default: only when ``tickers`` is not given) deletes,
+    after every ticker loaded, the layer of filers that have no risk-item file. Returns counts."""
     settings = settings or get_settings()
     snapshot_id = _resolve_snapshot_id(settings, snapshot_id)
+    prune = (not tickers) if prune_missing is None else prune_missing
     tickers = list(tickers) if tickers else sorted(p.name.split("_")[0] for p in items_dir(settings).glob("*_risk_items.parquet"))
     if not tickers:
         raise AlignItemsError(f"no risk items in {items_dir(settings)}: run `semigraph risk-items` first")
     require_alignment(settings, tickers, alignment_directory)
     manifest = _load_manifest(settings)
     totals = {"items": 0, "unsettled": 0, "spans": 0, "spans_without_evidence_node": 0, "succeeded_by": 0, "passages": 0,
-              "supersedes": 0, "of_item": 0}
+              "supersedes": 0, "of_item": 0, "purged_items": 0, "purged_passages": 0}
+    ciks: list[int] = []
     for ticker in tickers:
-        items, pairs, decisions, passages = _read_ticker(settings, ticker, alignment_directory)
-        layer = build_item_layer(ticker, items, pairs, decisions, passages, _current_by_item(settings, manifest, ticker, items))
-        cik = int(items["filer_cik"].iloc[0])
-        _clear_layer(driver, cik, [r["item_id"] for r in layer.items])
-        _run_batched(driver, _ITEM_CYPHER, layer.items, snapshot_id=snapshot_id)
-        _run_batched(driver, _IN_SECTION_CYPHER, layer.in_section, snapshot_id=snapshot_id)
-        _run_batched(driver, _SPANS_CYPHER, layer.spans, snapshot_id=snapshot_id)
-        _run_batched(driver, _SUCCEEDED_CYPHER, layer.succeeded_by, snapshot_id=snapshot_id)
-        _run_batched(driver, _PASSAGE_CYPHER, layer.passages, snapshot_id=snapshot_id)
-        missing = _stamp_supersedes(driver, layer.supersedes)
-        if missing:
-            raise AlignItemsError(f"{ticker}: no SUPERSEDES edge between the filings of {len(missing)} pair(s), e.g. "
-                                  f"{missing[0]['older']} -> {missing[0]['newer']}: the manifest and the risk-item files disagree")
-        linked = run_cypher(driver, "MATCH (:RiskItem {filer_cik: $cik})-[r:SPANS]->() RETURN count(r) AS n", cik=cik)[0]["n"]
-        evidence = run_cypher(driver, _RISK_EVIDENCE_CYPHER, cik=cik)
-        of_item = of_item_rows(evidence, layer.items)
-        _run_batched(driver, _OF_ITEM_CYPHER, of_item, snapshot_id=snapshot_id)
+        cik, layer, written = _load_ticker(driver, settings, manifest, ticker, snapshot_id, alignment_directory)
+        ciks.append(cik)
         unsettled = sum(1 for r in layer.items if r["unsettled_in"])
-        for key, value in (("items", len(layer.items)), ("unsettled", unsettled), ("spans", linked),
-                           ("spans_without_evidence_node", len(layer.spans) - linked),
+        for key, value in (("items", len(layer.items)), ("unsettled", unsettled), ("spans", written["spans"]),
+                           ("spans_without_evidence_node", len(layer.spans) - written["spans"]),
                            ("succeeded_by", len(layer.succeeded_by)), ("passages", len(layer.passages)),
-                           ("supersedes", len(layer.supersedes)), ("of_item", len(of_item))):
+                           ("supersedes", len(layer.supersedes)), ("of_item", written["of_item"])):
             totals[key] += value
         logger.info("%s: %d items (%d unsettled), %d SUCCEEDED_BY, %d passages, %d SUPERSEDES stamped, %d OF_ITEM", ticker,
-                    len(layer.items), unsettled, len(layer.succeeded_by), len(layer.passages), len(layer.supersedes), len(of_item))
+                    len(layer.items), unsettled, len(layer.succeeded_by), len(layer.passages), len(layer.supersedes), written["of_item"])
+    if prune:
+        with driver.session() as session:
+            purged = session.execute_write(_purge_unlisted, sorted(set(ciks)))
+        totals.update(purged)
+        if any(purged.values()):
+            logger.warning("deleted the item layer of filers without a risk-item file: %d items, %d passages",
+                           purged["purged_items"], purged["purged_passages"])
     if totals["spans_without_evidence_node"]:
         logger.warning("%d item chunk ids have no EvidenceSpan node (older filings outside the span scope): the chunk_ids "
                        "property keeps them, the SPANS edge does not exist", totals["spans_without_evidence_node"])

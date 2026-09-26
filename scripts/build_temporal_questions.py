@@ -23,6 +23,10 @@ The 12 questions (ids T4..T15, deterministic; the seed is a documented decision,
   the gold recorded, its gold label must be ``removed`` (a mismatch stops the build), and the containing risk factor must be one
   the gold says survives.
 
+Every question carries ``"split": "development"`` (read from the gold's own split of its pair, never assumed): the six pairs behind
+them are the pairs the alignment was designed and tuned on, so benchmark results on T4-T15 are development results, not held-out ones
+(docs/v2/M1B_PLAN.md L.10). The legacy T1-T3 notes are refreshed from the same development pairs.
+
 Fiscal years come from the period end (``xbrl_period_resolver``: an accession's latest XBRL period), never from the filing year:
 AMD, META, MU and TSMC file in the year after their fiscal year. Where no period end is known the question names the filing date.
 
@@ -66,6 +70,9 @@ MAX_LISTED = 6
 HEADLINE_CHARS = 160
 QUOTE_CHARS = 200
 MAX_CHUNKS_SHOWN = 3
+DEVELOPMENT = "development"
+SPLIT_NOTE = ("Every question and the refreshed legacy T1-T3 notes are built from DEVELOPMENT-split pairs, the pairs the alignment was "
+              "designed and tuned on: results on them are development results, not held-out ones (docs/v2/M1B_PLAN.md L.10).")
 SENTENCES_LISTED = 8              # removed / added sentences quoted per side in a pair's notes (the flagship needles first)
 SENTENCE_QUOTE_CHARS = 120
 PAIR_ID_RE = re.compile(r"^([A-Z0-9]+)-(\d{10}-\d{2}-\d{6})-(\d{10}-\d{2}-\d{6})$")
@@ -446,8 +453,18 @@ def passage_question(gold_doc: Mapping, corpus: Corpus, spec: Mapping, f: PairFa
                                                "item_label": item_label}}
 
 
+def label_split(question: Mapping, gold_doc: Mapping) -> dict:
+    """The question plus the split the gold records for its pair; anything but development is refused (a held-out pair must never
+    feed a benchmark question, or the held-out numbers would stop being held out)."""
+    split = gold_doc["pairs"][f"{question['pair_id']}|older"]["split"]
+    if split != DEVELOPMENT:
+        raise ValueError(f"{question['id']}: pair {question['pair_id']} is in the {split!r} split; benchmark questions may only be "
+                         f"built from {DEVELOPMENT} pairs")
+    return {**question, "split": split}
+
+
 def build_questions(gold_doc: Mapping, corpus: Corpus, *, seed: int = SEED, flagship_pair: str = FLAGSHIP_PAIR) -> list[dict]:
-    """The 12 questions, ids T4.. in the order removed_any (by pair id), stop_disclosing, passages."""
+    """The 12 questions, ids T4.. in the order removed_any (by pair id), stop_disclosing, passages; each labelled ``split``."""
     sha = _sha8(gold_doc)
     pairs = dev_pairs(gold_doc)
     if flagship_pair not in pairs:
@@ -461,7 +478,7 @@ def build_questions(gold_doc: Mapping, corpus: Corpus, *, seed: int = SEED, flag
     questions = [removed_question(facts[pid], next_id(), sha) for pid in pairs]
     questions += [stop_question(f, pick, next_id(), sha) for f, pick in choose_stops(facts, corpus, seed)]
     questions += [passage_question(gold_doc, corpus, spec, facts[flagship_pair], next_id(), sha) for spec in FLAGSHIPS]
-    return questions
+    return [label_split(q, gold_doc) for q in questions]
 
 
 # --- the legacy T1 / T2 / T3 notes -----------------------------------------------------------------------------------------
@@ -599,8 +616,9 @@ def main(argv: list[str] | None = None) -> int:
           + ", ".join(f"{k} x {v}" for k, v in Counter(q["subtype"] for q in questions).items()))
     if args.dry_run:
         return 0
-    document = {"kind": "temporal_questions", "gold_sha256": doc["sha256"], "seed": args.seed,
-                "generator": "scripts/build_temporal_questions.py", "legacy_notes": legacy, "questions": questions}
+    document = {"kind": "temporal_questions", "gold_sha256": doc["sha256"], "seed": args.seed, "split": DEVELOPMENT,
+                "split_note": SPLIT_NOTE, "generator": "scripts/build_temporal_questions.py", "legacy_notes": legacy,
+                "questions": questions}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {args.out}")

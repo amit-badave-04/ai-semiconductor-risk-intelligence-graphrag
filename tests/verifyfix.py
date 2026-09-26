@@ -32,6 +32,8 @@ class PairSpec:
     coverage: tuple[float, float] = (0.97, 0.97)
     newer_extra_text: str = ""                               # appended to the newer section (e.g. a surviving headline)
     gold_sentences: list[tuple[int, int, str]] = field(default_factory=list)      # (older item index, sentence 0-2, label)
+    gold_sentences_newer: list[tuple[int, int, str]] = field(default_factory=list)      # (newer item index, sentence 0-2, present/reworded/added)
+    newer_split: str | None = None                           # the newer side's split when it differs from ``split`` (a malformed gold)
     passages: list[dict] = field(default_factory=list)       # {"kind", "item": i, "sentence": n} or {"kind", "item", "text", "start", "end"}
     item_relative_offsets: bool = False
     paragraph: bool = False
@@ -116,7 +118,7 @@ def build(tmp: Path, specs: list[PairSpec]) -> dict:
             quality[acc] = {**QUALITY_OK, "accession_no": acc, "coverage": cov, "low_coverage": cov < 0.9}
         newer_gold = spec.newer_gold or _carried(spec)
         gold_pairs[f"{spec.pair_id}|older"] = {"split": spec.split, "labels": {r["item_id"]: g for r, g in zip(older_rows, spec.older_gold, strict=True)}}
-        gold_pairs[f"{spec.pair_id}|newer"] = {"split": spec.split, "labels": {r["item_id"]: g for r, g in zip(newer_rows, newer_gold, strict=True)}}
+        gold_pairs[f"{spec.pair_id}|newer"] = {"split": spec.newer_split or spec.split, "labels": {r["item_id"]: g for r, g in zip(newer_rows, newer_gold, strict=True)}}
         pairs_rows.append({"pair_id": spec.pair_id, "ticker": spec.ticker, "older_accession": spec.older_acc,
                            "newer_accession": spec.newer_acc, "older_date": "2025-02-26", "newer_date": "2026-02-25",
                            "comparable": spec.comparable, "not_compared_reason": spec.reason})
@@ -125,7 +127,11 @@ def build(tmp: Path, specs: list[PairSpec]) -> dict:
             newer_pred = spec.newer_pred or ["carried"] * n_new
             decisions += [_decision(r["item_id"], spec.newer_acc, "newer", p) for r, p in zip(newer_rows, newer_pred, strict=True)]
         if spec.gold_sentences:
-            gold_sentences[f"{spec.pair_id}|older"] = _gold_sentence_entry(spec, older_rows, older_text)
+            gold_sentences[f"{spec.pair_id}|older"] = _gold_sentence_entry(spec.gold_sentences, spec.split, older_rows, older_text,
+                                                                           spec.older_acc, "older")
+        if spec.gold_sentences_newer:
+            gold_sentences[f"{spec.pair_id}|newer"] = _gold_sentence_entry(spec.gold_sentences_newer, spec.newer_split or spec.split,
+                                                                           newer_rows, newer_text, spec.newer_acc, "newer")
         passages += _passage_rows(spec, older_rows, older_text, newer_rows, newer_text)
     frozen = tmp / "gold.json"
     gold.freeze({"kind": "risk_items_gold", "pairs": gold_pairs, "sentences": gold_sentences}, frozen)
@@ -142,15 +148,15 @@ def _carried(spec: PairSpec) -> list[str]:
     return ["carried"] * len(spec.older_gold)
 
 
-def _gold_sentence_entry(spec: PairSpec, older_rows: list[dict], older_text: str) -> dict:
+def _gold_sentence_entry(records: list[tuple[int, int, str]], split: str, rows: list[dict], section_text: str, acc: str, side: str) -> dict:
     labels, spans = {}, {}
-    for item, sentence, label in spec.gold_sentences:
-        row = older_rows[item]
+    for item, sentence, label in records:
+        row = rows[item]
         sid = f"{row['item_id']}#s{sentence:03d}"
-        text = _sentences(spec.older_acc[-6:], item)[sentence]
-        start = older_text.index(text, row["char_start"])
+        text = _sentences(acc[-6:], item, side)[sentence]
+        start = section_text.index(text, row["char_start"])
         labels[sid], spans[sid] = label, [row["item_id"], start, start + len(text)]
-    return {"split": spec.split, "labels": labels, "spans": spans}
+    return {"split": split, "labels": labels, "spans": spans}
 
 
 PASSAGE_COLUMNS = ["passage_id", "kind", "item_id", "seq", "text", "char_start", "char_end", "counterpart_text", "counterpart_span",

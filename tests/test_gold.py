@@ -5,6 +5,7 @@ text, and a 'removed' label is contradicted if the item's own headline is still 
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -176,3 +177,52 @@ def test_majority_of_no_votes_is_none_and_freeze_refuses_a_gold_that_already_car
     assert gold.majority_label([]) is None
     with pytest.raises(ValueError, match="sha256"):
         gold.freeze({"labels": {}, "sha256": "x"}, tmp_path / "g.json")
+
+
+# --- pinning: verify_frozen trusts the hash stored inside the file, so the two frozen gold files are pinned by constant ---
+
+REPO_GOLD = Path(__file__).resolve().parents[1] / "artifacts" / "gold"
+
+
+def _sentence(split):
+    return {"split": split, "labels": {}, "spans": {}}
+
+
+def _gold_file(tmp_path, pairs_split, sentences_split=None, kind="risk_items_gold"):
+    doc = {"kind": kind, "pairs": {"p|older": {"split": pairs_split, "labels": {}}},
+           "sentences": {} if sentences_split is None else {"p|older": _sentence(sentences_split)}}
+    path = tmp_path / f"{kind}_{pairs_split}.json"
+    gold.freeze(doc, path)
+    return path
+
+
+def test_the_two_frozen_gold_files_still_hash_to_their_pinned_constants():
+    for name, split in (("risk_items_gold.json", "development"), ("risk_items_gold_heldout.json", "held_out")):
+        path = REPO_GOLD / name
+        assert gold.verify_frozen(path)
+        pin = gold.check_pinned(path)
+        assert pin["status"] == "pinned" and pin["split"] == split and pin["kind"] == "risk_items_gold"
+        assert pin["sha256"] == pin["pinned_sha256"] == gold.KNOWN_GOLD_SHA256[("risk_items_gold", split)]
+    assert len(set(gold.KNOWN_GOLD_SHA256.values())) == 2
+
+
+def test_a_file_whose_role_has_no_pin_is_unpinned_and_a_pinned_role_with_another_hash_is_a_mismatch(tmp_path):
+    new_kind = gold.check_pinned(_gold_file(tmp_path, "held_out", kind="something_new"))
+    assert new_kind["status"] == "unpinned" and new_kind["pinned_sha256"] is None
+    reused_role = gold.check_pinned(_gold_file(tmp_path, "held_out"))          # role (risk_items_gold, held_out) is pinned to another hash
+    assert reused_role["status"] == "mismatch" and reused_role["pinned_sha256"] == gold.KNOWN_GOLD_SHA256[("risk_items_gold", "held_out")]
+    assert reused_role["sha256"] != reused_role["pinned_sha256"]
+
+
+def test_the_split_of_a_file_comes_from_all_its_entries_and_a_mixed_file_is_never_pinned(tmp_path):
+    assert gold.gold_split({"pairs": {"a": {"split": "development"}}, "sentences": {"b": {"split": "development"}}}) == "development"
+    assert gold.gold_split({"pairs": {"a": {"split": "development"}}, "sentences": {"b": {"split": "held_out"}}}) == "mixed"
+    assert gold.gold_split({"pairs": {}, "sentences": {}}) == "empty"
+    assert gold.check_pinned(_gold_file(tmp_path, "development", "held_out"))["status"] == "unpinned"
+
+
+def test_a_pin_is_matched_by_the_hash_recorded_in_the_file_so_a_pinned_hash_needs_the_real_content(tmp_path, monkeypatch):
+    path = _gold_file(tmp_path, "development")
+    recorded = json.loads(path.read_text(encoding="utf-8"))["sha256"]
+    monkeypatch.setitem(gold.KNOWN_GOLD_SHA256, ("risk_items_gold", "development"), recorded)
+    assert gold.check_pinned(path)["status"] == "pinned"

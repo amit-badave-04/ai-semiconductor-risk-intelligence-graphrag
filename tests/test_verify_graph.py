@@ -181,6 +181,185 @@ class TestUnsettledCounts:
         assert "i.unsettled_in IS NOT NULL" in query and "count(i)" in query and "SET" not in query and "MERGE" not in query
 
 
+class TestDecisionCounts:
+    """``lake_decision_counts``: what the loader must have written, per filer, read from the decisions parquet of COMPARED pairs:
+    ``removed_in`` (older ``removed``), ``is_new`` (newer ``new``), ``unsettled_in`` (older ``uncertain``) and the SUCCEEDED_BY
+    edges per kind (older side, a matched item)."""
+
+    @staticmethod
+    def lake(tmp_path):
+        from semigraph.graph import items
+
+        settings = lakefix.build_lake(tmp_path)
+        items.run_align_items(settings, ["ZZZ"])
+        return settings
+
+    def test_the_synthetic_lake_expects_one_removed_two_new_and_five_edges_of_three_kinds(self, tmp_path):
+        counts = vg.lake_decision_counts(self.lake(tmp_path))
+        assert counts["removed_in"] == {lakefix.CIK: 1} and counts["is_new"] == {lakefix.CIK: 2}
+        assert counts["unsettled_in"] == {}
+        assert sum(c.get(lakefix.CIK, 0) for c in counts["succeeded_by"].values()) == 5
+        assert set(counts["succeeded_by"]) <= {"unchanged", "reworded", "merged"}
+
+    def test_the_removed_and_new_items_of_a_pair_that_was_not_compared_are_not_expected(self, tmp_path):
+        import pandas as pd
+
+        from semigraph.graph import items
+
+        settings = self.lake(tmp_path)
+        path = items.table_path(items.alignment_dir(settings), "ZZZ", "pairs")
+        pairs = pd.read_parquet(path)
+        pairs.loc[pairs["newer_accession"] == lakefix.ACC["25"], "comparable"] = False
+        pairs.to_parquet(path, index=False)
+        counts = vg.lake_decision_counts(settings)
+        assert counts["removed_in"] == {} and counts["is_new"] == {lakefix.CIK: 1}          # only F26's AI item is left
+        assert sum(c.get(lakefix.CIK, 0) for c in counts["succeeded_by"].values()) == 3     # F25 -> F26 only
+
+    def test_an_edge_needs_a_matched_item_and_only_the_older_side_carries_one(self, tmp_path):
+        import pandas as pd
+
+        from semigraph.graph import items
+
+        settings = self.lake(tmp_path)
+        path = items.table_path(items.alignment_dir(settings), "ZZZ", "decisions")
+        frame = pd.read_parquet(path)
+        older = (frame["side"] == "older") & (frame["label"].isin(["unchanged", "reworded", "merged"]))
+        with_edge = int(older.sum())
+        frame.loc[older.idxmax(), "matched_item_id"] = None                     # one older decision loses its counterpart
+        frame.to_parquet(path, index=False)
+        counts = vg.lake_decision_counts(settings)
+        assert sum(c.get(lakefix.CIK, 0) for c in counts["succeeded_by"].values()) == with_edge - 1
+
+    def test_without_a_lake_there_is_nothing_to_compare_and_the_unsettled_reader_is_a_thin_wrapper(self, tmp_path):
+        settings = Settings(data_dir=tmp_path / "nothing", _env_file=None)
+        assert vg.lake_decision_counts(settings) is None and vg.lake_unsettled_counts(settings) is None
+        lake = self.lake(tmp_path / "lake")
+        assert vg.lake_unsettled_counts(lake) == vg.lake_decision_counts(lake)["unsettled_in"] == {}
+
+
+def layer_of_lake(settings):
+    """The rows the REAL loader would write for the synthetic lake (``build_item_layer``): the truth a faithful graph reproduces."""
+    from semigraph.graph import item_loader as il
+
+    items_df, pairs, decisions, passages = il._read_ticker(settings, "ZZZ")
+    current = {r: r.startswith(lakefix.ACC["26"]) for r in items_df["item_id"]}
+    return il.build_item_layer("ZZZ", items_df, pairs, decisions, passages, current)
+
+
+class GraphFromLayer:
+    """``client.run_cypher`` stand-in that answers every count query from the loader's own rows (optionally sabotaged)."""
+
+    def __init__(self, layer, *, drop=(), extra_removed=0):
+        self.layer, self.drop, self.extra_removed = layer, set(drop), extra_removed
+
+    def __call__(self, driver, query, **params):
+        items, cik = self.layer.items, lakefix.CIK
+        if query == vg.REMOVED_GRAPH_QUERY:
+            n = 0 if "removed_in" in self.drop else sum(1 for r in items if r["removed_in"]) + self.extra_removed
+            return [{"cik": cik, "n": n}] if n else []
+        if query == vg.NEW_GRAPH_QUERY:
+            n = 0 if "is_new" in self.drop else sum(1 for r in items if r["is_new"])
+            return [{"cik": cik, "n": n}] if n else []
+        if query == vg.UNSETTLED_GRAPH_QUERY:
+            n = sum(1 for r in items if r["unsettled_in"])
+            return [{"cik": cik, "n": n}] if n else []
+        if query == vg.SUCCEEDED_GRAPH_QUERY:
+            if "succeeded_by" in self.drop:
+                return []
+            kinds: dict[str, int] = {}
+            for e in self.layer.succeeded_by:
+                kinds[e["kind"]] = kinds.get(e["kind"], 0) + 1
+            return [{"cik": cik, "kind": kind, "n": n} for kind, n in sorted(kinds.items())]
+        if "count(x)" in query:
+            return [{"cik": cik, "n": len(items if "RiskItem" in query else self.layer.passages)}]
+        if "MATCH (i:RiskItem) WHERE i.removed_in IS NOT NULL" in query and "MATCH (c:Company" in query:      # the false-drop guard
+            return [{"item_id": r["item_id"], "removed_in": r["removed_in"], "section_id": r["section_id"], "ticker": "ZZZ"}
+                    for r in items if r["removed_in"]]
+        return []
+
+
+class TestLoaderParity:
+    """The graph's ``removed_in`` / ``is_new`` / SUCCEEDED_BY counts per filer must equal the parquet's: a loader that dropped them FAILS."""
+
+    @staticmethod
+    def lake_and_layer(tmp_path):
+        from semigraph.graph import items
+
+        settings = lakefix.build_lake(tmp_path)
+        items.run_align_items(settings, ["ZZZ"])
+        return settings, layer_of_lake(settings)
+
+    @staticmethod
+    def run(settings, graph):
+        out: list[str] = []
+        failures = vg.run_checks(object(), settings, out=out.append)
+        return failures, [line for line in out if line.startswith("[FAIL]")], out
+
+    def test_the_faithful_graph_the_loader_would_write_passes_every_python_check(self, tmp_path, monkeypatch):
+        settings, layer = self.lake_and_layer(tmp_path)
+        assert sum(1 for r in layer.items if r["removed_in"]) == 1 and sum(1 for r in layer.items if r["is_new"]) == 2
+        assert len(layer.succeeded_by) == 5
+        monkeypatch.setattr(vg.client, "run_cypher", GraphFromLayer(layer))
+        failures, fails, out = self.run(settings, None)
+        assert failures == 0 and fails == [] and sum(line.startswith("[PASS]") and "counts" in line for line in out) >= 5
+
+    def test_a_loader_that_dropped_every_removed_in_fails_the_run_and_names_the_filer_and_both_counts(self, tmp_path, monkeypatch):
+        settings, layer = self.lake_and_layer(tmp_path)
+        monkeypatch.setattr(vg.client, "run_cypher", GraphFromLayer(layer, drop=["removed_in"]))
+        failures, fails, out = self.run(settings, None)
+        assert failures == 1 and len(fails) == 1 and "removed_in" in fails[0]
+        row = out[out.index(fails[0]) + 1]
+        assert "'what': 'removed_in'" in row and f"'filer_cik': {lakefix.CIK}" in row and "'parquet_rows': 1" in row and "'graph_nodes': 0" in row
+
+    def test_a_loader_that_dropped_every_is_new_flag_fails(self, tmp_path, monkeypatch):
+        settings, layer = self.lake_and_layer(tmp_path)
+        monkeypatch.setattr(vg.client, "run_cypher", GraphFromLayer(layer, drop=["is_new"]))
+        failures, fails, _ = self.run(settings, None)
+        assert failures == 1 and "is_new" in fails[0]
+
+    def test_a_loader_that_wrote_no_succeeded_by_edge_fails_per_kind(self, tmp_path, monkeypatch):
+        settings, layer = self.lake_and_layer(tmp_path)
+        monkeypatch.setattr(vg.client, "run_cypher", GraphFromLayer(layer, drop=["succeeded_by"]))
+        bad = vg.check_succeeded_counts(object(), settings)
+        assert {r["what"] for r in bad} <= {"SUCCEEDED_BY[unchanged]", "SUCCEEDED_BY[reworded]", "SUCCEEDED_BY[merged]"}
+        assert sum(r["parquet_rows"] for r in bad) == 5 and all(r["graph_nodes"] == 0 for r in bad)
+        assert self.run(settings, None)[0] == 1
+
+    def test_an_edge_of_the_wrong_kind_is_a_mismatch_even_when_the_total_is_right(self, tmp_path, monkeypatch):
+        settings, layer = self.lake_and_layer(tmp_path)
+        good = GraphFromLayer(layer)
+
+        def relabelled(driver, query, **params):
+            rows = good(driver, query, **params)
+            if query != vg.SUCCEEDED_GRAPH_QUERY:
+                return rows
+            first, *rest = rows                                          # every edge of the first kind reads as another kind
+            other = "merged" if first["kind"] != "merged" else "unchanged"
+            return [{**first, "kind": other}, *rest]
+
+        monkeypatch.setattr(vg.client, "run_cypher", relabelled)
+        bad = vg.check_succeeded_counts(object(), settings)
+        assert len(bad) >= 2 and sum(r["graph_nodes"] for r in bad) == sum(r["parquet_rows"] for r in bad)
+
+    def test_extra_graph_removals_the_parquet_does_not_have_fail_too(self, tmp_path, monkeypatch):
+        settings, layer = self.lake_and_layer(tmp_path)
+        monkeypatch.setattr(vg.client, "run_cypher", GraphFromLayer(layer, extra_removed=2))
+        (bad,) = vg.check_removed_counts(object(), settings)
+        assert bad == {"what": "removed_in", "filer_cik": lakefix.CIK, "parquet_rows": 1, "graph_nodes": 3}
+
+    def test_without_a_lake_each_parity_check_is_skipped_not_passed(self, tmp_path):
+        settings = Settings(data_dir=tmp_path / "nothing", _env_file=None)
+        for check in (vg.check_removed_counts, vg.check_new_counts, vg.check_succeeded_counts):
+            assert check(object(), settings) is None
+
+    def test_the_graph_side_queries_only_read(self):
+        for query in (vg.REMOVED_GRAPH_QUERY, vg.NEW_GRAPH_QUERY, vg.SUCCEEDED_GRAPH_QUERY):
+            upper = f" {query.upper()} "
+            assert not any(f" {w} " in upper for w in ("CREATE", "MERGE", "DELETE", "SET", "REMOVE")), query
+        assert "i.removed_in IS NOT NULL" in vg.REMOVED_GRAPH_QUERY and "i.is_new = true" in vg.NEW_GRAPH_QUERY
+        assert "SUCCEEDED_BY" in vg.SUCCEEDED_GRAPH_QUERY and "s.kind" in vg.SUCCEEDED_GRAPH_QUERY
+
+
 class TestCheckFalseDropsOnTheLake:
     def test_it_reads_the_removed_items_text_and_the_newer_section_from_the_lake(self, tmp_path, monkeypatch):
         settings = lakefix.build_lake(tmp_path)
@@ -213,7 +392,10 @@ class TestCheckList:
     def test_every_required_item_invariant_is_a_check_of_the_script(self):
         names = [n for n, _, _ in vg.CHECKS] + [n for n, _ in vg.PYTHON_CHECKS]
         for needle in REQUIRED + ["counts equal the parquet row counts", "false-drop guard",
-                                  "unsettled_in counts equal the older-side uncertain decisions"]:
+                                  "unsettled_in counts equal the older-side uncertain decisions",
+                                  "removed_in counts equal the older-side removed decisions",
+                                  "is_new counts equal the newer-side new decisions",
+                                  "SUCCEEDED_BY counts per kind equal the older-side matched decisions"]:
             assert any(needle in n for n in names), needle
 
     @staticmethod
@@ -242,6 +424,13 @@ class TestCheckList:
     def test_the_info_report_counts_the_unsettled_items_per_filing(self):
         (query,) = [q for n, q, k in vg.CHECKS if n == "risk items and changes by filing"]
         assert "count(i.unsettled_in) AS unsettled" in query
+
+    def test_an_annual_edge_between_item_bearing_filings_without_a_boolean_stamp_is_a_violation(self):
+        """The loader clears the stamps of edges that are no longer current pairs; an edge left unstamped must fail here (an edge the
+        item layer has no opinion on is not 'compared'), so a stale filing edge is reported instead of read as 'nothing changed'."""
+        q = self.query("every annual->annual SUPERSEDES between filings that have risk items carries a boolean items_compared")
+        assert "s.items_compared IS NULL" in q and "EXISTS { MATCH (:RiskItem {accession_no: n.accession_no}) }" in q
+        assert "EXISTS { MATCH (:RiskItem {accession_no: o.accession_no}) }" in q
 
     def test_the_new_check_names_do_not_collide_with_the_removed_in_only_fragment_the_integration_tests_look_up(self):
         assert [n for n, _, _ in vg.CHECKS if "removed_in only" in n] == ["removed_in only on items of pairs with items_compared = true"]
@@ -275,7 +464,7 @@ class TestRun:
         monkeypatch.setattr(vg.client, "run_cypher", FakeGraph())
         out = []
         failures = vg.run_checks(object(), Settings(data_dir=tmp_path / "none", _env_file=None), out=out.append)
-        assert failures == 0 and sum(line.startswith("[skip]") for line in out) == 3
+        assert failures == 0 and sum(line.startswith("[skip]") for line in out) == len(vg.PYTHON_CHECKS) == 6
         assert all(not line.startswith("[FAIL]") for line in out)
 
     def test_each_failing_invariant_counts_once_and_prints_its_offending_rows(self, tmp_path, monkeypatch):
@@ -294,4 +483,7 @@ class TestRun:
         monkeypatch.setattr(vg.client, "run_cypher", lambda driver, q, **p: [] if "count(x)" not in q else [])
         out = []
         failures = vg.run_checks(object(), settings, out=out.append)
-        assert failures == 1 and any(line.startswith("[FAIL]") and "row counts" in line for line in out)      # an empty graph vs 10 parquet items
+        fails = [line for line in out if line.startswith("[FAIL]")]
+        assert failures == 4 == len(fails)                # an empty graph vs the parquets: item/passage rows, removed_in, is_new, SUCCEEDED_BY
+        assert any("row counts" in line for line in fails) and any("removed_in counts" in line for line in fails)
+        assert any("is_new counts" in line for line in fails) and any("SUCCEEDED_BY counts" in line for line in fails)
