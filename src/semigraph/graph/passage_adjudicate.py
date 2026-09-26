@@ -75,7 +75,7 @@ class PassageAdjudicationParams:
     can then exceed the bound: see the module doc). ``min_relatedness``: floor for ``partial_ratio`` (0-100) of quote vs sentence.
     ``max_sentence_chars``: the shown sentence is cut here. ``max_quote_chars``: cap of the verbatim probe slice."""
 
-    max_output_tokens: int = 300
+    max_output_tokens: int = 600      # Luna reasons a little before answering (39-96 reasoning tokens in the live probe)
     min_quote_chars: int = MIN_QUOTE_CHARS
     min_relatedness: float = MIN_RELATEDNESS
     max_sentence_chars: int = 1500

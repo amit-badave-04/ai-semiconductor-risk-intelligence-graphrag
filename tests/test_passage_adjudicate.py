@@ -119,8 +119,9 @@ class TestPlan:
         _, bands, _, _ = pair_bands()
         assert pad.estimate_cost(pad.plan_tasks("P", bands, "vendor/unknown"), set(), "vendor/unknown").priced is False
 
-    def test_the_output_cap_is_small_because_the_answer_is_one_short_json_object(self):
-        assert pad.PassageAdjudicationParams().max_output_tokens <= 400
+    def test_the_output_cap_leaves_room_for_the_models_reasoning_tokens_but_stays_small(self):
+        """Live probe (Luna): 39-96 reasoning tokens plus a ~50-token JSON answer; a 300 cap risks truncation-regeneration."""
+        assert 400 <= pad.PassageAdjudicationParams().max_output_tokens <= 800
 
 
 class TestRun:
