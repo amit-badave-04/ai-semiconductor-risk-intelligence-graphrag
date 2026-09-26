@@ -1,0 +1,441 @@
+[
+ {
+  "id": "NG01",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "NVDA",
+  "q": "By what percentage did Nvidia's total revenue change from the fiscal year ended January 26, 2025 to the fiscal year ended January 25, 2026?",
+  "expect": {
+   "pct": 65.5,
+   "direction": "up"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1045810:revenue:2026-01-25",
+   "xbrl:1045810:revenue:2025-01-26"
+  ]
+ },
+ {
+  "id": "NG02",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "AMD",
+  "q": "By what percentage did AMD's net income change from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025?",
+  "expect": {
+   "pct": 164.2,
+   "direction": "up"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:2488:net_income:2025-12-27",
+   "xbrl:2488:net_income:2024-12-28"
+  ]
+ },
+ {
+  "id": "NG03",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "INTC",
+  "q": "By what percentage did Intel's total revenue change from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025?",
+  "expect": {
+   "pct": -0.5,
+   "direction": "down"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:50863:revenue:2025-12-27",
+   "xbrl:50863:revenue:2024-12-28"
+  ]
+ },
+ {
+  "id": "NG04",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "MU",
+  "q": "By what percentage did Micron's research and development expense change from the fiscal year ended August 29, 2024 to the fiscal year ended August 28, 2025?",
+  "expect": {
+   "pct": 10.7,
+   "direction": "up"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:723125:rnd:2025-08-28",
+   "xbrl:723125:rnd:2024-08-29"
+  ]
+ },
+ {
+  "id": "NG05",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "AVGO",
+  "q": "By what percentage did Broadcom's total revenue change from the fiscal year ended November 3, 2024 to the fiscal year ended November 2, 2025?",
+  "expect": {
+   "pct": 23.9,
+   "direction": "up"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1730168:revenue:2025-11-02",
+   "xbrl:1730168:revenue:2024-11-03"
+  ]
+ },
+ {
+  "id": "NG06",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "QCOM",
+  "q": "By what percentage did Qualcomm's net income change from the fiscal year ended September 25, 2022 to the fiscal year ended September 24, 2023?",
+  "expect": {
+   "pct": -44.1,
+   "direction": "down"
+  },
+  "window": "older",
+  "metric_ids": [
+   "xbrl:804328:net_income:2023-09-24",
+   "xbrl:804328:net_income:2022-09-25"
+  ]
+ },
+ {
+  "id": "NG07",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "META",
+  "q": "By what percentage did Meta's research and development expense change from the fiscal year ended December 31, 2024 to the fiscal year ended December 31, 2025?",
+  "expect": {
+   "pct": 30.8,
+   "direction": "up"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1326801:rnd:2025-12-31",
+   "xbrl:1326801:rnd:2024-12-31"
+  ]
+ },
+ {
+  "id": "NG08",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "MSFT",
+  "q": "By what percentage did Microsoft's total revenue change from the fiscal year ended June 30, 2024 to the fiscal year ended June 30, 2025?",
+  "expect": {
+   "pct": 14.9,
+   "direction": "up"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:789019:revenue:2025-06-30",
+   "xbrl:789019:revenue:2024-06-30"
+  ]
+ },
+ {
+  "id": "NG09",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "AMZN",
+  "q": "By what percentage did Amazon's net income change from the fiscal year ended December 31, 2024 to the fiscal year ended December 31, 2025?",
+  "expect": {
+   "pct": 31.1,
+   "direction": "up"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1018724:net_income:2025-12-31",
+   "xbrl:1018724:net_income:2024-12-31"
+  ]
+ },
+ {
+  "id": "NG10",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "yoy",
+  "ticker": "GOOGL",
+  "q": "By what percentage did Alphabet's total revenue change from the fiscal year ended December 31, 2021 to the fiscal year ended December 31, 2022?",
+  "expect": {
+   "pct": 9.8,
+   "direction": "up"
+  },
+  "window": "older",
+  "metric_ids": [
+   "xbrl:1652044:revenue:2022-12-31",
+   "xbrl:1652044:revenue:2021-12-31"
+  ]
+ },
+ {
+  "id": "NG11",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "pair",
+  "ticker": "NVDA",
+  "q": "What were Nvidia's total revenue and net income for the fiscal year ended January 25, 2026?",
+  "expect": {
+   "values": [
+    215938000000.0,
+    120067000000.0
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1045810:revenue:2026-01-25",
+   "xbrl:1045810:net_income:2026-01-25"
+  ]
+ },
+ {
+  "id": "NG12",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "pair",
+  "ticker": "AMD",
+  "q": "What were AMD's total revenue and research and development expense for the fiscal year ended December 28, 2024?",
+  "expect": {
+   "values": [
+    25785000000.0,
+    6456000000.0
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:2488:revenue:2024-12-28",
+   "xbrl:2488:rnd:2024-12-28"
+  ]
+ },
+ {
+  "id": "NG13",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "pair",
+  "ticker": "META",
+  "q": "What were Meta's total revenue and net income for the fiscal year ended December 31, 2025?",
+  "expect": {
+   "values": [
+    200966000000.0,
+    60458000000.0
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1326801:revenue:2025-12-31",
+   "xbrl:1326801:net_income:2025-12-31"
+  ]
+ },
+ {
+  "id": "NG14",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "pair",
+  "ticker": "AAPL",
+  "q": "What were Apple's total revenue and net income for the fiscal year ended September 28, 2024?",
+  "expect": {
+   "values": [
+    391035000000.0,
+    93736000000.0
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:320193:revenue:2024-09-28",
+   "xbrl:320193:net_income:2024-09-28"
+  ]
+ },
+ {
+  "id": "NG15",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "pair",
+  "ticker": "MU",
+  "q": "What were Micron's total revenue and capital expenditures for the fiscal year ended August 28, 2025?",
+  "expect": {
+   "values": [
+    37378000000.0,
+    15857000000.0
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:723125:revenue:2025-08-28",
+   "xbrl:723125:capex:2025-08-28"
+  ]
+ },
+ {
+  "id": "NG16",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "pair",
+  "ticker": "AVGO",
+  "q": "What were Broadcom's total revenue and net income for the fiscal year ended October 29, 2023?",
+  "expect": {
+   "values": [
+    35819000000.0,
+    14082000000.0
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1730168:revenue:2023-10-29",
+   "xbrl:1730168:net_income:2023-10-29"
+  ]
+ },
+ {
+  "id": "NG17",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "years",
+  "ticker": "NVDA",
+  "q": "What were Nvidia's research and development expense for the fiscal years ended January 25, 2026 and January 29, 2023?",
+  "expect": {
+   "values": [
+    18497000000.0,
+    7339000000.0
+   ]
+  },
+  "window": "older",
+  "metric_ids": [
+   "xbrl:1045810:rnd:2026-01-25",
+   "xbrl:1045810:rnd:2023-01-29"
+  ]
+ },
+ {
+  "id": "NG18",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "years",
+  "ticker": "INTC",
+  "q": "What were Intel's net income for the fiscal years ended December 27, 2025 and December 30, 2023?",
+  "expect": {
+   "values": [
+    -267000000.0,
+    1689000000.0
+   ],
+   "direction": "down"
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:50863:net_income:2025-12-27",
+   "xbrl:50863:net_income:2023-12-30"
+  ]
+ },
+ {
+  "id": "NG19",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "years",
+  "ticker": "QCOM",
+  "q": "What were Qualcomm's total revenue for the fiscal years ended September 28, 2025 and September 26, 2021?",
+  "expect": {
+   "values": [
+    44284000000.0,
+    33566000000.0
+   ]
+  },
+  "window": "older",
+  "metric_ids": [
+   "xbrl:804328:revenue:2025-09-28",
+   "xbrl:804328:revenue:2021-09-26"
+  ]
+ },
+ {
+  "id": "NG20",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "years",
+  "ticker": "MSFT",
+  "q": "What were Microsoft's net income for the fiscal years ended June 30, 2025 and June 30, 2023?",
+  "expect": {
+   "values": [
+    101832000000.0,
+    72361000000.0
+   ]
+  },
+  "window": "older",
+  "metric_ids": [
+   "xbrl:789019:net_income:2025-06-30",
+   "xbrl:789019:net_income:2023-06-30"
+  ]
+ },
+ {
+  "id": "NG21",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "years",
+  "ticker": "AMZN",
+  "q": "What were Amazon's total revenue for the fiscal years ended December 31, 2025 and December 31, 2022?",
+  "expect": {
+   "values": [
+    716924000000.0,
+    513983000000.0
+   ]
+  },
+  "window": "older",
+  "metric_ids": [
+   "xbrl:1018724:revenue:2025-12-31",
+   "xbrl:1018724:revenue:2022-12-31"
+  ]
+ },
+ {
+  "id": "NG22",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "years",
+  "ticker": "GOOGL",
+  "q": "What were Alphabet's research and development expense for the fiscal years ended December 31, 2025 and December 31, 2023?",
+  "expect": {
+   "values": [
+    61087000000.0,
+    45427000000.0
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1652044:rnd:2025-12-31",
+   "xbrl:1652044:rnd:2023-12-31"
+  ]
+ },
+ {
+  "id": "NG23",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "currency",
+  "ticker": "TSM",
+  "q": "What was TSMC's total revenue for the fiscal year ended December 31, 2025, and in which currency is it reported?",
+  "expect": {
+   "value": 3809054300000.0,
+   "any_of": [
+    "TWD",
+    "NT$",
+    "New Taiwan dollar"
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:1046179:revenue:2025-12-31"
+  ]
+ },
+ {
+  "id": "NG24",
+  "type": "numeric",
+  "gold": "xbrl",
+  "subtype": "currency",
+  "ticker": "ASML",
+  "q": "What was ASML's net income for the fiscal year ended December 31, 2025, and in which currency is it reported?",
+  "expect": {
+   "value": 9609400000.0,
+   "any_of": [
+    "EUR",
+    "euro",
+    "€"
+   ]
+  },
+  "window": "recent",
+  "metric_ids": [
+   "xbrl:937966:net_income:2025-12-31"
+  ]
+ }
+]

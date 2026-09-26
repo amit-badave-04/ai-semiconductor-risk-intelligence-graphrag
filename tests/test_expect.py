@@ -30,11 +30,6 @@ def test_pct_reads_percent_signs_within_a_tenth_of_a_point_and_ignores_bare_numb
     assert not check_expectation(expect, "R&D grew 45.0%.")
 
 
-def test_pct_may_be_negative():
-    assert check_expectation({"pct": -12.5}, "Net income fell 12.5% (change -12.5%).") is True
-    assert check_expectation({"pct": -12.5}, "Net income rose 12.5%.") is False
-
-
 def test_any_of_is_a_case_insensitive_substring_match():
     assert check_expectation({"any_of": ["TSMC", "Samsung"]}, "Nvidia depends on tsmc.")
     assert not check_expectation({"any_of": ["TSMC"]}, "Nvidia depends on Intel.")
@@ -53,3 +48,33 @@ def test_no_recognised_key_is_an_error_not_a_silent_pass():
 
 def test_parse_percentages_handles_signs_spaces_and_commas():
     assert parse_percentages("up +43.2% and down -1.5 % but 2,000 units") == [43.2, -1.5]
+
+
+# --- signs: the number parser reads magnitudes, so direction is its own check -----------------------------------
+
+def test_a_negative_value_matches_its_magnitude_and_needs_a_loss_word_via_direction():
+    expect = {"value": -267000000, "direction": "down"}
+    assert check_expectation(expect, "Intel reported a net loss of $267 million.")
+    assert not check_expectation(expect, "Intel's net income was $267 million, an increase.")
+
+
+def test_pct_compares_magnitudes_and_direction_carries_the_sign():
+    down = {"pct": -0.5, "direction": "down"}
+    assert check_expectation(down, "Revenue declined 0.5% year over year.")
+    assert check_expectation(down, "Revenue changed by -0.5%.")
+    assert not check_expectation(down, "Revenue rose 0.5% year over year.")
+    up = {"pct": 65.5, "direction": "up"}
+    assert check_expectation(up, "Revenue grew 65.5%.")
+    assert check_expectation(up, "Revenue was up +65.5%.")
+    assert not check_expectation(up, "Revenue fell 65.5%.")
+
+
+def test_direction_words_are_matched_as_whole_words():
+    assert not check_expectation({"pct": 5.0, "direction": "up"}, "The supply chain shifted 5.0%.")
+
+
+def test_direction_alone_is_not_an_expectation_and_a_bad_direction_is_an_error():
+    with pytest.raises(ValueError):
+        check_expectation({"direction": "up"}, "up")
+    with pytest.raises(ValueError, match="direction"):
+        check_expectation({"pct": 1.0, "direction": "sideways"}, "1.0%")
