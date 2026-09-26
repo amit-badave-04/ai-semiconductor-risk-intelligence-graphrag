@@ -8,6 +8,7 @@ reading os.environ directly; the notebooks' PROJECT_ROOT convention becomes
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,18 +18,20 @@ class Settings(BaseSettings):
     )
 
     # --- LLM (LiteLLM model strings; Sonnet extracts/answers, Haiku critiques) ---
-    anthropic_api_key: str = ""
+    anthropic_api_key: str = Field("", repr=False)      # secrets carry repr=False: a failing test prints the Settings object
     llm_model: str = "anthropic/claude-sonnet-5"      # extraction, judges: schema-sensitive, never moves with answering
     # The model that DRAFTS answers (production sets ANSWER_MODEL; the default keeps local runs on Sonnet).
     answer_model: str = "anthropic/claude-sonnet-5"
     # Stronger model a rejected cheap draft escalates to (empty = no escalation: answer_model streams live).
     escalation_model: str = ""
     critic_model: str = "anthropic/claude-haiku-4-5"
+    # Cheap model that settles the risk items the aligner cannot (``semigraph align-items --adjudicate``; env ADJUDICATION_MODEL).
+    adjudication_model: str = "openai/gpt-6-luna"
 
     # --- Neo4j Desktop local instance ---
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "neo4j"
+    neo4j_password: str = Field("neo4j", repr=False)
     neo4j_database: str = "neo4j"  # target database; empty = the server's home database
 
     # --- SEC EDGAR: declared identity, required by SEC fair-access policy ---
@@ -44,7 +47,7 @@ class Settings(BaseSettings):
     onnx_tokenizer_path: Path | None = None   # defaults to tokenizer.json next to the model
     onnx_threads: int = 0                     # 0 = onnxruntime default
     embedding_api_base: str = ""              # e.g. https://api.deepinfra.com/v1/openai
-    embedding_api_key: str = ""
+    embedding_api_key: str = Field("", repr=False)
     embedding_api_model: str = "Qwen/Qwen3-Embedding-0.6B"
 
     # --- LLM cost accounting (USD per million tokens; Claude Sonnet 5 list price) ---
@@ -57,7 +60,7 @@ class Settings(BaseSettings):
     # --- Web service (semigraph.serve) ---
     environment: str = "development"          # "production" on Fly: stricter defaults
     app_base_url: str = "http://localhost:8080"
-    admin_token: str = ""                     # X-Admin-Token for /api/admin/* (kill switch)
+    admin_token: str = Field("", repr=False)  # X-Admin-Token for /api/admin/* (kill switch)
     kill_switch: bool = False                 # env override; the persisted flag lives in Neo4j
     max_queries_per_day: int = 150            # global paid-answer ceiling (0 = unlimited)
     rate_limit_questions: int = 5             # per client IP ...
@@ -71,7 +74,7 @@ class Settings(BaseSettings):
     llm_answer_max_tokens: int = 1200         # streamed answers cannot regenerate on truncation
     answer_cache_ttl_hours: int = 24
     turnstile_site_key: str = ""              # Cloudflare Turnstile (optional bot gate)
-    turnstile_secret_key: str = ""
+    turnstile_secret_key: str = Field("", repr=False)
     turnstile_required: bool = False          # true = fail CLOSED for live questions when unconfigured/invalid
     read_rate_limit_per_minute: int = 120     # per address, free read endpoints (stats/evidence/examples)
 

@@ -413,15 +413,49 @@ class TestRisksAndRelations:
         assert edges["TSMC"]["cur"] is True and edges["TSMC"]["last"].to_native() == date(2026, 8, 5)
         assert edges["Micron"]["cur"] is False and edges["Micron"]["last"].to_native() == date(2026, 5, 6)
 
-    def test_lineage_clustering_reads_only_effective_annual_filings(self, graph):
-        frame = temporal.fetch_annual_risks(graph["driver"])
-        assert set(frame["accession_no"]) == {"a-25", "a-26", "b-26A"}  # not the corrected b-26, no quarterlies
-        # the restated Item-7 risk never feeds a lineage; the overlay's replacement does, dated by the 10-K it amends
-        assert "Restated MD&A liquidity risk" not in set(frame["summary"])
-        amended = frame[frame["summary"] == "Amended MD&A liquidity risk"].iloc[0]
-        assert (amended["accession_no"], amended["filing_date"]) == ("a-26", "2026-02-04")
-        result = temporal.apply_closure(graph["driver"], graph["settings"])
-        assert result["states_written"] == len(frame) == 4
+    def test_a_risk_is_active_only_when_it_is_in_the_current_annual_filing(self, graph):
+        """M1b step 4: no lineage clustering, no 'Deleted'. Active = the risk's filing is the current ANNUAL and its section is
+        owned; a corrected section, a superseded annual and every quarterly risk are Historical."""
+        result = temporal.apply_current_status(graph["driver"])
+        by_summary = {r["s"]: r["status"] for r in rows(graph["driver"], """
+            MATCH (:Company)-[d:DISCLOSES_RISK]->(rf:RiskFactor) RETURN rf.summary AS s, d.status AS status""")}
+        assert by_summary == {
+            "Export controls limit advanced computing sales": "Active",        # a-26 10-K, current annual, owned Item 1A
+            "Amended MD&A liquidity risk": "Active",                           # the current 10-K/A's owned Item 7
+            "We may be added to the Entity List": "Active",                    # b-26A: the full amendment is the effective annual
+            "Equipment restrictions hurt foundry partners": "Historical",      # a-25: superseded annual
+            "Restated MD&A liquidity risk": "Historical",                      # a-26 Item 7, restated by the amendment
+            "Equipment controls affect suppliers": "Historical",               # b-26: corrected original
+            "Supply constraints in Q1": "Historical", "Weak PC demand": "Historical",      # quarterlies are not annual filings
+            "Customer concentration": "Historical"}
+        assert result == {"Active": 3, "Historical": 6}
+        assert one(graph["driver"], "MATCH ()-[d:DISCLOSES_RISK {status: 'Deleted'}]->() RETURN count(d) AS n")["n"] == 0
+
+    def test_the_retired_closure_properties_are_removed_and_the_pass_is_idempotent(self, graph):
+        with graph["driver"].session() as session:      # a graph of the previous build: closure properties everywhere
+            session.run("MATCH (:Company)-[d:DISCLOSES_RISK]->(rf:RiskFactor) SET d.status = 'Deleted', d.end_date = date('2026-02-04'), "
+                        "rf.lineage_id = 'x:1', rf.first_seen = date('2025-01-01'), rf.last_seen = date('2026-01-01')").consume()
+        first = temporal.apply_current_status(graph["driver"])
+        left = one(graph["driver"], """
+            MATCH (:Company)-[d:DISCLOSES_RISK]->(rf:RiskFactor)
+            RETURN count(CASE WHEN d.end_date IS NOT NULL THEN 1 END) AS end_dates,
+                   count(CASE WHEN rf.lineage_id IS NOT NULL OR rf.first_seen IS NOT NULL OR rf.last_seen IS NOT NULL THEN 1 END) AS lineage,
+                   count(CASE WHEN d.status = 'Deleted' THEN 1 END) AS deleted""")
+        assert left == {"end_dates": 0, "lineage": 0, "deleted": 0}
+        assert temporal.apply_current_status(graph["driver"]) == first == {"Active": 3, "Historical": 6}
+
+    def test_as_of_returns_the_risks_of_the_annual_filing_current_on_that_date(self, graph):
+        def summaries(asof, ticker=None):
+            return sorted(r["summary"] for r in temporal.risks_active_as_of(graph["driver"], asof, ticker))
+
+        assert summaries("2025-06-01") == ["Equipment restrictions hurt foundry partners"]           # a-25; AVGO filed later
+        assert summaries("2025-01-01") == []                                                          # before the first annual
+        assert summaries("2026-02-10", "AMD") == ["Export controls limit advanced computing sales"]  # a-26; its Item 7 risk is restated
+        # after the Item-7-only 10-K/A the annual is still a-26, now with the sections the amendment owns
+        assert summaries("2026-03-05", "AMD") == ["Amended MD&A liquidity risk", "Export controls limit advanced computing sales"]
+        assert summaries("2026-03-05", "AVGO") == ["We may be added to the Entity List"]              # the corrected original never counts
+        rows_ = temporal.risks_active_as_of(graph["driver"], "2026-02-10", "AMD")
+        assert (rows_[0]["accession_no"], rows_[0]["filing_date"], rows_[0]["ticker"]) == ("a-26", "2026-02-04", "AMD")
 
 
 class TestExportControls:

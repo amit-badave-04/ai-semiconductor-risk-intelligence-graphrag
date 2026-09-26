@@ -292,3 +292,21 @@ class TestRiskItemSchema:
         ddl = read_schema_cypher()
         assert "CREATE CONSTRAINT riskitem_id IF NOT EXISTS FOR (i:RiskItem) REQUIRE i.item_id IS UNIQUE" in ddl
         assert "FOR (i:RiskItem) ON (i.filer_cik, i.accession_no)" in ddl
+
+
+class TestRiskPassageSchema:
+    """M1b step 4: the change layer below the item (passages) is unique by id and looked up by filing pair."""
+
+    def test_riskpassage_has_a_uniqueness_constraint_and_a_pair_index(self):
+        ddl = read_schema_cypher()
+        assert "CREATE CONSTRAINT riskpassage_id IF NOT EXISTS FOR (p:RiskPassage) REQUIRE p.passage_id IS UNIQUE" in ddl
+        assert "CREATE INDEX riskpassage_pair IF NOT EXISTS FOR (p:RiskPassage) ON (p.filer_cik, p.newer_accession)" in ddl
+
+    def test_the_repo_copy_and_the_packaged_copy_of_the_schema_are_byte_identical(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        assert (root / "artifacts" / "schema.cypher").read_bytes() == (root / "src" / "semigraph" / "artifacts" / "schema.cypher").read_bytes()
+
+    def test_the_risk_disclosure_edge_index_no_longer_lists_the_retired_end_date(self):
+        assert "FOR ()-[r:DISCLOSES_RISK]-() ON (r.start_date, r.status)" in read_schema_cypher()

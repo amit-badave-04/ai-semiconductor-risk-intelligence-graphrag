@@ -20,6 +20,8 @@ CREATE CONSTRAINT snapshot_id IF NOT EXISTS FOR (s:Snapshot) REQUIRE s.id IS UNI
 
 CREATE CONSTRAINT riskitem_id IF NOT EXISTS FOR (i:RiskItem) REQUIRE i.item_id IS UNIQUE;
 
+CREATE CONSTRAINT riskpassage_id IF NOT EXISTS FOR (p:RiskPassage) REQUIRE p.passage_id IS UNIQUE;
+
 CREATE INDEX company_ticker IF NOT EXISTS FOR (c:Company) ON (c.ticker);
 
 CREATE INDEX filing_date IF NOT EXISTS FOR (f:Filing) ON (f.filing_date);
@@ -30,11 +32,13 @@ CREATE INDEX metric_period IF NOT EXISTS FOR (m:Metric) ON (m.period_end);
 
 CREATE INDEX riskitem_filing IF NOT EXISTS FOR (i:RiskItem) ON (i.filer_cik, i.accession_no);
 
+CREATE INDEX riskpassage_pair IF NOT EXISTS FOR (p:RiskPassage) ON (p.filer_cik, p.newer_accession);
+
 CREATE INDEX supplies_temporal IF NOT EXISTS FOR ()-[r:SUPPLIES_TO]-() ON (r.start_date, r.end_date, r.status);
 
 CREATE INDEX depends_temporal IF NOT EXISTS FOR ()-[r:DEPENDS_ON]-() ON (r.start_date, r.end_date, r.status);
 
-CREATE INDEX discloses_temporal IF NOT EXISTS FOR ()-[r:DISCLOSES_RISK]-() ON (r.start_date, r.end_date, r.status);
+CREATE INDEX discloses_temporal IF NOT EXISTS FOR ()-[r:DISCLOSES_RISK]-() ON (r.start_date, r.status);
 
 CREATE INDEX affected_temporal IF NOT EXISTS FOR ()-[r:AFFECTED_BY]-() ON (r.start_date, r.end_date, r.status);
 

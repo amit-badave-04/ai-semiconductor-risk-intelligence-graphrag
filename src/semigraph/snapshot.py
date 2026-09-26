@@ -2,7 +2,9 @@
 
 A snapshot id changes whenever the as-of date, the filing manifest, any
 chunk or section-text file (they decide which filings count as parsed and so
-which sections are corrected), any extraction record, the Federal Register
+which sections are corrected), any risk-item file, quality sidecar or risk-alignment table (what
+changed between two annual filings is read from them; so is a recorded adjudication verdict),
+any extraction record, the Federal Register
 snapshot, the curated XBRL metrics, the entity dictionary, the code that builds
 the graph, or the code version changes. It is stamped on every graph node the loaders write
 and is part of the answer-cache key, so a data refresh can never serve an
@@ -69,7 +71,12 @@ def snapshot_inputs(settings: Settings) -> dict:
         "xbrl_metrics": _hashes(settings.processed_dir / "xbrl", "*_key_metrics.parquet"),
         "chunks": _hashes(settings.chunks_dir, "*.parquet"),
         "section_texts": _hashes(settings.interim_dir / "section_texts", "*.parquet"),
-        "risk_items": _hashes(settings.interim_dir / "risk_items", "*.parquet"),
+        # the item parquets AND the quality sidecars (they decide which pairs are compared at all)
+        "risk_items": {**_hashes(settings.interim_dir / "risk_items", "*.parquet"),
+                       **_hashes(settings.interim_dir / "risk_items", "*_risk_items_quality.json")},
+        # `align-items` output (pairs / decisions / passages) and its checkpointed model verdicts
+        "risk_alignment": {**_hashes(settings.interim_dir / "risk_alignment", "*.parquet"),
+                           **_hashes(settings.interim_dir / "risk_alignment", "adjudications.jsonl")},
         "entities": _file_sha1(_ENTITIES) if _ENTITIES.exists() else None,
         "code": code_fingerprint(),
     }
@@ -83,7 +90,7 @@ def compute_snapshot_id(settings: Settings, as_of: date | str | None = None, *,
     digest = hashlib.sha1()
     digest.update(f"{as_of_d}|{code_version}|{inputs['manifest']}|{inputs['federal_register']}"
                   f"|{inputs['entities']}|{inputs['code']}".encode())
-    for section in ("extractions", "xbrl_metrics", "chunks", "section_texts", "risk_items"):
+    for section in ("extractions", "xbrl_metrics", "chunks", "section_texts", "risk_items", "risk_alignment"):
         for name, sha in sorted(inputs[section].items()):
             digest.update(f"|{section}:{name}:{sha}".encode())
     stamp = as_of_d.strftime("%Y%m%d") if as_of_d else "00000000"

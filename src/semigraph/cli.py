@@ -181,19 +181,19 @@ def _resolve_as_of(settings, declared):
 
 
 def _refuse_partial_extraction(todo: dict, allow_partial: bool) -> None:
-    """A graph built while in-scope chunks of current filings lack extraction records would
-    falsely close risk lineages (the latest annual would look like it dropped them)."""
+    """A graph built while in-scope chunks of current filings lack extraction records would leave the
+    active-risk layer of those filings incomplete (risks the current annual discloses would be missing)."""
     missing = {t: len(rows) for t, rows in todo.items() if len(rows)}
     if not missing:
         return
     detail = ", ".join(f"{t}: {n}" for t, n in sorted(missing.items()))
     if not allow_partial:
         typer.echo(f"{sum(missing.values())} in-scope chunks of current filings have no extraction record ({detail}); "
-                   "building now would falsely close risk lineages. Run `semigraph extract` first, "
+                   "building now would leave the active-risk layer incomplete. Run `semigraph extract` first, "
                    "or pass --allow-partial to build anyway.")
         raise typer.Exit(4)
     typer.echo(f"WARNING: partial build — {sum(missing.values())} in-scope chunks are not extracted ({detail}); "
-               "lineage closure may be wrong for these filers.")
+               "the active-risk layer of these filers is incomplete.")
 
 
 @app.command("build-graph")
@@ -207,15 +207,16 @@ def build_graph(
 ):
     """Apply schema and load the graph from the data lake. Spends no API money.
 
-    Loads the deterministic layer, extraction records, embeddings (local), export
-    controls, runs bitemporal closure and stamps a Snapshot node. Paid extraction is
-    a separate step (`semigraph extract --max-usd N`). --rebuild wipes the target
-    graph first (required when the vector-index definitions changed) and always
-    rebuilds the whole universe."""
+    Loads the deterministic layer, extraction records, embeddings (local), the
+    text-grounded risk-item layer (needs `semigraph align-items` first), export
+    controls, sets the Active/Historical status of the risk disclosures and stamps a
+    Snapshot node. Paid extraction is a separate step (`semigraph extract --max-usd N`).
+    --rebuild wipes the target graph first (required when the vector-index definitions
+    changed) and always rebuilds the whole universe."""
     _setup_logging(verbose)
     from semigraph.embeddings import Embedder
     from semigraph.extraction import extractor
-    from semigraph.graph import client, loaders, schema, temporal
+    from semigraph.graph import client, item_loader, items, loaders, schema, temporal
     from semigraph.snapshot import compute_snapshot_id
 
     settings = _settings()
@@ -225,6 +226,11 @@ def build_graph(
     snapshot_as_of = _resolve_as_of(settings, _parse_as_of(as_of))
     _, todo = extractor.build_extraction_plan(settings, tickers)
     _refuse_partial_extraction(todo, allow_partial)
+    try:            # BEFORE anything is reset: a rebuild must never wipe the graph and then find the item layer missing
+        items.require_alignment(settings, items.discover_tickers(settings, tickers))
+    except items.AlignItemsError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(2) from e
     if rebuild and not yes:
         target = f"{settings.neo4j_uri} database '{settings.neo4j_database}'"
         if not typer.confirm(f"--rebuild will DELETE every non-service node in {target}. Continue?"):
@@ -247,11 +253,13 @@ def build_graph(
         loaders.load_evidence_spans(driver, settings, embedder, tickers, snapshot_id=snapshot_id)
         typer.echo("== Knowledge (relations, risks, products) ==")
         loaders.load_knowledge(driver, settings, embedder, tickers, snapshot_id=snapshot_id)
+        typer.echo("== Risk items (text-grounded alignment, passages, OF_ITEM) ==")
+        typer.echo(json.dumps(item_loader.load_risk_items(driver, settings, tickers, snapshot_id=snapshot_id)))
         typer.echo("== Categories + export controls + AFFECTED_BY ==")
         temporal.normalize_categories(driver)          # before AFFECTED_BY matches on the category
         loaders.load_export_controls(driver, settings, snapshot_id=snapshot_id)
-        typer.echo("== Bitemporal closure ==")
-        temporal.apply_closure(driver, settings)
+        typer.echo("== Risk disclosure status (Active = in the current annual filing) ==")
+        temporal.apply_current_status(driver)
         loaders.stamp_snapshot(driver, snapshot_id, snapshot_as_of, _graph_counts(driver))
         typer.echo("build-graph complete")
     finally:
@@ -455,6 +463,51 @@ def eval_deployed_cmd(
                                                    "avg_cost_usd", "total_cost_usd", "avg_latency_s", "errors")}, indent=2, default=str))
     typer.echo(f"open questions correct: {j['open_correct']}/{j['open_of']}  votes {j['votes']}")
     typer.echo(f"report -> {out}")
+
+
+def _echo_adjudication_estimate(est, max_usd: float) -> None:
+    typer.echo(f"Adjudication estimate: {est.model}: {est.n_items} item(s) to settle ({est.n_cached} already answered), "
+               f"{est.n_calls} call(s), ~{est.input_tokens} input tokens, output cap {est.output_tokens_cap} tokens; "
+               f"worst case ${est.worst_case_usd:.4f}, likely ${est.likely_usd:.4f}"
+               + ("" if est.priced else " (model price unknown: configured list prices used)"))
+    if est.worst_case_usd > max_usd:
+        typer.echo(f"The worst case exceeds --max-usd ${max_usd:.2f}: a real run would be refused before any call.")
+
+
+@app.command("align-items")
+def align_items_cmd(
+    ticker: list[str] = typer.Option(None, "--ticker", "-t", help="Tickers (default: every ticker that has risk items)"),
+    adjudicate: bool = typer.Option(False, "--adjudicate", help="PAID (cheap): ask the adjudication model about the items the aligner could not settle"),
+    max_usd: float = typer.Option(0.5, "--max-usd", help="Refuse to start an adjudication run whose WORST-CASE cost exceeds this"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Align in memory and print the table (and the adjudication estimate); write nothing, call no model"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Align risk items between consecutive annual filings against the FULL newer text (free; no embeddings).
+
+    For every ticker and every consecutive annual pair: comparable pairs are aligned, decomposed into changed passages and
+    written to data/interim/risk_alignment/ (byte-identical on a re-run); a pair with an untrustworthy side is recorded as NOT
+    COMPARED and produces nothing else. --adjudicate additionally asks the cheap `adjudication_model` about the items
+    the aligner labelled uncertain or removed (every answer is checkpointed: a re-run never repays); it is off by default."""
+    _setup_logging(verbose)
+    from semigraph.graph import adjudicate as adj
+    from semigraph.graph import items
+
+    try:
+        run = items.run_align_items(_settings(), list(ticker) if ticker else None, adjudicate=adjudicate,
+                                    max_usd=max_usd, dry_run=dry_run)
+    except adj.BudgetExceeded as e:
+        typer.echo(f"{e}")
+        raise typer.Exit(3) from e
+    except items.AlignItemsError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(2) from e
+    typer.echo(items.format_summary(run.summary))
+    if run.estimate is not None:
+        _echo_adjudication_estimate(run.estimate, max_usd)
+    if run.dry_run:
+        typer.echo("dry run: nothing was written and no model was called")
+    for path in run.written:
+        typer.echo(str(path))
 
 
 def _notable(filing: dict) -> list[str]:

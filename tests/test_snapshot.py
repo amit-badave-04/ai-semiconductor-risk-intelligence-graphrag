@@ -140,3 +140,62 @@ def test_risk_items_are_part_of_the_snapshot(lake):
 
 def test_a_lake_without_risk_items_keeps_the_same_shape(lake):
     assert snapshot_inputs(lake)["risk_items"] == {}
+
+
+# ------------------------------- M1b step 4: the alignment defines the temporal layer, so it defines the snapshot
+
+def test_the_risk_alignment_tables_are_part_of_the_snapshot(lake):
+    """What changed between two filings (removed items, passages) is read from these files: a new alignment must move the id."""
+    ra = lake.interim_dir / "risk_alignment"
+    ra.mkdir(parents=True)
+    (ra / "NVDA_decisions.parquet").write_bytes(b"decisions-v1")
+    before = compute_snapshot_id(lake, date(2026, 9, 25))
+    (ra / "NVDA_decisions.parquet").write_bytes(b"decisions-v2")
+    assert compute_snapshot_id(lake, date(2026, 9, 25)) != before
+
+
+@pytest.mark.parametrize("name", ["NVDA_pairs.parquet", "NVDA_passages.parquet"])
+def test_every_alignment_table_counts_not_only_the_decisions(lake, name):
+    ra = lake.interim_dir / "risk_alignment"
+    ra.mkdir(parents=True)
+    (ra / name).write_bytes(b"v1")
+    before = compute_snapshot_id(lake, date(2026, 9, 25))
+    (ra / name).write_bytes(b"v2")
+    assert compute_snapshot_id(lake, date(2026, 9, 25)) != before
+
+
+def test_the_adjudication_checkpoint_is_part_of_the_snapshot(lake):
+    """A recorded model verdict can change a label (removed -> present), so adding one must move the id."""
+    ra = lake.interim_dir / "risk_alignment"
+    ra.mkdir(parents=True)
+    (ra / "adjudications.jsonl").write_text('{"key": "k1", "verdict": "removed"}\n', encoding="utf-8")
+    before = compute_snapshot_id(lake, date(2026, 9, 25))
+    with (ra / "adjudications.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write('{"key": "k2", "verdict": "same"}\n')
+    assert compute_snapshot_id(lake, date(2026, 9, 25)) != before
+
+
+def test_the_risk_item_quality_sidecar_is_part_of_the_snapshot(lake):
+    """The sidecar decides which pairs are compared at all."""
+    ri = lake.interim_dir / "risk_items"
+    ri.mkdir(parents=True)
+    (ri / "NVDA_risk_items_quality.json").write_text('{"filings": []}', encoding="utf-8")
+    before = compute_snapshot_id(lake, date(2026, 9, 25))
+    (ri / "NVDA_risk_items_quality.json").write_text('{"filings": [1]}', encoding="utf-8")
+    assert compute_snapshot_id(lake, date(2026, 9, 25)) != before
+
+
+def test_the_snapshot_input_record_lists_the_alignment_files(lake):
+    ra = lake.interim_dir / "risk_alignment"
+    ra.mkdir(parents=True)
+    (ra / "NVDA_pairs.parquet").write_bytes(b"p")
+    (ra / "adjudications.jsonl").write_text("{}\n", encoding="utf-8")
+    (ra / "unrelated.txt").write_text("x", encoding="utf-8")
+    assert set(snapshot_inputs(lake)["risk_alignment"]) == {"NVDA_pairs.parquet", "adjudications.jsonl"}
+
+
+def test_the_graph_building_code_of_the_item_layer_is_fingerprinted():
+    from semigraph.snapshot import _CODE_FILES
+
+    names = {p.name for p in _CODE_FILES}
+    assert {"items.py", "item_loader.py", "item_pairs.py", "adjudicate.py", "temporal.py", "alignment.py"} <= names

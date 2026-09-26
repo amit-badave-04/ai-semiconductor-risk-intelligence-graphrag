@@ -1,50 +1,50 @@
-"""Bitemporal versioning — ported from notebook 13 (Milestone M5).
+"""Current-filing status of the risk layer (M1b step 4). Replaces the bitemporal lineage clustering of notebook 13.
 
-Notebook 12 loads risk factors from multiple annual filings per company with
-every DISCLOSES_RISK edge 'Active'; this module operates the bitemporal
-pattern that made temporal questions score 100% vs 0% for vector-only RAG:
+What was retired, and why: the old pass clustered every RiskFactor's LLM SUMMARY by embedding similarity (greedy, 0.75 cosine),
+called each cluster a "lineage", backdated ``start_date`` to its first member and marked a lineage ``Deleted`` (with an
+``end_date``) when the company's latest annual filing had no member of it. That reported risks as dropped whose text was still in
+the newer filing (a live audit on 2026-09-26 found the NVIDIA "dropped" examples still present; an unequal extraction between
+years alone produced a "drop"). No text was ever consulted. It is gone, with its ``Deleted`` status, ``end_date``, and the
+RiskFactor properties ``lineage_id`` / ``first_seen`` / ``last_seen``.
 
-1. Cluster each company's risks across annual filings by embedding
-   similarity — "the same risk, re-disclosed each year" becomes one lineage
-2. Backdate start_date to the lineage's first disclosure
-3. Close lineages absent from the company's latest annual filing:
-   status='Deleted', end_date = latest filing date
-4. As-of / time-travel queries
+What replaces it:
 
-The clustering + state computation is pure (no Neo4j) so it is unit-testable;
-appliers are thin Cypher writes. All updates are idempotent.
+* what CHANGED between two annual filings is read from the text-grounded item layer: ``graph/items.py`` (``semigraph align-items``)
+  decides per risk item, against the whole newer section text, and ``graph/item_loader.py`` loads it (``RiskItem``, ``SUCCEEDED_BY``,
+  ``removed_in``, ``RiskPassage``, ``SUPERSEDES.items_compared``); the lineage of an item is carried along its verified successors;
+* :func:`apply_current_status` sets ``DISCLOSES_RISK.status`` to ``Active`` when the risk's filing is the company's CURRENT annual
+  filing and ``Historical`` otherwise: a statement about the filing, never about whether a risk disappeared (there is no ``Deleted``);
+* :func:`risks_active_as_of` answers "which risks did the company disclose on a date" from the annual filing that was current then.
+
+Decisions worth knowing: ``DISCLOSES_RISK.start_date`` (set once by the loader: the filing date of the risk's filing) is kept and
+``end_date`` is dropped (nothing reads it and, without closure, nothing defines it); risks evidenced only in the current 10-Q are
+``Historical`` under this definition (they are not in the current annual), and so leave the retriever's active-risk query, which
+reads ``status: 'Active'``; a risk in a section a later amendment restated is not ``Active`` even though its filing is current
+(``rf.is_current`` already encodes the section's ownership).
+
+The category-spelling fix (:func:`normalize_categories`) is unchanged.
 """
 
 import logging
 
-import numpy as np
-import pandas as pd
-
-from ..config import Settings, get_settings
 from .client import run_cypher
 
 logger = logging.getLogger("semigraph.graph.temporal")
 
-# cosine similarity above which two summaries are the same recurring risk
-SAME_RISK_SIM = 0.75
-
-# Lineages are clustered over EFFECTIVE annual filings only: every annual form,
-# but never a `corrected` original (its parsed amendment stands in for it) nor an
-# inert `amendment` (unparsed 10-K/A) — see semigraph.versions.
-ANNUAL_FORMS = ("10-K", "10-K/A", "20-F")
+# Annual reports: the forms whose current filing makes a risk 'Active'.
+ANNUAL_FORMS = ("10-K", "10-K/A", "20-F", "20-F/A")
+# A filing counts as an annual of its period only when effective: never a `corrected` original (its parsed amendment stands in
+# for it) nor an inert `amendment` (unparsed 10-K/A) - see semigraph.versions.
 EFFECTIVE_FILING_STATUSES = ("current", "superseded")
+STATUS_ACTIVE, STATUS_HISTORICAL = "Active", "Historical"
 
-# Graph-side canonical category spellings (notebook 13 cell 2 — includes
+# Graph-side canonical category spellings (notebook 13 cell 2 - includes
 # 'Cybersecurity', which the extractor invented often enough to canonize).
 CANONICAL_CATEGORIES = [
     "Supply Chain", "Geopolitical", "Export Controls", "Demand", "Competition",
     "Technology", "Legal/Regulatory", "Financial", "Cybersecurity", "Other",
 ]
 
-
-# --------------------------------------------------------------------------
-# pure core
-# --------------------------------------------------------------------------
 
 def category_mapping(distinct: list[str]) -> list[dict]:
     """Map free-text category spellings to canonical ones (case-insensitive
@@ -56,83 +56,6 @@ def category_mapping(distinct: list[str]) -> list[dict]:
     ]
     return [m for m in mapping if m["old"] != m["new"]]
 
-
-def cluster_lineages(embeddings: np.ndarray,
-                     threshold: float = SAME_RISK_SIM) -> list[list[int]]:
-    """Greedy lineage clustering over date-ordered risk embeddings.
-
-    Each risk joins the most similar existing lineage above the threshold,
-    else starts a new one; centroids are renormalized means. Deterministic
-    and easy to audit (notebook 13 cell 6)."""
-    lineages: list[dict] = []
-    for i in range(len(embeddings)):
-        best, best_sim = None, 0.0
-        for lin in lineages:
-            sim = float(embeddings[i] @ lin["centroid"])
-            if sim > best_sim:
-                best, best_sim = lin, sim
-        if best is not None and best_sim >= threshold:
-            best["members"].append(i)
-            member_vecs = embeddings[best["members"]]
-            centroid = member_vecs.mean(axis=0)
-            best["centroid"] = centroid / np.linalg.norm(centroid)
-        else:
-            lineages.append({"centroid": embeddings[i], "members": [i]})
-    return [lin["members"] for lin in lineages]
-
-
-def compute_temporal_states(risks: pd.DataFrame,
-                            threshold: float = SAME_RISK_SIM
-                            ) -> tuple[pd.DataFrame, list[dict]]:
-    """Compute per-risk temporal states from annual-filing risk disclosures.
-
-    ``risks`` columns: cik, company, risk_id, summary, category, embedding
-    (list or ndarray), filing_date (datetime-like), accession_no.
-
-    Returns (updates_df, lineage_stats): one update row per risk node with
-    lineage_id / first_seen / last_seen / status / end_date, and per-company
-    lineage statistics. A lineage is closed when the company's latest annual
-    no longer discloses it AND the company has more than one annual filing.
-
-    Deterministic: risks are ordered by ``[filing_date, risk_id, accession_no]``
-    (stable sort) before the order-sensitive greedy clustering, and companies
-    are visited in key order, so lineage ids depend only on the data — never on
-    the row order the graph query happened to return.
-    """
-    risks = risks.copy()
-    risks["filing_date"] = pd.to_datetime(risks["filing_date"])
-    updates, lineage_stats = [], []
-    for (cik, company), grp in risks.groupby(["cik", "company"], sort=True):
-        grp = grp.sort_values(["filing_date", "risk_id", "accession_no"], kind="stable")
-        latest_annual = grp["filing_date"].max()
-        n_annuals = grp["accession_no"].nunique()
-        embs = np.vstack(grp["embedding"].to_numpy())
-        lineages = cluster_lineages(embs, threshold)
-        n_closed = 0
-        for li, members_idx in enumerate(lineages):
-            members = grp.iloc[members_idx]
-            first_seen = members["filing_date"].min()
-            last_seen = members["filing_date"].max()
-            closed = (last_seen < latest_annual) and (n_annuals > 1)
-            n_closed += int(closed)
-            for _, m in members.iterrows():
-                updates.append({
-                    "risk_id": m["risk_id"], "lineage_id": f"{cik}:{li}",
-                    "first_seen": str(first_seen.date()),
-                    "last_seen": str(last_seen.date()),
-                    "status": "Deleted" if closed else "Active",
-                    "end_date": str(latest_annual.date()) if closed else None,
-                })
-        lineage_stats.append({
-            "company": company, "annuals": n_annuals, "risk_nodes": len(grp),
-            "lineages": len(lineages), "closed_lineages": n_closed,
-        })
-    return pd.DataFrame(updates), lineage_stats
-
-
-# --------------------------------------------------------------------------
-# thin Cypher appliers
-# --------------------------------------------------------------------------
 
 def normalize_categories(driver) -> int:
     """Idempotent category-spelling fix (notebook 13 cell 2): the extractor
@@ -150,76 +73,50 @@ def normalize_categories(driver) -> int:
     return len(changes)
 
 
-def fetch_annual_risks(driver) -> pd.DataFrame:
-    """Risk disclosures evidenced by EFFECTIVE annual filings (10-K, 10-K/A,
-    20-F whose ``Filing.status`` is current or superseded), with embeddings,
-    for lineage clustering (notebook 13 cell 4).
-
-    Excluded: ``corrected`` originals and inert ``amendment`` rows, and — via
-    the span's own ``status`` — sections a later amendment restated (a
-    corrected section never feeds a lineage). Risks evidenced in a PARTIAL
-    amendment (an overlay, e.g. an Item-7-only 10-K/A) are dated by the filing
-    it amends, so an amendment filed months later cannot advance the company's
-    "latest annual" and close lineages that were never re-disclosed. The result
-    is ordered so callers see the same frame on every run."""
-    rows = run_cypher(driver, """
-        MATCH (c:Company)-[:DISCLOSES_RISK]->(rf:RiskFactor)-[:HAS_EVIDENCE]->(e:EvidenceSpan)
-              -[:FROM_SECTION]->(:FilingSection)<-[:HAS_SECTION]-(f:Filing)
-        WHERE f.form IN $forms AND f.status IN $statuses AND e.status IN $statuses
-              AND rf.embedding IS NOT NULL
-        OPTIONAL MATCH (f)-[:AMENDS]->(base:Filing)
-        RETURN DISTINCT c.cik AS cik, c.name AS company, rf.risk_id AS risk_id,
-               rf.summary AS summary, rf.category AS category, rf.embedding AS embedding,
-               toString(coalesce(base.filing_date, f.filing_date)) AS filing_date,
-               coalesce(base.accession_no, f.accession_no) AS accession_no
-        ORDER BY cik, filing_date, risk_id, accession_no
-    """, forms=list(ANNUAL_FORMS), statuses=list(EFFECTIVE_FILING_STATUSES))
-    return pd.DataFrame(rows)
+# Every disclosure edge is rewritten (never a filtered subset), so a 'Deleted' or an outdated status of an earlier build cannot
+# survive; the properties of the retired closure are removed in the same pass. ``rf.is_current`` is the risk's evidence-section
+# freshness (an amendment-restated section is not current); the Filing join is the "current ANNUAL filing" of the definition.
+_STATUS_CYPHER = """MATCH (:Company)-[d:DISCLOSES_RISK]->(rf:RiskFactor)
+    SET d.status = CASE WHEN rf.is_current = true AND EXISTS {
+            MATCH (rf)-[:HAS_EVIDENCE]->(e:EvidenceSpan)
+            MATCH (f:Filing {accession_no: e.accession_no})
+            WHERE f.is_current = true AND f.form IN $annual
+        } THEN 'Active' ELSE 'Historical' END
+    REMOVE d.end_date, rf.lineage_id, rf.first_seen, rf.last_seen
+    RETURN d.status AS status, count(*) AS n"""
 
 
-def write_temporal_states(driver, updates_df: pd.DataFrame) -> dict:
-    """Write lineage + bitemporal state to nodes and DISCLOSES_RISK edges
-    (notebook 13 cell 8; idempotent)."""
-    with driver.session() as s:
-        s.run("""UNWIND $rows AS row
-            MATCH (:Company)-[d:DISCLOSES_RISK]->(rf:RiskFactor {risk_id: row.risk_id})
-            SET rf.lineage_id = row.lineage_id, rf.first_seen = date(row.first_seen),
-                rf.last_seen = date(row.last_seen),
-                d.start_date = date(row.first_seen), d.status = row.status,
-                d.end_date = CASE WHEN row.end_date IS NULL THEN null ELSE date(row.end_date) END""",
-              rows=updates_df.to_dict("records"))
-        counts = s.run(
-            "MATCH ()-[d:DISCLOSES_RISK]->() RETURN d.status AS status, count(*) AS n"
-        ).data()
-    return {c["status"]: c["n"] for c in counts}
+def apply_current_status(driver) -> dict:
+    """Set ``DISCLOSES_RISK.status``: ``Active`` iff the RiskFactor's filing is the company's current annual filing (and the
+    risk's section is current), else ``Historical``. Idempotent; returns ``{status: edge count}``."""
+    rows = run_cypher(driver, _STATUS_CYPHER, annual=list(ANNUAL_FORMS))
+    counts = {r["status"]: r["n"] for r in rows}
+    logger.info("risk disclosure status: %s", counts)
+    return counts
 
 
-def apply_closure(driver, settings: Settings | None = None) -> dict:
-    """Full bitemporal pass: normalize categories, cluster lineages, write
-    states. Safe to re-run — recomputes the same states."""
-    settings = settings or get_settings()
-    normalize_categories(driver)
-    risks = fetch_annual_risks(driver)
-    if risks.empty:
-        logger.warning("no annual-filing risk disclosures found — nothing to close")
-        return {}
-    updates_df, stats = compute_temporal_states(risks)
-    status_counts = write_temporal_states(driver, updates_df)
-    n_deleted = int((updates_df["status"] == "Deleted").sum())
-    logger.info("%d risk states written (%d deleted) across %d companies",
-                len(updates_df), n_deleted, len(stats))
-    return {"states_written": len(updates_df), "deleted": n_deleted,
-            "companies": len(stats), "edge_status_counts": status_counts}
+# The annual filing current on a date: per company the latest effective annual filed on or before it (an overlay amendment such
+# as an Item-7-only 10-K/A is never the annual itself; the sections it owns and that were filed by the date belong to the annual
+# it amends).
+_AS_OF_CYPHER = """MATCH (c:Company)-[:FILED]->(f:Filing)
+    WHERE f.form IN $forms AND f.status IN $statuses AND f.filing_date <= date($asof)
+      AND NOT (f)-[:AMENDS]->(:Filing){where_ticker}
+    WITH c, f ORDER BY f.filing_date DESC, f.accession_no DESC
+    WITH c, head(collect(f)) AS annual
+    OPTIONAL MATCH (amend:Filing)-[:AMENDS]->(annual)
+    WHERE amend.filing_date <= date($asof)
+    WITH c, annual, [annual.accession_no] + collect(amend.accession_no) AS accessions
+    MATCH (c)-[:DISCLOSES_RISK]->(rf:RiskFactor)-[:HAS_EVIDENCE]->(e:EvidenceSpan)
+    WHERE e.accession_no IN accessions AND e.status IN $statuses
+    RETURN DISTINCT c.name AS company, c.ticker AS ticker, annual.accession_no AS accession_no,
+           toString(annual.filing_date) AS filing_date, rf.risk_id AS risk_id, rf.summary AS summary,
+           rf.category AS category
+    ORDER BY company, risk_id"""
 
 
 def risks_active_as_of(driver, asof: str, ticker: str | None = None) -> list[dict]:
-    """Time-travel query: risk lineages active on a date
-    (start <= asof AND (no end OR end > asof)) — notebook 13 cell 11."""
-    where_ticker = "AND c.ticker = $ticker" if ticker else ""
-    return run_cypher(driver, f"""
-        MATCH (c:Company)-[d:DISCLOSES_RISK]->(rf:RiskFactor)
-        WHERE d.start_date <= date($asof) AND (d.end_date IS NULL OR d.end_date > date($asof))
-        {where_ticker}
-        RETURN c.name AS company, count(DISTINCT rf.lineage_id) AS active_risk_lineages
-        ORDER BY active_risk_lineages DESC""",
-        asof=asof, **({"ticker": ticker} if ticker else {}))
+    """Time-travel query: the RiskFactors of the annual filing that was current on ``asof`` (ISO date), i.e. the latest effective
+    annual filing filed on or before it, per company (or for one ``ticker``)."""
+    query = _AS_OF_CYPHER.replace("{where_ticker}", "\n      AND c.ticker = $ticker" if ticker else "")
+    return run_cypher(driver, query, asof=asof, forms=list(ANNUAL_FORMS), statuses=list(EFFECTIVE_FILING_STATUSES),
+                      **({"ticker": ticker} if ticker else {}))

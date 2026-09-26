@@ -172,7 +172,7 @@ def graph_calls(monkeypatch, tmp_path):
     from datetime import date
 
     from semigraph import cli, snapshot
-    from semigraph.graph import client, loaders, schema, temporal
+    from semigraph.graph import client, item_loader, items, loaders, schema, temporal
 
     log: list[tuple[str, dict]] = []
 
@@ -197,7 +197,10 @@ def graph_calls(monkeypatch, tmp_path):
         monkeypatch.setattr(loaders, name, rec(name, {}))
     monkeypatch.setattr(loaders, "stamp_snapshot", rec("stamp_snapshot", "x"))
     monkeypatch.setattr(temporal, "normalize_categories", rec("normalize_categories", 0))
-    monkeypatch.setattr(temporal, "apply_closure", rec("apply_closure", {}))
+    monkeypatch.setattr(temporal, "apply_current_status", rec("apply_current_status", {}))
+    monkeypatch.setattr(item_loader, "load_risk_items", rec("load_risk_items", {"items": 0}))
+    monkeypatch.setattr(items, "discover_tickers", lambda settings, requested=None: list(requested or ["NVDA"]))
+    monkeypatch.setattr(items, "require_alignment", rec("require_alignment"))
     monkeypatch.setattr("semigraph.embeddings.Embedder", lambda *a, **k: object())
     from semigraph.extraction import extractor
     monkeypatch.setattr(extractor, "build_extraction_plan", lambda settings, tickers=None: ({}, {}))
@@ -217,14 +220,17 @@ def test_build_graph_loads_in_dependency_order_and_stamps_the_snapshot(graph_cal
     order = names(graph_calls)
     assert order.index("apply_schema") < order.index("load_companies") < order.index("load_filings_and_sections")
     assert order.index("load_evidence_spans") < order.index("load_knowledge")     # relation post-pass needs spans
+    assert order.index("load_knowledge") < order.index("load_risk_items")         # OF_ITEM needs the RiskFactors, SPANS the spans
+    assert order.index("load_risk_items") < order.index("load_export_controls")
     assert order.index("normalize_categories") < order.index("load_export_controls")
-    assert order.index("load_export_controls") < order.index("apply_closure") < order.index("stamp_snapshot")
+    assert order.index("load_export_controls") < order.index("apply_current_status") < order.index("stamp_snapshot")
+    assert "apply_closure" not in order
     assert order[-1] == "close"
     sid = dict(graph_calls)["load_companies"]["snapshot_id"]
     assert sid == "snap-20260924-test"          # default as-of = the newest date in the lake
     assert all(kw.get("snapshot_id") == sid for n, kw in graph_calls
                if n in ("load_companies", "load_filings_and_sections", "load_metrics", "load_evidence_spans",
-                        "load_knowledge", "load_export_controls"))
+                        "load_knowledge", "load_risk_items", "load_export_controls"))
 
 
 def test_build_graph_rebuild_resets_before_applying_the_schema(graph_calls):
@@ -314,3 +320,111 @@ def test_build_graph_has_no_paid_extraction_path_any_more(graph_calls, plan):
     result = runner.invoke(app, ["build-graph", "--extract"])
 
     assert result.exit_code != 0            # extraction lives in `semigraph extract` with its --max-usd cap
+
+
+# --------------------------------------------- the item layer in build-graph (M1b step 4)
+
+def test_build_graph_stops_before_touching_the_graph_when_the_alignment_is_missing(graph_calls, monkeypatch):
+    """A --rebuild that wiped the graph and only then found the item layer missing would leave it empty."""
+    from semigraph.graph import items
+
+    def missing(settings, tickers):
+        raise items.AlignItemsError("no risk-item alignment for ['NVDA']: run `semigraph align-items` first")
+
+    monkeypatch.setattr(items, "require_alignment", missing)
+    result = runner.invoke(app, ["build-graph", "--rebuild", "--yes"])
+
+    assert result.exit_code == 2 and "run `semigraph align-items` first" in result.output
+    assert not {"reset_graph", "apply_schema", "load_companies", "load_risk_items"} & set(names(graph_calls))
+
+
+def test_build_graph_checks_the_alignment_of_the_requested_tickers_only(graph_calls, monkeypatch):
+    from semigraph.graph import items
+
+    seen = {}
+    monkeypatch.setattr(items, "require_alignment", lambda settings, tickers: seen.setdefault("tickers", tickers))
+    runner.invoke(app, ["build-graph", "-t", "AMD"])
+
+    assert seen["tickers"] == ["AMD"]
+
+
+# --------------------------------------------- align-items
+
+@pytest.fixture
+def align_run(monkeypatch, tmp_path):
+    """Replace the pipeline with a recorder; the CLI's own wiring, printing and exit codes are what is under test."""
+    from semigraph import cli
+    from semigraph.config import Settings
+    from semigraph.graph import adjudicate as adj
+    from semigraph.graph import items
+
+    state = {"calls": [], "raises": None, "estimate": None, "written": [tmp_path / "NVDA_pairs.parquet"], "dry": False}
+
+    def fake(settings, tickers=None, **kwargs):
+        state["calls"].append({"tickers": tickers, **kwargs})
+        if state["raises"]:
+            raise state["raises"]
+        summary = [{"pair_id": "NVDA-a-b", "ticker": "NVDA", "older_date": "d", "newer_date": "e", "compared": True,
+                    "not_compared_reason": None, "older_items": 2, "newer_items": 2, "older_unchanged": 1, "older_reworded": 1,
+                    "older_merged": 0, "older_removed": 0, "older_uncertain": 0, "newer_carried": 2, "newer_new": 0,
+                    "newer_uncertain": 0, "passages_removed": 1, "passages_reworded": 0, "passages_added": 0, "adjudicated": 0},
+                   {"pair_id": "INTC-a-b", "ticker": "INTC", "older_date": "d", "newer_date": "e", "compared": False,
+                    "not_compared_reason": "older filing's risk items cover only 75.8% of its risk section text"}]
+        return items.AlignRun(summary, state["estimate"], [] if kwargs.get("dry_run") else state["written"], bool(kwargs.get("dry_run")))
+
+    monkeypatch.setattr(cli, "_settings", lambda: Settings(data_dir=tmp_path / "data", _env_file=None))
+    monkeypatch.setattr(items, "run_align_items", fake)
+    state["adj"] = adj
+    return state
+
+
+def test_align_items_defaults_to_no_adjudication_a_half_dollar_cap_and_every_ticker(align_run):
+    result = runner.invoke(app, ["align-items"])
+
+    assert result.exit_code == 0, result.output
+    assert align_run["calls"] == [{"tickers": None, "adjudicate": False, "max_usd": 0.5, "dry_run": False}]
+
+
+def test_align_items_prints_the_per_pair_table_the_not_compared_reason_and_the_files_written(align_run):
+    result = runner.invoke(app, ["align-items", "-t", "NVDA", "-t", "INTC"])
+
+    assert align_run["calls"][0]["tickers"] == ["NVDA", "INTC"]
+    assert "NVDA-a-b" in result.output and "REMOVED" in result.output
+    assert "NOT COMPARED" in result.output and "75.8%" in result.output
+    assert "NVDA_pairs.parquet" in result.output
+
+
+def test_align_items_dry_run_writes_nothing_and_says_so(align_run):
+    result = runner.invoke(app, ["align-items", "--dry-run"])
+
+    assert align_run["calls"][0]["dry_run"] is True and "nothing was written and no model was called" in result.output
+    assert "NVDA_pairs.parquet" not in result.output
+
+
+def test_align_items_adjudicate_prints_the_estimate_and_warns_when_the_cap_would_refuse(align_run):
+    from semigraph.graph import adjudicate as adj
+
+    align_run["estimate"] = adj.Estimate("openai/gpt-6-luna", 12, 2, 10, 24000, 10000, 0.6, 0.004, True)
+    result = runner.invoke(app, ["align-items", "--adjudicate", "--dry-run", "--max-usd", "0.5"])
+
+    assert align_run["calls"][0]["adjudicate"] is True and align_run["calls"][0]["max_usd"] == 0.5
+    assert "12 item(s) to settle (2 already answered)" in result.output and "10 call(s)" in result.output
+    assert "worst case $0.6000" in result.output and "would be refused before any call" in result.output
+
+
+def test_align_items_exits_3_when_the_worst_case_is_over_the_cap(align_run):
+    from semigraph.graph import adjudicate as adj
+
+    align_run["raises"] = adj.BudgetExceeded("worst case $0.6000 for 10 call(s) exceeds --max-usd $0.50: nothing was spent")
+    result = runner.invoke(app, ["align-items", "--adjudicate"])
+
+    assert result.exit_code == 3 and "exceeds --max-usd" in result.output and "nothing was spent" in result.output
+
+
+def test_align_items_exits_2_with_the_message_when_an_input_is_missing(align_run):
+    from semigraph.graph import items
+
+    align_run["raises"] = items.AlignItemsError("no risk items in data/interim/risk_items: run `semigraph risk-items` first")
+    result = runner.invoke(app, ["align-items"])
+
+    assert result.exit_code == 2 and "run `semigraph risk-items` first" in result.output
