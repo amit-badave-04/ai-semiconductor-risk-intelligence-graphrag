@@ -12,8 +12,8 @@
   h1 { margin:0; font-size:24px; letter-spacing:-.01em } h1 span { color:var(--accent) }
   .sub { color:var(--muted); margin:6px 0 0; max-width:820px }
   .stats { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:14px; font-size:13px; color:var(--muted) } .stats b { color:var(--ink) }
-  main { max-width:1100px; margin:0 auto; padding:8px 20px 60px; display:grid; grid-template-columns: 1fr; gap:18px }
-  @media (min-width: 900px) { main { grid-template-columns: 340px 1fr } }
+  main { max-width:1100px; margin:0 auto; padding:8px 20px 60px; display:grid; grid-template-columns: minmax(0,1fr); gap:18px }
+  @media (min-width: 900px) { main { grid-template-columns: 340px minmax(0,1fr) } }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px }
   .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px }
   .ex { display:flex; flex-direction:column; gap:6px; max-height:70vh; overflow:auto }
@@ -28,10 +28,13 @@
   #answer { margin-top:10px; line-height:1.6 } #answer h3 { font-size:16px; margin:14px 0 6px } #answer ul { padding-left:20px; margin:4px 0 } #answer li { margin:3px 0 }
   .cite { display:inline-block; background:var(--chip); border:1px solid var(--line); border-radius:6px; padding:0 6px; font-size:11px; font-family:ui-monospace,Menlo,Consolas,monospace; cursor:pointer; margin:0 2px; color:var(--accent) } .cite:hover { border-color:var(--accent) }
   .badge { display:inline-block; font-size:12px; border-radius:999px; padding:2px 10px; background:var(--chip); margin:0 6px 4px 0 } .badge.ok { color:var(--ok) } .badge.warn { color:var(--warn) } .badge.bad { color:var(--bad) }
+  .warns { margin:6px 0 0; padding-left:20px; font-size:12px; color:var(--warn) } .warns li { margin:2px 0 }
   #meta { margin-top:14px; font-size:13px; color:var(--muted); border-top:1px solid var(--line); padding-top:10px }
   #drawer { position:fixed; right:0; top:0; height:100%; width:min(560px,100%); background:var(--card); border-left:1px solid var(--line); box-shadow:-8px 0 24px rgba(0,0,0,.12); transform:translateX(100%); transition:transform .2s; overflow:auto; padding:20px; z-index:10 }
   #drawer.open { transform:none } #drawer .close { float:right; background:none; border:0; font-size:20px; cursor:pointer; color:var(--muted) }
   #drawer pre { white-space:pre-wrap; font:13px/1.55 inherit; background:var(--bg); padding:12px; border-radius:8px; border:1px solid var(--line) }
+  #dFresh { margin:8px 0 } #dFresh .hint { margin-top:2px }
+  dl.facts { display:grid; grid-template-columns:max-content 1fr; gap:4px 14px; margin:10px 0; font-size:13px } dl.facts dt { color:var(--muted) } dl.facts dd { margin:0; word-break:break-word }
   .err { color:var(--bad) } footer { max-width:1100px; margin:0 auto; padding:0 20px 40px; color:var(--muted); font-size:12px }
   a { color:var(--accent) }
 </style>
@@ -39,7 +42,7 @@
 <body>
 <header>
   <h1><span>semigraph</span> — AI Semiconductor Risk Intelligence</h1>
-  <p class="sub">Ask multi-hop supply-chain and export-control questions over the SEC filings of 14 keystone companies (Nvidia, AMD, TSMC, ASML, Micron, Meta …). Answers come from a <b>bitemporal knowledge graph</b> in which every relationship is backed by a verbatim filing excerpt; every factual sentence carries a citation you can click to read the source text.</p>
+  <p class="sub">Ask multi-hop supply-chain and export-control questions over the SEC filings of 14 keystone companies (Nvidia, AMD, TSMC, ASML, Micron, Meta …). Answers come from a <b>bitemporal knowledge graph</b>: company relationships and risk disclosures are each backed by a verbatim filing excerpt, while the links to export-control rules are <b>keyword matches to external Federal Register rules</b>: outside events, not statements the company made. Answers cite their sources; click a citation to read the text or data behind it.</p>
   <div class="stats" id="stats">loading graph statistics…</div>
 </header>
 <main>
@@ -52,12 +55,13 @@
     <textarea id="q" maxlength="500" placeholder="e.g. Which export-control rules affect Nvidia, and which risks did it stop disclosing in its latest 10-K?"></textarea>
     <div class="row">
       <select id="strategy" title="Retrieval strategy">
-        <option value="hybrid">hybrid GraphRAG (graph + XBRL + bitemporal + vector) — benchmark 95% correct (19 of 20)</option>
-        <option value="vector">vector-only baseline — 75% correct with Sonnet 5, 0% on temporal questions</option>
+        <option value="hybrid">hybrid GraphRAG (graph + XBRL + text-checked risk changes + vector search)</option>
+        <option value="vector">vector-only: comparison baseline, no temporal reasoning</option>
       </select>
       <button class="btn" id="ask">Ask</button>
       <span class="hint" id="limits"></span>
     </div>
+    <div class="hint" style="margin-top:6px">Accuracy figures shown on earlier versions of this page are withdrawn: the benchmark behind them could not detect false &ldquo;dropped risk&rdquo; claims. A source-text-grounded re-measurement is in progress (<a href="https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag/blob/v2/docs/v2/M1B_PLAN.md" target="_blank" rel="noopener">plan</a>, <a href="https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag/blob/v2/docs/v2/REVIEW_2026-09-26.md" target="_blank" rel="noopener">review</a>).</div>
     <div id="turnstile-widget" class="row"></div>
     <div id="status"></div>
     <div id="answer"></div>
@@ -68,23 +72,131 @@
   <button class="close" id="drawerClose" title="close">×</button>
   <h3 id="dTitle">Evidence</h3>
   <div id="dMeta" class="hint"></div>
+  <div id="dFresh"></div>
+  <div id="dFacts"></div>
   <pre id="dText"></pre>
   <p id="dLink"></p>
 </aside>
 <footer>
-  Live questions cost real money (one Claude call each), so they are rate-limited per address and capped per day; benchmark questions are served from the committed evaluation run. Financial figures come from XBRL facts, never from model parsing. Source code and methodology: <a href="https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag">GitHub</a>.
+  Live questions cost real money (<span id="costNote">one or two model calls each</span>), so they are rate-limited per address and capped per day; benchmark questions are served from a saved evaluation run. Financial figures come from XBRL facts, not from model parsing. Each answer is checked so that every cited id was retrieved and every number matches the retrieved context; those checks do not prove that a sentence is supported by the passage it cites, so read the source. Source code and methodology: <a href="https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag">GitHub</a>.
 </footer>
 <script>
-const TURNSTILE_SITE_KEY = "__TURNSTILE_SITE_KEY__";
-const $ = (id) => document.getElementById(id);
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const CITE = /\[([0-9\-]+:[IVX]+\.[0-9A-Z]+:[0-9]{4})\]/g;
-let turnstileToken = null;
+/* ===== Pure helpers: no DOM access, unit-tested by tests/ui/*.test.mjs (node --test). Keep them first. ===== */
+const ESC_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ESC_MAP[c]);
+const shortModel = (m) => String(m == null ? "" : m).split("/").pop();
+
+// The citation grammar: the same three forms as src/semigraph/retrieval/ids.py (tests/test_static_ui.py pins the patterns).
+const CHUNK_ID = /[0-9\-]+:[IVX]+\.[0-9A-Z]+:[0-9]{4}/.source;
+const XBRL_ID = /xbrl:[0-9]+:[a-z][a-z0-9_]*:[0-9]{4}-[0-9]{2}-[0-9]{2}/.source;
+const FR_ID = /fr:(?:C[0-9]-)?[0-9]{4}-[0-9]{4,6}/.source;
+const CITE = new RegExp("\\[(" + CHUNK_ID + "|" + XBRL_ID + "|" + FR_ID + ")\\]", "g");
+const ID_FORMS = { chunk: new RegExp("^" + CHUNK_ID + "$"), xbrl: new RegExp("^" + XBRL_ID + "$"), fr: new RegExp("^" + FR_ID + "$") };
+
+function classifyCitation(id) {
+  const s = String(id == null ? "" : id);
+  for (const kind of ["chunk", "xbrl", "fr"]) if (ID_FORMS[kind].test(s)) return kind;
+  return null;
+}
+
+// A readable chip label instead of a bare four-digit number. `evidence` (optional) is the /api/evidence payload.
+function chipLabel(id, evidence) {
+  const s = String(id == null ? "" : id), kind = classifyCitation(s);
+  if (kind === "chunk") {
+    const m = s.match(/^[0-9\-]+:[IVX]+\.([0-9A-Z]+):([0-9]{4})$/);
+    const base = `Item ${m[1]} ¶${m[2]}`, ev = evidence && typeof evidence === "object" ? evidence : {};
+    const period = ev.fiscal_year ? `FY${ev.fiscal_year}` : (ev.filing_date ? `filed ${String(ev.filing_date).slice(0, 10)}` : "");
+    const head = [ev.form ? String(ev.form) : "", period].filter(Boolean).join(" ");
+    return head ? `${head} · ${base}` : base;
+  }
+  if (kind === "xbrl") { const p = s.split(":"); return `XBRL ${p[2].replace(/_/g, " ")} FY ended ${p[3]}`; }
+  if (kind === "fr") return `BIS rule ${s.slice(3)}`;
+  return s;
+}
+
+const REASONS = {
+  empty: "empty answer", truncated: "answer cut off by the token budget",
+  invalid_citation: "a cited id was not in the retrieved context", no_citation: "no citation",
+  ungrounded_number: "a number not found in the retrieved context", pseudo_citation: "bracketed text that is not a citation",
+  draft_error: "the draft model failed",
+};
+const reasonText = (r) => REASONS[r] || String(r).replace(/_/g, " ");
+const list = (x) => (Array.isArray(x) ? x : []);
+
+// The status line while a rejected draft is re-answered (the `escalated` event carries the reasons).
+function escalationStatus(ev) {
+  const why = list(ev && ev.reasons).map(reasonText);
+  return `the first draft did not pass the automatic checks${why.length ? " (" + why.join("; ") + ")" : ""}; answering again with the stronger model…`;
+}
+
+function checksPassed(c) {
+  return !(c && typeof c === "object" && (c.citations_retrieved === false || c.numbers_grounded === false ||
+    list(c.unmatched_numbers).length || list(c.pseudo_citations).length));
+}
+
+// What actually happened to this answer, and nothing more. `defaultModel` (from /api/stats) names the model of a live stream.
+function answerBadge(ev, defaultModel) {
+  if (!ev) return null;
+  if (!ev.answered_by) {
+    if (ev.cached || !defaultModel || ev.routed || ev.escalated) return null;
+    return { text: `answered by ${shortModel(defaultModel)} (streamed live)`, cls: "" };
+  }
+  const m = shortModel(ev.answered_by);
+  if (ev.routed === "strong") return { text: `answered by ${m} (routed: change-over-time question; no cheap draft)`, cls: "" };
+  if (ev.escalated) {
+    const why = list(ev.escalation_reasons).map(reasonText);
+    return { text: `answered by ${m}, escalated after a failed check${why.length ? " (" + why.join("; ") + ")" : ""}`, cls: "" };
+  }
+  if (ev.routed === "cheap") {
+    return checksPassed(ev.checks) ? { text: `${m} draft passed the checks`, cls: "" }
+      : { text: `${m} draft released with check warnings (see below)`, cls: "warn" };
+  }
+  return { text: `answered by ${m}`, cls: "" };
+}
+
+// The badges and visible warnings that `checks` supports. Never claims more than the checks do.
+function checksSummary(ev) {
+  ev = ev || {};
+  const cites = list(ev.citations), hall = list(ev.hallucinated);
+  const c = ev.checks && typeof ev.checks === "object" ? ev.checks : null;
+  const badges = [{ text: `${cites.length} citation${cites.length === 1 ? "" : "s"}`, cls: "" }], warnings = [];
+  if (hall.length || (c && c.citations_retrieved === false)) {
+    badges.push({ text: hall.length ? `${hall.length} cited id(s) not in the retrieved context` : "some cited ids were not in the retrieved context", cls: "bad" });
+    if (hall.length) warnings.push(`Cited but not retrieved: ${hall.join(", ")}`);
+  } else badges.push({ text: "cited ids were retrieved", cls: "ok" });
+  if (c && c.numbers_grounded === true) badges.push({ text: "numbers matched the retrieved context", cls: "ok" });
+  else if (c && c.numbers_grounded === false) badges.push({ text: "some numbers are not in the retrieved context", cls: "bad" });
+  else badges.push({ text: "numbers not checked", cls: "" });
+  if (c && list(c.unmatched_numbers).length) warnings.push(`Numbers not found in the retrieved context: ${list(c.unmatched_numbers).join(", ")}`);
+  if (c && list(c.pseudo_citations).length) warnings.push(`Bracketed text that is not a citation and cannot be verified: ${list(c.pseudo_citations).join(", ")}`);
+  const hint = "These checks confirm that each cited id was retrieved and that numbers match the retrieved context; they do not prove that a sentence is supported by the passage it cites. Click a chip to read the source.";
+  return { badges, warnings, hint };
+}
+
+// The whole footer of an answer as escaped HTML.
+function metaHtml(ev, defaultModel) {
+  ev = ev || {};
+  const badge = (b) => `<span class="badge${b.cls ? " " + b.cls : ""}">${esc(b.text)}</span>`;
+  let h = "";
+  if (ev.cached) h += badge({ text: "cached · " + (ev.source === "benchmark" ? "saved example answer from an earlier evaluation run" : "answered earlier") });
+  else {
+    const u = ev.usage && typeof ev.usage === "object" ? ev.usage : {};
+    h += badge({ text: `${u.prompt_tokens || "?"} in / ${u.completion_tokens || "?"} out tokens${u.estimated ? " (est.)" : ""}` });
+    if (typeof ev.cost_usd === "number") h += badge({ text: `≈ $${ev.cost_usd.toFixed(3)}` });
+  }
+  const ab = answerBadge(ev, defaultModel);
+  if (ab) h += badge(ab);
+  if (ev.finish_reason === "length") h += badge({ text: "answer truncated by the token budget", cls: "warn" });
+  const s = checksSummary(ev);
+  h += s.badges.map(badge).join("");
+  if (s.warnings.length) h += `<ul class="warns">${s.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>`;
+  return h + `<div class="hint" style="margin-top:6px">${esc(s.hint)}</div>`;
+}
 
 function renderMarkdown(md) {
-  const lines = md.split("\n"); let html = "", inList = false;
+  const lines = String(md == null ? "" : md).split("\n"); let html = "", inList = false;
   const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
-    .replace(CITE, (m, id) => `<span class="cite" data-id="${id}" title="open evidence ${id}">${id.split(":")[2]}</span>`);
+    .replace(CITE, (m, id) => `<span class="cite" data-id="${id}" title="open evidence ${id}">${esc(chipLabel(id))}</span>`);
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, "");
     const li = line.match(/^\s*[-*]\s+(.*)/);
@@ -98,16 +210,124 @@ function renderMarkdown(md) {
   return html;
 }
 
+function formatNumber(n) {
+  if (n == null || n === "") return "";
+  const x = typeof n === "number" ? n : (typeof n === "string" && n.trim() !== "" ? Number(n) : NaN);
+  return Number.isFinite(x) ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(x) : String(n);
+}
+
+function statsHtml(s) {
+  const g = (s && s.graph) || {}, n = g.nodes || {}, today = (s && s.ledger && s.ledger.today) || {}, lim = (s && s.limits) || {};
+  const item = (v, label) => `<span><b>${esc(formatNumber(v))}</b> ${label}</span>`;
+  const parts = [item(n.Company || 0, "companies"), item(n.Filing || 0, "filings"), item(n.EvidenceSpan || 0, "evidence spans"), item(n.RiskFactor || 0, "risk disclosures")];
+  if (typeof g.removed_risk_items === "number") parts.push(item(g.removed_risk_items, "text-verified removed risk items"));
+  parts.push(item(n.ExportControl || 0, "BIS rules"));
+  parts.push(`<span>live questions today <b>${esc(today.paid == null ? "?" : today.paid)}</b> / ${esc(lim.max_queries_per_day == null ? "?" : lim.max_queries_per_day)}</span>`);
+  if (s && s.paused) parts.push(`<span class="badge warn">live questions paused</span>`);
+  return parts.join("");
+}
+
+function limitsText(s) {
+  const lim = (s && s.limits) || {}, m = (s && s.models) || {}, parts = [];
+  if (lim.per_ip) parts.push(`limit: ${lim.per_ip} per address`);
+  if (m.llm) parts.push(`model: ${shortModel(m.llm)}` + (m.escalation ? ` (drafts are checked before they are shown; ${shortModel(m.escalation)} answers change-over-time questions and re-answers rejected drafts)` : ""));
+  return parts.join(" · ");
+}
+
+function costNote(models) {
+  const a = shortModel(models && models.llm), e = shortModel(models && models.escalation);
+  if (a && e && a !== e) return `one ${a} call each, plus a second ${e} call when the draft fails its checks; change-over-time questions go straight to ${e}`;
+  if (a) return `one ${a} call each`;
+  return "one or two model calls each";
+}
+
+function retrievalStatus(ev) {
+  const c = (ev && ev.counts) || {}, names = ev && ev.anchors ? Object.keys(ev.anchors) : [];
+  const parts = [`anchors: ${ev && ev.anchor_defaulted ? "no company detected; defaulting to Nvidia" : (names.join(", ") || "none")}`];
+  const add = (n, label) => { if (typeof n === "number") parts.push(`${n} ${label}`); };
+  add(c.edges, "relationships"); add(c.metrics, "XBRL metrics"); add(c.risks, "active risk disclosures");
+  add(c.temporal, "risk-change items"); add(c.chunks, "excerpts");
+  return parts.join(" · ");
+}
+
+// Links from the API are rendered only when they are https (never javascript:, data:, or plain http).
+const safeUrl = (u) => (typeof u === "string" && /^https:\/\//i.test(u) ? u : "");
+const linkHtml = (url, label) => (safeUrl(url) ? `<a href="${esc(safeUrl(url))}" target="_blank" rel="noopener">${esc(label)} ↗</a>` : "");
+const factsHtml = (rows) => {
+  const shown = rows.filter((r) => r[1] != null && String(r[1]) !== "");
+  return shown.length ? `<dl class="facts">${shown.map((r) => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join("")}</dl>` : "";
+};
+
+function freshnessHtml(d) {
+  const b = (text, cls) => `<span class="badge${cls ? " " + cls : ""}">${esc(text)}</span>`;
+  const status = d.status ? String(d.status) : (d.is_current === true ? "current" : (d.is_current === false ? "not current" : ""));
+  let h = "";
+  if (status === "current") h += b("current", "ok");
+  else if (status === "superseded") h += b("superseded" + (d.superseded_by ? " by " + d.superseded_by : ""), "warn");
+  else if (status === "corrected") h += b("corrected" + (d.corrected_by ? " by " + d.corrected_by : ""), "bad");
+  else if (status) h += b(status, "warn");
+  if (d.valid_to) h += b("valid until " + d.valid_to);
+  if (d.retrievable === false) h += b("not returned by default search", "warn");
+  if (status === "corrected") h += `<div class="hint">A later amendment restated this passage; the amending filing holds the current version.</div>`;
+  return h;
+}
+
+// The API sends period_start / period_end; a nested `period` (string or {start, end}) is accepted too.
+function periodText(d, id) {
+  const nested = d.period && typeof d.period === "object" ? d.period : {};
+  const start = d.period_start || nested.start || "", end = d.period_end || nested.end || "";
+  if (start || end) return (start ? start + " to " : "") + end;
+  if (typeof d.period === "string" && d.period) return d.period;
+  return `FY ended ${String(id).split(":")[3] || ""}`;
+}
+
+// Everything the evidence drawer shows, as escaped HTML strings (plus the excerpt as raw text for textContent).
+function evidenceView(id, d) {
+  d = d && typeof d === "object" ? d : {};
+  const kind = classifyCitation(id), label = chipLabel(id, d);
+  const view = { kind, label, title: "Evidence · " + label, metaHtml: "", freshHtml: "", factsHtml: "", text: "", linkHtml: "" };
+  const idLine = `<div>id: ${esc(id)}</div>`;
+  if (kind === "xbrl") {
+    view.metaHtml = "A reported financial fact taken from the company's XBRL data, not parsed by a model." + idLine;
+    view.factsHtml = factsHtml([
+      ["Company", d.company], ["Metric", (d.metric || String(id).split(":")[2].replace(/_/g, " ")) + (d.concept ? ` (${d.concept})` : "")],
+      ["Value", d.value == null ? "" : formatNumber(d.value) + (d.unit ? " " + d.unit : "")],
+      ["Period", periodText(d, id)],
+      ["Disclosed in", [d.form, d.filing_date ? "filed " + d.filing_date : "", d.accession_no || d.accession].filter(Boolean).join(" · ")],
+    ]);
+    view.linkHtml = linkHtml(d.source_url || d.url, "Open the source");
+  } else if (kind === "fr") {
+    view.metaHtml = "External event: a Federal Register rule that keyword matching linked to companies. It is not a statement by the company in its filings." + idLine;
+    view.factsHtml = factsHtml([
+      ["Title", d.title], ["Published", d.publication_date], ["Document number", d.document_number || String(id).slice(3)],
+      ["Kind", d.kind], ["Topics", list(d.topics).join(", ")], ["Kind flagged relevant", d.relevant == null ? "" : (d.relevant ? "yes" : "no")],
+    ]);
+    view.text = typeof d.abstract === "string" ? d.abstract : "";
+    view.linkHtml = linkHtml(d.url, "Open the rule on federalregister.gov");
+  } else {
+    const mentions = list(d.mentions);
+    view.metaHtml = esc([d.filer, d.form, d.filing_date, d.section_title].filter(Boolean).join(" · ") + (mentions.length ? ` · mentions: ${mentions.join(", ")}` : "")) + idLine;
+    view.freshHtml = freshnessHtml(d);
+    view.factsHtml = factsHtml([["Risk item", [d.headline, ...list(d.item_headlines)].filter(Boolean).join("; ")]]);
+    view.text = typeof d.text === "string" ? d.text : "";
+    view.linkHtml = linkHtml(d.source_url, "Open the filing on sec.gov");
+  }
+  return view;
+}
+
+/* ===== Page behaviour ===== */
+const TURNSTILE_SITE_KEY = "__TURNSTILE_SITE_KEY__";
+const $ = (id) => document.getElementById(id);
+let turnstileToken = null, modelsInfo = null;
+const evidenceCache = new Map();
+
 async function loadStats() {
   try {
     const s = await (await fetch("/api/stats")).json();
-    const g = s.graph, n = g.nodes;
-    $("stats").innerHTML = `<span><b>${n.Company || 0}</b> companies</span><span><b>${n.Filing || 0}</b> filings</span>` +
-      `<span><b>${(n.EvidenceSpan || 0).toLocaleString()}</b> evidence spans</span><span><b>${(n.RiskFactor || 0).toLocaleString()}</b> risk disclosures</span>` +
-      `<span><b>${g.deleted_risk_lineages}</b> dropped risk lineages</span><span><b>${n.ExportControl || 0}</b> BIS rules</span>` +
-      `<span>live questions today <b>${s.ledger.today.paid}</b> / ${s.limits.max_queries_per_day}</span>` +
-      (s.paused ? `<span class="badge warn">live questions paused</span>` : "");
-    const short = (m) => m.split("/").pop(); $("limits").textContent = `limit: ${s.limits.per_ip} per address · model: ${short(s.models.llm)}` + (s.models.escalation ? ` (verified; ${short(s.models.escalation)} for change-over-time questions and rejected drafts)` : "");
+    modelsInfo = s.models || null;
+    $("stats").innerHTML = statsHtml(s);
+    $("limits").textContent = limitsText(s);
+    $("costNote").textContent = costNote(s.models);
   } catch (e) { $("stats").textContent = "statistics unavailable"; }
 }
 
@@ -137,9 +357,10 @@ async function ask() {
   const handle = (chunk) => {
     let event = "message", data = "";
     for (const l of chunk.split("\n")) { if (l.startsWith("event:")) event = l.slice(6).trim(); else if (l.startsWith("data:")) data += l.slice(5).trim(); }
-    if (!data) return; const ev = JSON.parse(data);
-    if (event === "retrieval") { const c = ev.counts; setStatus(`anchors: ${Object.keys(ev.anchors).join(", ") || "none (defaults to Nvidia)"} · ${c.edges} relationships · ${c.metrics} XBRL metrics · ${c.risks} active risks · ${c.temporal} dropped lineages · ${c.chunks} excerpts — generating…`); }
-    else if (event === "escalated") { setStatus("the first draft did not pass verification — answering again with the stronger model…"); }
+    if (!data) return;
+    let ev; try { ev = JSON.parse(data); } catch (_) { return; }
+    if (event === "retrieval") { setStatus(retrievalStatus(ev) + " — generating…"); }
+    else if (event === "escalated") { setStatus(escalationStatus(ev)); }
     else if (event === "delta") { text += ev.text; $("answer").innerHTML = renderMarkdown(text); }
     else if (event === "done") { text = ev.answer; $("answer").innerHTML = renderMarkdown(text); finish(ev); }
     else if (event === "error") { setStatus(ev.detail, "err"); }
@@ -153,30 +374,30 @@ async function ask() {
 }
 
 function finish(ev) {
-  const cites = ev.citations || [], hall = ev.hallucinated || [];
-  let meta = "";
-  if (ev.cached) { meta += `<span class="badge">cached · ${ev.source === "benchmark" ? "benchmarked answer from the evaluation run" : "answered earlier"}</span>`; setStatus("served from cache — no model call"); }
-  else {
-    const u = ev.usage || {};
-    meta += `<span class="badge">${u.prompt_tokens || "?"} in / ${u.completion_tokens || "?"} out tokens${u.estimated ? " (est.)" : ""}</span>` + (ev.cost_usd != null ? `<span class="badge">≈ $${ev.cost_usd.toFixed(3)}</span>` : "");
-    setStatus("done");
-    if (ev.answered_by) meta += `<span class="badge">answered by ${esc(String(ev.answered_by).split("/").pop())}${ev.escalated ? " · escalated after a failed check" : " · draft verified"}</span>`;
-    if (ev.finish_reason === "length") meta += `<span class="badge warn">answer truncated by the token budget</span>`;
+  setStatus(ev.cached ? "served from cache — no model call" : "done");
+  $("meta").innerHTML = metaHtml(ev, modelsInfo && modelsInfo.llm); $("meta").hidden = false;
+}
+
+function showEvidence(id, d) {
+  const v = evidenceView(id, d);
+  $("dTitle").textContent = v.title; $("dMeta").innerHTML = v.metaHtml; $("dFresh").innerHTML = v.freshHtml;
+  $("dFacts").innerHTML = v.factsHtml; $("dText").textContent = v.text; $("dText").hidden = !v.text; $("dLink").innerHTML = v.linkHtml;
+  if (v.kind === "chunk") {   // the chip label gains the form and period once the evidence is known
+    $("answer").querySelectorAll(".cite").forEach((chip) => { if (chip.dataset.id === id) chip.textContent = v.label; });
   }
-  meta += `<span class="badge">${cites.length} citations</span>` + (hall.length ? `<span class="badge bad">${hall.length} citation(s) not in retrieved context</span>` : `<span class="badge ok">all citations verified against retrieved context</span>`);
-  $("meta").innerHTML = meta + `<div class="hint" style="margin-top:6px">Click a citation chip to read the SEC excerpt it points to.</div>`; $("meta").hidden = false;
 }
 
 $("answer").addEventListener("click", async (e) => {
   const chip = e.target.closest(".cite"); if (!chip) return;
-  const id = chip.dataset.id; $("dTitle").textContent = `Evidence ${id}`; $("dText").textContent = "loading…"; $("dMeta").textContent = ""; $("dLink").innerHTML = ""; $("drawer").classList.add("open");
+  const id = chip.dataset.id; $("drawer").classList.add("open");
+  if (evidenceCache.has(id)) { showEvidence(id, evidenceCache.get(id)); return; }
+  $("dTitle").textContent = "Evidence · " + chipLabel(id); $("dMeta").textContent = ""; $("dFresh").innerHTML = ""; $("dFacts").innerHTML = ""; $("dLink").innerHTML = "";
+  $("dText").hidden = false; $("dText").textContent = "loading…";
   try {
-    const r = await fetch(`/api/evidence/${encodeURIComponent(id)}`); if (!r.ok) throw new Error((await r.json()).detail);
-    const d = await r.json();
-    $("dMeta").textContent = [d.filer, d.form, d.filing_date, d.section_title].filter(Boolean).join(" · ") + (d.mentions && d.mentions.length ? ` · mentions: ${d.mentions.join(", ")}` : "");
-    $("dText").textContent = d.text;
-    if (d.source_url) $("dLink").innerHTML = `<a href="${esc(d.source_url)}" target="_blank" rel="noopener">Open the filing on sec.gov ↗</a>`;
-  } catch (err) { $("dText").textContent = "could not load evidence: " + err.message; }
+    const r = await fetch(`/api/evidence/${encodeURIComponent(id)}`);
+    if (!r.ok) { let detail = r.statusText; try { detail = (await r.json()).detail; } catch (_) {} throw new Error(detail); }
+    const d = await r.json(); evidenceCache.set(id, d); showEvidence(id, d);
+  } catch (err) { $("dText").hidden = false; $("dText").textContent = "could not load evidence: " + err.message; }
 });
 $("drawerClose").addEventListener("click", () => $("drawer").classList.remove("open"));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("drawer").classList.remove("open"); if ((e.ctrlKey || e.metaKey) && e.key === "Enter") ask(); });

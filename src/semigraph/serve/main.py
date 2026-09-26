@@ -48,12 +48,21 @@ def connect_with_retry(settings):
 
 
 def graph_stats(driver) -> dict:
+    """The public /api/stats graph block.
+
+    ``removed_risk_items`` counts ``RiskItem`` nodes whose text was verified absent from a newer filing
+    (``removed_in`` set); ``risk_items`` is the total. Both are 0 on a graph built before RiskItems existed.
+    The old ``deleted_risk_lineages`` (a count of ``DISCLOSES_RISK`` edges, not lineages) is deliberately gone.
+    """
     labels = run_cypher(driver, """MATCH (n) WITH labels(n)[0] AS label, count(*) AS n
         WHERE NOT label STARTS WITH 'Svc' RETURN label, n ORDER BY n DESC""")
     rels = run_cypher(driver, "MATCH ()-[r]->() RETURN count(r) AS n")[0]["n"]
-    deleted = run_cypher(driver, "MATCH ()-[d:DISCLOSES_RISK {status:'Deleted'}]->() RETURN count(d) AS n")[0]["n"]
-    return {"nodes": {r["label"]: r["n"] for r in labels}, "relationships": rels,
-            "deleted_risk_lineages": deleted}
+    nodes = {r["label"]: r["n"] for r in labels}
+    risk_items = nodes.get("RiskItem", 0)
+    # Only query the label when it exists: an unknown label would log a warning on every start of an older graph.
+    removed = (run_cypher(driver, "MATCH (i:RiskItem) WHERE i.removed_in IS NOT NULL RETURN count(i) AS n")[0]["n"]
+               if risk_items else 0)
+    return {"nodes": nodes, "relationships": rels, "risk_items": risk_items, "removed_risk_items": removed}
 
 
 def bootstrap(settings):

@@ -70,7 +70,7 @@ cached answers, estimated USD from provider-reported token usage).
 | Control | Where | Default |
 |---|---|---|
 | Per-address window | in-process sliding window (`RATE_LIMIT_QUESTIONS` / `RATE_LIMIT_WINDOW_SECONDS`) | 5 per 10 min |
-| Daily ceiling on paid answers | Neo4j `SvcQuery` ledger (`MAX_QUERIES_PER_DAY`) — survives restarts | 150 (≈ $9/day worst case at ~$0.06/answer) |
+| Daily ceiling on paid answers | Neo4j `SvcQuery` ledger (`MAX_QUERIES_PER_DAY`) — survives restarts | 150 (≈ $9/day worst case at Sonnet-only prices, ~$0.06/answer; the Luna path measured about $0.0067/answer on the benchmark) |
 | Kill switch | Neo4j `SvcPolicy` (`scripts/kill_switch.py`) or env `KILL_SWITCH=true` | off |
 | Answer cache | Neo4j `SvcAnswer`, keyed on normalized question + strategy (`ANSWER_CACHE_TTL_HOURS`); the 20 benchmark answers are seeded permanently | 24 h |
 | Concurrency | `MAX_CONCURRENT_ANSWERS` LLM calls in flight | 2 |
@@ -140,14 +140,40 @@ flyctl ips allocate-v4 --shared -a semigraph; flyctl ips allocate-v6 -a semigrap
 
 ## Answering models (v1.2)
 
-`LLM_MODEL` (default `openai/gpt-6-luna`) drafts every answer; `ESCALATION_MODEL` (`anthropic/claude-sonnet-5`) answers
-questions about change over time directly and re-answers any draft the verifier rejects (empty, truncated, a citation
-outside the retrieved context, or no citation unless it is a refusal or every dollar figure is in the METRICS block).
-A draft is buffered until it passes, so the first token appears after generation. Provider keys are Fly secrets
-(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`); push names with `python -m scripts.push_fly_secrets --only LLM_MODEL,ESCALATION_MODEL[,OPENAI_API_KEY] [--env .env]`
-then `flyctl deploy`. **Revert to Sonnet only:** set `LLM_MODEL=anthropic/claude-sonnet-5` and clear `ESCALATION_MODEL`
-(`flyctl secrets unset ESCALATION_MODEL -a semigraph`), or set both to Sonnet. Check the models from inside the container without
+Three settings, three roles (defined in `src/semigraph/config.py`, documented in `.env.example`):
+
+| Setting | Role | Code default | Production |
+|---|---|---|---|
+| `ANSWER_MODEL` | drafts every live answer | `anthropic/claude-sonnet-5` | `openai/gpt-6-luna` |
+| `ESCALATION_MODEL` | answers change-over-time questions directly and re-answers any draft the checks reject | empty (no escalation) | `anthropic/claude-sonnet-5` |
+| `LLM_MODEL` | extraction and the evaluation judges only (schema-sensitive; it never follows the answering model) | `anthropic/claude-sonnet-5` | not used by the service |
+
+Production values are pinned in `fly.toml [env]` (`ANSWER_MODEL`, `ESCALATION_MODEL`), so a redeploy reproduces them; the
+code default for `ANSWER_MODEL` stays Sonnet so a local run is Sonnet. A draft is rejected when it is empty, truncated, cites
+an id outside the retrieved context, has no citation (unless it is a refusal or every dollar figure is in the METRICS
+block), carries a number that matches nothing in the retrieved context, or uses a bracketed pseudo-citation. A draft is
+buffered until it passes, so the first token appears after generation. Provider keys are Fly secrets (`OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`); push names with `python -m scripts.push_fly_secrets --only OPENAI_API_KEY [--env .env]`.
+
+**Before the first deploy of this configuration**, check what the running machine will see:
+`flyctl ssh console -a semigraph -C "printenv ANSWER_MODEL ESCALATION_MODEL LLM_MODEL"`. The v1.2 deployment staged
+`LLM_MODEL=openai/gpt-6-luna` and `ESCALATION_MODEL` as Fly *secrets*; after this change `LLM_MODEL` no longer affects
+answering, and `ESCALATION_MODEL` is now set in two places (same value). To keep one source of truth, run
+`flyctl secrets unset ESCALATION_MODEL -a semigraph` once the deploy shows the right values (which of a secret and an
+`[env]` entry wins when both are set was not verified here; do not rely on it).
+
+**Revert to Sonnet only:** in `fly.toml` set `ANSWER_MODEL = "anthropic/claude-sonnet-5"` and `ESCALATION_MODEL = ""`
+(with an empty escalation model, or the same model in both roles, Sonnet streams every answer live and nothing is
+buffered), then `flyctl deploy --ha=false --remote-only --yes`. Without editing the repo (a secret change restarts the machines): `flyctl secrets set ANSWER_MODEL=anthropic/claude-sonnet-5`
+and `flyctl secrets unset ESCALATION_MODEL` (subject to the caveat above). Check the models from inside the container without
 the bot gate: `flyctl ssh console -a semigraph -C "python -c ..."` calling `litellm.completion(**completion_params(model, n))`.
+
+**What the page's answer badge means** (from the `done` event; it never says more than what happened): *routed* = a
+change-over-time question went straight to `ESCALATION_MODEL` with no cheap draft; *escalated after a failed check (reasons)* =
+the `ANSWER_MODEL` draft was rejected and re-answered; *`<model>` draft passed the checks* = the draft was released. The
+checks line reports only what `checks` proves: cited ids were retrieved, numbers matched the retrieved context, and any
+unmatched numbers or bracketed pseudo-citations are listed as warnings. None of this proves a sentence is supported by the
+passage it cites.
 
 ## Troubleshooting
 

@@ -17,6 +17,11 @@ swap_size_mb = 1024
   ONNX_MODEL_PATH = "/srv/models/qwen3-embedding-0.6b-q8/model_q8.onnx"
   ONNX_THREADS = "1"
   LLM_ANSWER_MAX_TOKENS = "2400"
+  # Answering models (the code default for ANSWER_MODEL stays Sonnet so local runs are Sonnet; production is
+  # reproducible from the repo). The provider keys (OPENAI_API_KEY, ANTHROPIC_API_KEY) are Fly secrets.
+  # Revert to Sonnet only: ANSWER_MODEL = "anthropic/claude-sonnet-5" and ESCALATION_MODEL = "" (docs/RUNBOOK.md).
+  ANSWER_MODEL = "openai/gpt-6-luna"
+  ESCALATION_MODEL = "anthropic/claude-sonnet-5"
   # The Fly edge proxy sets this from the real connection; never trust it elsewhere.
   CLIENT_IP_HEADER = "fly-client-ip"
 

@@ -1,11 +1,16 @@
 # Pure-logic tests on every push (LLM mocked, no Neo4j, no API spend) plus
 # supply-chain and secret hygiene, mirroring the clinic-voice-agent workflow.
 # The benchmark (paid) and the ONNX fidelity build stay manual.
+#
+# Two dependency sets are under test on purpose:
+#   unit          the developer set (uv.lock: the SDK, the pipeline and the serve extra)
+#   serve-shipped exactly what the API image installs (deploy/requirements-serve.txt, e.g. litellm 1.100.0),
+#                 so a shipped dependency cannot drift from what CI exercised.
 name: tests
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, v2]
   pull_request:
 
 jobs:
@@ -16,9 +21,37 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+      - uses: actions/setup-node@v4        # the page's pure functions are tested with `node --test` (no npm install)
+        with:
+          node-version: "24"
       - run: uv python install 3.13
       - run: uv sync --extra serve
       - run: uv run pytest -q
+
+  serve-shipped:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: deploy/requirements-serve.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install the API image's pinned dependencies, pytest, and the package without its dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r deploy/requirements-serve.txt pytest
+          pip install --no-deps -e .
+          python -c "import importlib.metadata as m; print('litellm', m.version('litellm'))"
+      - name: Serving-side tests against the shipped dependency set
+        run: >
+          pytest -q
+          tests/test_serve_*.py tests/test_escalation.py tests/test_verify*.py tests/test_router.py
+          tests/test_ids.py tests/test_llm_shape.py tests/test_answerer_*.py tests/test_answer_checks_events.py
+          tests/test_retrieval_*.py tests/test_static_ui.py
 
   security-scan:
     runs-on: ubuntu-latest
