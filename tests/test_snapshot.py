@@ -199,3 +199,17 @@ def test_the_graph_building_code_of_the_item_layer_is_fingerprinted():
 
     names = {p.name for p in _CODE_FILES}
     assert {"items.py", "item_loader.py", "item_pairs.py", "adjudicate.py", "temporal.py", "alignment.py"} <= names
+
+
+# ------------------------------- C1: the passage checkpoint and the provenance sidecar move the id too
+
+@pytest.mark.parametrize("name", ["passage_adjudications.jsonl", "alignment_provenance.json"])
+def test_the_passage_checkpoint_and_the_provenance_sidecar_are_part_of_the_snapshot(lake, name):
+    """A recorded passage verdict changes what the tables say, and the sidecar says which answers the tables were built with."""
+    ra = lake.interim_dir / "risk_alignment"
+    ra.mkdir(parents=True)
+    (ra / name).write_text('{"key": "k1"}\n', encoding="utf-8")
+    before = compute_snapshot_id(lake, date(2026, 9, 25))
+    (ra / name).write_text('{"key": "k1"}\n{"key": "k2"}\n', encoding="utf-8")
+    assert compute_snapshot_id(lake, date(2026, 9, 25)) != before
+    assert name in snapshot_inputs(lake)["risk_alignment"]

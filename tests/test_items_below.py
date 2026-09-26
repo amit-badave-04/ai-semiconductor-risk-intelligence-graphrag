@@ -146,12 +146,14 @@ def test_the_below_flag_off_run_is_byte_identical_to_a_run_that_never_heard_of_t
     assert file_bytes(below_lake) == plain
 
 
-def test_a_below_purchase_is_not_applied_by_a_replay_without_the_flag(below_lake):
+def test_a_below_purchase_is_applied_by_a_replay_even_without_the_below_flag(below_lake):
+    """C1 (was: `test_a_below_purchase_is_not_applied_by_a_replay_without_the_flag`): a recorded below answer is replayed by every run."""
     buy(below_lake, BelowLLM(same=True))
     llm = BelowLLM()
     run = items.run_align_items(below_lake, [ZZZ], adjudicate_passages=True, max_usd=0, llm=llm, embed=make_embed(), pas_params=RELAXED)
     removed, added, reworded = kinds_of(below_lake)
-    assert llm.calls == [] and len(removed) == 1 and reworded.empty and run.passage_calls == 0
+    assert llm.calls == [] and removed.empty and added.empty and len(reworded) == 1 and run.passage_calls == 0
+    assert run.below_replayed and reworded.iloc[0]["decided_by"] == "sentence_reworded_llm"
 
 
 def test_a_zero_budget_replay_of_a_below_purchase_with_the_flag_reproduces_the_tables(below_lake):

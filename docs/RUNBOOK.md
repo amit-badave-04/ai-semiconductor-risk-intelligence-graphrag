@@ -125,7 +125,13 @@ flyctl ips allocate-v4 --shared -a semigraph; flyctl ips allocate-v6 -a semigrap
 
 1. Refresh and rebuild locally on Neo4j Community (`semigraph ingest`, `freshness`, `extract`, `risk-items`, `align-items`,
    `build-graph --rebuild`, `scripts/verify_graph.py`; see the README), then dump it and prove the dump loads:
-   [deploy/neo4j/seed/README.md](../deploy/neo4j/seed/README.md).
+   [deploy/neo4j/seed/README.md](../deploy/neo4j/seed/README.md). A plain `semigraph align-items` is free and safe: it replays every
+   recorded model answer (`adjudications.jsonl`, `passage_adjudications.jsonl`) and calls no model. Buying missing answers is a separate
+   paid step (`align-items --adjudicate --adjudicate-passages --adjudicate-all-absent --max-usd <cap>`, estimate first with `--dry-run`;
+   the worst case it checks against `--max-usd` covers every retry a call can bill, so it is several times the likely cost).
+   `build-graph` refuses tables whose `alignment_provenance.json` shows they were built before the checkpoints reached their present
+   state: whenever a checkpoint changed after the tables were written (a buying run's own tables are already consistent), rerun the plain
+   `align-items`, and only after every paid run has finished (a job still running rewrites the tables with the code it was started with).
 2. Run the benchmark on the new graph into its own runs file and regenerate the example answers
    (they carry the snapshot id; the service does NOT seed examples from another snapshot):
    `semigraph eval --runs-file eval_runs.<snap>.jsonl --report-suffix .<snap> --max-answer-usd 1.75`, then

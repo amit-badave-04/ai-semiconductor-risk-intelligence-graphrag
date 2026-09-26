@@ -26,7 +26,8 @@ question per such item and lets the answer change the label ONLY through rules e
   rules of ``apply_adjudication`` are the single implementation of "removed";
 * every raw model answer is checkpointed to ``adjudications.jsonl`` keyed by (item text hash, newer section hash, prompt
   version, model): a re-run never pays for an answer it holds. Validation is re-run on every read, so changing a floor never
-  needs a new call.
+  needs a new call. Every ``align-items`` run REPLAYS the recorded answers of the current model and prompt version whether or
+  not it may buy new ones (``graph/items.py``); only ``--adjudicate`` buys.
 
 The model call is INJECTED (``llm_json``-compatible: ``(prompt, model_cls, *, model, max_tokens, thinking_off)``). The
 default, :func:`default_llm_json`, calls ``semigraph.llm.llm_json`` for Anthropic-shaped models and the provider-aware
@@ -34,17 +35,24 @@ hardened text call (``retrieval.answerer.llm_text``: ``llm_shape.completion_para
 regenerate) for every other provider, because ``llm_json`` always sends ``max_tokens`` + ``thinking``, which GPT-6 rejects
 (400). The live call shape for the default model ``openai/gpt-6-luna`` was NOT probed here (no paid call is allowed in the
 build); a first paid run must start with ``--dry-run`` and a tiny ``--max-usd``.
+
+The spend cap is HARD: one ``llm(...)`` call may bill up to ``MAX_COMPLETIONS_PER_CALL`` completions (retries after an empty or
+truncated reply, correction turns after invalid JSON, the output budget doubling on truncation), so the bound charged BEFORE
+every call (:func:`call_cost_upper_bound`) and summed by the up-front estimate is that of all of them, a failing call is charged
+like a successful one, and a provider error is logged as "no verdict" (the task is asked again by the next run) instead of
+aborting the run. ``MAX_CONSECUTIVE_FAILURES`` failures in a row stop it (a dead endpoint or a wrong key).
 """
 
+import hashlib
 import json
 import logging
 import math
 import os
 from collections import Counter
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel
 from rapidfuzz import fuzz
@@ -60,6 +68,14 @@ CHECKPOINT_NAME = "adjudications.jsonl"
 ADJUDICATED_LABELS = ("uncertain", "removed")       # aligner labels that are sent to the model
 _CHARS_PER_TOKEN_WORST = 3.0                        # English is ~4; the cap must never under-estimate
 _LIKELY_OUTPUT_TOKENS = 80                          # a verdict plus one quote
+# The most completions ONE llm(...) call can bill: llm_json makes up to 4 attempts; the non-Anthropic path of default_llm_json makes
+# _JSON_TURNS turns of _TEXT_ATTEMPTS llm_text attempts (the product must not exceed this: a test keeps it true).
+MAX_COMPLETIONS_PER_CALL = 4
+_JSON_TURNS = 2
+_TEXT_ATTEMPTS = 2
+_MAX_BUDGET_TOKENS = 8000                           # semigraph.llm.MAX_BUDGET (a test keeps them equal; llm is not imported: litellm)
+_CORRECTION_CHARS = 700                             # what a correction turn appends to the prompt (the schema error is cut at 300 chars)
+MAX_CONSECUTIVE_FAILURES = 8                        # calls failing in a row before the run stops (dead endpoint / wrong key)
 
 
 class AdjudicationVerdict(BaseModel):
@@ -212,25 +228,40 @@ def section_hash(newer_section_text: str) -> str:
     return content_hash(newer_section_text)
 
 
+def _adjudicated_rows(result: AlignmentResult, older_rows: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """The rows of the older items the aligner labelled ``uncertain`` or ``removed`` (in item order)."""
+    wanted = {d.item_id for d in result.older if d.label in ADJUDICATED_LABELS}
+    return [row for row in older_rows if row["item_id"] in wanted]
+
+
+def _row_key(row: Mapping[str, Any], sec: str, model: str) -> str:
+    return task_key(row.get("text_hash") or content_hash(str(row["text"])), sec, model)
+
+
+def task_keys(result: AlignmentResult, older_rows: Sequence[Mapping[str, Any]], newer_section_text: str, model: str) -> dict[str, str]:
+    """``{older item id: checkpoint key}`` of the items :func:`plan_tasks` would ask about. No prompt is built (no candidate search), so
+    a replay of recorded answers costs nothing."""
+    sec = section_hash(newer_section_text)
+    return {row["item_id"]: _row_key(row, sec, model) for row in _adjudicated_rows(result, older_rows)}
+
+
 def plan_tasks(pair_id: str, result: AlignmentResult, older_rows: Sequence[Mapping[str, Any]], newer_section_text: str,
                model: str, params: AdjudicationParams = AdjudicationParams()) -> list[Task]:
     """One task per older item the aligner labelled ``uncertain`` or ``removed`` (in item order)."""
-    wanted = {d.item_id for d in result.older if d.label in ADJUDICATED_LABELS}
     sec = section_hash(newer_section_text)
     tasks = []
-    for row in older_rows:
-        if row["item_id"] not in wanted:
-            continue
+    for row in _adjudicated_rows(result, older_rows):
         text = str(row["text"])
         prompt = build_prompt(text, candidate_passages(text, newer_section_text, params), params)
-        tasks.append(Task(task_key(row.get("text_hash") or content_hash(text), sec, model), pair_id, row["item_id"], prompt))
+        tasks.append(Task(_row_key(row, sec, model), pair_id, row["item_id"], prompt))
     return tasks
 
 
 @dataclass(frozen=True)
 class Estimate:
-    """What an adjudication run would cost. ``worst_case_usd`` prices every uncached call at its prompt size (chars / 3) plus the
-    full output cap; ``likely_usd`` at chars / 4 plus a typical verdict."""
+    """What an adjudication run would cost. ``worst_case_usd`` is the sum over every uncached call of :func:`worst_call_usd` (all the
+    completions one call can bill: the prompt at chars / 3 each time, the output cap doubling on truncation); ``likely_usd`` prices
+    one attempt at chars / 4 plus a typical verdict. ``output_tokens_cap`` is the plain single-attempt cap times the calls."""
 
     model: str
     n_items: int
@@ -258,38 +289,59 @@ def model_prices(model: str) -> tuple[float, float, bool]:
     return s.llm_input_price_per_mtok, s.llm_output_price_per_mtok, False
 
 
+def worst_call_usd(prompt_chars: int, max_output_tokens: int, per_in: float, per_out: float) -> float:
+    """The most ONE ``llm(...)`` call can bill (USD): :data:`MAX_COMPLETIONS_PER_CALL` completions, each re-sending the prompt (plus a
+    correction and, at most, the previous reply) and answering with the output budget that doubles after every truncation up to the
+    provider ceiling. Both adjudicators price their calls with this, so the up-front estimate and the running charge agree."""
+    prompt_tokens = math.ceil((prompt_chars + _CORRECTION_CHARS) / _CHARS_PER_TOKEN_WORST)
+    outputs = [min(max_output_tokens * 2 ** k, _MAX_BUDGET_TOKENS) for k in range(MAX_COMPLETIONS_PER_CALL)]
+    input_tokens = MAX_COMPLETIONS_PER_CALL * prompt_tokens + sum(outputs[:-1])
+    return (input_tokens * per_in + sum(outputs) * per_out) / 1e6
+
+
 def estimate_cost(tasks: Sequence[Task], cached_keys: Collection[str], model: str,
                   params: AdjudicationParams = AdjudicationParams()) -> Estimate:
     per_in, per_out, exact = model_prices(model)
     todo = [t for t in tasks if t.key not in cached_keys]
     chars = sum(len(t.prompt) for t in todo)
     input_tokens = math.ceil(chars / _CHARS_PER_TOKEN_WORST)
-    worst = input_tokens * per_in / 1e6 + len(todo) * params.max_output_tokens * per_out / 1e6
+    worst = sum(worst_call_usd(len(t.prompt), params.max_output_tokens, per_in, per_out) for t in todo)
     likely = math.ceil(chars / 4) * per_in / 1e6 + len(todo) * _LIKELY_OUTPUT_TOKENS * per_out / 1e6
     return Estimate(model, len(tasks), len(tasks) - len(todo), len(todo), input_tokens, len(todo) * params.max_output_tokens,
                     round(worst, 6), round(likely, 6), exact)
 
 
 def call_cost_upper_bound(prompt: str, model: str, params: AdjudicationParams = AdjudicationParams()) -> float:
+    """What one call of this prompt is charged before it is made (see :func:`worst_call_usd`)."""
     per_in, per_out, _ = model_prices(model)
-    return math.ceil(len(prompt) / _CHARS_PER_TOKEN_WORST) * per_in / 1e6 + params.max_output_tokens * per_out / 1e6
+    return worst_call_usd(len(prompt), params.max_output_tokens, per_in, per_out)
 
 
 class Checkpoint:
-    """Append-only JSONL of raw model answers (one line per call, flushed at once). A torn last line is ignored."""
+    """Append-only JSONL of raw model answers (one line per call, flushed at once). A torn last line is ignored.
+
+    ``sha256`` is the digest of the exact bytes ``records`` were read from (None: there was no file when it was read), so a table
+    built from these records can name the file state it used (``graph/alignment_provenance``); ``stale`` is True once :meth:`add`
+    appended to the file, which no longer matches those bytes (read a fresh checkpoint)."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self.records: dict[str, dict] = {}
-        if path.exists():
-            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                if not line.strip():
-                    continue
-                try:
-                    record = json.loads(line)
-                    self.records[record["key"]] = record
-                except (json.JSONDecodeError, KeyError):
-                    logger.warning("%s line %d is not a valid checkpoint record: ignored", path.name, number)
+        self.sha256: str | None = None
+        self.stale = False
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
+            return
+        self.sha256 = hashlib.sha256(data).hexdigest()
+        for number, line in enumerate(data.decode("utf-8", errors="replace").split("\n"), 1):     # not splitlines(): U+2028, \x0c ... occur in sentences
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+                self.records[record["key"]] = record
+            except (json.JSONDecodeError, KeyError):
+                logger.warning("%s line %d is not a valid checkpoint record: ignored", path.name, number)
 
     def add(self, record: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -298,34 +350,89 @@ class Checkpoint:
             fh.flush()
             os.fsync(fh.fileno())
         self.records[record["key"]] = record
+        self.sha256, self.stale = None, True
 
 
 class BudgetExceeded(RuntimeError):
     """The worst-case cost of the calls still to make is above the cap (raised before any call is made)."""
 
 
+class CallsFailing(RuntimeError):
+    """:data:`MAX_CONSECUTIVE_FAILURES` calls in a row failed: the provider is down or the credentials are wrong. The answers bought
+    so far are checkpointed."""
+
+
+class CallStats(NamedTuple):
+    """What a buying loop did: ``calls`` made (each may have been billed, a failing one too), of which ``failed`` (no answer was
+    recorded; the next run asks again), and ``charged`` USD of upper bounds (never more than ``max_usd``)."""
+
+    calls: int
+    failed: int
+    charged: float
+
+
+def provider_errors() -> tuple[type[BaseException], ...]:
+    """What a model call may raise without meaning the run is wrong: ``RuntimeError`` (retries exhausted), ``ValueError`` (which
+    holds pydantic's ``ValidationError`` and bad JSON), ``OSError`` (network, ``TimeoutError``), ``LookupError`` (a provider reply
+    with no choices) and every provider error of the SDK litellm wraps (``openai.APIError``: rate limit, connection, status,
+    timeout). Anything else (a bug) still aborts the run."""
+    base: tuple[type[BaseException], ...] = (RuntimeError, ValueError, OSError, LookupError)
+    try:
+        import openai
+    except ImportError:
+        return base
+    return (*base, openai.APIError)
+
+
+def run_paid_calls(todo: Iterable[Any], checkpoint: Checkpoint, *, ask: Callable[[Any], Any], bound_of: Callable[[Any], float],
+                   record_of: Callable[[Any, Any, float], dict], describe: Callable[[Any], str], max_usd: float) -> CallStats:
+    """The one buying loop of both adjudicators. Per task: the call's upper bound is CHARGED before the call (a failing call may
+    still have been billed) and the loop stops with ``BudgetExceeded`` when the next bound would pass ``max_usd``; a provider error
+    is logged, leaves no record (no verdict is the safe direction; the next run asks again) and the loop goes on; an answer is
+    checkpointed the moment it arrives. ``MAX_CONSECUTIVE_FAILURES`` failures in a row raise ``CallsFailing``."""
+    calls = failed = streak = 0
+    charged = 0.0
+    for task in todo:
+        bound = bound_of(task)
+        if charged + bound > max_usd + 1e-12:
+            raise BudgetExceeded(f"stopped after {calls} call(s): the next call could pass --max-usd ${max_usd:.2f}")
+        charged += bound
+        calls += 1
+        try:
+            answer = ask(task)
+        except BudgetExceeded:
+            raise
+        except provider_errors() as err:
+            failed, streak = failed + 1, streak + 1
+            logger.warning("no verdict for %s (%s: %s): it will be asked again by the next run", describe(task), type(err).__name__,
+                           str(err)[:160])
+            if streak >= MAX_CONSECUTIVE_FAILURES:
+                raise CallsFailing(f"{streak} consecutive calls failed (last: {type(err).__name__}: {str(err)[:160]}): nothing further "
+                                   "was spent; the answers bought so far are checkpointed") from err
+            continue
+        streak = 0
+        checkpoint.add(record_of(task, answer, bound))
+    return CallStats(calls, failed, charged)
+
+
 def run_tasks(tasks: Sequence[Task], checkpoint: Checkpoint, llm: Callable[..., Any], *, model: str, max_usd: float,
-              params: AdjudicationParams = AdjudicationParams()) -> int:
-    """Answer every task the checkpoint does not hold yet; returns the number of calls made.
+              params: AdjudicationParams = AdjudicationParams()) -> CallStats:
+    """Answer every task the checkpoint does not hold yet; returns what was done (``calls`` = calls actually made).
 
     Refuses to start when the worst case of ALL remaining calls is above ``max_usd`` and stops (raising) if a running total of
-    per-call upper bounds would pass it. Each answer is checkpointed the moment it arrives, so an interruption or a failing call
-    never repays what was bought; a failing call raises (nothing is guessed)."""
+    per-call upper bounds would pass it (:func:`run_paid_calls`: charged before each call, a failing call skipped, not fatal). Each
+    answer is checkpointed the moment it arrives, so an interruption never repays what was bought."""
     todo = [t for t in tasks if t.key not in checkpoint.records]
     worst = estimate_cost(todo, set(), model, params).worst_case_usd
     if worst > max_usd:
         raise BudgetExceeded(f"worst case ${worst:.4f} for {len(todo)} call(s) exceeds --max-usd ${max_usd:.2f}")
-    spent = 0.0
-    for calls, task in enumerate(todo, 1):
-        bound = call_cost_upper_bound(task.prompt, model, params)
-        if spent + bound > max_usd + 1e-12:
-            raise BudgetExceeded(f"stopped after {calls - 1} call(s): the next call could pass --max-usd ${max_usd:.2f}")
-        answer = llm(task.prompt, AdjudicationVerdict, model=model, max_tokens=params.max_output_tokens, thinking_off=True)
-        spent += bound
-        checkpoint.add({"key": task.key, "pair_id": task.pair_id, "item_id": task.item_id, "model": model,
-                        "prompt_version": PROMPT_VERSION, "verdict": answer.verdict, "quote": answer.quote,
-                        "est_usd_upper_bound": round(bound, 6)})
-    return len(todo)
+    return run_paid_calls(
+        todo, checkpoint, max_usd=max_usd, describe=lambda t: f"item {t.item_id} of {t.pair_id}",
+        ask=lambda t: llm(t.prompt, AdjudicationVerdict, model=model, max_tokens=params.max_output_tokens, thinking_off=True),
+        bound_of=lambda t: call_cost_upper_bound(t.prompt, model, params),
+        record_of=lambda t, answer, bound: {
+            "key": t.key, "pair_id": t.pair_id, "item_id": t.item_id, "model": model, "prompt_version": PROMPT_VERSION,
+            "verdict": answer.verdict, "quote": answer.quote, "est_usd_upper_bound": round(bound, 6)})
 
 
 # --------------------------------------------------------------------------
@@ -484,7 +591,9 @@ def default_llm_json(prompt: str, model_cls, *, model: str, max_tokens: int, thi
     ``semigraph.llm.llm_json`` always sends ``max_tokens`` and ``thinking``; ``llm_shape.completion_params`` documents that
     GPT-6 answers 400 to ``max_tokens`` and takes no ``thinking``. So a non-Anthropic model goes through
     ``retrieval.answerer.llm_text`` (which uses ``completion_params``, retries only transient errors, regenerates a truncated
-    answer) and this function validates the JSON, with two correction turns. Not probed live (see the module doc)."""
+    answer) and this function validates the JSON, with ONE correction turn (``_JSON_TURNS`` turns of ``_TEXT_ATTEMPTS`` completions
+    each: the whole call bills at most ``MAX_COMPLETIONS_PER_CALL`` completions, which is what the spend cap charges for). Not
+    probed live (see the module doc)."""
     from ..llm_shape import completion_params
 
     if "thinking" in completion_params(model, max_tokens):
@@ -496,12 +605,13 @@ def default_llm_json(prompt: str, model_cls, *, model: str, max_tokens: int, thi
     from ..retrieval.answerer import llm_text
 
     turn, last = prompt, "unknown"
-    for _ in range(3):
-        text = llm_text(turn, model=model, max_tokens=max_tokens, reasoning_effort=OPENAI_REASONING_EFFORT)
+    for _ in range(_JSON_TURNS):
+        text = llm_text(turn, model=model, max_tokens=max_tokens, reasoning_effort=OPENAI_REASONING_EFFORT,
+                        attempts=_TEXT_ATTEMPTS)
         try:
             return model_cls.model_validate_json(_json_object(text.strip()))
         except ValidationError as err:
             last = str(err)[:300]
             turn = (f"{prompt}\n\nYour previous reply was not valid JSON for the schema ({last}). "
                     "Reply with the corrected JSON object only.")
-    raise RuntimeError(f"adjudication reply was not valid JSON after 3 attempts: {last}")
+    raise RuntimeError(f"adjudication reply was not valid JSON after {_JSON_TURNS} attempts: {last}")

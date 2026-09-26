@@ -518,31 +518,83 @@ def _run_adjudicator_probe(dry_run: bool) -> None:
     typer.echo(pad.format_probe(results))
 
 
+def _align_buying_kwargs(adjudicate_passages: bool, adjudicate_all_absent: bool) -> dict:
+    """What only a run that may BUY passage answers needs: the (lazy) sentence embedder and, for --adjudicate-all-absent, the below zone.
+    A run without the flag gets nothing: it replays the recorded answers, which needs no embedding."""
+    if not adjudicate_passages:
+        return {}
+    from dataclasses import replace
+
+    from semigraph.graph.passages import PassageParams
+    from semigraph.graph.sentence_embed import SentenceEmbedder
+
+    extra: dict = {"embed": SentenceEmbedder()}          # lazy: nothing is loaded unless a sentence still has to be embedded
+    if adjudicate_all_absent:
+        extra["passage_params"] = replace(PassageParams(), adjudicate_below_band=True)
+    return extra
+
+
+def _failed_note(failed: int) -> str:
+    return f" ({failed} failed: no answer recorded, asked again by the next run)" if failed else ""
+
+
+def _echo_replay(run) -> None:
+    """Which model calls were made (calls actually made, failed ones named) and which recorded verdicts were only replayed."""
+    if run.item_calls:
+        typer.echo(f"Item adjudication: {run.item_calls} call(s) made{_failed_note(run.item_failed)}, "
+                   f"{run.item_verdicts_used} verdict(s) applied (bought now or replayed)")
+    elif run.item_verdicts_used:
+        typer.echo(f"{run.item_verdicts_used} recorded item verdict(s) applied from adjudications.jsonl (replayed; no model was called)")
+    if run.passage_calls:
+        typer.echo(f"Passage adjudication: {run.passage_calls} call(s) made{_failed_note(run.passage_failed)}, "
+                   f"{run.passage_verdicts_used} verdict(s) applied")
+    elif run.passage_verdicts_used:
+        version = f"{run.passage_prompt_version} answers; " if run.passage_prompt_version else ""
+        below = "; below-band answers included" if run.below_replayed else ""
+        typer.echo(f"{run.passage_verdicts_used} cached passage verdict(s) applied from passage_adjudications.jsonl "
+                   f"({version}replayed; no model was called{below})")
+
+
+def _echo_align_run(run, max_usd: float) -> None:
+    from semigraph.graph import items
+
+    typer.echo(items.format_summary(run.summary))
+    if run.estimate is not None:
+        _echo_adjudication_estimate(run.estimate, max_usd)
+    if run.passage_estimate is not None:
+        _echo_passage_estimate(run.passage_estimate, run.passage_budget_usd, run.passage_estimates)
+        if run.dry_run and run.passage_estimates:
+            typer.echo("  (a dry run embeds nothing: the nearest-by-embedding candidates not chosen yet are priced at the longest "
+                       "sentences of the other filing for the worst case and at the mean sentence length for the likely cost)")
+    _echo_replay(run)
+    if run.dry_run:
+        typer.echo("dry run: nothing was written and no model was called")
+    for path in run.written:
+        typer.echo(str(path))
+
+
 @app.command("align-items")
 def align_items_cmd(
     ticker: list[str] = typer.Option(None, "--ticker", "-t", help="Tickers (default: every ticker that has risk items)"),
-    adjudicate: bool = typer.Option(False, "--adjudicate", help="PAID (cheap): ask the adjudication model about the items the aligner could not settle"),
-    adjudicate_passages: bool = typer.Option(False, "--adjudicate-passages", help="PAID (cheap): ask the adjudication model about the passage layer's lexical-band sentences (independent of --adjudicate); candidates include the nearest sentences by local embedding; answers are pas-v3. Without this flag a run replays the legacy pas-v2 answers"),
-    adjudicate_all_absent: bool = typer.Option(False, "--adjudicate-all-absent", help="With --adjudicate-passages: ALSO ask about the sentences with no counterpart at all (confident removals / additions): a verified `same` turns a wrong removal into a reworded passage, no verdict changes nothing. Pass it again to replay those answers"),
-    max_usd: float = typer.Option(0.5, "--max-usd", help="Refuse to start an adjudication run whose WORST-CASE cost exceeds this (with both flags: one budget, the passage step gets what the item step left). `--max-usd 0 --adjudicate-passages` replays cached answers for free and refuses if any is missing"),
+    adjudicate: bool = typer.Option(False, "--adjudicate", help="PAID (cheap): BUY the missing model answers about the items the aligner could not settle. Answers already recorded are replayed by every run, with or without this flag"),
+    adjudicate_passages: bool = typer.Option(False, "--adjudicate-passages", help="PAID (cheap): BUY the missing model answers about the passage layer's lexical-band sentences (independent of --adjudicate); candidates include the nearest sentences by local embedding; answers are recorded as pas-v3. Recorded answers are replayed by every run, with or without this flag"),
+    adjudicate_all_absent: bool = typer.Option(False, "--adjudicate-all-absent", help="With --adjudicate-passages: ALSO buy answers about the sentences with no counterpart at all (confident removals / additions): a verified `same` turns a wrong removal into a reworded passage, no verdict changes nothing. Recorded answers of that zone are replayed by every run"),
+    max_usd: float = typer.Option(0.5, "--max-usd", help="Refuse to start a BUYING run (--adjudicate / --adjudicate-passages) whose WORST-CASE cost exceeds this; a run without either flag buys nothing whatever this says. The worst case prices every completion one call can bill (retries, correction turns), several times the likely cost. With both flags: one budget, the passage step gets what the item step's charges left. `--max-usd 0 --adjudicate-passages` is a free check that refuses if any answer is missing"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Align in memory and print the table (and the adjudication estimates); write nothing, call no model"),
     probe_adjudicator: bool = typer.Option(False, "--probe-adjudicator", help="PAID (< $0.001): two live calls on fixed toy questions; prints the raw reply, the parsed verdict and the code rules' outcome. Touches no lake file"),
     verbose: bool = typer.Option(False, "-v"),
 ):
     """Align risk items between consecutive annual filings against the FULL newer text (free; no embeddings).
 
-    For every ticker and every consecutive annual pair: comparable pairs are aligned, decomposed into changed passages and
-    written to data/interim/risk_alignment/ (byte-identical on a re-run); a pair with an untrustworthy side is recorded as NOT
-    COMPARED and produces nothing else. --adjudicate additionally asks the cheap `adjudication_model` about the items
-    the aligner labelled uncertain or removed (every answer is checkpointed: a re-run never repays); it is off by default.
-    --adjudicate-passages does the same for the band sentences of the passage layer (word similarity 0.35-0.50, where lookalikes and
-    paraphrases cannot be told apart): the model is shown up to 8 candidate sentences of the other filing (lexical best, partial-match
-    best and the nearest by local embedding; the sections' sentence vectors are cached in data/interim/risk_alignment/
-    sentence_embeddings/), answers (prompt pas-v3) go to passage_adjudications.jsonl. --adjudicate-all-absent adds the sentences with
-    NO counterpart at all. Every run replays the answers of ONE version: pas-v3 with --adjudicate-passages (repeat --adjudicate-all-absent
-    to replay those; `--max-usd 0` makes the replay free and refuses when an answer is missing), the legacy pas-v2 ones without it, so
-    the tables are reproducible from the files; without answers a band sentence stays `reworded`, a below sentence stays removed / added.
-    --probe-adjudicator is the one manual live check to run before the first paid passage run."""
+    Every run REPLAYS, for free, every recorded model answer next to the tables (adjudications.jsonl; passage_adjudications.jsonl:
+    the newest prompt version for the model, band and below zone), so a plain `semigraph align-items` is safe and reproducible:
+    it never calls a model and never loses an answer that was bought. Only --adjudicate / --adjudicate-passages (with
+    --adjudicate-all-absent) BUY the answers that are missing, under --max-usd (worst case checked before any call; every answer
+    checkpointed; a failing call is skipped and asked again next run). Comparable pairs are aligned, decomposed into changed
+    passages and written to data/interim/risk_alignment/ (byte-identical on a re-run) with alignment_provenance.json, which
+    `build-graph` uses to refuse tables built before the recorded answers reached their present state; a pair with an untrustworthy
+    side is recorded as NOT COMPARED and produces nothing else. --probe-adjudicator is the one manual live check to run before the
+    first paid passage run."""
     _setup_logging(verbose)
     if adjudicate_all_absent and not adjudicate_passages:
         typer.echo("error: --adjudicate-all-absent needs --adjudicate-passages (it widens which sentences that step asks about)", err=True)
@@ -553,43 +605,21 @@ def align_items_cmd(
     from semigraph.graph import adjudicate as adj
     from semigraph.graph import items
 
-    extra: dict = {}
-    if adjudicate_passages:
-        from dataclasses import replace
-
-        from semigraph.graph.passages import PassageParams
-        from semigraph.graph.sentence_embed import SentenceEmbedder
-
-        extra["embed"] = SentenceEmbedder()          # lazy: nothing is loaded unless a sentence still has to be embedded
-        if adjudicate_all_absent:
-            extra["passage_params"] = replace(PassageParams(), adjudicate_below_band=True)
     try:
         run = items.run_align_items(_settings(), list(ticker) if ticker else None, adjudicate=adjudicate,
-                                    adjudicate_passages=adjudicate_passages, max_usd=max_usd, dry_run=dry_run, **extra)
+                                    adjudicate_passages=adjudicate_passages, max_usd=max_usd, dry_run=dry_run,
+                                    **_align_buying_kwargs(adjudicate_passages, adjudicate_all_absent))
     except adj.BudgetExceeded as e:
         typer.echo(f"{e}")
         raise typer.Exit(3) from e
+    except adj.CallsFailing as e:
+        typer.echo(f"{e}", err=True)
+        raise typer.Exit(4) from e
     except items.AlignItemsError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(2) from e
-    typer.echo(items.format_summary(run.summary))
-    if run.estimate is not None:
-        _echo_adjudication_estimate(run.estimate, max_usd)
-    if run.passage_estimate is not None:
-        _echo_passage_estimate(run.passage_estimate, run.passage_budget_usd, run.passage_estimates)
-        if run.dry_run and run.passage_estimates:
-            typer.echo("  (a dry run embeds nothing: the nearest-by-embedding candidates not chosen yet are priced at the longest "
-                       "sentences of the other filing for the worst case and at the mean sentence length for the likely cost)")
-    if run.passage_calls:
-        typer.echo(f"Passage adjudication: {run.passage_calls} call(s) made, {run.passage_verdicts_used} verdict(s) applied")
-    elif run.passage_verdicts_used:
-        version = f"{run.passage_prompt_version} answers; " if run.passage_prompt_version else ""
-        typer.echo(f"{run.passage_verdicts_used} cached passage verdict(s) applied from passage_adjudications.jsonl "
-                   f"({version}replayed; no model was called)")
-    if run.dry_run:
-        typer.echo("dry run: nothing was written and no model was called")
-    for path in run.written:
-        typer.echo(str(path))
+    _echo_align_run(run, max_usd)
+
 
 def _notable(filing: dict) -> list[str]:
     """A filing's notes minus the routine "aligned N% onto M HTML blocks" line (selected by content, never by position)."""

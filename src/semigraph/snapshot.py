@@ -3,7 +3,8 @@
 A snapshot id changes whenever the as-of date, the filing manifest, any
 chunk or section-text file (they decide which filings count as parsed and so
 which sections are corrected), any risk-item file, quality sidecar or risk-alignment table (what
-changed between two annual filings is read from them; so is a recorded adjudication verdict),
+changed between two annual filings is read from them), either checkpoint of recorded adjudication
+verdicts (item level and passage layer) or the alignment provenance sidecar,
 any extraction record, the Federal Register
 snapshot, the curated XBRL metrics, the entity dictionary, the code that builds
 the graph, or the code version changes. It is stamped on every graph node the loaders write
@@ -44,6 +45,8 @@ _CODE_FILES = (
     _PACKAGE / "artifacts" / "schema.cypher",
 )
 _ENTITIES = _PACKAGE / "artifacts" / "canonical_entities.json"
+# next to the alignment parquets: the two checkpoints (graph/adjudicate, graph/passage_adjudicate) and the provenance sidecar
+_ALIGNMENT_SIDE_FILES = ("adjudications.jsonl", "passage_adjudications.jsonl", "alignment_provenance.json")
 
 
 def code_fingerprint(paths=_CODE_FILES) -> str:
@@ -74,9 +77,11 @@ def snapshot_inputs(settings: Settings) -> dict:
         # the item parquets AND the quality sidecars (they decide which pairs are compared at all)
         "risk_items": {**_hashes(settings.interim_dir / "risk_items", "*.parquet"),
                        **_hashes(settings.interim_dir / "risk_items", "*_risk_items_quality.json")},
-        # `align-items` output (pairs / decisions / passages) and its checkpointed model verdicts
+        # `align-items` output (pairs / decisions / passages), both checkpoints of recorded model verdicts (item level and passage
+        # layer: every run replays them) and the provenance sidecar that says which answers the tables were built with
         "risk_alignment": {**_hashes(settings.interim_dir / "risk_alignment", "*.parquet"),
-                           **_hashes(settings.interim_dir / "risk_alignment", "adjudications.jsonl")},
+                           **{name: sha for pattern in _ALIGNMENT_SIDE_FILES
+                              for name, sha in _hashes(settings.interim_dir / "risk_alignment", pattern).items()}},
         "entities": _file_sha1(_ENTITIES) if _ENTITIES.exists() else None,
         "code": code_fingerprint(),
     }

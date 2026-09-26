@@ -9,6 +9,7 @@ import pytest
 import lakefix
 from embedfix import make_embed
 from semigraph.graph import adjudicate as adj
+from semigraph.graph import alignment_provenance as provenance
 from semigraph.graph import items
 from semigraph.graph import passage_adjudicate as pad
 from semigraph.graph.alignment import AlignParams
@@ -69,7 +70,7 @@ def test_the_alignment_tables_have_fixed_schemas():
 
 def test_every_consecutive_pair_is_recorded_and_the_decisions_follow_the_text(lake):
     run = items.run_align_items(lake, [ZZZ])
-    assert len(run.written) == 3 and not run.dry_run and run.estimate is None
+    assert len(run.written) == 4 and run.written[-1].name == provenance.PROVENANCE_NAME and not run.dry_run and run.estimate is None
     pairs = read(lake, "pairs")
     assert list(pairs["pair_id"]) == [P1, P2] and pairs["comparable"].all() and pairs["not_compared_reason"].isna().all()
     dec = read(lake, "decisions")
@@ -113,7 +114,7 @@ def test_a_second_run_writes_byte_identical_files_and_leaves_no_temp_file(lake):
     first = file_bytes(lake)
     items.run_align_items(lake, [ZZZ])
     assert file_bytes(lake) == first and not [n for n in first if n.endswith(".tmp")]
-    assert set(first) == {f"ZZZ_{n}.parquet" for n in ("pairs", "decisions", "passages")}
+    assert set(first) == {f"ZZZ_{n}.parquet" for n in ("pairs", "decisions", "passages")} | {provenance.PROVENANCE_NAME}     # the tables and the sidecar
 
 
 def test_the_parquet_types_are_fixed_even_when_a_table_is_empty(lake):
@@ -224,7 +225,7 @@ def test_the_nvda_lake_files_keep_their_lowercase_names(tmp_path):
         directory = tmp_path / "data" / sub
         (directory / upper).rename(directory / lower)
     run = items.run_align_items(settings, ["NVDA"])
-    assert len(run.written) == 3
+    assert len(run.written) == 4          # three tables and the provenance sidecar
 
 
 # --------------------------------------------------------------------------- adjudication in the run
@@ -493,12 +494,17 @@ def test_a_zero_budget_refuses_as_soon_as_anything_is_uncached_before_embedding_
     assert llm.passage_calls == 0 and embed.calls == [] and not list(items.alignment_dir(band_lake).glob("*.parquet"))
 
 
-def test_a_plain_run_replays_only_the_legacy_version_so_pas_v3_answers_change_nothing_without_the_flag(band_lake):
+def test_a_plain_run_replays_the_newest_version_so_pas_v3_answers_are_applied_without_the_flag(band_lake):
+    """C1 (was: a plain run replayed only the legacy pas-v2 and silently dropped the pas-v3 answers that had been bought)."""
     items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=make_embed())
-    plain = items.run_align_items(band_lake, [ZZZ], llm=BandLLM())
-    assert plain.passage_verdicts_used == 0 and plain.passage_prompt_version == pad.LEGACY_PROMPT_VERSION
+    tables_of = lambda: {n: b for n, b in file_bytes(band_lake).items() if n.endswith(".parquet")}     # noqa: E731  (the sidecar differs: flags)
+    bought = tables_of()
+    llm = BandLLM()
+    plain = items.run_align_items(band_lake, [ZZZ], llm=llm)
+    assert plain.passage_verdicts_used == 4 and plain.passage_prompt_version == pad.PROMPT_VERSION and llm.passage_calls == 0
     frame = p1(passages_of(band_lake))
-    assert frame[(frame["kind"] == "reworded")]["decided_by"].eq("sentence_reworded_band").all()
+    assert not (frame["decided_by"] == "sentence_reworded_band").any()             # nothing is left to the lexical band: all 4 answered
+    assert tables_of() == bought
 
 
 def test_a_plain_run_reproduces_the_tables_from_legacy_pas_v2_answers_exactly(band_lake):

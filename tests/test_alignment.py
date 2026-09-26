@@ -290,8 +290,9 @@ def test_duplicate_item_ids_and_missing_fields_are_rejected():
 def test_empty_inputs():
     res = align([], [], "")
     assert res.older == () and res.newer == ()
-    only_new = align([], [make("n1", SUPPLY)], SUPPLY[1])
-    assert [(d.label, d.decided_by) for d in only_new.newer] == [("new", "unmatched")]
+    # M1: `new` needs a text check against the older section (here an empty one), so the older text is supplied
+    only_new = align([], [make("n1", SUPPLY)], SUPPLY[1], older_section_text="")
+    assert [(d.label, d.decided_by) for d in only_new.newer] == [("new", "text_check")]
     only_old = align([make("o1", SUPPLY)], [], "")
     d = only_old.older[0]
     assert d.label == "removed" and d.decided_by == "text_check" and d.evidence.search_terms
@@ -547,9 +548,9 @@ def test_genuinely_deleted_item_is_removed_and_records_the_search_terms_tried():
 def test_brand_new_newer_item_is_new():
     older = [make("o1", SUPPLY)]
     newer = [make("n1", SUPPLY), make("n2", AI_REG)]
-    res = align(older, newer, section_of(*newer))
+    res = align(older, newer, section_of(*newer), older_section_text=section_of(*older))      # M1: `new` is a text-checked claim
     n = by_id(res.newer)
-    assert (n["n2"].label, n["n2"].matched_older_id, n["n2"].decided_by) == ("new", None, "unmatched")
+    assert (n["n2"].label, n["n2"].matched_older_id, n["n2"].decided_by) == ("new", None, "text_check")
     assert n["n1"].label == "carried"
 
 
@@ -674,7 +675,7 @@ def test_boilerplate_sentences_are_ignored_as_probes():
 def test_a_weak_pairing_is_rejected_even_when_it_is_the_only_candidate():
     o, n = make("o1", SUPPLY, kind="paragraph"), make("n1", CYBER, kind="paragraph")
     for embed in (None, cos_pair(o["text"], n["text"], 0.15)):
-        res = align([o], [n], n["text"], embed=embed)
+        res = align([o], [n], n["text"], embed=embed, older_section_text=o["text"])      # M1: `new` needs the older text check
         d = res.older[0]
         assert d.matched_newer_id is None and d.label == "removed"
         assert res.newer[0].label == "new"
@@ -717,7 +718,7 @@ def _uncertain_pair(older_pair=SUPPLY, newer_pair=None, cos=0.75):
         "Most silicon is produced by external plants in one region. Shortages or shutdowns there would delay revenue. "
         "Replacement vendors take a long time to certify, so buffers are limited.")
     o, n = make("o1", older_pair), make("n1", newer_pair)
-    return align([o], [n], n["text"], embed=cos_pair(o["text"], n["text"], cos))
+    return align([o], [n], n["text"], embed=cos_pair(o["text"], n["text"], cos), older_section_text=o["text"])
 
 
 @pytest.mark.parametrize("verdict,label", [("same", "unchanged"), ("reworded", "reworded")])
@@ -785,7 +786,7 @@ def test_summarize_counts_labels_and_deciders():
     older = [make("o1", SUPPLY), make("o2", EXPORT), make("o3", CYBER), make("o4", CUSTOMERS)]
     edited = (EXPORT[0], EXPORT[1].replace("These rules are complex", "These regulations are intricate"))
     newer = [make("n1", SUPPLY), make("n2", edited), make("n3", AI_REG)]
-    res = align(older, newer, section_of(*newer))
+    res = align(older, newer, section_of(*newer), older_section_text=section_of(*older))      # M1: `new` needs the older text check
     s = summarize(res)
     assert s["older"] == {"total": 4, "unchanged": 1, "reworded": 1, "merged": 0, "removed": 2, "uncertain": 0}
     assert s["newer"] == {"total": 3, "carried": 2, "new": 1, "uncertain": 0}
@@ -824,7 +825,8 @@ def test_real_privacy_text_present_as_a_newer_item_is_unchanged():
 
 def test_real_nac_text_absent_from_the_newer_section_is_removed_with_terms_recorded():
     older = [make("o1", ("", NAC_FY25), kind="paragraph")]
-    res = align(older, [make("n1", ("", EXPORT_FY26), kind="paragraph")], _fy26_excerpt_section())
+    res = align(older, [make("n1", ("", EXPORT_FY26), kind="paragraph")], _fy26_excerpt_section(),
+                older_section_text=NAC_FY25)                                                  # M1: `new` needs the older text check
     d = res.older[0]
     assert (d.label, d.decided_by) == ("removed", "text_check")
     assert len(d.evidence.search_terms) == 2
@@ -1092,3 +1094,35 @@ def test_real_nvda_paragraph_deleted_from_the_newer_section_is_removed(nvda_sect
         d = by_id(res.older)[item_id]
         assert d.label == "removed" and d.decided_by == "text_check" and d.evidence.search_terms
     assert summarize(res)["older"]["removed"] == 2
+
+
+# --------------------------------------------------------------------------
+# M1: an item with no probe cannot be text-checked, so it is neither removed nor new
+# --------------------------------------------------------------------------
+
+def test_an_unmatched_newer_item_is_new_only_after_a_text_check_against_the_older_section():
+    unchecked = align([], [make("n1", SUPPLY)], SUPPLY[1])                       # no older text: nothing was checked
+    assert (unchecked.newer[0].label, unchecked.newer[0].decided_by) == ("uncertain", "uncertain")
+    checked = align([], [make("n1", SUPPLY)], SUPPLY[1], older_section_text=CYBER[1])
+    assert (checked.newer[0].label, checked.newer[0].decided_by) == ("new", "text_check")
+    assert checked.newer[0].evidence.search_terms
+
+
+def test_a_newer_item_with_no_probe_is_uncertain_even_when_the_older_section_is_supplied():
+    tiny = make("n1", ("", "Not applicable."), kind="paragraph")                  # under min_term_chars: no probe exists
+    res = align([], [tiny], tiny["text"], older_section_text=CYBER[1])
+    assert res.newer[0].evidence.search_terms == ()
+    assert (res.newer[0].label, res.newer[0].decided_by) == ("uncertain", "uncertain")
+
+
+def test_the_models_removed_cannot_remove_an_item_that_has_no_probe_to_check():
+    no_candidate = align([make("o1", ("", "Not applicable."), kind="paragraph")], [], "")
+    assert no_candidate.older[0].label == "uncertain" and no_candidate.older[0].evidence.search_terms == ()
+    out = apply_adjudication(no_candidate, {"o1": "removed"})
+    assert (out.older[0].label, out.older[0].decided_by) == ("uncertain", "uncertain")
+
+
+def test_the_models_removed_still_removes_an_item_whose_probes_were_all_absent():
+    res = _uncertain_pair()                                                        # probes were tried and none was found
+    assert res.older[0].evidence.search_terms
+    assert apply_adjudication(res, {"o1": "removed"}).older[0].label == "removed"

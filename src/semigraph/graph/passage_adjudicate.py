@@ -25,12 +25,15 @@ paraphrased somewhere else in the other section. Every such sentence (zone ``ban
   be checked by code beyond the candidate list; its accuracy is a measured property (``scripts/tune_passages.py --verdicts``);
 * every raw answer is checkpointed to ``passage_adjudications.jsonl`` (one flushed line per call) keyed by (sentence hash |
   hash of the other section | prompt version | model) and stores the sentence, its zone and the candidates the model saw. A
-  re-run never repays, and validation is re-run on every read, so changing a floor never needs a new call. ``align-items`` replays
-  the recorded answers of ONE prompt version per run: ``pas-v3`` (this prompt, semantic candidates; what ``--adjudicate-passages``
-  buys and replays) or, without that flag, the legacy ``pas-v2`` answers (the same prompt without the last sentence of the
-  ``same`` rule, lexical candidates only; replay only, never bought again);
-* ``--max-usd`` is checked against the WORST case (every uncached call priced at its prompt size plus the full output cap) before
-  any call, and a running total of per-call upper bounds stops a run that would pass it. The estimate is kept per zone. A dry run
+  re-run never repays, and validation is re-run on every read, so changing a floor never needs a new call. EVERY ``align-items``
+  run replays, for free and whatever its flags, the recorded answers of ONE prompt version: the NEWEST present for the model
+  (:func:`replay_version`): ``pas-v3`` (this prompt, semantic candidates; the only one ``--adjudicate-passages`` buys) or, when that
+  is all there is, the legacy ``pas-v2`` answers (the same prompt without the last sentence of the ``same`` rule, lexical candidates
+  only; replay only, never bought again). Band AND below-zone answers are replayed (a recorded below answer switches the below zone
+  on for the replay: :func:`replay_has_below`; an unanswered below sentence is classified as with the zone off);
+* ``--max-usd`` is checked against the WORST case (every uncached call priced at ``adjudicate.worst_call_usd``: all the completions
+  one call can bill) before any call, and a running total of per-call upper bounds, charged before each call whatever its outcome,
+  stops a run that would pass it; a provider error is a skipped call, not an aborted run. The estimate is kept per zone. A dry run
   embeds nothing: it prices the candidates that are not known yet at the longest sentences of the other section (worst case) and
   at the mean sentence length (likely).
 
@@ -67,6 +70,7 @@ logger = logging.getLogger("semigraph.graph.passage_adjudicate")
 # reasoning_effort="none". v1: a reasoning Luna.
 PROMPT_VERSION = "pas-v3"
 LEGACY_PROMPT_VERSION = "pas-v2"
+PROMPT_VERSIONS = (LEGACY_PROMPT_VERSION, PROMPT_VERSION)      # the versions whose recorded answers this code can validate, oldest first
 ZONES = ("band", "below")         # the order in which a budget-limited run buys them
 CHECKPOINT_NAME = "passage_adjudications.jsonl"
 MIN_RELATEDNESS = 62.0            # eval.gold.SENT_REWORDED_MIN_SIM (a test keeps them equal; eval/ is not imported here)
@@ -87,8 +91,8 @@ class PassageVerdict(BaseModel):
 @dataclass(frozen=True)
 class PassageAdjudicationParams:
     """Every knob of the settlement. ``max_output_tokens``: the answer is one short JSON object (a quote of 30-200 characters),
-    so the cap is small; a hidden-reasoning model would spend more and ``llm_text`` doubles the budget on truncation (real spend
-    can then exceed the bound: see the module doc). ``min_relatedness``: floor for ``partial_ratio`` (0-100) of quote vs sentence.
+    so the cap is small; a hidden-reasoning model would spend more and ``llm_text`` doubles the budget on truncation (the spend
+    bound charges for that: ``adjudicate.worst_call_usd``). ``min_relatedness``: floor for ``partial_ratio`` (0-100) of quote vs sentence.
     ``max_sentence_chars``: the shown sentence is cut here. ``max_quote_chars``: cap of the verbatim probe slice.
     ``max_candidates``: the most candidates shown per sentence (lexical best, partial best, then the embedding ranks)."""
 
@@ -245,6 +249,24 @@ def task_key(text_hash: str, other_hash: str, model: str, prompt_version: str = 
     return "|".join((text_hash, other_hash, prompt_version, model))
 
 
+def _version_and_model(key: str) -> tuple[str, str] | None:
+    """``(prompt version, model)`` of a checkpoint key (``text hash | other hash | version | model``); None for any other string."""
+    parts = key.split("|", 3)
+    return (parts[2], parts[3]) if len(parts) == 4 else None
+
+
+def replay_version(records: Mapping[str, Mapping[str, Any]], model: str) -> str | None:
+    """The NEWEST prompt version of :data:`PROMPT_VERSIONS` that has a recorded answer for ``model`` (None: there is none). A replay
+    uses that one version, so the same files always give the same tables."""
+    have = {found[0] for key in records if (found := _version_and_model(key)) and found[1] == model}
+    return next((v for v in reversed(PROMPT_VERSIONS) if v in have), None)
+
+
+def replay_has_below(records: Mapping[str, Mapping[str, Any]], model: str, version: str) -> bool:
+    """True when ``version`` holds a recorded answer to a BELOW-zone sentence for ``model`` (then a replay must enumerate that zone)."""
+    return any(_version_and_model(key) == (version, model) and record.get("zone") == "below" for key, record in records.items())
+
+
 def plan_tasks(pair_id: str, bands: Sequence[BandSentence], model: str,
                params: PassageAdjudicationParams = PassageAdjudicationParams(), *,
                likely_saving: Mapping[str, int] | None = None) -> list[Task]:
@@ -263,15 +285,16 @@ def plan_tasks(pair_id: str, bands: Sequence[BandSentence], model: str,
 
 def estimate_cost(tasks: Sequence[Task], cached_keys: Collection[str], model: str,
                   params: PassageAdjudicationParams = PassageAdjudicationParams()) -> adj.Estimate:
-    """What a run would cost: ``worst_case_usd`` prices every uncached call at its prompt size (chars / 3) plus the full output
-    cap, ``likely_usd`` at chars / 4 (``Task.likely_chars`` when set) plus a typical verdict. ``n_items`` counts the distinct
-    questions (band and below sentences)."""
+    """What a run would cost: ``worst_case_usd`` is the sum over every uncached call of ``adjudicate.worst_call_usd`` (all the
+    completions one call can bill, at its prompt size chars / 3 and the doubling output cap), ``likely_usd`` prices one attempt at
+    chars / 4 (``Task.likely_chars`` when set) plus a typical verdict. ``n_items`` counts the distinct questions (band and below
+    sentences)."""
     per_in, per_out, exact = adj.model_prices(model)
     todo = [t for t in tasks if t.key not in cached_keys]
     chars = sum(len(t.prompt) for t in todo)
     likely_chars = sum(len(t.prompt) if t.likely_chars is None else t.likely_chars for t in todo)
     input_tokens = math.ceil(chars / _CHARS_PER_TOKEN_WORST)
-    worst = input_tokens * per_in / 1e6 + len(todo) * params.max_output_tokens * per_out / 1e6
+    worst = sum(adj.worst_call_usd(len(t.prompt), params.max_output_tokens, per_in, per_out) for t in todo)
     likely = math.ceil(likely_chars / 4) * per_in / 1e6 + len(todo) * _LIKELY_OUTPUT_TOKENS * per_out / 1e6
     return adj.Estimate(model, len(tasks), len(tasks) - len(todo), len(todo), input_tokens, len(todo) * params.max_output_tokens,
                         round(worst, 6), round(likely, 6), exact)
@@ -284,39 +307,36 @@ def estimates_by_zone(tasks: Sequence[Task], cached_keys: Collection[str], model
 
 
 def call_cost_upper_bound(prompt: str, model: str, params: PassageAdjudicationParams = PassageAdjudicationParams()) -> float:
+    """What one call of this prompt is charged before it is made (``adjudicate.worst_call_usd``: every completion it can bill)."""
     per_in, per_out, _ = adj.model_prices(model)
-    return math.ceil(len(prompt) / _CHARS_PER_TOKEN_WORST) * per_in / 1e6 + params.max_output_tokens * per_out / 1e6
+    return adj.worst_call_usd(len(prompt), params.max_output_tokens, per_in, per_out)
+
+
+def _record(task: Task, answer: PassageVerdict, model: str, bound: float) -> dict:
+    return {"key": task.key, "pair_id": task.pair_id, "band_key": task.band_key, "side": task.side, "zone": task.zone,
+            "model": model, "prompt_version": PROMPT_VERSION, "sentence": task.sentence,
+            "candidates": [{"text": c.text, "start": c.start, "end": c.end} for c in task.candidates],
+            "verdict": answer.verdict, "candidate": answer.candidate, "quote": answer.quote,
+            "est_usd_upper_bound": round(bound, 6)}
 
 
 def run_tasks(tasks: Sequence[Task], checkpoint: Checkpoint, llm: Callable[..., Any], *, model: str, max_usd: float,
-              params: PassageAdjudicationParams = PassageAdjudicationParams()) -> int:
-    """Answer every task the checkpoint does not hold yet; returns the number of calls made.
+              params: PassageAdjudicationParams = PassageAdjudicationParams()) -> adj.CallStats:
+    """Answer every task the checkpoint does not hold yet; returns what was done (``calls`` = calls actually made).
 
     Refuses to start when the worst case of ALL remaining calls is above ``max_usd`` and stops (raising) if a running total of
-    per-call upper bounds would pass it. Each answer is checkpointed the moment it arrives, so an interruption or a failing call
-    never repays what was bought; a failing call raises (nothing is guessed)."""
+    per-call upper bounds would pass it. The bound is charged BEFORE each call, a failing call included, and a provider error is
+    logged as "no verdict" (the sentence keeps its lexical classification; the next run asks again) without aborting the run
+    (``adjudicate.run_paid_calls``). Each answer is checkpointed the moment it arrives."""
     todo = [t for t in tasks if t.key not in checkpoint.records]
     worst = estimate_cost(todo, set(), model, params).worst_case_usd
     if worst > max_usd:
         raise BudgetExceeded(f"worst case ${worst:.4f} for {len(todo)} call(s) exceeds --max-usd ${max_usd:.2f}")
-    spent = 0.0
-    for calls, task in enumerate(todo, 1):
-        bound = call_cost_upper_bound(task.prompt, model, params)
-        if spent + bound > max_usd + 1e-12:
-            raise BudgetExceeded(f"stopped after {calls - 1} call(s): the next call could pass --max-usd ${max_usd:.2f}")
-        try:
-            answer = llm(task.prompt, PassageVerdict, model=model, max_tokens=params.max_output_tokens, thinking_off=True)
-        except RuntimeError as err:      # one bad call must not abort the run: no verdict = the safe direction; retried next run
-            logger.warning("no verdict for a band sentence (%s): %s", task.pair_id, str(err)[:160])
-            continue
-        spent += bound
-        checkpoint.add({
-            "key": task.key, "pair_id": task.pair_id, "band_key": task.band_key, "side": task.side, "zone": task.zone,
-            "model": model, "prompt_version": PROMPT_VERSION, "sentence": task.sentence,
-            "candidates": [{"text": c.text, "start": c.start, "end": c.end} for c in task.candidates],
-            "verdict": answer.verdict, "candidate": answer.candidate, "quote": answer.quote,
-            "est_usd_upper_bound": round(bound, 6)})
-    return len(todo)
+    return adj.run_paid_calls(
+        todo, checkpoint, max_usd=max_usd, describe=lambda t: f"a {t.zone} sentence of {t.pair_id}",
+        ask=lambda t: llm(t.prompt, PassageVerdict, model=model, max_tokens=params.max_output_tokens, thinking_off=True),
+        bound_of=lambda t: call_cost_upper_bound(t.prompt, model, params),
+        record_of=lambda t, answer, bound: _record(t, answer, model, bound))
 
 
 # --------------------------------------------------------------------------
@@ -481,9 +501,15 @@ def probe_prompts(params: PassageAdjudicationParams = PassageAdjudicationParams(
 
 
 def estimate_probe(model: str, params: PassageAdjudicationParams = PassageAdjudicationParams()) -> adj.Estimate:
-    """The worst-case cost of the two probe calls."""
-    tasks = [Task(str(i), "probe", "probe", "older", c.sentence, c.candidates, c.prompt) for i, c in enumerate(probe_prompts(params))]
-    return estimate_cost(tasks, set(), model, params)
+    """The worst-case cost of the two probe calls. The probe makes exactly ONE plain completion per question (``complete_once``: no
+    retry, no correction turn), so it is priced as one attempt each, not with the multi-completion bound of a buying call."""
+    per_in, per_out, exact = adj.model_prices(model)
+    chars = sum(len(c.prompt) for c in probe_prompts(params))
+    n = len(_PROBE_CASES)
+    input_tokens = math.ceil(chars / _CHARS_PER_TOKEN_WORST)
+    worst = input_tokens * per_in / 1e6 + n * params.max_output_tokens * per_out / 1e6
+    likely = math.ceil(chars / 4) * per_in / 1e6 + n * _LIKELY_OUTPUT_TOKENS * per_out / 1e6
+    return adj.Estimate(model, n, 0, n, input_tokens, n * params.max_output_tokens, round(worst, 6), round(likely, 6), exact)
 
 
 def _usage_dict(usage: Any) -> dict | None:

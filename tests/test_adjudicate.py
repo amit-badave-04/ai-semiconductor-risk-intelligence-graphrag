@@ -43,8 +43,8 @@ def older(item_id, label, matched=None, evidence=None, decided_by="text_check"):
     return OlderDecision(item_id, label, matched, decided_by, evidence or Evidence())
 
 
-def newer(item_id, label, matched=None, decided_by="unmatched"):
-    return NewerDecision(item_id, label, matched, decided_by, Evidence())
+def newer(item_id, label, matched=None, decided_by="unmatched", evidence=None):
+    return NewerDecision(item_id, label, matched, decided_by, evidence or Evidence())
 
 
 ABSENT = Evidence(search_terms=("p1", "p2", "p3"))                       # probes tried, none found: absent
@@ -220,8 +220,9 @@ class TestSettle:
                     "A regional shutdown could interrupt our product deliveries.")
         older_rows = [OLDER_ROWS[0], {"item_id": "b", "headline": "Outsourced assembly and test.", "text": assembly, "text_hash": "hb2",
                                       "unit_kind": "headline"}]
-        newer_ids = [newer("n0", "new"), newer("n1", "uncertain", "b", decided_by="uncertain"),
-                     newer("n2", "uncertain", "a", decided_by="uncertain"), newer("n3", "new")]
+        # M1: a newer item is `new` only on a text check, so the genuinely new ones carry their (absent) probes
+        newer_ids = [newer("n0", "new", evidence=ABSENT, decided_by="text_check"), newer("n1", "uncertain", "b", decided_by="uncertain"),
+                     newer("n2", "uncertain", "a", decided_by="uncertain"), newer("n3", "new", evidence=ABSENT, decided_by="text_check")]
         wafer_quote = "Any disruption at that foundry would delay shipments to our largest customers"
         assembly_quote = "We rely on outsourced assembly and test providers located in Southeast Asia."
         both = result([older("a", "uncertain", "n2", evidence=PARTIAL, decided_by="uncertain"),
@@ -300,21 +301,116 @@ class TestTasksAndBudget:
     def test_every_answer_is_checkpointed_and_a_rerun_never_repays(self, tmp_path):
         tasks, path = tasks_for(3), tmp_path / "adjudications.jsonl"
         llm = FakeLLM()
-        assert adj.run_tasks(tasks, adj.Checkpoint(path), llm, model="openai/gpt-6-luna", max_usd=0.5) == 3
+        stats = adj.run_tasks(tasks, adj.Checkpoint(path), llm, model="openai/gpt-6-luna", max_usd=0.5)
+        assert (stats.calls, stats.failed) == (3, 0) and len(llm.calls) == 3          # the number of calls MADE, not of tasks
         assert all(c["thinking_off"] and c["model"] == "openai/gpt-6-luna" and c["max_tokens"] == 1000 for c in llm.calls)
         lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
         assert [r["item_id"] for r in lines] == ["o0", "o1", "o2"] and all(r["verdict"] == "removed" for r in lines)
+        assert stats.charged == pytest.approx(sum(r["est_usd_upper_bound"] for r in lines), abs=3e-6)
         again = FakeLLM()
-        assert adj.run_tasks(tasks, adj.Checkpoint(path), again, model="openai/gpt-6-luna", max_usd=0.5) == 0 and again.calls == []
+        assert adj.run_tasks(tasks, adj.Checkpoint(path), again, model="openai/gpt-6-luna", max_usd=0.5).calls == 0 and again.calls == []
 
-    def test_a_failing_call_aborts_and_keeps_what_was_already_bought(self, tmp_path):
+    def test_a_failing_call_is_skipped_keeps_what_was_bought_and_is_retried_by_the_next_run(self, tmp_path):
+        """M2 (was: the run aborted): one bad call is logged as no verdict, the rest are still bought and checkpointed."""
         tasks, path = tasks_for(3), tmp_path / "a.jsonl"
         llm = FakeLLM(fail_on=2)
-        with pytest.raises(RuntimeError, match="transient failure"):
-            adj.run_tasks(tasks, adj.Checkpoint(path), llm, model="openai/gpt-6-luna", max_usd=0.5)
-        assert [json.loads(line)["item_id"] for line in path.read_text(encoding="utf-8").splitlines()] == ["o0"]
+        stats = adj.run_tasks(tasks, adj.Checkpoint(path), llm, model="openai/gpt-6-luna", max_usd=0.5)
+        assert (stats.calls, stats.failed) == (3, 1)
+        assert [json.loads(line)["item_id"] for line in path.read_text(encoding="utf-8").splitlines()] == ["o0", "o2"]
         resume = FakeLLM()
-        assert adj.run_tasks(tasks, adj.Checkpoint(path), resume, model="openai/gpt-6-luna", max_usd=0.5) == 2
+        assert adj.run_tasks(tasks, adj.Checkpoint(path), resume, model="openai/gpt-6-luna", max_usd=0.5).calls == 1     # only o1
+
+    @pytest.mark.parametrize("make_error", [
+        lambda: __import__("litellm").exceptions.APIConnectionError(message="boom", llm_provider="openai", model="m"),
+        lambda: __import__("litellm").exceptions.RateLimitError(message="slow", llm_provider="openai", model="m"),
+        lambda: ValueError("not json"),
+        lambda: TimeoutError("timed out"),
+        lambda: IndexError("list index out of range"),          # a provider reply with no choices
+        lambda: RuntimeError("llm_json failed after 4 attempts"),
+    ])
+    def test_every_provider_shaped_error_is_a_skipped_call_not_an_aborted_run(self, tmp_path, make_error):
+        class Failing(FakeLLM):
+            def __call__(self, prompt, model_cls, **kw):
+                if not self.calls:
+                    self.calls.append(prompt)
+                    raise make_error()
+                return super().__call__(prompt, model_cls, **kw)
+
+        path = tmp_path / "a.jsonl"
+        stats = adj.run_tasks(tasks_for(3), adj.Checkpoint(path), Failing(), model="openai/gpt-6-luna", max_usd=0.5)
+        assert (stats.calls, stats.failed) == (3, 1) and len(path.read_text(encoding="utf-8").splitlines()) == 2
+
+    def test_a_bug_in_the_call_is_not_swallowed_as_a_provider_error(self, tmp_path):
+        class Buggy(FakeLLM):
+            def __call__(self, prompt, model_cls, **kw):
+                raise AttributeError("'NoneType' object has no attribute 'choices'")
+
+        with pytest.raises(AttributeError):
+            adj.run_tasks(tasks_for(2), adj.Checkpoint(tmp_path / "a.jsonl"), Buggy(), model="openai/gpt-6-luna", max_usd=0.5)
+
+    def test_a_failed_call_is_charged_against_the_cap_because_it_may_have_been_billed(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(adj, "call_cost_upper_bound", lambda prompt, model, params=None: 0.3)
+        llm = FakeLLM(fail_on=1)
+        with pytest.raises(adj.BudgetExceeded, match="stopped after 1 call"):
+            adj.run_tasks(tasks_for(3), adj.Checkpoint(tmp_path / "a.jsonl"), llm, model="openai/gpt-6-luna", max_usd=0.5)
+        assert len(llm.calls) == 1                         # the failure used 0.3 of 0.5: the next 0.3 could not be afforded
+
+    def test_a_dead_endpoint_stops_the_run_after_a_few_consecutive_failures_and_keeps_the_checkpoint(self, tmp_path):
+        class Dead(FakeLLM):
+            def __call__(self, prompt, model_cls, **kw):
+                self.calls.append(prompt)
+                if len(self.calls) > 2:
+                    raise RuntimeError("401 unauthorized")
+                return model_cls(verdict="removed")
+
+        path, dead = tmp_path / "a.jsonl", Dead()
+        with pytest.raises(adj.CallsFailing, match="consecutive"):
+            adj.run_tasks(tasks_for(30), adj.Checkpoint(path), dead, model="openai/gpt-6-luna", max_usd=5.0)
+        assert len(dead.calls) == 2 + adj.MAX_CONSECUTIVE_FAILURES and len(path.read_text(encoding="utf-8").splitlines()) == 2
+
+    def test_a_success_resets_the_consecutive_failure_count(self, tmp_path):
+        class Flaky(FakeLLM):
+            def __call__(self, prompt, model_cls, **kw):
+                self.calls.append(prompt)
+                if len(self.calls) % 2:
+                    raise RuntimeError("blip")
+                return model_cls(verdict="removed")
+
+        stats = adj.run_tasks(tasks_for(20), adj.Checkpoint(tmp_path / "a.jsonl"), Flaky(), model="openai/gpt-6-luna", max_usd=5.0)
+        assert (stats.calls, stats.failed) == (20, 10)
+
+    def test_the_bound_of_one_call_covers_every_completion_it_can_make_and_the_estimate_is_the_sum_of_bounds(self):
+        (task,) = tasks_for(1)
+        one_attempt = adj.model_prices("openai/gpt-6-luna")
+        prompt_tokens = -(-len(task.prompt) // 3)
+        naive = (prompt_tokens * one_attempt[0] + adj.AdjudicationParams().max_output_tokens * one_attempt[1]) / 1e6
+        bound = adj.call_cost_upper_bound(task.prompt, "openai/gpt-6-luna")
+        assert bound > adj.MAX_COMPLETIONS_PER_CALL * naive * 0.99            # every completion re-sends the prompt; outputs double
+        assert adj.estimate_cost([task], set(), "openai/gpt-6-luna").worst_case_usd == pytest.approx(bound, abs=2e-6)
+        tasks = tasks_for(3)
+        assert adj.estimate_cost(tasks, set(), "openai/gpt-6-luna").worst_case_usd == pytest.approx(
+            sum(adj.call_cost_upper_bound(t.prompt, "openai/gpt-6-luna") for t in tasks), abs=3e-6)
+
+    def test_the_default_call_makes_no_more_completions_than_the_bound_assumes(self):
+        assert adj._JSON_TURNS * adj._TEXT_ATTEMPTS <= adj.MAX_COMPLETIONS_PER_CALL
+
+    def test_the_mirrored_output_budget_ceiling_is_the_real_one(self):
+        from semigraph.llm import MAX_BUDGET
+
+        assert adj._MAX_BUDGET_TOKENS == MAX_BUDGET
+
+    def test_a_record_holding_a_unicode_line_separator_is_read_back_whole_and_the_digest_is_of_the_file_bytes(self, tmp_path):
+        """A recorded sentence may hold U+2028 / a form feed / a CRLF pair: str.splitlines() would cut the record and re-buy it."""
+        path = tmp_path / "a.jsonl"
+        cp = adj.Checkpoint(path)
+        cp.add({"key": "k1", "sentence": "before after\x0cpage\x85next", "verdict": "different"})
+        cp.add({"key": "k2", "verdict": "removed"})
+        again = adj.Checkpoint(path)
+        assert set(again.records) == {"k1", "k2"} and again.records["k1"]["sentence"] == "before after\x0cpage\x85next"
+        import hashlib
+
+        assert again.sha256 == hashlib.sha256(path.read_bytes()).hexdigest() and cp.sha256 is None      # stale after add(): read a fresh one
+        assert adj.Checkpoint(tmp_path / "missing.jsonl").sha256 is None
 
     def test_a_torn_last_line_is_ignored_when_the_checkpoint_is_read(self, tmp_path):
         path = tmp_path / "a.jsonl"
@@ -343,16 +439,25 @@ class TestDefaultCall:
         replies = iter(['Sure! {"verdict": "maybe"}', '```json\n{"verdict": "same", "quote": "abc"}\n```'])
         calls = []
 
-        def fake_llm_text(prompt, *, model, max_tokens, reasoning_effort=None):
-            calls.append((prompt, model, max_tokens, reasoning_effort))
+        def fake_llm_text(prompt, *, model, max_tokens, reasoning_effort=None, attempts=4):
+            calls.append((prompt, model, max_tokens, reasoning_effort, attempts))
             return next(replies)
 
         monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", fake_llm_text)
         out = adj.default_llm_json("p", adj.AdjudicationVerdict, model="openai/gpt-6-luna", max_tokens=300)
         assert (out.verdict, out.quote) == ("same", "abc")
-        assert len(calls) == 2 and "not valid JSON" in calls[1][0] and calls[0][1:] == ("openai/gpt-6-luna", 300, "none")   # no hidden reasoning
+        assert len(calls) == 2 and "not valid JSON" in calls[1][0]
+        assert calls[0][1:] == ("openai/gpt-6-luna", 300, "none", adj._TEXT_ATTEMPTS)   # no hidden reasoning; the retry ladder is bounded
 
-    def test_an_invalid_reply_three_times_raises_instead_of_guessing(self, monkeypatch):
-        monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", lambda prompt, *, model, max_tokens, reasoning_effort=None: "no json here")
-        with pytest.raises(RuntimeError, match="not valid JSON after 3 attempts"):
+    def test_an_invalid_reply_on_every_turn_raises_instead_of_guessing(self, monkeypatch):
+        """M2: one task may bill at most MAX_COMPLETIONS_PER_CALL completions (2 turns x 2 attempts), so a hopeless reply gives up early."""
+        seen = []
+
+        def hopeless(prompt, *, model, max_tokens, reasoning_effort=None, attempts=4):
+            seen.append(attempts)
+            return "no json here"
+
+        monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", hopeless)
+        with pytest.raises(RuntimeError, match=f"not valid JSON after {adj._JSON_TURNS} attempts"):
             adj.default_llm_json("p", adj.AdjudicationVerdict, model="openai/gpt-6-luna", max_tokens=300)
+        assert len(seen) == adj._JSON_TURNS and sum(seen) <= adj.MAX_COMPLETIONS_PER_CALL

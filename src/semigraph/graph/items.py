@@ -22,20 +22,23 @@ Output (per ticker, ``data/interim/risk_alignment/``, written atomically, byte-i
   overlaps no chunk of its own and carries its item's FIRST chunk id instead), pair_id. (``band_adjudicated`` is the LAST column; the
   graph loader does not read it: the same fact is in ``decided_by``, ``sentence_absent_llm`` / ``sentence_reworded_llm``.)
 
-Passage adjudication (the lexical band of ``graph/passages.py``): ``adjudicate_passages=True`` (``--adjudicate-passages``) asks the cheap
-model one question per band sentence (after the item-level step, on the SETTLED result, because settling can change which items are
-decomposed) and checkpoints every answer in ``passage_adjudications.jsonl`` next to the tables. With ``passage_params.
-adjudicate_below_band`` (``--adjudicate-all-absent``) the sentences with NO counterpart at all are asked too (zone ``below``; a verified
-``same`` turns a wrongly confident removal into a reworded passage, a ``different`` keeps it). The candidates shown to the model are the
-lexical best, the ``partial_ratio`` best and the nearest sentences by embedding (``embed``, ``graph/sentence_embed``; the per-section
-vectors are cached in ``<out dir>/sentence_embeddings/``); a buying run REQUIRES ``embed`` (a dry run embeds nothing and prices stand-in
-candidates) and works under prompt version ``pas-v3``. Every run REPLAYS the recorded answers of ONE prompt version (deterministic: the
-same files give the same tables; without the file the band sentences simply stay ``reworded``, marked ``sentence_reworded_band``):
-``pas-v3`` when ``adjudicate_passages`` is set (a fully cached run replays for free with ``max_usd=0``: it refuses if anything is
-uncached), else the legacy ``pas-v2`` answers of the lexical-candidate prompt, so a plain run reproduces the tables built before ``pas-v3``
-existed. Answers are only looked up (and only embeddings computed) for the sentences not answered yet. The item-level checkpoint, by
-contrast, is only read with ``adjudicate=True``. With both flags ``max_usd`` is one budget: the passage step gets what the item step's
-per-call upper bounds left (a dry run: what its worst-case estimate left).
+REPLAY versus BUYING. Every run REPLAYS, for free and deterministically, every checkpoint that exists next to the tables, whatever its
+flags: the item-level answers (``adjudications.jsonl``, prompt ``adj-v1``) of the current model, and the passage answers
+(``passage_adjudications.jsonl``) of the current model under the NEWEST prompt version present (``pas-v3``, else the legacy ``pas-v2``),
+band AND below zone (a recorded below answer switches the zone on for the replay). A replay never calls a model, never embeds and never
+spends; a sentence or item without a recorded answer stays as the lexical rules left it (band sentences ``reworded``, marked
+``sentence_reworded_band``; aligner-only labels). The flags only permit BUYING the answers that are missing, under ``max_usd``:
+``adjudicate=True`` (``--adjudicate``) asks the cheap model about the items the aligner could not settle; ``adjudicate_passages=True``
+(``--adjudicate-passages``) about the band sentences (after the item step, on the SETTLED result, because settling can change which items
+are decomposed), and with ``passage_params.adjudicate_below_band`` (``--adjudicate-all-absent``) about the sentences with NO counterpart
+at all too (zone ``below``: a verified ``same`` turns a wrongly confident removal into a reworded passage, a ``different`` keeps it). The
+passage candidates are the lexical best, the ``partial_ratio`` best and the nearest sentences by embedding (``embed``,
+``graph/sentence_embed``; the per-section vectors are cached in ``<out dir>/sentence_embeddings/``); a buying run REQUIRES ``embed`` (a dry
+run embeds nothing and prices stand-in candidates) and records ``pas-v3``. With ``--max-usd 0`` a fully cached buying run is a free
+check: it refuses if anything is uncached. With both flags ``max_usd`` is one budget: the passage step gets what the item step's
+per-call upper bounds charged left (a dry run: what its worst-case estimate left). Each run that writes tables also writes
+``alignment_provenance.json`` (``graph/alignment_provenance``): ``require_alignment`` (so ``build-graph``) refuses tables that were
+built before the checkpoints reached their present state.
 
 Contract facts (M1B_PLAN L.7): a REMOVED item is an older item labelled ``removed`` (after adjudication) in a comparable pair;
 ``uncertain`` is PRESENT, never removed; ``is_new`` is a newer item labelled ``new``; a ``merged`` older item is present.
@@ -54,8 +57,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from ..config import Settings
-from ..parsing.risk_item_quality import load_quality
+from ..parsing.risk_item_quality import load_quality, quality_path_for
 from . import adjudicate as adj
+from . import alignment_provenance as provenance
 from . import passage_adjudicate as pad
 from . import sentence_embed
 from .alignment import AlignmentResult, AlignParams, align, summarize
@@ -141,9 +145,21 @@ def check_alignment_consistent(ticker: str, items: pd.DataFrame, pairs: pd.DataF
                               "run `semigraph align-items` first")
 
 
+def check_provenance(directory: Path, tickers: Sequence[str]) -> None:
+    """Refuse tables whose provenance is weaker than the checkpoints now on disk: a checkpoint has answers (or a state) the tables were
+    not built with, or the tables carry no provenance while a checkpoint exists (``graph/alignment_provenance``)."""
+    stale = provenance.stale_checkpoints(directory, tickers)
+    if stale:
+        files = sorted({name for names in stale.values() for name in names})
+        raise AlignItemsError(f"the alignment tables of {sorted(stale)} are weaker than the recorded model answers in {directory} "
+                              f"({', '.join(files)} changed since the tables were built, or the tables carry no provenance): run "
+                              "`semigraph align-items` (free: it replays every recorded answer and calls no model), then build the graph again")
+
+
 def require_alignment(settings: Settings, tickers: Sequence[str], directory: Path | None = None) -> None:
-    """Raise ``AlignItemsError`` ("run semigraph align-items first") when any ticker lacks its alignment files or has files that
-    no longer describe its risk items. Cheap (ids only): `build-graph` calls it before anything is reset."""
+    """Raise ``AlignItemsError`` ("run semigraph align-items first") when any ticker lacks its alignment files, has files that
+    no longer describe its risk items, or has tables built before the checkpoints reached their present state
+    (:func:`check_provenance`). Cheap (ids and file digests): `build-graph` calls it before anything is reset."""
     if not tickers:
         raise AlignItemsError(f"no risk items in {items_dir(settings)}: run `semigraph risk-items` and `semigraph align-items` first")
     directory = directory or alignment_dir(settings)
@@ -157,6 +173,7 @@ def require_alignment(settings: Settings, tickers: Sequence[str], directory: Pat
             pd.read_parquet(table_path(directory, ticker, "pairs")),
             pd.read_parquet(table_path(directory, ticker, "decisions"), columns=["item_id", "pair_id"]),
             pd.read_parquet(table_path(directory, ticker, "passages"), columns=["item_id", "pair_id"]))
+    check_provenance(directory, tickers)
 
 
 # --------------------------------------------------------------------------
@@ -239,7 +256,7 @@ def prepare_pair(pair: dict, items: pd.DataFrame, sections: pd.DataFrame, chunks
 @dataclass(frozen=True)
 class BandContext:
     """The recorded passage answers to replay (``records``: checkpoint key -> raw answer) for ``model``, the rules' parameters and
-    ONE prompt version (default the legacy ``pas-v2`` of the lexical-candidate prompt: what a plain run has always replayed)."""
+    ONE prompt version (``run_align_items`` picks the newest present: ``pad.replay_version``; the default is the legacy ``pas-v2``)."""
 
     records: Mapping[str, Mapping[str, Any]]
     model: str
@@ -457,11 +474,15 @@ def write_ticker(directory: Path, ticker: str, outcomes: Sequence[PairOutcome]) 
 
 @dataclass(frozen=True)
 class AlignRun:
-    """What ``run_align_items`` did. ``estimate`` is None unless adjudication was requested; ``written`` is empty for a dry run.
-    ``passage_estimate`` / ``passage_budget_usd``: the passage step's estimate (the zones added up: the guard covers the sum) and the
-    budget it was checked against (None unless ``adjudicate_passages``); ``passage_estimates``: the same per zone (``band`` and,
-    with the below zone on, ``below``); ``passage_verdicts_used``: band / below verdicts applied (bought now or replayed);
-    ``passage_calls``: calls made; ``passage_prompt_version``: the version whose answers were replayed and bought."""
+    """What ``run_align_items`` did. ``estimate`` is None unless ``adjudicate``; ``written`` is empty for a dry run (else it lists the
+    tables and the provenance sidecar). ``passage_estimate`` / ``passage_budget_usd``: the passage step's estimate (the zones added up:
+    the guard covers the sum) and the budget it was checked against (None unless ``adjudicate_passages``); ``passage_estimates``: the
+    same per zone (``band`` and, with the below zone on, ``below``); ``passage_verdicts_used``: band / below verdicts applied (bought now
+    or replayed); ``passage_calls``: model calls MADE by the passage step (``passage_failed`` of them failed: no answer recorded);
+    ``passage_prompt_version``: the version whose answers were replayed ('' when none is recorded for the model);
+    ``item_verdicts_used``: item-level answers applied (bought now or replayed); ``item_calls`` / ``item_failed`` / ``item_charged_usd``:
+    the item step's calls made, of which failed, and the USD of upper bounds it was charged; ``below_replayed``: the below zone was
+    replayed; ``provenance``: the sidecar written (None for a dry run)."""
 
     summary: list[dict]
     estimate: adj.Estimate | None
@@ -473,43 +494,83 @@ class AlignRun:
     passage_calls: int = 0
     passage_estimates: dict[str, adj.Estimate] = field(default_factory=dict)
     passage_prompt_version: str = ""
+    passage_failed: int = 0
+    item_verdicts_used: int = 0
+    item_calls: int = 0
+    item_failed: int = 0
+    item_charged_usd: float = 0.0
+    below_replayed: bool = False
+    provenance: Path | None = None
+
+
+def ticker_input_paths(settings: Settings, ticker: str) -> dict[str, Path]:
+    """The lake files the tables of one ticker are computed from (their digests go into the provenance)."""
+    return {"risk_items": items_dir(settings) / f"{ticker}_risk_items.parquet", "section_texts": _section_texts_path(settings, ticker),
+            "chunks": _chunks_path(settings, ticker), "quality": quality_path_for(items_dir(settings), ticker)}
 
 
 def read_ticker_inputs(settings: Settings, ticker: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """``(items, section texts, chunk spans)`` of one ticker from the lake."""
-    path = items_dir(settings) / f"{ticker}_risk_items.parquet"
-    sections_path, chunks_path = _section_texts_path(settings, ticker), _chunks_path(settings, ticker)
-    for needed in (path, sections_path, chunks_path):
+    paths = ticker_input_paths(settings, ticker)
+    for needed in (paths["risk_items"], paths["section_texts"], paths["chunks"]):
         if not needed.exists():
             raise AlignItemsError(f"{needed} not found: run `semigraph ingest` and `semigraph risk-items` first")
-    chunks = pd.read_parquet(chunks_path, columns=["accession_no", "section_id", "chunk_id", "char_start", "char_end"])
-    return pd.read_parquet(path), pd.read_parquet(sections_path), chunks
+    chunks = pd.read_parquet(paths["chunks"], columns=["accession_no", "section_id", "chunk_id", "char_start", "char_end"])
+    return pd.read_parquet(paths["risk_items"]), pd.read_parquet(paths["section_texts"]), chunks
 
 
-def _records_for(work: PairWork, tasks: Mapping[str, adj.Task], checkpoint: adj.Checkpoint | None) -> dict[str, dict]:
-    """The recorded model answers of this pair's tasks, keyed by older item id."""
-    if checkpoint is None:
-        return {}
-    return {t.item_id: checkpoint.records[t.key] for t in tasks.get(work.pair["pair_id"], []) if t.key in checkpoint.records}
+def item_records(per_ticker: Mapping[str, Sequence[PairWork]], checkpoint: adj.Checkpoint, model: str) -> dict[str, dict[str, dict]]:
+    """The recorded item-level answers of every compared pair, ``{pair id: {older item id: raw answer}}`` (pairs without one are
+    left out). Only keys are computed (no prompt, no candidate search), so a replay is cheap."""
+    out: dict[str, dict[str, dict]] = {}
+    for works in per_ticker.values():
+        for w in works:
+            if w.result is None:
+                continue
+            keys = adj.task_keys(w.result, w.older_rows, w.newer_text, model)
+            found = {item_id: checkpoint.records[key] for item_id, key in keys.items() if key in checkpoint.records}
+            if found:
+                out[w.pair["pair_id"]] = found
+    return out
 
 
-def _item_spent(checkpoint: adj.Checkpoint, before: set[str]) -> float:
-    """The per-call upper bounds of the item-level answers recorded since ``before`` (what this run's item step is charged)."""
-    return sum(float(r.get("est_usd_upper_bound", 0.0)) for k, r in checkpoint.records.items() if k not in before)
+_NO_CALLS = adj.CallStats(0, 0, 0.0)
+
+
+class ItemStep(NamedTuple):
+    """What the item step planned (``estimate``, None when it was not asked to buy) and did (``stats``)."""
+
+    estimate: adj.Estimate | None
+    stats: adj.CallStats
+
+
+def _buy_item_answers(per_ticker: Mapping[str, Sequence[PairWork]], checkpoint: adj.Checkpoint, model: str, call: Callable[..., Any], *,
+                      adj_params: adj.AdjudicationParams, max_usd: float, dry_run: bool) -> ItemStep:
+    """The item step of a buying run: plan a task per uncertain / removed older item, estimate, refuse when the worst case is over
+    ``max_usd`` BEFORE any call (``BudgetExceeded``), and answer what the checkpoint lacks (skipped: a dry run)."""
+    tasks = [t for works in per_ticker.values() for w in works if w.result is not None
+             for t in adj.plan_tasks(w.pair["pair_id"], w.result, w.older_rows, w.newer_text, model, adj_params)]
+    estimate = adj.estimate_cost(tasks, set(checkpoint.records), model, adj_params)
+    if dry_run:
+        return ItemStep(estimate, _NO_CALLS)
+    if estimate.worst_case_usd > max_usd:
+        raise adj.BudgetExceeded(f"worst case ${estimate.worst_case_usd:.4f} for {estimate.n_calls} call(s) exceeds "
+                                 f"--max-usd ${max_usd:.2f}: nothing was spent")
+    return ItemStep(estimate, adj.run_tasks(tasks, checkpoint, call, model=model, max_usd=max_usd, params=adj_params))
 
 
 class PassageStep(NamedTuple):
-    """What the passage step planned: the total ``estimate``, the same ``by_zone``, the ``calls`` made and, per pair id, the
-    ``counts`` of sentences and answered ones per zone."""
+    """What the passage step planned: the total ``estimate``, the same ``by_zone``, the ``stats`` of the calls it made and, per pair
+    id, the ``counts`` of sentences and answered ones per zone."""
 
     estimate: adj.Estimate
     by_zone: dict[str, adj.Estimate]
-    calls: int
+    stats: adj.CallStats
     counts: dict[str, dict[str, tuple[int, int]]]
 
 
-def _settle_passages(per_ticker: Mapping[str, Sequence[PairWork]], tasks: Mapping[str, Sequence[adj.Task]],
-                     checkpoint: adj.Checkpoint | None, passage_cp: adj.Checkpoint, model: str, *, max_usd: float, budget: float,
+def _settle_passages(per_ticker: Mapping[str, Sequence[PairWork]], recorded: Mapping[str, Mapping[str, Any]],
+                     passage_cp: adj.Checkpoint, model: str, *, max_usd: float, budget: float,
                      dry_run: bool, call: Callable[..., Any], adj_params: adj.AdjudicationParams, passage_params: PassageParams,
                      pas_params: pad.PassageAdjudicationParams, embed: sentence_embed.EmbedFn | None = None,
                      cache_dir: Path | None = None) -> PassageStep:
@@ -525,7 +586,7 @@ def _settle_passages(per_ticker: Mapping[str, Sequence[PairWork]], tasks: Mappin
         for w in works:
             if w.result is None:
                 continue
-            plan = plan_band_tasks(w, _records_for(w, tasks, checkpoint), model, passage_cp.records, adj_params=adj_params,
+            plan = plan_band_tasks(w, recorded.get(w.pair["pair_id"]), model, passage_cp.records, adj_params=adj_params,
                                    passage_params=passage_params, pas_params=pas_params, embed=embed, cache_dir=cache_dir,
                                    dry_run=dry_run, refuse_uncached=refuse)
             planned += plan.tasks
@@ -536,12 +597,73 @@ def _settle_passages(per_ticker: Mapping[str, Sequence[PairWork]], tasks: Mappin
     zones = pad.ZONES if passage_params.adjudicate_below_band else pad.ZONES[:1]
     by_zone = pad.estimates_by_zone(unique, cached, model, zones, pas_params)
     if dry_run:
-        return PassageStep(estimate, by_zone, 0, counts)
+        return PassageStep(estimate, by_zone, _NO_CALLS, counts)
     if estimate.worst_case_usd > budget:
         raise pad.BudgetExceeded(f"worst case ${estimate.worst_case_usd:.4f} for {estimate.n_calls} passage call(s) exceeds --max-usd "
                                  f"${max_usd:.2f} (${budget:.4f} left after the item step): nothing further was spent")
     return PassageStep(estimate, by_zone, pad.run_tasks(unique, passage_cp, call, model=model, max_usd=budget, params=pas_params),
                        counts)
+
+
+def _align_all(settings: Settings, tickers: Sequence[str], align_params: AlignParams) -> dict[str, list[PairWork]]:
+    """Phase 1 (free, pure): align every consecutive pair of every ticker."""
+    quality = load_quality(items_dir(settings))
+    per_ticker: dict[str, list[PairWork]] = {}
+    for ticker in tickers:
+        frame, sections, chunks = read_ticker_inputs(settings, ticker)
+        per_ticker[ticker] = [prepare_pair(p, frame, sections, chunks, align_params) for p in consecutive_pairs(frame, quality)]
+        logger.info("%s: %d pair(s) aligned", ticker, len(per_ticker[ticker]))
+    return per_ticker
+
+
+def replay_context(passage_cp: adj.Checkpoint, model: str, pas_params: pad.PassageAdjudicationParams,
+                   passage_params: PassageParams) -> tuple[BandContext | None, PassageParams]:
+    """What the tables replay of the passage checkpoint: the answers of the newest prompt version present for ``model`` (None: none
+    is recorded, the tables are the lexical rules' alone) and the passage parameters to compute them with, whose below zone is on
+    when the caller asked for it OR that version holds a below answer (an unanswered below sentence is classified as with the zone
+    off, so turning it on cannot change a passage that has no answer)."""
+    version = pad.replay_version(passage_cp.records, model)
+    if version is None:
+        return None, passage_params
+    below = passage_params.adjudicate_below_band or pad.replay_has_below(passage_cp.records, model, version)
+    return (BandContext(passage_cp.records, model, pas_params, version),
+            replace(passage_params, adjudicate_below_band=True) if below else passage_params)
+
+
+@dataclass(frozen=True)
+class _Purchases:
+    """What the buying steps did before the tables are written (``passage`` is None unless ``adjudicate_passages``)."""
+
+    item: ItemStep
+    passage: PassageStep | None
+    passage_budget: float | None
+
+
+def _purchases(per_ticker: Mapping[str, Sequence[PairWork]], directory: Path, model: str, call: Callable[..., Any], *, adjudicate: bool,
+               adjudicate_passages: bool, max_usd: float, dry_run: bool, adj_params: adj.AdjudicationParams,
+               passage_params: PassageParams, pas_params: pad.PassageAdjudicationParams,
+               embed: sentence_embed.EmbedFn | None) -> _Purchases:
+    """Phases 2 and 3: BUY the answers that are missing, only for the steps the flags permit (nothing without a flag). The item step
+    runs first; the passage step plans on the result settled with EVERY recorded item answer and gets what ``max_usd`` has left after
+    the item step's charges (a dry run: after its worst-case estimate)."""
+    item = ItemStep(None, _NO_CALLS)
+    if adjudicate:
+        item = _buy_item_answers(per_ticker, adj.Checkpoint(directory / adj.CHECKPOINT_NAME), model, call, adj_params=adj_params,
+                                 max_usd=max_usd, dry_run=dry_run)
+    if not adjudicate_passages:
+        return _Purchases(item, None, None)
+    budget = max(max_usd - (item.estimate.worst_case_usd if dry_run and item.estimate else item.stats.charged), 0.0)
+    recorded = item_records(per_ticker, adj.Checkpoint(directory / adj.CHECKPOINT_NAME), model)
+    step = _settle_passages(per_ticker, recorded, adj.Checkpoint(directory / pad.CHECKPOINT_NAME), model, max_usd=max_usd,
+                            budget=budget, dry_run=dry_run, call=call, adj_params=adj_params, passage_params=passage_params,
+                            pas_params=pas_params, embed=embed, cache_dir=directory / EMBEDDINGS_DIRNAME)
+    return _Purchases(item, step, budget)
+
+
+def _with_counts(outcome: PairOutcome, counts: Mapping[str, tuple[int, int]], params: PassageParams) -> PairOutcome:
+    """A dry-run outcome carrying the zone counts the passage step enumerated (the below columns only with the below zone on)."""
+    below = counts["below"] if params.adjudicate_below_band else (None, None)
+    return replace(outcome, band=counts["band"][0], band_answered=counts["band"][1], below=below[0], below_answered=below[1])
 
 
 def run_align_items(settings: Settings, tickers: Sequence[str] | None = None, *, adjudicate: bool = False,
@@ -552,17 +674,17 @@ def run_align_items(settings: Settings, tickers: Sequence[str] | None = None, *,
                     passage_params: PassageParams = PassageParams(),
                     pas_params: pad.PassageAdjudicationParams = pad.PassageAdjudicationParams(),
                     embed: sentence_embed.EmbedFn | None = None) -> AlignRun:
-    """Align every consecutive annual pair of every ticker and write the three tables per ticker.
+    """Align every consecutive annual pair of every ticker and write the three tables per ticker plus the provenance sidecar.
 
-    Phase 1 (free, pure) aligns every pair. With ``adjudicate``, phase 2 collects the model tasks of the ``uncertain`` / ``removed``
-    older items, prints nothing, checks the worst case against ``max_usd`` BEFORE any call (raising ``adjudicate.BudgetExceeded``),
-    and answers the tasks the checkpoint does not hold. With ``adjudicate_passages``, phase 3 does the same for the band (and, with
-    ``passage_params.adjudicate_below_band``, below) sentences of the passage layer on the settled result, against what ``max_usd``
-    has left after phase 2; it needs ``embed`` (sentences to vectors, see ``graph/sentence_embed``) unless ``dry_run``. ``dry_run``
-    stops after the estimates: nothing is written or embedded, no model is called, and passages are not computed. Phase 4 settles,
-    computes passages and writes; the recorded passage answers of ``passage_adjudications.jsonl`` are applied: those of ``pas-v3`` with
-    ``adjudicate_passages``, else the legacy ``pas-v2`` ones (module docstring). ``out_dir`` (default: the lake's ``risk_alignment``
-    directory) redirects the tables, both checkpoints AND the sentence-embedding cache (tests use it to leave the real files alone)."""
+    Phase 1 (free, pure) aligns every pair. Phases 2 and 3 BUY missing model answers and only when a flag permits it: ``adjudicate``
+    (the item level), ``adjudicate_passages`` (the passage layer's band sentences and, with ``passage_params.adjudicate_below_band``,
+    below sentences; it needs ``embed`` unless ``dry_run``). The worst case is checked against ``max_usd`` BEFORE any call (raising
+    ``adjudicate.BudgetExceeded``); a run without a flag makes no call whatever ``max_usd`` says. Phase 4 settles with EVERY recorded
+    answer of both checkpoints, computes the passages and writes (module docstring: replay versus buying); the checkpoints are read
+    again after any purchase, so the tables and the provenance digests describe the same bytes. ``dry_run`` stops after the estimates:
+    nothing is written or embedded, no model is called, and passages are not computed. ``out_dir`` (default: the lake's
+    ``risk_alignment`` directory) redirects the tables, both checkpoints, the sidecar AND the sentence-embedding cache (tests use it
+    to leave the real files alone)."""
     directory = out_dir or alignment_dir(settings)
     tickers = discover_tickers(settings, tickers)
     if not tickers:
@@ -570,63 +692,53 @@ def run_align_items(settings: Settings, tickers: Sequence[str] | None = None, *,
     if adjudicate_passages and not dry_run and embed is None:
         raise AlignItemsError("passage adjudication (prompt pas-v3) shows the model the nearest sentences by embedding: pass `embed` "
                               "(the CLI does). Without it a buying run would record lexical-only answers under the semantic version")
-    quality = load_quality(items_dir(settings))
-    per_ticker: dict[str, list[PairWork]] = {}
-    for ticker in tickers:
-        items, sections, chunks = read_ticker_inputs(settings, ticker)
-        per_ticker[ticker] = [prepare_pair(p, items, sections, chunks, align_params)
-                              for p in consecutive_pairs(items, quality)]
-        logger.info("%s: %d pair(s) aligned", ticker, len(per_ticker[ticker]))
-    model = model or settings.adjudication_model
-    call = llm or adj.default_llm_json
-    tasks: dict[str, list[adj.Task]] = {}
-    checkpoint = estimate = None
-    item_spent = 0.0
-    if adjudicate:
-        checkpoint = adj.Checkpoint(directory / adj.CHECKPOINT_NAME)
-        for works in per_ticker.values():
-            for w in works:
-                if w.result is not None:
-                    tasks[w.pair["pair_id"]] = adj.plan_tasks(w.pair["pair_id"], w.result, w.older_rows, w.newer_text, model, adj_params)
-        estimate = adj.estimate_cost([t for ts in tasks.values() for t in ts], set(checkpoint.records), model, adj_params)
-        if not dry_run:
-            if estimate.worst_case_usd > max_usd:
-                raise adj.BudgetExceeded(f"worst case ${estimate.worst_case_usd:.4f} for {estimate.n_calls} call(s) exceeds "
-                                         f"--max-usd ${max_usd:.2f}: nothing was spent")
-            before = set(checkpoint.records)
-            adj.run_tasks([t for ts in tasks.values() for t in ts], checkpoint, call, model=model, max_usd=max_usd, params=adj_params)
-            item_spent = _item_spent(checkpoint, before)
-    passage_cp = adj.Checkpoint(directory / pad.CHECKPOINT_NAME)
-    passage_estimate, passage_budget, passage_calls, band_counts, zone_estimates = None, None, 0, {}, {}
-    version = pad.PROMPT_VERSION if adjudicate_passages else pad.LEGACY_PROMPT_VERSION
-    if adjudicate_passages:
-        passage_budget = max(max_usd - (estimate.worst_case_usd if dry_run and estimate else item_spent), 0.0)
-        step = _settle_passages(
-            per_ticker, tasks, checkpoint, passage_cp, model, max_usd=max_usd, budget=passage_budget, dry_run=dry_run, call=call,
-            adj_params=adj_params, passage_params=passage_params, pas_params=pas_params, embed=embed,
-            cache_dir=directory / EMBEDDINGS_DIRNAME)
-        passage_estimate, zone_estimates, passage_calls, band_counts = step.estimate, step.by_zone, step.calls, step.counts
-    band = BandContext(passage_cp.records, model, pas_params, version) if (adjudicate_passages or passage_cp.records) else None
+    per_ticker = _align_all(settings, tickers, align_params)
+    model, call = model or settings.adjudication_model, llm or adj.default_llm_json
+    bought = _purchases(per_ticker, directory, model, call, adjudicate=adjudicate, adjudicate_passages=adjudicate_passages,
+                        max_usd=max_usd, dry_run=dry_run, adj_params=adj_params, passage_params=passage_params, pas_params=pas_params,
+                        embed=embed)
+    flags = {"adjudicate": adjudicate, "adjudicate_passages": adjudicate_passages,
+             "adjudicate_all_absent": passage_params.adjudicate_below_band}
+    return _write_tables(settings, directory, per_ticker, bought, model, dry_run, flags, adj_params, passage_params, pas_params)
+
+
+def _write_tables(settings: Settings, directory: Path, per_ticker: Mapping[str, Sequence[PairWork]], bought: _Purchases, model: str,
+                  dry_run: bool, flags: Mapping[str, bool], adj_params: adj.AdjudicationParams, passage_params: PassageParams,
+                  pas_params: pad.PassageAdjudicationParams) -> AlignRun:
+    """Phase 4: settle every pair with the recorded answers, compute the passages and write the tables and the provenance."""
+    item_cp, passage_cp = adj.Checkpoint(directory / adj.CHECKPOINT_NAME), adj.Checkpoint(directory / pad.CHECKPOINT_NAME)
+    recorded = item_records(per_ticker, item_cp, model)
+    band, replay_params = replay_context(passage_cp, model, pas_params, passage_params)
+    counts = bought.passage.counts if bought.passage else {}
     written: list[Path] = []
     summary: list[dict] = []
+    entries: dict[str, dict] = {}
     used = 0
     for ticker, works in per_ticker.items():
-        outcomes = [finalize_pair(w, _records_for(w, tasks, checkpoint), with_passages=not dry_run, adj_params=adj_params,
-                                  passage_params=passage_params, band=band) for w in works]
-        outcomes = [_with_counts(o, band_counts[o.work.pair["pair_id"]], passage_params) if dry_run and o.work.pair["pair_id"] in band_counts
-                    else o for o in outcomes]
-        used += sum(o.band_applied for o in outcomes)
+        outcomes = [finalize_pair(w, recorded.get(w.pair["pair_id"]), with_passages=not dry_run, adj_params=adj_params,
+                                  passage_params=replay_params, band=band) for w in works]
+        outcomes = [_with_counts(o, counts[pid], passage_params) if dry_run and (pid := o.work.pair["pair_id"]) in counts else o
+                    for o in outcomes]
+        applied = sum(o.band_applied for o in outcomes)
+        used += applied
         summary += [summary_row(o, passages_computed=not dry_run) for o in outcomes]
         if not dry_run:
             written += write_ticker(directory, ticker, outcomes)
-    return AlignRun(summary, estimate, written, dry_run, passage_estimate, passage_budget, used, passage_calls, zone_estimates,
-                    version if band is not None else "")
-
-
-def _with_counts(outcome: PairOutcome, counts: Mapping[str, tuple[int, int]], params: PassageParams) -> PairOutcome:
-    """A dry-run outcome carrying the zone counts the passage step enumerated (the below columns only with the below zone on)."""
-    below = counts["below"] if params.adjudicate_below_band else (None, None)
-    return replace(outcome, band=counts["band"][0], band_answered=counts["band"][1], below=below[0], below_answered=below[1])
+            entries[ticker] = provenance.ticker_entry(
+                flags=flags, model=model, item_checkpoint=item_cp, passage_checkpoint=passage_cp,
+                passage_version=band.version if band else None, below_zone=replay_params.adjudicate_below_band,
+                item_verdicts=sum(len(recorded.get(w.pair["pair_id"], ())) for w in works), passage_verdicts=applied,
+                inputs=ticker_input_paths(settings, ticker))
+    sidecar = provenance.write_provenance(directory, entries) if entries else None
+    step, item = bought.passage, bought.item
+    return AlignRun(
+        summary, item.estimate, written + ([sidecar] if sidecar else []), dry_run,
+        passage_estimate=step.estimate if step else None, passage_budget_usd=bought.passage_budget, passage_verdicts_used=used,
+        passage_calls=step.stats.calls if step else 0, passage_estimates=step.by_zone if step else {},
+        passage_prompt_version=band.version if band else "", passage_failed=step.stats.failed if step else 0,
+        item_verdicts_used=sum(len(r) for r in recorded.values()), item_calls=item.stats.calls, item_failed=item.stats.failed,
+        item_charged_usd=item.stats.charged, below_replayed=band is not None and replay_params.adjudicate_below_band,
+        provenance=sidecar)
 
 
 # --------------------------------------------------------------------------

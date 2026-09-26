@@ -120,7 +120,7 @@ class TestPlan:
         tasks = pad.plan_tasks("PAIR", bands, MODEL)
         est = pad.estimate_cost(tasks, {tasks[0].key}, MODEL)
         assert (est.n_items, est.n_cached, est.n_calls, est.priced, est.model) == (4, 1, 3, True, MODEL)
-        assert 0 < est.likely_usd < est.worst_case_usd < 0.01
+        assert 0 < est.likely_usd < est.worst_case_usd < 0.05        # M2: the worst case now covers every completion one call can bill
         assert est.output_tokens_cap == 3 * pad.PassageAdjudicationParams().max_output_tokens
         assert pad.estimate_cost(tasks, {t.key for t in tasks}, MODEL).n_calls == 0
 
@@ -156,7 +156,7 @@ class TestRun:
     def test_every_answer_is_checkpointed_with_what_the_model_saw_and_a_rerun_never_repays(self, tmp_path):
         tasks, path = self.tasks(), tmp_path / pad.CHECKPOINT_NAME
         llm = FakeLLM()
-        assert pad.run_tasks(tasks, adj.Checkpoint(path), llm, model=MODEL, max_usd=0.5) == 4
+        assert pad.run_tasks(tasks, adj.Checkpoint(path), llm, model=MODEL, max_usd=0.5).calls == 4
         assert all(c["thinking_off"] and c["model"] == MODEL and c["max_tokens"] == pad.PassageAdjudicationParams().max_output_tokens
                    for c in llm.calls)
         lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
@@ -167,22 +167,74 @@ class TestRun:
         assert [c["text"] for c in first["candidates"]] == [c.text for c in tasks[0].candidates]
         assert all(set(c) == {"text", "start", "end"} for c in first["candidates"]) and first["est_usd_upper_bound"] > 0
         again = FakeLLM()
-        assert pad.run_tasks(tasks, adj.Checkpoint(path), again, model=MODEL, max_usd=0.5) == 0 and again.calls == []
+        assert pad.run_tasks(tasks, adj.Checkpoint(path), again, model=MODEL, max_usd=0.5).calls == 0 and again.calls == []
 
     def test_a_different_model_repays_because_the_model_is_part_of_the_key(self, tmp_path):
         _, bands, _, _ = pair_bands()
         path = tmp_path / "p.jsonl"
         pad.run_tasks(pad.plan_tasks("P", bands, "m1"), adj.Checkpoint(path), FakeLLM(), model="m1", max_usd=0.5)
         other = FakeLLM()
-        assert pad.run_tasks(pad.plan_tasks("P", bands, "m2"), adj.Checkpoint(path), other, model="m2", max_usd=0.5) == 4
+        assert pad.run_tasks(pad.plan_tasks("P", bands, "m2"), adj.Checkpoint(path), other, model="m2", max_usd=0.5).calls == 4
 
     def test_a_failing_call_is_skipped_as_no_verdict_and_retried_on_the_next_run(self, tmp_path):
         """One bad call (empty reply, provider error) must not abort the buy: no verdict is the safe direction."""
         tasks, path = self.tasks(), tmp_path / "p.jsonl"
         first = pad.run_tasks(tasks, adj.Checkpoint(path), FakeLLM(fail_on=3), model=MODEL, max_usd=0.5)
-        assert first == len(tasks) and len(path.read_text(encoding="utf-8").splitlines()) == len(tasks) - 1
+        assert (first.calls, first.failed) == (len(tasks), 1) and len(path.read_text(encoding="utf-8").splitlines()) == len(tasks) - 1
         resume = FakeLLM()
-        assert pad.run_tasks(tasks, adj.Checkpoint(path), resume, model=MODEL, max_usd=0.5) == 1     # only the failed one is paid again
+        assert pad.run_tasks(tasks, adj.Checkpoint(path), resume, model=MODEL, max_usd=0.5).calls == 1     # only the failed one is paid again
+
+    @pytest.mark.parametrize("make_error", [
+        lambda: __import__("litellm").exceptions.APIConnectionError(message="boom", llm_provider="openai", model="m"),
+        lambda: __import__("litellm").exceptions.InternalServerError(message="500", llm_provider="openai", model="m"),
+        lambda: __import__("litellm").exceptions.Timeout(message="slow", model="m", llm_provider="openai"),
+        lambda: ValueError("not json"),
+        lambda: OSError("connection reset"),
+    ])
+    def test_a_litellm_or_network_error_is_a_skipped_call_not_an_aborted_run(self, tmp_path, make_error):
+        """M2: only RuntimeError used to be caught, so a provider exception aborted the whole buy."""
+        class Failing(FakeLLM):
+            def __call__(self, prompt, model_cls, **kw):
+                if not self.calls:
+                    self.calls.append(prompt)
+                    raise make_error()
+                return super().__call__(prompt, model_cls, **kw)
+
+        tasks, path = self.tasks(), tmp_path / "p.jsonl"
+        stats = pad.run_tasks(tasks, adj.Checkpoint(path), Failing(), model=MODEL, max_usd=0.5)
+        assert (stats.calls, stats.failed) == (len(tasks), 1) and len(path.read_text(encoding="utf-8").splitlines()) == len(tasks) - 1
+
+    def test_a_failed_call_is_charged_against_the_cap_because_it_may_have_been_billed(self, tmp_path, monkeypatch):
+        """M2: a failing call used to add nothing to the running total, so failures could overspend the cap."""
+        monkeypatch.setattr(pad, "call_cost_upper_bound", lambda prompt, model, params=None: 0.3)
+        llm = FakeLLM(fail_on=1)
+        with pytest.raises(pad.BudgetExceeded, match="stopped after 1 call"):
+            pad.run_tasks(self.tasks(), adj.Checkpoint(tmp_path / "p.jsonl"), llm, model=MODEL, max_usd=0.5)
+        assert len(llm.calls) == 1
+
+    def test_the_charge_is_the_bound_of_every_completion_one_call_can_bill_not_of_one_attempt(self):
+        task = self.tasks()[0]
+        per_in, per_out, _ = adj.model_prices(MODEL)
+        one_attempt = (-(-len(task.prompt) // 3) * per_in + pad.PassageAdjudicationParams().max_output_tokens * per_out) / 1e6
+        bound = pad.call_cost_upper_bound(task.prompt, MODEL)
+        assert bound > adj.MAX_COMPLETIONS_PER_CALL * one_attempt * 0.99
+        assert bound == pytest.approx(adj.call_cost_upper_bound(task.prompt, MODEL, adj.AdjudicationParams(max_output_tokens=600)))
+
+    def test_the_total_never_passes_the_cap_however_many_calls_fail(self, tmp_path, monkeypatch):
+        """Half the calls fail: the charged total still stops the run before the cap, so spend cannot exceed --max-usd."""
+        monkeypatch.setattr(pad, "call_cost_upper_bound", lambda prompt, model, params=None: 0.2)
+
+        class Alternating(FakeLLM):
+            def __call__(self, prompt, model_cls, **kw):
+                self.calls.append(prompt)
+                if len(self.calls) % 2:
+                    raise RuntimeError("blip")
+                return model_cls(verdict="different")
+
+        llm = Alternating()
+        with pytest.raises(pad.BudgetExceeded, match="stopped after 2 call"):
+            pad.run_tasks(self.tasks(), adj.Checkpoint(tmp_path / "p.jsonl"), llm, model=MODEL, max_usd=0.5)
+        assert len(llm.calls) == 2 and 2 * 0.2 <= 0.5 < 3 * 0.2         # the failed call and the answered one are both charged
 
 
 # --------------------------------------------------------------------------- the rules
@@ -380,7 +432,7 @@ class TestDefaultCall:
 
     def test_a_gpt6_reply_with_a_candidate_number_validates_through_the_provider_aware_text_call(self, monkeypatch):
         replies = iter(['Sure! {"verdict": "maybe"}', '```json\n{"verdict": "same", "candidate": 2, "quote": "abc"}\n```'])
-        monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", lambda prompt, *, model, max_tokens, reasoning_effort=None: next(replies))
+        monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", lambda prompt, *, model, max_tokens, reasoning_effort=None, attempts=4: next(replies))
         out = pad.default_llm_json("p", pad.PassageVerdict, model=MODEL, max_tokens=300)
         assert (out.verdict, out.candidate, out.quote) == ("same", 2, "abc")
 

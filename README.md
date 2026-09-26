@@ -366,9 +366,12 @@ uv run semigraph freshness --as-of 2026-09-25  # what EDGAR / the Federal Regist
 uv run semigraph extract --dry-run             # estimate only; then `extract --max-usd 6` (PAID, checkpointed, resumable)
 uv run semigraph risk-items --coverage         # free: detect risk items per annual filing; LOW / SUSPECT filings are 'not compared'
 uv run semigraph risk-items                    # write data/interim/risk_items/*.parquet (+ per-filing quality sidecars)
-uv run semigraph align-items --dry-run         # free: what changed between consecutive annual filings (text-verified); --adjudicate is optional and ~$0.01
-uv run semigraph align-items                   # write data/interim/risk_alignment/*.parquet
-uv run semigraph build-graph --rebuild --yes   # versioned FULL rebuild (refuses while chunks are unextracted or alignment is stale)
+uv run semigraph align-items --dry-run         # free: what changed between consecutive annual filings (text-verified); replays every recorded model answer, buys none
+uv run semigraph align-items                   # free and SAFE: write data/interim/risk_alignment/*.parquet + alignment_provenance.json; replays EVERY recorded model answer (items; passages, band + below zone), never calls a model, whatever --max-usd says
+# Buying missing model answers is a SEPARATE, PAID step (cheap model; the worst case is checked against --max-usd before any call; every answer is checkpointed, so a re-run never repays):
+uv run semigraph align-items --dry-run --adjudicate --adjudicate-passages --adjudicate-all-absent               # estimate only (nothing written, no model called)
+uv run semigraph align-items --adjudicate --adjudicate-passages --adjudicate-all-absent --max-usd <cap>         # PAID; afterwards a plain `align-items` reproduces the same tables for free
+uv run semigraph build-graph --rebuild --yes   # versioned FULL rebuild (refuses while chunks are unextracted, alignment is stale, or the tables were built before the recorded model answers reached their present state: rerun the free `align-items`)
 PYTHONPATH=src python scripts/verify_graph.py  # freshness + item-layer invariants, read-only
 uv run semigraph query "Which export-control rules affect Nvidia?"
 # new data snapshot -> new benchmark log (the default eval_runs.jsonl holds v1's runs and would only be resumed):

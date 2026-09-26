@@ -5,7 +5,8 @@ Input: the older filing's items and the newer filing's items (rows with ``item_i
 plus the newer filing's FULL section text. Output: per older item one of
 ``unchanged | reworded | merged | removed | uncertain`` and per newer item one of
 ``carried | new | uncertain``, each with the evidence that decided it and a
-``decided_by`` in ``hash | headline | body | text_check | uncertain | llm | unmatched``.
+``decided_by`` in ``hash | headline | body | text_check | uncertain | llm | unmatched`` (``unmatched``, a newer item called
+``new`` with no text check, is no longer produced: an unchecked item is ``uncertain``; the name stays for old tables).
 
 The pipeline is pure and deterministic (no I/O, no network; the embedding is an
 injected callable) and runs cheapest step first:
@@ -669,9 +670,9 @@ def _derive_newer(newer_ids: Sequence[str], older: Sequence[OlderDecision], hint
 
 
 def _unmatched_newer(nid: str, evidence: Evidence, params: AlignParams) -> NewerDecision:
+    """``new`` only when the item's probes were searched in the older section and none was found; ``uncertain`` when they could
+    not be searched (no older section text, or the item has no probe): nothing was checked, so nothing is claimed."""
     verdict = _probe_verdict(evidence, params)
-    if verdict == "unverifiable":
-        return NewerDecision(nid, "new", None, "unmatched", evidence)
     if verdict == "absent":
         return NewerDecision(nid, "new", None, "text_check", evidence)
     if verdict == "present":
@@ -696,7 +697,8 @@ def align(older: Sequence[Mapping[str, Any]], newer: Sequence[Mapping[str, Any]]
     units have no headline). ``embed``: batch embedder ``list[str] -> (n, d)`` array, called at
     most once and only with the items still unmatched after the hash and headline steps;
     ``None`` selects the lexical-only rule. ``older_section_text``: when given, unmatched newer
-    items are verified against it too (a hit means ``carried``, not ``new``).
+    items are verified against it too (a hit means ``carried``, no hit ``new``); without it, or for
+    an item that has no probe, an unmatched newer item is ``uncertain`` (never ``new`` unchecked).
     ``boilerplate_sentences``: sentences (compared after normalisation) never used as probes.
     Decisions are returned in input order.
     """
@@ -724,12 +726,13 @@ def _settle(d: OlderDecision, verdict: str, params: AlignParams) -> OlderDecisio
             raise ValueError(f"item {d.item_id!r} has no candidate newer item to pair with")
         return replace(d, label="unchanged" if verdict == "same" else "reworded", decided_by="llm")
     text_verdict = _probe_verdict(d.evidence, params)
-    if text_verdict in ("absent", "unverifiable"):
+    if text_verdict == "absent":
         return replace(d, label="removed", matched_newer_id=None, decided_by="llm")
     if text_verdict == "present":
         return replace(d, label="merged", matched_newer_id=d.evidence.quote_item_id, decided_by="text_check")
-    logger.warning("item %s: LLM verdict 'removed' blocked, its text is partly present in the newer section",
-                   d.item_id)
+    logger.warning("item %s: LLM verdict 'removed' blocked, %s", d.item_id,
+                   "the item has no probe the newer section could be searched for" if text_verdict == "unverifiable"
+                   else "its text is partly present in the newer section")
     return d
 
 
@@ -738,14 +741,15 @@ def apply_adjudication(result: AlignmentResult, verdicts: Mapping[str, str]) -> 
 
     Returns a new result; the input is untouched. ``same`` / ``reworded`` pair the item with its
     candidate newer item (decided_by ``llm``). ``removed`` is subject to the false-drop guard: it
-    stands (``llm``) only when none of the item's probes is in the newer section; with enough hits
-    the item becomes ``merged`` (``text_check``); with a single hit it stays ``uncertain``.
+    stands (``llm``) only when the item's probes were searched and none is in the newer section;
+    with enough hits the item becomes ``merged`` (``text_check``); with a single hit, or with no
+    probe to search (the model's word alone is not a text check), it stays ``uncertain``.
     Newer labels are recomputed from the settled older decisions. Unknown ids, invalid verdicts,
     non-uncertain items, and same/reworded without a candidate raise ``ValueError``.
 
     An ``uncertain`` item WITHOUT a candidate (a fuzzy single probe hit, or no searchable probe)
-    cannot be paired and, for single-hit items, cannot be removed: it stays ``uncertain``, and
-    consumers must treat every item still ``uncertain`` as PRESENT (Active, never Deleted).
+    cannot be paired and cannot be removed: it stays ``uncertain``, and consumers must treat
+    every item still ``uncertain`` as PRESENT (Active, never Deleted).
     """
     known = {d.item_id for d in result.older}
     unknown = sorted(set(verdicts) - known)
