@@ -1,0 +1,88 @@
+{
+  "as_of": "2026-09-24",
+  "errors": {},
+  "estimated_cost_usd": 0.0858,
+  "examples_snapshot": "snap-20260924-7feaaf9bfe",
+  "model": "anthropic/claude-sonnet-5",
+  "notes_sha256": {
+    "T1": "7e307ab8b6ca637a92e8a3edf28c0a6e1c985f9780f380cd83d2055a4f4bad40",
+    "T3": "7e307ab8b6ca637a92e8a3edf28c0a6e1c985f9780f380cd83d2055a4f4bad40"
+  },
+  "notes_source": "temporal",
+  "open_correct": 0,
+  "prompt_sha256": "3f5bdd2e557ad7cc05c5b5b7b3cb67c30c84e5b839c9a2e89fd79a705808022b",
+  "results": {
+    "T1": [
+      {
+        "correct": false,
+        "reason": "The answer fabricates numerous whole risk-factor removals (data privacy, litigation, cross-border data transfer, internal AI use, acquisition risk, etc.) that are not supported by the grading notes, which specify only one risk factor removed (FY2024->FY2025: indebtedness) and one added (FY2026: counterparty risk), plus specific sentence-level removals that survive within retained risk factors.",
+        "unsupported_claims": [
+          "Data privacy compliance risk dropped from latest 10-K",
+          "China/Hong Kong operational transition risk factor dropped",
+          "Cross-border data transfer risk factor dropped",
+          "Litigation/regulatory proceedings risk factor dropped",
+          "Internal AI use risk factor dropped as whole risk factor"
+        ]
+      },
+      {
+        "correct": false,
+        "reason": "The answer fabricates numerous 'dropped risk factor' claims (data privacy, litigation, internal AI use, acquisition risk, etc.) that are not supported by the grading notes, which specify only one risk factor removed (FY2023->FY2024) and one new (FY2025->FY2026), plus specific removed sentences that survive within retained risk factors, not as dropped factors.",
+        "unsupported_claims": [
+          "Data privacy compliance risk factor dropped",
+          "China export/NAC licensing risk factor dropped",
+          "Litigation/regulatory proceedings risk factor dropped",
+          "China/Hong Kong operational transition risk factor dropped (framed as factor, not sentence)",
+          "Cross-border data transfer risk factor dropped"
+        ]
+      },
+      {
+        "correct": false,
+        "reason": "The answer fabricates multiple 'dropped risk factor' claims not supported by the grading notes, which specify only one risk factor removed (indebtedness) between FY2024/FY2025 and one added (counterparty risk) between FY2025/FY2026, with three specific sentences removed while their risk factors survived; it also misrepresents removed sentences as dropped whole risk factors.",
+        "unsupported_claims": [
+          "Data privacy compliance risk was dropped as a risk factor",
+          "China export/NAC licensing risk was dropped as a risk factor",
+          "Litigation/regulatory proceedings risk was dropped as a risk factor",
+          "China/Hong Kong operational transition risk was dropped as a risk factor",
+          "Cross-border data transfer risk was dropped as a risk factor"
+        ]
+      }
+    ],
+    "T3": [
+      {
+        "correct": false,
+        "reason": "The answer fabricates numerous specific removed risk factors/sentences (data privacy, cross-border data transfer, NAC process, shareholder litigation, etc.) that are not supported by the grading notes, and treats risk factor content as dropped rather than the notes' verified sentence-level changes, plus adds unverified financial figures.",
+        "unsupported_claims": [
+          "Data privacy risk factor dropped (FY2023-FY2025)",
+          "Cross-border data transfer risk factor dropped",
+          "Shareholder/regulatory litigation risk language dropped within FY2025",
+          "AI-related internal-use risk and M&A macroeconomic risk dropped within FY2025",
+          "Revenue/net income/R&D figures presented as verified Reported Metrics"
+        ]
+      },
+      {
+        "correct": false,
+        "reason": "The answer fabricates multiple risk-factor removals (data privacy, cross-border data transfer, NAC process, shareholder litigation, AI internal-use risk) that are not supported by the grading notes, which only verify one whole risk factor removed (indebtedness, FY2024->FY2025) and one added (counterparty risk, FY2025->FY2026), plus specific sentence-level removals unrelated to these claims.",
+        "unsupported_claims": [
+          "Data privacy risk factor dropped from latest report",
+          "Cross-border data transfer legal challenges risk factor dropped",
+          "Processing of sensitive/personal data risk factor dropped",
+          "NAC process risk factor disclosed and dropped within FY2025",
+          "Shareholder/regulatory litigation risk factor disclosed and dropped within FY2025"
+        ]
+      },
+      {
+        "correct": false,
+        "reason": "The answer fabricates numerous unsupported removal claims (data privacy, cross-border data transfer, NAC process, shareholder litigation, etc.) not in the grading notes, and describes removed sentences as dropped risk factors, contradicting the notes' explicit instruction.",
+        "unsupported_claims": [
+          "Data privacy risk factor disclosed FY2023-FY2025 then dropped",
+          "Cross-border data transfer legal challenges dropped",
+          "Processing of sensitive/personal data risk dropped",
+          "NAC process and China export risks 'disclosed and dropped within FY2025 alone'",
+          "Shareholder/regulatory litigation and AI-internal-use risks disclosed and dropped within FY2025"
+        ]
+      }
+    ]
+  },
+  "verdict": "PASS",
+  "votes": 3
+}

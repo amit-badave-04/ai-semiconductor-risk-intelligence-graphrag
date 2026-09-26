@@ -7,7 +7,7 @@ from semigraph.llm_shape import completion_params
 
 
 def test_anthropic_and_unknown_models_keep_the_legacy_shape():
-    legacy = {"max_tokens": 900, "thinking": {"type": "disabled"}}
+    legacy = {"max_tokens": 900, "thinking": {"type": "disabled"}, "allowed_openai_params": ["thinking"]}
     assert completion_params("anthropic/claude-sonnet-5", 900) == legacy
     assert completion_params("m", 900) == legacy  # placeholder names used across the existing tests
 

@@ -23,7 +23,9 @@ def completion_params(model: str, max_tokens: int) -> dict:
         return {"max_tokens": max_tokens, "reasoning_effort": "low"}
     if model.startswith(_PLAIN_MAX_TOKENS):
         return {"max_tokens": max_tokens}
-    return {"max_tokens": max_tokens, "thinking": {"type": "disabled"}}
+    # allowed_openai_params: with LiteLLM's bundled (offline) price map, claude-sonnet-5 is not known to support
+    # `thinking` and the call fails with UnsupportedParamsError before it is sent; the allow-list makes it map either way.
+    return {"max_tokens": max_tokens, "thinking": {"type": "disabled"}, "allowed_openai_params": ["thinking"]}
 
 
 # USD per million (input, output) tokens for the models the service actually runs, so cost accounting never

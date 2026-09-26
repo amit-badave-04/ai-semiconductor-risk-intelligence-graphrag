@@ -77,7 +77,7 @@ def llm_json(
     after 4 attempts.
     """
     model = model or get_settings().llm_model
-    kwargs = {"thinking": {"type": "disabled"}} if thinking_off else {}
+    kwargs = {"thinking": {"type": "disabled"}, "allowed_openai_params": ["thinking"]} if thinking_off else {}
     messages = [{"role": "user", "content": prompt}]
     budget = max_tokens
     last_err = "unknown"
