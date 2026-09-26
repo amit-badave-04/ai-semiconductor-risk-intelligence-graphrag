@@ -104,6 +104,7 @@ from lxml import html as lxml_html
 
 from ..config import Settings, get_settings
 from ..hashing import content_hash
+from .risk_item_quality import quality_path_for, write_quality
 from ..ingestion.edgar import load_manifest, resolve_local_path
 from ..universe import FILERS, RISK_SECTIONS
 from .chunker import _write_parquet_atomic, chunks_path_for, section_texts_path_for
@@ -1056,6 +1057,7 @@ def _ticker_summary(settings: Settings, ticker: str, rows: list[dict], filings: 
     if write and rows:
         path.parent.mkdir(parents=True, exist_ok=True)
         _write_parquet_atomic(pd.DataFrame(rows, columns=ITEM_COLUMNS), path)
+        write_quality(quality_path_for(path.parent, ticker), ticker, filings)
     elif not rows:
         warnings.append("no risk items produced")
     return {

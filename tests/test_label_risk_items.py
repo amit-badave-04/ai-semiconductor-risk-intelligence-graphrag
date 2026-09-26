@@ -90,3 +90,19 @@ def test_a_removed_label_for_an_item_still_in_the_newer_text_is_rejected_in_coll
 def test_development_pairs_are_flagged_so_held_out_pairs_stay_untouched():
     assert lri.split_of("NVDA-0001045810-25-000023-0001045810-26-000021") == "development"
     assert lri.split_of("NVDA-acc-24-acc-25") == "held_out"
+
+
+QUALITY = {"acc-24": {"low_coverage": False, "section_suspect": False, "coverage": 0.96},
+           "acc-25": {"low_coverage": True, "section_suspect": False, "coverage": 0.71},
+           "acc-26": {"low_coverage": False, "section_suspect": False, "coverage": 0.96}}
+
+
+def test_pairs_with_an_untrustworthy_side_are_marked_not_compared_and_get_no_packets(tmp_path):
+    pairs = lri.consecutive_pairs(items_df(), QUALITY)
+    assert [(p["comparable"], p["not_compared_reason"] is None) for p in pairs] == [(False, False), (False, False)]
+    assert "older" in pairs[1]["not_compared_reason"] or "71" in pairs[1]["not_compared_reason"]
+    assert lri.write_packets(pairs, items_df(), sections_df(), tmp_path) == []
+
+
+def test_without_quality_data_pairs_stay_comparable_for_backwards_compatibility():
+    assert all(p["comparable"] for p in lri.consecutive_pairs(items_df()))

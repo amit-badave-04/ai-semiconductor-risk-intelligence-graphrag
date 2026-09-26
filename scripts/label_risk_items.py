@@ -20,6 +20,7 @@ from pathlib import Path
 import pandas as pd
 
 from semigraph.eval import gold
+from semigraph.parsing import risk_item_quality
 
 DEFAULT_ITEMS = Path("data/interim/risk_items")
 DEFAULT_SECTIONS = Path("data/interim/section_texts")
@@ -36,17 +37,23 @@ def split_of(pair_id: str) -> str:
     return "development" if pair_id in DEV_PAIRS else "held_out"
 
 
-def consecutive_pairs(items: pd.DataFrame) -> list[dict]:
-    """Neighbouring annual filings per ticker in filing-date order (only filings that have risk items)."""
+def consecutive_pairs(items: pd.DataFrame, quality: dict | None = None) -> list[dict]:
+    """Neighbouring annual filings per ticker in filing-date order (only filings that have risk items).
+
+    With ``quality`` (parsing.risk_item_quality.load_quality) every pair carries ``comparable`` and, when False, the
+    ``not_compared_reason``: a pair with a low-coverage or suspect side is never labelled or aligned."""
     pairs = []
     filings = items[["ticker", "accession_no", "filing_date"]].drop_duplicates()
     for ticker, group in filings.groupby("ticker"):
         ordered = group.sort_values("filing_date")
         rows = list(ordered.itertuples(index=False))
         for older, newer in zip(rows, rows[1:]):
+            ok, reason = (risk_item_quality.comparability(older.accession_no, newer.accession_no, quality)
+                          if quality is not None else (True, None))
             pairs.append({"pair_id": f"{ticker}-{older.accession_no}-{newer.accession_no}", "ticker": ticker,
                           "older_accession": older.accession_no, "newer_accession": newer.accession_no,
-                          "older_date": str(older.filing_date)[:10], "newer_date": str(newer.filing_date)[:10]})
+                          "older_date": str(older.filing_date)[:10], "newer_date": str(newer.filing_date)[:10],
+                          "comparable": ok, "not_compared_reason": reason})
     return sorted(pairs, key=lambda p: p["pair_id"])
 
 
@@ -66,7 +73,7 @@ def write_packets(pairs: list[dict], items: pd.DataFrame, sections: pd.DataFrame
     """One packet per pair and side: older items vs the newer section, and newer items vs the older section."""
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
-    for pair in pairs:
+    for pair in (p for p in pairs if p.get("comparable", True)):
         older_text, newer_text = _section_text(sections, pair["older_accession"]), _section_text(sections, pair["newer_accession"])
         older_items, newer_items = _items_of(items, pair["older_accession"]), _items_of(items, pair["newer_accession"])
         meta = {"pair_id": pair["pair_id"], "ticker": pair["ticker"], "split": split_of(pair["pair_id"])}
@@ -146,7 +153,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "packets":
         items, sections = _load(args.items_dir, args.sections_dir, args.ticker)
-        pairs = consecutive_pairs(items)
+        pairs = consecutive_pairs(items, risk_item_quality.load_quality(args.items_dir))
+        for skipped in (q for q in pairs if not q["comparable"]):
+            print(f"NOT COMPARED {skipped['pair_id']}: {skipped['not_compared_reason']}", file=sys.stderr)
         if args.dev:
             pairs = [q for q in pairs if q["pair_id"] in DEV_PAIRS]
         if args.pair_id:
