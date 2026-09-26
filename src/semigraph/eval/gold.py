@@ -278,7 +278,7 @@ SENT_MIN_TERM_CHARS = 4
 # rapidfuzz.fuzz.partial_ratio on normalised text (0-100). Measured on NVDA FY25 vs FY26: two UNRELATED sentences of the
 # same filing score median 46, p99 56, max 61; so 70 separates "the same sentence" from noise and 45 (reworded) does not.
 SENT_PRESENT_MIN_SIM = 70       # `present`: the quote must share content with the sentence
-SENT_REWORDED_MIN_SIM = 45      # `reworded`: same check, looser (a rewording shares fewer characters)
+SENT_REWORDED_MIN_SIM = 62      # `reworded`: same check, looser than `present`; 62 sits above every unrelated same-filing pair measured (median 46, p99 56, max 61)
 SENT_VERBATIM_SIM = 92          # at or above this a quote/alignment is a copy: `reworded` and `removed` are contradicted
 SENTENCE_SAMPLE_SEED = 20260926
 SENTENCE_SAMPLE_K = 6

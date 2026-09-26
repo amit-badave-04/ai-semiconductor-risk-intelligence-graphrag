@@ -56,7 +56,7 @@ def test_fixture_scores_sit_on_the_intended_side_of_every_threshold():
     assert sim(S_REMOVED, Q_NUMBERS) < gold.SENT_REWORDED_MIN_SIM
     assert len(Q_NUMBERS) >= gold.SENT_MIN_QUOTE_CHARS
     assert (gold.SENT_MIN_QUOTE_CHARS, gold.SENT_PRESENT_MIN_SIM, gold.SENT_REWORDED_MIN_SIM, gold.SENT_VERBATIM_SIM) \
-        == (30, 70, 45, 92)
+        == (30, 70, 62, 92)
 
 
 # --- `present` ---------------------------------------------------------------------------------------------------

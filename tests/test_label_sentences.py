@@ -25,7 +25,9 @@ OLD_I1 = ("Our stock price is volatile and may decline. Market volatility could 
           "stock significantly.")
 OLD_I2 = ("We depend on third parties for wafer supply. These suppliers could fail to meet our demand forecasts in the "
           "coming quarters.")
-NEW_J0 = "Export licence requirements for China may reduce our sales. New H20 licensing rules apply to shipments to China since April."
+NAC_REWORD_QUOTE = "The NAC process resulted in very few approvals for China this year."
+NEW_J0 = ("Export licence requirements for China may reduce our sales. New H20 licensing rules apply to shipments to China "
+          "since April. " + NAC_REWORD_QUOTE)
 NEW_J1 = OLD_I1
 EXPORT_QUOTE = "Export licence requirements for China may reduce our sales."
 H20_QUOTE = "New H20 licensing rules apply to shipments to China since April."
@@ -187,9 +189,9 @@ def test_collect_sentences_validates_aggregates_and_reports_rejections_and_unlab
 
 def test_collect_sentences_marks_disputed_and_unlabelled_sentences(tmp_path):
     make_packets(tmp_path)
-    reworded = dict(GOOD_OLDER[1], label="reworded", quote=H20_QUOTE)
+    reworded = dict(GOOD_OLDER[1], label="reworded", quote=NAC_REWORD_QUOTE)
     assert gold.SENT_REWORDED_MIN_SIM <= gold.sentence_similarity(
-        "The NAC process resulted in no approvals for China at all this year.", H20_QUOTE) < gold.SENT_VERBATIM_SIM
+        "The NAC process resulted in no approvals for China at all this year.", NAC_REWORD_QUOTE) < gold.SENT_VERBATIM_SIM
     write_labels(tmp_path, "older", "a", GOOD_OLDER[:2])
     write_labels(tmp_path, "older", "b", [GOOD_OLDER[0], reworded])
     report = lri.collect_sentences(PID, "older", tmp_path)
@@ -283,7 +285,7 @@ def test_freeze_merges_the_sentence_consensus_with_spans_and_hashes_both_layers(
 def test_freeze_applies_adjudicated_sentence_labels_and_counts_the_unresolved(tmp_path):
     make_packets(tmp_path)
     write_labels(tmp_path, "older", "a", GOOD_OLDER[:2])
-    write_labels(tmp_path, "older", "b", [GOOD_OLDER[0], dict(GOOD_OLDER[1], label="reworded", quote=H20_QUOTE)])
+    write_labels(tmp_path, "older", "b", [GOOD_OLDER[0], dict(GOOD_OLDER[1], label="reworded", quote=NAC_REWORD_QUOTE)])
     report = lri.collect_sentences(PID, "older", tmp_path)
     disputed = report["needs_adjudication"]
     assert disputed == [sid(OLDER, 0, 1)]
