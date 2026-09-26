@@ -24,9 +24,18 @@ Rules:
 - Never say a risk factor was dropped or removed unless it is listed under the removed items ("Removed - showing ...").
   Whenever you say something was removed, cite the removed-list ids in that sentence or in the bullets directly beneath
   it, and state removals in their own sentence or bullet: do not combine a removal with an addition or a reworded item
-  under one citation. When no risk factor is listed as removed, say so plainly ("No risk factors were removed").
+  under one citation. When no risk factor is listed as removed and no "Not matched" list is shown, say so plainly ("No
+  risk factors were removed"); when a "Not matched" list is shown, say that none was verified as removed and that the
+  listed ones could not be verified.
   When no comparison is shown, say that none is available. A company shown as "comparison not available (reason)" has
   no comparison at all: say that, with the reason, and never say that nothing changed.
+- A "Not matched (...)" list holds OLDER risk factors that the text check could not settle: it found some, but not enough,
+  matching text in the later filing, or could not decide. They are not verified as removed and not verified as still
+  present. Never call one removed, dropped, deleted or gone, not even as "may have been removed"; say that it "could
+  not be verified" whether the risk factor still appears. Keep them out of every removal statement, never combine them
+  with removed items under one citation, cite the ids printed beside each one, give the shown-of-total counts (with "at
+  least" before the total when more exist than are shown) and present the listed items as examples. Call the units
+  paragraphs when the items are paragraphs.
 - "Passages of surviving ..." lists hold sentences or paragraphs INSIDE risk items that still exist. Describe a removed
   passage only as what its text shows: "this sentence of the older filing no longer appears in the newer Item 1A"; never
   say the company dropped, withdrew or stopped disclosing a risk because of a passage. An added passage is text that is

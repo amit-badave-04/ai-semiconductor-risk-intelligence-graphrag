@@ -17,6 +17,8 @@ from semigraph.retrieval.answerer import (
 from semigraph.retrieval.context_layout import (
     NOT_COMPARED_PREFIX,
     PASSAGE_QUOTE_CHARS,
+    REMOVED_ITEMS_PREFIX,
+    UNSETTLED_ITEMS_PREFIX,
     removal_supported_ids,
 )
 from semigraph.retrieval.verify import answer_checks, verify_answer
@@ -319,6 +321,77 @@ def test_the_removed_lists_are_found_whatever_the_unit_noun():
     assert removal_supported_ids(paras[1]) == {REMOVED_ITEM}
 
 
+# ---------------------------------------------------------------------------------- unsettled items and the removal claim
+
+UNSETTLED_ITEM = f"{OLD}:I.1A:0600"
+
+
+def unsettled_context():
+    """One removed item and one 'Not matched' (unsettled) item: the unsettled ids are citable but never support a removal."""
+    items = [item("removed", "Hong Kong transition risk", [REMOVED_ITEM]),
+             item("unsettled", "Export licensing risk", [UNSETTLED_ITEM])]
+    p = pair(totals={"removed": 1, "unsettled": 1, "new": 0, "reworded": 0})
+    return build_blocks(retrieval(temporal=items, temporal_pairs=[p]))
+
+
+def test_unsettled_ids_are_citable_but_never_support_a_removal_claim():
+    _, context, valid = unsettled_context()
+    assert UNSETTLED_ITEM in valid and REMOVED_ITEM in valid
+    assert removal_supported_ids(context) == {REMOVED_ITEM}
+
+
+def test_the_unsettled_heading_is_not_a_removed_heading_so_the_reader_never_counts_its_lines():
+    blocks, _, _ = unsettled_context()
+    heading = next(ln for ln in blocks.temporal_block.splitlines() if ln.startswith(UNSETTLED_ITEMS_PREFIX))
+    assert not heading.startswith(REMOVED_ITEMS_PREFIX) and not UNSETTLED_ITEMS_PREFIX.startswith(REMOVED_ITEMS_PREFIX)
+    assert not REMOVED_ITEMS_PREFIX.startswith(UNSETTLED_ITEMS_PREFIX)
+
+
+def test_the_removed_list_stays_supported_when_an_unsettled_list_follows_it():
+    blocks, context, _ = unsettled_context()
+    assert blocks.temporal_block.index("Removed - showing") < blocks.temporal_block.index("Not matched (")
+    assert REMOVED_ITEM in removal_supported_ids(context) and UNSETTLED_ITEM not in removal_supported_ids(context)
+
+
+@pytest.mark.parametrize("text", [
+    f"The export licensing risk factor was removed from the 10-K [{UNSETTLED_ITEM}].",
+    f"Nvidia dropped the export licensing risk [{UNSETTLED_ITEM}].",
+    f"The export licensing risk no longer appears in the filing [{UNSETTLED_ITEM}].",
+    f"The Hong Kong risk was removed [{REMOVED_ITEM}] [{UNSETTLED_ITEM}].",              # one supported id, one unsettled id
+    f"- Removed: the Hong Kong risk [{REMOVED_ITEM}] and the export licensing risk [{UNSETTLED_ITEM}]",
+    f"The export licensing risk may have been removed [{UNSETTLED_ITEM}].",              # even hedged: the wording is 'could not be verified'
+])
+def test_a_removal_claim_that_cites_an_unsettled_id_stays_flagged(text):
+    _, context, valid = unsettled_context()
+    c = checks_of(text, context, valid)
+    assert len(c.removal_claims) == 1 and c.as_dict()["unsupported_removal_claim"] is True
+    assert "unsupported_removal_claim" in verify_answer(text, set(CITE_RE.findall(text)), valid, "stop", context=context,
+                                                        sources=sources_from_context(context))
+
+
+def test_a_heading_with_bullets_that_lists_an_unsettled_item_under_removed_is_flagged():
+    _, context, valid = unsettled_context()
+    text = f"**Removed risk factors:**\n- Hong Kong risk [{REMOVED_ITEM}]\n- Export licensing risk [{UNSETTLED_ITEM}]"
+    assert len(checks_of(text, context, valid).removal_claims) == 1
+
+
+@pytest.mark.parametrize("text", [
+    f"The text check could not verify whether the export licensing risk still appears [{UNSETTLED_ITEM}].",
+    f"One older risk factor could not be verified as still present:\n- Export licensing risk [{UNSETTLED_ITEM}]",
+    f"The Hong Kong risk was removed [{REMOVED_ITEM}]; the export licensing risk could not be matched [{UNSETTLED_ITEM}].",
+    f"The export licensing risk was not removed; it could not be verified [{UNSETTLED_ITEM}].",
+])
+def test_wording_that_says_could_not_be_verified_is_not_a_removal_claim(text):
+    _, context, valid = unsettled_context()
+    assert checks_of(text, context, valid).removal_claims == ()
+    assert verify_answer(text, set(CITE_RE.findall(text)), valid, "stop", context=context, sources=sources_from_context(context)) == []
+
+
+def test_an_answer_with_no_temporal_block_in_its_context_supports_no_removal_at_all():
+    text = f"The export licensing risk factor was removed [{UNSETTLED_ITEM}]."
+    assert len(answer_checks(text, {UNSETTLED_ITEM}, {UNSETTLED_ITEM}, "EXCERPTS:\n(none)").removal_claims) == 1
+
+
 # ---------------------------------------------------------------------------------- period-aware METRICS
 
 def metric(value, end, name="revenue", company="Nvidia", cik=NVDA, unit=None):
@@ -388,6 +461,12 @@ def test_build_blocks_reads_the_named_periods_from_the_retrieval_result():
     "Passages of surviving", "never say the company dropped",
     "paragraphs", "not as risk factors",                                                     # paragraph units
     "comparison not available",                                                              # a pair that was not compared
+    # the unsettled ("Not matched") list: never called removed, said to be unverified
+    'A "Not matched (...)" list holds OLDER risk factors that the text check could not settle',
+    'Never call one removed, dropped, deleted or gone, not even as "may have been removed"',
+    'it "could not be verified" whether the risk factor still appears',
+    "none was verified as removed",
+    "Keep them out of every removal statement",
 ])
 def test_the_prompt_carries_the_review_rules(fragment):
     assert fragment in " ".join(ANSWER_PROMPT.split())          # the rules are line-wrapped in the template file

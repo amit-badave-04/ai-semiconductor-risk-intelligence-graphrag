@@ -6,7 +6,7 @@ queries: TEMPORAL_QUERY (+ select_temporal), METRICS_QUERY, RULE_EDGES_QUERY and
 
 Contract (docs/v2/M1B_PLAN.md D and G)
     (:RiskItem {item_id, accession_no, filer_cik, section_id, seq, headline, unit_kind, chunk_ids, is_current, is_new,
-                removed_in, lineage_id, char_start, char_end})
+                removed_in, unsettled_in, lineage_id, char_start, char_end})
     (:RiskItem)-[:SUCCEEDED_BY {kind: 'unchanged'|'reworded'|'merged', sim_embed, sim_lex, decided_by}]->(:RiskItem)
     (newer:Filing)-[:SUPERSEDES {kind: 'rolled', items_compared, not_compared_reason}]->(older:Filing); (:Company)-[:FILED]->(:Filing)
     (:RiskPassage {passage_id, kind, older_accession, newer_accession, filer_cik, text, counterpart_text, similarity,
@@ -15,19 +15,22 @@ Contract (docs/v2/M1B_PLAN.md D and G)
 Corpus
     Nvidia  n25 10-K (superseded)  n26 10-K (current)  q25 10-Q (superseded; the current annual also rolled over it)
             older items: o1 removed, o2 removed, o3 unchanged, o4 reworded, o5 merged, o6 removed in an EARLIER pair,
-                         qi (an item of the 10-Q, 'removed_in' the current annual - must never be read as a removal)
+                         qi (an item of the 10-Q, 'removed_in' the current annual - must never be read as a removal),
+                         o7 UNSETTLED (headline), o8 UNSETTLED (paragraph, no headline), o9 unsettled in an EARLIER pair,
+                         qu (a 10-Q item whose 'unsettled_in' is the current annual - never read)
             newer items: n3 carried, n4 reworded, n5 merged target, n7 NEW (headline), n8 NEW (paragraph, no headline)
     AMD     a25 10-K, a26 10-K (current): one unchanged item each  -> a comparison in which nothing changed
             a26x 10-K/A current, no items (the partial-amendment overlay shape)
     Micron  m26 10-K current rolled over m25 10-K, NEITHER has items -> no comparison at all ("no data")
     Intel   t25 10-K current rolled over t24 10-K, items_compared=false, t25 has NO items -> "comparison not available"
-    ASML    l25 10-K current rolled over l24 10-K, items_compared=false, both sides have items (one with a stale removed_in)
+    ASML    l25 10-K current rolled over l24 10-K, items_compared=false, both sides have items (one with a stale removed_in
+            and one with a stale unsettled_in)
     Passages (Nvidia pair): removed x3 + reworded x1 in o4, added x1 in n4, one removed passage of a DIFFERENT pair (EARLIER)
 """
 
 import pytest
 
-from semigraph.retrieval.answerer import build_blocks, metrics_lines
+from semigraph.retrieval.answerer import build_blocks, metrics_lines, sources_from_context
 from semigraph.retrieval.context_layout import removal_supported_ids
 from semigraph.retrieval.retriever import (
     METRIC_PERIODS_FETCHED,
@@ -40,6 +43,7 @@ from semigraph.retrieval.retriever import (
     select_passages,
     select_temporal,
 )
+from semigraph.retrieval.verify import answer_checks
 from semigraph.serve import routes
 
 NVDA, AMD, MICRON, INTEL, ASML = 1045810, 2488, 723125, 50863, 937966
@@ -51,12 +55,13 @@ L24, L25 = "0000937966-25-000010", "0000937966-26-000011"
 EARLIER = "0001045810-24-000029"
 
 
-def item(item_id, acc, cik, seq, headline, *, kind="headline", is_new=False, removed_in=None, length=1000, form="10-K",
-         current=False):
+def item(item_id, acc, cik, seq, headline, *, kind="headline", is_new=False, removed_in=None, unsettled_in=None, length=1000,
+         form="10-K", current=False):
     return {"item_id": item_id, "accession_no": acc, "filer_cik": cik, "form": form, "section_id": "I.1A", "seq": seq,
             "headline": headline, "text_hash": f"h-{item_id}", "unit_kind": kind,
             "chunk_ids": [f"{acc}:I.1A:{seq:04d}"], "is_current": current, "is_new": is_new,
-            "removed_in": removed_in, "lineage_id": f"{cik}:{seq}", "char_start": 0, "char_end": length}
+            "removed_in": removed_in, "unsettled_in": unsettled_in, "lineage_id": f"{cik}:{seq}", "char_start": 0,
+            "char_end": length}
 
 
 ITEMS = [
@@ -67,6 +72,10 @@ ITEMS = [
     item("o5", N25, NVDA, 5, "Merged risk"),
     item("o6", N25, NVDA, 6, "Removed a year earlier", removed_in=EARLIER),
     item("qi", Q25, NVDA, 7, "Quarterly-only risk", removed_in=N26, form="10-Q"),
+    item("o7", N25, NVDA, 10, "Licensing exposure of a customer channel", unsettled_in=N26, length=1200),
+    item("o8", N25, NVDA, 12, None, kind="paragraph", unsettled_in=N26, length=400),
+    item("o9", N25, NVDA, 13, "Unsettled a year earlier", unsettled_in=EARLIER),
+    item("qu", Q25, NVDA, 14, "Quarterly-only unsettled risk", unsettled_in=N26, form="10-Q"),
     item("n3", N26, NVDA, 3, "Acquisition risk", current=True),
     item("n4", N26, NVDA, 4, "Customer concentration", current=True),
     item("n5", N26, NVDA, 5, "Combined regulatory risk", current=True),
@@ -75,7 +84,9 @@ ITEMS = [
      "chunk_ids": [f"{N26}:I.1A:0008"], "char_start": 507, "char_end": 807},     # = CHUNK8 below
     item("n9", N26, NVDA, 9, None, kind="paragraph", is_new=True, current=True, length=300),      # its first chunk is absent
     item("t1", T24, INTEL, 1, "Older Intel risk", removed_in=T25),          # a stale flag: the pair was not compared
+    item("t2", T24, INTEL, 2, "Older Intel unsettled risk", unsettled_in=T25),      # a stale flag: the pair was not compared
     item("l1", L24, ASML, 1, "Older ASML risk", removed_in=L25),            # stale flags on a not-compared pair
+    item("l3", L24, ASML, 3, "Older ASML unsettled risk", unsettled_in=L25),
     item("l2", L25, ASML, 2, "Newer ASML risk", is_new=True, current=True),
     item("a1", A25, AMD, 1, "Competition"),
     item("a2", A26, AMD, 1, "Competition", current=True),
@@ -211,7 +222,8 @@ class TestTemporalQuery:
         assert set(by("removed")) == {"o1", "o2"}          # not o6 (removed a year earlier), not qi (a 10-Q item)
         assert set(by("new")) == {"n7", "n8", "n9"}
         assert set(by("reworded")) == {"n4"}               # 'merged' and 'unchanged' successors are not listed
-        assert pairs[0]["totals"] == {"removed": 2, "new": 3, "reworded": 1}
+        assert set(by("unsettled")) == {"o7", "o8"}        # not o9 (a year earlier), not qu (a 10-Q item); never in 'removed'
+        assert pairs[0]["totals"] == {"removed": 2, "unsettled": 2, "new": 3, "reworded": 1}
 
     def test_a_reworded_row_carries_both_headlines_both_chunk_ids_and_the_decider(self, driver):
         items, _ = temporal(driver, [NVDA])
@@ -239,7 +251,7 @@ class TestTemporalQuery:
 
     def test_a_comparison_in_which_nothing_changed_is_still_reported(self, driver):
         items, pairs = temporal(driver, [AMD])
-        assert items == [] and pairs[0]["totals"] == {"removed": 0, "new": 0, "reworded": 0}
+        assert items == [] and pairs[0]["totals"] == {"removed": 0, "unsettled": 0, "new": 0, "reworded": 0}
         assert (pairs[0]["older_accession"], pairs[0]["newer_accession"]) == (A25, A26)   # the 10-K/A overlay is not "current annual"
 
     def test_a_company_whose_filings_have_no_items_yields_no_comparison(self, driver):
@@ -333,11 +345,11 @@ class TestNotComparedPairs:
         (pair,) = pairs
         assert pair["compared"] is False and pair["not_compared_reason"] == NOT_COMPARED[(T25, T24)]
         assert (pair["older_accession"], pair["newer_accession"]) == (T24, T25)
-        assert items == [] and pair["totals"] == {"removed": 0, "new": 0, "reworded": 0}     # t1's stale removed_in is not read
+        assert items == [] and pair["totals"] == {"removed": 0, "unsettled": 0, "new": 0, "reworded": 0}     # t1 / t2: stale flags, not read
 
     def test_no_item_row_is_read_for_a_not_compared_pair_whose_items_carry_stale_flags(self, driver):
         items, pairs = temporal(driver, [ASML])
-        assert pairs[0]["compared"] is False and items == []           # l1 'removed_in' and l2 'is_new' are ignored
+        assert pairs[0]["compared"] is False and items == []           # l1 'removed_in', l3 'unsettled_in' and l2 'is_new' are ignored
 
     def test_an_explicit_items_compared_true_and_no_flag_at_all_both_mean_compared(self, driver):
         (nvidia,), (amd,) = temporal(driver, [NVDA])[1], temporal(driver, [AMD])[1]
@@ -350,7 +362,59 @@ class TestNotComparedPairs:
                               "temporal_pairs": pairs})[0].temporal_block
         assert block.count("comparison not available (") == 2
         assert NOT_COMPARED[(T25, T24)] in block and NOT_COMPARED[(L25, L24)] in block
-        assert "none found" not in block and "Removed" not in block and "Added" not in block
+        assert "none found" not in block and "Removed" not in block and "Added" not in block and "Not matched" not in block
+
+
+# --------------------------------------------------------------------------- unsettled items (older items the text check could not settle)
+
+UNSETTLED_HEADING = ("Not matched (the text check could not verify whether these older risk factors still appear; they may have "
+                     "been removed or absorbed into another risk factor) - showing 2 of 2:")
+
+
+class TestUnsettledItems:
+    def rows(self, driver):
+        return {r["item_id"]: r for r in run_cypher(driver, TEMPORAL_QUERY, ids=[NVDA]) if r["change"] == "unsettled"}
+
+    def test_exactly_the_older_items_whose_unsettled_in_names_the_current_annual_come_back(self, driver):
+        assert set(self.rows(driver)) == {"o7", "o8"}      # not o9 (a year earlier), not qu (a 10-Q item), not the removed items
+
+    def test_an_unsettled_row_has_the_removed_column_shape_and_cites_the_older_filing(self, driver):
+        rows = self.rows(driver)
+        row = rows["o7"]
+        assert row["headline"] == "Licensing exposure of a customer channel" and row["unit_kind"] == "headline"
+        assert row["older_chunk_ids"] == [f"{N25}:I.1A:0010"] and row["newer_chunk_ids"] == []
+        assert row["length"] == 1200 and row["older_headline"] is None and row["decided_by"] is None
+        assert (row["older_accession"], row["newer_accession"], row["compared"]) == (N25, N26, True)
+        assert rows["o8"]["headline"] is None and rows["o8"]["unit_kind"] == "paragraph"
+
+    def test_the_totals_state_the_unsettled_count_apart_from_the_removed_count(self, driver):
+        items, pairs = temporal(driver, [NVDA])
+        assert pairs[0]["totals"]["unsettled"] == 2 and pairs[0]["totals"]["removed"] == 2
+        assert [i["item_id"] for i in items if i["change"] == "unsettled"] == ["o7", "o8"]     # headline unit first, the paragraph last
+        assert not {i["item_id"] for i in items if i["change"] == "removed"} & {"o7", "o8"}
+
+    def test_a_pair_that_was_not_compared_reads_no_unsettled_row_whatever_its_items_carry(self, driver):
+        for cik in (INTEL, ASML):
+            items, pairs = temporal(driver, [cik])
+            assert items == [] and pairs[0]["totals"]["unsettled"] == 0 and pairs[0]["compared"] is False
+
+    def test_the_block_lists_them_after_removed_and_before_added_and_they_never_support_a_removal_claim(self, driver):
+        items, pairs = temporal(driver, [NVDA])
+        blocks, context, valid = build_blocks({"anchors": {}, "edges": [], "metrics": [], "risks": [], "chunks": [],
+                                               "temporal": items, "temporal_pairs": pairs})
+        lines = blocks.temporal_block.splitlines()
+        at = lines.index(UNSETTLED_HEADING)
+        assert lines[at + 1:at + 3] == [f'- "Licensing exposure of a customer channel" [{N25}:I.1A:0010]',
+                                        f'- "(untitled paragraph, section I.1A)" [{N25}:I.1A:0012]']
+        assert next(i for i, ln in enumerate(lines) if ln.startswith("Removed - showing")) < at
+        assert at < next(i for i, ln in enumerate(lines) if ln.startswith("Added - showing"))
+        assert {f"{N25}:I.1A:0010", f"{N25}:I.1A:0012"} <= valid
+        supported = removal_supported_ids(context)
+        assert {f"{N25}:I.1A:0001", f"{N25}:I.1A:0002"} <= supported
+        assert not {f"{N25}:I.1A:0010", f"{N25}:I.1A:0012"} & supported
+        text = f"The licensing exposure risk factor was removed [{N25}:I.1A:0010]."
+        checks = answer_checks(text, {f"{N25}:I.1A:0010"}, valid, context, sources=sources_from_context(context))
+        assert len(checks.removal_claims) == 1
 
 
 # --------------------------------------------------------------------------- passages (contract L.7)
@@ -404,6 +468,7 @@ class TestPassagesQuery:
         supported = removal_supported_ids(context)
         assert {f"{N25}:I.1A:0001", f"{N25}:I.1A:0002", f"{N25}:I.1A:0210", f"{N25}:I.1A:0211", f"{N25}:I.1A:0212"} <= supported
         assert f"{N26}:I.1A:0350" not in supported and f"{N25}:I.1A:0140" not in supported and f"{N26}:I.1A:0347" not in supported
+        assert f"{N25}:I.1A:0010" in valid and f"{N25}:I.1A:0010" not in supported      # an unsettled item is citable, never a removal
         assert {f"{N25}:I.1A:0210", f"{N26}:I.1A:0350"} <= valid
 
 

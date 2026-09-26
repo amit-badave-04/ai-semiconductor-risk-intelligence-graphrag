@@ -3,11 +3,14 @@
 Nodes and edges (every one stamped with the build's ``snapshot_id``):
 
 * ``(:RiskItem {item_id, accession_no, filer_cik, filing_date, section_id, seq, headline, text_hash, char_start, char_end,
-  unit_kind, chunk_ids, is_current, lineage_id, removed_in, is_new, snapshot_id})`` from the risk-item parquet rows (NOT from the
-  decisions: an item appears in two pairs, once as the newer and once as the older side).
-  ``removed_in`` = the newer accession, set only on an older item labelled ``removed`` in a COMPARED pair; ``is_new`` = a newer
-  item labelled ``new`` in a compared pair (an item of the first filing of a ticker is never new); ``is_current`` = the item's
-  section is current under ``semigraph.versions`` (the rule that sets ``RiskFactor.is_current``).
+  unit_kind, chunk_ids, is_current, lineage_id, removed_in, unsettled_in, is_new, snapshot_id})`` from the risk-item parquet rows
+  (NOT from the decisions: an item appears in two pairs, once as the newer and once as the older side).
+  ``removed_in`` = the newer accession, set only on an older item labelled ``removed`` in a COMPARED pair; ``unsettled_in`` = the
+  newer accession, set only on an older item labelled ``uncertain`` (after adjudication) in a COMPARED pair: the text check found
+  some but not enough matching text, or the model could not settle it, so the item is neither verified present nor verified
+  gone. It is a separate, honest category next to ``removed_in`` (an item never carries both) and is never read as a removal;
+  ``is_new`` = a newer item labelled ``new`` in a compared pair (an item of the first filing of a ticker is never new);
+  ``is_current`` = the item's section is current under ``semigraph.versions`` (the rule that sets ``RiskFactor.is_current``).
 * ``(item)-[:IN_SECTION]->(:FilingSection)``, ``(item)-[:SPANS]->(:EvidenceSpan)`` per chunk id (MATCH only: a chunk that is
   not an EvidenceSpan gets no edge; the ``chunk_ids`` property keeps every id), ``(older)-[:SUCCEEDED_BY {kind, decided_by,
   sim_embed, sim_lex}]->(newer)`` for a decision ``unchanged`` / ``reworded`` / ``merged`` that names its counterpart (an
@@ -17,7 +20,8 @@ Nodes and edges (every one stamped with the build's ``snapshot_id``):
   ``(item)-[:HAS_PASSAGE]->(passage)`` (the older item for removed / reworded, the newer for added).
 * ``SUPERSEDES {items_compared, not_compared_reason}`` is SET on the EXISTING ``(newer)-[:SUPERSEDES]->(older)`` filing edge of
   EVERY consecutive annual pair (compared or not); ``kind`` is never touched and no edge is invented (a pair with no edge
-  raises: the manifest and the item files disagree). A not-compared pair gets no SUCCEEDED_BY / removed_in / is_new / passage.
+  raises: the manifest and the item files disagree). A not-compared pair gets no SUCCEEDED_BY / removed_in / unsettled_in / is_new /
+  passage.
 * ``(:RiskFactor)-[:OF_ITEM]->(:RiskItem)`` for every item whose ``chunk_ids`` contain the risk's evidence chunk (many-to-many:
   a chunk can sit inside two items).
 
@@ -26,8 +30,8 @@ Nodes and edges (every one stamped with the build's ``snapshot_id``):
 another starts or continues its OWN lineage.
 
 The loader REPLACES the item layer of the tickers it loads (their passages, SUCCEEDED_BY / IN_SECTION / SPANS / OF_ITEM edges,
-items no longer in the parquet and the ``removed_in`` / ``is_new`` flags are rewritten), so a re-run after a changed alignment
-never keeps a drop it no longer makes. Missing or stale alignment files stop it with "run semigraph align-items first".
+items no longer in the parquet and the ``removed_in`` / ``unsettled_in`` / ``is_new`` flags are rewritten), so a re-run after a
+changed alignment never keeps a drop it no longer makes. Missing or stale alignment files stop it with "run semigraph align-items first".
 """
 
 import logging
@@ -56,6 +60,7 @@ logger = logging.getLogger("semigraph.graph.item_loader")
 
 CHAIN_KINDS = ("unchanged", "reworded")          # successors that carry the lineage id
 EDGE_KINDS = ("unchanged", "reworded", "merged")  # SUCCEEDED_BY kinds
+UNSETTLED_LABEL = "uncertain"                    # the older-side decision that becomes ``unsettled_in`` (present, but unverified)
 LINEAGE_PREFIX = "lin"
 
 
@@ -113,6 +118,7 @@ def build_item_layer(ticker: str, items: pd.DataFrame, pairs: pd.DataFrame, deci
     newer_accession = dict(zip(pairs["pair_id"], pairs["newer_accession"]))
     older = decisions[decisions["side"] == "older"]
     removed_in = {r.item_id: newer_accession[r.pair_id] for r in older.itertuples() if r.label == "removed"}
+    unsettled_in = {r.item_id: newer_accession[r.pair_id] for r in older.itertuples() if r.label == UNSETTLED_LABEL}
     is_new = set(decisions.loc[(decisions["side"] == "newer") & (decisions["label"] == "new"), "item_id"])
     edges = [(r.item_id, r.matched_item_id, r.label) for r in older.itertuples()
              if r.label in EDGE_KINDS and isinstance(r.matched_item_id, str) and r.matched_item_id]
@@ -124,7 +130,8 @@ def build_item_layer(ticker: str, items: pd.DataFrame, pairs: pd.DataFrame, deci
         "filing_date": str(r["filing_date"])[:10], "section_id": r["section_id"], "seq": r["seq"],
         "headline": r["headline"] or "", "text_hash": r["text_hash"], "char_start": r["char_start"], "char_end": r["char_end"],
         "unit_kind": r["unit_kind"], "chunk_ids": r["chunk_ids"], "is_current": bool(current.get(r["item_id"], False)),
-        "lineage_id": lineage[r["item_id"]], "removed_in": removed_in.get(r["item_id"]), "is_new": r["item_id"] in is_new}
+        "lineage_id": lineage[r["item_id"]], "removed_in": removed_in.get(r["item_id"]),
+        "unsettled_in": unsettled_in.get(r["item_id"]), "is_new": r["item_id"] in is_new}
         for r in rows]
     edge_keys = set(edges)
     succeeded = [{"old": r.item_id, "new": r.matched_item_id, "kind": r.label, "decided_by": r.decided_by,
@@ -170,7 +177,7 @@ _ITEM_CYPHER = """UNWIND $rows AS row
         i.section_id = row.section_id, i.seq = row.seq, i.headline = row.headline, i.text_hash = row.text_hash,
         i.char_start = row.char_start, i.char_end = row.char_end, i.unit_kind = row.unit_kind,
         i.chunk_ids = row.chunk_ids, i.is_current = row.is_current, i.lineage_id = row.lineage_id,
-        i.removed_in = row.removed_in, i.is_new = row.is_new, i.snapshot_id = $snapshot_id"""
+        i.removed_in = row.removed_in, i.unsettled_in = row.unsettled_in, i.is_new = row.is_new, i.snapshot_id = $snapshot_id"""
 
 _IN_SECTION_CYPHER = """UNWIND $rows AS row
     MATCH (i:RiskItem {item_id: row.item_id}), (s:FilingSection {section_key: row.section_key})
@@ -255,7 +262,8 @@ def load_risk_items(driver: Driver, settings: Settings | None = None, tickers: S
         raise AlignItemsError(f"no risk items in {items_dir(settings)}: run `semigraph risk-items` first")
     require_alignment(settings, tickers, alignment_directory)
     manifest = _load_manifest(settings)
-    totals = {"items": 0, "spans": 0, "spans_without_evidence_node": 0, "succeeded_by": 0, "passages": 0, "supersedes": 0, "of_item": 0}
+    totals = {"items": 0, "unsettled": 0, "spans": 0, "spans_without_evidence_node": 0, "succeeded_by": 0, "passages": 0,
+              "supersedes": 0, "of_item": 0}
     for ticker in tickers:
         items, pairs, decisions, passages = _read_ticker(settings, ticker, alignment_directory)
         layer = build_item_layer(ticker, items, pairs, decisions, passages, _current_by_item(settings, manifest, ticker, items))
@@ -274,12 +282,14 @@ def load_risk_items(driver: Driver, settings: Settings | None = None, tickers: S
         evidence = run_cypher(driver, _RISK_EVIDENCE_CYPHER, cik=cik)
         of_item = of_item_rows(evidence, layer.items)
         _run_batched(driver, _OF_ITEM_CYPHER, of_item, snapshot_id=snapshot_id)
-        for key, value in (("items", len(layer.items)), ("spans", linked), ("spans_without_evidence_node", len(layer.spans) - linked),
+        unsettled = sum(1 for r in layer.items if r["unsettled_in"])
+        for key, value in (("items", len(layer.items)), ("unsettled", unsettled), ("spans", linked),
+                           ("spans_without_evidence_node", len(layer.spans) - linked),
                            ("succeeded_by", len(layer.succeeded_by)), ("passages", len(layer.passages)),
                            ("supersedes", len(layer.supersedes)), ("of_item", len(of_item))):
             totals[key] += value
-        logger.info("%s: %d items, %d SUCCEEDED_BY, %d passages, %d SUPERSEDES stamped, %d OF_ITEM", ticker, len(layer.items),
-                    len(layer.succeeded_by), len(layer.passages), len(layer.supersedes), len(of_item))
+        logger.info("%s: %d items (%d unsettled), %d SUCCEEDED_BY, %d passages, %d SUPERSEDES stamped, %d OF_ITEM", ticker,
+                    len(layer.items), unsettled, len(layer.succeeded_by), len(layer.passages), len(layer.supersedes), len(of_item))
     if totals["spans_without_evidence_node"]:
         logger.warning("%d item chunk ids have no EvidenceSpan node (older filings outside the span scope): the chunk_ids "
                        "property keeps them, the SPANS edge does not exist", totals["spans_without_evidence_node"])

@@ -11,6 +11,9 @@ PROVENANCE OF THE GOLDENS (changed deliberately in M1b; the v1 note said "do not
   (it is a Federal Register rule linked by keyword, not the company's disclosure); METRICS is grouped by fiscal year with
   a citable ``xbrl:`` id per line and code-computed year-over-year; the DROPPED RISK LINEAGES block became the text-verified
   RISK FACTORS REMOVED / ADDED / REWORDED block; the answer prompt got new rules and a sixth placeholder.
+- ``GOLDEN_TEMPORAL`` gained the "Not matched" section (older items the text check could not settle, ``unsettled_in``), written by
+  hand from the wording the owner specified: it sits after the removed items and before the added ones, claims nothing
+  (no "removed" as a fact), and cites the OLDER filing's chunk ids like a removed item. ``CONTEXT_HEADERS`` is untouched.
 
 No Neo4j, no network, no real LLM.
 """
@@ -76,6 +79,14 @@ def golden_retrieval() -> dict:
              "summary": "Geographic concentration of manufacturing in Taiwan."},
         ],
         "temporal": [
+            {"company": "Nvidia", "cik": 1045810, "change": "unsettled", "lineage": "1045810:11", "item_id": "i5",
+             "headline": "Changes in export licensing requirements could reduce our data center sales",
+             "older_headline": None, "unit_kind": "headline", "section_id": "I.1A", "seq": 11, "decided_by": None,
+             "older_chunk_ids": [f"{OLD_ACC}:I.1A:0260", f"{OLD_ACC}:I.1A:0261"], "newer_chunk_ids": []},
+            {"company": "Nvidia", "cik": 1045810, "change": "unsettled", "lineage": "1045810:12", "item_id": "i6",
+             "headline": "Our international operations subject us to currency risk",
+             "older_headline": None, "unit_kind": "headline", "section_id": "I.1A", "seq": 12, "decided_by": None,
+             "older_chunk_ids": [f"{OLD_ACC}:I.1A:0290"], "newer_chunk_ids": []},
             {"company": "Nvidia", "cik": 1045810, "change": "removed", "lineage": "1045810:3", "item_id": "i1",
              "headline": "We may not be able to sell to China without an export license", "older_headline": None,
              "unit_kind": "headline", "section_id": "I.1A", "seq": 3, "decided_by": None,
@@ -97,7 +108,7 @@ def golden_retrieval() -> dict:
         "temporal_pairs": [
             {"company": "Nvidia", "cik": 1045810, "older_accession": OLD_ACC, "older_form": "10-K",
              "older_date": "2025-02-26", "newer_accession": NEW_ACC, "newer_form": "10-K", "newer_date": "2026-02-25",
-             "totals": {"removed": 21, "new": 12, "reworded": 9}},
+             "totals": {"removed": 21, "unsettled": 9, "new": 12, "reworded": 9}},
         ],
         "chunks": [
             {"chunk_id": CID_C, "score": 0.88,
@@ -152,6 +163,9 @@ GOLDEN_TEMPORAL = (
     'Removed - showing 2 of 21 risk factors (text verified absent from the later filing):\n'
     '- "We may not be able to sell to China without an export license" [0001045810-25-000023:I.1A:0210] [0001045810-25-000023:I.1A:0211]\n'
     '- "Our Hong Kong operations may face transition risks" [0001045810-25-000023:I.1A:0230]\n'
+    'Not matched (the text check could not verify whether these older risk factors still appear; they may have been removed or absorbed into another risk factor) - showing 2 of 9:\n'
+    '- "Changes in export licensing requirements could reduce our data center sales" [0001045810-25-000023:I.1A:0260] [0001045810-25-000023:I.1A:0261]\n'
+    '- "Our international operations subject us to currency risk" [0001045810-25-000023:I.1A:0290]\n'
     'Added - showing 1 of 12 risk factors (new in the later filing):\n'
     '- "We depend on a small number of customers for a large share of revenue" [0001045810-26-000021:I.1A:0350]\n'
     'Reworded - showing 1 of 9 risk factors (still disclosed, wording changed):\n'
@@ -187,6 +201,7 @@ GOLDEN_VALID_IDS = sorted([
     "fr:2026-19537",
     f"{OLD_ACC}:I.1A:0210", f"{OLD_ACC}:I.1A:0211", f"{OLD_ACC}:I.1A:0230", f"{NEW_ACC}:I.1A:0350",
     f"{OLD_ACC}:I.1A:0140", f"{NEW_ACC}:I.1A:0347",
+    f"{OLD_ACC}:I.1A:0260", f"{OLD_ACC}:I.1A:0261", f"{OLD_ACC}:I.1A:0290",
 ])
 
 
@@ -333,7 +348,7 @@ def test_retrieval_event_counts_keep_their_five_keys(monkeypatch):
     r = golden_retrieval()
     r["anchor_defaulted"] = True
     ev = _stream_events(monkeypatch, r)[0]
-    assert ev["counts"] == {"edges": 3, "metrics": 11, "risks": 2, "temporal": 4, "chunks": 2}
+    assert ev["counts"] == {"edges": 3, "metrics": 11, "risks": 2, "temporal": 6, "chunks": 2}
     assert set(ev) == {"event", "anchors", "counts", "anchor_defaulted"}
 
 

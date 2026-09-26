@@ -71,9 +71,11 @@ class TestItemRows:
         assert len(layer.items) == 10
         row = next(r for r in layer.items if r["item_id"] == iid(A24, 0))
         assert set(row) == {"item_id", "accession_no", "filer_cik", "filing_date", "section_id", "seq", "headline", "text_hash",
-                            "char_start", "char_end", "unit_kind", "chunk_ids", "is_current", "lineage_id", "removed_in", "is_new"}
+                            "char_start", "char_end", "unit_kind", "chunk_ids", "is_current", "lineage_id", "removed_in", "unsettled_in",
+                            "is_new"}
         assert (row["filer_cik"], row["filing_date"], row["unit_kind"]) == (lakefix.CIK, "2024-02-21", "headline")
         assert row["chunk_ids"] == [f"{A24}:I.1A:0000"] and row["removed_in"] is None and row["is_new"] is False
+        assert row["unsettled_in"] is None
 
     def test_removed_in_is_the_newer_accession_and_only_on_the_older_item_of_a_compared_pair(self, lake):
         removed = {r["item_id"]: r["removed_in"] for r in layer_of(lake).items if r["removed_in"]}
@@ -109,6 +111,78 @@ class TestItemRows:
             frames[0]["unit_kind"] = "paragraph"
 
         assert {r["headline"] for r in layer_of(lake, paragraphs).items} == {""}
+
+
+class TestUnsettled:
+    """``unsettled_in`` = the newer accession, on an older item the text check could not settle (label ``uncertain``) in a
+    COMPARED pair: a separate category from ``removed_in``, never both, never on the newer side, never on a pair not compared."""
+
+    @staticmethod
+    def label(frames, item_id, side, label, matched="keep"):
+        dec = frames[2]
+        hit = (dec["item_id"] == item_id) & (dec["side"] == side)
+        assert hit.sum() == 1
+        dec.loc[hit, "label"] = label
+        if matched != "keep":
+            dec.loc[hit, "matched_item_id"] = matched
+
+    def unsettled(self, layer):
+        return {r["item_id"]: r["unsettled_in"] for r in layer.items if r["unsettled_in"]}
+
+    def test_a_lake_with_no_uncertain_older_item_has_no_unsettled_item(self, lake):
+        assert self.unsettled(layer_of(lake)) == {}
+
+    def test_an_older_item_labelled_uncertain_gets_the_newer_accession_of_its_own_pair(self, lake):
+        def mutate(frames):
+            self.label(frames, iid(A24, 1), "older", "uncertain")
+            self.label(frames, iid(A25, 0), "older", "uncertain")           # the older side of the SECOND pair
+
+        assert self.unsettled(layer_of(lake, mutate)) == {iid(A24, 1): A25, iid(A25, 0): A26}
+
+    def test_the_aligners_candidate_does_not_matter_and_an_uncertain_item_still_has_no_successor_edge(self, lake):
+        def mutate(frames):
+            self.label(frames, iid(A24, 1), "older", "uncertain", matched=iid(A25, 1))       # a candidate: still unsettled
+
+        layer = layer_of(lake, mutate)
+        assert self.unsettled(layer) == {iid(A24, 1): A25}
+        assert not any(e["old"] == iid(A24, 1) for e in layer.succeeded_by)
+
+    def test_an_item_is_removed_or_unsettled_never_both_and_the_removed_ones_are_unchanged(self, lake):
+        def mutate(frames):
+            self.label(frames, iid(A24, 1), "older", "uncertain")
+
+        layer = layer_of(lake, mutate)
+        removed = {r["item_id"] for r in layer.items if r["removed_in"]}
+        assert removed == {iid(A24, 2)} and removed.isdisjoint(self.unsettled(layer))
+        assert not any(r["removed_in"] and r["unsettled_in"] for r in layer.items)
+
+    def test_an_uncertain_newer_item_is_not_unsettled_and_neither_is_a_removed_or_merged_older_one(self, lake):
+        def mutate(frames):
+            self.label(frames, iid(A25, 2), "newer", "uncertain")            # the newer side of pair 1
+            self.label(frames, iid(A24, 0), "older", "merged")
+
+        assert self.unsettled(layer_of(lake, mutate)) == {}
+
+    def test_an_unsettled_item_is_present_for_the_lineage_but_ends_its_chain(self, lake):
+        def mutate(frames):
+            self.label(frames, iid(A24, 1), "older", "uncertain")
+
+        lineage = {r["item_id"]: r["lineage_id"] for r in layer_of(lake, mutate).items}
+        assert lineage[iid(A24, 1)] == f"lin:ZZZ:{iid(A24, 1)}"
+        assert lineage[iid(A25, 1)] == f"lin:ZZZ:{iid(A25, 1)}"              # the newer tax item starts its own lineage
+
+    def test_a_pair_that_was_not_compared_carries_no_unsettled_item(self, tmp_path):
+        settings = lakefix.build_lake(tmp_path, quality={"25": {"low_coverage": True, "coverage": 0.71}})
+        items.run_align_items(settings, ["ZZZ"])
+        assert not any(r["unsettled_in"] for r in layer_of(settings).items)
+
+    def test_decisions_of_a_pair_that_was_not_compared_are_refused_so_no_unsettled_flag_can_come_from_one(self, lake):
+        def mutate(frames):
+            self.label(frames, iid(A24, 1), "older", "uncertain")
+            frames[1].loc[0, "comparable"] = False
+
+        with pytest.raises(items.AlignItemsError, match="not compared"):
+            layer_of(lake, mutate)
 
 
 class TestSucceededBy:
@@ -280,6 +354,30 @@ class TestLoadRiskItems:
         assert any("SUCCEEDED_BY|IN_SECTION|SPANS" in t for t, _ in deletes) and any("OF_ITEM" in t for t, _ in deletes)
         gone = next(p for t, p in deletes if "NOT i.item_id IN $keep" in t)
         assert gone["cik"] == lakefix.CIK and len(gone["keep"]) == 10
+
+    def test_the_item_write_always_sets_unsettled_in_so_a_stale_flag_of_a_previous_run_is_cleared_with_null(self, loader_env):
+        driver = FakeDriver()
+        il.load_risk_items(driver, loader_env, [ZZZ], snapshot_id="snap-x")
+        text, params = next((t, p) for t, p in driver.log if "MERGE (i:RiskItem" in t)
+        assert "i.unsettled_in = row.unsettled_in" in text and "i.removed_in = row.removed_in" in text
+        assert all("unsettled_in" in row and row["unsettled_in"] is None for row in params["rows"])
+
+    def test_the_totals_count_the_unsettled_items(self, loader_env, monkeypatch):
+        driver = FakeDriver()
+        assert il.load_risk_items(driver, loader_env, [ZZZ], snapshot_id="snap-x")["unsettled"] == 0
+        real = il._read_ticker
+
+        def with_one_uncertain(settings, ticker, directory=None):
+            frames = list(real(settings, ticker, directory))
+            dec = frames[2]
+            dec.loc[(dec["item_id"] == iid(A24, 1)) & (dec["side"] == "older"), "label"] = "uncertain"
+            return tuple(frames)
+
+        monkeypatch.setattr(il, "_read_ticker", with_one_uncertain)
+        driver = FakeDriver()
+        assert il.load_risk_items(driver, loader_env, [ZZZ], snapshot_id="snap-x")["unsettled"] == 1
+        text, params = next((t, p) for t, p in driver.log if "MERGE (i:RiskItem" in t)
+        assert [r["unsettled_in"] for r in params["rows"] if r["item_id"] == iid(A24, 1)] == [A25]
 
     def test_the_supersedes_write_matches_the_existing_edge_and_never_creates_one_or_touches_its_kind(self, loader_env):
         driver = FakeDriver()

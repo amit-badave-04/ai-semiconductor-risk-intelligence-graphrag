@@ -113,7 +113,7 @@ def test_select_temporal_keeps_the_comparison_flag_and_reason_and_drops_items_of
     items, pairs = select_temporal(rows, "q")
     intel, nvidia = pairs
     assert intel["compared"] is False and intel["not_compared_reason"].startswith("the older filing's section is suspect")
-    assert intel["totals"] == {"removed": 0, "new": 0, "reworded": 0}
+    assert intel["totals"] == {"removed": 0, "unsettled": 0, "new": 0, "reworded": 0}
     assert nvidia["compared"] is True and nvidia["not_compared_reason"] is None and nvidia["totals"]["new"] == 1
     assert [i["item_id"] for i in items] == ["i2"]
 

@@ -15,7 +15,10 @@ terminal ``done`` event, so answers that cannot escalate still report what they 
 - pseudo-citations: bracketed text that is not a citation id (``[Reported Metrics]``, ``[id1; id2]``).
 - uncited answers: no citation and not a refusal (``has_citation`` / ``is_refusal``).
 - removal claims: a sentence that says a risk disclosure was dropped / removed / "no longer appears" may cite only ids
-  listed under the temporal block's REMOVED lists (:func:`context_layout.removal_supported_ids`).
+  listed under the temporal block's REMOVED lists (:func:`context_layout.removal_supported_ids`). The ids of the "Not
+  matched" list (older items the text check could not settle) are citable but never support a removal, and the check is
+  deliberately not softened for hedged wording ("may have been removed"): the answer prompt tells the model to say those
+  items "could not be verified" instead.
 
 :func:`failed_check_names` is the ONE predicate for "this answer failed a check": the service (cache, log), example
 seeding and the page all read it, so they cannot disagree.

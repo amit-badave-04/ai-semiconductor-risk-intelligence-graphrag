@@ -245,6 +245,80 @@ def test_each_company_gets_its_own_section_separated_by_a_blank_line():
     assert first.startswith("Nvidia:") and second.startswith("AMD:") and '"N"' in first and '"M"' in second
 
 
+# ------------------------------------------------------------------------------------------------ not matched (unsettled)
+
+UNSETTLED_HEADING = ("Not matched (the text check could not verify whether these older risk factors still appear; they may have "
+                     "been removed or absorbed into another risk factor) - showing {shown} of {total}:")
+
+
+def unsettled_pair(unsettled, **totals):
+    return pair(totals={"removed": 0, "unsettled": unsettled, "new": 0, "reworded": 0, **totals})
+
+
+def test_unsettled_items_are_a_separate_section_with_a_heading_that_claims_nothing():
+    items = [item("unsettled", "Export controls risk", [f"{OLD}:I.1A:0001", f"{OLD}:I.1A:0002"]),
+             item("unsettled", "Tax risk", [f"{OLD}:I.1A:0009"])]
+    lines = temporal_block(items, [unsettled_pair(9)]).splitlines()
+    at = lines.index(UNSETTLED_HEADING.format(shown=2, total=9))
+    assert lines[at + 1:at + 3] == [f'- "Export controls risk" [{OLD}:I.1A:0001] [{OLD}:I.1A:0002]', f'- "Tax risk" [{OLD}:I.1A:0009]']
+
+
+def test_the_unsettled_section_comes_after_removed_and_before_added_then_reworded():
+    items = [item("removed", "R", [f"{OLD}:I.1A:0001"]), item("unsettled", "U", [f"{OLD}:I.1A:0002"]),
+             item("new", "N", newer=[f"{NEW}:I.1A:0003"]), item("reworded", "W", [f"{OLD}:I.1A:0004"], [f"{NEW}:I.1A:0004"])]
+    block = temporal_block(items, [pair(totals={"removed": 1, "unsettled": 1, "new": 1, "reworded": 1})])
+    marks = ["Removed - showing 1 of 1", "Not matched (", "Added - showing 1 of 1", "Reworded - showing 1 of 1"]
+    assert [block.index(m) for m in marks] == sorted(block.index(m) for m in marks)
+    assert block.index('- "R"') < block.index("Not matched (") < block.index('- "U"') < block.index("Added - ") < block.index('- "N"')
+
+
+def test_the_unsettled_heading_never_says_removed_dropped_or_absent_as_a_fact():
+    """The only place 'removed' appears is the hedge 'may have been removed or absorbed'; nothing says the risk is gone."""
+    block = temporal_block([item("unsettled", "U", [f"{OLD}:I.1A:0001"])], [unsettled_pair(1)])
+    heading = next(ln for ln in block.splitlines() if ln.startswith("Not matched ("))
+    assert heading == UNSETTLED_HEADING.format(shown=1, total=1)
+    for fact in ("were removed", "was removed", "no longer appear", "dropped", "absent", "text verified"):
+        assert fact not in heading
+    assert "could not verify" in heading and "may have been removed" in heading
+
+
+def test_an_unsettled_item_cites_the_older_filings_chunk_ids_and_they_become_valid_ids():
+    older = [f"{OLD}:I.1A:{n:04d}" for n in range(5)]
+    blocks, _, valid_ids = build_blocks(retrieval(temporal=[item("unsettled", "U", older)], temporal_pairs=[unsettled_pair(1)]))
+    assert valid_ids == set(older[:3]) and f"[{older[3]}]" not in blocks.temporal_block
+
+
+def test_the_totals_are_stated_beside_the_capped_unsettled_list():
+    block = temporal_block([item("unsettled", "U", [f"{OLD}:I.1A:0001"])], [unsettled_pair(14)])
+    assert UNSETTLED_HEADING.format(shown=1, total=14) in block
+
+
+def test_no_unsettled_items_means_no_section_at_all_not_a_none_found_line():
+    for totals in ({"removed": 0, "unsettled": 0, "new": 0, "reworded": 0}, {"removed": 0, "new": 0, "reworded": 0}):   # or a payload without the key
+        block = temporal_block([], [pair(totals=totals)])
+        assert "Not matched" not in block and "Removed - none found" in block
+
+
+def test_a_headline_less_unsettled_paragraph_is_labelled_by_its_first_sentence():
+    unit = item("unsettled", None, [f"{OLD}:I.1A:0001"], unit_kind="paragraph", lead_text="We depend on TSMC for wafers. More.")
+    block = temporal_block([unit], [unsettled_pair(1)])
+    assert f'- "We depend on TSMC for wafers." [{OLD}:I.1A:0001]' in block
+
+
+def test_a_pair_that_was_not_compared_shows_no_unsettled_section_even_when_rows_are_handed_in():
+    block = temporal_block([item("unsettled", "U", [f"{OLD}:I.1A:0001"])],
+                           [{**unsettled_pair(1), "compared": False, "not_compared_reason": "suspect section"}])
+    assert "comparison not available (suspect section)" in block and "Not matched" not in block and '"U"' not in block
+
+
+def test_each_company_lists_its_own_unsettled_items():
+    amd = {**unsettled_pair(1), "company": "AMD", "cik": 2488, "older_accession": "A1", "newer_accession": "A2"}
+    block = temporal_block([item("unsettled", "NVDA risk", [f"{OLD}:I.1A:0001"]),
+                            item("unsettled", "AMD risk", ["A1:I.1A:0002"], company="AMD", cik=2488)], [unsettled_pair(1), amd])
+    first, second = block.split("\n\n")
+    assert '"NVDA risk"' in first and '"AMD risk"' not in first and '"AMD risk"' in second and '"NVDA risk"' not in second
+
+
 # ------------------------------------------------------------------------------------------------ id -> text map
 
 C1, C2, C3 = (f"{NEW}:I.1A:{n:04d}" for n in (1, 2, 3))

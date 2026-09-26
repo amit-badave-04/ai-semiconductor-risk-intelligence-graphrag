@@ -101,6 +101,86 @@ class TestCounts:
         assert bad == {"what": "RiskPassage", "filer_cik": lakefix.CIK, "parquet_rows": 2, "graph_nodes": 1}
 
 
+class TestUnsettledCounts:
+    """The graph's ``unsettled_in`` items per filer equal the older-side ``uncertain`` decisions of COMPARED pairs in the parquet."""
+
+    @staticmethod
+    def edit_decisions(settings, mutate):
+        import pandas as pd
+
+        from semigraph.graph import items
+
+        path = items.table_path(items.alignment_dir(settings), "ZZZ", "decisions")
+        frame = pd.read_parquet(path)
+        mutate(frame)
+        frame.to_parquet(path, index=False)
+
+    @staticmethod
+    def label(frame, item_id, side, label):
+        hit = (frame["item_id"] == item_id) & (frame["side"] == side)
+        assert hit.sum() == 1
+        frame.loc[hit, "label"] = label
+
+    @staticmethod
+    def lake(tmp_path):
+        from semigraph.graph import items
+
+        settings = lakefix.build_lake(tmp_path)
+        items.run_align_items(settings, ["ZZZ"])
+        return settings
+
+    def test_a_lake_with_no_uncertain_decision_expects_no_unsettled_item(self, tmp_path):
+        assert vg.lake_unsettled_counts(self.lake(tmp_path)) == {}
+
+    def test_only_older_side_uncertain_decisions_are_counted_per_filer(self, tmp_path):
+        settings = self.lake(tmp_path)
+
+        def mutate(frame):
+            self.label(frame, f"{lakefix.ACC['24']}:I.1A:i001", "older", "uncertain")
+            self.label(frame, f"{lakefix.ACC['25']}:I.1A:i000", "older", "uncertain")
+            self.label(frame, f"{lakefix.ACC['25']}:I.1A:i002", "newer", "uncertain")      # the newer side is never unsettled
+
+        self.edit_decisions(settings, mutate)
+        assert vg.lake_unsettled_counts(settings) == {lakefix.CIK: 2}
+
+    def test_a_decision_of_a_pair_that_was_not_compared_is_not_counted(self, tmp_path):
+        import pandas as pd
+
+        from semigraph.graph import items
+
+        settings = self.lake(tmp_path)
+        self.edit_decisions(settings, lambda f: self.label(f, f"{lakefix.ACC['25']}:I.1A:i000", "older", "uncertain"))
+        pairs_path = items.table_path(items.alignment_dir(settings), "ZZZ", "pairs")
+        pairs = pd.read_parquet(pairs_path)
+        pairs.loc[pairs["newer_accession"] == lakefix.ACC["26"], "comparable"] = False
+        pairs.to_parquet(pairs_path, index=False)
+        assert vg.lake_unsettled_counts(settings) == {}
+
+    def test_without_a_lake_the_check_is_skipped_not_passed(self, tmp_path):
+        settings = Settings(data_dir=tmp_path / "nothing", _env_file=None)
+        assert vg.lake_unsettled_counts(settings) is None and vg.check_unsettled_counts(object(), settings) is None
+
+    def test_the_check_compares_the_graph_with_the_decisions_and_names_the_filer_and_both_numbers(self, tmp_path, monkeypatch):
+        settings = self.lake(tmp_path)
+        self.edit_decisions(settings, lambda f: self.label(f, f"{lakefix.ACC['24']}:I.1A:i001", "older", "uncertain"))
+        graph = [{"cik": lakefix.CIK, "n": 1}]
+        monkeypatch.setattr(vg.client, "run_cypher", lambda driver, q, **p: graph)
+        assert vg.check_unsettled_counts(object(), settings) == []
+        graph[:] = []                                                       # the loader never ran, or lost the flag
+        assert vg.check_unsettled_counts(object(), settings) == [
+            {"what": "unsettled_in", "filer_cik": lakefix.CIK, "parquet_rows": 1, "graph_nodes": 0}]
+        graph[:] = [{"cik": lakefix.CIK, "n": 2}]
+        assert vg.check_unsettled_counts(object(), settings)[0]["graph_nodes"] == 2
+
+    def test_the_graph_side_reads_the_unsettled_in_property_and_never_writes(self, tmp_path, monkeypatch):
+        settings = self.lake(tmp_path)
+        seen = []
+        monkeypatch.setattr(vg.client, "run_cypher", lambda driver, q, **p: seen.append(q) or [])
+        vg.check_unsettled_counts(object(), settings)
+        (query,) = seen
+        assert "i.unsettled_in IS NOT NULL" in query and "count(i)" in query and "SET" not in query and "MERGE" not in query
+
+
 class TestCheckFalseDropsOnTheLake:
     def test_it_reads_the_removed_items_text_and_the_newer_section_from_the_lake(self, tmp_path, monkeypatch):
         settings = lakefix.build_lake(tmp_path)
@@ -123,15 +203,48 @@ class TestCheckFalseDropsOnTheLake:
 
 # --------------------------------------------------------------------------- the check list and the run
 
-REQUIRED = ["chunk_ids", "removed_in only on items of pairs with items_compared", "no SUCCEEDED_BY, removed_in, is_new or RiskPassage on a pair",
+REQUIRED = ["chunk_ids", "removed_in only on items of pairs with items_compared", "unsettled_in only on items of pairs with items_compared",
+            "no item carries both removed_in and unsettled_in",
+            "no SUCCEEDED_BY, removed_in, unsettled_in, is_new or RiskPassage on a pair",
             "exactly one HAS_PASSAGE parent", "boolean items_compared", "no Deleted status remains"]
 
 
 class TestCheckList:
     def test_every_required_item_invariant_is_a_check_of_the_script(self):
         names = [n for n, _, _ in vg.CHECKS] + [n for n, _ in vg.PYTHON_CHECKS]
-        for needle in REQUIRED + ["counts equal the parquet row counts", "false-drop guard"]:
+        for needle in REQUIRED + ["counts equal the parquet row counts", "false-drop guard",
+                                  "unsettled_in counts equal the older-side uncertain decisions"]:
             assert any(needle in n for n in names), needle
+
+    @staticmethod
+    def query(prefix):
+        (query,) = [q for n, q, _ in vg.CHECKS if n.startswith(prefix)]
+        return query
+
+    def test_unsettled_in_is_only_allowed_on_an_older_item_of_a_pair_whose_items_were_compared(self):
+        q = self.query("unsettled_in only on items of pairs with items_compared")
+        assert "i.unsettled_in IS NOT NULL" in q
+        assert "(:Filing {accession_no: i.unsettled_in})-[s:SUPERSEDES]->(:Filing {accession_no: i.accession_no})" in q
+        assert "NOT coalesce(s.items_compared, false)" in q                       # no edge, or a not-compared one, is a violation
+
+    def test_an_item_cannot_be_both_removed_and_unsettled(self):
+        q = self.query("no item carries both removed_in and unsettled_in")
+        assert "i.removed_in IS NOT NULL AND i.unsettled_in IS NOT NULL" in q
+
+    def test_a_pair_that_was_not_compared_may_carry_no_unsettled_item_either(self):
+        q = self.query("no SUCCEEDED_BY, removed_in, unsettled_in, is_new or RiskPassage on a pair")
+        assert "'unsettled_in' AS what" in q and "unsettled_in: n.accession_no" in q
+
+    def test_the_citable_chunks_check_covers_unsettled_items_of_the_current_pair(self):
+        q = self.query("the citable chunk ids of the CURRENT pair")
+        assert "i.unsettled_in = cur.accession_no" in q
+
+    def test_the_info_report_counts_the_unsettled_items_per_filing(self):
+        (query,) = [q for n, q, k in vg.CHECKS if n == "risk items and changes by filing"]
+        assert "count(i.unsettled_in) AS unsettled" in query
+
+    def test_the_new_check_names_do_not_collide_with_the_removed_in_only_fragment_the_integration_tests_look_up(self):
+        assert [n for n, _, _ in vg.CHECKS if "removed_in only" in n] == ["removed_in only on items of pairs with items_compared = true"]
 
     def test_check_names_are_unique_and_every_kind_is_none_or_info(self):
         names = [n for n, _, _ in vg.CHECKS]
@@ -162,7 +275,7 @@ class TestRun:
         monkeypatch.setattr(vg.client, "run_cypher", FakeGraph())
         out = []
         failures = vg.run_checks(object(), Settings(data_dir=tmp_path / "none", _env_file=None), out=out.append)
-        assert failures == 0 and sum(line.startswith("[skip]") for line in out) == 2
+        assert failures == 0 and sum(line.startswith("[skip]") for line in out) == 3
         assert all(not line.startswith("[FAIL]") for line in out)
 
     def test_each_failing_invariant_counts_once_and_prints_its_offending_rows(self, tmp_path, monkeypatch):

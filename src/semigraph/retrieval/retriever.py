@@ -43,7 +43,9 @@ Battle scars preserved — each cost a failed run, do not relax:
 
 - Hybrid retrieval surfaces the TEXT-VERIFIED risk-item layer (M1b): per company, the risk items REMOVED from,
   ADDED to and REWORDED in the current annual filing against the annual filing it replaced, read from the
-  ``RiskItem`` nodes (``removed_in`` / ``is_new`` / ``SUCCEEDED_BY {kind}``), never from the LLM-summary lineage
+  ``RiskItem`` nodes (``removed_in`` / ``is_new`` / ``SUCCEEDED_BY {kind}``), plus the older items the text check could
+  NOT settle (``unsettled_in``: neither verified present nor verified gone; a separate list, never counted as removed),
+  never from the LLM-summary lineage
   clustering that marked risks "dropped" although their text was still in the newer filing (live audit,
   2026-09-26). The first eval run scored temporal questions 0.67/0.00 because retrieval never exposed what the
   graph knew.
@@ -85,7 +87,8 @@ ACTIVE_RISKS_TOP = 6            # active-risk rows kept overall, best score firs
 EXCERPT_CANDIDATES = 60         # ANN candidates before the MENTIONS-anchor filter
 METRIC_PERIODS_SHOWN = 3        # fiscal periods per (company, metric) the prompt shows
 METRIC_PERIODS_FETCHED = METRIC_PERIODS_SHOWN + 1   # + the year before the oldest shown, the base of its year-over-year
-TEMPORAL_CAPS = {"removed": 8, "new": 8, "reworded": 4}   # items shown per company and change; totals are always stated
+# Items shown per company and change; totals are always stated. The order is the order the block prints them in.
+TEMPORAL_CAPS = {"removed": 8, "unsettled": 6, "new": 8, "reworded": 4}
 PASSAGE_CAPS = {"removed": 8, "added": 4, "reworded": 4}   # passages shown per company and kind (a removed one is the
                                                            # flagship finding, so it gets the most room); totals are stated
 MAX_MENTIONED_PERIODS = 4       # fiscal years / period-end dates named in the question that get their own METRICS rows
@@ -158,17 +161,19 @@ RETURN a.name AS company, rf.summary AS summary, rf.category AS category,
        e.chunk_id AS chunk_id, score"""
 
 # The risk-item layer (M1b): for each anchor, the current annual filing and the annual filing it rolled over, then the
-# items REMOVED (older filing's items whose text was verified absent from the current one: ``removed_in``), NEW (the
-# current filing's ``is_new`` items) and REWORDED (``SUCCEEDED_BY {kind:'reworded'}``) between them. Both ends must be
-# annual filings that actually have items: the current annual also has a 'rolled' edge to the last 10-Q, and a partial
-# 10-K/A overlay (AMD's Item-7-only amendment) is 'current' too but carries no risk section. A pair the loader marked
-# ``items_compared = false`` on its SUPERSEDES edge (an untrustworthy side: INTC, ASML FY24->FY25) survives the has-items
-# guards whatever its sides hold, and comes back with ``compared = false`` and the reason: a side with no items must
-# render "comparison not available", never vanish into "(none)". No item row is read for such a pair (the contract says
-# none exists). A 'pair' row per company says the comparison exists even when nothing changed; without it "no changes"
+# items REMOVED (older filing's items whose text was verified absent from the current one: ``removed_in``), UNSETTLED (older
+# items the text check could not settle, ``unsettled_in``: NOT verified removed, listed apart from the removed ones, same
+# columns), NEW (the current filing's ``is_new`` items) and REWORDED (``SUCCEEDED_BY {kind:'reworded'}``) between them.
+# Both ends must be annual filings that actually have items: the current annual also has a 'rolled' edge to the last 10-Q,
+# and a partial 10-K/A overlay (AMD's Item-7-only amendment) is 'current' too but carries no risk section. A pair the loader
+# marked ``items_compared = false`` on its SUPERSEDES edge (an untrustworthy side: INTC, ASML FY24->FY25) survives the
+# has-items guards whatever its sides hold, and comes back with ``compared = false`` and the reason: a side with no items
+# must render "comparison not available", never vanish into "(none)". No item row is read for such a pair (the contract
+# says none exists; a stale ``removed_in`` / ``unsettled_in`` on one is ignored). A 'pair' row per company says the
+# comparison exists even when nothing changed; without it "no changes"
 # and "no data" would look alike. A headline-less paragraph unit also returns ``lead_text``: the text of its first chunk
 # from the unit's own offset (chunk and item offsets are both section-text offsets), so it can be labelled by its first
-# sentence. All four UNION members return the same columns: rows are ranked and capped in :func:`select_temporal`.
+# sentence. All five UNION members return the same columns: rows are ranked and capped in :func:`select_temporal`.
 _TEMPORAL_PAIR = """MATCH (c:Company)-[:FILED]->(cur:Filing {is_current: true})-[sup:SUPERSEDES {kind: 'rolled'}]->(prev:Filing)
 WHERE c.cik IN $ids AND cur.form IN ['10-K', '10-K/A', '20-F', '20-F/A'] AND prev.form IN ['10-K', '10-K/A', '20-F', '20-F/A']
   AND (sup.items_compared = false OR (
@@ -195,6 +200,15 @@ RETURN c.name AS company, c.cik AS cik, 'pair' AS change, null AS item_id, null 
 MATCH (i:RiskItem {filer_cik: c.cik, accession_no: prev.accession_no}) WHERE i.removed_in = cur.accession_no AND coalesce(sup.items_compared, true)
 """ + _LEAD_MATCH + """
 RETURN c.name AS company, c.cik AS cik, 'removed' AS change, i.item_id AS item_id, i.headline AS headline,
+       null AS older_headline, i.unit_kind AS unit_kind, i.section_id AS section_id, i.seq AS seq,
+       """ + _ITEM_LENGTH + """ AS length, coalesce(i.chunk_ids, []) AS older_chunk_ids, [] AS newer_chunk_ids,
+       null AS decided_by, null AS sim_embed, null AS sim_lex, i.lineage_id AS lineage,
+       """ + _LEAD_TEXT + """ AS lead_text,
+       """ + _TEMPORAL_PAIR_COLUMNS,
+    _TEMPORAL_PAIR + """
+MATCH (i:RiskItem {filer_cik: c.cik, accession_no: prev.accession_no}) WHERE i.unsettled_in = cur.accession_no AND coalesce(sup.items_compared, true)
+""" + _LEAD_MATCH + """
+RETURN c.name AS company, c.cik AS cik, 'unsettled' AS change, i.item_id AS item_id, i.headline AS headline,
        null AS older_headline, i.unit_kind AS unit_kind, i.section_id AS section_id, i.seq AS seq,
        """ + _ITEM_LENGTH + """ AS length, coalesce(i.chunk_ids, []) AS older_chunk_ids, [] AS newer_chunk_ids,
        null AS decided_by, null AS sim_embed, null AS sim_lex, i.lineage_id AS lineage,
@@ -331,9 +345,10 @@ def select_temporal(rows: list[dict], question: str,
     """Rank and cap the rows of :data:`TEMPORAL_QUERY`: ``(items, pairs)``.
 
     ``pairs`` has one dict per company whose comparison exists (older and newer filing, ``compared`` /
-    ``not_compared_reason`` from the SUPERSEDES edge, and ``totals`` of removed / new / reworded items BEFORE the cap, so
-    the answer can say "showing 8 of 21"); ``items`` are flat rows (company, change, headline, chunk ids, ...) in pair
-    order, ``removed`` then ``new`` then ``reworded``, each ranked and capped at ``caps``. A pair the loader could not
+    ``not_compared_reason`` from the SUPERSEDES edge, and ``totals`` of removed / unsettled / new / reworded items BEFORE
+    the cap, so the answer can say "showing 8 of 21"); ``items`` are flat rows (company, change, headline, chunk ids, ...)
+    in pair order, ``removed``, then ``unsettled`` (older items the text check could not settle: NOT counted as removed),
+    then ``new``, then ``reworded``, each ranked and capped at ``caps``. A pair the loader could not
     compare (``compared`` False) has all-zero totals and no items, whatever rows arrive for it. A row with no
     ``compared`` value (a graph from before the loader stamped the edge) means compared. No RiskItem data yet means
     ``([], [])``."""

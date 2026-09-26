@@ -10,14 +10,22 @@ The temporal block (docs/v2/M1B_PLAN.md L.7), per compared company::
     <company>: <form> filed <date> (accession ...) compared with <form> filed <date> (accession ...)
     Removed - showing 2 of 21 risk factors (text verified absent from the later filing):
     - "<headline or first sentence>" [chunk id] [chunk id]
+    Not matched (the text check could not verify whether these older risk factors still appear; they may have been removed or
+    absorbed into another risk factor) - showing 6 of 14:
+    - "<headline or first sentence>" [older chunk id]
     Added - ... / Reworded - ...
     Passages of surviving risk factors that no longer appear (showing 4 of 12):
     - in "<containing item>": "<quoted text>" [chunk id]
     Passages of surviving risk factors that are new (showing N of M): ...
     Passages of surviving risk factors that were reworded (showing N of M): ...
 
+The "Not matched" section lists OLDER items the text check could not settle (``RiskItem.unsettled_in``): they are neither
+verified present nor verified gone, the heading claims nothing, they cite the older filing's chunk ids like removed items, and
+they are NOT a removal: :func:`removal_supported_ids` never counts them. It is printed only when there is something to say
+(a comparison in which the text check settled every item has no such section, not a "none found" line).
+
 A pair the loader marked ``items_compared = false`` renders ``comparison not available (<reason>)`` and nothing else:
-no removed / added / reworded lines and no "none found", because "nothing changed" would be a claim nobody verified.
+no removed / not matched / added / reworded lines and no "none found", because "nothing changed" would be a claim nobody verified.
 """
 
 import re
@@ -53,10 +61,17 @@ PASSAGE_WHERE_CHARS = 100           # the containing item's label beside a passa
 
 # --- the labels the reader matches on (and the writer builds from) ---
 NOT_COMPARED_PREFIX = "comparison not available"
+UNSETTLED_CHANGE = "unsettled"                               # the ``change`` of an older item the text check could not settle
 _ITEM_SECTIONS = (("removed", "Removed", "text verified absent from the later filing"),
+                  (UNSETTLED_CHANGE, "Not matched", ""),     # label and note unused: _unsettled_section writes its own heading
                   ("new", "Added", "new in the later filing"),
                   ("reworded", "Reworded", "still disclosed, wording changed"))
 REMOVED_ITEMS_PREFIX = "Removed - showing "                 # the removed ITEMS list (an item that is gone)
+UNSETTLED_ITEMS_PREFIX = "Not matched ("                    # the unsettled ITEMS list (verified neither present nor gone)
+# The heading claims nothing: "removed" appears only as a possibility, never as a fact. The unit noun is fixed on purpose (the
+# wording is the owner's); a list of paragraph units is told to the model by the answer prompt.
+_UNSETTLED_HEADING = (UNSETTLED_ITEMS_PREFIX + "the text check could not verify whether these older risk factors still appear; they "
+                      "may have been removed or absorbed into another risk factor) - showing {shown} of {total}:")
 PASSAGES_PREFIX = "Passages of surviving "                  # "... risk factors that no longer appear (showing N of M):"
 PASSAGES_REMOVED_PHRASE = "that no longer appear"           # the removed PASSAGES list (a sentence that is gone)
 _PASSAGE_SECTIONS = (("removed", PASSAGES_REMOVED_PHRASE), ("added", "that are new"),
@@ -106,7 +121,7 @@ def _id_list(chunk_ids: Sequence[str] | None, valid_ids: set[str]) -> str:
 def _item_line(item: Mapping, valid_ids: set[str]) -> str:
     line = f'- "{item_label(item)}"'
     older, newer = _id_list(item.get("older_chunk_ids"), valid_ids), _id_list(item.get("newer_chunk_ids"), valid_ids)
-    if item["change"] == "removed":
+    if item["change"] in ("removed", UNSETTLED_CHANGE):       # both cite the OLDER filing: the item is quoted from it
         return line + older
     if item["change"] == "new":
         return line + newer
@@ -134,11 +149,21 @@ def _passage_line(passage: Mapping, valid_ids: set[str]) -> str:
             f'{"" if later else " (no citable id)"}: "{_quote(passage.get("counterpart_text"))}"{later}')
 
 
+def _unsettled_section(group: list[Mapping], total: int, valid_ids: set[str]) -> list[str]:
+    """The "Not matched" heading and its item lines; nothing at all when the text check settled every item of the pair."""
+    if not group and not total:
+        return []
+    return [_UNSETTLED_HEADING.format(shown=len(group), total=total)] + [_item_line(i, valid_ids) for i in group]
+
+
 def _pair_sections(pair: Mapping, mine: list[Mapping], passages: list[Mapping], valid_ids: set[str]) -> list[str]:
     lines = []
     for change, label, note in _ITEM_SECTIONS:
         group = [i for i in mine if i.get("change") == change]
         total = (pair.get("totals") or {}).get(change, len(group))
+        if change == UNSETTLED_CHANGE:
+            lines += _unsettled_section(group, total, valid_ids)
+            continue
         if not group and not total:
             lines.append(f"{label} - none found.")
             continue
@@ -183,7 +208,9 @@ def removal_supported_ids(context: str) -> set[str]:
     """The citation ids that appear under a REMOVED list of the temporal block: a removed item or a removed passage.
 
     A sentence that claims a removal may cite only these (docs/v2/M1B_PLAN.md L.7: a passage that is gone is not "the
-    company dropped the risk", and a surviving item is not gone). Read back from the context string itself, so it holds
+    company dropped the risk", and a surviving item is not gone). The ids under the "Not matched" list (older items the text
+    check could not settle) are NOT among them: that heading does not start with :data:`REMOVED_ITEMS_PREFIX`, so its lines
+    never count, and an unsettled item is not verified removed. Read back from the context string itself, so it holds
     for any answer that saw exactly this context; a context with no temporal block yields the empty set."""
     _, marker, rest = context.partition(TEMPORAL_HEADER)
     if not marker:

@@ -1,6 +1,7 @@
 """The risk-item layer against a real Neo4j - opt-in (RUN_NEO4J_TESTS=1; on Community also SEMIGRAPH_ALLOW_WIPE=1).
 
-Two scenarios, each in a throwaway database that is wiped before and after:
+Two scenarios, each in a throwaway database that is wiped before and after (both also cover ``unsettled_in``: an older item the
+text check could not settle, i.e. an ``uncertain`` older-side decision of a compared pair):
 
 * ``TestSyntheticLake``: a tiny lake (ticker NVDA, three annual filings; see ``tests/lakefix.py``) is loaded through the REAL loaders
   (companies, filings, evidence spans), the risk-item alignment is run and loaded with ``item_loader.load_risk_items``, and the
@@ -133,6 +134,7 @@ class TestSyntheticLake:
                              "char_start", "char_end", "unit_kind", "chunk_ids", "is_current", "lineage_id", "removed_in",
                              "is_new", "snapshot_id"}
         assert node["removed_in"] == ACC["25"] and node["is_new"] is False and node["is_current"] is False
+        assert "unsettled_in" not in node                       # null is no property: only an uncertain older item carries it
         assert node["filer_cik"] == NVDA_CIK and isinstance(node["filer_cik"], int) and node["snapshot_id"] == synthetic["snapshot"]
         assert node["filing_date"].to_native() == date(2024, 2, 21) and node["chunk_ids"] == [f"{ACC['24']}:I.1A:0002"]
 
@@ -189,7 +191,7 @@ class TestSyntheticLake:
         assert (pair["older_accession"], pair["newer_accession"], pair["compared"]) == (ACC["25"], ACC["26"], True)
         assert [i["item_id"] for i in found if i["change"] == "new"] == [iid("26", 3)]
         assert [i for i in found if i["change"] == "removed"] == []                         # the pandemic item left one pair earlier
-        assert pair["totals"] == {"removed": 0, "new": 1, "reworded": 0}
+        assert pair["totals"] == {"removed": 0, "unsettled": 0, "new": 1, "reworded": 0}
 
     def test_the_retrievers_passage_query_reads_the_loaded_graph_for_a_compared_pair(self, synthetic):
         driver = synthetic["driver"]
@@ -259,7 +261,7 @@ class TestSyntheticLake:
         try:
             with d.session() as session:
                 session.run("MATCH (i:RiskItem {item_id: $id}) SET i.chunk_ids = i.chunk_ids + ['ghost:chunk']", id=iid("26", 3)).consume()
-            assert self.failing(d, "resolve to evidence spans") == ["the citable chunk ids of the CURRENT pair (removed / new items, passages) resolve to evidence spans"]
+            assert self.failing(d, "resolve to evidence spans") == ["the citable chunk ids of the CURRENT pair (removed / unsettled / new items, passages) resolve to evidence spans"]
         finally:
             item_loader.load_risk_items(d, lake, ["NVDA"], snapshot_id=synthetic["snapshot"])
 
@@ -275,6 +277,62 @@ class TestSyntheticLake:
             item_loader.load_risk_items(d, lake, ["NVDA"], snapshot_id=synthetic["snapshot"])
         assert vg.check_false_drops(d, lake) == []
 
+    def test_an_uncertain_older_decision_becomes_unsettled_in_reaches_the_retriever_and_passes_the_invariants(self, synthetic):
+        """The F25 wafer item (older side of the current pair F25 -> F26) is re-labelled ``uncertain`` in the decisions parquet."""
+        d, lake = synthetic["driver"], synthetic["settings"]
+        path = items.table_path(items.alignment_dir(lake), "NVDA", "decisions")
+        original = pd.read_parquet(path)
+        changed = original.copy()
+        hit = (changed["item_id"] == iid("25", 0)) & (changed["side"] == "older")
+        assert hit.sum() == 1
+        changed.loc[hit, ["label", "matched_item_id"]] = ["uncertain", None]
+        changed.to_parquet(path, index=False)
+        try:
+            totals = item_loader.load_risk_items(d, lake, ["NVDA"], snapshot_id="sgitems-unsettled")
+            assert totals["unsettled"] == 1 and totals["succeeded_by"] == 4                 # the uncertain item has no successor edge
+            node = one(d, "MATCH (i:RiskItem {item_id: $id}) RETURN properties(i) AS p", id=iid("25", 0))["p"]
+            assert node["unsettled_in"] == ACC["26"] and "removed_in" not in node
+            assert [r["id"] for r in rows(d, "MATCH (i:RiskItem) WHERE i.unsettled_in IS NOT NULL RETURN i.item_id AS id")] == [iid("25", 0)]
+            assert [r["id"] for r in rows(d, "MATCH (i:RiskItem) WHERE i.removed_in IS NOT NULL RETURN i.item_id AS id")] == [iid("24", 2)]
+            found, pairs = select_temporal(run_cypher(d, TEMPORAL_QUERY, ids=[NVDA_CIK]), "What changed?")
+            (row,) = [i for i in found if i["change"] == "unsettled"]
+            assert row["item_id"] == iid("25", 0) and row["older_chunk_ids"] == [f"{ACC['25']}:I.1A:0000"] and row["newer_chunk_ids"] == []
+            assert not [i for i in found if i["change"] == "removed"]                    # unsettled is never listed as removed
+            assert pairs[0]["totals"] == {"removed": 0, "unsettled": 1, "new": 1, "reworded": 0}
+            block = build_blocks({"anchors": {}, "edges": [], "metrics": [], "risks": [], "chunks": [], "temporal": found,
+                                  "temporal_pairs": pairs})[0].temporal_block
+            assert "Not matched (the text check could not verify" in block and "- showing 1 of 1:" in block
+            assert {name: rows(d, query) for name, query, kind in vg.ITEM_LAYER_CHECKS if kind == "none" and rows(d, query)} == {}
+            assert vg.check_unsettled_counts(d, lake) == [] and vg.check_counts(d, lake) == []
+        finally:
+            original.to_parquet(path, index=False)
+            item_loader.load_risk_items(d, lake, ["NVDA"], snapshot_id=synthetic["snapshot"])
+        assert one(d, "MATCH (i:RiskItem) WHERE i.unsettled_in IS NOT NULL RETURN count(i) AS n")["n"] == 0    # a reload clears the flag
+        assert vg.check_unsettled_counts(d, lake) == []
+
+    def test_the_unsettled_invariants_detect_their_own_violations(self, synthetic):
+        d, lake = synthetic["driver"], synthetic["settings"]
+        try:
+            with d.session() as session:
+                # both flags on one item (the pandemic item is removed_in F25 already); a flag naming a filing that never superseded it
+                session.run("MATCH (i:RiskItem {item_id: $id}) SET i.unsettled_in = $n", id=iid("24", 2), n=ACC["25"]).consume()
+                session.run("MATCH (i:RiskItem {item_id: $id}) SET i.unsettled_in = 'ghost-accession'", id=iid("24", 1)).consume()
+            assert self.failing(d, "no item carries both") == ["no item carries both removed_in and unsettled_in"]
+            assert self.failing(d, "unsettled_in only") == ["unsettled_in only on items of pairs with items_compared = true"]
+            assert {"what": "unsettled_in", "filer_cik": NVDA_CIK, "parquet_rows": 0, "graph_nodes": 2} in vg.check_unsettled_counts(d, lake)
+            # an unsettled item on the older side of a pair that was not compared
+            with d.session() as session:
+                session.run("MATCH (i:RiskItem {item_id: $id}) SET i.unsettled_in = $n", id=iid("24", 1), n=ACC["25"]).consume()
+                session.run("MATCH (:Filing {accession_no: $n})-[s:SUPERSEDES]->(:Filing {accession_no: $o}) SET s.items_compared = false, "
+                            "s.not_compared_reason = 'x'", n=ACC["25"], o=ACC["24"]).consume()
+            query = next(q for n, q, _ in vg.ITEM_LAYER_CHECKS if n.startswith("no SUCCEEDED_BY, removed_in, unsettled_in"))
+            assert "unsettled_in" in {r["what"] for r in rows(d, query)}
+            assert self.failing(d, "unsettled_in only")                                   # ... and by the per-property check
+        finally:
+            item_loader.load_risk_items(d, lake, ["NVDA"], snapshot_id=synthetic["snapshot"])
+        assert {name for name, query, kind in vg.ITEM_LAYER_CHECKS if kind == "none" and rows(d, query)} == set()
+        assert vg.check_unsettled_counts(d, lake) == []
+
     def test_a_changed_alignment_replaces_the_old_layer_and_leaves_no_stale_drop(self, synthetic):
         """The pair is re-classified as not compared: removed_in / is_new / SUCCEEDED_BY / passages of the previous run must go."""
         d, lake = synthetic["driver"], synthetic["settings"]
@@ -286,7 +344,7 @@ class TestSyntheticLake:
         try:
             items.run_align_items(lake, ["NVDA"])
             item_loader.load_risk_items(d, lake, ["NVDA"], snapshot_id="sgitems-second")
-            assert one(d, "MATCH (i:RiskItem) WHERE i.removed_in IS NOT NULL OR i.is_new = true RETURN count(i) AS n")["n"] == 0
+            assert one(d, "MATCH (i:RiskItem) WHERE i.removed_in IS NOT NULL OR i.unsettled_in IS NOT NULL OR i.is_new = true RETURN count(i) AS n")["n"] == 0
             assert one(d, "MATCH ()-[r:SUCCEEDED_BY]->() RETURN count(r) AS n")["n"] == 0
             assert one(d, "MATCH (p:RiskPassage) RETURN count(p) AS n")["n"] == 0
             flags = rows(d, "MATCH (:Filing)-[s:SUPERSEDES]->(:Filing) RETURN s.kind AS kind, s.items_compared AS c, s.not_compared_reason AS r")
@@ -413,6 +471,10 @@ class TestRealNvidiaAndIntel:
         assert real["totals"]["items"] == expected == one(d, "MATCH (i:RiskItem) RETURN count(i) AS n")["n"]
         assert vg.check_counts(d, real["settings"], real["alignment"]) == []
         assert real["totals"]["succeeded_by"] == one(d, "MATCH ()-[r:SUCCEEDED_BY]->() RETURN count(r) AS n")["n"]
+        # the unsettled items: as many as the decisions parquet has older-side 'uncertain' decisions of compared pairs
+        assert vg.check_unsettled_counts(d, real["settings"], real["alignment"]) == []
+        assert real["totals"]["unsettled"] == one(d, "MATCH (i:RiskItem) WHERE i.unsettled_in IS NOT NULL RETURN count(i) AS n")["n"]
+        assert one(d, "MATCH (i:RiskItem) WHERE i.removed_in IS NOT NULL AND i.unsettled_in IS NOT NULL RETURN count(i) AS n")["n"] == 0
 
     def test_every_companys_current_pair_reaches_the_retriever_and_only_intel_and_asml_are_not_compared(self, real):
         ciks = sorted(int(c) for c in pd.concat([pd.read_parquet(f, columns=["filer_cik"]) for f in

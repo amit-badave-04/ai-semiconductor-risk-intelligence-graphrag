@@ -5,9 +5,12 @@
 
 Exits non-zero when any invariant fails. Uses NEO4J_URI / NEO4J_PASSWORD / NEO4J_DATABASE.
 Most checks are one Cypher query returning the offending rows (expected: none) or a value. The risk-item invariants
-(M1B_PLAN L.7) add two checks that need the data lake (skipped, and said so, when it is absent): the RiskItem / RiskPassage
-counts equal the parquet row counts, and the FALSE-DROP GUARD: no removed item's headline (or, for a paragraph unit, its first
-sentence) fuzzy-matches (rapidfuzz ratio >= 90 after default_process) any sentence of the newer filing's section text.
+(M1B_PLAN L.7) add three checks that need the data lake (skipped, and said so, when it is absent): the RiskItem / RiskPassage
+counts equal the parquet row counts, the ``unsettled_in`` items equal the decisions parquet's older-side ``uncertain`` decisions of
+compared pairs, and the FALSE-DROP GUARD: no removed item's headline (or, for a paragraph unit, its first sentence) fuzzy-matches
+(rapidfuzz ratio >= 90 after default_process) any sentence of the newer filing's section text. ``unsettled_in`` (an older item the
+text check could not settle: not verified removed, not verified present) may sit only on items of compared pairs, never together
+with ``removed_in``.
 """
 
 import sys
@@ -26,6 +29,8 @@ from semigraph.graph.temporal import ANNUAL_FORMS
 FALSE_DROP_RATIO = 90.0      # a removed item whose headline is this close to a sentence of the newer section is a false drop
 MIN_PROBE_CHARS = 20         # a shorter first sentence of a paragraph unit proves nothing
 NO_FILER = -1                # the count key of graph nodes that have no filer_cik (they belong to no parquet row)
+UNSETTLED_LABEL = "uncertain"    # the older-side decision the loader turns into RiskItem.unsettled_in
+UNSETTLED_GRAPH_QUERY = "MATCH (i:RiskItem) WHERE i.unsettled_in IS NOT NULL RETURN i.filer_cik AS cik, count(i) AS n"
 
 _ANNUAL = "[" + ", ".join(f"'{f}'" for f in ANNUAL_FORMS) + "]"
 
@@ -92,12 +97,20 @@ ITEM_LAYER_CHECKS = [
         OPTIONAL MATCH (:Filing {accession_no: i.removed_in})-[s:SUPERSEDES]->(:Filing {accession_no: i.accession_no})
         WITH i, s WHERE s IS NULL OR NOT coalesce(s.items_compared, false)
         RETURN i.item_id AS item, i.removed_in AS removed_in LIMIT 10""", "none"),
+    ("unsettled_in only on items of pairs with items_compared = true", """
+        MATCH (i:RiskItem) WHERE i.unsettled_in IS NOT NULL
+        OPTIONAL MATCH (:Filing {accession_no: i.unsettled_in})-[s:SUPERSEDES]->(:Filing {accession_no: i.accession_no})
+        WITH i, s WHERE s IS NULL OR NOT coalesce(s.items_compared, false)
+        RETURN i.item_id AS item, i.unsettled_in AS unsettled_in LIMIT 10""", "none"),
+    ("no item carries both removed_in and unsettled_in", """
+        MATCH (i:RiskItem) WHERE i.removed_in IS NOT NULL AND i.unsettled_in IS NOT NULL
+        RETURN i.item_id AS item, i.removed_in AS removed_in, i.unsettled_in AS unsettled_in LIMIT 10""", "none"),
     ("is_new only on items of pairs with items_compared = true", """
         MATCH (i:RiskItem {is_new: true})
         OPTIONAL MATCH (:Filing {accession_no: i.accession_no})-[s:SUPERSEDES {items_compared: true}]->(:Filing)
         WITH i, count(s) AS compared WHERE compared = 0
         RETURN i.item_id AS item LIMIT 10""", "none"),
-    ("no SUCCEEDED_BY, removed_in, is_new or RiskPassage on a pair that was not compared", """
+    ("no SUCCEEDED_BY, removed_in, unsettled_in, is_new or RiskPassage on a pair that was not compared", """
         MATCH (n:Filing)-[:SUPERSEDES {items_compared: false}]->(o:Filing)
         MATCH (a:RiskItem {accession_no: o.accession_no})-[:SUCCEEDED_BY]->(:RiskItem {accession_no: n.accession_no})
         RETURN 'SUCCEEDED_BY' AS what, a.item_id AS item LIMIT 5
@@ -105,6 +118,10 @@ ITEM_LAYER_CHECKS = [
         MATCH (n:Filing)-[:SUPERSEDES {items_compared: false}]->(o:Filing)
         MATCH (a:RiskItem {accession_no: o.accession_no, removed_in: n.accession_no})
         RETURN 'removed_in' AS what, a.item_id AS item LIMIT 5
+        UNION ALL
+        MATCH (n:Filing)-[:SUPERSEDES {items_compared: false}]->(o:Filing)
+        MATCH (a:RiskItem {accession_no: o.accession_no, unsettled_in: n.accession_no})
+        RETURN 'unsettled_in' AS what, a.item_id AS item LIMIT 5
         UNION ALL
         MATCH (n:Filing)-[:SUPERSEDES {items_compared: false}]->(:Filing)
         MATCH (b:RiskItem {accession_no: n.accession_no, is_new: true})
@@ -124,10 +141,11 @@ ITEM_LAYER_CHECKS = [
           AND EXISTS { MATCH (:RiskItem {accession_no: o.accession_no}) }
           AND (s.items_compared IS NULL OR NOT s.items_compared IN [true, false])
         RETURN n.accession_no AS newer, o.accession_no AS older LIMIT 10""" % {"annual": _ANNUAL}, "none"),
-    ("the citable chunk ids of the CURRENT pair (removed / new items, passages) resolve to evidence spans", """
+    ("the citable chunk ids of the CURRENT pair (removed / unsettled / new items, passages) resolve to evidence spans", """
         MATCH (:Company)-[:FILED]->(cur:Filing {is_current: true})-[:SUPERSEDES {kind: 'rolled', items_compared: true}]->(prev:Filing)
         MATCH (i:RiskItem)
         WHERE (i.accession_no = prev.accession_no AND i.removed_in = cur.accession_no)
+           OR (i.accession_no = prev.accession_no AND i.unsettled_in = cur.accession_no)
            OR (i.accession_no = cur.accession_no AND i.is_new = true)
         UNWIND i.chunk_ids AS cid OPTIONAL MATCH (e:EvidenceSpan {chunk_id: cid})
         WITH i, cid, e WHERE e IS NULL
@@ -144,6 +162,7 @@ INFO_CHECKS = [
     ("risk items and changes by filing", """
         MATCH (i:RiskItem)
         RETURN i.accession_no AS accession, count(*) AS items, count(i.removed_in) AS removed,
+               count(i.unsettled_in) AS unsettled,
                count(CASE WHEN i.is_new THEN 1 END) AS new, count(CASE WHEN i.is_current THEN 1 END) AS current
         ORDER BY accession""", "info"),
     ("filing pairs and whether their items were compared", """
@@ -206,6 +225,39 @@ def check_counts(driver, settings: Settings, align_dir: Path | None = None) -> l
     graph = {label: {NO_FILER if r["cik"] is None else int(r["cik"]): int(r["n"]) for r in client.run_cypher(
         driver, f"MATCH (x:{label}) RETURN x.filer_cik AS cik, count(x) AS n")} for label in ("RiskItem", "RiskPassage")}
     return count_mismatches(lake[0], graph["RiskItem"], "RiskItem") + count_mismatches(lake[1], graph["RiskPassage"], "RiskPassage")
+
+
+def lake_unsettled_counts(settings: Settings, align_dir: Path | None = None) -> dict[int, int] | None:
+    """``filer_cik -> older-side decisions labelled uncertain in COMPARED pairs``, from the risk-alignment parquets: how many items the
+    graph must carry ``unsettled_in`` for. None without a lake. An alignment file that is absent expects none; a decision whose item is
+    not in the item parquet counts under ``NO_FILER`` (a stale alignment, reported as a mismatch)."""
+    items_dir = settings.interim_dir / "risk_items"
+    align_dir = align_dir or settings.interim_dir / "risk_alignment"
+    item_files = sorted(items_dir.glob("*_risk_items.parquet"))
+    if not item_files:
+        return None
+    filer_of = pd.concat([pd.read_parquet(f, columns=["item_id", "filer_cik"]) for f in item_files]).set_index("item_id")["filer_cik"]
+    counts: dict[int, int] = {}
+    for decisions_file in sorted(align_dir.glob("*_decisions.parquet")):
+        pairs_file = decisions_file.with_name(decisions_file.name.replace("_decisions.parquet", "_pairs.parquet"))
+        pairs = pd.read_parquet(pairs_file, columns=["pair_id", "comparable"])
+        compared = set(pairs.loc[pairs["comparable"].astype(bool), "pair_id"])
+        decisions = pd.read_parquet(decisions_file, columns=["item_id", "side", "label", "pair_id"])
+        hit = decisions[(decisions["side"] == "older") & (decisions["label"] == UNSETTLED_LABEL) & decisions["pair_id"].isin(compared)]
+        for item_id in hit["item_id"]:
+            cik = NO_FILER if item_id not in filer_of.index else int(filer_of[item_id])
+            counts[cik] = counts.get(cik, 0) + 1
+    return counts
+
+
+def check_unsettled_counts(driver, settings: Settings, align_dir: Path | None = None) -> list[dict] | None:
+    """The graph's ``unsettled_in`` items equal the decisions parquet's older-side ``uncertain`` decisions of compared pairs, per
+    filer. None when the lake is absent."""
+    expected = lake_unsettled_counts(settings, align_dir)
+    if expected is None:
+        return None
+    graph = {NO_FILER if r["cik"] is None else int(r["cik"]): int(r["n"]) for r in client.run_cypher(driver, UNSETTLED_GRAPH_QUERY)}
+    return count_mismatches(expected, graph, "unsettled_in")
 
 
 def probe_of(headline: str | None, text: str | None) -> str:
@@ -278,6 +330,7 @@ def check_false_drops(driver, settings: Settings) -> list[dict] | None:
 
 PYTHON_CHECKS = [
     ("RiskItem / RiskPassage counts equal the parquet row counts", check_counts),
+    ("unsettled_in counts equal the older-side uncertain decisions of compared pairs in the decisions parquet", check_unsettled_counts),
     ("false-drop guard: no removed item's headline matches a sentence of the newer section text", check_false_drops),
 ]
 

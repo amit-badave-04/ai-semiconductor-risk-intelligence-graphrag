@@ -122,17 +122,40 @@ def test_temporal_query_reads_the_riskitem_contract_and_none_of_the_old_lineage_
     # both ends must actually have items (an amendment overlay or a filing without a risk section has none)
     assert q.count("EXISTS { MATCH (:RiskItem {filer_cik: c.cik, accession_no: cur.accession_no}) }") == members
     assert q.count("EXISTS { MATCH (:RiskItem {filer_cik: c.cik, accession_no: prev.accession_no}) }") == members
-    # removed / new / reworded exactly as the graph contract defines them
+    # removed / unsettled / new / reworded exactly as the graph contract defines them
     assert "i.removed_in = cur.accession_no" in q
+    assert "i.unsettled_in = cur.accession_no" in q
     assert "i.is_new = true" in q
     assert "-[s:SUCCEEDED_BY {kind: 'reworded'}]->" in q
-    for change in ("pair", "removed", "new", "reworded"):
+    for change in ("pair", "removed", "unsettled", "new", "reworded"):
         assert f"'{change}' AS change" in q
+
+
+def unsettled_member() -> str:
+    (member,) = [m for m in TEMPORAL_QUERY.split("UNION ALL") if "'unsettled' AS change" in m]
+    return member
+
+
+def test_the_unsettled_member_reads_older_items_of_the_pair_and_is_never_a_removal():
+    """Items the text check could not settle: the OLDER filing's items whose ``unsettled_in`` names the current annual. Same guards
+    as the removed member (the pair must have been compared), the older item's chunk ids, and no ``removed_in`` anywhere."""
+    member = unsettled_member()
+    assert "MATCH (i:RiskItem {filer_cik: c.cik, accession_no: prev.accession_no}) WHERE i.unsettled_in = cur.accession_no" in member
+    assert "AND coalesce(sup.items_compared, true)" in member.split("RETURN")[0]
+    assert "removed_in" not in member and "is_new" not in member
+    assert "coalesce(i.chunk_ids, []) AS older_chunk_ids, [] AS newer_chunk_ids" in member
+    assert "'removed'" not in member
+
+
+def test_the_unsettled_member_comes_after_the_removed_one_and_before_the_new_one():
+    order = [c for m in TEMPORAL_QUERY.split("UNION ALL") for c in ("pair", "removed", "unsettled", "new", "reworded")
+             if f"'{c}' AS change" in m]
+    assert order == ["pair", "removed", "unsettled", "new", "reworded"]
 
 
 def test_every_union_member_of_the_temporal_query_returns_the_same_columns_in_the_same_order():
     members = TEMPORAL_QUERY.split("UNION ALL")
-    assert len(members) == 4
+    assert len(members) == 5
     columns = [return_columns(m) for m in members]
     assert all(c == columns[0] for c in columns), columns
     for needed in ("company", "cik", "change", "item_id", "headline", "older_headline", "unit_kind", "section_id", "seq",
@@ -164,19 +187,20 @@ def pair(company="Nvidia", cik=NVDA, older=OLD, newer=NEW):
 
 def item(change, n, *, headline="h", kind="headline", length=1000, company="Nvidia", cik=NVDA, older_h=None,
          decided_by=None):
-    acc = OLD if change == "removed" else NEW
+    acc = OLD if change in ("removed", "unsettled") else NEW
     return {"company": company, "cik": cik, "change": change, "item_id": f"{acc}:I.1A:{n}",
             "headline": headline if headline != "h" else f"headline {n}", "older_headline": older_h,
             "unit_kind": kind, "section_id": "I.1A", "seq": n, "length": length,
-            "older_chunk_ids": [f"{OLD}:I.1A:{n:04d}"] if change in ("removed", "reworded") else [],
+            "older_chunk_ids": [f"{OLD}:I.1A:{n:04d}"] if change in ("removed", "unsettled", "reworded") else [],
             "newer_chunk_ids": [f"{NEW}:I.1A:{n:04d}"] if change in ("new", "reworded") else [],
             "decided_by": decided_by, "sim_embed": None, "sim_lex": None, "lineage": f"{cik}:{n}",
             "older_accession": None, "older_form": None, "older_date": None,
             "newer_accession": None, "newer_form": None, "newer_date": None}
 
 
-def test_the_caps_are_eight_removed_eight_new_four_reworded():
-    assert TEMPORAL_CAPS == {"removed": 8, "new": 8, "reworded": 4}
+def test_the_caps_are_eight_removed_six_unsettled_eight_new_four_reworded_in_block_order():
+    assert TEMPORAL_CAPS == {"removed": 8, "unsettled": 6, "new": 8, "reworded": 4}
+    assert list(TEMPORAL_CAPS) == ["removed", "unsettled", "new", "reworded"]         # the order the block prints them in
 
 
 def test_no_riskitem_data_yields_nothing():
@@ -189,17 +213,48 @@ def test_a_pair_with_no_changes_is_kept_so_the_answer_can_say_none_were_found():
     assert pairs == [{"company": "Nvidia", "cik": NVDA, "older_accession": OLD, "older_form": "10-K",
                       "older_date": "2025-02-26", "newer_accession": NEW, "newer_form": "10-K",
                       "newer_date": "2026-02-25", "compared": True, "not_compared_reason": None,
-                      "totals": {"removed": 0, "new": 0, "reworded": 0}}]
+                      "totals": {"removed": 0, "unsettled": 0, "new": 0, "reworded": 0}}]
 
 
 def test_lists_are_capped_and_the_true_totals_are_stated():
-    rows = ([pair()] + [item("removed", n) for n in range(21)] + [item("new", n) for n in range(12)]
-            + [item("reworded", n) for n in range(9)])
+    rows = ([pair()] + [item("removed", n) for n in range(21)] + [item("unsettled", n) for n in range(14)]
+            + [item("new", n) for n in range(12)] + [item("reworded", n) for n in range(9)])
     items, pairs = select_temporal(rows, "q")
-    by_change = {c: [i for i in items if i["change"] == c] for c in ("removed", "new", "reworded")}
-    assert [len(v) for v in by_change.values()] == [8, 8, 4]
-    assert pairs[0]["totals"] == {"removed": 21, "new": 12, "reworded": 9}
-    assert [i["change"] for i in items] == ["removed"] * 8 + ["new"] * 8 + ["reworded"] * 4   # fixed group order
+    by_change = {c: [i for i in items if i["change"] == c] for c in ("removed", "unsettled", "new", "reworded")}
+    assert [len(v) for v in by_change.values()] == [8, 6, 8, 4]
+    assert pairs[0]["totals"] == {"removed": 21, "unsettled": 14, "new": 12, "reworded": 9}
+    assert [i["change"] for i in items] == ["removed"] * 8 + ["unsettled"] * 6 + ["new"] * 8 + ["reworded"] * 4   # fixed group order
+
+
+def test_unsettled_items_are_ranked_like_the_others_the_question_first_then_headline_units_then_length():
+    rows = [pair(),
+            item("unsettled", 1, headline="Unrelated boilerplate risk", kind="headline", length=300),
+            item("unsettled", 2, headline="China licensing risk of export controls", kind="paragraph", length=5000),
+            item("unsettled", 3, headline="China licensing", kind="headline", length=900),
+            item("unsettled", 4, headline="Generic long risk", kind="headline", length=2000)]
+    items, _ = select_temporal(rows, "Which China licensing risk could not be matched?")
+    assert [i["seq"] for i in items] == [3, 4, 1, 2]        # on-topic headline, then the longer headline units, paragraph last
+
+
+def test_unsettled_rows_never_leak_into_the_removed_group_or_its_total():
+    rows = [pair(), item("removed", 1), item("unsettled", 2), item("unsettled", 3)]
+    items, pairs = select_temporal(rows, "q")
+    assert pairs[0]["totals"] == {"removed": 1, "unsettled": 2, "new": 0, "reworded": 0}
+    assert [i["seq"] for i in items if i["change"] == "removed"] == [1]
+    assert sorted(i["seq"] for i in items if i["change"] == "unsettled") == [2, 3]
+
+
+def test_an_unsettled_row_of_a_pair_that_was_not_compared_is_never_shown():
+    rows = [{**pair(), "compared": False, "not_compared_reason": "suspect section"}, item("unsettled", 1)]
+    items, pairs = select_temporal(rows, "q")
+    assert items == [] and pairs[0]["totals"]["unsettled"] == 0 and pairs[0]["compared"] is False
+
+
+def test_the_unsettled_row_keeps_the_older_chunk_ids_the_headline_and_the_lineage_for_the_answer_block():
+    items, _ = select_temporal([pair(), item("unsettled", 7, headline="Export controls risk")], "q")
+    (row,) = items
+    assert row["change"] == "unsettled" and row["headline"] == "Export controls risk" and row["lineage"] == f"{NVDA}:7"
+    assert row["older_chunk_ids"] == [f"{OLD}:I.1A:0007"] and row["newer_chunk_ids"] == []
 
 
 def test_headline_units_outrank_paragraph_units_even_when_the_paragraph_is_longer_and_more_relevant():
