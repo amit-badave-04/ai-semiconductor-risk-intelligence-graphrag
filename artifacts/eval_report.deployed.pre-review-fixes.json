@@ -12,9 +12,9 @@
   "escalation_rate": 0.0,
   "errors": 0,
   "truncated": 0,
-  "avg_cost_usd": 0.007541150000000001,
-  "avg_latency_s": 5.9963,
-  "avg_completion_tokens": 572.9,
+  "avg_cost_usd": 0.00690485,
+  "avg_latency_s": 6.0355,
+  "avg_completion_tokens": 570.9,
   "judged": {
     "open_correct": 6,
     "open_of": 7,
@@ -34,5 +34,5 @@
   },
   "escalated": 0,
   "escalated_ids": [],
-  "total_cost_usd": 0.150823
+  "total_cost_usd": 0.138097
 }

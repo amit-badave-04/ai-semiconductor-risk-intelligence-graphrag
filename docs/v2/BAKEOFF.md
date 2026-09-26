@@ -1,10 +1,15 @@
 # Answering-model bake-off (2026-09-26)
 
 **Decision:** answer with **GPT-6 Luna by default**, route *change-over-time* questions straight to **Claude Sonnet 5**,
-verify every cheap draft before it is shown, and escalate a rejected draft to Sonnet. Measured on the 20-question
-benchmark through the deployed code path: **13/13 mechanical, 100 % citation validity, 6/7 open questions (19/20
-overall, the same as the Sonnet-only baseline), $0.0069 per answer against $0.037, 6.0 s average against 8.6 s.**
-Reverting is two settings (`LLM_MODEL` and `ESCALATION_MODEL` both `anthropic/claude-sonnet-5`, or `ESCALATION_MODEL` empty).
+verify every cheap draft before it is shown, and escalate a rejected draft to Sonnet. This is a **judgement call, not a
+gate pass**: no candidate cleared the pre-registered gate (open-question correctness no worse than the Sonnet baseline),
+and Luna passed the free gates only after a scoring correction described below. Measured on the 20-question benchmark
+through the deployed code path: 13/13 mechanical, 100 % citation validity, 6/7 open questions by the majority-of-3 judge
+(the Sonnet baseline scores 7/7 under the same measurement, and 19/20 under the single-vote judge used in the first
+baseline report), **$0.0075 per answer against $0.037, 6.0 s average against 8.6 s**. The one open miss is judge-unstable
+(see finding 2), which is why the call is judgement rather than arithmetic.
+Reverting is two settings: `LLM_MODEL` and `ESCALATION_MODEL` both `anthropic/claude-sonnet-5` (one model in both roles streams
+live exactly as v1 did, with no double payment), or clear `ESCALATION_MODEL`.
 
 ## Method
 
@@ -50,7 +55,7 @@ every free gate and misses the paid one by a single question.
 4. **Call shapes differ per provider** (`llm_shape.py`): GPT-6 takes `max_completion_tokens` and rejects `max_tokens`;
    Gemini needs `reasoning_effort="low"`; the Anthropic path is unchanged.
 
-## A scoring change made mid-run, disclosed
+## A scoring change made mid-run, disclosed (it moved the winner past a free gate)
 
 The first pass used the verifier and refusal pattern as originally written. Reading the failures showed two defects that
 also hit the Sonnet baseline: (a) a correct XBRL-metric answer ("revenue was $215.9 billion") was flagged *uncited*
@@ -59,7 +64,9 @@ determine" (typographic apostrophe) failed the notebook's refusal regex. Both we
 uniformly**: an uncited answer is accepted only when every dollar figure in it is found in the retrieved context, and the
 refusal pattern was widened. No historical benchmark verdict changes (re-checked on all 80 saved v1/v2 runs). The strict
 first-pass report is kept for audit. Before the fix the escalation rate was 0.05-0.35 for the candidates and 0.10 for the
-baseline; after it, 0.00-0.15 and 0.00.
+baseline; after it, 0.00-0.15 and 0.00. **The refusal-pattern change is what took GPT-6 Luna from 11/13 to 13/13 on the
+mechanical questions**; without it Luna would have failed a free gate. I read the two answers ("do not state ...", "I can't
+determine ...") and they are genuine refusals, so the correction is legitimate, but the reader should know it decided the winner's gate.
 
 ## Deployed path, end to end (`semigraph eval-deployed`, artifacts/eval_report.deployed.json)
 
@@ -67,6 +74,17 @@ baseline; after it, 0.00-0.15 and 0.00.
 open 6/7 (miss = `Q1`, above); average $0.0069 per answer (cheap-routed answers cost about $0.0013, routed ones about
 $0.037); average latency 6.0 s. A cheap draft is buffered until verified, so the first token appears after generation
 (about 5 s) instead of streaming from about 2 s; the retrieval status line shows immediately.
+
+## Independent review and what it changed
+
+An Opus verifier reviewed the deployed code and returned NOT DONE; both critical findings reproduced and were fixed, with tests:
+the verifier's refusal exemption let an uncited draft through on any stray "isn't" or trailing "does not specify" (now a refusal must
+open the answer, state no figures and be short; a grounded uncited figure must sit in a short, percentage-free answer), and the router
+only matched the benchmark's own wording (now: a change verb plus a disclosure noun, or a time-anchored comparison plus a disclosure
+noun, also route). Also fixed: the documented rollback now really restores live streaming, a failed draft is logged with its error, the
+draft fails fast (one attempt, no provider retries, 30 s), the deployed models are priced from a local table, and an abandoned answer
+still writes a ledger row. After the fixes the bake-off was re-scored offline (Luna unchanged: 13/13, 0.00 rejected; Haiku worsens to
+0.20) and the deployed path re-measured: 13/13, 100 % citations, 17 cheap / 3 routed, 0 escalations, 6/7 open, $0.0075 per answer.
 
 ## Limits
 
@@ -77,4 +95,7 @@ $0.037); average latency 6.0 s. A cheap draft is buffered until verified, so the
 - The verifier cannot catch a wrong but well-cited answer; the router and the benchmark are the mitigations, and a
   broader fresh-question comparison belongs with the M2 benchmark growth.
 - Prices are LiteLLM's table, not the providers' pages; judge spend is estimated (calls are not metered).
-- Spend: about $1.0 answering + $0.7 judging (bake-off), $0.14 + $0.15 (deployed run); project total about $8 of the ~$30 budget.
+- The verifier and router are heuristics: a short refusal-shaped or metric-shaped draft that carries an extra fabricated sentence can still pass, and a
+  change-over-time question phrased without any of the matched words goes to the cheap model. Both fail toward a cheaper, well-cited answer, not toward a fabricated citation.
+- The bake-off baseline row can never be flagged truncated (its finish reason was not saved), which is conservative for the candidates.
+- Spend: about $1.0 answering + $0.7 judging (bake-off), about $0.3 for the two deployed-path runs; project total about $8 of the ~$30 budget.

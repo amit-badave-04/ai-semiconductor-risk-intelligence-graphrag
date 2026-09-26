@@ -51,12 +51,14 @@ Edge lines 1,561 → 1,438 in total (Nvidia questions 86 → 79); metrics identi
 | Baseline benchmark on the new graph (approved, Sonnet 5 answering and judging) | hybrid 19/20 (13/13 mechanical, citations 100 %), vector 15/20; answers $1.2 (`artifacts/eval_report.v2-baseline.json`) |
 | Judge calibration | `artifacts/judge_labels.json`: 28 open-question answers labelled by three blind AI passes (**AI-assigned, not human**), 21 correct / 6 incorrect / 1 contested; the Sonnet judge agrees on 26 of 27 firm labels, v1's saved Haiku judge on 11 of 14 (one lenient error), so a cheap judge is not a drop-in for correctness |
 | Model bake-off | 7 candidates on identical saved contexts; see [BAKEOFF.md](BAKEOFF.md); about $1.7 |
-| Deployed path evaluated end to end | 13/13 mechanical, 100 % citations, 6/7 open, $0.0069 per answer vs $0.037, 6.0 s vs 8.6 s |
+| Deployed path evaluated end to end (final code, after the review fixes) | 13/13 mechanical, 100 % citations, 6/7 open (Sonnet-only 7/7 by the same majority judge, 19/20 by the single-vote one), $0.0075 per answer vs $0.037, 6.0 s vs 8.6 s; a judgement call, not a gate pass |
 | Redeploy | DB image with the new seed and API image deployed; verified: `/healthz`, `/api/stats` snapshot id, cached example click, AMD corrected/current evidence rows, live-DB retrieval through a tunnel (79 Nvidia edges, 0 non-retrievable chunks returned) |
 | Production model switch | `LLM_MODEL=openai/gpt-6-luna`, `ESCALATION_MODEL=anthropic/claude-sonnet-5`, `OPENAI_API_KEY` staged as Fly secrets and deployed with the API |
 | Git | branch `v2` and tag `v1-final` pushed to origin; `master` untouched |
 
-Further defects found and fixed in this stretch: the eval runner would have resumed from v1's saved runs instead of
+An independent Opus review of this stretch found two critical defects in the new answering path (the verifier released uncited drafts on a stray
+negation; the router missed natural phrasings of change-over-time questions) plus outage-latency, rollback and accounting gaps; all were fixed with tests and
+re-deployed (see BAKEOFF.md). Further defects found and fixed in this stretch: the eval runner would have resumed from v1's saved runs instead of
 answering (now `--runs-file`, plus `--max-answer-usd`); the citation verifier flagged correct XBRL-metric answers as uncited and the
 refusal pattern missed correct refusals (both fixed for all models, see BAKEOFF.md); the draft verifier in the service path
 was not given the retrieved context (fixed, tested); the site's accuracy labels still showed v1's numbers (now measured
