@@ -182,6 +182,7 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
     if not st.answer_slots.acquire(blocking=False):
         yield _sse({"event": "error", "detail": MSG_BUSY})
         return
+    logged = False
     try:
         for ev in answer_stream(question, st.driver, st.embedder, strategy=strategy,
                                 timeout=s.llm_request_timeout_s, max_tokens=s.llm_answer_max_tokens,
@@ -189,13 +190,15 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
             if ev["event"] in ("done", "error"):
                 store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False,
                                 usage=ev.get("usage"), cost_usd=ev.get("cost_usd"))
+                logged = True
             if ev["event"] == "done":
                 if ev["answer"].strip() and ev["finish_reason"] != "length":
                     store.put_answer(st.driver, question=question, strategy=strategy, answer=ev["answer"],
                                      citations=ev["citations"], hallucinated=ev["hallucinated"],
                                      usage=ev["usage"], cost_usd=ev["cost_usd"], snapshot_id=snapshot_id)
-                logger.info("answered strategy=%s citations=%d hallucinated=%d cost=%s",
-                            strategy, len(ev["citations"]), len(ev["hallucinated"]), ev["cost_usd"])
+                logger.info("answered strategy=%s citations=%d hallucinated=%d cost=%s routed=%s escalated=%s by=%s",
+                            strategy, len(ev["citations"]), len(ev["hallucinated"]), ev["cost_usd"],
+                            ev.get("routed"), ev.get("escalated"), ev.get("answered_by"))
             elif ev["event"] == "error":
                 logger.warning("answer failed mid-stream: %s (cost=%s)", ev["detail"], ev.get("cost_usd"))
                 ev = {"event": "error", "detail": "The answer could not be completed — please try again."}
@@ -204,10 +207,18 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
         logger.exception("answer failed")
         try:
             store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False)
+            logged = True
         except Exception:  # noqa: BLE001
             logger.exception("ledger write failed after an answer failure")
         yield _sse({"event": "error", "detail": f"The answer could not be completed ({type(e).__name__})."})
     finally:
+        if not logged:
+            # The client went away before the terminal event (a buffered draft widens that window to the whole
+            # generation). The query still counts against the daily ceiling; its cost is unknown here.
+            try:
+                store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False)
+            except Exception:  # noqa: BLE001
+                logger.exception("ledger write failed for an abandoned answer")
         st.answer_slots.release()
 
 

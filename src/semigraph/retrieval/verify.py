@@ -41,6 +41,38 @@ def _grounded(answer_values: list[float], context: str) -> bool:
     return all(any(abs(v - k) <= _MATCH_TOLERANCE * k for k in known if k) for v in answer_values)
 
 
+_PERCENT_RE = re.compile(r"\d(?:[\d,]*\.?\d*)\s?%")
+_SOURCE_NOUN = r"(?:context|excerpts?|filings?|sources?|documents?|corpus|knowledge graph|information provided)"
+_NEGATION = (rf"(?:(?:does|do) not (?:contain|include|provide|state|mention|specify|show|report)|"
+             rf"does{_A}?n{_A}?t (?:contain|include|provide|state|mention|specify)|"
+             rf"(?:cannot|can{_A}?t|unable to)\s+(?:be )?(?:determin|answer|find))")
+# A refusal must OPEN the answer (first sentence, no clause break before it): either "<...source...> does not state ..."
+# or a first-person "I cannot answer/determine ...". A disclaimer tacked on after a claim is not a refusal.
+_CLAUSE = r"[^.;:!?\n]"   # no sentence or clause break: the refusal must be in the opening clause
+_OPENING_REFUSAL_RE = re.compile(
+    rf"^\W*(?:(?:based on|according to|from|given|in)\s+)?{_CLAUSE}{{0,80}}?\b{_SOURCE_NOUN}\b{_CLAUSE}{{0,60}}?{_NEGATION}|"
+    rf"^\W*(?:I|we)\s+(?:cannot|can{_A}?t|am unable to|are unable to)\s+(?:be )?(?:determin|answer|find)", re.I)
+_REFUSAL_MAX_CHARS = 1200
+_METRIC_ANSWER_MAX_CHARS = 400
+
+
+def refusal_shaped(text: str) -> bool:
+    """A deliberate "the corpus cannot answer this": opens with the refusal, states no figures, and is short.
+
+    Deliberately narrower than :data:`REFUSAL_RE` (which scores the benchmark's refusal questions): this one gates
+    what reaches the client, and a stray "isn't" or a trailing "the filing does not specify" must not make an
+    uncited claim look like a refusal."""
+    t = text.strip()
+    return (len(t) <= _REFUSAL_MAX_CHARS and not money_values(t) and not _PERCENT_RE.search(t)
+            and bool(_OPENING_REFUSAL_RE.search(t)))
+
+
+def _pure_metric_answer(text: str, context: str) -> bool:
+    """A short, percentage-free statement whose every dollar figure is in the retrieved context."""
+    t = text.strip()
+    return len(t) <= _METRIC_ANSWER_MAX_CHARS and not _PERCENT_RE.search(t) and _grounded(money_values(t), context)
+
+
 def verify_answer(text: str, cited: set[str], valid_ids: set[str], finish_reason: str | None,
                   context: str | None = None) -> list[str]:
     """Reasons the draft must not be released as is (empty list = it may be).
@@ -48,10 +80,11 @@ def verify_answer(text: str, cited: set[str], valid_ids: set[str], finish_reason
     - ``empty``: nothing was produced.
     - ``truncated``: the model ran out of output budget mid-answer.
     - ``invalid_citation``: a cited id is not in the retrieved context (a fabricated source).
-    - ``no_citation``: no source is cited and the answer is neither an explicit refusal nor — when the
-      retrieved ``context`` is given — a statement whose every dollar figure appears in that context.
-      (XBRL metrics have no chunk id to cite, so a correct "revenue was $215.9 billion" is uncited by design;
-      it is accepted only because the number itself is verifiable against what was retrieved.)
+    - ``no_citation``: no source is cited and the answer is neither a clear refusal (:func:`refusal_shaped`)
+      nor — when the retrieved ``context`` is given — a short statement whose every dollar figure appears in that
+      context. (XBRL metrics have no chunk id to cite, so a correct "revenue was $215.9 billion" is uncited by
+      design; it is accepted only because the number itself is verifiable against what was retrieved.)
+      Everything else uncited is escalated: the safe direction, since it only costs a stronger-model call.
     """
     reasons = []
     if not text.strip():
@@ -60,7 +93,6 @@ def verify_answer(text: str, cited: set[str], valid_ids: set[str], finish_reason
         reasons.append("truncated")
     if cited - valid_ids:
         reasons.append("invalid_citation")
-    if not cited and not REFUSAL_RE.search(text):
-        if context is None or not _grounded(money_values(text), context):
-            reasons.append("no_citation")
+    if not cited and not refusal_shaped(text) and (context is None or not _pure_metric_answer(text, context)):
+        reasons.append("no_citation")
     return reasons

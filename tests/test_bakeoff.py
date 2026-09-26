@@ -109,7 +109,7 @@ def answer_row(id_, text, cited=(), hallucinated=(), finish="stop", cost=0.01, e
 def test_mechanical_scoring_covers_numeric_any_of_and_refusal():
     rows = [answer_row("N2", "It was $215.9 billion [%s]." % VALID[1], [VALID[1]]),
             answer_row("D1", "Nvidia depends on TSMC [%s]." % VALID[0], [VALID[0]]),
-            answer_row("U1", "Samsung is not an SEC filer.")]
+            answer_row("U1", "The context does not contain Samsung's revenue.")]
     s = bo.score_mechanical(rows, BENCH)
     assert s["mechanical"] == {"passed": 3, "of": 3} and s["failed_ids"] == []
 
@@ -122,7 +122,7 @@ def test_a_wrong_number_fails_and_is_named():
 def test_citation_validity_counts_hallucinated_ids_and_verifier_failures_are_the_escalation_rate():
     rows = [answer_row("N2", "It was $215.9 billion [%s]." % VALID[1], [VALID[1]]),
             answer_row("D1", "TSMC [0001-25-000001:I.1:0099]", ["0001-25-000001:I.1:0099"], ["0001-25-000001:I.1:0099"]),
-            answer_row("U1", "Samsung is not an SEC filer.")]
+            answer_row("U1", "The context does not contain Samsung's revenue.")]
     s = bo.score_mechanical(rows, BENCH)
     assert s["citation_validity"] == pytest.approx(2 / 3)
     assert s["escalation_rate"] == pytest.approx(1 / 3) and s["escalation_ids"] == ["D1"]
@@ -135,7 +135,7 @@ def test_a_provider_error_row_fails_mechanically_and_escalates():
 
 def test_cost_and_latency_averages():
     s = bo.score_mechanical([answer_row("N2", "$215.9 billion [%s]" % VALID[1], [VALID[1]], cost=0.02),
-                             answer_row("U1", "Samsung is not an SEC filer.", cost=0.04)], BENCH)
+                             answer_row("U1", "The context does not contain Samsung's revenue.", cost=0.04)], BENCH)
     assert s["avg_cost_usd"] == pytest.approx(0.03) and s["avg_latency_s"] == 2.0
 
 
@@ -196,7 +196,7 @@ def test_free_gates_pass_a_clean_score_and_name_every_failure():
 def _bench_rows():
     """Four baseline rows (one per BENCH question) whose saved answers are right, so the baseline passes."""
     good = {"N2": "It was $215.9 billion [%s]." % VALID[1], "D1": "Nvidia depends on TSMC [%s]." % VALID[0],
-            "T1": "Yes, several risks were dropped [%s]." % VALID[0], "U1": "Samsung is not an SEC filer."}
+            "T1": "Yes, several risks were dropped [%s]." % VALID[0], "U1": "The context does not contain Samsung's revenue."}
     rows = []
     for b in BENCH:
         text = good[b["id"]]
@@ -214,7 +214,7 @@ def _by_question(good: bool):
         elif "Dropped" in prompt:
             text = "Yes, several risks were dropped [%s]." % VALID[0]
         else:
-            text = "Samsung is not an SEC filer."
+            text = "The context does not contain Samsung's revenue."
         return {"text": text, "finish_reason": "stop", "usage": {"prompt_tokens": 1000, "completion_tokens": 100}, "latency_s": 1.0}
     return complete
 

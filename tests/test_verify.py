@@ -82,3 +82,38 @@ def test_an_uncited_answer_with_no_figure_still_fails_even_with_a_context():
 
 def test_without_a_context_the_old_rule_applies():
     assert verify_answer("Nvidia's revenue was about $215.9 billion.", set(), VALID, "stop") == ["no_citation"]
+
+
+# --- review finding C1: a stray negation must not turn an uncited claim into a "refusal" ---
+
+@pytest.mark.parametrize("text", [
+    "Nvidia's largest customer is Microsoft at 19% of revenue. This isn't a small concentration.",
+    "TSMC depends on ASML for EUV tools; the filing does not specify the contract length.",
+    "Nvidia's gross margin is 90%. Data not available for 2019.",
+    "Revenue grew 300% to $215.9 billion, and Nvidia plans to acquire Intel next year.",
+    "Nvidia designs GPUs. The context does not contain more detail.",          # claim first, disclaimer second
+])
+def test_an_uncited_draft_with_a_stray_negation_or_an_ungrounded_claim_is_escalated(text):
+    assert verify_answer(text, set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
+
+
+@pytest.mark.parametrize("text", [
+    "The provided excerpts do not state Samsung’s total annual revenue.",
+    "Based on the provided context, I cannot answer this question.\n\n- The knowledge graph contains no reported metrics for Samsung.",
+    "The context does not contain Samsung's revenue.",
+    "**I can’t determine that** from the retrieved excerpts.",
+    "I cannot answer this from the filings.",
+])
+def test_a_clear_refusal_up_front_is_released_uncited(text):
+    assert verify_answer(text, set(), VALID, "stop", context=METRICS_CTX) == []
+
+
+def test_a_refusal_that_states_figures_is_not_a_refusal():
+    assert verify_answer("The context does not contain Samsung's revenue, but Nvidia earned $999 billion.", set(), VALID, "stop",
+                         context=METRICS_CTX) == ["no_citation"]
+
+
+def test_an_uncited_grounded_figure_is_accepted_only_for_a_short_answer_without_percentages():
+    long_answer = "Nvidia's revenue was $215.9 billion. " + "Analysts also expect further growth. " * 15
+    assert verify_answer(long_answer, set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
+    assert verify_answer("Revenue was $215.9 billion, up 5%.", set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]

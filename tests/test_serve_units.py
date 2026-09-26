@@ -194,3 +194,29 @@ def test_cache_key_changes_with_the_snapshot():
 ])
 def test_examples_are_seeded_only_for_the_graph_they_were_generated_from(doc, snapshot, expected):
     assert store.examples_match_snapshot(doc, snapshot) is expected
+
+
+# --- review finding W3: no pointless sleep after the last failed attempt; retries are configurable ---
+
+def test_textstream_does_not_sleep_after_its_final_failed_attempt(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(answerer_mod.time, "sleep", lambda s: sleeps.append(s))
+
+    def boom(**kw):
+        raise answerer_mod.TRANSIENT[0]("net down", llm_provider="x", model="m")
+
+    monkeypatch.setattr(answerer_mod, "completion", boom)
+    with pytest.raises(RuntimeError):
+        list(TextStream("p", model="m", attempts=1))
+    assert sleeps == []
+    with pytest.raises(RuntimeError):
+        list(TextStream("p", model="m", attempts=2, backoff=(5, 15)))
+    assert sleeps == [5]  # between attempt 1 and 2 only
+
+
+def test_textstream_passes_the_configured_retry_count_to_the_provider_call(monkeypatch):
+    calls = []
+    monkeypatch.setattr(answerer_mod, "completion", lambda **kw: calls.append(kw) or iter([chunk("hi", "stop")]))
+    list(TextStream("p", model="m", num_retries=0))
+    list(TextStream("p", model="m"))
+    assert [c["num_retries"] for c in calls] == [0, 2]

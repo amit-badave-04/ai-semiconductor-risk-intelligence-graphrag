@@ -24,3 +24,13 @@ def completion_params(model: str, max_tokens: int) -> dict:
     if model.startswith(_PLAIN_MAX_TOKENS):
         return {"max_tokens": max_tokens}
     return {"max_tokens": max_tokens, "thinking": {"type": "disabled"}}
+
+
+# USD per million (input, output) tokens for the models the service actually runs, so cost accounting never
+# depends on LiteLLM's price map (fetched over the network at import; it does not yet list these models).
+# Values are LiteLLM's cost map on 2026-09-26; the providers' own price pages were not consulted.
+KNOWN_PRICES_PER_MTOK = {
+    "openai/gpt-6-luna": (0.20, 0.50),
+    "anthropic/claude-sonnet-5": (2.00, 10.00),
+    "anthropic/claude-haiku-4-5": (1.00, 5.00),
+}

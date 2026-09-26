@@ -8,8 +8,10 @@
     },
     "failed_ids": [],
     "citation_validity": 1.0,
-    "escalation_rate": 0.0,
-    "escalation_ids": [],
+    "escalation_rate": 0.05,
+    "escalation_ids": [
+      "N4"
+    ],
     "errors": 0,
     "truncated": 0,
     "avg_cost_usd": 0.0370808,
@@ -190,8 +192,11 @@
       },
       "failed_ids": [],
       "citation_validity": 1.0,
-      "escalation_rate": 0.05,
+      "escalation_rate": 0.2,
       "escalation_ids": [
+        "N2",
+        "N4",
+        "T1",
         "M1"
       ],
       "errors": 0,
@@ -199,20 +204,10 @@
       "avg_cost_usd": 0.0123462,
       "avg_latency_s": 4.6293,
       "avg_completion_tokens": 338.65,
-      "gates_failed": [],
-      "judged": {
-        "open_correct": 4,
-        "open_of": 7,
-        "votes": {
-          "R3": 3,
-          "T1": 3,
-          "T2": 3,
-          "T3": 0,
-          "Q1": 0,
-          "Q2": 3,
-          "Q3": 0
-        }
-      },
+      "gates_failed": [
+        "escalation rate 0.20 > 0.15"
+      ],
+      "judged": null,
       "clears_all_gates": false
     }
   },

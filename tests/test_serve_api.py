@@ -389,3 +389,34 @@ def test_no_escalation_model_means_the_answerer_is_told_none(client, monkeypatch
     monkeypatch.setattr(routes, "answer_stream", capture)
     client.post("/api/ask", json={"question": Q + " again"})
     assert seen["escalation_model"] is None
+
+
+# --- review finding S1 and the escalation events through the route ---
+
+def test_a_client_that_disconnects_during_the_answer_still_costs_a_ledger_row(client, fakes):
+    gen = routes._paid_stream(client.app.state, Q + " disconnect", "hybrid", "iph")
+    next(gen)          # retrieval
+    next(gen)          # first delta
+    gen.close()        # the browser went away before `done`
+    assert len(fakes.queries) == 1 and fakes.queries[0].get("cost_usd") is None
+
+
+def test_a_completed_answer_writes_exactly_one_ledger_row(client, fakes):
+    events = list(routes._paid_stream(client.app.state, Q + " complete", "hybrid", "iph"))
+    assert events and len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.00007
+
+
+def test_an_escalated_answer_passes_through_with_one_ledger_row_carrying_the_summed_cost(client, fakes, monkeypatch):
+    def escalating(question, driver, embedder, strategy="hybrid", **kw):
+        yield {"event": "retrieval", "anchors": {}, "counts": {}}
+        yield {"event": "escalated", "reasons": ["invalid_citation"], "from": "cheap/m", "to": "strong/m"}
+        yield {"event": "delta", "text": "Strong answer."}
+        yield {"event": "done", "answer": "Strong answer.", "citations": [], "hallucinated": [], "finish_reason": "stop",
+               "usage": {"prompt_tokens": 300, "completion_tokens": 30}, "cost_usd": 0.031, "escalated": True,
+               "routed": "cheap", "answered_by": "strong/m", "escalation_reasons": ["invalid_citation"]}
+
+    monkeypatch.setattr(routes, "answer_stream", escalating)
+    events = [json.loads(e.data) for e in routes._paid_stream(client.app.state, Q + " esc", "hybrid", "iph")]
+    assert [e["event"] for e in events] == ["retrieval", "escalated", "delta", "done"]
+    assert len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.031
+    assert any(a["answer"] == "Strong answer." for a in fakes.answers.values())

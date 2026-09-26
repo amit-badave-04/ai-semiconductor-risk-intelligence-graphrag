@@ -31,7 +31,7 @@ from litellm import completion
 from ..artifacts import read_prompt
 from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
-from ..llm_shape import completion_params
+from ..llm_shape import KNOWN_PRICES_PER_MTOK, completion_params
 from .retriever import hybrid_retrieve, vector_retrieve
 from .router import needs_strong_model
 from .verify import verify_answer
@@ -150,6 +150,9 @@ def usage_cost(usage: dict | None, model: str | None = None) -> float | None:
     if not usage:
         return None
     prompt, completion_toks = usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+    if model and model in KNOWN_PRICES_PER_MTOK:
+        per_in, per_out = KNOWN_PRICES_PER_MTOK[model]
+        return round(prompt * per_in / 1e6 + completion_toks * per_out / 1e6, 6)
     if model:
         try:
             p_cost, c_cost = litellm.cost_per_token(model=model, prompt_tokens=prompt,
@@ -175,8 +178,9 @@ class TextStream:
 
     def __init__(self, prompt: str, *, model: str | None = None, max_tokens: int = 1200,
                  attempts: int = 2, backoff: tuple[int, ...] = (5, 15),
-                 timeout: float | None = None):
+                 timeout: float | None = None, num_retries: int = 2):
         self.prompt = prompt
+        self.num_retries = num_retries
         self.model = model or get_settings().llm_model
         self.max_tokens, self.attempts = max_tokens, attempts
         self.backoff, self.timeout = backoff, timeout
@@ -189,7 +193,7 @@ class TextStream:
         chunks = []
         resp = completion(
             model=self.model, messages=messages, **completion_params(self.model, self.max_tokens),
-            num_retries=2, stream=True, stream_options={"include_usage": True}, **extra,
+            num_retries=self.num_retries, stream=True, stream_options={"include_usage": True}, **extra,
         )
         for chunk in resp:
             chunks.append(chunk)
@@ -218,11 +222,12 @@ class TextStream:
             except TRANSIENT as e:
                 if self.text:
                     raise RuntimeError(f"stream interrupted mid-answer: {type(e).__name__}") from e
-                wait = self.backoff[min(attempt, len(self.backoff) - 1)]
-                logger.warning("transient error (%s) before first token — waiting %ss",
-                               type(e).__name__, wait)
-                time.sleep(wait)
                 last_err = f"transient: {type(e).__name__}"
+                if attempt < self.attempts - 1:      # nothing to wait for after the final attempt
+                    wait = self.backoff[min(attempt, len(self.backoff) - 1)]
+                    logger.warning("transient error (%s) before first token — waiting %ss",
+                                   type(e).__name__, wait)
+                    time.sleep(wait)
                 continue
             if not self.text:
                 last_err = f"empty response (finish_reason={self.finish_reason})"
@@ -272,8 +277,11 @@ def _sum_usage(a: dict | None, b: dict | None) -> dict | None:
     """Token usage of two attempts added together (None when neither is known)."""
     if a is None or b is None:
         return a or b
-    return {"prompt_tokens": a.get("prompt_tokens", 0) + b.get("prompt_tokens", 0),
-            "completion_tokens": a.get("completion_tokens", 0) + b.get("completion_tokens", 0)}
+    total = {"prompt_tokens": a.get("prompt_tokens", 0) + b.get("prompt_tokens", 0),
+             "completion_tokens": a.get("completion_tokens", 0) + b.get("completion_tokens", 0)}
+    if a.get("estimated") or b.get("estimated"):
+        total["estimated"] = True
+    return total
 
 
 def _done_event(text: str, stream, *, question, strategy, valid_ids, chunk_ids, context_chars,
@@ -329,15 +337,27 @@ def _drain(stream) -> tuple[str, str | None]:
     return "".join(parts), None
 
 
+DRAFT_TIMEOUT_S = 30   # a hung cheap model must not hold the request (and an answer slot) for minutes
+
+
+def _draft_kwargs(stream_kwargs: dict) -> dict:
+    """The cheap draft fails fast (one attempt, no provider retries, a short timeout) because the strong model
+    is the fallback: waiting out retries on a struggling provider would only delay the answer it cannot give."""
+    timeout = min(stream_kwargs.get("timeout") or DRAFT_TIMEOUT_S, DRAFT_TIMEOUT_S)
+    return {**stream_kwargs, "attempts": 1, "num_retries": 0, "timeout": timeout}
+
+
 def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_model, stream_kwargs, context, **ctx):
     """Cheap draft -> deterministic verification -> release it, or escalate to the strong model.
 
     The draft is buffered, so a draft the verifier rejects is never shown. A clean draft is released in one
     delta; a rejected one is announced with an ``escalated`` event (reasons included) and the strong model
     then streams live. Both attempts' tokens and cost land in the terminal event."""
-    draft = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
+    draft = llm_stream(prompt) if llm_stream else TextStream(prompt, **_draft_kwargs(stream_kwargs))
     text, error = _drain(draft)
     draft_model = getattr(draft, "model", None)
+    if error:
+        logger.warning("draft model %s failed (%s) - escalating to %s", draft_model, error[:300], escalation_model)
     reasons = ["draft_error"] if error else verify_answer(
         text, set(CITE_RE.findall(text)), ctx["valid_ids"], getattr(draft, "finish_reason", None), context=context)
     if not reasons:
@@ -390,6 +410,8 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
                                   risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
     ctx = {"question": question, "strategy": strategy, "valid_ids": valid_ids,
            "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "context_chars": len(full_context)}
+    if escalation_model and escalation_model == (stream_kwargs.get("model") or get_settings().llm_model):
+        escalation_model = None    # one model in both roles is plain live streaming (the documented rollback)
     if escalation_model and needs_strong_model(question):
         strong = (escalation_stream(prompt) if escalation_stream else
                   TextStream(prompt, model=escalation_model, **{k: v for k, v in stream_kwargs.items() if k != "model"}))

@@ -20,7 +20,7 @@ from pathlib import Path
 FLY_KEYS = {
     "semigraph": [
         "ANTHROPIC_API_KEY", "LLM_MODEL", "ESCALATION_MODEL", "CRITIC_MODEL",
-        "OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPINFRA_API_KEY",   # only the answering provider's key is needed
+        "OPENAI_API_KEY",   # the answering provider; push another with --only (for example GEMINI_API_KEY) if it is ever used
         "NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD",
         "ADMIN_TOKEN", "APP_BASE_URL", "MAX_QUERIES_PER_DAY",
         "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY",

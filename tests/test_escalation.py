@@ -115,3 +115,56 @@ def test_an_uncited_dollar_figure_that_is_not_in_the_retrieved_context_is_still_
     monkeypatch.setattr(answerer_mod, "hybrid_retrieve", lambda *a, **kw: retrieval)
     events = run(Stream(["Nvidia's revenue for that year was $190 billion."], model="cheap/m"), Stream([GOOD], model="strong/m"))
     assert events[1]["event"] == "escalated" and events[1]["reasons"] == ["no_citation"]
+
+
+# --- review findings W1-W3, S3 ---
+
+def test_naming_the_same_model_for_both_roles_is_not_escalation_it_streams_live_as_before():
+    """The documented rollback (both settings Sonnet) must restore the v1 path: no buffering, no double payment."""
+    events = list(answer_stream("q", None, None, llm_stream=lambda p: Stream(["Nvidia ", f"[{CID}]"], model="anthropic/claude-sonnet-5"),
+                                escalation_model="anthropic/claude-sonnet-5", model="anthropic/claude-sonnet-5"))
+    assert kinds(events) == ["retrieval", "delta", "delta", "done"] and "escalated" not in events[-1]
+
+
+def test_a_failed_draft_is_logged_with_its_error_so_a_revoked_key_is_not_silent(caplog):
+    caplog.set_level("WARNING", logger="semigraph.answerer")
+    draft = Stream([], model="cheap/m", boom=RuntimeError("401 invalid api key"))
+    run(draft, Stream([GOOD], model="strong/m"))
+    assert any("cheap/m" in r.message and "401 invalid api key" in r.message for r in caplog.records)
+
+
+def test_the_draft_is_given_a_short_fuse_so_an_outage_does_not_delay_the_strong_model(monkeypatch):
+    seen = []
+
+    class RecordingStream(Stream):
+        def __init__(self, prompt, **kw):
+            seen.append(kw)
+            super().__init__([GOOD], model=kw.get("model", "cheap/m"))
+
+    monkeypatch.setattr(answerer_mod, "TextStream", RecordingStream)
+    list(answer_stream("q", None, None, escalation_model="strong/m", timeout=90, max_tokens=2400, model="cheap/m"))
+    draft_kw = seen[0]
+    assert draft_kw["attempts"] == 1 and draft_kw["num_retries"] == 0
+    assert draft_kw["timeout"] == answerer_mod.DRAFT_TIMEOUT_S <= 30 and draft_kw["max_tokens"] == 2400
+
+
+def test_the_strong_model_keeps_the_full_timeout_and_retries(monkeypatch):
+    seen = []
+
+    class RecordingStream(Stream):
+        def __init__(self, prompt, **kw):
+            seen.append(kw)
+            super().__init__([f"x [{BOGUS}]"] if len(seen) == 1 else [GOOD], model=kw.get("model", "cheap/m"))
+
+    monkeypatch.setattr(answerer_mod, "TextStream", RecordingStream)
+    list(answer_stream("q", None, None, escalation_model="strong/m", timeout=90, max_tokens=2400, model="cheap/m"))
+    assert seen[1]["model"] == "strong/m" and seen[1]["timeout"] == 90 and "attempts" not in seen[1] and "num_retries" not in seen[1]
+
+
+def test_the_estimated_flag_survives_summing_two_attempts():
+    events = run(Stream([f"x [{BOGUS}]"], usage=(100, 10), model="cheap/m"), Stream([GOOD], usage=(200, 20), model="strong/m"))
+    assert "estimated" not in events[-1]["usage"]
+    est = Stream([GOOD], model="strong/m")
+    est.usage = {"prompt_tokens": 200, "completion_tokens": 20, "estimated": True}
+    events = run(Stream([f"x [{BOGUS}]"], usage=(100, 10), model="cheap/m"), est)
+    assert events[-1]["usage"]["estimated"] is True

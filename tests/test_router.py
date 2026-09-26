@@ -75,3 +75,32 @@ def test_an_ordinary_question_still_takes_the_cheap_path(monkeypatch):
     events = list(answer_stream("Who supplies HBM?", None, None, llm_stream=lambda p: cheap,
                                 escalation_model="strong/m", escalation_stream=lambda p: strong))
     assert not strong.iterated and events[-1]["answered_by"] == "cheap/m" and events[-1]["routed"] == "cheap"
+
+
+# --- review finding C2: the router must catch natural phrasings, not just the benchmark's own words ---
+
+@pytest.mark.parametrize("q", [
+    "How have Nvidia's risk disclosures changed?",
+    "How did Intel's risk factors change between 2022 and 2024?",
+    "What risks did AMD add in its latest 10-K?",
+    "Which risk factors has Nvidia stopped mentioning?",
+    "Compare TSMC's 2023 and 2025 risk factors",
+    "What is different in Nvidia's latest 10-K risk section versus 2023?",
+    "Has Nvidia's export-control risk grown since 2022?",
+    "Did Broadcom's disclosures about China shift after 2023?",
+    "What was removed from Micron's latest filing?",
+])
+def test_natural_phrasings_of_a_change_in_disclosures_are_routed_to_the_strong_model(q):
+    assert needs_strong_model(q)
+
+
+@pytest.mark.parametrize("q", [
+    "Compare the competition risks disclosed by AMD and Nvidia.",                       # cross-company, not over time
+    "By how much did Nvidia's annual revenue grow from fiscal 2024 to fiscal 2026?",    # numeric growth, no disclosure noun
+    "What was Microsoft's total revenue for the fiscal year ended June 30, 2025?",
+    "What new products does Nvidia sell?",
+    "Which BIS rules were issued in 2026 that affect AMD?",
+    "What geopolitical risks does ASML disclose?",
+])
+def test_comparison_growth_and_ordinary_disclosure_questions_stay_on_the_cheap_path(q):
+    assert not needs_strong_model(q)
