@@ -19,7 +19,8 @@ from pathlib import Path
 # Keys that belong on each app. Anything else in .env.fly stays local.
 FLY_KEYS = {
     "semigraph": [
-        "ANTHROPIC_API_KEY", "LLM_MODEL", "CRITIC_MODEL",
+        "ANTHROPIC_API_KEY", "LLM_MODEL", "ESCALATION_MODEL", "CRITIC_MODEL",
+        "OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPINFRA_API_KEY",   # only the answering provider's key is needed
         "NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD",
         "ADMIN_TOKEN", "APP_BASE_URL", "MAX_QUERIES_PER_DAY",
         "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY",

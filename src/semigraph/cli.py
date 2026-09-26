@@ -346,6 +346,7 @@ def bakeoff_cmd(
     max_usd: float = typer.Option(..., "--max-usd", help="Hard cap on ALL spend: answers plus the judge (judge calls are counted at a conservative bound)"),
     votes: int = typer.Option(3, help="Correctness-judge votes per open answer (majority)"),
     report_name: str = typer.Option("bakeoff.json", help="Report file name inside artifacts/"),
+    reuse_judged: bool = typer.Option(False, "--reuse-judged", help="Reuse judge results already in the report file (same vote count) instead of paying again"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the worst-case estimate and stop; spends nothing"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
     verbose: bool = typer.Option(False, "-v"),
@@ -383,16 +384,18 @@ def bakeoff_cmd(
         typer.echo(f"  probe {m}: {'ok' if ok else 'FAILED'} ({detail})")
         if ok:
             live.append(m)
+    report_path = Path("artifacts") / report_name
+    previous = json.loads(report_path.read_text(encoding="utf-8")) if reuse_judged and report_path.exists() else None
     answers_cap = max_usd - est["judge_worst_case_usd"] - est["baseline_rejudge_usd"]
     try:
         report = bo.run_bakeoff(base, benchmark, live, complete=bo.litellm_complete, judge=llm_json,
                                 runs_path=settings.processed_dir / "bakeoff.jsonl", max_usd=answers_cap, votes=votes,
-                                price=usage_cost)
+                                price=usage_cost, previous=previous)
     except bo.AnswerBudgetExceeded as e:
         typer.echo(f"Stopped: {e}. Nothing further was spent; answers so far are checkpointed.", err=True)
         raise typer.Exit(5) from e
     report["skipped_models"] = [m for m in candidates if m not in live]
-    out = Path("artifacts") / report_name
+    out = report_path
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     typer.echo(f"{'model':46} {'mech':>6} {'cite':>5} {'esc':>5} {'$/ans':>8} {'open':>5}  gates")
     for name, s in [("baseline (saved Sonnet run)", report["baseline"]), *report["models"].items()]:

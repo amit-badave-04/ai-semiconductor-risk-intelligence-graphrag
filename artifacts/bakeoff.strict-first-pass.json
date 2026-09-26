@@ -1,0 +1,216 @@
+{
+  "votes": 3,
+  "baseline": {
+    "n": 20,
+    "mechanical": {
+      "passed": 13,
+      "of": 13
+    },
+    "failed_ids": [],
+    "citation_validity": 1.0,
+    "escalation_rate": 0.1,
+    "escalation_ids": [
+      "N1",
+      "N4"
+    ],
+    "errors": 0,
+    "truncated": 0,
+    "avg_cost_usd": 0.0370808,
+    "avg_latency_s": 8.56975,
+    "avg_completion_tokens": 778.2,
+    "gates_failed": [],
+    "judged": {
+      "open_correct": 7,
+      "open_of": 7,
+      "votes": {
+        "R3": 3,
+        "T1": 3,
+        "T2": 3,
+        "T3": 3,
+        "Q1": 2,
+        "Q2": 3,
+        "Q3": 3
+      }
+    }
+  },
+  "models": {
+    "openai/gpt-6-luna": {
+      "n": 20,
+      "mechanical": {
+        "passed": 11,
+        "of": 13
+      },
+      "failed_ids": [
+        "U1",
+        "U2"
+      ],
+      "citation_validity": 1.0,
+      "escalation_rate": 0.05,
+      "escalation_ids": [
+        "N4"
+      ],
+      "errors": 0,
+      "truncated": 0,
+      "avg_cost_usd": 0.0012504,
+      "avg_latency_s": 4.955,
+      "avg_completion_tokens": 564.35,
+      "gates_failed": [
+        "mechanical 11/13"
+      ],
+      "judged": null,
+      "clears_all_gates": false
+    },
+    "gemini/gemini-3.8-flash": {
+      "n": 20,
+      "mechanical": {
+        "passed": 13,
+        "of": 13
+      },
+      "failed_ids": [],
+      "citation_validity": 0.95,
+      "escalation_rate": 0.35,
+      "escalation_ids": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "D3",
+        "T1",
+        "M1"
+      ],
+      "errors": 0,
+      "truncated": 0,
+      "avg_cost_usd": 0.01101815,
+      "avg_latency_s": 2.9571,
+      "avg_completion_tokens": 461.3,
+      "gates_failed": [
+        "citation validity 0.95",
+        "escalation rate 0.35 > 0.15"
+      ],
+      "judged": null,
+      "clears_all_gates": false
+    },
+    "gemini/gemini-3.5-flash-lite": {
+      "n": 20,
+      "mechanical": {
+        "passed": 13,
+        "of": 13
+      },
+      "failed_ids": [],
+      "citation_validity": 1.0,
+      "escalation_rate": 0.35,
+      "escalation_ids": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "D3",
+        "T1",
+        "M1"
+      ],
+      "errors": 0,
+      "truncated": 0,
+      "avg_cost_usd": 0.004359099999999999,
+      "avg_latency_s": 1.9598,
+      "avg_completion_tokens": 257.5,
+      "gates_failed": [
+        "escalation rate 0.35 > 0.15"
+      ],
+      "judged": null,
+      "clears_all_gates": false
+    },
+    "deepinfra/deepseek-ai/DeepSeek-V4-Flash": {
+      "n": 20,
+      "mechanical": {
+        "passed": 12,
+        "of": 13
+      },
+      "failed_ids": [
+        "M1"
+      ],
+      "citation_validity": 1.0,
+      "escalation_rate": 0.25,
+      "escalation_ids": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "T1"
+      ],
+      "errors": 0,
+      "truncated": 0,
+      "avg_cost_usd": 0.0009183500000000001,
+      "avg_latency_s": 5.22785,
+      "avg_completion_tokens": 187.3,
+      "gates_failed": [
+        "mechanical 12/13",
+        "escalation rate 0.25 > 0.15"
+      ],
+      "judged": null,
+      "clears_all_gates": false
+    },
+    "deepinfra/deepseek-ai/DeepSeek-V4-Pro": {
+      "n": 20,
+      "mechanical": {
+        "passed": 13,
+        "of": 13
+      },
+      "failed_ids": [],
+      "citation_validity": 1.0,
+      "escalation_rate": 0.25,
+      "escalation_ids": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "T1"
+      ],
+      "errors": 0,
+      "truncated": 0,
+      "avg_cost_usd": 0.01350635,
+      "avg_latency_s": 3.5514,
+      "avg_completion_tokens": 279.4,
+      "gates_failed": [
+        "escalation rate 0.25 > 0.15"
+      ],
+      "judged": null,
+      "clears_all_gates": false
+    },
+    "anthropic/claude-haiku-4-5": {
+      "n": 20,
+      "mechanical": {
+        "passed": 13,
+        "of": 13
+      },
+      "failed_ids": [],
+      "citation_validity": 1.0,
+      "escalation_rate": 0.15,
+      "escalation_ids": [
+        "N1",
+        "N3",
+        "M1"
+      ],
+      "errors": 0,
+      "truncated": 0,
+      "avg_cost_usd": 0.0123462,
+      "avg_latency_s": 4.6293,
+      "avg_completion_tokens": 338.65,
+      "gates_failed": [],
+      "judged": {
+        "open_correct": 4,
+        "open_of": 7,
+        "votes": {
+          "R3": 3,
+          "T1": 3,
+          "T2": 3,
+          "T3": 0,
+          "Q1": 0,
+          "Q2": 3,
+          "Q3": 0
+        }
+      },
+      "clears_all_gates": false
+    }
+  },
+  "skipped_models": []
+}

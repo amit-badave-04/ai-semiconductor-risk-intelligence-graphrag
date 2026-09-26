@@ -158,8 +158,11 @@ def _mechanical(item: dict, answer: str) -> bool | None:
     return None
 
 
-def score_mechanical(rows: list[dict], benchmark: list[dict]) -> dict:
-    """Free scoring of one model's rows: deterministic correctness, citation validity, verifier failures."""
+def score_mechanical(rows: list[dict], benchmark: list[dict], contexts: dict[str, str] | None = None) -> dict:
+    """Free scoring of one model's rows: deterministic correctness, citation validity, verifier failures.
+
+    ``contexts`` (question id -> the retrieved context the model saw) lets the verifier accept an uncited dollar
+    figure that is verifiably in that context (XBRL metrics have no chunk id to cite)."""
     by_id = {b["id"]: b for b in benchmark}
     passed = failed = 0
     failed_ids, escalation_ids = [], []
@@ -177,7 +180,8 @@ def score_mechanical(rows: list[dict], benchmark: list[dict]) -> dict:
                 failed_ids.append(r["id"])
         if not errored and not r["hallucinated"]:
             valid_cites += 1
-        reasons = ["error"] if errored else verify_answer(r["answer"], set(r["cited"]), set(r["valid_ids"]), r["finish_reason"])
+        reasons = ["error"] if errored else verify_answer(r["answer"], set(r["cited"]), set(r["valid_ids"]), r["finish_reason"],
+                                                              context=(contexts or {}).get(r["id"]))
         if reasons:
             escalation_ids.append(r["id"])
     n = len(rows) or 1
@@ -262,20 +266,34 @@ def baseline_as_row(base: dict) -> dict:
             "usage": base.get("usage"), "cost_usd": base.get("cost_usd"), "latency_s": base.get("latency_s")}
 
 
+def _reusable(previous: dict | None, votes: int, entry: dict | None) -> dict | None:
+    """A judgement from an earlier report, valid only for the same vote count (the answers never change)."""
+    if previous and previous.get("votes") == votes and entry and entry.get("judged"):
+        return entry["judged"]
+    return None
+
+
 def run_bakeoff(base_rows: list[dict], benchmark: list[dict], models: list[str], *, complete, judge, runs_path: Path,
-                max_usd: float | None, votes: int = 3, price=usage_cost, judge_model: str | None = None) -> dict:
-    """Answer, score for free, then judge only what cleared the free gates. The baseline is judged the same way."""
+                max_usd: float | None, votes: int = 3, price=usage_cost, judge_model: str | None = None,
+                previous: dict | None = None) -> dict:
+    """Answer, score for free, then judge only what cleared the free gates. The baseline is judged the same way.
+
+    ``previous`` is an earlier report whose judgements are reused (same vote count) instead of bought again."""
     rows = answer_candidates(base_rows, models, complete, runs_path, max_usd=max_usd, price=price)
+    contexts = {b["id"]: b["context"] for b in base_rows}
     baseline_rows = [baseline_as_row(b) for b in base_rows]
-    baseline = score_mechanical(baseline_rows, benchmark)
+    baseline = score_mechanical(baseline_rows, benchmark, contexts)
     baseline["gates_failed"] = passes_free_gates(baseline)
-    baseline["judged"] = judge_open(baseline_rows, benchmark, judge, votes=votes, model=judge_model)
+    baseline["judged"] = (_reusable(previous, votes, (previous or {}).get("baseline"))
+                          or judge_open(baseline_rows, benchmark, judge, votes=votes, model=judge_model))
     report = {"votes": votes, "baseline": baseline, "models": {}}
     for model in models:
         mine = [r for r in rows if r["model"] == model]
-        score = score_mechanical(mine, benchmark)
+        score = score_mechanical(mine, benchmark, contexts)
         score["gates_failed"] = passes_free_gates(score)
-        score["judged"] = None if score["gates_failed"] else judge_open(mine, benchmark, judge, votes=votes, model=judge_model)
+        score["judged"] = None if score["gates_failed"] else (
+            _reusable(previous, votes, ((previous or {}).get("models") or {}).get(model))
+            or judge_open(mine, benchmark, judge, votes=votes, model=judge_model))
         score["clears_all_gates"] = bool(score["judged"]) and score["judged"]["open_correct"] >= baseline["judged"]["open_correct"]
         report["models"][model] = score
     return report

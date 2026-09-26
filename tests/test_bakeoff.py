@@ -244,3 +244,31 @@ def test_a_model_below_the_baseline_on_open_questions_does_not_clear_the_gates(t
     assert report["baseline"]["judged"]["open_correct"] == 1
     assert report["models"]["m/good"]["judged"]["open_correct"] == 0
     assert report["models"]["m/good"]["clears_all_gates"] is False
+
+
+# --- context-aware verifier and reuse of earlier judgements ---
+
+def test_an_uncited_figure_grounded_in_the_context_is_not_an_escalation_when_contexts_are_given():
+    rows = [answer_row("N2", "Nvidia's revenue was $215.9 billion.", [])]
+    without = bo.score_mechanical(rows, BENCH)
+    with_ctx = bo.score_mechanical(rows, BENCH, contexts={"N2": context()})
+    assert without["escalation_rate"] == 1.0 and with_ctx["escalation_rate"] == 0.0
+    assert with_ctx["mechanical"] == {"passed": 1, "of": 1}
+
+
+def test_run_bakeoff_reuses_a_previous_judgement_instead_of_paying_again(tmp_path):
+    first = bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=VoteJudge([True]),
+                           runs_path=tmp_path / "b.jsonl", max_usd=None, votes=3, price=lambda u, m: 0.001)
+    judge = VoteJudge([True])
+    again = bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=judge,
+                           runs_path=tmp_path / "b.jsonl", max_usd=None, votes=3, price=lambda u, m: 0.001, previous=first)
+    assert judge.calls == 0 and again["models"]["m/good"]["judged"] == first["models"]["m/good"]["judged"]
+
+
+def test_a_previous_judgement_made_with_a_different_vote_count_is_not_reused(tmp_path):
+    first = bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=VoteJudge([True]),
+                           runs_path=tmp_path / "b.jsonl", max_usd=None, votes=3, price=lambda u, m: 0.001)
+    judge = VoteJudge([True])
+    bo.run_bakeoff(_bench_rows(), BENCH, ["m/good"], complete=_by_question(True), judge=judge,
+                   runs_path=tmp_path / "b.jsonl", max_usd=None, votes=5, price=lambda u, m: 0.001, previous=first)
+    assert judge.calls == 10  # baseline + the model, 5 votes each, one open question
