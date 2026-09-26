@@ -144,3 +144,13 @@ def test_collect_reports_an_unreadable_label_file_by_name(tmp_path):
     (tmp_path / "NVDA-acc-25-acc-26.older.a.labels.json").write_text('{"item_id": "x"}', encoding="utf-8")
     with pytest.raises(ValueError, match="JSON list"):
         lri.collect("NVDA-acc-25-acc-26", "older", tmp_path)
+
+
+def test_newer_side_packets_carry_their_own_coherent_instructions(tmp_path):
+    pairs = lri.consecutive_pairs(items_df())
+    lri.write_packets(pairs, items_df(), sections_df(), tmp_path)
+    newer = json.loads((tmp_path / "NVDA-acc-25-acc-26.newer.packet.json").read_text(encoding="utf-8"))["instructions"]
+    assert "carried" in newer and "new:" in newer and "OLDER text" in newer
+    assert "unchanged" not in newer and "merged" not in newer and "removed" not in newer      # the older-side vocabulary
+    older = json.loads((tmp_path / "NVDA-acc-25-acc-26.older.packet.json").read_text(encoding="utf-8"))["instructions"]
+    assert "unchanged" in older and "removed" in older and "carried" not in older

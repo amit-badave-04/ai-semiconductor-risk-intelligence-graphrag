@@ -56,6 +56,18 @@ You never see any algorithm output, lineage id or another labeller's answer; do 
 Answer with a JSON list: [{"item_id": ..., "label": ..., "quote": ... | "search_terms": [...], "note": "optional"}].
 """
 
+NEWER_LABELLING_INSTRUCTIONS = """You are labelling risk items from an annual report (the NEWER filing) against the FULL section text of the OLDER
+annual report of the same company. For each newer item decide, by reading the whole older text, exactly one label:
+- carried: the risk was already disclosed in the older filing, in the same or in edited wording, anywhere in its section.
+  Give `quote`: at least 40 characters copied verbatim from the OLDER text that show it.
+- new: the risk is NOT disclosed anywhere in the older section, not even briefly or inside a longer risk. Give
+  `search_terms`: at least three distinctive words or phrases you searched the WHOLE older text for, not just the same position.
+Quotes must be copied exactly (case, whitespace and quote marks are normalised; no ellipses, no paraphrase). A quote that
+is not found in the older text, or a `new` label whose headline is still in the older text, is rejected by machine.
+You never see any algorithm output, lineage id or another labeller's answer; do not guess what a system might have said.
+Answer with a JSON list: [{"item_id": ..., "label": ..., "quote": ... | "search_terms": [...], "note": "optional"}].
+"""
+
 
 @dataclass(frozen=True)
 class ValidatedAnnotation:

@@ -26,7 +26,7 @@ def _load(path: Path):
 
 def check(packet: dict, labels: list) -> tuple[list[tuple[str, str]], list[str], int]:
     """(rejected, missing, accepted count) for one labeller's labels against one packet."""
-    side = packet["side"]
+    side = packet.get("side") or packet["pair"]["side"]      # item packets of the older side keep it under "pair"
     if "older_items" in packet or (packet.get("items") and "item_id" in packet["items"][0] and "sentences" not in packet["items"][0]):
         items = packet["older_items"] if side == "older" else packet["items"]
         other = packet["newer_section_text"] if side == "older" else packet["other_section_text"]

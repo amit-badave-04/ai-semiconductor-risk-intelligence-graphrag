@@ -54,3 +54,10 @@ def test_main_exit_codes(tmp_path, capsys):
         raise AssertionError("expected SystemExit")
     except SystemExit as exc:
         assert exc.code == 2
+
+
+def test_an_older_item_packet_as_written_by_build_packet_keeps_its_side_under_pair():
+    packet = {"pair": {"pair_id": "x", "side": "older"}, **{k: v for k, v in ITEM_PACKET.items() if k != "side"}}
+    labels = [{"item_id": "a:i1", "label": "unchanged", "quote": QUOTE},
+              {"item_id": "a:i2", "label": "removed", "search_terms": ["volatile", "stock price", "market volatility"]}]
+    assert cl.check(packet, labels) == ([], [], 2)

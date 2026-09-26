@@ -100,9 +100,7 @@ def write_packets(pairs: list[dict], items: pd.DataFrame, sections: pd.DataFrame
         meta = {"pair_id": pair["pair_id"], "ticker": pair["ticker"], "split": split_of(pair["pair_id"])}
         older = gold.build_packet({**meta, "side": "older"}, older_items, newer_text)
         newer = {"pair": {**meta, "side": "newer"}, "side": "newer", "items": newer_items, "other_section_text": older_text,
-                 "instructions": gold.LABELLING_INSTRUCTIONS.replace("older", "newer-side").replace("OLDER", "NEWER")
-                 + "\nFor this packet the labels are `carried` (the risk was already disclosed in the older filing; give a verbatim "
-                   "`quote` from the older text) and `new` (it was not; give >= 3 `search_terms` you searched for in the WHOLE older text)."}
+                 "instructions": gold.NEWER_LABELLING_INSTRUCTIONS}
         for side, packet in (("older", older), ("newer", newer)):
             path = out_dir / f"{pair['pair_id']}.{side}.packet.json"
             path.write_text(json.dumps(packet, ensure_ascii=False, indent=1), encoding="utf-8")
