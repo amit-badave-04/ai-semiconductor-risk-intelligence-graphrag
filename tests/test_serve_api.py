@@ -42,6 +42,7 @@ class FakeSettings:
     turnstile_required = False
     read_rate_limit_per_minute = 5
     llm_model = "anthropic/claude-sonnet-5"
+    answer_model = "anthropic/claude-sonnet-5"
     escalation_model = ""
 
 

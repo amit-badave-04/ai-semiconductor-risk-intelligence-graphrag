@@ -282,3 +282,13 @@ class TestResetGraph:
         assert not [s for s in drv.statements if "CONSTRAINT" in s]
         assert {s.split()[2] for s in drv.statements if s.startswith("DROP INDEX")}.isdisjoint(
             {"company_ticker", "filing_date", "filing_status"})
+
+
+
+class TestRiskItemSchema:
+    """M1b: RiskItem is the lineage unit; its identity and lookups are declared in the schema."""
+
+    def test_riskitem_has_a_uniqueness_constraint_and_a_lookup_index(self):
+        ddl = read_schema_cypher()
+        assert "CREATE CONSTRAINT riskitem_id IF NOT EXISTS FOR (i:RiskItem) REQUIRE i.item_id IS UNIQUE" in ddl
+        assert "FOR (i:RiskItem) ON (i.filer_cik, i.accession_no)" in ddl

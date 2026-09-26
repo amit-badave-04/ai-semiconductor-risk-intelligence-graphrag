@@ -69,6 +69,7 @@ def snapshot_inputs(settings: Settings) -> dict:
         "xbrl_metrics": _hashes(settings.processed_dir / "xbrl", "*_key_metrics.parquet"),
         "chunks": _hashes(settings.chunks_dir, "*.parquet"),
         "section_texts": _hashes(settings.interim_dir / "section_texts", "*.parquet"),
+        "risk_items": _hashes(settings.interim_dir / "risk_items", "*.parquet"),
         "entities": _file_sha1(_ENTITIES) if _ENTITIES.exists() else None,
         "code": code_fingerprint(),
     }
@@ -82,7 +83,7 @@ def compute_snapshot_id(settings: Settings, as_of: date | str | None = None, *,
     digest = hashlib.sha1()
     digest.update(f"{as_of_d}|{code_version}|{inputs['manifest']}|{inputs['federal_register']}"
                   f"|{inputs['entities']}|{inputs['code']}".encode())
-    for section in ("extractions", "xbrl_metrics", "chunks", "section_texts"):
+    for section in ("extractions", "xbrl_metrics", "chunks", "section_texts", "risk_items"):
         for name, sha in sorted(inputs[section].items()):
             digest.update(f"|{section}:{name}:{sha}".encode())
     stamp = as_of_d.strftime("%Y%m%d") if as_of_d else "00000000"

@@ -408,7 +408,7 @@ def bakeoff_cmd(
 
 @app.command("eval-deployed")
 def eval_deployed_cmd(
-    model: str = typer.Option(None, help="Cheap default model (default: LLM_MODEL from settings)"),
+    model: str = typer.Option(None, help="Cheap default model (default: ANSWER_MODEL from settings)"),
     escalation_model: str = typer.Option(None, help="Strong model for routed/rejected answers (default: ESCALATION_MODEL from settings)"),
     max_usd: float = typer.Option(..., "--max-usd", help="Hard cap on answering spend (the judge is estimated separately and printed)"),
     votes: int = typer.Option(3, help="Correctness-judge votes per open answer (majority)"),
@@ -426,7 +426,7 @@ def eval_deployed_cmd(
     from semigraph.llm import llm_json
 
     settings = _settings()
-    model = model or settings.llm_model
+    model = model or settings.answer_model
     escalation_model = escalation_model or settings.escalation_model
     if not escalation_model:
         raise typer.BadParameter("no escalation model: pass --escalation-model or set ESCALATION_MODEL")

@@ -126,3 +126,17 @@ def test_the_snapshot_input_record_includes_code_and_entities(lake):
     assert len(inputs["code"]) == 40 and inputs["entities"] is not None
     assert set(inputs) >= {"manifest", "federal_register", "extractions", "xbrl_metrics", "chunks", "section_texts",
                            "entities", "code"}
+
+
+def test_risk_items_are_part_of_the_snapshot(lake):
+    """The risk-item artifact (M1b) defines the temporal layer: changing it must move the id."""
+    ri = lake.interim_dir / "risk_items"
+    ri.mkdir(parents=True)
+    (ri / "NVDA_risk_items.parquet").write_bytes(b"items-v1")
+    before = compute_snapshot_id(lake, date(2026, 9, 25))
+    (ri / "NVDA_risk_items.parquet").write_bytes(b"items-v2")
+    assert compute_snapshot_id(lake, date(2026, 9, 25)) != before
+
+
+def test_a_lake_without_risk_items_keeps_the_same_shape(lake):
+    assert snapshot_inputs(lake)["risk_items"] == {}

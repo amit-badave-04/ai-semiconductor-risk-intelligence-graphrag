@@ -77,3 +77,35 @@ def test_deployed_models_are_priced_without_asking_litellm(monkeypatch):
     luna = ans.usage_cost({"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}, model="openai/gpt-6-luna")
     sonnet = ans.usage_cost({"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}, model="anthropic/claude-sonnet-5")
     assert luna == pytest.approx(0.10 + 0.50) and sonnet == pytest.approx(2.0 + 10.0)
+
+
+# --- M1b: the answering model is its own setting, so extraction/judging never move with it ---
+
+def test_answer_model_defaults_to_sonnet_like_llm_model_and_is_independent_of_it():
+    from semigraph.config import Settings
+
+    s = Settings(_env_file=None)
+    assert s.answer_model == "anthropic/claude-sonnet-5" == s.llm_model
+    assert Settings(answer_model="openai/gpt-6-luna", _env_file=None).llm_model == "anthropic/claude-sonnet-5"
+
+
+def test_the_answer_path_defaults_to_answer_model_not_llm_model(monkeypatch):
+    from semigraph.config import Settings
+
+    monkeypatch.setattr(ans, "get_settings", lambda: Settings(answer_model="openai/gpt-6-luna", _env_file=None))
+    assert ans.TextStream("p").model == "openai/gpt-6-luna"
+
+
+def test_llm_text_defaults_to_answer_model(monkeypatch):
+    from semigraph.config import Settings
+
+    calls = []
+
+    class Choice:
+        message = type("M", (), {"content": "ok"})()
+        finish_reason = "stop"
+
+    monkeypatch.setattr(ans, "get_settings", lambda: Settings(answer_model="openai/gpt-6-luna", _env_file=None))
+    monkeypatch.setattr(ans, "completion", lambda **kw: calls.append(kw) or type("R", (), {"choices": [Choice()]})())
+    ans.llm_text("p")
+    assert calls[0]["model"] == "openai/gpt-6-luna"

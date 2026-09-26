@@ -18,6 +18,8 @@ CREATE CONSTRAINT exportcontrol_rule IF NOT EXISTS FOR (x:ExportControl) REQUIRE
 
 CREATE CONSTRAINT snapshot_id IF NOT EXISTS FOR (s:Snapshot) REQUIRE s.id IS UNIQUE;
 
+CREATE CONSTRAINT riskitem_id IF NOT EXISTS FOR (i:RiskItem) REQUIRE i.item_id IS UNIQUE;
+
 CREATE INDEX company_ticker IF NOT EXISTS FOR (c:Company) ON (c.ticker);
 
 CREATE INDEX filing_date IF NOT EXISTS FOR (f:Filing) ON (f.filing_date);
@@ -25,6 +27,8 @@ CREATE INDEX filing_date IF NOT EXISTS FOR (f:Filing) ON (f.filing_date);
 CREATE INDEX filing_status IF NOT EXISTS FOR (f:Filing) ON (f.status);
 
 CREATE INDEX metric_period IF NOT EXISTS FOR (m:Metric) ON (m.period_end);
+
+CREATE INDEX riskitem_filing IF NOT EXISTS FOR (i:RiskItem) ON (i.filer_cik, i.accession_no);
 
 CREATE INDEX supplies_temporal IF NOT EXISTS FOR ()-[r:SUPPLIES_TO]-() ON (r.start_date, r.end_date, r.status);
 

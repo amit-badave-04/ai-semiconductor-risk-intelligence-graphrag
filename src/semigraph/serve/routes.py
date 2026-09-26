@@ -19,12 +19,12 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 from ..artifacts import load_examples
 from ..graph.client import run_cypher
 from ..retrieval.answerer import answer_stream
+from ..retrieval.ids import CHUNK_ID_RE
 from . import guard, store
 
 logger = logging.getLogger("semigraph.serve")
 router = APIRouter()
 
-CHUNK_ID_RE = re.compile(r"^[0-9\-]{10,30}:[IVX]+\.[0-9A-Z]+:[0-9]{4}$")
 CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; "
        "style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://challenges.cloudflare.com; "
        "img-src 'self' data:; base-uri 'none'; form-action 'none'")
@@ -124,7 +124,7 @@ async def stats(request: Request):
             "limits": {"max_queries_per_day": s.max_queries_per_day,
                        "per_ip": f"{s.rate_limit_questions} per {s.rate_limit_window_seconds // 60} min",
                        "max_question_chars": s.max_question_chars},
-            "models": {"llm": s.llm_model, "escalation": s.escalation_model or None, "embedder": st.embedder.name}}
+            "models": {"llm": s.answer_model, "escalation": s.escalation_model or None, "embedder": st.embedder.name}}
 
 
 @router.get("/api/evidence/{chunk_id}")

@@ -32,6 +32,7 @@ from ..artifacts import read_prompt
 from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
 from ..llm_shape import KNOWN_PRICES_PER_MTOK, completion_params
+from . import ids as _ids
 from .retriever import hybrid_retrieve, vector_retrieve
 from .router import needs_strong_model
 from .verify import verify_answer
@@ -41,8 +42,8 @@ logger = logging.getLogger("semigraph.answerer")
 # Verbatim notebook 14 answering prompt (packaged as a template file).
 ANSWER_PROMPT = read_prompt("answer")
 
-# Verbatim notebook 14 citation grammar: accession_no:section_id:chunk_seq.
-CITE_RE = re.compile(r"\[([0-9\-]+:[IVX]+\.[0-9A-Z]+:[0-9]{4})\]")
+# The citation grammar lives in retrieval/ids.py (chunk, XBRL and Federal Register ids); re-exported here.
+CITE_RE = _ids.CITE_RE
 
 
 # Currency label for metrics that carry no unit (v1 graphs never stored/selected one; every
@@ -110,7 +111,7 @@ def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
     request-scoped for the web service (a browser cannot wait out a 300 s
     backoff); the pipeline keeps the long-tailed defaults.
     """
-    model = model or get_settings().llm_model
+    model = model or get_settings().answer_model
     budget = max_tokens
     last_err = "unknown"
     extra = {"timeout": timeout} if timeout else {}
@@ -181,7 +182,7 @@ class TextStream:
                  timeout: float | None = None, num_retries: int = 2):
         self.prompt = prompt
         self.num_retries = num_retries
-        self.model = model or get_settings().llm_model
+        self.model = model or get_settings().answer_model
         self.max_tokens, self.attempts = max_tokens, attempts
         self.backoff, self.timeout = backoff, timeout
         self.finish_reason: str | None = None
@@ -410,7 +411,7 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
                                   risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
     ctx = {"question": question, "strategy": strategy, "valid_ids": valid_ids,
            "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "context_chars": len(full_context)}
-    if escalation_model and escalation_model == (stream_kwargs.get("model") or get_settings().llm_model):
+    if escalation_model and escalation_model == (stream_kwargs.get("model") or get_settings().answer_model):
         escalation_model = None    # one model in both roles is plain live streaming (the documented rollback)
     if escalation_model and needs_strong_model(question):
         strong = (escalation_stream(prompt) if escalation_stream else
