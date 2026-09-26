@@ -1,0 +1,8 @@
+[
+{"item_id": "0001045810-23-000017:I.1A:i000", "label": "reworded", "quote": "Our accelerated computing platforms experience rapid changes in technology, customer requirements, competitive products, and industry standards."},
+{"item_id": "0001045810-23-000017:I.1A:i005", "label": "reworded", "quote": "Economic and industry uncertainty or changes, including recession or slowing growth, inflation, changes or uncertainty in fiscal, monetary or trade policy"},
+{"item_id": "0001045810-23-000017:I.1A:i006", "label": "reworded", "quote": "We sell our products internationally, and we also have operations and conduct business internationally."},
+{"item_id": "0001045810-23-000017:I.1A:i014", "label": "removed", "search_terms": ["COVID-19", "COVID", "lockdown measures", "containment efforts in China", "social distancing"], "note": "Only generic pandemic/health-issue lockdown mentions remain in other risks; no COVID-specific risk."},
+{"item_id": "0001045810-23-000017:I.1A:i020", "label": "reworded", "quote": "We process sensitive, confidential or personal data or information that is subject to privacy and security laws, regulations, industry standards, external and internal policies, contracts and other obligations"},
+{"item_id": "0001045810-23-000017:I.1A:i023", "label": "reworded", "quote": "If we decide to refinance, we may receive less favorable terms, or we may be unable to refinance at all, which may adversely affect our financial condition."}
+]

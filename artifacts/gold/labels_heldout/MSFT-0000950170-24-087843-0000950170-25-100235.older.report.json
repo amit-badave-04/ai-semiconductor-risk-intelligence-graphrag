@@ -1,0 +1,73 @@
+{
+ "pair_id": "MSFT-0000950170-24-087843-0000950170-25-100235",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000950170-24-087843:I.1A:i003": "reworded",
+  "0000950170-24-087843:I.1A:i004": "merged",
+  "0000950170-24-087843:I.1A:i007": "unchanged",
+  "0000950170-24-087843:I.1A:i010": "reworded",
+  "0000950170-24-087843:I.1A:i013": "merged",
+  "0000950170-24-087843:I.1A:i014": "merged",
+  "0000950170-24-087843:I.1A:i015": "merged",
+  "0000950170-24-087843:I.1A:i016": "reworded",
+  "0000950170-24-087843:I.1A:i020": "merged",
+  "0000950170-24-087843:I.1A:i023": "unchanged",
+  "0000950170-24-087843:I.1A:i027": "reworded"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0000950170-24-087843:I.1A:i003": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-24-087843:I.1A:i004": {
+   "ann1": "merged",
+   "ann2": "merged"
+  },
+  "0000950170-24-087843:I.1A:i007": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0000950170-24-087843:I.1A:i010": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-24-087843:I.1A:i013": {
+   "ann1": "merged",
+   "ann2": "merged"
+  },
+  "0000950170-24-087843:I.1A:i014": {
+   "ann1": "merged",
+   "ann2": "merged"
+  },
+  "0000950170-24-087843:I.1A:i015": {
+   "ann1": "merged",
+   "ann2": "merged"
+  },
+  "0000950170-24-087843:I.1A:i016": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-24-087843:I.1A:i020": {
+   "ann1": "merged",
+   "ann2": "merged"
+  },
+  "0000950170-24-087843:I.1A:i023": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0000950170-24-087843:I.1A:i027": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  }
+ }
+}

@@ -1,0 +1,53 @@
+{
+ "pair_id": "MU-0000723125-23-000054-0000723125-24-000027",
+ "side": "newer",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000723125-24-000027:I.1A:i000": "carried",
+  "0000723125-24-000027:I.1A:i009": "carried",
+  "0000723125-24-000027:I.1A:i013": "carried",
+  "0000723125-24-000027:I.1A:i014": "new",
+  "0000723125-24-000027:I.1A:i025": "carried",
+  "0000723125-24-000027:I.1A:i026": "carried",
+  "0000723125-24-000027:I.1A:i032": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0000723125-24-000027:I.1A:i000": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000723125-24-000027:I.1A:i009": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000723125-24-000027:I.1A:i013": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000723125-24-000027:I.1A:i014": {
+   "ann1": "new",
+   "ann2": "new"
+  },
+  "0000723125-24-000027:I.1A:i025": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000723125-24-000027:I.1A:i026": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000723125-24-000027:I.1A:i032": {
+   "ann1": "carried",
+   "ann2": "carried"
+  }
+ }
+}

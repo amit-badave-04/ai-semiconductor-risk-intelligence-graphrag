@@ -1,0 +1,467 @@
+[
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s000",
+  "label": "present",
+  "quote": "Defects in our products have caused and could cause us to incur significant expenses to remediate, which can damage our reputation and cause us to lose market share."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s001",
+  "label": "present",
+  "quote": "Our hardware and software product offerings are complex and they have in the past"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s002",
+  "label": "present",
+  "quote": "they have in the past and may in the future contain defects or security vulnerabilities, or experience failures or unsatisfactory performance due to any number of issues in design, fabrication, packaging, materials and/or use within a system."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s003",
+  "label": "present",
+  "quote": "These risks may increase as our products are introduced into new devices, markets, technologies and applications or as new versions are released."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s004",
+  "label": "present",
+  "quote": "These risks further increase when we rely on partners to supply and manufacture components that are used in our products, as these arrangements reduce our direct control over production."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s005",
+  "label": "added",
+  "search_terms": [
+   "training data",
+   "unintended bias",
+   "training methods",
+   "AI software products"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s006",
+  "label": "present",
+  "quote": "Although arrangements with component providers may contain provisions for product defect expense reimbursement, we generally remain responsible to the customer for warranty product defects that may occur from time to time."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s007",
+  "label": "present",
+  "quote": "Some failures in our products or services have been in the past and may in the future be only discovered after a product or service has been shipped or used."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s008",
+  "label": "present",
+  "quote": "Undiscovered vulnerabilities in our products or services could result in loss of data or intangible property, or expose our end customers to unscrupulous third parties who develop and"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s009",
+  "label": "present",
+  "quote": "Defects or failure of our products to perform to specifications could lead to substantial damage to the products or the product in which our device has been integrated by OEMs, ODMs, AIBs and automotive manufacturers and tier 1 automotive suppliers, and to the user of such end product."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s010",
+  "label": "present",
+  "quote": "Any such defect may cause us to incur significant warranty, support and repair or replacement costs as part of a product recall or otherwise, write-off the value of related inventory, and divert the attention of our engineering and management personnel from our product development efforts to find and correct the issue."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s011",
+  "label": "present",
+  "quote": "Our efforts to remedy these issues may not be timely or satisfactory to our customers."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s012",
+  "label": "present",
+  "quote": "An error or defect in new products, releases, or related software drivers after commencement of commercial shipments could result in failure to achieve market acceptance, loss of design wins, temporary or permanent withdrawal from a product or market, and harm to our relationships with existing and prospective customers and partners and consumers’ perceptions of our brand"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s013",
+  "label": "present",
+  "quote": "We may be required to reimburse our customers, partners or consumers, including for costs to repair or replace products in the field or in connection with indemnification obligations, or pay fines imposed by regulatory agencies."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s014",
+  "label": "present",
+  "quote": "For example, a defect was identified in a third-party component embedded in certain Data Center products."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s015",
+  "label": "present",
+  "quote": "This defect has had, and other defects may in the future have, an adverse effect on our cost and supply of components and finished goods."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s016",
+  "label": "present",
+  "quote": "These costs could be significant in future periods."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s017",
+  "label": "present",
+  "quote": "We recorded a net warranty liability during fiscal year 2023 primarily in connection with this defect."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s018",
+  "label": "present",
+  "quote": "While we believe we have accurately recorded for warranty obligations, we may need to record additional amounts in the future if our estimate proves to be incorrect."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s019",
+  "label": "present",
+  "quote": "In general, if a product liability claim regarding any of our products is brought against us, even if the alleged damage is due to the actions or inactions of a third party, such as within our supply chain, the cost of defending the claim could be significant and would divert the efforts of our technical and management personnel and harm our business."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i004#s020",
+  "label": "present",
+  "quote": "Further, our business liability insurance may be inadequate or future coverage may be unavailable on acceptable terms, which could adversely impact our financial results."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i006#s000",
+  "label": "present",
+  "quote": "International operations are a significant part of our business, which exposes us to us to risks that could harm our business."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i006#s001",
+  "label": "added",
+  "search_terms": [
+   "sell our products internationally",
+   "operations and conduct business internationally",
+   "also have operations",
+   "business internationally"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i006#s002",
+  "label": "present",
+  "quote": "Our semiconductor wafers are manufactured, assembled, tested and packaged by third parties located outside of the United States, and we generated 69% of our revenue during fiscal year 2023 from sales outside of the United States."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i006#s003",
+  "label": "added",
+  "search_terms": [
+   "19% in fiscal year",
+   "percentage of total Data Center revenue",
+   "14% in fiscal year 2024",
+   "sales to China decreased"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i006#s004",
+  "label": "added",
+  "search_terms": [
+   "small volumes",
+   "not received licenses",
+   "started to ship alternatives",
+   "alternatives to the China market"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i006#s005",
+  "label": "added",
+  "search_terms": [
+   "mid-single digit percentage",
+   "fourth quarter of fiscal year 2024",
+   "similar range",
+   "first quarter of fiscal year 2025"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i006#s006",
+  "label": "present",
+  "quote": "The global nature of our business subjects us to a number of risks and uncertainties, which have had in the past and could in the future have a material adverse effect on our business, financial condition and results of operations"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i006#s007",
+  "label": "present",
+  "quote": "government lockdowns to control case spread of COVID-19 or other global or local health issues, differing legal standards with respect to protection of IP and employment practices, domestic and international business and cultural practices that differ, disruptions to capital markets, counter-inflation policies, and/or currency fluctuations, and natural disasters, acts of war or other military actions, terrorism, public health issues, and other catastrophic events."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s000",
+  "label": "present",
+  "quote": "Business disruptions could harm our operations, lead to a decline in revenue and increase our costs."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s001",
+  "label": "present",
+  "quote": "Our worldwide operations could be disrupted by natural disasters and extreme weather conditions, power or water shortages, telecommunications failures, cloud service provider outages, terrorist attacks, or acts of violence, political and/or civil unrest, acts of war or other military actions, epidemics or pandemics and other natural or man-made disasters and catastrophic events."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s002",
+  "label": "present",
+  "quote": "Our corporate headquarters, a large portion of our current data center capacity, and a portion of our research and development activities are located in California, and other critical business operations, finished goods inventory, and some of our suppliers are located in Asia, making our operations vulnerable to natural disasters such as earthquakes, wildfires, or other business disruptions occurring in these geographical areas."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s003",
+  "label": "present",
+  "quote": "Catastrophic events can also have an impact on third-party vendors who provide us critical infrastructure services for IT and research and development systems and personnel."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s004",
+  "label": "added",
+  "search_terms": [
+   "business continuity",
+   "disaster recovery",
+   "sufficient for all eventualities",
+   "continuity and disaster"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s005",
+  "label": "present",
+  "quote": "Geopolitical and domestic political developments and other events beyond our control, can increase economic volatility globally."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s006",
+  "label": "present",
+  "quote": "Political instability, changes in government or adverse political developments in or around any of the major countries in which we do business would also likely harm our business, financial condition and results of operations."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s007",
+  "label": "present",
+  "quote": "Worldwide geopolitical tensions and conflicts, including but not limited to China, Hong Kong, Israel, Korea and Taiwan where the manufacture of our product components and final assembly of our products are concentrated may result in changing regulatory requirements, and other disruptions that could impact our operations and operating strategies, product demand, access to global markets, hiring, and profitability."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s008",
+  "label": "present",
+  "quote": "For example, other countries have restricted and may continue in the future to restrict business with the State of Israel, where we have engineering, sales support operations and manufacturing, and companies with Israeli operations, including by economic boycotts."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s009",
+  "label": "present",
+  "quote": "Our operations could be harmed and our costs could increase if manufacturing, logistics or other operations are disrupted for any reason, including natural disasters, high heat events or water shortages, information technology system failures, military actions or economic, business, labor, environmental, public health, or political issues."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s010",
+  "label": "present",
+  "quote": "The ultimate impact on us, our third-party foundries and other suppliers of being located and consolidated in certain geographical areas is unknown."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s011",
+  "label": "present",
+  "quote": "In the event a disaster, war or catastrophic event affects us, the third-party systems on which we rely, or our customers, our business could be harmed as a result of declines in revenue, increases in expenses, and substantial expenditures and time spent to fully resume operations."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s012",
+  "label": "present",
+  "quote": "All of these risks and conditions could materially adversely affect our future sales and operating results."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s013",
+  "label": "added",
+  "search_terms": [
+   "3,700 employees",
+   "conflict in and around Israel",
+   "networking products",
+   "health and safety of our"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s014",
+  "label": "added",
+  "search_terms": [
+   "financial support to impacted employees",
+   "charitable activity",
+   "operating expenses in fiscal year 2024",
+   "impacted employees"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s015",
+  "label": "added",
+  "search_terms": [
+   "global supply chain for our networking products",
+   "not experienced any significant impact",
+   "networking products",
+   "we believe our global supply chain"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s016",
+  "label": "added",
+  "search_terms": [
+   "called-up for active military duty",
+   "active military duty",
+   "substantial number of our employees",
+   "in connection with the conflict"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s017",
+  "label": "added",
+  "search_terms": [
+   "absent for an extended period",
+   "employees in Israel",
+   "continue to be absent",
+   "disruption to our product development"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s018",
+  "label": "added",
+  "search_terms": [
+   "did not experience any significant impact",
+   "conflict is further extended",
+   "future product development",
+   "create other uncertainty"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s019",
+  "label": "added",
+  "search_terms": [
+   "co-location partners",
+   "interruptions or delays in services",
+   "insolvency of these parties",
+   "data center co-location"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s020",
+  "label": "added",
+  "search_terms": [
+   "reliance on these third-party systems",
+   "exposure to damage from service interruptions",
+   "performance and quality problems",
+   "service interruptions, defects, disruptions"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s021",
+  "label": "added",
+  "search_terms": [
+   "access to clean water",
+   "predictable energy",
+   "Data centers depend",
+   "clean water and predictable"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i008#s022",
+  "label": "added",
+  "search_terms": [
+   "Power or water shortages",
+   "expand their data center capacity",
+   "consume our products and services",
+   "regulations that limit energy"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s000",
+  "label": "present",
+  "quote": "Our business is dependent upon the proper functioning of our business processes and information systems and modification or interruption of such systems may disrupt our business, processes and internal controls."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s001",
+  "label": "present",
+  "quote": "We rely upon internal processes and information systems to support key business functions, including our assessment of internal controls over financial reporting as required by Section 404 of the Sarbanes-Oxley Act."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s002",
+  "label": "present",
+  "quote": "The efficient operation and scalability of these processes and systems is critical to support our growth."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s003",
+  "label": "reworded",
+  "quote": "In fiscal year 2023, we continued the implementation of accounting and consolidation functionality related to a new enterprise resource planning, or ERP, system."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s004",
+  "label": "reworded",
+  "quote": "Any ERP system problems upon implementation, such as quality issues or programming errors, could impact our continued ability to successfully operate our business or to timely and accurately report our financial results."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s005",
+  "label": "present",
+  "quote": "These changes may be costly and disruptive to our operations and could impose substantial demands on management time."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s006",
+  "label": "present",
+  "quote": "Failure to implement new or updated controls, or difficulties encountered in their implementation, could harm our operating results or cause us to fail to meet our reporting obligations."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s007",
+  "label": "present",
+  "quote": "Identification of material weaknesses in our internal controls, even if quickly remediated once disclosed, may cause investors to lose confidence in our financial statements and our stock"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i013#s008",
+  "label": "present",
+  "quote": "Remediation of any material weakness could require us to incur significant expenses, and if we fail to remediate any material weakness, our financial statements may be inaccurate, we may be required to restate our financial statements, our ability to report our financial results on a timely and accurate basis may be adversely affected, our access to the capital markets may be restricted, our stock price may decline, and we may be subject to sanctions or investigation by regulatory authorities."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s000",
+  "label": "present",
+  "quote": "Our operating results have in the past fluctuated and may in the future fluctuate, and if our operating results are below the expectations of securities analysts or investors, our stock price could decline."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s001",
+  "label": "present",
+  "quote": "Our operating results have in the past fluctuated and may continue to fluctuate due to numerous factors described in these risk factors."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s002",
+  "label": "present",
+  "quote": "Therefore, investors should not rely on past comparisons of our results of operations as an indication of our future performance."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s003",
+  "label": "present",
+  "quote": "Additional factors that could affect our results of operations include, but are not limited to:"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s004",
+  "label": "present",
+  "quote": "our ability to adjust spending to offset revenue shortfalls due to the multi-year development cycle for some of our products and services"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s005",
+  "label": "reworded",
+  "quote": "our ability to comply with our customers’ contractual obligations"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s006",
+  "label": "present",
+  "quote": "our extended payment term arrangements with certain customers, the inability of some customers to make required payments, our ability to obtain credit insurance for these customers and their extended payment terms, and customer bad debt write-offs"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s008",
+  "label": "present",
+  "quote": "unanticipated costs associated with environmental liabilities; and"
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s009",
+  "label": "present",
+  "quote": "changes in financial accounting standards or interpretations of existing standards."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s010",
+  "label": "present",
+  "quote": "Any one or more of the factors discussed above could prevent us from achieving our anticipated future financial results."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s011",
+  "label": "present",
+  "quote": "For example, we have granted and may continue to grant extended payment terms to some customers, particularly during macroeconomic downturns, which could impact our ability to collect payment."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s012",
+  "label": "present",
+  "quote": "Our vendors have requested and may continue to ask for shorter payment terms, which may impact our cash flow generation."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s013",
+  "label": "present",
+  "quote": "These arrangements reduce the cash we have available for general business operations."
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s014",
+  "label": "added",
+  "search_terms": [
+   "pace of growth",
+   "lag our revenue growth",
+   "profitability levels may not be sustainable",
+   "operating expenses and investments"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-24-000029:I.1A:i014#s015",
+  "label": "present",
+  "quote": "Failure to meet our expectations or the expectations of our investors or security analysts is likely to cause our stock price to decline, as it has in the past, or experience substantial price volatility."
+ }
+]

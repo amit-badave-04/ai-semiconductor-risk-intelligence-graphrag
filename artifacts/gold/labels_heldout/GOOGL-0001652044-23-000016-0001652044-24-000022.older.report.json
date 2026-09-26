@@ -1,0 +1,54 @@
+{
+ "pair_id": "GOOGL-0001652044-23-000016-0001652044-24-000022",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001652044-23-000016:I.1A:i000": "reworded",
+  "0001652044-23-000016:I.1A:i007": "reworded",
+  "0001652044-23-000016:I.1A:i009": "reworded",
+  "0001652044-23-000016:I.1A:i015": "reworded",
+  "0001652044-23-000016:I.1A:i025": "removed",
+  "0001652044-23-000016:I.1A:i027": "reworded"
+ },
+ "needs_adjudication": [
+  "0001652044-23-000016:I.1A:i028"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.8571428571428571,
+ "alpha": 0.6285714285714286,
+ "rejected": {},
+ "votes": {
+  "0001652044-23-000016:I.1A:i000": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001652044-23-000016:I.1A:i007": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001652044-23-000016:I.1A:i009": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001652044-23-000016:I.1A:i015": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001652044-23-000016:I.1A:i025": {
+   "ann1": "removed",
+   "ann2": "removed"
+  },
+  "0001652044-23-000016:I.1A:i027": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001652044-23-000016:I.1A:i028": {
+   "ann1": "reworded",
+   "ann2": "merged"
+  }
+ }
+}

@@ -1,0 +1,59 @@
+{
+ "pair_id": "MSFT-0000950170-25-100235-0001193125-26-323660",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000950170-25-100235:I.1A:i001": "reworded",
+  "0000950170-25-100235:I.1A:i002": "unchanged",
+  "0000950170-25-100235:I.1A:i003": "reworded",
+  "0000950170-25-100235:I.1A:i004": "reworded",
+  "0000950170-25-100235:I.1A:i005": "reworded",
+  "0000950170-25-100235:I.1A:i010": "reworded",
+  "0000950170-25-100235:I.1A:i011": "reworded"
+ },
+ "needs_adjudication": [
+  "0000950170-25-100235:I.1A:i018"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.875,
+ "alpha": 0.6153846153846154,
+ "rejected": {},
+ "votes": {
+  "0000950170-25-100235:I.1A:i001": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-25-100235:I.1A:i002": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0000950170-25-100235:I.1A:i003": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-25-100235:I.1A:i004": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-25-100235:I.1A:i005": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-25-100235:I.1A:i010": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-25-100235:I.1A:i011": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000950170-25-100235:I.1A:i018": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  }
+ }
+}

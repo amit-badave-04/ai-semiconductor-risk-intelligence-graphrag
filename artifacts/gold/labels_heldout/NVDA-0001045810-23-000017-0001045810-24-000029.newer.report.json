@@ -1,0 +1,43 @@
+{
+ "pair_id": "NVDA-0001045810-23-000017-0001045810-24-000029",
+ "side": "newer",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001045810-24-000029:I.1A:i004": "carried",
+  "0001045810-24-000029:I.1A:i006": "carried",
+  "0001045810-24-000029:I.1A:i008": "carried",
+  "0001045810-24-000029:I.1A:i013": "carried",
+  "0001045810-24-000029:I.1A:i014": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001045810-24-000029:I.1A:i004": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001045810-24-000029:I.1A:i006": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001045810-24-000029:I.1A:i008": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001045810-24-000029:I.1A:i013": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001045810-24-000029:I.1A:i014": {
+   "ann1": "carried",
+   "ann2": "carried"
+  }
+ }
+}

@@ -1,0 +1,532 @@
+[
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s000",
+"label": "present",
+"quote": "Economic and market uncertainty may adversely impact our business and operating results."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s001",
+"label": "present",
+"quote": "Uncertain global or regional economic conditions have and may in the future adversely impact our business."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s002",
+"label": "present",
+"quote": "Uncertainty in the economic environment or other unfavorable changes in economic conditions, such as inflation, higher interest rates, recession, slowing growth"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s003",
+"label": "reworded",
+"quote": "For example, our Embedded segment revenue decreased in 2024 as customers continued to normalize their inventory levels."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s004",
+"label": "present",
+"quote": "During challenging economic times, our current or potential future customers may experience cash flow problems"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s005",
+"label": "present",
+"quote": "Additionally, if our customers are not successful in generating sufficient revenue or are unable to secure financing"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s006",
+"label": "present",
+"quote": "The risk related to our customers potentially defaulting on or delaying payments to us is increased"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s007",
+"label": "present",
+"quote": "Any inability of our current or potential future customers to pay us for our products may adversely affect our earnings and cash flow."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s008",
+"label": "present",
+"quote": "Moreover, our key suppliers may reduce their output or become insolvent, thereby adversely impacting our ability to manufacture our products."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s009",
+"label": "present",
+"quote": "Adverse changes in economic conditions could increase costs of memory, equipment, materials or substrates and other supply chain expenses."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s010",
+"label": "present",
+"quote": "If we are not able to procure a stable supply of materials on an ongoing basis and at reasonable costs"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s011",
+"label": "present",
+"quote": "In addition, uncertain economic conditions could lead to higher borrowing costs and reduced availability of capital and credit markets"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i001#s012",
+"label": "present",
+"quote": "could also lead to failures of counterparties including financial institutions and insurers, asset impairments and declines in the value of our financial instruments."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s000",
+"label": "present",
+"quote": "The demand for our products depends in part on the market conditions in the industries into which they are sold."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s001",
+"label": "present",
+"quote": "Fluctuations in demand for our products or a market decline in any of these industries could have a material adverse effect on our results of operations."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s002",
+"label": "present",
+"quote": "Industry-wide fluctuations in the computer marketplace have materially adversely affected us in the past and may materially adversely affect us in the future."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s003",
+"label": "present",
+"quote": "We offer products that are used in different end markets and the demand for our products can vary among our Data Center, Client, Gaming and Embedded end markets."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s004",
+"label": "present",
+"quote": "For instance, in our Data Center segment, we offer products that are optimized for generative AI applications and since the fourth quarter of 2023"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s005",
+"label": "present",
+"quote": "The demand for such products in part will depend on the extent to which our customers utilize generative AI solutions in a wide variety of applications"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s006",
+"label": "present",
+"quote": "Also, our Client segment revenue is focused on the consumer desktop and notebook PC segments"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s007",
+"label": "removed",
+"search_terms": [
+"decline in the PC market",
+"second half of 2022",
+"first half of 2023",
+"Client segment revenue decreased"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s008",
+"label": "present",
+"quote": "experienced a decline driven by, among other factors, the adoption of smaller and other form factors, increased competition and changes in replacement cycles."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s009",
+"label": "present",
+"quote": "In addition, our GPU revenue in the past has been affected in part by the volatility of the cryptocurrency mining market."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s010",
+"label": "present",
+"quote": "If we are unable to manage the risks related to the volatility of the cryptocurrency mining market (including potential actions by global monetary authorities), our GPU business could be materially adversely affected."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s011",
+"label": "present",
+"quote": "The success of our semi-custom SoC products in our Gaming segment is dependent on securing customers for our semi-custom design pipeline"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s012",
+"label": "present",
+"quote": "Our Embedded segment primarily includes embedded CPUs and GPUs, APUs, FPGAs and Adaptive SoC products some of which are subject to macroeconomic trends and volatile business conditions."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s013",
+"label": "present",
+"quote": "To the extent our embedded customers are faced with higher inventory levels, they may choose to draw down their existing inventory and order less of our products."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i003#s014",
+"label": "reworded",
+"quote": "our Embedded segment revenue decreased in 2024 as customers continued to normalize their inventory levels."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s000",
+"label": "present",
+"quote": "The markets in which our products are sold are highly competitive and rapidly evolving."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s001",
+"label": "removed",
+"search_terms": [
+"critical to achieving revenue growth",
+"latest and best products",
+"delivering the latest",
+"revenue growth"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s002",
+"label": "present",
+"quote": "We believe that the main factors that determine our product competitiveness are total cost of ownership, timely product introductions, product quality, product features and capabilities"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s003",
+"label": "present",
+"quote": "We expect that competition will continue to be intense due to rapid technological changes"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s004",
+"label": "removed",
+"search_terms": [
+"aggressive pricing",
+"pricing by competitors",
+"especially during challenging",
+"competitors"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s005",
+"label": "present",
+"quote": "Further, our competitors have significant marketing and sales resources which could increase the competitive environment in a declining market or during challenging economic times, leading to lower prices and a reduction in our margins."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s006",
+"label": "removed",
+"search_terms": [
+"complementary technologies",
+"technical information",
+"greater access",
+"interface"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s007",
+"label": "removed",
+"search_terms": [
+"integrated graphics",
+"discrete graphics",
+"graphics chips",
+"improvements in the quality"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s008",
+"label": "present",
+"quote": "If competitors introduce competitive new products into the market before us, demand for our products could be adversely impacted and our business could be adversely affected."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s009",
+"label": "removed",
+"search_terms": [
+"high-end discrete",
+"ARM CPU",
+"Nvidia has added",
+"expanding its position"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s010",
+"label": "present",
+"quote": "Increased adoption of Arm-based semiconductor designs could lead to further growth and development of the Arm ecosystem."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s011",
+"label": "present",
+"quote": "While we see significant opportunity in AI, we expect intense competition from companies such as Nvidia in the supply of GPUs and other accelerators for the AI market."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s012",
+"label": "present",
+"quote": "In addition, we are entering markets with current and new competitors who may be able to adapt more quickly to customer requirements and emerging technologies."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s013",
+"label": "present",
+"quote": "We cannot guarantee that we will be able to compete successfully against current or new competitors who may have stronger positions in these new markets"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s014",
+"label": "present",
+"quote": "We may face competition from some of our customers who internally develop the same products as us."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s015",
+"label": "present",
+"quote": "We may also face delays or disruptions in research and development efforts, or we may be required to invest significantly greater resources in research and development than anticipated."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s016",
+"label": "present",
+"quote": "In addition, the semiconductor industry has seen several mergers and acquisitions over the last number of years."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s017",
+"label": "present",
+"quote": "Further consolidation could adversely impact our business due to there being fewer suppliers, customers and partners in the industry."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s018",
+"label": "present",
+"quote": "From time to time, governments provide incentives or make other investments that could benefit and give a competitive advantage"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s019",
+"label": "present",
+"quote": "For example, the United States government enacted the Creating Helpful Incentives to Produce Semiconductors for America and Science Act (CHIPS Act) of 2022 to provide financial incentives to the U.S. semiconductor industry."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s020",
+"label": "present",
+"quote": "Government incentives, including the CHIPS Act, may not be available to us on acceptable terms or at all."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i006#s021",
+"label": "present",
+"quote": "If our competitors can benefit from such government incentives and we cannot, it could strengthen our competitors’ relative position and have a material adverse effect on our business."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s000",
+"label": "present",
+"quote": "If essential equipment, materials, substrates or manufacturing processes are not available to manufacture our products, we could be materially adversely affected."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s001",
+"label": "present",
+"quote": "We may purchase equipment, materials and substrates for use by our back-end manufacturing service providers from a number of suppliers"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s002",
+"label": "present",
+"quote": "Our third-party suppliers also depend on the same timely delivery of adequate quantities of equipment and materials"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s003",
+"label": "present",
+"quote": "In addition, as many of our products increase in technical complexity, we rely on our third-party suppliers to update their processes"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s004",
+"label": "present",
+"quote": "Certain equipment and materials that are used in the manufacture of our products are available only from a limited number of suppliers, or in some cases, a sole supplier."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s005",
+"label": "present",
+"quote": "We also depend on a limited number of suppliers to provide the majority of certain types of IC packages for our microprocessors, including our APU products."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s006",
+"label": "present",
+"quote": "Similarly, certain non-proprietary materials or components such as memory, printed circuit boards (PCBs), interposers, substrates and capacitors"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s007",
+"label": "present",
+"quote": "we could experience a shortage in memory, equipment, materials or substrate supply or an increase in production costs, which could have a material adverse effect on our business."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s008",
+"label": "present",
+"quote": "We have long-term purchase commitments and prepayment arrangements with some of our suppliers."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s009",
+"label": "present",
+"quote": "If the delivery of such supply is delayed or does not occur for any reason, it could materially impact our ability to procure and process the required volume of supply to meet customer demand."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s010",
+"label": "present",
+"quote": "it could result in excess inventory and an increase in our production costs, particularly since we have prepayment arrangements with certain suppliers."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s011",
+"label": "present",
+"quote": "Because some of the equipment and materials that we and our third-party manufacturers purchase are complex, it is sometimes difficult to substitute one equipment or materials"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s012",
+"label": "present",
+"quote": "From time to time, suppliers may extend lead times, limit supply or increase prices due to capacity constraints or other factors."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s013",
+"label": "present",
+"quote": "Also, some of these materials and components may be subject to rapid changes in price, quality and availability."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s014",
+"label": "present",
+"quote": "Interruption of supply or increased demand in the industry could cause shortages and price increases in various essential materials."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s015",
+"label": "present",
+"quote": "Dependence on a sole supplier or a limited number of suppliers exacerbates these risks."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i011#s016",
+"label": "present",
+"quote": "If we are unable to procure certain of these materials for our back-end manufacturing operations"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s000",
+"label": "removed",
+"search_terms": [
+"working capital",
+"generate sufficient cash",
+"cash shortfall",
+"cash requirements"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s001",
+"label": "removed",
+"search_terms": [
+"sufficient revenue and operating cash flow",
+"cash shortfall",
+"planned investments",
+"strategic investments"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s002",
+"label": "reworded",
+"quote": "If a banking institution in which we hold funds fails or is subject to significant adverse conditions"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s003",
+"label": "removed",
+"search_terms": [
+"financial and operating performance",
+"fluctuate significantly from quarter",
+"prevailing economic",
+"beyond our control"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s004",
+"label": "removed",
+"search_terms": [
+"cannot assure you",
+"cash flow in amounts",
+"working capital requirements",
+"sufficient to enable"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s005",
+"label": "removed",
+"search_terms": [
+"sell assets or equity",
+"refinance",
+"reduce expenditures",
+"additional financing"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s006",
+"label": "removed",
+"search_terms": [
+"fund research and development",
+"external financing",
+"availability of external",
+"research and development expenditures"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s007",
+"label": "removed",
+"search_terms": [
+"substantial drain",
+"ongoing operating expenses",
+"decrease our cash balances",
+"cash flow"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s008",
+"label": "reworded",
+"quote": "we may be required to invest significantly greater resources in research and development than anticipated."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s009",
+"label": "removed",
+"search_terms": [
+"without an increase in revenue",
+"operating results could decline",
+"greater resources than anticipated",
+"research and development efforts"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s010",
+"label": "removed",
+"search_terms": [
+"abandon projects",
+"curtail planned",
+"strategic initiatives",
+"inability to generate sufficient cash"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s011",
+"label": "removed",
+"search_terms": [
+"fail to remain competitive",
+"curtail planned investments",
+"abandon projects",
+"materially adversely affected"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s012",
+"label": "removed",
+"search_terms": [
+"insured limits",
+"deposits",
+"cash equivalents",
+"exceed"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s013",
+"label": "present",
+"quote": "If a banking institution in which we hold funds fails or is subject to significant adverse conditions in the financial or credit markets, we could be subject to a risk of loss of all or a portion of such uninsured funds"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s014",
+"label": "present",
+"quote": "adversely impact our short-term liquidity and ability to meet our operating expense obligations"
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i041#s015",
+"label": "removed",
+"search_terms": [
+"equity or debt financing",
+"reasonable terms",
+"more difficult to obtain",
+"additional equity"
+]
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i043#s000",
+"label": "present",
+"quote": "We may incur future impairments of our technology license purchases."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i043#s001",
+"label": "present",
+"quote": "We license certain third-party technologies and tools for the design and production of our products."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i043#s002",
+"label": "present",
+"quote": "We report the value of those licenses as other non-current assets on the Consolidated Balance Sheets, and we periodically evaluate the carrying value of those licenses based on their future economic benefit to us."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i043#s003",
+"label": "present",
+"quote": "Factors such as the life of the assets, changes in competing technologies, and changes to the business strategy may represent an indicator of impairment."
+},
+{
+"sentence_id": "0000002488-24-000012:I.1A:i043#s004",
+"label": "present",
+"quote": "The occurrence of any of these events may require us to record future technology license impairment charges."
+}
+]

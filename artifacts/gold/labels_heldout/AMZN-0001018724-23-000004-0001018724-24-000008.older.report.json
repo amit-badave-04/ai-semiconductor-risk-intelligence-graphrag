@@ -1,0 +1,43 @@
+{
+ "pair_id": "AMZN-0001018724-23-000004-0001018724-24-000008",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001018724-23-000004:I.1A:i001": "reworded",
+  "0001018724-23-000004:I.1A:i006": "unchanged",
+  "0001018724-23-000004:I.1A:i013": "reworded",
+  "0001018724-23-000004:I.1A:i014": "unchanged",
+  "0001018724-23-000004:I.1A:i022": "reworded"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001018724-23-000004:I.1A:i001": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001018724-23-000004:I.1A:i006": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0001018724-23-000004:I.1A:i013": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001018724-23-000004:I.1A:i014": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0001018724-23-000004:I.1A:i022": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  }
+ }
+}

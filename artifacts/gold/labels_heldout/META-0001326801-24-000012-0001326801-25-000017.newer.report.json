@@ -1,0 +1,43 @@
+{
+ "pair_id": "META-0001326801-24-000012-0001326801-25-000017",
+ "side": "newer",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001326801-25-000017:I.1A:i002": "carried",
+  "0001326801-25-000017:I.1A:i022": "carried",
+  "0001326801-25-000017:I.1A:i025": "carried",
+  "0001326801-25-000017:I.1A:i031": "carried",
+  "0001326801-25-000017:I.1A:i045": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001326801-25-000017:I.1A:i002": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001326801-25-000017:I.1A:i022": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001326801-25-000017:I.1A:i025": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001326801-25-000017:I.1A:i031": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001326801-25-000017:I.1A:i045": {
+   "ann1": "carried",
+   "ann2": "carried"
+  }
+ }
+}

@@ -1,0 +1,419 @@
+[
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i000#s000",
+  "label": "present",
+  "quote": "Volatility in average selling prices for our semiconductor memory and storage products may adversely affect our business."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i000#s001",
+  "label": "present",
+  "quote": "We have experienced significant volatility in our average selling prices and may continue to experience such volatility in the future."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i000#s002",
+  "label": "present",
+  "quote": "Since 2017, annual percentage changes in DRAM average selling prices have ranged from approximately plus 35% to a minus high-40s percent range."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i000#s003",
+  "label": "present",
+  "quote": "Since 2017, annual percentage changes in NAND average selling prices have ranged from nearly flat to a minus low-50s percent range."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i000#s004",
+  "label": "present",
+  "quote": "In current and recent periods, average selling prices for our products have been below our manufacturing costs"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i000#s005",
+  "label": "present",
+  "quote": "Average selling prices for our products that decline faster than our costs have recently had an adverse effect on our business and results of operations"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s000",
+  "label": "present",
+  "quote": "If our manufacturing process is disrupted by operational issues, natural disasters, or other events"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s001",
+  "label": "present",
+  "quote": "We and our subcontractors manufacture products using highly complex processes that require technologically advanced equipment"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s002",
+  "label": "present",
+  "quote": "Difficulties in the manufacturing process or the effects from a shift in product mix can reduce yields or disrupt production"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s003",
+  "label": "present",
+  "quote": "manufacturing facilities, which are widely dispersed in multiple locations in several countries including the United States, Singapore, Taiwan, Japan, Malaysia, and China"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s004",
+  "label": "present",
+  "quote": "an operational disruption at one of our or a subcontractor’s facilities may have a disproportionate impact on our ability to produce many of our products"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s005",
+  "label": "present",
+  "quote": "From time to time, there have been disruptions in our manufacturing operations as a result of power outages, improperly functioning equipment"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s006",
+  "label": "present",
+  "quote": "We have manufacturing and other operations in locations subject to natural occurrences and possible climate changes"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s007",
+  "label": "present",
+  "quote": "In addition, climate change may pose physical risks to our manufacturing facilities or our suppliers’ facilities"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s008",
+  "label": "present",
+  "quote": "Other events, including political or public health crises, such as an outbreak of contagious diseases, may also affect our production capabilities"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s009",
+  "label": "present",
+  "quote": "Events of the types noted above have occurred from time to time and may occur in the future."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s010",
+  "label": "present",
+  "quote": "insurance premiums may increase or we may not be able to fully recover any sustained losses through insurance."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s012",
+  "label": "present",
+  "quote": "If production is disrupted for any reason, manufacturing yields may be adversely affected, or we may be unable to meet our customers’ requirements"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i009#s013",
+  "label": "present",
+  "quote": "This could result in a significant increase in manufacturing costs, loss of revenue, or damage to customer relationships"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s000",
+  "label": "reworded",
+  "quote": "Breaches of our security systems or products, or those of our customers, suppliers, or business partners, could expose us to losses."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s001",
+  "label": "present",
+  "quote": "We maintain a system of controls over the physical security of our facilities."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s002",
+  "label": "present",
+  "quote": "We also manage and store various proprietary information and sensitive or confidential data relating to our operations."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s003",
+  "label": "present",
+  "quote": "In addition, we process, store, and transmit large amounts of data relating to our customers and employees, including sensitive personal information."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s004",
+  "label": "present",
+  "quote": "Unauthorized persons, employees, former employees, nation states, or other parties may gain access to our facilities or technology infrastructure and systems"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s005",
+  "label": "present",
+  "quote": "This risk is exacerbated as competitors for talent, particularly engineering talent, attempt to hire our employees."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s006",
+  "label": "present",
+  "quote": "Through cyberattacks on technology infrastructure and systems, unauthorized parties may obtain access to computer systems, networks, and data, including cloud-based platforms."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s007",
+  "label": "present",
+  "quote": "The technology infrastructure and systems of our suppliers, vendors, service providers, cloud solution providers, and partners have in the past experienced, and may in the future experience, such attacks"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s008",
+  "label": "present",
+  "quote": "and other malicious software programs or other attacks, including those using techniques that change frequently or may be disguised or difficult to detect"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s009",
+  "label": "reworded",
+  "quote": "Additionally, some actors are using artificial intelligence technology to launch more automated, targeted and coordinated attacks. Globally, cyberattacks are increasing in number"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s010",
+  "label": "present",
+  "quote": "Globally, cyberattacks are increasing in number and the attackers are increasingly organized and well-financed"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s011",
+  "label": "present",
+  "quote": "In addition, geopolitical tensions or conflicts may create a heightened risk of cyberattacks."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s012",
+  "label": "reworded",
+  "quote": "Breaches of our physical security, attacks on our technology infrastructure and systems, or breaches or attacks on our customers, suppliers, or business partners"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s013",
+  "label": "added",
+  "search_terms": [
+   "service interruptions",
+   "human error",
+   "terrorist attacks",
+   "telecommunications",
+   "pandemics"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s014",
+  "label": "reworded",
+  "quote": "could result in significant losses and damage our reputation with customers and suppliers and may expose us to litigation if the confidential information of our customers, suppliers, or employees is compromised."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s015",
+  "label": "present",
+  "quote": "Our products are also targets for cyberattacks"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s016",
+  "label": "present",
+  "quote": "While some of our products contain encryption or security algorithms to protect third-party content or user-generated data stored on our products"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s017",
+  "label": "present",
+  "quote": "Further, our products contain sophisticated hardware and firmware and applications that may contain security vulnerabilities"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s018",
+  "label": "present",
+  "quote": "this could harm our business by requiring us to employ additional resources to fix the errors or defects"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s019",
+  "label": "added",
+  "search_terms": [
+   "applicable insurance coverage",
+   "adequately insured",
+   "insurance coverage",
+   "acceptable terms",
+   "data loss"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i013#s020",
+  "label": "present",
+  "quote": "Any of the foregoing security risks could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s000",
+  "label": "present",
+  "quote": "We and others are subject to a variety of complex and evolving laws, regulations, or industry standards, including with respect to environmental"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s001",
+  "label": "present",
+  "quote": "The manufacture of our products requires the use of facilities, equipment, chemicals, and materials that are subject to a broad array of laws"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s002",
+  "label": "added",
+  "search_terms": [
+   "PFAS",
+   "polyfluoroalkyl",
+   "per- and",
+   "class of chemicals"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s003",
+  "label": "present",
+  "quote": "Additionally, we are subject to a variety of other laws and regulations relative to the construction, maintenance, and operations of our facilities."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s004",
+  "label": "present",
+  "quote": "Any changes in laws, regulations, or industry standards could cause us to incur additional direct costs, as well as increased indirect costs"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s005",
+  "label": "present",
+  "quote": "Any failure to comply with laws, regulations, or industry standards could adversely impact our reputation and our financial results."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s006",
+  "label": "present",
+  "quote": "we engage various third parties as sales channel partners or to represent us or otherwise act on our behalf"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s007",
+  "label": "present",
+  "quote": "Our engagement with these third parties may also expose us to risks associated with their respective compliance"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s008",
+  "label": "present",
+  "quote": "New and evolving environmental health, safety, and product considerations, including those related to greenhouse gas emissions and climate change"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s009",
+  "label": "present",
+  "quote": "Such laws, regulations, or industry standards could cause us to incur additional direct costs for compliance"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s010",
+  "label": "present",
+  "quote": "These costs may adversely impact our results of operations and financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s011",
+  "label": "added",
+  "search_terms": [
+   "data privacy",
+   "human-focused",
+   "accountable",
+   "personal and proprietary data"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s012",
+  "label": "added",
+  "search_terms": [
+   "reluctance",
+   "market expectations",
+   "inadequate controls",
+   "perceived"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s013",
+  "label": "present",
+  "quote": "These costs may adversely impact our results of operations and financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s014",
+  "label": "present",
+  "quote": "As a result of the considerations detailed in this risk factor, we could experience the following"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s015",
+  "label": "present",
+  "quote": "suspension of production or sales of our products"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s016",
+  "label": "present",
+  "quote": "limited supplies of chemicals or materials used to make our products"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s019",
+  "label": "present",
+  "quote": "alteration of our manufacturing processes"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s020",
+  "label": "present",
+  "quote": "regulatory penalties, fines, civil or criminal sanctions, and other legal liabilities"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i025#s022",
+  "label": "present",
+  "quote": "Compliance with, or our failure, or the failure of our third-party sales channel partners or agents, to comply with, laws"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s000",
+  "label": "present",
+  "quote": "We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s001",
+  "label": "present",
+  "quote": "Our cash flows from operations depend primarily on the volume of semiconductor memory and storage products sold"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s002",
+  "label": "present",
+  "quote": "To develop new product and process technology, support future growth, achieve operating efficiencies, and maintain product quality"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s003",
+  "label": "present",
+  "quote": "We estimate capital expenditures in 2024 for property, plant, and equipment, net of partner contributions"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s004",
+  "label": "present",
+  "quote": "In the past, we have utilized external sources of financing when needed."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s005",
+  "label": "present",
+  "quote": "As a result of our debt levels, expected debt amortization, prevailing interest rates, and general capital market"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s006",
+  "label": "present",
+  "quote": "We have experienced volatility in our cash flows and operating results and we expect to continue to experience such volatility"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s007",
+  "label": "present",
+  "quote": "Our credit rating may also be affected by our liquidity, financial results, economic risk, or other factors"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s008",
+  "label": "present",
+  "quote": "There can be no assurance that we will be able to generate sufficient cash flows, access capital or credit markets"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i026#s009",
+  "label": "present",
+  "quote": "Our inability to do any of the foregoing could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i032#s000",
+  "label": "present",
+  "quote": "There can be no assurance that we will continue to declare cash dividends in any particular amounts or at all."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i032#s001",
+  "label": "present",
+  "quote": "Our Board of Directors has adopted a dividend policy pursuant to which we currently pay a cash dividend"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i032#s002",
+  "label": "present",
+  "quote": "The declaration and payment of any dividend is subject to the approval of our Board of Directors"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i032#s003",
+  "label": "present",
+  "quote": "There can be no assurance that we will declare cash dividends in the future in any particular amounts, or at all."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i032#s004",
+  "label": "present",
+  "quote": "Future dividends, if any, and their timing and amount, may be affected by, among other factors"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i032#s005",
+  "label": "present",
+  "quote": "A reduction in or elimination of our dividend payments could have a negative effect on the trading price of our stock."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i032#s006",
+  "label": "added",
+  "search_terms": [
+   "payment of dividends",
+   "availability of cash",
+   "repayment of indebtedness",
+   "use of cash"
+  ]
+ }
+]

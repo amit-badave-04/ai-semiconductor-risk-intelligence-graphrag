@@ -1,0 +1,69 @@
+{
+ "pair_id": "AMD-0000002488-24-000012-0000002488-25-000012",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000002488-24-000012:I.1A:i001": "reworded",
+  "0000002488-24-000012:I.1A:i003": "reworded",
+  "0000002488-24-000012:I.1A:i005": "merged",
+  "0000002488-24-000012:I.1A:i006": "reworded",
+  "0000002488-24-000012:I.1A:i008": "unchanged",
+  "0000002488-24-000012:I.1A:i011": "reworded",
+  "0000002488-24-000012:I.1A:i040": "merged",
+  "0000002488-24-000012:I.1A:i041": "merged",
+  "0000002488-24-000012:I.1A:i043": "unchanged"
+ },
+ "needs_adjudication": [
+  "0000002488-24-000012:I.1A:i017"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.9,
+ "alpha": 0.8592592592592593,
+ "rejected": {},
+ "votes": {
+  "0000002488-24-000012:I.1A:i001": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000002488-24-000012:I.1A:i003": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000002488-24-000012:I.1A:i005": {
+   "ann1": "merged",
+   "ann2": "merged"
+  },
+  "0000002488-24-000012:I.1A:i006": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000002488-24-000012:I.1A:i008": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0000002488-24-000012:I.1A:i011": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000002488-24-000012:I.1A:i017": {
+   "ann1": "removed",
+   "ann2": "merged"
+  },
+  "0000002488-24-000012:I.1A:i040": {
+   "ann1": "merged",
+   "ann2": "merged"
+  },
+  "0000002488-24-000012:I.1A:i041": {
+   "ann1": "merged",
+   "ann2": "merged"
+  },
+  "0000002488-24-000012:I.1A:i043": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  }
+ }
+}

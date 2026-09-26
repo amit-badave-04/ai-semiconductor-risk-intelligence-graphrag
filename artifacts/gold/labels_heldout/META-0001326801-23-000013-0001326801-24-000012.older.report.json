@@ -1,0 +1,48 @@
+{
+ "pair_id": "META-0001326801-23-000013-0001326801-24-000012",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001326801-23-000013:I.1A:i000": "reworded",
+  "0001326801-23-000013:I.1A:i002": "reworded",
+  "0001326801-23-000013:I.1A:i009": "reworded",
+  "0001326801-23-000013:I.1A:i037": "reworded",
+  "0001326801-23-000013:I.1A:i041": "reworded",
+  "0001326801-23-000013:I.1A:i043": "reworded"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001326801-23-000013:I.1A:i000": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001326801-23-000013:I.1A:i002": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001326801-23-000013:I.1A:i009": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001326801-23-000013:I.1A:i037": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001326801-23-000013:I.1A:i041": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001326801-23-000013:I.1A:i043": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  }
+ }
+}

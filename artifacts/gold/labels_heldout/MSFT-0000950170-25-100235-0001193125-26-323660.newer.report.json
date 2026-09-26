@@ -1,0 +1,73 @@
+{
+ "pair_id": "MSFT-0000950170-25-100235-0001193125-26-323660",
+ "side": "newer",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001193125-26-323660:I.1A:i001": "carried",
+  "0001193125-26-323660:I.1A:i002": "carried",
+  "0001193125-26-323660:I.1A:i003": "carried",
+  "0001193125-26-323660:I.1A:i004": "carried",
+  "0001193125-26-323660:I.1A:i006": "carried",
+  "0001193125-26-323660:I.1A:i007": "carried",
+  "0001193125-26-323660:I.1A:i011": "carried",
+  "0001193125-26-323660:I.1A:i012": "carried",
+  "0001193125-26-323660:I.1A:i013": "carried",
+  "0001193125-26-323660:I.1A:i014": "carried",
+  "0001193125-26-323660:I.1A:i021": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001193125-26-323660:I.1A:i001": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i002": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i003": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i004": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i006": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i007": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i011": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i012": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i013": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i014": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-26-323660:I.1A:i021": {
+   "ann1": "carried",
+   "ann2": "carried"
+  }
+ }
+}

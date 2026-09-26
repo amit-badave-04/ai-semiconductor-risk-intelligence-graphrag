@@ -1,0 +1,551 @@
+[
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s000",
+  "label": "present",
+  "quote": "Compliance with these regulations may cause us to incur significant expense"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s001",
+  "label": "reworded",
+  "quote": "failure to maintain compliance with applicable regulations could adversely affect our business"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s002",
+  "label": "present",
+  "quote": "Our business is subject to various domestic and international laws and other legal requirements, including anti-competition and import/export regulations, such as the U.S. Export Administration Regulations, and applicable executive orders"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s003",
+  "label": "present",
+  "quote": "These laws, regulations and orders are complex, may change frequently and with limited notice, and generally become more stringent over time"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s004",
+  "label": "present",
+  "quote": "We may be required to incur significant expense to comply with, or to remedy violations of, these regulations"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s005",
+  "label": "present",
+  "quote": "In addition, if our customers fail to comply with these regulations, we may be required to suspend sales to these customers, which could damage our reputation and negatively impact our results of operations"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s006",
+  "label": "present",
+  "quote": "The U.S. government may continue to add companies to its restricted entity list and/or technologies to its list of prohibited exports to specific countries"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s007",
+  "label": "removed",
+  "search_terms": [
+   "Huawei",
+   "Department of Commerce",
+   "export restrictions",
+   "suspend sales until licenses"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s008",
+  "label": "removed",
+  "search_terms": [
+   "necessary licenses",
+   "obtain or maintain",
+   "export products to them",
+   "Huawei"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s009",
+  "label": "present",
+  "quote": "These restrictive governmental actions and any similar measures that may be imposed on U.S. companies by other governments"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s010",
+  "label": "present",
+  "quote": "Furthermore, government authorities may take retaliatory actions, impose conditions for the supply of products or require the license or other transfer of IP"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s011",
+  "label": "present",
+  "quote": "Our products and operations are also subject to regulation by U.S. and non-U.S. regulatory agencies, such as the U.S. Federal Trade Commission"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s012",
+  "label": "present",
+  "quote": "such as the ongoing investigation by the Korean Fair Trade Commission into certain of our contracting and business practices"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s013",
+  "label": "present",
+  "quote": "Growing public concern over concentration of economic power in corporations is leading to increased anti-competition legislation"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s014",
+  "label": "present",
+  "quote": "Involvement in regulatory investigations or inquiries can be costly, lengthy, complex and time consuming"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s015",
+  "label": "present",
+  "quote": "If any pending or future governmental investigations result in an unfavorable resolution, we could be required to cease the manufacture and sale of the subject products or technology"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s016",
+  "label": "removed",
+  "search_terms": [
+   "former directors",
+   "directors or employees",
+   "indemnify our current",
+   "regulatory investigations indemnification"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s017",
+  "label": "removed",
+  "search_terms": [
+   "law enforcement",
+   "criminal fines",
+   "substantial liabilities",
+   "cost of government"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s018",
+  "label": "present",
+  "quote": "The manufacture and distribution of our semiconductors must comply with technical standards and a variety of domestic and international laws and regulations"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s019",
+  "label": "present",
+  "quote": "require us to stop distributing our products commercially until they comply with such new standards, lead our customers to suspend imports of their products into that country"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i001#s020",
+  "label": "removed",
+  "search_terms": [
+   "civil penalties",
+   "criminal prosecution",
+   "face criminal",
+   "pay civil"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s000",
+  "label": "present",
+  "quote": "Failure to realize the benefits expected from the VMware Merger could adversely affect our business and the value of our common stock"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s001",
+  "label": "present",
+  "quote": "we are focusing on VMware’s core business of creating private cloud environments on-premises among large enterprises globally and divesting non-core assets"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s002",
+  "label": "present",
+  "quote": "If VMware customers do not accept our business strategy"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s003",
+  "label": "present",
+  "quote": "Although we expect significant benefits to result from the VMware Merger"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s004",
+  "label": "present",
+  "quote": "Achieving these benefits will depend, in part, on our ability to integrate VMware's business successfully and efficiently"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s005",
+  "label": "removed",
+  "search_terms": [
+   "challenges involved",
+   "complex and time consuming",
+   "following challenges",
+   "include the following"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s006",
+  "label": "removed",
+  "search_terms": [
+   "preserving customer",
+   "important relationships",
+   "attracting new business",
+   "operational relationships"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s007",
+  "label": "removed",
+  "search_terms": [
+   "financial forecasting",
+   "reporting cycles",
+   "integrating financial",
+   "controls procedures"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s008",
+  "label": "removed",
+  "search_terms": [
+   "information technology",
+   "administrative infrastructures",
+   "consolidating",
+   "finance and administrative"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s009",
+  "label": "removed",
+  "search_terms": [
+   "coordinating sales",
+   "marketing efforts",
+   "position our capabilities",
+   "sales and marketing"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s010",
+  "label": "removed",
+  "search_terms": [
+   "countries in which we have not previously operated",
+   "previously operated",
+   "coordinating and integrating operations",
+   "new countries"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s011",
+  "label": "removed",
+  "search_terms": [
+   "reorienting",
+   "sales and marketing force",
+   "change in strategy",
+   "align with"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s012",
+  "label": "removed",
+  "search_terms": [
+   "VMware workforce",
+   "employee morale",
+   "attrition",
+   "retaining key employees"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s013",
+  "label": "reworded",
+  "quote": "if we do not successfully manage the challenges inherent in integrating an acquired business, we may not realize these benefits, and our revenue, expenses, operating results, financial condition and stock price could be materially adversely affected"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i003#s014",
+  "label": "present",
+  "quote": "The successful integration of the VMware business has required, and will continue to require, significant management attention, and may divert the attention of management from other business and operational issues"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s000",
+  "label": "present",
+  "quote": "any other impairment of the confidentiality, integrity or availability of our IT systems, or those of one or more of our corporate infrastructure vendors, could have a material adverse effect on our business"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s001",
+  "label": "present",
+  "quote": "Our business depends on a wide variety of complex IT systems and services, including cloud-based and other critical corporate services relating to, among other things, product research and development"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s002",
+  "label": "present",
+  "quote": "These systems and services are both internally managed and outsourced, and in many cases we rely upon third-party data centers"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s003",
+  "label": "present",
+  "quote": "Any failure of these internal or third-party systems and services to operate effectively could disrupt our operations and could have a material adverse effect on our business, financial condition and results of operations"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s004",
+  "label": "present",
+  "quote": "Our operations are dependent upon our ability to protect our IT infrastructure against damage from business continuity events that could have a significant disruptive effect"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s005",
+  "label": "present",
+  "quote": "we are, out of necessity, dependent on our vendors to adequately address cybersecurity threats to their own systems"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s006",
+  "label": "present",
+  "quote": "software products we use and technologies produced by us have occasionally had in the past and may have in the future, vulnerabilities that, if left unmitigated, could reduce the overall level of security of the systems on which the software is installed"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s007",
+  "label": "present",
+  "quote": "Cyber-attacks are increasing in number and sophistication, are well-financed, in some cases supported by state actors, and are designed to not only attack, but also to evade detection"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s008",
+  "label": "present",
+  "quote": "Since the techniques used to obtain unauthorized access to systems, or to otherwise sabotage them, change frequently and are often not recognized until launched against a target"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s009",
+  "label": "present",
+  "quote": "As a critical vendor in the digital supply chain for both governmental entities and critical infrastructure operators, we and our products may be targeted"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s010",
+  "label": "present",
+  "quote": "Geopolitical instability may increase the likelihood that we will experience direct or collateral consequences from cyber conflicts between nation-states"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s011",
+  "label": "present",
+  "quote": "or the existence of computer viruses or malware (such as ransomware) in our or their data or software have in the past exposed, and could in the future expose, us to a risk of information loss"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s012",
+  "label": "present",
+  "quote": "Such an event could disrupt our business and result in, among other things, unfavorable publicity, damage to our reputation, loss of our trade secrets and other competitive information"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s013",
+  "label": "present",
+  "quote": "While we may be entitled to damages if our vendors fail to perform under their agreements with us, any award may be insufficient to cover the actual costs incurred by us"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s014",
+  "label": "present",
+  "quote": "Despite our internal controls and investment in security measures, we have, from time to time, been subject to disruptive cyber-attacks and unauthorized network intrusions and malware"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s015",
+  "label": "present",
+  "quote": "Although no such cybersecurity incidents have been material to us, we continue to devote resources to protect our systems and data from unauthorized access or misuse"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s016",
+  "label": "present",
+  "quote": "Businesses we acquire have previously increased, and may continue to increase, the scope and complexity of our"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s017",
+  "label": "present",
+  "quote": "certain aspects of effective cybersecurity are dependent upon our employees, contractors and other trusted partners reliably safeguarding secrets (e.g., application credentials)"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s018",
+  "label": "present",
+  "quote": "We have in the past experienced, and expect in the future to experience, security incidents arising from a failure to properly handle such secrets or adhere to such policies"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s019",
+  "label": "present",
+  "quote": "Our logging, alerting and cyber incident detection mechanisms may not cover every system potentially targeted by threat actors"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s020",
+  "label": "present",
+  "quote": "have also increased their focus on cybersecurity vulnerabilities and risks"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i008#s021",
+  "label": "present",
+  "quote": "Compliance with laws, regulations, and contractual provisions concerning privacy, cybersecurity, secure technology development, data governance, data protection, confidentiality and IP could result in significant expense"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s000",
+  "label": "present",
+  "quote": "We are subject to warranty claims, product recalls and product liability"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s001",
+  "label": "present",
+  "quote": "From time to time, we may be subject to warranty or product liability claims that may lead to significant expense"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s002",
+  "label": "present",
+  "quote": "Our customer contracts typically contain warranty and indemnification provisions, and in certain cases may also contain liquidated damages provisions"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s003",
+  "label": "present",
+  "quote": "The potential liabilities associated with such provisions are significant, and in some cases, including in agreements with some of our largest customers, are potentially unlimited"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s004",
+  "label": "present",
+  "quote": "Any such liabilities may greatly exceed any revenue we receive from the relevant products"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s005",
+  "label": "present",
+  "quote": "Costs, payments or damages incurred or paid by us in connection with warranty and product liability claims and product recalls could materially adversely affect our financial condition and results of operations"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s006",
+  "label": "present",
+  "quote": "We may also be exposed to such claims as a result of any acquisition we may undertake in the future"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s007",
+  "label": "present",
+  "quote": "Product liability insurance is subject to significant deductibles and there is no guarantee that such insurance will be available or adequate to protect against all such claims"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s008",
+  "label": "removed",
+  "search_terms": [
+   "recall a product",
+   "semiconductor device",
+   "one of our customers",
+   "replacement costs"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s009",
+  "label": "removed",
+  "search_terms": [
+   "replacement costs",
+   "contract damage claims",
+   "reputational harm",
+   "significant costs and expenses"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s010",
+  "label": "present",
+  "quote": "Although we maintain reserves for reasonably estimable liabilities and purchase product liability"
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i031#s011",
+  "label": "removed",
+  "search_terms": [
+   "reversed",
+   "actual liability",
+   "may ultimately exceed",
+   "particular claims"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i037#s000",
+  "label": "removed",
+  "search_terms": [
+   "decreased rapidly",
+   "harm our revenue and gross profit",
+   "semiconductor products in our markets",
+   "may do so in the future"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i037#s001",
+  "label": "removed",
+  "search_terms": [
+   "high volume applications",
+   "high volume",
+   "semiconductor products we develop"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i037#s002",
+  "label": "removed",
+  "search_terms": [
+   "decreased rapidly",
+   "prices of those products",
+   "high volume"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i037#s003",
+  "label": "removed",
+  "search_terms": [
+   "pricing pressures from our customers",
+   "Gross profit",
+   "negatively affected"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i037#s004",
+  "label": "removed",
+  "search_terms": [
+   "reduced the average selling prices",
+   "anticipation of future",
+   "new product introductions by us"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i037#s005",
+  "label": "removed",
+  "search_terms": [
+   "volume-based pricing",
+   "pricing roadmaps",
+   "customer agreements provide"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i037#s006",
+  "label": "removed",
+  "search_terms": [
+   "offset any reductions",
+   "reducing manufacturing costs",
+   "higher value-added products",
+   "margins and financial results"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i045#s000",
+  "label": "removed",
+  "search_terms": [
+   "Servicing our debt",
+   "significant amount of cash",
+   "sufficient cash flow"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i045#s001",
+  "label": "removed",
+  "search_terms": [
+   "scheduled payments",
+   "pay interest",
+   "future performance"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i045#s002",
+  "label": "removed",
+  "search_terms": [
+   "generate cash flow",
+   "future indebtedness",
+   "necessary capital expenditures"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i045#s003",
+  "label": "removed",
+  "search_terms": [
+   "reducing or delaying investments",
+   "selling assets",
+   "onerous or highly dilutive"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i045#s004",
+  "label": "removed",
+  "search_terms": [
+   "capital markets",
+   "refinance our outstanding",
+   "financial condition at such time"
+  ]
+ },
+ {
+  "sentence_id": "0001730168-23-000096:I.1A:i045#s005",
+  "label": "removed",
+  "search_terms": [
+   "default on our indebtedness",
+   "desirable terms",
+   "engage in these activities"
+  ]
+ }
+]

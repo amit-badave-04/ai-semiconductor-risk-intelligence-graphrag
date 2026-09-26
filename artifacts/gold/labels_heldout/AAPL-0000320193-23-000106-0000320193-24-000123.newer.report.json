@@ -1,0 +1,43 @@
+{
+ "pair_id": "AAPL-0000320193-23-000106-0000320193-24-000123",
+ "side": "newer",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000320193-24-000123:I.1A:i004": "carried",
+  "0000320193-24-000123:I.1A:i012": "carried",
+  "0000320193-24-000123:I.1A:i014": "carried",
+  "0000320193-24-000123:I.1A:i017": "carried",
+  "0000320193-24-000123:I.1A:i027": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0000320193-24-000123:I.1A:i004": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000320193-24-000123:I.1A:i012": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000320193-24-000123:I.1A:i014": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000320193-24-000123:I.1A:i017": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000320193-24-000123:I.1A:i027": {
+   "ann1": "carried",
+   "ann2": "carried"
+  }
+ }
+}

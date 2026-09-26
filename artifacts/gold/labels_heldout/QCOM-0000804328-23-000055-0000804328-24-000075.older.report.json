@@ -1,0 +1,43 @@
+{
+ "pair_id": "QCOM-0000804328-23-000055-0000804328-24-000075",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {},
+ "needs_adjudication": [
+  "0000804328-23-000055:I.1A:i002",
+  "0000804328-23-000055:I.1A:i003",
+  "0000804328-23-000055:I.1A:i005",
+  "0000804328-23-000055:I.1A:i016",
+  "0000804328-23-000055:I.1A:i020"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.0,
+ "alpha": -0.8,
+ "rejected": {},
+ "votes": {
+  "0000804328-23-000055:I.1A:i002": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  },
+  "0000804328-23-000055:I.1A:i003": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  },
+  "0000804328-23-000055:I.1A:i005": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  },
+  "0000804328-23-000055:I.1A:i016": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  },
+  "0000804328-23-000055:I.1A:i020": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  }
+ }
+}

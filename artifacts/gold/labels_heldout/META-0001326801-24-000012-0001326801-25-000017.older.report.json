@@ -1,0 +1,43 @@
+{
+ "pair_id": "META-0001326801-24-000012-0001326801-25-000017",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {},
+ "needs_adjudication": [
+  "0001326801-24-000012:I.1A:i008",
+  "0001326801-24-000012:I.1A:i011",
+  "0001326801-24-000012:I.1A:i026",
+  "0001326801-24-000012:I.1A:i027",
+  "0001326801-24-000012:I.1A:i032"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.0,
+ "alpha": -0.8,
+ "rejected": {},
+ "votes": {
+  "0001326801-24-000012:I.1A:i008": {
+   "ann1": "reworded",
+   "ann2": "unchanged"
+  },
+  "0001326801-24-000012:I.1A:i011": {
+   "ann1": "reworded",
+   "ann2": "unchanged"
+  },
+  "0001326801-24-000012:I.1A:i026": {
+   "ann1": "reworded",
+   "ann2": "unchanged"
+  },
+  "0001326801-24-000012:I.1A:i027": {
+   "ann1": "reworded",
+   "ann2": "unchanged"
+  },
+  "0001326801-24-000012:I.1A:i032": {
+   "ann1": "reworded",
+   "ann2": "unchanged"
+  }
+ }
+}

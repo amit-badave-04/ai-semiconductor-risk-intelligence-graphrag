@@ -1,0 +1,10 @@
+[
+{"item_id": "0000002488-25-000012:I.1A:i000", "label": "carried", "quote": "Intel’s microprocessor market share position, significant financial resources, introduction of competitive new products, and existing relationships with top-tier OEMs have enabled it to market and price its products aggressively"},
+{"item_id": "0000002488-25-000012:I.1A:i001", "label": "new", "search_terms": ["Nvidia’s dominance", "proprietary software ecosystem", "product bundling strategies", "non-Nvidia products"], "note": "older only mentions Nvidia as an AI competitor and ARM CPU entrant, not dominance or aggressive practices"},
+{"item_id": "0000002488-25-000012:I.1A:i002", "label": "carried", "quote": "We cannot guarantee that we will be able to compete successfully against current or new competitors who may have stronger positions in these new markets or superior ability to anticipate customer requirements and emerging industry trends."},
+{"item_id": "0000002488-25-000012:I.1A:i004", "label": "carried", "quote": "Industry-wide fluctuations in the computer marketplace have materially adversely affected us in the past and may materially adversely affect us in the future."},
+{"item_id": "0000002488-25-000012:I.1A:i012", "label": "carried", "quote": "Certain equipment and materials that are used in the manufacture of our products are available only from a limited number of suppliers, or in some cases, a sole supplier."},
+{"item_id": "0000002488-25-000012:I.1A:i013", "label": "carried", "quote": "Semiconductor manufacturing yields are a result of product design, process technology and packaging technology, which is typically proprietary to the manufacturer"},
+{"item_id": "0000002488-25-000012:I.1A:i014", "label": "carried", "quote": "The revenue that we receive from our semi-custom SoC products is in the form of non-recurring engineering fees charged to third parties for design and development services"},
+{"item_id": "0000002488-25-000012:I.1A:i038", "label": "new", "search_terms": ["ZT Systems", "termination fee", "divest the ZT Systems", "strategic partner"]}
+]

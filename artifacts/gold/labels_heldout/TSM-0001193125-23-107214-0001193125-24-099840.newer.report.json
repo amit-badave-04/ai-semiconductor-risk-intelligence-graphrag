@@ -1,0 +1,48 @@
+{
+ "pair_id": "TSM-0001193125-23-107214-0001193125-24-099840",
+ "side": "newer",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001193125-24-099840:I.3:i001": "carried",
+  "0001193125-24-099840:I.3:i006": "carried",
+  "0001193125-24-099840:I.3:i007": "carried",
+  "0001193125-24-099840:I.3:i015": "carried",
+  "0001193125-24-099840:I.3:i020": "carried",
+  "0001193125-24-099840:I.3:i021": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001193125-24-099840:I.3:i001": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-24-099840:I.3:i006": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-24-099840:I.3:i007": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-24-099840:I.3:i015": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-24-099840:I.3:i020": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0001193125-24-099840:I.3:i021": {
+   "ann1": "carried",
+   "ann2": "carried"
+  }
+ }
+}

@@ -1,0 +1,69 @@
+{
+ "pair_id": "AAPL-0000320193-24-000123-0000320193-25-000079",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000320193-24-000123:I.1A:i002": "reworded",
+  "0000320193-24-000123:I.1A:i011": "reworded",
+  "0000320193-24-000123:I.1A:i012": "reworded",
+  "0000320193-24-000123:I.1A:i014": "reworded",
+  "0000320193-24-000123:I.1A:i016": "removed",
+  "0000320193-24-000123:I.1A:i019": "reworded",
+  "0000320193-24-000123:I.1A:i021": "reworded",
+  "0000320193-24-000123:I.1A:i022": "reworded",
+  "0000320193-24-000123:I.1A:i027": "unchanged"
+ },
+ "needs_adjudication": [
+  "0000320193-24-000123:I.1A:i010"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.9,
+ "alpha": 0.7654320987654322,
+ "rejected": {},
+ "votes": {
+  "0000320193-24-000123:I.1A:i002": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000320193-24-000123:I.1A:i010": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  },
+  "0000320193-24-000123:I.1A:i011": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000320193-24-000123:I.1A:i012": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000320193-24-000123:I.1A:i014": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000320193-24-000123:I.1A:i016": {
+   "ann1": "removed",
+   "ann2": "removed"
+  },
+  "0000320193-24-000123:I.1A:i019": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000320193-24-000123:I.1A:i021": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000320193-24-000123:I.1A:i022": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000320193-24-000123:I.1A:i027": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  }
+ }
+}

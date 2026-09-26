@@ -1,0 +1,49 @@
+{
+ "pair_id": "MU-0000723125-23-000054-0000723125-24-000027",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000723125-23-000054:I.1A:i009": "reworded",
+  "0000723125-23-000054:I.1A:i013": "reworded",
+  "0000723125-23-000054:I.1A:i024": "reworded",
+  "0000723125-23-000054:I.1A:i029": "unchanged"
+ },
+ "needs_adjudication": [
+  "0000723125-23-000054:I.1A:i017",
+  "0000723125-23-000054:I.1A:i027"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.6666666666666666,
+ "alpha": 0.3125,
+ "rejected": {},
+ "votes": {
+  "0000723125-23-000054:I.1A:i009": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000723125-23-000054:I.1A:i013": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000723125-23-000054:I.1A:i017": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  },
+  "0000723125-23-000054:I.1A:i024": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0000723125-23-000054:I.1A:i027": {
+   "ann1": "unchanged",
+   "ann2": "reworded"
+  },
+  "0000723125-23-000054:I.1A:i029": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  }
+ }
+}

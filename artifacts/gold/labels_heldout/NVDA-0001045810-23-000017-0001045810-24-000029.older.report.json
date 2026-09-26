@@ -1,0 +1,49 @@
+{
+ "pair_id": "NVDA-0001045810-23-000017-0001045810-24-000029",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001045810-23-000017:I.1A:i000": "reworded",
+  "0001045810-23-000017:I.1A:i005": "reworded",
+  "0001045810-23-000017:I.1A:i006": "reworded",
+  "0001045810-23-000017:I.1A:i020": "reworded",
+  "0001045810-23-000017:I.1A:i023": "reworded"
+ },
+ "needs_adjudication": [
+  "0001045810-23-000017:I.1A:i014"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.8333333333333334,
+ "alpha": 0.47619047619047616,
+ "rejected": {},
+ "votes": {
+  "0001045810-23-000017:I.1A:i000": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001045810-23-000017:I.1A:i005": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001045810-23-000017:I.1A:i006": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001045810-23-000017:I.1A:i014": {
+   "ann1": "merged",
+   "ann2": "removed"
+  },
+  "0001045810-23-000017:I.1A:i020": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001045810-23-000017:I.1A:i023": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  }
+ }
+}

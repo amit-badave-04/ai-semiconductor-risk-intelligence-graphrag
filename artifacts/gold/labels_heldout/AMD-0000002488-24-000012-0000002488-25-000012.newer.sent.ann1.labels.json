@@ -1,0 +1,397 @@
+[
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i000#s000",
+  "label": "present",
+  "quote": "Intel Corporation’s dominance of the microprocessor market and its aggressive business practices may limit our ability to compete effectively on a level playing field."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i000#s001",
+  "label": "present",
+  "quote": "Intel’s microprocessor market share position, significant financial resources, introduction of competitive new products, and existing relationships with top-tier OEMs have enabled it to market and price its products aggressively, to target our customers and our channel partners with special incentives and to influence customers who do business with us."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i000#s002",
+  "label": "present",
+  "quote": "These aggressive activities have in the past resulted in lower unit sales and a lower average selling price for many of our products and adversely affected our margins and profitability."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i000#s003",
+  "label": "present",
+  "quote": "Intel also dominates the computer system platform and has a heavy influence on PC manufacturers, other PC industry participants, and benchmarks."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i000#s004",
+  "label": "present",
+  "quote": "It is able to drive de facto standards and specifications for x86 microprocessors that could cause us and other companies to have delayed access to such standards."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i000#s005",
+  "label": "present",
+  "quote": "We may be materially adversely affected by Intel’s business practices, including rebating and allocation strategies and pricing actions,"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i000#s006",
+  "label": "present",
+  "quote": "We expect Intel to continue to heavily invest substantial resources in marketing, research and development, new manufacturing facilities and other technology companies."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s000",
+  "label": "present",
+  "quote": "The markets in which our products are sold are highly competitive and"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s001",
+  "label": "present",
+  "quote": "The markets in which our products are sold are highly competitive and"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s002",
+  "label": "present",
+  "quote": "We expect that competition will continue to be intense due to rapid technological changes,"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s003",
+  "label": "present",
+  "quote": "In addition, we are entering markets with current and new competitors who may be able to adapt more quickly to customer requirements and emerging technologies."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s004",
+  "label": "added",
+  "search_terms": [
+   "AI market",
+   "product obsolescence",
+   "feature enhancements",
+   "legal standards"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s005",
+  "label": "present",
+  "quote": "We cannot guarantee that we will be able to compete successfully against current or new competitors who may have stronger positions in these new markets or superior ability to anticipate customer requirements and emerging industry trends."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s006",
+  "label": "present",
+  "quote": "While we see significant opportunity in AI, we expect intense competition from companies such as Nvidia in the supply of GPUs and other accelerators for the AI market."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s007",
+  "label": "present",
+  "quote": "we may face competition from some of our customers who internally develop the same products as us."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s008",
+  "label": "present",
+  "quote": "increased adoption of ARM-based semiconductor designs could lead to further growth and development of the ARM ecosystem."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s009",
+  "label": "present",
+  "quote": "We may face delays or disruptions in research and development efforts, or we may be required to invest significantly greater resources in research and development than anticipated."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s010",
+  "label": "present",
+  "quote": "the semiconductor industry has seen several mergers and acquisitions over the last number"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s011",
+  "label": "present",
+  "quote": "Further consolidation could adversely impact our business due to there being fewer suppliers, customers and partners in the industry."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s012",
+  "label": "present",
+  "quote": "We believe that the main factors that determine our product competitiveness are total cost of ownership, timely product introductions, product quality,"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s013",
+  "label": "present",
+  "quote": "If competitors introduce competitive new products into the market before us, demand for our products could be adversely impacted and our business could be adversely affected."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s014",
+  "label": "present",
+  "quote": "our competitors have significant marketing and sales resources which could increase the competitive environment in a declining market or during challenging economic times, leading to lower prices"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s015",
+  "label": "reworded",
+  "quote": "If competitors introduce competitive new products into the market before us, demand for our products could be adversely impacted"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s016",
+  "label": "present",
+  "quote": "From time to time, governments provide incentives or make other investments that could benefit and give a competitive advantage to our competitors."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s017",
+  "label": "present",
+  "quote": "For example, the United States government enacted the Creating Helpful Incentives to Produce Semiconductors for America and Science Act (CHIPS Act) of 2022 to provide financial incentives to the U.S. semiconductor industry."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s018",
+  "label": "present",
+  "quote": "Government incentives, including the CHIPS Act, may not be available to us on acceptable terms or at all."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s019",
+  "label": "present",
+  "quote": "If our competitors can benefit from such government incentives and we cannot, it could strengthen our competitors’ relative position and have a material adverse effect on our business."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s000",
+  "label": "present",
+  "quote": "The demand for our products depends in part on the market conditions in the industries into which they are sold."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s001",
+  "label": "present",
+  "quote": "Fluctuations in demand for our products or a market decline in any of these industries could have a material adverse effect on our results of operations."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s002",
+  "label": "present",
+  "quote": "Industry-wide fluctuations in the computer marketplace have materially adversely affected us in the past and may materially adversely affect us in the future."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s003",
+  "label": "present",
+  "quote": "We offer products that are used in different end markets and the demand for our products can vary among our Data Center, Client, Gaming and Embedded end markets."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s004",
+  "label": "present",
+  "quote": "in the fourth quarter of 2023, we experienced significant demand for our AI accelerators."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s005",
+  "label": "present",
+  "quote": "The demand for such products will depend on the extent to which our customers utilize generative AI solutions in a wide variety of applications."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s006",
+  "label": "present",
+  "quote": "Also, in our Client segment revenue is focused on the consumer desktop and notebook PC segments."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s007",
+  "label": "added",
+  "search_terms": [
+   "Ryzen AI",
+   "AI PC",
+   "rate and pace of adoption",
+   "actively building"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s008",
+  "label": "present",
+  "quote": "In the past, revenues from the Client and Gaming segments have experienced a decline driven by, among other factors, the adoption of smaller and other form factors, increased competition and changes in replacement cycles."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s009",
+  "label": "present",
+  "quote": "In addition, our GPU revenue in the past has been affected in part by the volatility of the cryptocurrency mining market."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s010",
+  "label": "present",
+  "quote": "If we are unable to manage the risks related to the volatility of the cryptocurrency mining market (including potential actions by global monetary authorities), our GPU business could be materially adversely affected."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s011",
+  "label": "present",
+  "quote": "The success of our semi-custom SoC products in our Gaming segment is dependent on securing customers for our semi-custom design pipeline and consumer market conditions, including the success of game console systems and next generation consoles for Sony and Microsoft."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s012",
+  "label": "present",
+  "quote": "Our Embedded segment primarily includes embedded CPUs and GPUs, APUs, FPGAs and Adaptive SoC products some of which are subject to macroeconomic trends and volatile business conditions."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s013",
+  "label": "present",
+  "quote": "To the extent our embedded customers are faced with higher inventory levels, they may choose to draw down their existing inventory and order less of our products."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i004#s014",
+  "label": "reworded",
+  "quote": "Our Embedded segment revenue decreased as a result of an inventory correction in several end markets in the second half of 2023."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s000",
+  "label": "present",
+  "quote": "If essential equipment, materials, substrates or manufacturing processes are not available to manufacture our products, we could be materially adversely affected."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s001",
+  "label": "present",
+  "quote": "our operations depend upon obtaining deliveries of adequate supplies of equipment and materials on a timely basis."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s002",
+  "label": "present",
+  "quote": "Our third-party suppliers also depend on the same timely delivery of adequate quantities of equipment and materials in the manufacture of our products."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s003",
+  "label": "present",
+  "quote": "In addition, as many of our products increase in technical complexity, we rely on our third-party suppliers to update their processes in order to continue meeting our back-end manufacturing needs."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s004",
+  "label": "present",
+  "quote": "Certain equipment and materials that are used in the manufacture of our products are available only from a limited number of suppliers, or in some cases, a sole supplier."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s005",
+  "label": "present",
+  "quote": "We also depend on a limited number of suppliers to provide the majority of certain types of IC packages for our microprocessors, including our APU products."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s006",
+  "label": "present",
+  "quote": "Similarly, certain non-proprietary materials or components such as memory, printed circuit boards (PCBs), interposers, substrates and capacitors used in the manufacture of our products are currently available from only a limited number of suppliers."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s007",
+  "label": "present",
+  "quote": "If we are unable to procure a stable supply of memory, equipment, materials or substrates on an ongoing basis and at reasonable costs to meet our production requirements, we could experience a shortage in memory, equipment, materials or substrate supply or an increase in production costs, which could have a material adverse effect on our business."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s008",
+  "label": "present",
+  "quote": "We have long-term purchase commitments and prepayment arrangements with some of our suppliers."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s009",
+  "label": "present",
+  "quote": "If the delivery of such supply is delayed or does not occur for any reason, it could materially impact our ability to procure and process the required volume of supply to meet customer demand."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s010",
+  "label": "present",
+  "quote": "Conversely, a decrease in customer demand could result in excess inventory and an increase in our production costs, particularly since we have prepayment arrangements with certain suppliers."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s011",
+  "label": "present",
+  "quote": "Because some of the equipment and materials that we and our third-party manufacturers purchase are complex, it is sometimes difficult to substitute one equipment or materials supplier for another."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s012",
+  "label": "present",
+  "quote": "From time to time, suppliers may extend lead times, limit supply or increase prices due to capacity constraints or other factors."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s013",
+  "label": "present",
+  "quote": "Also, some of these materials and components may be subject to rapid changes in price and availability."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s014",
+  "label": "present",
+  "quote": "Interruption of supply or increased demand in the industry could cause shortages and price increases in various essential materials."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s015",
+  "label": "present",
+  "quote": "Dependence on a sole supplier or a limited number of suppliers exacerbates these risks."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i012#s016",
+  "label": "present",
+  "quote": "If we are unable to procure certain of these materials for our back-end manufacturing operations, or our third-party manufacturers are unable to procure materials for manufacturing our products, our business would be materially adversely affected."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s000",
+  "label": "present",
+  "quote": "Failure to achieve expected manufacturing yields for our products could negatively impact our results of operations."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s001",
+  "label": "present",
+  "quote": "Semiconductor manufacturing yields are a result of product design, process technology and packaging technology, which is typically proprietary to the manufacturer, and low yields can result from design failures, packaging technology failures, process technology failures or a combination of some or all of these."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s002",
+  "label": "present",
+  "quote": "Our third-party manufacturers are responsible for the process technologies used to fabricate silicon wafers."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s003",
+  "label": "present",
+  "quote": "If our third-party manufacturers experience manufacturing inefficiencies or encounter disruptions, errors or difficulties during production, we may fail to achieve acceptable yields or we may experience product delivery delays."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s004",
+  "label": "present",
+  "quote": "We cannot be certain that our third-party manufacturers will be able to develop, expand, obtain or successfully implement leading-edge manufacturing process or packaging technologies needed to manufacture future generations of our products profitably or on a timely basis or that our competitors will not develop new technologies, products or processes earlier."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s005",
+  "label": "present",
+  "quote": "Moreover, during periods when our third-party manufacturers are implementing new process or packaging technologies, their manufacturing facilities may not be fully productive."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s006",
+  "label": "present",
+  "quote": "A substantial delay in the technology transitions to smaller process technologies could have a material adverse effect on us, particularly if our competitors transition to more cost effective technologies before us."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s007",
+  "label": "present",
+  "quote": "For example, we are presently focusing our 7 nm and lower product microprocessor and GPU portfolio on TSMC’s processes."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s008",
+  "label": "present",
+  "quote": "If TSMC is not able to manufacture wafers for our products at 7 nm or smaller nodes in sufficient quantities to meet customer demand, it could have a material adverse effect on our business."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s009",
+  "label": "present",
+  "quote": "Moreover, we rely on TSMC, UMC and our other foundries to produce wafers with competitive performance attributes for our IC products."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s010",
+  "label": "present",
+  "quote": "Therefore, the foundries, particularly TSMC which manufactures our newest IC products, must be able to transition to advanced manufacturing process technologies and increased wafer sizes, produce wafers at acceptable yields and deliver them in a timely manner."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i013#s011",
+  "label": "present",
+  "quote": "Any decrease in manufacturing yields could result in an increase in per unit costs, which would adversely impact our gross margin and/or force us to allocate our reduced product supply amongst our customers, which could harm our relationships and reputation with our customers and materially adversely affect our business."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i014#s000",
+  "label": "present",
+  "quote": "Our revenue from our semi-custom SoC products is dependent upon our semi-custom SoC products being incorporated into customers’ products and the success of those products."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i014#s001",
+  "label": "present",
+  "quote": "The revenue that we receive from our semi-custom SoC products is in the form of non-recurring engineering fees charged to third parties for design and development services and revenue received in connection with sales of our semi-custom SoC products to these third parties."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i014#s002",
+  "label": "present",
+  "quote": "As a result, our ability to generate revenue from our semi-custom products depends on our ability to secure customers for our semi-custom design pipeline, our customers’ desire to pursue the project and our semi-custom SoC products being incorporated into those customers’ products."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i014#s003",
+  "label": "present",
+  "quote": "Any revenue from sales of our semi-custom SoC products is directly related to sales of the third-party’s products and reflective of their success in the market."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i014#s004",
+  "label": "present",
+  "quote": "Moreover, we have no control over the marketing efforts of these third parties, and we cannot make any assurances that sales of their products will be successful in current or future years."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i014#s005",
+  "label": "present",
+  "quote": "Consequently, the semi-custom SoC product revenue expected by us may not be fully realized and our operating results may be adversely affected."
+ }
+]

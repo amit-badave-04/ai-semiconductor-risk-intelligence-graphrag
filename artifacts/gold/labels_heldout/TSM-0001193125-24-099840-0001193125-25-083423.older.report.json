@@ -1,0 +1,48 @@
+{
+ "pair_id": "TSM-0001193125-24-099840-0001193125-25-083423",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0001193125-24-099840:I.3:i000": "reworded",
+  "0001193125-24-099840:I.3:i003": "reworded",
+  "0001193125-24-099840:I.3:i006": "reworded",
+  "0001193125-24-099840:I.3:i008": "reworded",
+  "0001193125-24-099840:I.3:i023": "unchanged",
+  "0001193125-24-099840:I.3:i024": "reworded"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001193125-24-099840:I.3:i000": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001193125-24-099840:I.3:i003": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001193125-24-099840:I.3:i006": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001193125-24-099840:I.3:i008": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001193125-24-099840:I.3:i023": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0001193125-24-099840:I.3:i024": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  }
+ }
+}

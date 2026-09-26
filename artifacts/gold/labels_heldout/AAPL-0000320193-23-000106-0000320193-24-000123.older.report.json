@@ -1,0 +1,43 @@
+{
+ "pair_id": "AAPL-0000320193-23-000106-0000320193-24-000123",
+ "side": "older",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000320193-23-000106:I.1A:i010": "unchanged",
+  "0000320193-23-000106:I.1A:i011": "unchanged",
+  "0000320193-23-000106:I.1A:i016": "unchanged",
+  "0000320193-23-000106:I.1A:i026": "unchanged",
+  "0000320193-23-000106:I.1A:i027": "unchanged"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0000320193-23-000106:I.1A:i010": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0000320193-23-000106:I.1A:i011": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0000320193-23-000106:I.1A:i016": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0000320193-23-000106:I.1A:i026": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  },
+  "0000320193-23-000106:I.1A:i027": {
+   "ann1": "unchanged",
+   "ann2": "unchanged"
+  }
+ }
+}

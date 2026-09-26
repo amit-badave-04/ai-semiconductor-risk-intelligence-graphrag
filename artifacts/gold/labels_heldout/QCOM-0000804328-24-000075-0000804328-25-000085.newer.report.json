@@ -1,0 +1,43 @@
+{
+ "pair_id": "QCOM-0000804328-24-000075-0000804328-25-000085",
+ "side": "newer",
+ "split": "held_out",
+ "annotators": [
+  "ann1",
+  "ann2"
+ ],
+ "consensus": {
+  "0000804328-25-000085:I.1A:i005": "carried",
+  "0000804328-25-000085:I.1A:i008": "carried",
+  "0000804328-25-000085:I.1A:i009": "carried",
+  "0000804328-25-000085:I.1A:i016": "carried",
+  "0000804328-25-000085:I.1A:i018": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0000804328-25-000085:I.1A:i005": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000804328-25-000085:I.1A:i008": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000804328-25-000085:I.1A:i009": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000804328-25-000085:I.1A:i016": {
+   "ann1": "carried",
+   "ann2": "carried"
+  },
+  "0000804328-25-000085:I.1A:i018": {
+   "ann1": "carried",
+   "ann2": "carried"
+  }
+ }
+}
