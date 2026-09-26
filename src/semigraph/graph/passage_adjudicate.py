@@ -51,7 +51,7 @@ __all__ = ["BudgetExceeded", "Checkpoint", "default_llm_json"]     # re-exported
 
 logger = logging.getLogger("semigraph.graph.passage_adjudicate")
 
-PROMPT_VERSION = "pas-v1"
+PROMPT_VERSION = "pas-v2"      # v2: the model is called with reasoning_effort="none" (v1 verdicts came from a reasoning Luna)
 CHECKPOINT_NAME = "passage_adjudications.jsonl"
 MIN_RELATEDNESS = 62.0            # eval.gold.SENT_REWORDED_MIN_SIM (a test keeps them equal; eval/ is not imported here)
 MIN_QUOTE_CHARS = 30              # eval.gold.SENT_MIN_QUOTE_CHARS
@@ -191,7 +191,11 @@ def run_tasks(tasks: Sequence[Task], checkpoint: Checkpoint, llm: Callable[..., 
         bound = call_cost_upper_bound(task.prompt, model, params)
         if spent + bound > max_usd + 1e-12:
             raise BudgetExceeded(f"stopped after {calls - 1} call(s): the next call could pass --max-usd ${max_usd:.2f}")
-        answer = llm(task.prompt, PassageVerdict, model=model, max_tokens=params.max_output_tokens, thinking_off=True)
+        try:
+            answer = llm(task.prompt, PassageVerdict, model=model, max_tokens=params.max_output_tokens, thinking_off=True)
+        except RuntimeError as err:      # one bad call must not abort the run: no verdict = the safe direction; retried next run
+            logger.warning("no verdict for a band sentence (%s): %s", task.pair_id, str(err)[:160])
+            continue
         spent += bound
         checkpoint.add({
             "key": task.key, "pair_id": task.pair_id, "band_key": task.band_key, "side": task.side, "model": model,

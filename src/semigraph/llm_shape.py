@@ -15,9 +15,17 @@ Each shape was probed live through LiteLLM 1.90.2 on 2026-09-26; do not "unify" 
 _PLAIN_MAX_TOKENS = ("deepinfra/", "together_ai/", "fireworks_ai/", "openrouter/")
 
 
-def completion_params(model: str, max_tokens: int) -> dict:
-    """The budget + reasoning keyword arguments for ``litellm.completion`` on ``model``."""
+def completion_params(model: str, max_tokens: int, *, reasoning_effort: str | None = None) -> dict:
+    """The budget + reasoning keyword arguments for ``litellm.completion`` on ``model``.
+
+    ``reasoning_effort`` (OpenAI GPT-6 only; ``"none"`` / ``"low"`` / ``"medium"``; ``"minimal"`` is a 400) turns the hidden
+    reasoning down. Live probe 2026-09-26 on ``openai/gpt-6-luna``: default 131-141 reasoning tokens for a one-line
+    verdict (and a stricter answer that overthinks paraphrases), ``"none"`` 0 reasoning tokens. Callers that classify
+    short texts pass ``"none"``; the answering path keeps the default (its quality was benchmarked with reasoning on)."""
     if model.startswith("openai/"):
+        if reasoning_effort:
+            return {"max_completion_tokens": max_tokens, "reasoning_effort": reasoning_effort,
+                    "allowed_openai_params": ["reasoning_effort"]}
         return {"max_completion_tokens": max_tokens}
     if model.startswith("gemini/"):
         return {"max_tokens": max_tokens, "reasoning_effort": "low"}

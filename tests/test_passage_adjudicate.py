@@ -76,14 +76,14 @@ class TestPrompt:
         assert "(no candidate sentence was found)" in pad.build_prompt("A sentence.", [])
 
     def test_the_prompt_text_is_versioned(self):
-        assert pad.PROMPT_VERSION == "pas-v1"
+        assert pad.PROMPT_VERSION == "pas-v2"
 
 
 class TestKey:
     def test_the_key_is_sentence_hash_other_section_hash_prompt_version_and_model(self):
         assert pad.task_key("s", "o", "m") == "s|o|" + pad.PROMPT_VERSION + "|m"
         assert len({pad.task_key("s", "o", "m"), pad.task_key("s2", "o", "m"), pad.task_key("s", "o2", "m"),
-                    pad.task_key("s", "o", "m2"), pad.task_key("s", "o", "m", "pas-v2")}) == 5
+                    pad.task_key("s", "o", "m2"), pad.task_key("s", "o", "m", "pas-other")}) == 5
 
 
 # --------------------------------------------------------------------------- planning and cost
@@ -167,13 +167,13 @@ class TestRun:
         other = FakeLLM()
         assert pad.run_tasks(pad.plan_tasks("P", bands, "m2"), adj.Checkpoint(path), other, model="m2", max_usd=0.5) == 4
 
-    def test_a_failing_call_aborts_and_keeps_what_was_already_bought(self, tmp_path):
+    def test_a_failing_call_is_skipped_as_no_verdict_and_retried_on_the_next_run(self, tmp_path):
+        """One bad call (empty reply, provider error) must not abort the buy: no verdict is the safe direction."""
         tasks, path = self.tasks(), tmp_path / "p.jsonl"
-        with pytest.raises(RuntimeError, match="transient failure"):
-            pad.run_tasks(tasks, adj.Checkpoint(path), FakeLLM(fail_on=3), model=MODEL, max_usd=0.5)
-        assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+        first = pad.run_tasks(tasks, adj.Checkpoint(path), FakeLLM(fail_on=3), model=MODEL, max_usd=0.5)
+        assert first == len(tasks) and len(path.read_text(encoding="utf-8").splitlines()) == len(tasks) - 1
         resume = FakeLLM()
-        assert pad.run_tasks(tasks, adj.Checkpoint(path), resume, model=MODEL, max_usd=0.5) == 2
+        assert pad.run_tasks(tasks, adj.Checkpoint(path), resume, model=MODEL, max_usd=0.5) == 1     # only the failed one is paid again
 
 
 # --------------------------------------------------------------------------- the rules
@@ -371,7 +371,7 @@ class TestDefaultCall:
 
     def test_a_gpt6_reply_with_a_candidate_number_validates_through_the_provider_aware_text_call(self, monkeypatch):
         replies = iter(['Sure! {"verdict": "maybe"}', '```json\n{"verdict": "same", "candidate": 2, "quote": "abc"}\n```'])
-        monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", lambda prompt, *, model, max_tokens: next(replies))
+        monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", lambda prompt, *, model, max_tokens, reasoning_effort=None: next(replies))
         out = pad.default_llm_json("p", pad.PassageVerdict, model=MODEL, max_tokens=300)
         assert (out.verdict, out.candidate, out.quote) == ("same", 2, "abc")
 

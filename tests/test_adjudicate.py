@@ -343,16 +343,16 @@ class TestDefaultCall:
         replies = iter(['Sure! {"verdict": "maybe"}', '```json\n{"verdict": "same", "quote": "abc"}\n```'])
         calls = []
 
-        def fake_llm_text(prompt, *, model, max_tokens):
-            calls.append((prompt, model, max_tokens))
+        def fake_llm_text(prompt, *, model, max_tokens, reasoning_effort=None):
+            calls.append((prompt, model, max_tokens, reasoning_effort))
             return next(replies)
 
         monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", fake_llm_text)
         out = adj.default_llm_json("p", adj.AdjudicationVerdict, model="openai/gpt-6-luna", max_tokens=300)
         assert (out.verdict, out.quote) == ("same", "abc")
-        assert len(calls) == 2 and "not valid JSON" in calls[1][0] and calls[0][1:] == ("openai/gpt-6-luna", 300)
+        assert len(calls) == 2 and "not valid JSON" in calls[1][0] and calls[0][1:] == ("openai/gpt-6-luna", 300, "none")   # no hidden reasoning
 
     def test_an_invalid_reply_three_times_raises_instead_of_guessing(self, monkeypatch):
-        monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", lambda prompt, *, model, max_tokens: "no json here")
+        monkeypatch.setattr("semigraph.retrieval.answerer.llm_text", lambda prompt, *, model, max_tokens, reasoning_effort=None: "no json here")
         with pytest.raises(RuntimeError, match="not valid JSON after 3 attempts"):
             adj.default_llm_json("p", adj.AdjudicationVerdict, model="openai/gpt-6-luna", max_tokens=300)

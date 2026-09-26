@@ -473,6 +473,11 @@ def _json_object(text: str) -> str:
     return text
 
 
+# The adjudicators classify one short text: hidden reasoning only made the model stricter (it called an obvious paraphrase
+# "different" and, on long prompts, ate the whole token budget: "empty response, finish_reason=length"). Live probe 2026-09-26.
+OPENAI_REASONING_EFFORT = "none"
+
+
 def default_llm_json(prompt: str, model_cls, *, model: str, max_tokens: int, thinking_off: bool = True):
     """``llm_json`` for Anthropic-shaped models; the provider-aware hardened text call for every other provider.
 
@@ -492,7 +497,7 @@ def default_llm_json(prompt: str, model_cls, *, model: str, max_tokens: int, thi
 
     turn, last = prompt, "unknown"
     for _ in range(3):
-        text = llm_text(turn, model=model, max_tokens=max_tokens)
+        text = llm_text(turn, model=model, max_tokens=max_tokens, reasoning_effort=OPENAI_REASONING_EFFORT)
         try:
             return model_cls.model_validate_json(_json_object(text.strip()))
         except ValidationError as err:

@@ -272,7 +272,7 @@ def sources_from_context(context: str) -> dict[str, str]:
 
 def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
              attempts: int = 4, backoff: tuple[int, ...] = tuple(BACKOFF_S),
-             timeout: float | None = None) -> str:
+             timeout: float | None = None, reasoning_effort: str | None = None) -> str:
     """Hardened plain-completion call (the unstructured sibling of
     ``semigraph.llm.llm_json`` — notebooks 11/14 answered unstructured).
 
@@ -295,7 +295,7 @@ def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
         try:
             resp = completion(
                 model=model, messages=[{"role": "user", "content": prompt}],
-                **completion_params(model, budget), num_retries=2, **extra,
+                **completion_params(model, budget, reasoning_effort=reasoning_effort), num_retries=2, **extra,
             )
         except TRANSIENT as e:
             wait = backoff[min(attempt, len(backoff) - 1)]

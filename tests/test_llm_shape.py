@@ -109,3 +109,10 @@ def test_llm_text_defaults_to_answer_model(monkeypatch):
     monkeypatch.setattr(ans, "completion", lambda **kw: calls.append(kw) or type("R", (), {"choices": [Choice()]})())
     ans.llm_text("p")
     assert calls[0]["model"] == "openai/gpt-6-luna"
+
+
+def test_openai_reasoning_effort_is_opt_in_and_allow_listed_for_litellm():
+    assert completion_params("openai/gpt-6-luna", 400) == {"max_completion_tokens": 400}                      # answering path unchanged
+    assert completion_params("openai/gpt-6-luna", 400, reasoning_effort="none") == {
+        "max_completion_tokens": 400, "reasoning_effort": "none", "allowed_openai_params": ["reasoning_effort"]}
+    assert "reasoning_effort" not in completion_params("anthropic/claude-sonnet-5", 400, reasoning_effort="none")   # other providers ignore it
