@@ -25,11 +25,13 @@ import logging
 import re
 import time
 
+import litellm
 from litellm import completion
 
 from ..artifacts import read_prompt
 from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
+from ..llm_shape import completion_params
 from .retriever import hybrid_retrieve, vector_retrieve
 
 logger = logging.getLogger("semigraph.answerer")
@@ -114,7 +116,7 @@ def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
         try:
             resp = completion(
                 model=model, messages=[{"role": "user", "content": prompt}],
-                max_tokens=budget, thinking={"type": "disabled"}, num_retries=2, **extra,
+                **completion_params(model, budget), num_retries=2, **extra,
             )
         except TRANSIENT as e:
             wait = backoff[min(attempt, len(backoff) - 1)]
@@ -137,14 +139,24 @@ def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
     raise RuntimeError(f"llm_text failed after {attempts} attempts — last error: {last_err}")
 
 
-def usage_cost(usage: dict | None) -> float | None:
-    """USD estimate for a usage dict (prompt_tokens / completion_tokens) at the
-    configured list prices. None when usage is unknown."""
+def usage_cost(usage: dict | None, model: str | None = None) -> float | None:
+    """USD estimate for a usage dict (prompt_tokens / completion_tokens). None when usage is unknown.
+
+    Without ``model`` the configured list prices apply (the benchmarked Sonnet default). With a
+    ``model`` its own price comes from LiteLLM's cost map, falling back to the configured prices
+    (with a warning) when the map does not know it — a wrong-but-loud cost beats a missing one."""
     if not usage:
         return None
+    prompt, completion_toks = usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+    if model:
+        try:
+            p_cost, c_cost = litellm.cost_per_token(model=model, prompt_tokens=prompt,
+                                                    completion_tokens=completion_toks)
+            return round(p_cost + c_cost, 6)
+        except Exception as e:  # noqa: BLE001 — accounting must never break an answer
+            logger.warning("no price for %s (%s) — using the configured list prices", model, type(e).__name__)
     s = get_settings()
-    return round(usage.get("prompt_tokens", 0) * s.llm_input_price_per_mtok / 1e6
-                 + usage.get("completion_tokens", 0) * s.llm_output_price_per_mtok / 1e6, 6)
+    return round(prompt * s.llm_input_price_per_mtok / 1e6 + completion_toks * s.llm_output_price_per_mtok / 1e6, 6)
 
 
 class TextStream:
@@ -174,9 +186,8 @@ class TextStream:
         extra = {"timeout": self.timeout} if self.timeout else {}
         chunks = []
         resp = completion(
-            model=self.model, messages=messages, max_tokens=self.max_tokens,
-            thinking={"type": "disabled"}, num_retries=2, stream=True,
-            stream_options={"include_usage": True}, **extra,
+            model=self.model, messages=messages, **completion_params(self.model, self.max_tokens),
+            num_retries=2, stream=True, stream_options={"include_usage": True}, **extra,
         )
         for chunk in resp:
             chunks.append(chunk)
@@ -289,7 +300,7 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
     except Exception as e:  # noqa: BLE001 — surface, with whatever spend is known
         usage = getattr(stream, "usage", None)
         yield {"event": "error", "detail": f"{type(e).__name__}: {e}", "partial": "".join(parts),
-               "usage": usage, "cost_usd": usage_cost(usage), "strategy": strategy}
+               "usage": usage, "cost_usd": usage_cost(usage, getattr(stream, "model", None)), "strategy": strategy}
         return
     text = "".join(parts)
     cited = set(CITE_RE.findall(text))
@@ -297,5 +308,5 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
     yield {"event": "done", "question": question, "strategy": strategy, "answer": text,
            "citations": sorted(cited), "hallucinated": sorted(cited - valid_ids),
            "finish_reason": getattr(stream, "finish_reason", None), "usage": usage,
-           "cost_usd": usage_cost(usage), "chunk_ids": [c["chunk_id"] for c in r["chunks"]],
-           "context_chars": len(full_context)}
+           "cost_usd": usage_cost(usage, getattr(stream, "model", None)),
+           "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "context_chars": len(full_context)}

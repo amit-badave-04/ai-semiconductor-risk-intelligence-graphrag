@@ -34,6 +34,7 @@ from pydantic import BaseModel
 from ..artifacts import load_benchmark, read_prompt
 from ..llm import llm_json
 from ..retrieval.answerer import TextStream, answer, usage_cost
+from ..retrieval.verify import REFUSAL_RE
 
 logger = logging.getLogger("semigraph.eval")
 
@@ -65,9 +66,8 @@ REL_PROMPT = read_prompt("relevance_judge")
 JUDGE_PROMPT = read_prompt("correctness_judge")
 RECALL_PROMPT = read_prompt("recall_judge")
 
-# Verbatim notebook 14 programmatic patterns.
-REFUSAL_PAT = re.compile(r"does not (contain|include|provide)|not available|no (information|data|filings)|"
-                         r"cannot (be )?(determin|answer|find)|isn't|is not in the (context|filings|corpus)|not an SEC filer", re.I)
+# Verbatim notebook 14 programmatic patterns (the refusal wording is shared with the serving-side verifier).
+REFUSAL_PAT = REFUSAL_RE
 NUM_PAT = re.compile(r"\$?([0-9][0-9,\.]*)\s*(billion|bn|b\b|million|mn|m\b|trillion)?", re.I)
 
 

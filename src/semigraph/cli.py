@@ -8,6 +8,7 @@ their (cent-scale / benchmark-scale) spend before running.
 
 import json
 import logging
+from pathlib import Path
 
 import typer
 
@@ -336,6 +337,70 @@ def eval_cmd(
                                     model=settings.critic_model)
         typer.echo(json.dumps({k: analysis[k] for k in ("n_failures", "counts", "mechanical_share")},
                               indent=2, default=str))
+
+
+@app.command("bakeoff")
+def bakeoff_cmd(
+    models: str = typer.Option(..., help="Comma-separated LiteLLM model ids to test against the baseline"),
+    baseline_runs: str = typer.Option("eval_runs.v2-baseline.jsonl", help="Baseline benchmark log in data/processed; its saved contexts are the prompts every model receives"),
+    max_usd: float = typer.Option(..., "--max-usd", help="Hard cap on ALL spend: answers plus the judge (judge calls are counted at a conservative bound)"),
+    votes: int = typer.Option(3, help="Correctness-judge votes per open answer (majority)"),
+    report_name: str = typer.Option("bakeoff.json", help="Report file name inside artifacts/"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the worst-case estimate and stop; spends nothing"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Can a cheaper model answer the benchmark from the baseline's own retrieved context? (PAID)"""
+    _setup_logging(verbose)
+    from semigraph.artifacts import load_benchmark
+    from semigraph.eval import bakeoff as bo
+    from semigraph.llm import llm_json
+    from semigraph.retrieval.answerer import usage_cost
+
+    settings = _settings()
+    candidates = [m.strip() for m in models.split(",") if m.strip()]
+    path = settings.processed_dir / baseline_runs
+    base = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    base = [r for r in base if r["system"] == "hybrid"]
+    benchmark = load_benchmark()
+    try:
+        prices = [(m, *bo.model_prices(m)) for m in candidates]
+    except Exception as e:  # noqa: BLE001
+        raise typer.BadParameter(f"a model has no price in LiteLLM's cost map ({e}); refusing to spend blind") from e
+    n_open = sum(1 for b in benchmark if b["type"] != "refusal" and not b.get("expect"))
+    est = bo.estimate(base, prices, votes=votes, open_questions=n_open)
+    typer.echo(f"Bake-off estimate: {json.dumps(est, default=str)}")
+    if dry_run:
+        return
+    if est["total_worst_case_usd"] > max_usd:
+        typer.echo(f"Worst case ${est['total_worst_case_usd']:.2f} exceeds --max-usd ${max_usd:.2f}: nothing was spent.")
+        raise typer.Exit(3)
+    if not yes and not typer.confirm(f"Spend up to ${est['total_worst_case_usd']:.2f} on {len(candidates)} models?"):
+        raise typer.Abort()
+    live = []
+    for m in candidates:
+        ok, detail = bo.probe_model(m)
+        typer.echo(f"  probe {m}: {'ok' if ok else 'FAILED'} ({detail})")
+        if ok:
+            live.append(m)
+    answers_cap = max_usd - est["judge_worst_case_usd"] - est["baseline_rejudge_usd"]
+    try:
+        report = bo.run_bakeoff(base, benchmark, live, complete=bo.litellm_complete, judge=llm_json,
+                                runs_path=settings.processed_dir / "bakeoff.jsonl", max_usd=answers_cap, votes=votes,
+                                price=usage_cost)
+    except bo.AnswerBudgetExceeded as e:
+        typer.echo(f"Stopped: {e}. Nothing further was spent; answers so far are checkpointed.", err=True)
+        raise typer.Exit(5) from e
+    report["skipped_models"] = [m for m in candidates if m not in live]
+    out = Path("artifacts") / report_name
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    typer.echo(f"{'model':46} {'mech':>6} {'cite':>5} {'esc':>5} {'$/ans':>8} {'open':>5}  gates")
+    for name, s in [("baseline (saved Sonnet run)", report["baseline"]), *report["models"].items()]:
+        j = s["judged"]
+        typer.echo(f"{name:46} {s['mechanical']['passed']}/{s['mechanical']['of']:<3} {s['citation_validity']:>5.2f} "
+                   f"{s['escalation_rate']:>5.2f} {s['avg_cost_usd']:>8.4f} {(str(j['open_correct']) + '/' + str(j['open_of'])) if j else '-':>5}  "
+                   f"{'CLEARS' if s.get('clears_all_gates') else '; '.join(s['gates_failed']) or ('below baseline' if j else '')}")
+    typer.echo(f"report -> {out}")
 
 
 if __name__ == "__main__":
