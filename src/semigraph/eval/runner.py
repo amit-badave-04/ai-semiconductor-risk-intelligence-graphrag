@@ -24,7 +24,6 @@ Output artifacts (notebook 14 paths, parameterized):
 
 import json
 import logging
-import re
 import time
 from pathlib import Path
 
@@ -35,6 +34,7 @@ from ..artifacts import load_benchmark, read_prompt
 from ..llm import llm_json
 from ..retrieval.answerer import TextStream, answer, usage_cost
 from ..retrieval.verify import REFUSAL_RE
+from .expect import NUM_PAT, check_expectation, parse_numbers  # noqa: F401  (re-exported: eval/__init__, bakeoff)
 
 logger = logging.getLogger("semigraph.eval")
 
@@ -68,23 +68,6 @@ RECALL_PROMPT = read_prompt("recall_judge")
 
 # Verbatim notebook 14 programmatic patterns (the refusal wording is shared with the serving-side verifier).
 REFUSAL_PAT = REFUSAL_RE
-NUM_PAT = re.compile(r"\$?([0-9][0-9,\.]*)\s*(billion|bn|b\b|million|mn|m\b|trillion)?", re.I)
-
-
-def parse_numbers(text: str) -> list[float]:
-    """Extract dollar/scale-suffixed numbers as absolute values
-    (notebook 14 numeric-consistency check)."""
-    out = []
-    for m in NUM_PAT.finditer(text.replace(",", "")):
-        try:
-            v = float(m.group(1).replace(",", ""))
-        except ValueError:
-            continue
-        unit = (m.group(2) or "").lower()
-        mult = {"billion": 1e9, "bn": 1e9, "b": 1e9, "million": 1e6, "mn": 1e6,
-                "m": 1e6, "trillion": 1e12}.get(unit, 1)
-        out.append(v * mult)
-    return out
 
 
 class _UsageCapturingLLM:
@@ -192,11 +175,8 @@ def score_runs(runs: list[dict], benchmark: list[dict], *, judge=None,
         # correctness
         if run["type"] == "refusal":
             row["correct"] = bool(REFUSAL_PAT.search(ans))
-        elif "expect" in b and "value" in b["expect"]:
-            target = b["expect"]["value"]
-            row["correct"] = any(abs(v - target) / target < 0.005 for v in parse_numbers(ans))
-        elif "expect" in b and "any_of" in b["expect"]:
-            row["correct"] = any(s.lower() in ans.lower() for s in b["expect"]["any_of"])
+        elif b.get("expect"):
+            row["correct"] = check_expectation(b["expect"], ans)
         else:
             v = safe_judge("correctness", JUDGE_PROMPT.format(q=b["q"], notes=b.get("judge_notes", ""), a=ans[:4000]),
                            Correct, model=judge_model, max_tokens=300)

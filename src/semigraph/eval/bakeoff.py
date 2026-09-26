@@ -21,6 +21,7 @@ from ..llm_shape import completion_params
 from ..retrieval.answerer import (ANSWER_PROMPT, CITE_RE, CONTEXT_HEADERS, LEGACY_CONTEXT_HEADERS, NONE_BLOCK,
                                   ContextBlocks, answer_stream, render_prompt, sources_from_context, usage_cost)
 from ..retrieval.verify import verify_answer
+from .expect import check_expectation
 from .runner import JUDGE_PROMPT, NUM_PAT, REFUSAL_PAT, AnswerBudgetExceeded, Correct, parse_numbers  # noqa: F401
 
 logger = logging.getLogger("semigraph.bakeoff")
@@ -28,7 +29,6 @@ logger = logging.getLogger("semigraph.bakeoff")
 ANSWER_MAX_TOKENS = 2400          # what production allows (LLM_ANSWER_MAX_TOKENS on Fly); no regeneration
 OUT_TOKENS_ASSUMED = 1300         # typical hybrid answer (v2 baseline: ~1.2k completion tokens), for estimates
 JUDGE_CALL_USD = 0.01             # conservative upper bound per Sonnet correctness-judge call (~2k in, 300 out)
-NUMERIC_TOLERANCE = 0.005
 
 # --- prompt reconstruction -------------------------------------------------------------------------------
 
@@ -157,13 +157,7 @@ def _mechanical(item: dict, answer: str) -> bool | None:
     """True/False for questions with a deterministic expectation; None for open questions (need the judge)."""
     if item["type"] == "refusal":
         return bool(REFUSAL_PAT.search(answer))
-    expect = item.get("expect") or {}
-    if "value" in expect:
-        target = expect["value"]
-        return any(abs(v - target) / target < NUMERIC_TOLERANCE for v in parse_numbers(answer))
-    if "any_of" in expect:
-        return any(s.lower() in answer.lower() for s in expect["any_of"])
-    return None
+    return check_expectation(item["expect"], answer) if item.get("expect") else None
 
 
 def score_mechanical(rows: list[dict], benchmark: list[dict], contexts: dict[str, str] | None = None) -> dict:
