@@ -498,3 +498,18 @@ def test_item_adjudications_may_be_keyed_by_side_when_one_item_id_sits_on_two_si
     lri.freeze_gold(tmp_path, target, {"older|x:i1": "reworded", "newer|x:i1": "carried"})
     pairs = json.loads(target.read_text(encoding="utf-8"))["pairs"]
     assert pairs["P1|older"]["labels"] == {"x:i1": "reworded"} and pairs["P0|newer"]["labels"] == {"x:i1": "carried"}
+
+
+def test_freeze_can_be_limited_to_one_split_and_sentence_adjudications_may_be_side_keyed(tmp_path):
+    make_packets(tmp_path)
+    write_labels(tmp_path, "older", "a", GOOD_OLDER[:2])
+    write_labels(tmp_path, "older", "b", [GOOD_OLDER[0], dict(GOOD_OLDER[1], label="reworded", quote=NAC_REWORD_QUOTE)])
+    lri.collect_sentences(PID, "older", tmp_path)
+    dev = json.loads((tmp_path / f"{PID}.older.sent.report.json").read_text(encoding="utf-8"))
+    dev_path = tmp_path / "DEV.older.sent.report.json"
+    dev_path.write_text(json.dumps({**dev, "pair_id": "DEV", "split": "development"}), encoding="utf-8")
+    target = tmp_path / "gold.json"
+    lri.freeze_gold(tmp_path, target, {f"older|{sid(OLDER, 0, 1)}": "removed"}, split="held_out")
+    frozen = json.loads(target.read_text(encoding="utf-8"))
+    assert list(frozen["sentences"]) == [f"{PID}|older"]                       # the development report is left out
+    assert frozen["sentences"][f"{PID}|older"]["labels"][sid(OLDER, 0, 1)] == "removed"

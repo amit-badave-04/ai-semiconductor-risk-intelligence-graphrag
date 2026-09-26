@@ -213,16 +213,20 @@ def collect_sentences(pair_id: str, side: str, out_dir: Path) -> dict:
     return report
 
 
-def _reports(out_dir: Path, *, sentences: bool):
-    """Item reports (``<pair>.<side>.report.json``) or sentence reports (``<pair>.<side>.sent.report.json``)."""
+def _reports(out_dir: Path, *, sentences: bool, split: str | None = None):
+    """Item reports (``<pair>.<side>.report.json``) or sentence reports (``<pair>.<side>.sent.report.json``);
+    ``split`` keeps only reports of that split (``development`` / ``held_out``)."""
     for path in sorted(out_dir.glob("*.report.json")):
         if path.name.endswith(f".{SENT}.report.json") == sentences:
-            yield json.loads(path.read_text(encoding="utf-8"))
+            report = json.loads(path.read_text(encoding="utf-8"))
+            if split is None or report.get("split") == split:
+                yield report
 
 
 def _sentence_entry(rep: dict, adjudicated: dict[str, str], contested: frozenset[str] = frozenset()) -> dict:
     allowed = gold.SENTENCE_LABELS_OLDER if rep["side"] == "older" else gold.SENTENCE_LABELS_NEWER
-    resolved = {k: v for k, v in adjudicated.items() if k in rep["needs_adjudication"]}
+    resolved = {k: adjudicated.get(f"{rep['side']}|{k}", adjudicated.get(k)) for k in rep["needs_adjudication"]}
+    resolved = {k: v for k, v in resolved.items() if v is not None}
     bad = {k: v for k, v in resolved.items() if v not in allowed}
     if bad:
         raise ValueError(f"adjudicated sentence labels outside {list(allowed)} for the {rep['side']} side: {bad}")
@@ -234,7 +238,7 @@ def _sentence_entry(rep: dict, adjudicated: dict[str, str], contested: frozenset
 
 
 def freeze_gold(out_dir: Path, target: Path, adjudicated: dict[str, str] | None = None,
-                contested: list[str] | None = None) -> str:
+                contested: list[str] | None = None, split: str | None = None) -> str:
     """Merge every report's consensus (plus adjudicated labels) into one frozen gold file and return its sha256.
 
     Two layers under the one hash: ``pairs`` (item labels) and ``sentences`` (sentence labels with the section spans that
@@ -244,14 +248,14 @@ def freeze_gold(out_dir: Path, target: Path, adjudicated: dict[str, str] | None 
     disagreed on at a boundary case: they stay frozen with their label but are left out of the scoring records."""
     adjudicated = adjudicated or {}
     labels: dict[str, dict] = {}
-    for rep in _reports(out_dir, sentences=False):
+    for rep in _reports(out_dir, sentences=False, split=split):
         resolved = {k: adjudicated.get(f"{rep['side']}|{k}", adjudicated.get(k)) for k in rep["needs_adjudication"]}
         merged = {**rep["consensus"], **{k: v for k, v in resolved.items() if v is not None}}
         labels[f"{rep['pair_id']}|{rep['side']}"] = {"split": rep["split"], "labels": merged,
                                                     "alpha": rep["alpha"], "pairwise_agreement": rep["pairwise_agreement"]}
     disputed = frozenset(contested or ())
     sentences = {f"{rep['pair_id']}|{rep['side']}": _sentence_entry(rep, adjudicated, disputed)
-                 for rep in _reports(out_dir, sentences=True)}
+                 for rep in _reports(out_dir, sentences=True, split=split)}
     target.parent.mkdir(parents=True, exist_ok=True)
     return gold.freeze({"kind": "risk_items_gold", "pairs": labels, "sentences": sentences}, target)
 
@@ -347,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--side", choices=("older", "newer"), required=True)
     f = sub.add_parser("freeze")
     f.add_argument("--out-file", type=Path, default=Path("artifacts/gold/risk_items_gold.json"))
+    f.add_argument("--split", choices=("development", "held_out"), default=None, help="freeze only the reports of this split")
     f.add_argument("--adjudications", type=Path, default=None,
                    help='JSON {"items": {id: label}, "sentences": {id: label}, "contested_sentences": [id]}')
     sp = sub.add_parser("sentence-packets", help="sentence-level packets from the item-level reports (run `collect` first)")
@@ -379,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     adjudications = json.loads(args.adjudications.read_text(encoding="utf-8")) if args.adjudications else {}
     digest = freeze_gold(args.out, args.out_file, {**adjudications.get("items", {}), **adjudications.get("sentences", {})},
-                         adjudications.get("contested_sentences"))
+                         adjudications.get("contested_sentences"), split=args.split)
     frozen = json.loads(args.out_file.read_text(encoding="utf-8"))
     print(f"frozen {len(frozen['pairs'])} item entries and {len(frozen['sentences'])} sentence entries", file=sys.stderr)
     print(digest)
