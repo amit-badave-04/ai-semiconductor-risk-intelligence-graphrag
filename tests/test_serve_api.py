@@ -596,3 +596,45 @@ def test_an_answer_with_clean_checks_or_no_checks_is_cached_as_before(client, fa
     monkeypatch.setattr(routes, "answer_stream", stream_with(None))
     list(routes._paid_stream(client.app.state, Q + " unchecked", "hybrid", "iph"))
     assert len(fakes.answers) == 2
+
+
+@pytest.mark.parametrize("evidence_id", [CID, XBRL, FR])
+def test_an_evidence_id_with_a_trailing_newline_is_a_400_not_a_404(client, monkeypatch, evidence_id):
+    """``%0A`` decodes to "\n": ``$`` used to accept it and the lookup answered 404 for an id nobody could have cited."""
+    seen = capture_cypher(monkeypatch, [])
+    assert client.get(f"/api/evidence/{evidence_id}%0A").status_code == 400
+    assert seen == {}
+
+
+# ---------------------------------------------------------------- review: the new checks keep an answer out of the cache
+
+FULL_CLEAN = {"citations_retrieved": True, "numbers_grounded": True, "numbers_checked": 1, "unmatched_numbers": [],
+              "echoed_numbers": [], "pseudo_citations": [], "has_citation": True, "is_refusal": False,
+              "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+
+
+@pytest.mark.parametrize("failed", [
+    {**FULL_CLEAN, "has_citation": False},                                                          # uncited, not a refusal
+    {**FULL_CLEAN, "numbers_grounded": False, "echoed_numbers": ["$500 billion"]},                  # only the question said it
+    {**FULL_CLEAN, "unsupported_removal_claim": True, "unsupported_removal_sentences": ["x was removed"]},
+], ids=["uncited", "echoed", "removal"])
+def test_an_uncited_echoing_or_removal_claiming_answer_is_not_cached(client, fakes, monkeypatch, failed):
+    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
+    events = [json.loads(e.data) for e in routes._paid_stream(client.app.state, Q + " newchecks", "hybrid", "iph")]
+    assert fakes.answers == {} and events[-1]["checks"] == failed        # the client still receives them
+
+
+def test_a_zero_citation_refusal_with_full_checks_is_cached(client, fakes, monkeypatch):
+    refusal = {**FULL_CLEAN, "numbers_checked": 0, "has_citation": False, "is_refusal": True}
+    monkeypatch.setattr(routes, "answer_stream", stream_with(refusal))
+    list(routes._paid_stream(client.app.state, Q + " refusal", "hybrid", "iph"))
+    assert len(fakes.answers) == 1
+
+
+def test_the_failed_check_warning_names_the_new_failures(client, monkeypatch, caplog):
+    failed = {**FULL_CLEAN, "has_citation": False}
+    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
+    caplog.set_level("INFO", logger="semigraph.serve")
+    list(routes._paid_stream(client.app.state, Q + " warnuncited", "hybrid", "iph"))
+    assert any(r.levelname == "WARNING" and "failed checks" in r.getMessage() and "'has_citation': False" in r.getMessage()
+               for r in caplog.records)

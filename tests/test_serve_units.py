@@ -171,11 +171,17 @@ def test_answer_stream_mid_stream_failure_yields_error_with_usage(monkeypatch):
 
 # ---------------------------------------------- snapshot-aware cache (data refreshes must not serve old answers)
 
-def test_cache_key_without_a_snapshot_is_the_legacy_key():
+def test_cache_key_without_a_snapshot_is_the_snapshotless_key_of_the_running_template():
+    """Rewritten by the review (M5): this used to pin ``sha256("hybrid|what about nvidia")``, the key that ignored the
+    answer prompt, so a prompt change replayed old answers. The fingerprint of the prompt and the context headers is now
+    part of every key (tests/test_serve_seeding.py); no snapshot still means the snapshot-less form."""
     import hashlib
-    legacy = hashlib.sha256("hybrid|what about nvidia".encode()).hexdigest()[:32]
-    assert store.cache_key("What about Nvidia?", "hybrid") == legacy
-    assert store.cache_key("What about Nvidia?", "hybrid", "") == legacy
+
+    from semigraph.retrieval.answerer import template_fingerprint
+
+    expected = hashlib.sha256(f"{template_fingerprint()}|hybrid|what about nvidia".encode()).hexdigest()[:32]
+    assert store.cache_key("What about Nvidia?", "hybrid") == expected
+    assert store.cache_key("What about Nvidia?", "hybrid", "") == expected
 
 
 def test_cache_key_changes_with_the_snapshot():

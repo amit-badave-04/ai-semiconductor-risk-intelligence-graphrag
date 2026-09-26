@@ -194,9 +194,12 @@ def test_free_gates_pass_a_clean_score_and_name_every_failure():
 
 
 def _bench_rows():
-    """Four baseline rows (one per BENCH question) whose saved answers are right, so the baseline passes."""
+    """Four baseline rows (one per BENCH question) whose saved answers are right, so the baseline passes.
+
+    (The temporal answer says "reworded", not "dropped": since the review an answer that claims a removal without citing
+    the temporal block's removed lists is an ``unsupported_removal_claim`` and would count as an escalation.)"""
     good = {"N2": "It was $215.9 billion [%s]." % VALID[1], "D1": "Nvidia depends on TSMC [%s]." % VALID[0],
-            "T1": "Yes, several risks were dropped [%s]." % VALID[0], "U1": "The context does not contain Samsung's revenue."}
+            "T1": "Yes, several risks were reworded [%s]." % VALID[0], "U1": "The context does not contain Samsung's revenue."}
     rows = []
     for b in BENCH:
         text = good[b["id"]]
@@ -212,7 +215,7 @@ def _by_question(good: bool):
         elif "Who supplies" in prompt:
             text = "Nvidia depends on TSMC [%s]." % VALID[0]
         elif "Dropped risks?" in prompt:
-            text = "Yes, several risks were dropped [%s]." % VALID[0]
+            text = "Yes, several risks were reworded [%s]." % VALID[0]
         else:
             text = "The context does not contain Samsung's revenue."
         return {"text": text, "finish_reason": "stop", "usage": {"prompt_tokens": 1000, "completion_tokens": 100}, "latency_s": 1.0}

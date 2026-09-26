@@ -20,6 +20,7 @@ from ..artifacts import load_examples
 from ..graph.client import run_cypher
 from ..retrieval.answerer import answer_stream
 from ..retrieval.ids import CHUNK_ID_RE, classify_id, metric_id_of, rule_id_of  # noqa: F401 - CHUNK_ID_RE: re-exported (tests/test_ids.py)
+from ..retrieval.verify import checks_failed
 from . import guard, store
 
 logger = logging.getLogger("semigraph.serve")
@@ -125,11 +126,16 @@ async def healthz(request: Request):
 
 @router.get("/api/examples")
 async def examples(request: Request):
+    """The saved example questions that are actually cached: the service lists only the ones ``bootstrap`` seeded (an
+    example refused for missing or failed checks, another snapshot or another prompt template is not listed: a click on it
+    would be a paid live call under a label that says "instant, cached"). Without bootstrap state every packaged example is
+    listed."""
     _read_gate(request)
     ex = load_examples()
+    accepted = getattr(request.app.state, "example_ids", None)
     return {"source": ex["source"],
             "examples": [{"id": e["id"], "type": e["type"], "question": e["question"]}
-                         for e in ex["examples"]]}
+                         for e in ex["examples"] if accepted is None or e["id"] in accepted]}
 
 
 async def _ledger_cached(st) -> dict:
@@ -205,10 +211,10 @@ async def ask(body: AskRequest, request: Request):
 
 
 def _checks_failed(done: dict) -> bool:
-    """True when the answer's ``checks`` report a problem (an event without ``checks`` reports none)."""
-    checks = done.get("checks")
-    return bool(checks) and not (checks.get("numbers_grounded", True) and checks.get("citations_retrieved", True)
-                                 and not checks.get("pseudo_citations"))
+    """True when the answer's ``checks`` report a problem (an event without ``checks`` reports none). The predicate is
+    ``verify.checks_failed``: the one definition example seeding and the page share (ungrounded or question-echoed
+    figures, an unretrieved citation, a pseudo-citation, an unsupported removal claim, an uncited non-refusal)."""
+    return checks_failed(done.get("checks"))
 
 
 def _warn_on_failed_checks(done: dict) -> None:
@@ -242,7 +248,8 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
                 logged = True
             if ev["event"] == "done":
                 # A cached replay carries no ``checks`` (the store does not persist them), so an answer that failed any
-                # is not cached: it would otherwise look clean for the whole TTL.
+                # (including one that cites nothing without being a refusal) is not cached: it would otherwise look
+                # clean for the whole TTL.
                 if ev["answer"].strip() and ev["finish_reason"] != "length" and not _checks_failed(ev):
                     store.put_answer(st.driver, question=question, strategy=strategy, answer=ev["answer"],
                                      citations=ev["citations"], hallucinated=ev["hallucinated"],

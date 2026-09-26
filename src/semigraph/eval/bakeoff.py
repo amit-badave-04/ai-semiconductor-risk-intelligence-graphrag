@@ -183,8 +183,9 @@ def score_mechanical(rows: list[dict], benchmark: list[dict], contexts: dict[str
         if not errored and not r["hallucinated"]:
             valid_cites += 1
         context = (contexts or {}).get(r["id"])
-        # production passes the same three extras (answerer._check_draft): sources bound percentages to cited text, the
-        # question lets an answer restate a figure it was asked about
+        # production passes the same three extras (``answerer._draft_then_escalate`` -> ``verify_answer``; the ``checks`` of
+        # the done event come from ``answerer.answer_checks``): sources bound percentages to cited text, and the question
+        # identifies the figures only the asker stated (never grounded)
         reasons = ["error"] if errored else verify_answer(
             r["answer"], set(r["cited"]), set(r["valid_ids"]), r["finish_reason"], context=context,
             sources=sources_from_context(context) if context else None, question=by_id[r["id"]].get("q"))

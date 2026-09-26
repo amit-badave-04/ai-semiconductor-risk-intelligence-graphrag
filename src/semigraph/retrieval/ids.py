@@ -22,10 +22,11 @@ FR_ID_PATTERN = r"fr:(?:C[0-9]-)?[0-9]{4}-[0-9]{4,6}"
 #: ``findall`` yields the bare id of every well-formed citation in a text.
 CITE_RE = re.compile(rf"\[({CHUNK_ID_PATTERN}|{XBRL_ID_PATTERN}|{FR_ID_PATTERN})\]")
 
-# Anchored forms for validating an id that arrives as a route parameter.
-CHUNK_ID_RE = re.compile(r"^[0-9\-]{10,30}:[IVX]+\.[0-9A-Z]+:[0-9]{4}$")
-XBRL_ID_RE = re.compile(rf"^{XBRL_ID_PATTERN}$")
-FR_ID_RE = re.compile(rf"^{FR_ID_PATTERN}$")
+# Anchored forms for validating an id that arrives as a route parameter. ``\Z``, never ``$``: ``$`` also matches just
+# before a final newline, so an id followed by "%0A" would pass as an id.
+CHUNK_ID_RE = re.compile(r"^[0-9\-]{10,30}:[IVX]+\.[0-9A-Z]+:[0-9]{4}\Z")
+XBRL_ID_RE = re.compile(rf"^{XBRL_ID_PATTERN}\Z")
+FR_ID_RE = re.compile(rf"^{FR_ID_PATTERN}\Z")
 
 _XBRL_PREFIX = "xbrl:"
 _FR_PREFIX = "fr:"

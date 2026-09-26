@@ -76,3 +76,17 @@ test("shortModel drops the provider prefix", () => {
   assert.equal(api.shortModel("openai/gpt-6-luna"), "gpt-6-luna");
   assert.equal(api.shortModel(undefined), "");
 });
+
+// ---- the review (M3): removed paragraphs are not risk factors
+
+test("removed paragraphs are counted apart from removed risk factors", () => {
+  const html = api.statsHtml({ ...STATS, graph: { ...STATS.graph, removed_risk_items: 41, removed_paragraphs: 7 } });
+  assert.match(html, /<b>41<\/b> text-verified removed risk items/);
+  assert.match(html, /<b>7<\/b> text-verified removed paragraphs/);
+});
+
+test("a graph with no removed paragraphs (or an API that does not report them) shows no paragraph count", () => {
+  assert.doesNotMatch(api.statsHtml({ ...STATS, graph: { ...STATS.graph, removed_paragraphs: 0 } }), /paragraphs/);
+  assert.doesNotMatch(api.statsHtml(STATS), /paragraphs/);
+  assert.doesNotMatch(api.statsHtml({ ...STATS, graph: { ...STATS.graph, removed_paragraphs: "7" } }), /undefined|NaN|paragraphs/);
+});

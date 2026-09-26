@@ -117,7 +117,9 @@ function chipLabel(id, evidence) {
 const REASONS = {
   empty: "empty answer", truncated: "answer cut off by the token budget",
   invalid_citation: "a cited id was not in the retrieved context", no_citation: "no citation",
-  ungrounded_number: "a number not found in the retrieved context", pseudo_citation: "bracketed text that is not a citation",
+  ungrounded_number: "a number not found in the retrieved context (or stated only in your question)",
+  pseudo_citation: "bracketed text that is not a citation",
+  unsupported_removal_claim: "a removal claim the removed lists do not support",
   draft_error: "the draft model failed",
 };
 const reasonText = (r) => REASONS[r] || String(r).replace(/_/g, " ");
@@ -129,9 +131,13 @@ function escalationStatus(ev) {
   return `the first draft did not pass the automatic checks${why.length ? " (" + why.join("; ") + ")" : ""}; answering again with the stronger model…`;
 }
 
+// One predicate for "this answer failed a check" (the server's failed_check_names in retrieval/verify.py is the same rule):
+// an unretrieved citation, an ungrounded or question-echoed figure, a pseudo-citation, an unsupported removal claim, or no
+// citation at all in an answer that is not a refusal. A key an older payload does not carry counts as clean.
 function checksPassed(c) {
   return !(c && typeof c === "object" && (c.citations_retrieved === false || c.numbers_grounded === false ||
-    list(c.unmatched_numbers).length || list(c.pseudo_citations).length));
+    list(c.unmatched_numbers).length || list(c.echoed_numbers).length || list(c.pseudo_citations).length ||
+    c.unsupported_removal_claim === true || (c.has_citation === false && c.is_refusal !== true)));
 }
 
 // What actually happened to this answer, and nothing more. `defaultModel` (from /api/stats) names the model of a live stream.
@@ -160,16 +166,35 @@ function checksSummary(ev) {
   const cites = list(ev.citations), hall = list(ev.hallucinated);
   const c = ev.checks && typeof ev.checks === "object" ? ev.checks : null;
   const badges = [{ text: `${cites.length} citation${cites.length === 1 ? "" : "s"}`, cls: "" }], warnings = [];
+  const unmatched = c ? list(c.unmatched_numbers) : [], echoed = c ? list(c.echoed_numbers) : [];
+  const uncited = !!c && c.has_citation === false && c.is_refusal !== true;
+  // Citations: green only when there is something cited and every cited id was retrieved; zero citations is never green.
   if (hall.length || (c && c.citations_retrieved === false)) {
     badges.push({ text: hall.length ? `${hall.length} cited id(s) not in the retrieved context` : "some cited ids were not in the retrieved context", cls: "bad" });
     if (hall.length) warnings.push(`Cited but not retrieved: ${hall.join(", ")}`);
-  } else badges.push({ text: "cited ids were retrieved", cls: "ok" });
-  if (c && c.numbers_grounded === true) badges.push({ text: "numbers matched the retrieved context", cls: "ok" });
-  else if (c && c.numbers_grounded === false) badges.push({ text: "some numbers are not in the retrieved context", cls: "bad" });
-  else badges.push({ text: "numbers not checked", cls: "" });
-  if (c && list(c.unmatched_numbers).length) warnings.push(`Numbers not found in the retrieved context: ${list(c.unmatched_numbers).join(", ")}`);
+  } else if (uncited) {
+    badges.push({ text: "no citation: this answer cites no source", cls: "warn" });
+    warnings.push("This answer cites no source and is not a refusal: read it as unsupported.");
+  } else if (c && c.has_citation === false && c.is_refusal === true) badges.push({ text: "declines to answer: nothing to cite", cls: "" });
+  else if (cites.length) badges.push({ text: "cited ids were retrieved", cls: "ok" });
+  // Numbers: green only when figures were examined and all matched; a figure only the question states is never a match.
+  if (!c) badges.push({ text: "numbers not checked", cls: "" });
+  else if (unmatched.length || c.numbers_grounded === false && !echoed.length) badges.push({ text: "some numbers are not in the retrieved context", cls: "bad" });
+  if (c && echoed.length) badges.push({ text: "a figure was taken from your question and is not verified", cls: "warn" });
+  if (c && !unmatched.length && !echoed.length && c.numbers_grounded !== false) {
+    if (typeof c.numbers_checked !== "number") badges.push({ text: "numbers not checked", cls: "" });
+    else if (c.numbers_checked > 0) badges.push({ text: "numbers matched the retrieved context", cls: "ok" });
+    else badges.push({ text: "no figures to check", cls: "" });
+  }
+  if (c && c.unsupported_removal_claim === true) badges.push({ text: "claims a removal the removed lists do not support", cls: "warn" });
+  if (unmatched.length) warnings.push(`Numbers not found in the retrieved context: ${unmatched.join(", ")}`);
+  if (echoed.length) warnings.push(`A figure taken from your question, not verified: ${echoed.join(", ")}`);
   if (c && list(c.pseudo_citations).length) warnings.push(`Bracketed text that is not a citation and cannot be verified: ${list(c.pseudo_citations).join(", ")}`);
-  const hint = "These checks confirm that each cited id was retrieved and that numbers match the retrieved context; they do not prove that a sentence is supported by the passage it cites. Click a chip to read the source.";
+  if (c && c.unsupported_removal_claim === true) {
+    const sentences = list(c.unsupported_removal_sentences);
+    warnings.push(`A sentence claims a removal that the removed lists of the retrieved context do not support${sentences.length ? ": " + sentences.join(" / ") : ""}`);
+  }
+  const hint = "These checks confirm that each cited id was retrieved and that numbers match the retrieved context (a figure only your question states is never counted as a match); they do not prove that a sentence is supported by the passage it cites. Only amounts with a currency ($, €, USD, EUR, NT$, TWD) and percentages are checked: a bare number such as \"190 billion\" is not. Click a chip to read the source.";
   return { badges, warnings, hint };
 }
 
@@ -221,10 +246,22 @@ function statsHtml(s) {
   const item = (v, label) => `<span><b>${esc(formatNumber(v))}</b> ${label}</span>`;
   const parts = [item(n.Company || 0, "companies"), item(n.Filing || 0, "filings"), item(n.EvidenceSpan || 0, "evidence spans"), item(n.RiskFactor || 0, "risk disclosures")];
   if (typeof g.removed_risk_items === "number") parts.push(item(g.removed_risk_items, "text-verified removed risk items"));
+  // Paragraph units (20-F filers, filings with no risk-factor headlines) are not risk factors: counted and named apart.
+  if (typeof g.removed_paragraphs === "number" && g.removed_paragraphs > 0) parts.push(item(g.removed_paragraphs, "text-verified removed paragraphs"));
   parts.push(item(n.ExportControl || 0, "BIS rules"));
   parts.push(`<span>live questions today <b>${esc(today.paid == null ? "?" : today.paid)}</b> / ${esc(lim.max_queries_per_day == null ? "?" : lim.max_queries_per_day)}</span>`);
   if (s && s.paused) parts.push(`<span class="badge warn">live questions paused</span>`);
   return parts.join("");
+}
+
+// The saved example questions, grouped by type. The server lists only examples whose saved answers are cached (an example
+// refused at start-up is not listed: a click on it would be a paid live call under an "instant, cached" heading).
+function examplesHtml(d) {
+  const groups = {};
+  for (const e of list(d && d.examples)) (groups[e.type] = groups[e.type] || []).push(e);
+  const types = Object.keys(groups);
+  if (!types.length) return `<div class="hint">No saved example answers are available right now. Ask your own question below (live questions are rate-limited and capped per day).</div>`;
+  return types.map((type) => `<div class="t">${esc(type)}</div>` + groups[type].map((e) => `<button data-q="${esc(e.question)}">${esc(e.question)}</button>`).join("")).join("");
 }
 
 function limitsText(s) {
@@ -333,13 +370,7 @@ async function loadStats() {
 
 async function loadExamples() {
   const d = await (await fetch("/api/examples")).json();
-  const groups = {};
-  for (const e of d.examples) (groups[e.type] = groups[e.type] || []).push(e);
-  let html = "";
-  for (const [type, items] of Object.entries(groups)) {
-    html += `<div class="t">${esc(type)}</div>` + items.map((e) => `<button data-q="${esc(e.question)}">${esc(e.question)}</button>`).join("");
-  }
-  $("examples").innerHTML = html;
+  $("examples").innerHTML = examplesHtml(d);
   $("examples").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.q; $("strategy").value = "hybrid"; ask(); }));
 }
 

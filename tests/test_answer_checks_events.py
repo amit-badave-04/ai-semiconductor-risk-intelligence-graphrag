@@ -9,7 +9,15 @@ from semigraph.retrieval.answerer import answer, answer_stream
 
 CID = "0001045810-24-000029:I.1A:0001"
 REV = "xbrl:1045810:revenue:2026-01-25"
-CLEAN = {"citations_retrieved": True, "numbers_grounded": True, "unmatched_numbers": [], "pseudo_citations": []}
+
+
+def clean(numbers_checked):
+    """The ``checks`` of an answer that passed everything, having examined ``numbers_checked`` figures."""
+    return {"citations_retrieved": True, "numbers_grounded": True, "numbers_checked": numbers_checked,
+            "unmatched_numbers": [], "echoed_numbers": [], "pseudo_citations": [], "has_citation": True,
+            "is_refusal": False, "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+
+
 RETRIEVAL = {
     "anchors": {"Nvidia": 1045810}, "edges": [], "risks": [], "temporal": [], "temporal_pairs": [],
     "metrics": [{"company": "Nvidia", "cik": 1045810, "metric": "revenue", "value": 215938000000.0,
@@ -48,7 +56,7 @@ def done_of(events):
 
 def test_a_released_cheap_draft_reports_clean_checks():
     events = run("Who supplies HBM?", Stream(f"Revenue was $215.9 billion [{REV}], up 65.5% from the prior year [{REV}].", "cheap/m"))
-    assert done_of(events)["escalated"] is False and done_of(events)["checks"] == CLEAN
+    assert done_of(events)["escalated"] is False and done_of(events)["checks"] == clean(2)
 
 
 def test_a_strong_routed_answer_cannot_escalate_so_it_reports_what_it_fails():
@@ -56,8 +64,8 @@ def test_a_strong_routed_answer_cannot_escalate_so_it_reports_what_it_fails():
     events = run("How have Nvidia's risk disclosures changed?", cheap, strong)
     done = done_of(events)
     assert done["routed"] == "strong" and done["escalated"] is False and not cheap.iterated
-    assert done["checks"] == {"citations_retrieved": True, "numbers_grounded": False,
-                              "unmatched_numbers": ["$190 billion"], "pseudo_citations": ["Reported Metrics"]}
+    assert done["checks"] == {**clean(1), "numbers_grounded": False, "unmatched_numbers": ["$190 billion"],
+                              "pseudo_citations": ["Reported Metrics"]}
 
 
 def test_a_strong_answer_citing_something_never_retrieved_reports_it():
@@ -72,18 +80,18 @@ def test_a_draft_with_a_pseudo_citation_is_escalated_and_the_strong_answers_chec
     events = run("Who supplies HBM?", draft, Stream(f"Revenue was $215.9 billion [{REV}].", "strong/m"))
     escalated = next(e for e in events if e["event"] == "escalated")
     assert escalated["reasons"] == ["pseudo_citation"]
-    assert done_of(events)["escalated"] is True and done_of(events)["checks"] == CLEAN
+    assert done_of(events)["escalated"] is True and done_of(events)["checks"] == clean(1)
 
 
 def test_a_draft_with_an_ungrounded_percentage_is_escalated():
     events = run("Who supplies HBM?", Stream(f"Revenue grew 70.1% [{REV}].", "cheap/m"), Stream(f"Revenue grew 65.5% [{REV}].", "strong/m"))
     assert next(e for e in events if e["event"] == "escalated")["reasons"] == ["ungrounded_number"]
-    assert done_of(events)["checks"] == CLEAN
+    assert done_of(events)["checks"] == clean(1)
 
 
 def test_a_percentage_in_a_chunk_the_draft_cites_is_grounded_through_the_sources_map():
     events = run("Who supplies HBM?", Stream(f"One customer was 19% of revenue [{CID}].", "cheap/m"))
-    assert done_of(events)["escalated"] is False and done_of(events)["checks"] == CLEAN
+    assert done_of(events)["escalated"] is False and done_of(events)["checks"] == clean(1)
 
 
 def test_a_percentage_in_a_chunk_the_draft_does_not_cite_is_not_grounded():
@@ -92,9 +100,25 @@ def test_a_percentage_in_a_chunk_the_draft_does_not_cite_is_not_grounded():
     assert next(e for e in events if e["event"] == "escalated")["reasons"] == ["ungrounded_number"]
 
 
-def test_a_dollar_value_echoed_from_the_question_is_not_flagged():
-    events = run("Did revenue exceed $100 billion?", Stream(f"Yes: $215.9 billion [{REV}], above $100 billion.", "cheap/m"))
-    assert done_of(events)["escalated"] is False and done_of(events)["checks"] == CLEAN
+def test_a_dollar_value_echoed_from_the_question_is_not_grounded_so_the_draft_escalates():
+    """Rewritten by the review of the M1b checks (H1): this test used to assert that a figure the question states is
+    released (``escalated is False``, clean checks). It is now ``ungrounded_number``: the cheap draft escalates, and the
+    strong answer that repeats the figure reports it as ``echoed_numbers`` (unverified) instead of a green check."""
+    question = "Did revenue exceed $100 billion?"
+    events = run(question, Stream(f"Yes: $215.9 billion [{REV}], above $100 billion.", "cheap/m"),
+                 Stream(f"Yes: $215.9 billion [{REV}], above $100 billion.", "strong/m"))
+    assert next(e for e in events if e["event"] == "escalated")["reasons"] == ["ungrounded_number"]
+    done = done_of(events)
+    assert done["escalated"] is True
+    assert done["checks"] == {**clean(2), "numbers_grounded": False, "echoed_numbers": ["$100 billion"]}
+
+
+def test_a_strong_routed_answer_that_only_repeats_the_askers_figure_is_reported_unverified():
+    question = "Did NVIDIA revenue reach $500 billion? How have its risk disclosures changed?"
+    text = f"Yes, NVIDIA revenue reached $500 billion [{REV}]."
+    done = done_of(run(question, Stream("unused", "cheap/m"), Stream(text, "strong/m")))
+    assert done["routed"] == "strong"
+    assert done["checks"]["echoed_numbers"] == ["$500 billion"] and done["checks"]["numbers_grounded"] is False
 
 
 def test_without_an_escalation_model_the_live_answer_still_reports_checks():
@@ -105,13 +129,12 @@ def test_without_an_escalation_model_the_live_answer_still_reports_checks():
 
 def test_the_computed_year_over_year_line_grounds_the_percentage_and_the_dollar_change():
     text = f"Revenue rose 65.5%, or $85.441 billion, to $215.938 billion [{REV}]."
-    assert done_of(run("Who supplies HBM?", Stream(text, "cheap/m")))["checks"] == CLEAN
+    assert done_of(run("Who supplies HBM?", Stream(text, "cheap/m")))["checks"] == clean(3)
 
 
 def test_the_non_streaming_answer_reports_checks_too():
     out = answer("q", None, None, llm=lambda p: f"Revenue was $190 billion [{REV}].")
-    assert out["checks"] == {"citations_retrieved": True, "numbers_grounded": False,
-                             "unmatched_numbers": ["$190 billion"], "pseudo_citations": []}
+    assert out["checks"] == {**clean(1), "numbers_grounded": False, "unmatched_numbers": ["$190 billion"]}
     assert out["hallucinated"] == set() and out["cited"] == {REV}
 
 
@@ -133,4 +156,4 @@ def test_a_percentage_in_a_cited_temporal_headline_or_rule_title_is_grounded_for
     text = (f"A new risk says one customer reached 25% of revenue [{new_chunk}]. Separately, a Federal Register rule "
             f"adds a 50% licensing fee [fr:2026-19537].")
     events = run("How have Nvidia's risk disclosures changed?", Stream("unused", "cheap/m"), Stream(text, "strong/m"))
-    assert done_of(events)["routed"] == "strong" and done_of(events)["checks"] == CLEAN
+    assert done_of(events)["routed"] == "strong" and done_of(events)["checks"] == clean(2)

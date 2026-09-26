@@ -84,7 +84,8 @@ def test_the_period_constants_show_three_fiscal_years_and_fetch_one_more_as_the_
 def test_hybrid_asks_the_metrics_query_for_the_fetched_period_count():
     d = Driver()
     hybrid_retrieve("How does Nvidia depend on TSMC?", d, Embedder())
-    assert d.of("metrics") == [{"ids": [NVDA, TSMC], "periods": METRIC_PERIODS_FETCHED}]
+    # a question that names no fiscal year or date asks for no extra periods (two empty lists), so the rows are unchanged
+    assert d.of("metrics") == [{"ids": [NVDA, TSMC], "periods": METRIC_PERIODS_FETCHED, "years": [], "dates": []}]
 
 
 # ---------------------------------------------------------------- external rules: id, date, provenance
@@ -113,7 +114,8 @@ def test_temporal_query_reads_the_riskitem_contract_and_none_of_the_old_lineage_
     assert "DISCLOSES_RISK" not in q and "Deleted" not in q and "lineage_id IS NOT NULL" not in q
     assert "c.cik IN $ids" in q
     # the pair: the current annual, and the annual filing it rolled over (not a 10-Q, not an amendment overlay)
-    assert "(cur:Filing {is_current: true})-[:SUPERSEDES {kind: 'rolled'}]->(prev:Filing)" in q
+    # (the edge is bound as ``sup`` so its ``items_compared`` / ``not_compared_reason`` come back with the pair)
+    assert "(cur:Filing {is_current: true})-[sup:SUPERSEDES {kind: 'rolled'}]->(prev:Filing)" in q
     members = q.count("UNION ALL") + 1
     assert q.count("cur.form IN ['10-K', '10-K/A', '20-F', '20-F/A']") == members
     assert q.count("prev.form IN ['10-K', '10-K/A', '20-F', '20-F/A']") == members
@@ -186,7 +188,8 @@ def test_a_pair_with_no_changes_is_kept_so_the_answer_can_say_none_were_found():
     assert items == []
     assert pairs == [{"company": "Nvidia", "cik": NVDA, "older_accession": OLD, "older_form": "10-K",
                       "older_date": "2025-02-26", "newer_accession": NEW, "newer_form": "10-K",
-                      "newer_date": "2026-02-25", "totals": {"removed": 0, "new": 0, "reworded": 0}}]
+                      "newer_date": "2026-02-25", "compared": True, "not_compared_reason": None,
+                      "totals": {"removed": 0, "new": 0, "reworded": 0}}]
 
 
 def test_lists_are_capped_and_the_true_totals_are_stated():
@@ -207,14 +210,17 @@ def test_headline_units_outrank_paragraph_units_even_when_the_paragraph_is_longe
     assert [i["seq"] for i in items] == [1, 2]
 
 
-def test_within_headline_units_longer_items_come_first_by_length_band_then_the_question_breaks_ties():
+def test_within_headline_units_the_items_the_question_talks_about_come_first_then_the_length_band():
+    """Changed by the review (M7): this used to expect [4, 3, 2, 1] (length band first, the question only breaking ties),
+    which answered "which China licensing risk was removed?" with the two longest UNRELATED items ahead of the short
+    on-topic one. Similarity now ranks before the band; with no overlap at all the band still decides (next test)."""
     rows = [pair(),
             item("removed", 1, headline="Short but on topic China", length=200),          # band 0
             item("removed", 2, headline="Medium generic", length=700),                     # band 1
             item("removed", 3, headline="Long generic", length=2000),                      # band 2
             item("removed", 4, headline="Long on topic China licensing", length=1600)]     # band 2, relevant
     items, _ = select_temporal(rows, "Which China licensing risk was removed?")
-    assert [i["seq"] for i in items] == [4, 3, 2, 1]
+    assert [i["seq"] for i in items] == [4, 1, 3, 2]
 
 
 def test_ties_are_broken_by_length_then_item_id_so_the_order_is_deterministic():

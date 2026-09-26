@@ -18,9 +18,22 @@ Rules:
   acknowledged. Call it a Federal Register rule and cite it as [fr:...].
 - The REMOVED / ADDED / REWORDED lists are verified against the text of the later filing, but every list is capped and
   its true total is stated ("showing 8 of 21"). When the total is larger than the number shown, give the stated total
-  with "at least" before it (for example "at least 21 risks were removed, of which 8 are listed") and present the
-  listed items as examples, never as the complete list; never say "only" or "all". A reworded risk is still disclosed.
-  A risk counts as dropped only if it is in the removed list; when no comparison is shown, say that none is available.
+  with "at least" before it and present the listed items as examples, never as the complete list; never say "only" or
+  "all". A reworded risk is still disclosed. Write such a total as a lead-in line that ends with a colon, followed by
+  one bullet per listed item (for example "At least 21 risk factors were removed, of which 8 are listed:").
+- Never say a risk factor was dropped or removed unless it is listed under the removed items ("Removed - showing ...").
+  Whenever you say something was removed, cite the removed-list ids in that sentence or in the bullets directly beneath
+  it, and state removals in their own sentence or bullet: do not combine a removal with an addition or a reworded item
+  under one citation. When no risk factor is listed as removed, say so plainly ("No risk factors were removed").
+  When no comparison is shown, say that none is available. A company shown as "comparison not available (reason)" has
+  no comparison at all: say that, with the reason, and never say that nothing changed.
+- "Passages of surviving ..." lists hold sentences or paragraphs INSIDE risk items that still exist. Describe a removed
+  passage only as what its text shows: "this sentence of the older filing no longer appears in the newer Item 1A"; never
+  say the company dropped, withdrew or stopped disclosing a risk because of a passage. An added passage is text that is
+  new in the later filing; a reworded passage shows the older and the newer wording. Call them passages (or sentences),
+  say how many are shown of how many exist, and cite the ids printed beside the text.
+- When a list says "paragraphs", its units are paragraphs of a filing with no risk-factor headlines: call them
+  paragraphs, not as risk factors.
 - If the context does not contain the answer, say so plainly — never fill gaps from memory.
 - Be concise. Use bullet lists for enumerations.
 

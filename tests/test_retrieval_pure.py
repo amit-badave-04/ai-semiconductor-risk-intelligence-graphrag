@@ -480,7 +480,8 @@ def test_vector_retrieve_filters_retrievable_in_index():
     out = vector_retrieve("q", d, FakeEmbedder(), k=7)
     (p,) = d.of("vector")
     assert p == {"k": 7, "vec": QUERY_VEC}
-    assert set(out) == {"anchors", "edges", "metrics", "risks", "temporal", "temporal_pairs", "chunks"}
+    assert set(out) == {"anchors", "edges", "metrics", "metric_periods", "risks", "temporal", "temporal_pairs",
+                        "temporal_passages", "chunks"}
 
 
 # --- 2026.05 compatibility guard: every SEARCH ... WHERE stays inside the verified grammar ---
@@ -544,8 +545,8 @@ def test_anchor_defaulted_false_when_company_detected(caplog):
 
 def test_hybrid_result_shape_is_v1_plus_anchor_defaulted_and_temporal_pairs():
     out = hybrid_retrieve("How does Nvidia depend on TSMC?", FakeDriver(), FakeEmbedder())
-    assert set(out) == {"anchors", "edges", "metrics", "risks", "temporal", "temporal_pairs", "chunks",
-                        "anchor_defaulted"}
+    assert set(out) == {"anchors", "edges", "metrics", "metric_periods", "risks", "temporal", "temporal_pairs",
+                        "temporal_passages", "chunks", "anchor_defaulted"}
     assert out["edges"] == [] and out["risks"] == []
 
 

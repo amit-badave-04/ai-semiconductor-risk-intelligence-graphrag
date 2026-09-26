@@ -13,7 +13,7 @@ export const INDEX_PATH = path.resolve(here, "../../src/semigraph/serve/static/i
 const EXPORTS = [
   "esc", "shortModel", "classifyCitation", "chipLabel", "reasonText", "answerBadge", "checksSummary", "metaHtml",
   "renderMarkdown", "statsHtml", "limitsText", "costNote", "retrievalStatus", "safeUrl", "formatNumber",
-  "evidenceView", "escalationStatus", "CITE",
+  "evidenceView", "escalationStatus", "CITE", "checksPassed", "examplesHtml",
 ];
 
 function stubElement() {

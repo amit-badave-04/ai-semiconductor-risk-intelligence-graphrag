@@ -74,3 +74,17 @@ def test_the_answerer_and_the_route_use_this_grammar():
 
     assert answerer.CITE_RE is ids.CITE_RE
     assert routes.CHUNK_ID_RE is ids.CHUNK_ID_RE
+
+
+# --- review LOW: a trailing newline must never pass an anchored id (Python's ``$`` matches before a final "\n") ---
+
+@pytest.mark.parametrize("value", [CHUNK, XBRL, FR, FR_CORRECTION])
+@pytest.mark.parametrize("suffix", ["\n", "\r\n", " ", "\n../../etc"])
+def test_an_id_followed_by_a_newline_or_anything_else_is_not_an_id(value, suffix):
+    assert ids.classify_id(value + suffix) is None
+    for pattern in (ids.CHUNK_ID_RE, ids.XBRL_ID_RE, ids.FR_ID_RE):
+        assert pattern.match(value + suffix) is None
+    with pytest.raises(ValueError):
+        ids.metric_id_of(XBRL + suffix)
+    with pytest.raises(ValueError):
+        ids.rule_id_of(FR + suffix)

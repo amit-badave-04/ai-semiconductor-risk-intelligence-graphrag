@@ -70,9 +70,11 @@ test("no badge text anywhere says 'draft verified' or 'all citations verified'",
 });
 
 test("checks that all passed produce honest wording and no warnings", () => {
+  // green "numbers matched" needs numbers_checked > 0 (the review): a figure-free answer has nothing to match
   const s = plain(api.checksSummary({
     citations: ["x", "y"], hallucinated: [],
-    checks: { citations_retrieved: true, numbers_grounded: true, unmatched_numbers: [], pseudo_citations: [] },
+    checks: { citations_retrieved: true, numbers_grounded: true, numbers_checked: 2, unmatched_numbers: [], pseudo_citations: [],
+              has_citation: true, is_refusal: false, echoed_numbers: [], unsupported_removal_claim: false },
   }));
   const texts = s.badges.map((b) => b.text);
   assert.ok(texts.includes("2 citations"));

@@ -220,9 +220,12 @@ def test_chunk_ids_of_shown_items_join_the_valid_ids_and_only_three_are_printed_
 
 
 def test_a_headline_less_paragraph_unit_is_labelled_not_left_blank():
+    """Changed by the review (M3): with no text at all the placeholder now says "paragraph" (a paragraph unit is not a
+    "passage": that word names the changed sentences inside a surviving item). With text it is the first sentence
+    (tests/test_answerer_review.py)."""
     block = temporal_block([item("new", None, newer=[f"{NEW}:I.1A:0001"], unit_kind="paragraph")],
                            [pair(totals={"removed": 0, "new": 1, "reworded": 0})])
-    assert '- "(untitled passage, section I.1A)" [' in block
+    assert '- "(untitled paragraph, section I.1A)" [' in block
 
 
 def test_headlines_are_flattened_and_truncated():

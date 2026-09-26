@@ -8,7 +8,9 @@ Contract (docs/v2/M1B_PLAN.md D and G)
     (:RiskItem {item_id, accession_no, filer_cik, section_id, seq, headline, unit_kind, chunk_ids, is_current, is_new,
                 removed_in, lineage_id, char_start, char_end})
     (:RiskItem)-[:SUCCEEDED_BY {kind: 'unchanged'|'reworded'|'merged', sim_embed, sim_lex, decided_by}]->(:RiskItem)
-    (newer:Filing)-[:SUPERSEDES {kind: 'rolled'}]->(older:Filing); (:Company)-[:FILED]->(:Filing)
+    (newer:Filing)-[:SUPERSEDES {kind: 'rolled', items_compared, not_compared_reason}]->(older:Filing); (:Company)-[:FILED]->(:Filing)
+    (:RiskPassage {passage_id, kind, older_accession, newer_accession, filer_cik, text, counterpart_text, similarity,
+                   chunk_ids, counterpart_chunk_ids?})   with (item:RiskItem)-[:HAS_PASSAGE]->(passage)      [L.7]
 
 Corpus
     Nvidia  n25 10-K (superseded)  n26 10-K (current)  q25 10-Q (superseded; the current annual also rolled over it)
@@ -18,24 +20,34 @@ Corpus
     AMD     a25 10-K, a26 10-K (current): one unchanged item each  -> a comparison in which nothing changed
             a26x 10-K/A current, no items (the partial-amendment overlay shape)
     Micron  m26 10-K current rolled over m25 10-K, NEITHER has items -> no comparison at all ("no data")
+    Intel   t25 10-K current rolled over t24 10-K, items_compared=false, t25 has NO items -> "comparison not available"
+    ASML    l25 10-K current rolled over l24 10-K, items_compared=false, both sides have items (one with a stale removed_in)
+    Passages (Nvidia pair): removed x3 + reworded x1 in o4, added x1 in n4, one removed passage of a DIFFERENT pair (EARLIER)
 """
 
 import pytest
 
+from semigraph.retrieval.answerer import build_blocks, metrics_lines
+from semigraph.retrieval.context_layout import removal_supported_ids
 from semigraph.retrieval.retriever import (
     METRIC_PERIODS_FETCHED,
     METRICS_QUERY,
+    PASSAGES_QUERY,
     RULE_EDGES_QUERY,
     TEMPORAL_QUERY,
+    mentioned_periods,
     run_cypher,
+    select_passages,
     select_temporal,
 )
 from semigraph.serve import routes
 
-NVDA, AMD, MICRON = 1045810, 2488, 723125
+NVDA, AMD, MICRON, INTEL, ASML = 1045810, 2488, 723125, 50863, 937966
 N25, N26, Q25 = "0001045810-25-000023", "0001045810-26-000021", "0001045810-25-000099"
 A25, A26, A26X = "0000002488-25-000010", "0000002488-26-000018", "0000002488-26-000021"
 M25, M26 = "0000723125-25-000030", "0000723125-26-000031"
+T24, T25 = "0000050863-25-000010", "0000050863-26-000011"
+L24, L25 = "0000937966-25-000010", "0000937966-26-000011"
 EARLIER = "0001045810-24-000029"
 
 
@@ -59,7 +71,12 @@ ITEMS = [
     item("n4", N26, NVDA, 4, "Customer concentration", current=True),
     item("n5", N26, NVDA, 5, "Combined regulatory risk", current=True),
     item("n7", N26, NVDA, 7, "Sovereign AI demand", is_new=True, current=True, length=1800),
-    item("n8", N26, NVDA, 8, None, kind="paragraph", is_new=True, current=True, length=300),
+    {**item("n8", N26, NVDA, 8, None, kind="paragraph", is_new=True, current=True, length=300),
+     "chunk_ids": [f"{N26}:I.1A:0008"], "char_start": 507, "char_end": 807},     # = CHUNK8 below
+    item("n9", N26, NVDA, 9, None, kind="paragraph", is_new=True, current=True, length=300),      # its first chunk is absent
+    item("t1", T24, INTEL, 1, "Older Intel risk", removed_in=T25),          # a stale flag: the pair was not compared
+    item("l1", L24, ASML, 1, "Older ASML risk", removed_in=L25),            # stale flags on a not-compared pair
+    item("l2", L25, ASML, 2, "Newer ASML risk", is_new=True, current=True),
     item("a1", A25, AMD, 1, "Competition"),
     item("a2", A26, AMD, 1, "Competition", current=True),
 ]
@@ -69,13 +86,19 @@ SUCCEEDED = [
     {"old": "o5", "new": "n5", "kind": "merged", "se": 0.8, "sl": 0.5, "by": "luna"},
     {"old": "a1", "new": "a2", "kind": "unchanged", "se": 1.0, "sl": 1.0, "by": "hash"},
 ]
-COMPANIES = [{"cik": NVDA, "name": "Nvidia"}, {"cik": AMD, "name": "AMD"}, {"cik": MICRON, "name": "Micron"}]
+COMPANIES = [{"cik": NVDA, "name": "Nvidia"}, {"cik": AMD, "name": "AMD"}, {"cik": MICRON, "name": "Micron"},
+             {"cik": INTEL, "name": "Intel"}, {"cik": ASML, "name": "ASML"}]
 FILINGS = [
     (NVDA, N25, "10-K", "2025-02-26", False), (NVDA, N26, "10-K", "2026-02-25", True), (NVDA, Q25, "10-Q", "2025-11-20", False),
     (AMD, A25, "10-K", "2025-02-05", False), (AMD, A26, "10-K", "2026-02-04", True), (AMD, A26X, "10-K/A", "2026-02-04", True),
     (MICRON, M25, "10-K", "2025-10-08", False), (MICRON, M26, "10-K", "2026-10-07", True),
+    (INTEL, T24, "10-K", "2025-02-14", False), (INTEL, T25, "10-K", "2026-02-13", True),
+    (ASML, L24, "20-F", "2025-02-12", False), (ASML, L25, "20-F", "2026-02-11", True),
 ]
-SUPERSEDES = [(N26, N25, "rolled"), (N26, Q25, "rolled"), (A26, A25, "rolled"), (M26, M25, "rolled")]
+NOT_COMPARED = {(T25, T24): "the older filing's section is suspect (coverage 0.62)",
+                (L25, L24): "the older filing's section text runs into sustainability chapters"}
+SUPERSEDES = [(N26, N25, "rolled"), (N26, Q25, "rolled"), (A26, A25, "rolled"), (M26, M25, "rolled"),
+              (T25, T24, "rolled"), (L25, L24, "rolled")]
 CHUNK = f"{N26}:I.1A:0003"
 
 
@@ -85,6 +108,28 @@ def metric(metric_name, year, value):
             "end": end, "accn": f"0001045810-{year % 100}-000001"}
 
 
+# The paragraph unit n8 starts 27 characters into its first chunk: the chunk's tail belongs to the previous unit.
+CHUNK8 = f"{N26}:I.1A:0008"
+CHUNK8_TAIL = "Tail of the previous unit. "
+CHUNK8_TEXT = CHUNK8_TAIL + "We depend on TSMC for wafers. A second sentence follows."
+PASSAGES = [
+    {"passage_id": "o4:r000", "kind": "removed", "item": "o4", "older": N25, "newer": N26, "cik": NVDA,
+     "text": "The Notified Advanced Computing, or NAC, process has not resulted in approvals for exports to China.",
+     "counterpart": None, "similarity": None, "chunks": [f"{N25}:I.1A:0210", f"{N25}:I.1A:0211"]},
+    {"passage_id": "o4:r001", "kind": "removed", "item": "o4", "older": N25, "newer": N26, "cik": NVDA,
+     "text": "We transitioned some operations out of China and Hong Kong. " * 12, "counterpart": None, "similarity": None,
+     "chunks": [f"{N25}:I.1A:0212"]},
+    {"passage_id": "o4:r002", "kind": "removed", "item": "o4", "older": N25, "newer": N26, "cik": NVDA,
+     "text": "A short removed sentence.", "counterpart": None, "similarity": None, "chunks": []},
+    {"passage_id": "o4:w000", "kind": "reworded", "item": "o4", "older": N25, "newer": N26, "cik": NVDA,
+     "text": "We impact revenue.", "counterpart": "We impacted revenue.", "similarity": 0.83,
+     "chunks": [f"{N25}:I.1A:0140"], "counterpart_chunks": [f"{N26}:I.1A:0347"]},
+    {"passage_id": "n4:a000", "kind": "added", "item": "n4", "older": N25, "newer": N26, "cik": NVDA,
+     "text": "In April 2025 the government required licenses for H20.", "counterpart": None, "similarity": None,
+     "chunks": [f"{N26}:I.1A:0350"]},
+    {"passage_id": "o4:r000@old", "kind": "removed", "item": "o4", "older": EARLIER, "newer": N25, "cik": NVDA,
+     "text": "A removed passage of a DIFFERENT pair.", "counterpart": None, "similarity": None, "chunks": [f"{EARLIER}:I.1A:0001"]},
+]
 METRICS = ([metric("revenue", y, 10.0 * (y - 2020)) for y in range(2021, 2027)]         # six fiscal years
            + [metric("rnd", 2026, 9.0), metric("rnd", 2025, 7.0)])
 RULES = [
@@ -119,6 +164,19 @@ def build(driver):
         s.run("UNWIND $rows AS r MATCH (c:Company {cik: $cik}), (x:ExportControl {rule_id: r.id}) "
               "CREATE (c)-[a:AFFECTED_BY {status: 'Active', start_date: date(r.day)}]->(x) SET a += r.props",
               rows=RULES, cik=NVDA).consume()
+        for (newer, older), reason in NOT_COMPARED.items():
+            s.run("MATCH (n:Filing {accession_no: $n})-[r:SUPERSEDES]->(o:Filing {accession_no: $o}) "
+                  "SET r.items_compared = false, r.not_compared_reason = $reason", n=newer, o=older, reason=reason).consume()
+        s.run("MATCH (n:Filing {accession_no: $n})-[r:SUPERSEDES]->(o:Filing {accession_no: $o}) SET r.items_compared = true",
+              n=N26, o=N25).consume()                                    # stamped explicitly: the same as no flag at all
+        s.run("UNWIND $rows AS r MATCH (i:RiskItem {item_id: r.item}) "
+              "CREATE (i)-[:HAS_PASSAGE]->(:RiskPassage {passage_id: r.passage_id, kind: r.kind, item_id: r.item, "
+              "older_accession: r.older, newer_accession: r.newer, filer_cik: r.cik, text: r.text, "
+              "counterpart_text: r.counterpart, similarity: r.similarity, chunk_ids: r.chunks, "
+              "counterpart_chunk_ids: r.counterpart_chunks})",
+              rows=[{**r, "counterpart_chunks": r.get("counterpart_chunks")} for r in PASSAGES]).consume()
+        s.run("CREATE (:EvidenceSpan {chunk_id: $c, text: $t, char_start: 480, char_end: 600, status: 'current', "
+              "is_current: true, retrievable: true})", c=CHUNK8, t=CHUNK8_TEXT).consume()
         s.run("MATCH (f:Filing {accession_no: $acc}) CREATE (f)-[:HAS_SECTION]->(sec:FilingSection "
               "{section_key: $acc + ':I.1A', title: 'Item 1A. Risk Factors'}) "
               "CREATE (:EvidenceSpan {chunk_id: $chunk, text: 'Acquisitions may not deliver benefits.', "
@@ -151,9 +209,9 @@ class TestTemporalQuery:
         items, pairs = temporal(driver, [NVDA])
         by = lambda change: {i["item_id"]: i for i in items if i["change"] == change}   # noqa: E731
         assert set(by("removed")) == {"o1", "o2"}          # not o6 (removed a year earlier), not qi (a 10-Q item)
-        assert set(by("new")) == {"n7", "n8"}
+        assert set(by("new")) == {"n7", "n8", "n9"}
         assert set(by("reworded")) == {"n4"}               # 'merged' and 'unchanged' successors are not listed
-        assert pairs[0]["totals"] == {"removed": 2, "new": 2, "reworded": 1}
+        assert pairs[0]["totals"] == {"removed": 2, "new": 3, "reworded": 1}
 
     def test_a_reworded_row_carries_both_headlines_both_chunk_ids_and_the_decider(self, driver):
         items, _ = temporal(driver, [NVDA])
@@ -172,7 +230,7 @@ class TestTemporalQuery:
     def test_a_paragraph_unit_has_no_headline_and_ranks_after_headline_units(self, driver):
         items, _ = temporal(driver, [NVDA])
         new = [i for i in items if i["change"] == "new"]
-        assert [i["item_id"] for i in new] == ["n7", "n8"] and new[1]["headline"] is None
+        assert [i["item_id"] for i in new] == ["n7", "n8", "n9"] and new[1]["headline"] is None
         assert new[1]["unit_kind"] == "paragraph"
 
     def test_removed_items_are_ranked_longer_first_by_the_char_span(self, driver):
@@ -196,19 +254,19 @@ class TestTemporalQuery:
 
 class TestMetricsQuery:
     def test_each_metric_returns_its_own_last_periods_not_the_newest_rows_across_metrics(self, driver):
-        rows = run_cypher(driver, METRICS_QUERY, ids=[NVDA], periods=METRIC_PERIODS_FETCHED)
+        rows = run_cypher(driver, METRICS_QUERY, ids=[NVDA], periods=METRIC_PERIODS_FETCHED, years=[], dates=[])
         revenue = [r["period_end"] for r in rows if r["metric"] == "revenue"]
         rnd = [r["period_end"] for r in rows if r["metric"] == "rnd"]
         assert revenue == ["2026-01-26", "2025-01-26", "2024-01-26", "2023-01-26"]      # six exist; the last four
         assert rnd == ["2026-01-26", "2025-01-26"]                                       # the older metric is not crowded out
 
     def test_rows_are_keyed_by_cik_and_carry_unit_and_period(self, driver):
-        row = run_cypher(driver, METRICS_QUERY, ids=[NVDA], periods=1)[0]
+        row = run_cypher(driver, METRICS_QUERY, ids=[NVDA], periods=1, years=[], dates=[])[0]
         assert row["cik"] == NVDA and row["company"] == "Nvidia" and row["unit"] == "USD"
         assert row["period_start"] == "2025-01-27" and row["period_end"] == "2026-01-26"
 
     def test_the_period_count_is_a_parameter(self, driver):
-        assert len(run_cypher(driver, METRICS_QUERY, ids=[NVDA], periods=2)) == 4        # 2 revenue + 2 rnd
+        assert len(run_cypher(driver, METRICS_QUERY, ids=[NVDA], periods=2, years=[], dates=[])) == 4        # 2 revenue + 2 rnd
 
 
 # --------------------------------------------------------------------------- external rules
@@ -264,3 +322,149 @@ class TestEvidenceQueries:
         assert row["document_number"] == "2026-19537" and row["publication_date"] == "2026-03-12"
         assert row["kind"] == "entity_list" and row["topics"] == ["china"] and row["relevant"] is True
         assert row["url"].endswith("2026-19537")
+
+
+# --------------------------------------------------------------------------- pairs the loader could not compare
+
+class TestNotComparedPairs:
+    def test_a_pair_marked_not_compared_comes_back_even_when_one_side_has_no_items(self, driver):
+        """Intel: t25 has NO RiskItems. The has-items guards used to drop the pair, so the block read "(none)"."""
+        items, pairs = temporal(driver, [INTEL])
+        (pair,) = pairs
+        assert pair["compared"] is False and pair["not_compared_reason"] == NOT_COMPARED[(T25, T24)]
+        assert (pair["older_accession"], pair["newer_accession"]) == (T24, T25)
+        assert items == [] and pair["totals"] == {"removed": 0, "new": 0, "reworded": 0}     # t1's stale removed_in is not read
+
+    def test_no_item_row_is_read_for_a_not_compared_pair_whose_items_carry_stale_flags(self, driver):
+        items, pairs = temporal(driver, [ASML])
+        assert pairs[0]["compared"] is False and items == []           # l1 'removed_in' and l2 'is_new' are ignored
+
+    def test_an_explicit_items_compared_true_and_no_flag_at_all_both_mean_compared(self, driver):
+        (nvidia,), (amd,) = temporal(driver, [NVDA])[1], temporal(driver, [AMD])[1]
+        assert nvidia["compared"] is True and nvidia["not_compared_reason"] is None    # stamped true
+        assert amd["compared"] is True and amd["not_compared_reason"] is None          # no flag on the edge
+
+    def test_the_block_says_comparison_not_available_with_the_reason_and_nothing_else(self, driver):
+        items, pairs = temporal(driver, [INTEL, ASML])
+        block = build_blocks({"anchors": {}, "edges": [], "metrics": [], "risks": [], "chunks": [], "temporal": items,
+                              "temporal_pairs": pairs})[0].temporal_block
+        assert block.count("comparison not available (") == 2
+        assert NOT_COMPARED[(T25, T24)] in block and NOT_COMPARED[(L25, L24)] in block
+        assert "none found" not in block and "Removed" not in block and "Added" not in block
+
+
+# --------------------------------------------------------------------------- passages (contract L.7)
+
+PAIR = [{"cik": NVDA, "older": N25, "newer": N26}]
+
+
+class TestPassagesQuery:
+    def rows(self, driver, pairs=PAIR):
+        return run_cypher(driver, PASSAGES_QUERY, pairs=pairs)
+
+    def test_only_the_passages_of_the_requested_pair_are_read(self, driver):
+        ids = [r["passage_id"] for r in self.rows(driver)]
+        assert ids == ["n4:a000", "o4:r000", "o4:r001", "o4:r002", "o4:w000"]        # not the EARLIER pair's passage
+
+    def test_a_pair_with_no_passages_or_a_not_compared_pair_returns_nothing(self, driver):
+        assert self.rows(driver, [{"cik": AMD, "older": A25, "newer": A26}]) == []
+        assert self.rows(driver, [{"cik": INTEL, "older": T24, "newer": T25}]) == []
+        assert self.rows(driver, []) == []
+
+    def test_each_row_carries_its_item_the_kind_the_text_and_the_chunk_ids_of_the_filing_it_is_quoted_from(self, driver):
+        by = {r["passage_id"]: r for r in self.rows(driver)}
+        removed, added = by["o4:r000"], by["n4:a000"]
+        assert removed["kind"] == "removed" and removed["item_id"] == "o4" and removed["cik"] == NVDA
+        assert removed["item_headline"] == "Old wording of customer concentration" and removed["item_unit_kind"] == "headline"
+        assert removed["chunk_ids"] == [f"{N25}:I.1A:0210", f"{N25}:I.1A:0211"] and removed["section_id"] == "I.1A"
+        assert added["kind"] == "added" and added["item_id"] == "n4" and added["item_headline"] == "Customer concentration"
+        assert added["chunk_ids"] == [f"{N26}:I.1A:0350"]                              # the NEWER filing's chunk
+        assert by["o4:r002"]["chunk_ids"] == [] and removed["counterpart_chunk_ids"] == []
+
+    def test_a_reworded_passage_carries_the_counterpart_text_and_its_optional_chunk_ids(self, driver):
+        reworded = {r["passage_id"]: r for r in self.rows(driver)}["o4:w000"]
+        assert reworded["text"] == "We impact revenue." and reworded["counterpart_text"] == "We impacted revenue."
+        assert reworded["similarity"] == pytest.approx(0.83) and reworded["counterpart_chunk_ids"] == [f"{N26}:I.1A:0347"]
+
+    def test_ranked_capped_and_totalled_they_reach_the_answer_context_and_its_removal_check(self, driver):
+        items, pairs = temporal(driver, [NVDA], "What happened to the NAC process approvals for China?")
+        passages, pairs = select_passages(run_cypher(driver, PASSAGES_QUERY, pairs=PAIR), pairs, "What happened to the NAC process approvals for China?")
+        assert pairs[0]["passage_totals"] == {"removed": 3, "added": 1, "reworded": 1}
+        assert [p["passage_id"] for p in passages if p["kind"] == "removed"][0] == "o4:r000"       # overlaps the question
+        blocks, context, valid = build_blocks({"anchors": {}, "edges": [], "metrics": [], "risks": [], "chunks": [],
+                                               "temporal": items, "temporal_pairs": pairs, "temporal_passages": passages})
+        block = blocks.temporal_block
+        assert "Passages of surviving risk factors that no longer appear (showing 3 of 3):" in block
+        assert "Passages of surviving risk factors that are new (showing 1 of 1):" in block
+        assert "Passages of surviving risk factors that were reworded (showing 1 of 1):" in block
+        assert (f'- in "Old wording of customer concentration": "The Notified Advanced Computing, or NAC, process has not '
+                f'resulted in approvals for exports to China." [{N25}:I.1A:0210] [{N25}:I.1A:0211]') in block
+        assert f'later wording: "We impacted revenue." [{N26}:I.1A:0347]' in block
+        # the removal check reads the same block back: removed ITEMS and removed PASSAGES, nothing else
+        supported = removal_supported_ids(context)
+        assert {f"{N25}:I.1A:0001", f"{N25}:I.1A:0002", f"{N25}:I.1A:0210", f"{N25}:I.1A:0211", f"{N25}:I.1A:0212"} <= supported
+        assert f"{N26}:I.1A:0350" not in supported and f"{N25}:I.1A:0140" not in supported and f"{N26}:I.1A:0347" not in supported
+        assert {f"{N25}:I.1A:0210", f"{N26}:I.1A:0350"} <= valid
+
+
+# --------------------------------------------------------------------------- M3: a paragraph unit's first sentence
+
+class TestParagraphLead:
+    def rows(self, driver):
+        items, _ = temporal(driver, [NVDA])
+        return {i["item_id"]: i for i in items}
+
+    def test_the_first_sentence_of_a_paragraph_unit_starts_where_the_unit_starts_not_where_its_chunk_starts(self, driver):
+        lead = self.rows(driver)["n8"]["lead_text"]
+        assert lead.startswith("We depend on TSMC for wafers.") and not lead.startswith("Tail of the previous unit")
+
+    def test_a_unit_whose_first_chunk_is_unknown_and_a_headline_item_have_no_lead_text(self, driver):
+        rows = self.rows(driver)
+        assert rows["n9"]["lead_text"] is None and rows["n7"]["lead_text"] is None and rows["n7"]["headline"] == "Sovereign AI demand"
+
+    def test_the_block_labels_the_paragraph_unit_by_its_first_sentence_and_says_paragraphs(self, driver):
+        items, pairs = temporal(driver, [NVDA])
+        block = build_blocks({"anchors": {}, "edges": [], "metrics": [], "risks": [], "chunks": [], "temporal": items,
+                              "temporal_pairs": pairs})[0].temporal_block
+        assert f'- "We depend on TSMC for wafers." [{N26}:I.1A:0008]' in block
+        assert f'- "(untitled paragraph, section I.1A)" [{N26}:I.1A:0009]' in block
+        assert "Added - showing 3 of 3 risk factors and paragraphs (new in the later filing):" in block
+
+
+# --------------------------------------------------------------------------- period-aware metrics
+
+class TestPeriodAwareMetrics:
+    def periods(self, driver, **named):
+        rows = run_cypher(driver, METRICS_QUERY, ids=[NVDA], periods=METRIC_PERIODS_FETCHED,
+                          **{"years": [], "dates": [], **named})
+        return [r["period_end"] for r in rows if r["metric"] == "revenue"], [r["period_end"] for r in rows if r["metric"] == "rnd"]
+
+    def test_a_named_year_brings_that_year_and_the_one_before_it_besides_the_latest_periods(self, driver):
+        revenue, rnd = self.periods(driver, years=[2022])
+        assert revenue == ["2026-01-26", "2025-01-26", "2024-01-26", "2023-01-26", "2022-01-26", "2021-01-26"]
+        assert rnd == ["2026-01-26", "2025-01-26"]                               # rnd has no 2022: nothing extra
+
+    def test_the_oldest_year_returns_itself_and_has_no_prior_year_to_return(self, driver):
+        revenue, _ = self.periods(driver, years=[2021])
+        assert revenue == ["2026-01-26", "2025-01-26", "2024-01-26", "2023-01-26", "2021-01-26"]
+
+    def test_nvidias_fiscal_2020_style_naming_matches_the_year_of_the_period_end(self, driver):
+        """Fiscal 2022 ends 2022-01-26: the year of the period END, never the year the period started."""
+        assert "2022-01-26" in self.periods(driver, years=mentioned_periods("What was revenue in fiscal 2022?")["years"])[0]
+
+    def test_a_named_date_is_the_same_as_the_year_it_ends_in_and_naming_both_adds_no_duplicates(self, driver):
+        by_date = self.periods(driver, dates=["2022-01-26"])[0]
+        assert by_date == self.periods(driver, years=[2022])[0] == self.periods(driver, years=[2022], dates=["2022-01-26"])[0]
+
+    def test_a_question_with_no_period_or_a_period_with_no_data_changes_nothing(self, driver):
+        latest = self.periods(driver)[0]
+        assert latest == ["2026-01-26", "2025-01-26", "2024-01-26", "2023-01-26"]
+        assert self.periods(driver, years=[1999])[0] == latest and self.periods(driver, years=[2026])[0] == latest
+
+    def test_the_block_shows_the_named_year_with_its_computed_change_against_the_year_before(self, driver):
+        rows = run_cypher(driver, METRICS_QUERY, ids=[NVDA], periods=METRIC_PERIODS_FETCHED, years=[2022], dates=[])
+        lines, ids = metrics_lines(rows, years=[2022])
+        heads = [ln for ln in lines if ln.startswith("Nvidia:")]
+        assert heads == [f"Nvidia: fiscal year ended {y}-01-26" for y in (2026, 2025, 2024, 2022, 2021)]
+        assert any("2022-01-26" in ln and "computed: +100.0% vs fiscal year ended 2021-01-26" in ln for ln in lines)
+        assert f"xbrl:{NVDA}:revenue:2022-01-26" in ids and f"xbrl:{NVDA}:revenue:2021-01-26" in ids

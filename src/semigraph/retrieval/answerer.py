@@ -18,17 +18,21 @@ Battle scars preserved:
   otherwise), transient-only backoff, empty-response retry,
   finish_reason=="length" -> regenerate fresh with a doubled budget.
 
-M1b (truthful temporal layer and numbers): the full-context template lives HERE, once (:data:`CONTEXT_HEADERS`);
-metrics are grouped by fiscal year with a citable ``xbrl:`` id per line and year-over-year computed in code; Federal
-Register rules get their own block (they are external events, never the company's disclosure); the temporal block lists
-text-verified removed / added / reworded risk items with their totals; every answer carries a ``checks`` object.
+M1b (truthful temporal layer and numbers): the full-context template lives in ``context_layout`` (re-exported here as
+:data:`CONTEXT_HEADERS`, one definition for the writer and the verifier); metrics are grouped by fiscal year with a
+citable ``xbrl:`` id per line and year-over-year computed in code (plus the periods the question names); Federal Register
+rules get their own block (they are external events, never the company's disclosure); the temporal block lists
+text-verified removed / added / reworded risk items and the changed passages inside surviving ones, with their totals,
+or says a pair could not be compared; every answer carries a ``checks`` object.
 
 Importable without a Neo4j driver; ``answer`` receives one.
 """
 
+import hashlib
 import logging
 import re
 import time
+from collections.abc import Iterable
 from datetime import date
 from typing import NamedTuple
 
@@ -40,6 +44,13 @@ from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
 from ..llm_shape import KNOWN_PRICES_PER_MTOK, completion_params
 from . import ids as _ids
+from .context_layout import (  # noqa: F401 - re-exported: eval/bakeoff and the tests import these from here
+    CONTEXT_HEADERS,
+    LEGACY_CONTEXT_HEADERS,
+    MAX_CHUNK_IDS_PER_ITEM,
+    NONE_BLOCK,
+    temporal_block,
+)
 from .retriever import METRIC_PERIODS_SHOWN, hybrid_retrieve, vector_retrieve
 from .router import needs_strong_model
 from .verify import answer_checks, verify_answer
@@ -57,28 +68,17 @@ CITE_RE = _ids.CITE_RE
 # us-gaap metric is USD). Keeps USD lines byte-identical to the benchmarked v1 wording.
 DEFAULT_UNIT = "USD"
 
-# The full context the answering model (and the faithfulness judge) sees, as one template: each header is followed by its
-# block, in :class:`ContextBlocks` order. Every consumer that must invert or rebuild the context (eval/bakeoff) imports
-# this - a header is never retyped elsewhere. The temporal header is static: the compared filings are named per company
-# inside the block (several companies can be compared in one answer).
-CONTEXT_HEADERS = (
-    "RELATIONSHIPS:\n",
-    "\n\nEXTERNAL REGULATORY EVENTS (Federal Register rules linked by keyword; not the company's disclosure):\n",
-    "\n\nMETRICS:\n",
-    "\n\nACTIVE RISKS:\n",
-    "\n\nRISK FACTORS REMOVED / ADDED / REWORDED between annual filings (text-verified):\n",
-    "\n\nEXCERPTS:\n",
-)
-# The pre-M1b template (five blocks; DROPPED RISK LINEAGES instead of the external and temporal blocks): saved contexts
-# from earlier benchmark runs still carry these headers.
-LEGACY_CONTEXT_HEADERS = ("RELATIONSHIPS:\n", "\n\nMETRICS:\n", "\n\nACTIVE RISKS:\n",
-                          "\n\nDROPPED RISK LINEAGES:\n", "\n\nEXCERPTS:\n")
-
+# The template headers (CONTEXT_HEADERS, LEGACY_CONTEXT_HEADERS) and the temporal block live in ``context_layout``: the
+# verifier reads that block back, so writer and reader share one definition. Imported above.
 RULE_RELATION = "AFFECTED_BY"       # a Federal Register rule linked to a company by keyword heuristic
-NONE_BLOCK = "(none)"
-MAX_CHUNK_IDS_PER_ITEM = 3          # ids printed per side of a temporal item (and per relation edge)
-HEADLINE_MAX_CHARS = 240
 YOY_GAP_DAYS = (350, 380)           # the prior fiscal year ends this many days earlier (52/53-week years, leap years)
+
+
+def template_fingerprint() -> str:
+    """A short hash of everything that shapes what the model is asked and shown: the answer prompt and the context
+    headers. It is part of the answer-cache key and of the seeded examples, so a prompt or template change can never
+    replay an answer that was written under the old one."""
+    return hashlib.sha256("\x00".join([ANSWER_PROMPT, *CONTEXT_HEADERS]).encode("utf-8")).hexdigest()[:10]
 
 
 class ContextBlocks(NamedTuple):
@@ -105,15 +105,6 @@ def render_prompt(question: str, blocks: ContextBlocks) -> str:
 def _metric_amount(m: dict) -> str:
     """``215,938,000,000 USD``: the metric's own unit (``TWD``/``EUR`` for IFRS filers); none renders as USD."""
     return f"{m['value']:,.0f} {m.get('unit') or DEFAULT_UNIT}"
-
-
-def format_metric_line(m: dict) -> str:
-    """One plain metric line: ``- <company> <metric> for period <start>..<end>: <value> <unit>``.
-
-    The unit is the metric's own (``TWD``/``EUR`` for IFRS filers); a missing/empty unit
-    renders as USD, exactly as v1 did, so existing USD lines are unchanged. (The METRICS block of the prompt now groups
-    by fiscal year and adds an id and a computed year-over-year: :func:`metrics_lines`.)"""
-    return f"- {m['company']} {m['metric']} for period {m['period_start']}..{m['period_end']}: {_metric_amount(m)}"
 
 
 def yoy_note(current: dict, prior: dict | None) -> str | None:
@@ -150,11 +141,30 @@ def _metric_citation(m: dict) -> str | None:
     return citation if _ids.XBRL_ID_RE.match(citation) else None
 
 
-def metrics_lines(metrics: list[dict]) -> tuple[list[str], set[str]]:
+def _named_period(row: dict, years: Iterable[int], dates: Iterable[str]) -> bool:
+    end = str(row.get("period_end") or "")
+    return end in set(dates) or (end[:4].isdigit() and int(end[:4]) in set(years))
+
+
+def _shown_rows(group: list[dict], years: Iterable[int], dates: Iterable[str]) -> list[int]:
+    """Indexes (newest first) of the rows of one series that are shown: the latest :data:`METRIC_PERIODS_SHOWN`, and every
+    period the question names together with the fiscal year before it (the base of its computed change)."""
+    shown = set(range(min(METRIC_PERIODS_SHOWN, len(group))))
+    for i, row in enumerate(group):
+        if _named_period(row, years, dates):
+            shown.add(i)
+            if i + 1 < len(group) and yoy_note(row, group[i + 1]):
+                shown.add(i + 1)
+    return sorted(shown)
+
+
+def metrics_lines(metrics: list[dict], *, years: Iterable[int] = (),
+                  dates: Iterable[str] = ()) -> tuple[list[str], set[str]]:
     """The METRICS block lines and the ids they make citable.
 
     Rows are grouped per (company, metric) and the last :data:`METRIC_PERIODS_SHOWN` fiscal periods shown (the next older
-    row is only the base of the oldest shown year-over-year); the output is grouped by company, then ``fiscal year ended
+    row is only the base of the oldest shown year-over-year), plus any fiscal ``years`` / period-end ``dates`` the
+    question named and the fiscal year before each; the output is grouped by company, then ``fiscal year ended
     <period_end>`` newest first, so a value can only ever appear under its own fiscal year."""
     series: dict[tuple[str, str], list[dict]] = {}
     for m in metrics:
@@ -164,7 +174,8 @@ def metrics_lines(metrics: list[dict]) -> tuple[list[str], set[str]]:
     for (company, name), group in series.items():
         rank.setdefault(company, len(rank))
         group.sort(key=lambda m: m["period_end"], reverse=True)
-        for i, m in enumerate(group[:METRIC_PERIODS_SHOWN]):
+        for i in _shown_rows(group, years, dates):
+            m = group[i]
             note = yoy_note(m, group[i + 1] if i + 1 < len(group) else None)
             citation = _metric_citation(m)
             line = f"- {name} for period {m['period_start']}..{m['period_end']}: {_metric_amount(m)}"
@@ -196,64 +207,6 @@ def _external_line(edge: dict, valid_ids: set[str]) -> str:
     return f"- {label} (linked to {edge['source']} by {edge.get('link_method') or 'keyword'} match)"
 
 
-_TEMPORAL_SECTIONS = (("removed", "Removed", "text verified absent from the later filing"),
-                      ("new", "Added", "new in the later filing"),
-                      ("reworded", "Reworded", "still disclosed, wording changed"))
-
-
-def _headline_text(item: dict) -> str:
-    text = " ".join((item.get("headline") or "").split())
-    if not text:
-        return f"(untitled passage, section {item.get('section_id')})"
-    return text if len(text) <= HEADLINE_MAX_CHARS else text[:HEADLINE_MAX_CHARS - 3].rstrip() + "..."
-
-
-def _id_list(chunk_ids: list[str] | None, valid_ids: set[str]) -> str:
-    """`` [id] [id]`` for the first ids of a list (the ones printed become citable); empty when there are none."""
-    shown = list(chunk_ids or [])[:MAX_CHUNK_IDS_PER_ITEM]
-    valid_ids.update(shown)
-    return "".join(f" [{i}]" for i in shown)
-
-
-def _temporal_item_line(item: dict, valid_ids: set[str]) -> str:
-    line = f'- "{_headline_text(item)}"'
-    older, newer = _id_list(item.get("older_chunk_ids"), valid_ids), _id_list(item.get("newer_chunk_ids"), valid_ids)
-    if item["change"] == "removed":
-        return line + older
-    if item["change"] == "new":
-        return line + newer
-    meta = [f'earlier wording: "{" ".join(item["older_headline"].split())}"'] if item.get("older_headline") else []
-    meta += [f"decided by {item['decided_by']}"] if item.get("decided_by") else []
-    line += f" ({'; '.join(meta)})" if meta else ""
-    return line + (f" earlier{older}" if older else "") + (f" later{newer}" if newer else "")
-
-
-def temporal_block(items: list[dict], pairs: list[dict]) -> tuple[str, set[str]]:
-    """The text-verified temporal block and the chunk ids it makes citable.
-
-    One section per compared company: the two filings, then the removed / added / reworded items with the TOTALS
-    stated beside the capped lists ("showing 8 of 21"). No comparison at all (no RiskItem data) is ``(none)``; a
-    comparison in which nothing changed says so."""
-    if not pairs:
-        return NONE_BLOCK, set()
-    valid_ids: set[str] = set()
-    sections = []
-    for pair in pairs:
-        mine = [i for i in items if i.get("cik") == pair.get("cik")]
-        lines = [f"{pair['company']}: {pair['older_form']} filed {pair['older_date']} (accession {pair['older_accession']}) "
-                 f"compared with {pair['newer_form']} filed {pair['newer_date']} (accession {pair['newer_accession']})"]
-        for change, label, note in _TEMPORAL_SECTIONS:
-            group = [i for i in mine if i.get("change") == change]
-            total = (pair.get("totals") or {}).get(change, len(group))
-            if not group and not total:
-                lines.append(f"{label} - none found.")
-                continue
-            lines.append(f"{label} - showing {len(group)} of {total} ({note}):")
-            lines += [_temporal_item_line(i, valid_ids) for i in group]
-        sections.append("\n".join(lines))
-    return "\n\n".join(sections), valid_ids
-
-
 def build_blocks(r: dict) -> tuple[ContextBlocks, str, set[str]]:
     """Assemble prompt blocks + the full context string + the set of valid (citable) ids from a retrieval result.
 
@@ -269,13 +222,15 @@ def build_blocks(r: dict) -> tuple[ContextBlocks, str, set[str]]:
         e_lines.append(f"- {e['source']} {e['relation']} {e['target']} (status={e.get('status')}) "
                        f"{' '.join('[' + i + ']' for i in ids[:MAX_CHUNK_IDS_PER_ITEM])}")
     x_lines = [_external_line(e, valid_ids) for e in r["edges"] if e["relation"] == RULE_RELATION]
-    m_lines, metric_ids = metrics_lines(r["metrics"])
+    periods = r.get("metric_periods") or {}
+    m_lines, metric_ids = metrics_lines(r["metrics"], years=periods.get("years") or (), dates=periods.get("dates") or ())
     valid_ids |= metric_ids
     k_lines = []
     for k in r["risks"]:
         valid_ids.add(k["chunk_id"])
         k_lines.append(f"- {k['company']} ({k['category']}): {k['summary']} [{k['chunk_id']}]")
-    t_block, temporal_ids = temporal_block(r.get("temporal") or [], r.get("temporal_pairs") or [])
+    t_block, temporal_ids = temporal_block(r.get("temporal") or [], r.get("temporal_pairs") or [],
+                                           r.get("temporal_passages") or [])
     valid_ids |= temporal_ids
     c_lines = []
     for c in r["chunks"]:
@@ -616,9 +571,11 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
     ``{"event": "delta", "text"}`` per token batch, finally ``{"event": "done",
     "answer", "citations", "hallucinated", "checks", "finish_reason", "usage", "cost_usd",
     "chunk_ids", "context_chars"}``. Citations are post-verified exactly like
-    ``answer``; ``checks`` (``citations_retrieved``, ``numbers_grounded``, ``unmatched_numbers``,
-    ``pseudo_citations``) is on every ``done`` event, including answers that cannot escalate. ``llm_stream`` is injectable: ``callable(prompt) ->
-    iterable[str]`` (defaults to :class:`TextStream` with ``stream_kwargs``).
+    ``answer``; ``checks`` (``citations_retrieved``, ``numbers_grounded``, ``numbers_checked``, ``unmatched_numbers``,
+    ``echoed_numbers``, ``pseudo_citations``, ``has_citation``, ``is_refusal``, ``unsupported_removal_claim``,
+    ``unsupported_removal_sentences``: see :class:`semigraph.retrieval.verify.AnswerChecks`) is on every ``done`` event,
+    including answers that cannot escalate. ``llm_stream`` is injectable: ``callable(prompt) -> iterable[str]``
+    (defaults to :class:`TextStream` with ``stream_kwargs``).
 
     With ``escalation_model`` set, questions about change over time (:func:`needs_strong_model`) stream the
     strong model live (``routed: "strong"``); every other question's draft is buffered and verified before

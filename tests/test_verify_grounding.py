@@ -44,7 +44,7 @@ def test_the_correct_live_test_3_answer_is_grounded():
     assert reasons(text, cited=[REV26, REV25]) == []
     checks = answer_checks(text, {REV26, REV25}, VALID, CTX, sources=SOURCES)
     assert checks == AnswerChecks(citations_retrieved=True, numbers_grounded=True, unmatched_numbers=(),
-                                  pseudo_citations=())
+                                  pseudo_citations=(), numbers_checked=4, has_citation=True)
 
 
 # --- dollar values ---
@@ -83,10 +83,18 @@ def test_a_scaled_amount_written_without_a_dollar_sign_in_a_chunk_grounds_the_do
     assert reasons(f"R&D was $9.9 billion [{CHUNK2}].", cited=[CHUNK2], context=ctx) == ["ungrounded_number"]
 
 
-def test_a_dollar_value_stated_in_the_question_is_an_echo_not_a_claim():
+def test_a_dollar_value_stated_only_in_the_question_is_echoed_and_never_grounded():
+    """Rewritten by the review of the M1b checks (H1): this test used to assert that a figure the QUESTION states passes
+    (``== []``). That released "Yes, revenue reached $500 billion [xbrl:...]" to a question about $500 billion as
+    verified. Now the figure is reported in ``echoed_numbers`` and the answer is ``ungrounded_number`` (a cheap draft
+    escalates; a strong answer is reported and not cached). tests/test_verify_review.py holds the probes."""
     text = f"Yes - revenue of $215.9 billion [{REV26}] is well above $100 billion."
     assert reasons(text, cited=[REV26]) == ["ungrounded_number"]
-    assert reasons(text, cited=[REV26], question="Did Nvidia's revenue exceed $100 billion?") == []
+    question = "Did Nvidia's revenue exceed $100 billion?"
+    assert reasons(text, cited=[REV26], question=question) == ["ungrounded_number"]
+    checks = answer_checks(text, {REV26}, VALID, CTX, question=question)
+    assert checks.echoed_numbers == ("$100 billion",) and checks.unmatched_numbers == ()
+    assert checks.numbers_grounded is False
 
 
 def test_without_a_context_no_numeric_check_is_possible_and_none_is_made():
@@ -137,8 +145,12 @@ def test_a_whole_number_percentage_may_round_a_computed_one_decimal_value_but_a_
     assert reasons(f"Revenue grew 65.4% [{REV26}].", cited=[REV26]) == ["ungrounded_number"]   # decimals must match
 
 
-def test_a_percentage_in_the_question_is_an_echo():
-    assert reasons(f"Yes, above 50% [{REV26}].", cited=[REV26], question="Did revenue grow more than 50%?") == []
+def test_a_percentage_only_the_question_states_is_echoed_not_grounded():
+    """Rewritten by the review (H1): it used to assert ``== []``; a percentage the asker supplied is not evidence."""
+    text, question = f"Yes, above 50% [{REV26}].", "Did revenue grow more than 50%?"
+    assert reasons(text, cited=[REV26]) == ["ungrounded_number"]
+    assert reasons(text, cited=[REV26], question=question) == ["ungrounded_number"]
+    assert answer_checks(text, {REV26}, VALID, CTX, question=question).echoed_numbers == ("50%",)
 
 
 # --- pseudo-citations ---
@@ -185,13 +197,18 @@ def test_checks_report_an_uncited_unretrieved_and_ungrounded_answer_without_hidi
     checks = answer_checks(text, {bogus}, VALID, CTX)
     assert checks.citations_retrieved is False and checks.numbers_grounded is False
     assert checks.unmatched_numbers == ("$190 billion",) and checks.pseudo_citations == ("Reported Metrics",)
-    assert checks.as_dict() == {"citations_retrieved": False, "numbers_grounded": False,
-                                "unmatched_numbers": ["$190 billion"], "pseudo_citations": ["Reported Metrics"]}
+    assert checks.as_dict() == {
+        "citations_retrieved": False, "numbers_grounded": False, "numbers_checked": 1,
+        "unmatched_numbers": ["$190 billion"], "echoed_numbers": [], "pseudo_citations": ["Reported Metrics"],
+        "has_citation": True, "is_refusal": False, "unsupported_removal_claim": False,
+        "unsupported_removal_sentences": []}
 
 
 def test_checks_are_json_serialisable():
     import json
 
     checks = answer_checks(f"x [{CHUNK}]", {CHUNK}, VALID, CTX)
-    assert json.loads(json.dumps(checks.as_dict())) == {"citations_retrieved": True, "numbers_grounded": True,
-                                                        "unmatched_numbers": [], "pseudo_citations": []}
+    assert json.loads(json.dumps(checks.as_dict())) == {
+        "citations_retrieved": True, "numbers_grounded": True, "numbers_checked": 0, "unmatched_numbers": [],
+        "echoed_numbers": [], "pseudo_citations": [], "has_citation": True, "is_refusal": False,
+        "unsupported_removal_claim": False, "unsupported_removal_sentences": []}

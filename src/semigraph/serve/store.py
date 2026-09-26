@@ -13,19 +13,24 @@ prefixed with ``Svc`` so they never collide with the knowledge-graph schema:
 import hashlib
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from neo4j import Driver
 
 from ..graph.client import run_cypher
+from ..retrieval.answerer import template_fingerprint
+from ..retrieval.verify import failed_check_names
 
 
-def cache_key(question: str, strategy: str, snapshot_id: str = "") -> str:
-    """Answer-cache key. The data snapshot id is part of it, so a refresh of the graph can
-    never serve an answer computed from older data (no snapshot = the legacy key)."""
+def cache_key(question: str, strategy: str, snapshot_id: str = "", template: str | None = None) -> str:
+    """Answer-cache key. Two things besides the question are part of it: the data snapshot id (a refresh of the graph can
+    never serve an answer computed from older data) and the fingerprint of the answer prompt + context headers
+    (:func:`semigraph.retrieval.answerer.template_fingerprint`; a prompt or template change can never replay an answer
+    written under the old one). ``template`` defaults to the running build's."""
     norm = " ".join(question.lower().split()).rstrip("?.! ")
     prefix = f"{snapshot_id}|" if snapshot_id else ""
-    return hashlib.sha256(f"{prefix}{strategy}|{norm}".encode()).hexdigest()[:32]
+    return hashlib.sha256(f"{template or template_fingerprint()}|{prefix}{strategy}|{norm}".encode()).hexdigest()[:32]
 
 
 def current_snapshot(driver: Driver) -> dict | None:
@@ -42,6 +47,12 @@ def examples_match_snapshot(examples_doc: dict, snapshot_id: str) -> bool:
     if not snapshot_id:
         return True
     return examples_doc.get("snapshot_id") == snapshot_id
+
+
+def examples_match_template(examples_doc: dict) -> bool:
+    """Seeded answers were written under ONE answer prompt + context template; they are served as cached answers only
+    by a build that runs that same template (a file without the fingerprint predates it and is refused)."""
+    return examples_doc.get("template_fingerprint") == template_fingerprint()
 
 
 def _now() -> str:
@@ -127,13 +138,45 @@ def put_answer(driver: Driver, *, question: str, strategy: str, answer: str,
                pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, ts=_now())
 
 
-def seed_examples(driver: Driver, examples: list[dict], snapshot_id: str = "") -> int:
-    """Pre-load the benchmarked hybrid answers so example clicks are free."""
+_CHECKS_KEYS = ("citations_retrieved", "numbers_grounded", "has_citation")   # the shape ``answer_checks`` reports
+
+
+@dataclass(frozen=True)
+class SeedResult:
+    """``seeded_ids``: the examples now in the cache; ``refused``: ``(id, reason)`` for every one that was not."""
+
+    seeded_ids: tuple[str, ...]
+    refused: tuple[tuple[str, str], ...]
+
+
+def refusal_reason(example: dict) -> str | None:
+    """Why an example may not be seeded: its stored ``checks`` (computed by ``scripts/build_examples.py`` with the same
+    ``answer_checks`` the service runs) are missing, incomplete, or report a failure. None when it may."""
+    checks = example.get("checks")
+    if not isinstance(checks, dict) or not checks:
+        return "no stored checks (regenerate the examples with scripts/build_examples.py)"
+    if any(key not in checks for key in _CHECKS_KEYS):
+        return "incomplete stored checks (regenerate the examples with scripts/build_examples.py)"
+    failed = failed_check_names(checks)
+    return f"failed checks: {', '.join(failed)}" if failed else None
+
+
+def seed_examples(driver: Driver, examples: list[dict], snapshot_id: str = "") -> SeedResult:
+    """Pre-load the benchmarked hybrid answers so example clicks are free, EXCEPT any whose stored checks are missing or
+    failed: a cached replay carries no checks of its own, so an example that was never checked (or failed) would look clean
+    for as long as it is served. Refused examples are returned with their reason (the caller logs them)."""
+    seeded: list[str] = []
+    refused: list[tuple[str, str]] = []
     for ex in examples:
+        reason = refusal_reason(ex)
+        if reason:
+            refused.append((str(ex.get("id")), reason))
+            continue
         put_answer(driver, question=ex["question"], strategy="hybrid", answer=ex["answer"],
                    citations=ex["citations"], hallucinated=ex["hallucinated"], source="benchmark",
                    snapshot_id=snapshot_id)
-    return len(examples)
+        seeded.append(ex["id"])
+    return SeedResult(tuple(seeded), tuple(refused))
 
 
 def ensure_indexes(driver: Driver) -> None:

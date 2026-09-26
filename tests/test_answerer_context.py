@@ -25,9 +25,8 @@ from semigraph.retrieval import (
     answer,
     answer_stream,
     build_blocks,
-    format_metric_line,
 )
-from semigraph.retrieval.answerer import CONTEXT_HEADERS, LEGACY_CONTEXT_HEADERS, render_prompt
+from semigraph.retrieval.answerer import CONTEXT_HEADERS, LEGACY_CONTEXT_HEADERS, _metric_amount, render_prompt
 
 CID_A = "0001045810-26-000021:I.1:0320"
 CID_B = "0001045810-26-000021:I.1A:0345"
@@ -150,12 +149,12 @@ GOLDEN_RISKS = (
 
 GOLDEN_TEMPORAL = (
     'Nvidia: 10-K filed 2025-02-26 (accession 0001045810-25-000023) compared with 10-K filed 2026-02-25 (accession 0001045810-26-000021)\n'
-    'Removed - showing 2 of 21 (text verified absent from the later filing):\n'
+    'Removed - showing 2 of 21 risk factors (text verified absent from the later filing):\n'
     '- "We may not be able to sell to China without an export license" [0001045810-25-000023:I.1A:0210] [0001045810-25-000023:I.1A:0211]\n'
     '- "Our Hong Kong operations may face transition risks" [0001045810-25-000023:I.1A:0230]\n'
-    'Added - showing 1 of 12 (new in the later filing):\n'
+    'Added - showing 1 of 12 risk factors (new in the later filing):\n'
     '- "We depend on a small number of customers for a large share of revenue" [0001045810-26-000021:I.1A:0350]\n'
-    'Reworded - showing 1 of 9 (still disclosed, wording changed):\n'
+    'Reworded - showing 1 of 9 risk factors (still disclosed, wording changed):\n'
     '- "Acquisitions and strategic investments may not deliver expected benefits" (earlier wording: "We may not realize the benefits of acquisitions"; decided by luna) earlier [0001045810-25-000023:I.1A:0140] later [0001045810-26-000021:I.1A:0347]'
 )
 
@@ -272,25 +271,31 @@ def test_non_usd_lines_never_say_usd_and_carry_their_unit_in_value_and_change():
 @pytest.mark.parametrize("metric, expected", [
     ({"company": "Nvidia", "metric": "revenue", "value": 60922000000.0,
       "period_start": "2023-01-30", "period_end": "2024-01-28"},
-     "- Nvidia revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD"),
+     "- revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD"),
     ({"company": "Nvidia", "metric": "revenue", "value": 60922000000.0, "unit": "USD",
       "period_start": "2023-01-30", "period_end": "2024-01-28"},
-     "- Nvidia revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD"),
+     "- revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD"),
     ({"company": "Nvidia", "metric": "revenue", "value": 60922000000.0, "unit": None,
       "period_start": "2023-01-30", "period_end": "2024-01-28"},
-     "- Nvidia revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD"),
+     "- revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD"),
     ({"company": "Nvidia", "metric": "revenue", "value": 60922000000.0, "unit": "",
       "period_start": "2023-01-30", "period_end": "2024-01-28"},
-     "- Nvidia revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD"),
+     "- revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD"),
     ({"company": "TSMC", "metric": "capex", "value": 1234567.6, "unit": "TWD",
       "period_start": "2024-01-01", "period_end": "2024-12-31"},
-     "- TSMC capex for period 2024-01-01..2024-12-31: 1,234,568 TWD"),
+     "- capex for period 2024-01-01..2024-12-31: 1,234,568 TWD"),
     ({"company": "ASML", "metric": "rnd", "value": 4304000000.0, "unit": "EUR",
       "period_start": "2024-01-01", "period_end": "2024-12-31"},
-     "- ASML rnd for period 2024-01-01..2024-12-31: 4,304,000,000 EUR"),
+     "- rnd for period 2024-01-01..2024-12-31: 4,304,000,000 EUR"),
 ])
-def test_format_metric_line(metric, expected):
-    assert format_metric_line(metric) == expected
+def test_a_metric_row_renders_its_own_unit_in_the_metrics_block(metric, expected):
+    """Replaces ``test_format_metric_line`` (the review removed ``format_metric_line``: exported and tested, used by
+    nothing in production). The same unit rules, checked where production renders them: the METRICS block."""
+    r = golden_retrieval()
+    r["metrics"] = [metric]
+    assert expected in build_blocks(r)[0].metrics_block.splitlines()
+    assert _metric_amount(metric) == expected.rsplit(": ", 1)[1]
+
 
 
 # --- C2.5: anchor honesty - the retrieval event carries anchor_defaulted (additive) ---
