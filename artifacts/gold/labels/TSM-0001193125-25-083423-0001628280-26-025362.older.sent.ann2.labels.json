@@ -1,0 +1,508 @@
+[
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s000",
+"label": "present",
+"quote": "Any global systemic political, economic and financial crisis (as well as the indirect effects flowing therefrom) could negatively affect our business, results of operations, and financial condition."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s001",
+"label": "present",
+"quote": "In recent times, several major systemic political, economic and financial crises negatively affected global business, banking and financial sectors, including the semiconductor industry and markets."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s002",
+"label": "present",
+"quote": "Since 2018, political and trade tensions among a number of the world’s major economies have been on the rise."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s003",
+"label": "present",
+"quote": "These tensions have resulted or may result in the implementation of tariffs, non-tariff trade barriers, sanctions, export controls and other measures that have been particularly impactful to the semiconductor industry and related markets."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s004",
+"label": "present",
+"quote": "Prolonged or increased use of such measures may negatively impact the growth of the global economy and the semiconductor industry, resulting in declines in electronic products sales from which we generate our income through our products and services."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s005",
+"label": "reworded",
+"quote": "in April 2025, the U.S. President announced a 10% baseline tariff on imports into the U.S. from all countries, as well as varying reciprocal tariffs on most of the U.S.’s trading partners"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s006",
+"label": "removed",
+"search_terms": [
+"paused until July 9",
+"except those on Chinese goods",
+"variable reciprocal tariffs",
+"baseline 10% tariff"
+]
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s007",
+"label": "removed",
+"search_terms": [
+"not subject to the reciprocal tariffs",
+"April 2, 2025",
+"Semiconductors were not",
+"reciprocal tariffs announced"
+]
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s008",
+"label": "removed",
+"search_terms": [
+"ongoing discussions",
+"trading partners",
+"further change the scope",
+"scope and level of tariffs"
+]
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s009",
+"label": "present",
+"quote": "Any tariffs imposed on imports of semiconductors and products incorporating chips into the U.S. may result in increased costs for purchasing such products, which may, in turn, lead to decreased demand for our products and services and adversely affect our business and future growth."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s010",
+"label": "present",
+"quote": "Additionally, any increase in the use of export control restrictions and sanctions to target certain countries and entities, any expansion of the extraterritorial jurisdiction of such measures, or a complete or partial ban on semiconductor products sales to certain entities could impact not only our ability to continue supplying products to those customers"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s011",
+"label": "removed",
+"search_terms": [
+"Huawei",
+"Technology Co",
+"tightened its export control",
+"affiliates"
+]
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s012",
+"label": "removed",
+"search_terms": [
+"Huawei",
+"collectively",
+"Technology Co. Ltd.",
+"in 2020"
+]
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s013",
+"label": "removed",
+"search_terms": [
+"Huawei",
+"discontinued shipment",
+"September 2020",
+"comply with relevant laws"
+]
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s014",
+"label": "present",
+"quote": "For example, in October 2022 and October 2023, the U.S. adopted additional export controls (the “October Rules”) over specified countries (including China) under the U.S. Export Administration Regulations (“U.S. EAR”) on certain advanced computing integrated circuits (“ICs”)",
+"note": "newer drops the tail listing computer commodities and supercomputer end-uses"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s015",
+"label": "present",
+"quote": "The October Rules also impose license requirements for items subject to the U.S. EAR where the items are destined to a semiconductor fabrication facility in China that fabricates specified advanced node ICs as well as for U.S. persons’ activities supporting such facility or semiconductor manufacturing items."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s016",
+"label": "present",
+"quote": "In response, we obtained from the U.S. Department of Commerce a Validated End-User (the “VEU”) authorization for our fab located in Nanjing, China, which allowed our fab in Nanjing to receive exports of eligible items from the U.S."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s017",
+"label": "reworded",
+"quote": "there is no assurance that this annual export license will not be terminated, or we can timely get the license renewed in the future."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s018",
+"label": "reworded",
+"quote": "In January 2025, the U.S. further issued new rules to reinforce controls on exports of advanced computing ICs"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s019",
+"label": "present",
+"quote": "we may need to obtain an export license prior to shipping products using 16-nanometer or below process to specified destinations unless specific conditions are met."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s020",
+"label": "present",
+"quote": "As a result, shipments of certain products may be delayed or prohibited due to the license requirements and our financial results may be adversely affected."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s022",
+"label": "present",
+"quote": "On the other hand, measures adopted by an affected country to counteract the impact of another country’s actions or regulations could lead to significant legal liability to multinational corporations including our own."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s023",
+"label": "present",
+"quote": "For example, in January 2021, China adopted a blocking statute that, among other matters, entitles Chinese entities incurring damages from a multinational’s compliance with foreign laws to seek civil remedies."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s024",
+"label": "present",
+"quote": "As of the date of this annual report, our current results of operations have not been materially affected by the expanded export control regulations or the novel rules or measures adopted to counteract them."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s025",
+"label": "present",
+"quote": "military conflicts, such regulations, rules, or measures may have an adverse impact on our business and operations, and we may incur significant legal liability and financial losses as a result."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s026",
+"label": "present",
+"quote": "Please see “Our failure to comply with applicable laws and regulations material to our operations, such as export control, environmental and climate related laws and regulations"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s027",
+"label": "present",
+"quote": "Any future systemic political, economic or financial crisis or market volatility, including but not limited to interest rate and foreign exchange rate fluctuations, inflation or deflation or changes in economic, fiscal and monetary policies in major economies, could cause revenue or profits for the semiconductor industry as a whole to decline dramatically."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s028",
+"label": "present",
+"quote": "If the economic conditions or financial conditions of our customers were to deteriorate, the demand for our products and services may decrease and additional accounting related allowances may be required"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s029",
+"label": "present",
+"quote": "In addition, sufficient external financing may not be available to us on a timely basis, on commercially reasonable terms to us, or at all."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s030",
+"label": "present",
+"quote": "If sufficient external financing is not available when we need such financing to meet our capital requirements, we may be forced to curtail our expansion, modify plans or delay the deployment of new or expanded services until we obtain such financing."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i000#s031",
+"label": "present",
+"quote": "In conclusion, any of these events, including any future global systemic crisis or further escalation of trade tensions as described above, could materially and adversely affect our results of operations."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s000",
+"label": "present",
+"quote": "If we are unable to remain a technological leader in the semiconductor industry, unable to timely respond to fast-changing semiconductor market dynamics, or unable to maintain our edge in product quality, we may become less competitive."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s001",
+"label": "present",
+"quote": "The semiconductor industry and its technologies are constantly changing."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s002",
+"label": "present",
+"quote": "We compete by developing process technologies using increasingly advanced nodes and manufacturing products with more functions."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s003",
+"label": "present",
+"quote": "We also compete by developing new derivative technologies."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s004",
+"label": "present",
+"quote": "If we do not anticipate these changes in technologies and rapidly develop new and innovative technologies, or our competitors unforeseeably gain sudden access to additional technologies, we may not be able to provide services on competitive terms."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s005",
+"label": "present",
+"quote": "For example, the global surge in the development of AI has had a significant impact on customer demand for advanced semiconductor chips and the market dynamics in our industry"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s006",
+"label": "present",
+"quote": "We also believe that the effective use of AI in our internal operations is important to our long-term success."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s007",
+"label": "present",
+"quote": "As the AI technologies are rapidly evolving, if we are unable to effectively deploy new AI technologies in our internal operations, it may hurt our competitive position."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s008",
+"label": "reworded",
+"quote": "our customers have accelerated the cadence of introducing new products and services to the market."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s009",
+"label": "present",
+"quote": "If we are unable to meet these shorter product time-to-market, we risk losing these customers."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s010",
+"label": "reworded",
+"quote": "These factors have also been intensified by the shift of the global technology market to AI-related products, such as AI smartphones, AI PCs, and AI accelerators, and increasing competition and concentration of customers"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s011",
+"label": "present",
+"quote": "The uncertainty and instability inherent in advanced technologies impose challenges for achieving expected product quality and product yield."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s012",
+"label": "present",
+"quote": "it may result in loss of revenue and additional cost, as well as loss of business or customer trust."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i005#s013",
+"label": "present",
+"quote": "If we are unable to overcome the above factors, we may become less competitive and our revenue may decline significantly."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s000",
+"label": "present",
+"quote": "unable to compete effectively in the highly competitive foundry segment of the semiconductor industry, including through equal access to governmental financial incentives, especially those available to our competitors, we may lose customers and/or our profit margin and earnings may decrease."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s001",
+"label": "present",
+"quote": "The competition in the semiconductor foundry segment is fierce."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s002",
+"label": "present",
+"quote": "We compete with other foundry service providers, as well as a number of integrated device manufacturers."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s003",
+"label": "present",
+"quote": "Some of these companies may have access to more advanced or different technologies than us."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s004",
+"label": "present",
+"quote": "Other companies may have greater financial and other resources than us, such as the possibility of receiving direct or indirect government subsidies, economic stimulus funds, or other incentives that may be unavailable to us."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s005",
+"label": "present",
+"quote": "The governments of the United States, China, Europe, South Korea and Japan provide various incentive programs to promote developments of their domestic semiconductor industries"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s006",
+"label": "present",
+"quote": "In November 2024, TSMC Arizona Corporation (“TSMC Arizona”) entered into agreements with the U.S. Department of Commerce for the receipt of certain incentives pursuant to the U.S. CHIPS Act, which includes up to US$6.6 billion in total direct funding and up to US$5 billion of proposed loans."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s008",
+"label": "present",
+"quote": "In December 2024, ESMC, our subsidiary in Germany, entered into an agreement with the Federal Republic of Germany for the receipt of up to EUR5 billion state aid under the European Chips Act (Regulation (EU) 2023/1781)."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s009",
+"label": "present",
+"quote": "there is no assurance that we will be able to receive such financial incentives, including pursuant to the U.S. CHIPS Act, at the levels we anticipate or at all."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s010",
+"label": "present",
+"quote": "Additionally, any financial incentives we receive may be subject to conditions and requirements imposed by the grantors, such as restrictions on the expansion of facilities in foreign countries of concern"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s011",
+"label": "present",
+"quote": "Noncompliance with the terms and conditions of the grants that we may receive could result in a delay or forfeiture of all or a portion of any future amounts to be received"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s012",
+"label": "present",
+"quote": "Even if we satisfy the conditions and requirements for the funding disbursement, it is possible that the grantor may delay the disbursement or be unable to provide the funding."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s013",
+"label": "present",
+"quote": "While we expect to continue benefiting from government incentives, failure to obtain grants that we seek, to fully utilize available grants, or to comply with the terms and conditions of grants could impact our ability to achieve our goals"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s015",
+"label": "present",
+"quote": "Moreover, our competitors may, from time to time, also decide to undertake aggressive pricing initiatives."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s016",
+"label": "present",
+"quote": "Our competitors may also compete for our customers who seek to diversify their supply chains."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s017",
+"label": "present",
+"quote": "These competitive activities may decrease our customer base, our pricing, or both."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i006#s018",
+"label": "present",
+"quote": "If we are unable to compete effectively with such competitors on technology, manufacturing capacity, product quality, supply chain diversification and resilience, and customer satisfaction, we risk losing customers or business to such contenders"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s000",
+"label": "present",
+"quote": "If we are unable to manage our capacity and production facilities effectively, our competitiveness may be weakened."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s001",
+"label": "present",
+"quote": "We perform long-term market demand forecasts on a regular basis for our products and services to manage our overall capacity."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s002",
+"label": "present",
+"quote": "Based on market demand, we have continued to add capacity to meet market needs for our products and services, including in Taiwan, in Arizona, U.S., in Kumamoto, Japan and in Dresden, Germany."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s003",
+"label": "present",
+"quote": "Implementing these capacity expansion plans will increase our costs, and the increases may be substantial."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s004",
+"label": "present",
+"quote": "For example, we would need to build new facilities, purchase additional equipment and hire and train personnel to operate the new equipment."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s005",
+"label": "present",
+"quote": "we do not increase our net revenue accordingly, our financial performance may be adversely affected by these increased costs."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s007",
+"label": "present",
+"quote": "Item 4. Information on The Company – Capacity Management and Technology Upgrade Plans” for a further discussion."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s008",
+"label": "present",
+"quote": "In addition, market conditions are dynamic, and our market demand forecasts may change significantly at any time."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s009",
+"label": "present",
+"quote": "During periods of decreased demand, certain manufacturing lines or tools in some of our manufacturing facilities may be suspended or shut down temporarily."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s010",
+"label": "present",
+"quote": "However, if demand subsequently increases rapidly over a short period of time, we may not be able to restore the capacity in a timely manner to take advantage of the upturn."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i007#s011",
+"label": "present",
+"quote": "In such circumstances, our financial performance and competitiveness may be adversely affected."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s000",
+"label": "present",
+"quote": "Any inability to obtain, preserve, enforce, defend and protect our technologies, intellectual property rights and third-party licenses could harm our competitive position."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s001",
+"label": "present",
+"quote": "Our ability to compete successfully and to achieve future growth depends in part on the continued strength of our intellectual property portfolio."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s002",
+"label": "present",
+"quote": "While we actively enforce and protect our intellectual property rights, there can be no assurance that our efforts will be adequate to prevent the misappropriation or improper use of our proprietary technologies, software, trade secrets or know-how."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s003",
+"label": "present",
+"quote": "we cannot assure you that, as our business or business models expand into new areas, we will be able to develop independently the technologies, patents, software, trade secrets or know-how necessary to conduct our business"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s004",
+"label": "present",
+"quote": "As a result, we may have to rely on, to a certain degree, licensed technologies and patent licenses from others."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s005",
+"label": "present",
+"quote": "To the extent that we rely on licenses from others, there can be no assurance that we will be able to obtain any or all of the necessary licenses in the future on terms we consider reasonable or at all."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s006",
+"label": "present",
+"quote": "The lack of necessary licenses could expose us to claims for damages and/or injunctions from third parties, as well as claims for indemnification by our customers"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s007",
+"label": "present",
+"quote": "We have received, from time to time, communications from third parties, including non-practicing entities and semiconductor companies, asserting that our technologies, our manufacturing processes, or the design IPs of the semiconductors made by us"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s008",
+"label": "present",
+"quote": "the nature of the industry, our market position, and the expansion of our manufacturing operations outside of Taiwan, we may receive an increased number of such communications in the future."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s009",
+"label": "present",
+"quote": "The assertions made and lawsuits initiated by litigious, well-funded, non-practicing entities are particularly aggressive in their monetary demand and in seeking court-issued injunctions."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s010",
+"label": "present",
+"quote": "Such lawsuits and assertions may increase our cost of doing business and may potentially be extremely disruptive if these asserting entities succeed in blocking the trade of products made and services offered by us."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s012",
+"label": "present",
+"quote": "Item 8. Financial Information – Legal Proceedings” for a further discussion."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s013",
+"label": "present",
+"quote": "Also, with the expansion of our manufacturing operations into certain non-R.O.C jurisdictions, we have faced increased challenges in managing risks of intellectual property misappropriation."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s014",
+"label": "present",
+"quote": "we cannot guarantee that the protection measures we adopted will be sufficient to prevent us from potential infringements by others, or at all."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i013#s015",
+"label": "present",
+"quote": "If we fail to obtain or maintain certain technologies or intellectual property licenses or fail to prevent our intellectual property from being misappropriated"
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i025#s000",
+"label": "present",
+"quote": "The market value of our shares may fluctuate due to the volatility of, and government intervention in, the R.O.C. securities market."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i025#s001",
+"label": "present",
+"quote": "The Taiwan Stock Exchange has experienced from time to time substantial fluctuations in the prices and volumes of sales of listed securities."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i025#s002",
+"label": "present",
+"quote": "There are currently limits on the range of daily price movements on the Taiwan Stock Exchange."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i025#s003",
+"label": "present",
+"quote": "the government of the R.O.C. formed the Stabilization Fund, which had purchased and may from time to time purchase shares of Taiwan companies to support these markets."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i025#s004",
+"label": "present",
+"quote": "In addition, other funds associated with the R.O.C. government had in the past purchased, and may from time to time purchase, shares of Taiwan companies on the Taiwan Stock Exchange or other markets."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i025#s005",
+"label": "present",
+"quote": "These funds had disposed and may from time to time dispose shares of Taiwan companies so purchased at a later time."
+},
+{
+"sentence_id": "0001193125-25-083423:I.3:i025#s006",
+"label": "present",
+"quote": "In the future, market activity by government entities, or the perception that such activity is taking place, may take place or cease, may cause fluctuations in the market prices of our ADSs and common shares."
+}
+]

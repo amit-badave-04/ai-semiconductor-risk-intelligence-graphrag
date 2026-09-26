@@ -1,0 +1,271 @@
+{
+ "pair_id": "AMD-0000002488-25-000012-0000002488-26-000018",
+ "side": "newer",
+ "split": "development",
+ "annotators": [
+  "ann1",
+  "ann2",
+  "ann3"
+ ],
+ "consensus": {
+  "0000002488-26-000018:I.1A:i000": "carried",
+  "0000002488-26-000018:I.1A:i001": "carried",
+  "0000002488-26-000018:I.1A:i002": "carried",
+  "0000002488-26-000018:I.1A:i003": "carried",
+  "0000002488-26-000018:I.1A:i004": "carried",
+  "0000002488-26-000018:I.1A:i005": "carried",
+  "0000002488-26-000018:I.1A:i006": "carried",
+  "0000002488-26-000018:I.1A:i007": "carried",
+  "0000002488-26-000018:I.1A:i008": "carried",
+  "0000002488-26-000018:I.1A:i009": "carried",
+  "0000002488-26-000018:I.1A:i010": "carried",
+  "0000002488-26-000018:I.1A:i011": "carried",
+  "0000002488-26-000018:I.1A:i012": "carried",
+  "0000002488-26-000018:I.1A:i013": "carried",
+  "0000002488-26-000018:I.1A:i014": "carried",
+  "0000002488-26-000018:I.1A:i015": "carried",
+  "0000002488-26-000018:I.1A:i016": "carried",
+  "0000002488-26-000018:I.1A:i017": "carried",
+  "0000002488-26-000018:I.1A:i018": "carried",
+  "0000002488-26-000018:I.1A:i019": "carried",
+  "0000002488-26-000018:I.1A:i020": "carried",
+  "0000002488-26-000018:I.1A:i021": "carried",
+  "0000002488-26-000018:I.1A:i022": "carried",
+  "0000002488-26-000018:I.1A:i023": "carried",
+  "0000002488-26-000018:I.1A:i024": "carried",
+  "0000002488-26-000018:I.1A:i025": "carried",
+  "0000002488-26-000018:I.1A:i026": "carried",
+  "0000002488-26-000018:I.1A:i027": "carried",
+  "0000002488-26-000018:I.1A:i028": "carried",
+  "0000002488-26-000018:I.1A:i029": "carried",
+  "0000002488-26-000018:I.1A:i030": "carried",
+  "0000002488-26-000018:I.1A:i031": "carried",
+  "0000002488-26-000018:I.1A:i032": "carried",
+  "0000002488-26-000018:I.1A:i033": "carried",
+  "0000002488-26-000018:I.1A:i034": "carried",
+  "0000002488-26-000018:I.1A:i035": "new",
+  "0000002488-26-000018:I.1A:i036": "carried",
+  "0000002488-26-000018:I.1A:i037": "carried",
+  "0000002488-26-000018:I.1A:i038": "carried",
+  "0000002488-26-000018:I.1A:i039": "carried",
+  "0000002488-26-000018:I.1A:i040": "carried",
+  "0000002488-26-000018:I.1A:i041": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0000002488-26-000018:I.1A:i000": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i001": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i002": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i003": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i004": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i005": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i006": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i007": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i008": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i009": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i010": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i011": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i012": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i013": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i014": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i015": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i016": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i017": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i018": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i019": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i020": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i021": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i022": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i023": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i024": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i025": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i026": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i027": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i028": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i029": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i030": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i031": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i032": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i033": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i034": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i035": {
+   "ann1": "new",
+   "ann2": "new",
+   "ann3": "new"
+  },
+  "0000002488-26-000018:I.1A:i036": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i037": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i038": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i039": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i040": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0000002488-26-000018:I.1A:i041": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  }
+ }
+}

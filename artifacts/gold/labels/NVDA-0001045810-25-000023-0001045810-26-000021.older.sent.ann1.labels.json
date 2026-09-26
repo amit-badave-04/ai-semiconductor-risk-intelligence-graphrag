@@ -1,0 +1,952 @@
+[
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s000",
+  "label": "present",
+  "quote": "Failure to meet the evolving needs of our industry and markets may adversely impact our financial results."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s001",
+  "label": "present",
+  "quote": "Our accelerated computing platforms experience rapid changes in technology, customer requirements, competitive products, and industry standards."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s003",
+  "label": "present",
+  "quote": "timely identify industry changes, adapt our strategies, and develop new or enhance and maintain existing products and technologies that meet the evolving needs of our markets"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s004",
+  "label": "present",
+  "quote": "new products and technologies through investments in research and development"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s005",
+  "label": "present",
+  "quote": "launch new offerings with new business models including software, services, and cloud solutions"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s006",
+  "label": "present",
+  "quote": "expand the ecosystem for our products and technologies"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s007",
+  "label": "present",
+  "quote": "meet evolving and prevailing customer and industry safety, security, reliability expectations, and compliance standards"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s008",
+  "label": "present",
+  "quote": "manage product and software lifecycles to maintain customer and end-user satisfaction"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s009",
+  "label": "present",
+  "quote": "develop, acquire, maintain, and secure access to the internal and external infrastructure needed to scale"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s010",
+  "label": "present",
+  "quote": "complete technical, financial, operational, compliance, sales and marketing investments for the above activities."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s011",
+  "label": "present",
+  "quote": "We have invested in research and development in markets where we have a limited operating history, which may not produce meaningful revenue for several years, if at all."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s012",
+  "label": "present",
+  "quote": "If we fail to develop or monetize new products and technologies, or if they do not become widely adopted, our financial results could be adversely affected."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s013",
+  "label": "present",
+  "quote": "Obtaining design wins may involve a lengthy process and depends on our ability to anticipate and provide features and functionality that customers will demand."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s015",
+  "label": "present",
+  "quote": "Failure to obtain a design win may prevent us from obtaining future design wins in subsequent generations."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s016",
+  "label": "present",
+  "quote": "We cannot ensure that our products and technologies will provide value to our customers and partners."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s017",
+  "label": "present",
+  "quote": "If we fail any of these key success criteria, our financial results may be harmed."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s018",
+  "label": "removed",
+  "search_terms": [
+   "DGX Cloud",
+   "deploying AI models",
+   "enterprise customers",
+   "cloud-based infrastructure, software"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s019",
+  "label": "reworded",
+  "quote": "We entered into multi-year cloud service agreements to support our research and development activities."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s020",
+  "label": "present",
+  "quote": "The timing and availability of these cloud services have changed and may continue to shift, impacting our revenue, expenses, and development timelines"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s021",
+  "label": "removed",
+  "search_terms": [
+   "DGX Cloud services",
+   "time, resources, and investment",
+   "will take time"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s022",
+  "label": "present",
+  "quote": "We also offer or plan to offer standalone software solutions, including NVIDIA AI Enterprise, NVIDIA Omniverse, NVIDIA DRIVE, and other software products."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s023",
+  "label": "present",
+  "quote": "business models or strategies may not be successful, and we may fail to sell any meaningful standalone software or services."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i000#s024",
+  "label": "present",
+  "quote": "We may incur significant costs and may not achieve any significant revenue from these offerings."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i001#s000",
+  "label": "present",
+  "quote": "Competition could adversely impact our market share and financial results."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i001#s001",
+  "label": "present",
+  "quote": "Our target markets remain competitive, and competition may intensify with expanding and changing product and service offerings, industry standards, customer and market needs, new entrants and consolidations."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i001#s002",
+  "label": "present",
+  "quote": "may be cheaper or provide better functionality or features than ours, which has resulted and may in the future result in lower-than-expected selling prices or demand for our products."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i001#s003",
+  "label": "present",
+  "quote": "Some of our competitors operate their own fabrication facilities, and have longer operating histories, larger customer bases, more comprehensive IP portfolios and patent protections, more design wins, and greater financial, sales, marketing and distribution resources than we do."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i001#s004",
+  "label": "present",
+  "quote": "These competitors may be able to acquire market share and/or prevent us from doing so, more effectively identify and capitalize upon opportunities in new markets and end-user trends, more quickly transition their products, and impinge on our ability to procure sufficient foundry capacity and scarce input materials during a supply-constrained environment, which could harm our business."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i001#s005",
+  "label": "present",
+  "quote": "customers have in-house expertise and internal development capabilities similar to some of ours and can use or develop their own solutions to replace those we are providing."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i001#s006",
+  "label": "present",
+  "quote": "For example, others may offer cloud-based services that compete with our AI cloud service offerings, and we may not be able to establish market share sufficient to achieve the scale necessary to meet our business objectives."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i001#s007",
+  "label": "present",
+  "quote": "If we are unable to successfully compete in this environment, demand for our products, services and technologies could decrease"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i012#s000",
+  "label": "present",
+  "quote": "If we are unable to attract, retain and motivate our executives and key employees, our business may be harmed."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i012#s001",
+  "label": "present",
+  "quote": "To remain competitive and successfully execute our business strategy, we must attract, retain, and motivate our executives and key employees"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i012#s002",
+  "label": "present",
+  "quote": "labor is subject to external factors that are beyond our control, including our industry’s increasingly highly competitive market for skilled workers and leaders, and workforce participation rates."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i012#s003",
+  "label": "present",
+  "quote": "Changes in immigration and work permit regulations, or in their administration or interpretation, could impair our ability to attract, employ and retain qualified employees."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i012#s004",
+  "label": "present",
+  "quote": "Competition for talent drives up costs in the form of cash and stock-based compensation."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i012#s005",
+  "label": "present",
+  "quote": "In times of stock price volatility, as we have experienced in the past and may experience in the future, the retentive value of our stock-based compensation may decrease."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i012#s006",
+  "label": "present",
+  "quote": "Additionally, we are highly dependent on the services of our longstanding executive team."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i012#s007",
+  "label": "present",
+  "quote": "Failure to ensure effective succession planning, transfer of knowledge, and smooth transitions involving executives and key employees could hinder our strategic planning, execution, and long-term success."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s000",
+  "label": "present",
+  "quote": "We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s001",
+  "label": "present",
+  "quote": "We are subject to laws and regulations domestically and worldwide, affecting our operations in areas including, but not limited to, IP ownership and infringement; taxes; import and export requirements and tariffs;"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s002",
+  "label": "present",
+  "quote": "Compliance with such requirements can be onerous and expensive, could impact our competitive position, and may negatively impact our business operations and ability to manufacture and ship our products."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s003",
+  "label": "present",
+  "quote": "There can be no assurance that our employees, contractors, suppliers, customers or agents will not violate applicable laws or the policies, controls, and procedures that we have designed to help ensure compliance with such laws"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s004",
+  "label": "present",
+  "quote": "Changes to the laws, rules and regulations to which we are subject, or changes to their interpretation and enforcement, could lead to materially greater compliance and other costs"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s005",
+  "label": "present",
+  "quote": "For example, we may face increased compliance costs as a result of changes or increases in antitrust legislation, regulation, administrative rule making, increased focus from regulators on cybersecurity vulnerabilities and risks."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s006",
+  "label": "present",
+  "quote": "Our position in markets relating to AI has led to increased interest in our business from regulators worldwide, including the European Union, the United States, the United Kingdom, South Korea, Japan, and China."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s007",
+  "label": "present",
+  "quote": "the French Competition Authority collected information from us regarding our business and competition in the graphics card and CSP market as part of an ongoing inquiry into competition in those markets."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s008",
+  "label": "present",
+  "quote": "We have also received, and continue to receive, broad requests for information from competition regulators in the European Union, the United States, the United Kingdom, China, and South Korea regarding our"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s009",
+  "label": "present",
+  "quote": "We expect to receive additional requests for information in the future."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s010",
+  "label": "present",
+  "quote": "expensive and burdensome and could negatively impact our business and our relationships with customers, suppliers, and partners."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s011",
+  "label": "present",
+  "quote": "Governments and regulators are also considering, and in certain cases, have imposed restrictions on the hardware, software, and systems used to develop frontier foundation models and generative AI."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s012",
+  "label": "present",
+  "quote": "For example, the EU AI Act became effective on August 1, 2024 and will be fully applicable after a two-year transitional period."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s013",
+  "label": "present",
+  "quote": "The EU AI Act may impact our ability to train, deploy, or release AI models in the EU."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s014",
+  "label": "present",
+  "quote": "Several states are considering enacting or have already enacted regulations concerning AI technologies"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s015",
+  "label": "present",
+  "quote": "Restrictions under these and any other regulations, if implemented, could increase the costs and burdens to us and our customers, delay or halt deployment of new systems using our products"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s016",
+  "label": "present",
+  "quote": "Revisions to laws or regulations or their interpretation and enforcement could also result in increased taxation, trade sanctions, the imposition of or increase to import duties or tariffs"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s017",
+  "label": "present",
+  "quote": "Additionally, changes in the public perception of governments in the regions where we operate or plan to operate could negatively impact our business and results of operations."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s018",
+  "label": "present",
+  "quote": "Government actions, including trade protection and national and economic security policies of U.S. and foreign government bodies, such as tariffs, import or export regulations, including deemed export restrictions and"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s019",
+  "label": "present",
+  "quote": "If we were ever found to have violated export control laws or sanctions of the U.S. or similar applicable non-U.S. laws, even if the violation occurred without our knowledge"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s020",
+  "label": "present",
+  "quote": "in response to the war in Ukraine, the United States and other jurisdictions imposed economic sanctions and export control measures which blocked the passage of our products, services and support into Russia, Belarus, and certain regions of Ukraine."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s021",
+  "label": "present",
+  "quote": "In fiscal year 2023, we stopped direct sales to Russia and"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s022",
+  "label": "present",
+  "quote": "Concurrently, the war in Ukraine has impacted sales in EMEA and may continue to do so in the future."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s023",
+  "label": "present",
+  "quote": "The increasing focus on the risks and strategic importance of AI technologies has resulted in regulatory restrictions that target products and services capable of enabling or facilitating AI"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s024",
+  "label": "present",
+  "quote": "Concerns regarding third-party use of AI for purposes contrary to local governmental interests, including concerns relating to the misuse of AI applications, models, and solutions"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s025",
+  "label": "present",
+  "quote": "Such restrictions have limited and could in the future limit the ability of downstream customers and users worldwide to acquire, deploy and use systems that include our products, software, and services"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s026",
+  "label": "present",
+  "quote": "additional unilateral or multilateral export controls on certain products or"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s027",
+  "label": "present",
+  "quote": "As geopolitical tensions have increased, semiconductors associated with AI, including GPUs and related products, are increasingly the focus of export control restrictions proposed by stakeholders in the U.S. and its allies."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s028",
+  "label": "present",
+  "quote": "The United States has imposed unilateral worldwide controls restricting GPUs and associated products, and it is likely that additional unilateral or multilateral controls will be adopted."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s029",
+  "label": "present",
+  "quote": "Such controls have been and may again be very broad in scope and application, prohibit us from exporting our products to any or all customers in one or more markets"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s030",
+  "label": "reworded",
+  "quote": "would further limit our ability to export our technology, products, or services, creating a competitive disadvantage for us and negatively"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s031",
+  "label": "present",
+  "quote": "Export controls targeting GPUs and semiconductors associated with AI have subjected and may in the future subject downstream users of our products to restrictions on the use, resale, repair, or transfer of our products"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s032",
+  "label": "present",
+  "quote": "Controls could negatively impact our cost and/or ability to provide services such as NVIDIA AI cloud services"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s033",
+  "label": "present",
+  "quote": "disrupt our supply chain and distribution channels, negatively impacting our ability to serve demand, including in markets outside China"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s034",
+  "label": "present",
+  "quote": "The possibility of additional export controls has negatively impacted and may in the future negatively impact demand for our products, benefiting competitors that offer alternatives less likely to be restricted by further controls."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s035",
+  "label": "present",
+  "quote": "Repeated changes in the export control rules are likely to impose compliance burdens on our business and our customers, negatively and materially impacting our business."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s036",
+  "label": "present",
+  "quote": "of economic sanctions and export controls has impacted and may in the future impact demand for our products or services, negatively impacting our business and financial results."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s037",
+  "label": "present",
+  "quote": "Reduced demand due to export controls has and could in the future lead to excess inventory or cause us to incur related supply charges."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s038",
+  "label": "present",
+  "quote": "Additional unilateral or multilateral controls are also likely to include deemed export control limitations that negatively impact the ability of our research and development teams to execute our roadmap or other objectives in a timely manner."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s039",
+  "label": "present",
+  "quote": "Additional export restrictions may not only impact our ability to serve overseas markets, but also provoke responses from foreign governments, including China, that negatively impact our supply chain"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s040",
+  "label": "present",
+  "quote": "Regulators in China have inquired about our sales and efforts to supply the China market and our fulfillment of the commitments we entered at the close of our Mellanox acquisition."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s041",
+  "label": "reworded",
+  "quote": "China’s antitrust regulators published their preliminary finding that our compliance with applicable U.S. export controls, which required us to offer degraded products to the Chinese market, discriminated unfairly against customers in the China market"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s042",
+  "label": "present",
+  "quote": "we could be subject to financial penalties, restrictions on our ability to conduct our business"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s043",
+  "label": "present",
+  "quote": "Over the past three years, we have been subject to a series of shifting and expanding export control restrictions, impacting our ability to serve customers outside the United States."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s044",
+  "label": "present",
+  "quote": "the USG announced export restrictions and export licensing requirements targeting China’s semiconductor and supercomputing industries."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s045",
+  "label": "present",
+  "quote": "and specifically impact our A100 and H100 integrated circuits, DGX or any other systems or boards which incorporate A100 or H100 integrated circuits."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s046",
+  "label": "removed",
+  "search_terms": [
+   "peak performance",
+   "chip-to-chip",
+   "future NVIDIA integrated circuit"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s047",
+  "label": "removed",
+  "search_terms": [
+   "wide array",
+   "end uses",
+   "certain end users"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s048",
+  "label": "present",
+  "quote": "the USG also informed us of an additional licensing requirement for a subset of A100 and H100 products destined to certain customers and other regions, including some countries in the Middle East."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s049",
+  "label": "present",
+  "quote": "(including but not limited to, Saudi Arabia, the United Arab Emirates, and Vietnam, but excluding Israel) of our products exceeding certain performance thresholds, including, but not limited to, the A100, A800, H100, H800, L4, L40, L40S"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s050",
+  "label": "present",
+  "quote": "The licensing requirements also apply to the export of products exceeding certain performance thresholds to a party headquartered in, or with an ultimate parent headquartered in, Country Group D5, including China."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s051",
+  "label": "removed",
+  "search_terms": [
+   "grace period",
+   "effective immediately",
+   "October 23, 2023",
+   "official rule"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s052",
+  "label": "removed",
+  "search_terms": [
+   "Blackwell systems",
+   "NVL 36",
+   "require a license for any shipment"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s053",
+  "label": "removed",
+  "search_terms": [
+   "not received licenses",
+   "restricted products",
+   "ship these"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s054",
+  "label": "present",
+  "quote": "In January 2025, the USG published the AI Diffusion IFR in the Federal Register."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s055",
+  "label": "reworded",
+  "quote": "The IFR would have imposed a worldwide licensing requirement on our data center products, such as our H200, GB200 and GB300."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s056",
+  "label": "removed",
+  "search_terms": [
+   "covered integrated circuits",
+   "NVIDIA DGX",
+   "incorporates one or more",
+   "new licensing requirement"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s057",
+  "label": "removed",
+  "search_terms": [
+   "3A090",
+   "ECCN",
+   "future NVIDIA ICs"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s058",
+  "label": "removed",
+  "search_terms": [
+   "B100",
+   "RTX 6000 Ada",
+   "license exception"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s059",
+  "label": "present",
+  "quote": "The AI Diffusion IFR would have divided the world into three tiers, relegating most countries to “Tier 2” status"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s060",
+  "label": "removed",
+  "search_terms": [
+   "Universal Verified End Users",
+   "UVEU",
+   "NVEU"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s061",
+  "label": "removed",
+  "search_terms": [
+   "numerous effects",
+   "long-term financial results",
+   "following"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s062",
+  "label": "removed",
+  "search_terms": [
+   "reduce the market for U.S.-designed",
+   "Tier 1 countries",
+   "reexports"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s063",
+  "label": "removed",
+  "search_terms": [
+   "sold years ago",
+   "all covered products",
+   "apply to all covered"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s064",
+  "label": "removed",
+  "search_terms": [
+   "UVEU status",
+   "government-approved firms",
+   "IT services and computing infrastructure"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s065",
+  "label": "removed",
+  "search_terms": [
+   "UVEUs may choose",
+   "favor their own accelerators",
+   "selecting products based on merit"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s066",
+  "label": "removed",
+  "search_terms": [
+   "not affected by USG regulations",
+   "invest in alternatives",
+   "foreign competition"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s067",
+  "label": "removed",
+  "search_terms": [
+   "increase our and our customers",
+   "extraterritorial regulatory obligations",
+   "new compliance burdens"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s068",
+  "label": "removed",
+  "search_terms": [
+   "enhanced risk of retaliation",
+   "U.S. providers",
+   "import/export controls"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s069",
+  "label": "removed",
+  "search_terms": [
+   "complete development of products",
+   "transition certain operations",
+   "identified countries"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s070",
+  "label": "removed",
+  "search_terms": [
+   "testing, validation",
+   "transitioned some operations",
+   "out of China and Hong Kong"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s071",
+  "label": "removed",
+  "search_terms": [
+   "transitions could be costly",
+   "time consuming",
+   "transition period"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s072",
+  "label": "removed",
+  "search_terms": [
+   "advance notice",
+   "expanded our Data Center product portfolio",
+   "new solutions"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s073",
+  "label": "removed",
+  "search_terms": [
+   "seek a license for the customer",
+   "requires products covered",
+   "covered by the licensing requirements"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s074",
+  "label": "reworded",
+  "quote": "The licensing process may not be resolved before significant business opportunities evaporate."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s075",
+  "label": "removed",
+  "search_terms": [
+   "no assurance that the USG will grant",
+   "act on the license application",
+   "timely manner or at all"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s076",
+  "label": "reworded",
+  "quote": "or include financial or economic requirements that we or our customers or end users cannot or choose not to fulfill."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s077",
+  "label": "removed",
+  "search_terms": [
+   "closed process",
+   "clear standards",
+   "opportunity for review"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s078",
+  "label": "removed",
+  "search_terms": [
+   "Notified Advanced Computing",
+   "Advanced Computing",
+   "approvals for exports",
+   "customers in China"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s079",
+  "label": "removed",
+  "search_terms": [
+   "onerous",
+   "small-sized systems",
+   "train frontier AI models",
+   "D1 and D4 countries"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s080",
+  "label": "reworded",
+  "quote": "Export controls have and are likely in the future to have a disproportionate impact on NVIDIA and may disadvantage us against certain of our competitors that sell chips that are outside the scope of such control."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s081",
+  "label": "present",
+  "quote": "Our competitive position has been harmed by export controls, and our competitive position and future results will be further harmed, over the long term"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s082",
+  "label": "present",
+  "quote": "Even if the USG grants any requested licenses, the licenses have already and may in the future be temporary, impose burdensome conditions regarding the installation, maintenance, and use"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s083",
+  "label": "present",
+  "quote": "The licensing requirements have already and may in the future benefit certain of our competitors, as the licensing process will make our pre-sale and post-sale technical support efforts more cumbersome and less certain"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s084",
+  "label": "present",
+  "quote": "Given the increasing strategic importance of AI and rising geopolitical tensions, the USG has changed and may again change the export control rules at any time and further subject a wider range of our products to export restrictions and licensing requirements"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s085",
+  "label": "present",
+  "quote": "In the event of such change, we may be unable to sell our inventory of such products and may be unable to develop replacement products not subject to the licensing requirements."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s086",
+  "label": "present",
+  "quote": "the USG already imposed license conditions that limit the ability of foreign firms to create and offer as a service large-scale GPU clusters"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s087",
+  "label": "present",
+  "quote": "The USG already imposed export controls restricting certain gaming GPUs, and if the USG expands such controls to restrict additional gaming products, it may disrupt a significant portion of our supply and distribution chain"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s088",
+  "label": "present",
+  "quote": "In addition, as the performance of the gaming GPUs increases over time, export controls may have a greater impact on our ability to compete in markets subject to those controls."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s089",
+  "label": "present",
+  "quote": "Export controls may disrupt our supply and distribution chain for a substantial portion of our products, which are warehoused in and distributed from Hong Kong."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s090",
+  "label": "present",
+  "quote": "Export controls restricting our ability to sell data center GPUs may also negatively impact demand for our networking products used in servers containing our GPUs."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s091",
+  "label": "present",
+  "quote": "impose export controls on our networking products, such as high-speed network interconnects, to limit the ability of downstream parties to create large clusters for frontier model training."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s092",
+  "label": "present",
+  "quote": "Export controls have and are likely in the future to have a disproportionate impact on NVIDIA and may disadvantage us against certain of our competitors that sell chips that are outside the scope of such control."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s093",
+  "label": "present",
+  "quote": "encourage customers outside China and other impacted regions to “design-out” certain U.S. semiconductors from their products to reduce the compliance burden and risk"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s094",
+  "label": "present",
+  "quote": "encourage overseas governments to request that our customers purchase from our competitors rather than NVIDIA or other U.S. firms, harming our business, market position, and financial results."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s095",
+  "label": "present",
+  "quote": "negatively impact demand for our products and services not only in China, but also in other markets, such as Europe, Latin America, and Southeast Asia."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s096",
+  "label": "present",
+  "quote": "by the time a new product is ready for market, it may be subject to new unilateral export controls restricting its sale"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s097",
+  "label": "present",
+  "quote": "At the same time, such controls may increase investment in foreign competitors, which would be less likely to be restricted by U.S. controls."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s098",
+  "label": "removed",
+  "search_terms": [
+   "significant inventory provisions",
+   "excess purchase obligation charges",
+   "worldwide licensing requirements"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s099",
+  "label": "present",
+  "quote": "USG may impose restrictions on the import and sale of products that incorporate technologies developed or manufactured in whole or in part in China."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s100",
+  "label": "present",
+  "quote": "restrictions on the import and sale of certain automotive products in the United States, which if adopted and interpreted broadly, could impact our ability to develop and supply solutions for our automotive customers."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s101",
+  "label": "present",
+  "quote": "restrictions imposed by the Chinese government on the duration of gaming activities and access to games may adversely affect our Gaming revenue"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s102",
+  "label": "reworded",
+  "quote": "The Chinese government has encouraged customers to purchase from our China-based competitors and discouraged customers from purchasing, importing, or using our data"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s103",
+  "label": "removed",
+  "search_terms": [
+   "Micron",
+   "containing certain products made by",
+   "supplier of ours"
+  ]
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s104",
+  "label": "present",
+  "quote": "an agency of the Chinese government announced an Action Plan that endorses new standards regarding the compute performance per watt and per memory bandwidth of accelerators used in new and renovated data centers in China."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s105",
+  "label": "present",
+  "quote": "modify or implement the Action Plan in a way that effectively prevents us from being able to design products to meet the new standard"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s106",
+  "label": "present",
+  "quote": "Further restrictions on our products or the products of our suppliers could negatively impact our business and financial results."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s107",
+  "label": "present",
+  "quote": "our business depends on our ability to receive consistent and reliable supply from our overseas partners, especially in Taiwan and South Korea."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i015#s108",
+  "label": "present",
+  "quote": "Any new restrictions that negatively impact our ability to receive"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s000",
+  "label": "present",
+  "quote": "Issues relating to the responsible use of our technologies, including AI in our offerings, may result in reputational or financial harm and liability."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s001",
+  "label": "present",
+  "quote": "Concerns relating to the responsible use of new and evolving technologies, such as AI, in our products and services may result in reputational or financial harm and liability and may cause us to incur costs to resolve such issues."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s002",
+  "label": "present",
+  "quote": "We are increasingly building AI capabilities and protections into many of our products and services, and we also offer stand-alone AI applications."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s003",
+  "label": "present",
+  "quote": "AI poses emerging legal, social, and ethical issues and presents risks and challenges that could affect its adoption, and therefore our business."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s004",
+  "label": "present",
+  "quote": "If we enable or offer solutions that draw controversy due to their perceived or actual impact on society, such as AI solutions that have unintended consequences, infringe copyright or rights of publicity"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s005",
+  "label": "present",
+  "quote": "Leveraging AI capabilities to potentially improve our internal functions"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s006",
+  "label": "present",
+  "quote": "Complying with multiple regulations from different jurisdictions related to AI may further increase our cost of doing business"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s007",
+  "label": "present",
+  "quote": "Compliance with existing and proposed government regulation of AI, including in jurisdictions such as the European Union, may further increase the cost of related research and development"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s008",
+  "label": "present",
+  "quote": "regulation adopted in response to the European Union Code of Practice for General Purpose Artificial Intelligence could require us to notify the European Commission"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s009",
+  "label": "present",
+  "quote": "Furthermore, changes in AI-related regulation could disproportionately impact and disadvantage us and require us to change our business practices"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i017#s010",
+  "label": "present",
+  "quote": "Our failure to adequately address concerns and regulations relating to the responsible use"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i022#s000",
+  "label": "present",
+  "quote": "Delaware law and our certificate of incorporation, bylaws and agreement with Microsoft could delay or prevent a change in control."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i022#s001",
+  "label": "present",
+  "quote": "The anti-takeover provisions of the Delaware General Corporation Law may discourage, delay, or prevent a change in control."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i022#s002",
+  "label": "present",
+  "quote": "Provisions in our certificate of incorporation and bylaws could make it more difficult for a third party to acquire a majority of our outstanding stock."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i022#s003",
+  "label": "present",
+  "quote": "These provisions include the ability of our Board of Directors to create and issue preferred stock, change the number of directors, and to make, amend or repeal our bylaws without prior shareholder approval"
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i022#s004",
+  "label": "present",
+  "quote": "Under our agreement with Microsoft for the Xbox, if someone makes an offer to purchase at least 30% of our outstanding common stock, Microsoft may have first and last rights of refusal to purchase the stock."
+ },
+ {
+  "sentence_id": "0001045810-25-000023:I.1A:i022#s005",
+  "label": "present",
+  "quote": "These provisions could delay or prevent a change in control of NVIDIA, discourage proxy contests"
+ }
+]

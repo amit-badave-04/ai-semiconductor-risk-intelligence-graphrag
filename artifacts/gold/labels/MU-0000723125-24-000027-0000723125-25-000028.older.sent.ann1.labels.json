@@ -1,0 +1,577 @@
+[
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s000",
+  "label": "present",
+  "quote": "Our gross margins may be adversely affected by a range of factors."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s001",
+  "label": "present",
+  "quote": "In addition to the impact of our average selling prices, our gross margins are dependent, in part, upon continuing decreases in per gigabit manufacturing costs"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s002",
+  "label": "present",
+  "quote": "Factors that may limit our ability to reduce our per gigabit manufacturing costs at sufficient levels to prevent deterioration of or improve gross margins"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s003",
+  "label": "present",
+  "quote": "strategic product diversification decisions affecting product mix"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s004",
+  "label": "present",
+  "quote": "increasing complexity of our product portfolio, which may impact operational costs"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s005",
+  "label": "present",
+  "quote": "increasing complexity of manufacturing processes"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s006",
+  "label": "present",
+  "quote": "difficulties in transitioning to smaller line-width process technologies or additional 3D memory layers or NAND cell levels"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s007",
+  "label": "present",
+  "quote": "process complexity including number of mask layers and fabrication steps"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s011",
+  "label": "present",
+  "quote": "new products that may require relatively larger die sizes or advanced packaging technologies"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s012",
+  "label": "present",
+  "quote": "start-up or other costs associated with capacity expansions"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s013",
+  "label": "present",
+  "quote": "higher costs of goods and services due to, among other things, inflationary pressures, regulatory actions"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s014",
+  "label": "present",
+  "quote": "higher manufacturing costs per gigabit due to fabrication facility underutilization, lower wafer output, and insufficient volume to run new technology nodes to achieve cost optimization"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s015",
+  "label": "present",
+  "quote": "Many factors may result in a reduction of our output or a delay in ramping production"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s016",
+  "label": "present",
+  "quote": "These factors may include, among others, a weak demand environment, industry oversupply, inventory surpluses, difficulties in ramping emerging technologies, supply chain disruptions, and delays from equipment suppliers."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s018",
+  "label": "removed",
+  "search_terms": [
+   "Management’s Discussion and Analysis",
+   "underutilization charges",
+   "Industry Conditions",
+   "Overview"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s019",
+  "label": "present",
+  "quote": "A significant portion of our manufacturing costs are fixed and do not vary proportionally with changes in production output."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s020",
+  "label": "present",
+  "quote": "As a result, lower utilization, lower wafer output, and corresponding increases in our per gigabit manufacturing costs could result in higher inventory carrying costs"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s021",
+  "label": "present",
+  "quote": "We have a broad portfolio of products to address our customers’ needs, which span multiple market segments and are subject to rapid technological changes."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s022",
+  "label": "present",
+  "quote": "Our manufacturing costs on a per gigabit basis vary across our portfolio as they are largely influenced by the technology node in which the solution was developed."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s023",
+  "label": "present",
+  "quote": "We strive to balance our demand and supply for each technology node, but the dynamics of our markets and our customers can create periods of imbalance, which can lead us to carry elevated inventory levels"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s024",
+  "label": "present",
+  "quote": "charges in connection with obsolete or excess inventories, or we may not fully recover our costs, which would reduce our gross margins."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s025",
+  "label": "removed",
+  "search_terms": [
+   "$1.83 billion",
+   "write down the carrying value",
+   "net realizable value",
+   "aggregate charges"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s026",
+  "label": "present",
+  "quote": "In addition, due to the customized nature of certain products we manufacture, we may be unable to sell certain finished goods inventories to alternative customers"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s027",
+  "label": "present",
+  "quote": "if we are unable to supply products that meet customer design and performance specifications, we may be required to sell such products at lower average selling prices, which may reduce our gross margins."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s028",
+  "label": "present",
+  "quote": "Our gross margins may also be impacted by shifts in product mix, driven by our strategy to optimize our portfolio to best respond to changing market dynamics."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s029",
+  "label": "present",
+  "quote": "We may not be able to predict or quickly respond to trends in the dynamics of our markets and our customers or changes in customer demand, which could negatively impact our gross margin."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i001#s030",
+  "label": "present",
+  "quote": "Our inability to prevent deterioration of or improve gross margins could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s000",
+  "label": "present",
+  "quote": "Our incentives from various governments are conditioned upon achieving or maintaining certain outcomes and satisfying compliance requirements and are subject to reduction, termination, or clawback"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s001",
+  "label": "present",
+  "quote": "We have received, and may in the future continue to receive, benefits and incentives from national, state, and local governments in various regions of the world"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s002",
+  "label": "present",
+  "quote": "which may take various forms, including grants, subsidies, loans, and tax arrangements, and typically require us to achieve or maintain certain levels of investment"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s003",
+  "label": "present",
+  "quote": "In some cases, these incentives have additional terms and conditions regarding our business operations or governance that are required to be satisfied as a condition to receive incentives or disbursements."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s004",
+  "label": "present",
+  "quote": "Compliance with these terms and conditions may add complexity to our operations and increase our costs"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s005",
+  "label": "present",
+  "quote": "We may be unable to obtain sufficient future incentives to continue to fund a portion of our capital expenditures and operating costs, without which our cost structure may be adversely impacted"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s006",
+  "label": "removed",
+  "search_terms": [
+   "non-binding",
+   "preliminary memorandum",
+   "memorandum of terms",
+   "preliminary terms"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s007",
+  "label": "removed",
+  "search_terms": [
+   "preliminary terms",
+   "may not result",
+   "receiving funding",
+   "non-binding"
+  ]
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s008",
+  "label": "present",
+  "quote": "We cannot guarantee that we will successfully achieve or maintain outcomes or satisfy the compliance requirements to qualify for these incentives or that the granting agencies will provide or continue to provide such funding."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s009",
+  "label": "present",
+  "quote": "typically provide the granting agencies with rights to audit our"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s010",
+  "label": "present",
+  "quote": "Such audits could result in modifications to, or termination of, the applicable incentive program."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i006#s011",
+  "label": "present",
+  "quote": "any decrease or clawback of government incentives could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s000",
+  "label": "present",
+  "quote": "Our business, results of operations, or financial condition could be adversely affected by the availability and quality of materials, supplies, electrical power, gas, water, and capital equipment"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s001",
+  "label": "present",
+  "quote": "Our supply chain and operations are dependent on the availability of materials that meet exacting standards and the use of third parties to provide us with components and services."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s002",
+  "label": "present",
+  "quote": "We generally have multiple sources of supply for our materials and services."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s003",
+  "label": "present",
+  "quote": "However, only a limited number of suppliers are capable of delivering certain materials, components, and services that meet our standards"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s004",
+  "label": "present",
+  "quote": "The availability of materials or components, such as chemicals, silicon wafers, gases, photoresists, semiconductors, substrates, lead frames, printed circuit boards, targets, and reticle glass blanks is impacted by various factors."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s005",
+  "label": "present",
+  "quote": "These factors could include a shortage of raw materials or a disruption in the processing or purification of those raw materials into finished goods."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s006",
+  "label": "present",
+  "quote": "Shortages or increases in lead times have occurred in the past, are currently occurring with respect to some materials and components, and may occur from time to time in the future because of the nature of the industry."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s007",
+  "label": "present",
+  "quote": "could limit our bit shipments, which could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s009",
+  "label": "present",
+  "quote": "Our manufacturing processes are also dependent on our relationships with third-party manufacturers of controllers, analog integrated circuits, and other components used in some of our products"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s010",
+  "label": "present",
+  "quote": "Although we have certain long-term contracts with some of our suppliers, many of these contracts do not provide for long-term capacity or pricing commitments."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s011",
+  "label": "present",
+  "quote": "To the extent we do not have firm commitments from our third-party suppliers over a specific time period or for any specific capacity, quantity, and/or pricing, our suppliers may allocate capacity to their other customers"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s012",
+  "label": "present",
+  "quote": "Inflationary pressures may continue to increase costs for"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s013",
+  "label": "present",
+  "quote": "Regardless of contract structure, large swings in demand may exceed our contracted supply and/or our suppliers’ capacity to meet those demand changes"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s014",
+  "label": "present",
+  "quote": "In addition, if any of our suppliers were to cease operations or become insolvent, this could impact their ability to provide us with necessary supplies"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s015",
+  "label": "present",
+  "quote": "Certain materials are primarily available in a limited number of countries, including rare earth elements, minerals, and metals."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s016",
+  "label": "present",
+  "quote": "Trade disputes, geopolitical tensions, economic circumstances, political conditions, or public health issues may limit our ability to obtain such materials."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s017",
+  "label": "present",
+  "quote": "Although these rare earth and other materials are generally available from multiple suppliers, China is a predominant producer of these materials."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s018",
+  "label": "present",
+  "quote": "our suppliers’ ability to obtain such supply may be constrained, and we may be unable to obtain sufficient quantities, or obtain supply in a timely manner or at a commercially reasonable cost."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s019",
+  "label": "present",
+  "quote": "Constrained supply of rare earth elements, minerals, and metals may restrict our ability to manufacture certain of our products and make it difficult or impossible to compete with other semiconductor memory and storage manufacturers"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s020",
+  "label": "present",
+  "quote": "We and/or our suppliers and service providers could be affected by regional conflicts, acts of war, civil unrest, labor disruptions, sanctions, tariffs, embargoes, or other trade restrictions"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s021",
+  "label": "present",
+  "quote": "Environmental regulations could limit our ability to"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s022",
+  "label": "present",
+  "quote": "In addition, disruptions in transportation lines could delay our receipt of materials."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s023",
+  "label": "present",
+  "quote": "Our ability to procure components to repair equipment essential for our manufacturing processes could also be negatively impacted by various restrictions or disruptions in supply chains, among other items."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s024",
+  "label": "present",
+  "quote": "The disruption of our supply of materials, components, or services, or the extension of our lead times could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s025",
+  "label": "present",
+  "quote": "Our operations are dependent on a reliable and uninterrupted supply of electrical power, gas, and water to our manufacturing facilities."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s026",
+  "label": "present",
+  "quote": "Any power shortages, capacity constraints, prolonged outages, or significant or unexpected increases in the cost of power could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s027",
+  "label": "present",
+  "quote": "Our operations are dependent on our ability to procure advanced semiconductor manufacturing equipment that enables the transition to lower cost manufacturing processes."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s028",
+  "label": "present",
+  "quote": "For certain key types of equipment, including photolithography tools, we are sometimes dependent on a single supplier."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s029",
+  "label": "present",
+  "quote": "From time to time, we have experienced difficulties in obtaining some equipment on a timely basis due to suppliers’ limited capacity."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s030",
+  "label": "present",
+  "quote": "Our inability to obtain equipment on a timely basis could adversely affect our ability to transition to next generation manufacturing processes and reduce our costs."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s031",
+  "label": "present",
+  "quote": "Delays in obtaining equipment could also impede our ability to ramp production and could increase our overall costs of a ramp."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s032",
+  "label": "present",
+  "quote": "Our inability to obtain advanced semiconductor manufacturing equipment in a timely manner could have a material adverse effect"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s033",
+  "label": "present",
+  "quote": "Our construction projects to expand production and R&D capacity are highly dependent on available sources of labor, materials, equipment, and services."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s034",
+  "label": "present",
+  "quote": "Increasing demand, supply constraints, inflation, and other market conditions could result in increasing shortages and higher costs for these items."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s035",
+  "label": "present",
+  "quote": "Difficulties in obtaining these resources could result in delays in completion of our construction projects and cost increases, which could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s036",
+  "label": "present",
+  "quote": "Our inability to source materials, supplies, capital equipment, or third-party services could affect our overall production output and our ability to fulfill customer demand."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s037",
+  "label": "present",
+  "quote": "Significant or prolonged shortages of our products could halt customer manufacturing and damage our relationships with these customers."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s038",
+  "label": "present",
+  "quote": "Any damage to our customer relationships as a result of a shortage of our products could have a material adverse effect on our business, results of operations, or financial condition."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i007#s039",
+  "label": "present",
+  "quote": "if our customers experience disruptions to their supplies, materials, components, or services, or"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i016#s000",
+  "label": "present",
+  "quote": "Compliance with responsible sourcing requirements and any related regulations could increase our operating costs or limit the supply and increase the cost of certain materials, supplies, and services"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i016#s001",
+  "label": "present",
+  "quote": "We and many of our customers have adopted responsible sourcing programs that require us to meet certain sustainability, governance, or other criteria"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i016#s002",
+  "label": "present",
+  "quote": "Many customer programs require us to remove a supplier within a prescribed period if such supplier ceases to comply with prescribed criteria"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i016#s003",
+  "label": "present",
+  "quote": "Some of our customers may elect to disqualify us as a supplier (resulting in a permanent or temporary loss of sales to such customer) or reduce purchases from us"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i016#s004",
+  "label": "present",
+  "quote": "Meeting responsible sourcing requirements may increase operating requirements and costs or limit the sourcing and availability of some of the materials, supplies, and services we use,"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i016#s005",
+  "label": "present",
+  "quote": "From time to time, we remove suppliers or require our suppliers to remove suppliers from their supply chains based on our responsible sourcing requirements or customer requirements"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i016#s006",
+  "label": "present",
+  "quote": "Any inability to replace removed suppliers in a timely or cost-effective manner may affect our ability and/or the cost to obtain sufficient quantities of materials, supplies, and services necessary for the manufacture of our products."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i016#s007",
+  "label": "present",
+  "quote": "Our inability to replace suppliers we have removed in a timely or cost-effective manner or comply with customers’ responsible sourcing requirements"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s000",
+  "label": "reworded",
+  "quote": "Evolving sustainability and governance expectations or standards or failure to achieve our related goals could adversely affect our business, results of operations, financial condition, or stock price."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s001",
+  "label": "reworded",
+  "quote": "In recent years, there has been an increased focus from stakeholders on sustainability and governance matters, including greenhouse gas emissions and climate-related risks"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s002",
+  "label": "reworded",
+  "quote": "We actively manage these issues and have established and publicly announced certain sustainability goals, commitments, and targets which we may refine or modify further in the future."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s003",
+  "label": "present",
+  "quote": "These goals, commitments, and targets reflect our current plans and aspirations and are not guarantees that we will be able to achieve them."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s004",
+  "label": "present",
+  "quote": "Achieving these goals may entail significant costs, for example we have entered into several virtual power purchase agreements to obtain renewable energy credits at a cost that will vary based on future prices for electrical power."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s005",
+  "label": "present",
+  "quote": "Evolving stakeholder expectations and our efforts to manage these issues, report on them, and accomplish our goals present numerous operational, regulatory, reputational, financial, legal, and other risks"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s007",
+  "label": "present",
+  "quote": "reputational harm, including damage to our relationships with customers, suppliers, investors, governments, or other stakeholders"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s008",
+  "label": "present",
+  "quote": "adverse impacts on our ability to manufacture and sell products and maintain our market share"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s009",
+  "label": "present",
+  "quote": "the success of our collaborations with third parties"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s010",
+  "label": "present",
+  "quote": "increased risk of litigation, investigations, or regulatory enforcement action"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s011",
+  "label": "present",
+  "quote": "unfavorable sustainability and governance ratings or investor sentiment"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s012",
+  "label": "present",
+  "quote": "diversion of resources and increased costs to control, assess, and report on sustainability and governance metrics"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s013",
+  "label": "present",
+  "quote": "our ability to achieve our goals, commitments, and targets within timeframes announced"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s014",
+  "label": "present",
+  "quote": "increased costs to achieve our goals, commitments, and targets"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s015",
+  "label": "present",
+  "quote": "unforeseen operational and technological difficulties"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s016",
+  "label": "present",
+  "quote": "access to and increased cost of capital"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i017#s018",
+  "label": "present",
+  "quote": "Any failure, or perceived failure, to meet evolving stakeholder expectations and industry standards or achieve our sustainability and governance goals, commitments, and targets could have an adverse effect on our business, results of operations, financial condition, or stock price."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i020#s000",
+  "label": "present",
+  "quote": "We may be unable to protect our intellectual property or retain key employees who are knowledgeable of and develop our intellectual property."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i020#s001",
+  "label": "present",
+  "quote": "We maintain a system of controls over our intellectual property, including U.S. and foreign patents, trademarks, copyrights, trade secrets, licensing arrangements"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i020#s002",
+  "label": "present",
+  "quote": "Despite our system of controls over our intellectual property, it may be possible for our current or future competitors to obtain, copy, use, or disclose, illegally or otherwise"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i020#s003",
+  "label": "present",
+  "quote": "The laws of some foreign countries may not protect our intellectual property to the same degree as do U.S. laws"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i020#s004",
+  "label": "present",
+  "quote": "The use of AI in the development of our products and services could also cause loss of intellectual property"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i020#s005",
+  "label": "present",
+  "quote": "Additionally, our ability to maintain and develop intellectual property is dependent upon our ability to attract, develop, and retain highly skilled employees."
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i020#s006",
+  "label": "present",
+  "quote": "If our competitors or future entrants into"
+ },
+ {
+  "sentence_id": "0000723125-24-000027:I.1A:i020#s007",
+  "label": "present",
+  "quote": "Our inability to protect our intellectual property or retain key employees who are knowledgeable of and develop our intellectual property could have a material adverse effect on our business, results of operations, or financial condition."
+ }
+]

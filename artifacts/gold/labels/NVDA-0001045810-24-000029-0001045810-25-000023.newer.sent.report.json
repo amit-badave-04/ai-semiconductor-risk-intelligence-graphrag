@@ -1,0 +1,2974 @@
+{
+ "pair_id": "NVDA-0001045810-24-000029-0001045810-25-000023",
+ "side": "newer",
+ "kind": "sentences",
+ "split": "development",
+ "annotators": [
+  "ann1",
+  "ann2",
+  "ann3"
+ ],
+ "consensus": {
+  "0001045810-25-000023:I.1A:i000#s000": "present",
+  "0001045810-25-000023:I.1A:i000#s001": "present",
+  "0001045810-25-000023:I.1A:i000#s003": "present",
+  "0001045810-25-000023:I.1A:i000#s004": "present",
+  "0001045810-25-000023:I.1A:i000#s005": "present",
+  "0001045810-25-000023:I.1A:i000#s006": "present",
+  "0001045810-25-000023:I.1A:i000#s007": "present",
+  "0001045810-25-000023:I.1A:i000#s008": "present",
+  "0001045810-25-000023:I.1A:i000#s009": "present",
+  "0001045810-25-000023:I.1A:i000#s010": "present",
+  "0001045810-25-000023:I.1A:i000#s011": "present",
+  "0001045810-25-000023:I.1A:i000#s012": "present",
+  "0001045810-25-000023:I.1A:i000#s013": "present",
+  "0001045810-25-000023:I.1A:i000#s015": "present",
+  "0001045810-25-000023:I.1A:i000#s016": "present",
+  "0001045810-25-000023:I.1A:i000#s017": "present",
+  "0001045810-25-000023:I.1A:i000#s018": "present",
+  "0001045810-25-000023:I.1A:i000#s019": "present",
+  "0001045810-25-000023:I.1A:i000#s020": "present",
+  "0001045810-25-000023:I.1A:i000#s021": "present",
+  "0001045810-25-000023:I.1A:i000#s022": "present",
+  "0001045810-25-000023:I.1A:i000#s023": "present",
+  "0001045810-25-000023:I.1A:i000#s024": "present",
+  "0001045810-25-000023:I.1A:i002#s000": "present",
+  "0001045810-25-000023:I.1A:i002#s001": "present",
+  "0001045810-25-000023:I.1A:i002#s002": "present",
+  "0001045810-25-000023:I.1A:i002#s003": "present",
+  "0001045810-25-000023:I.1A:i002#s004": "reworded",
+  "0001045810-25-000023:I.1A:i002#s005": "present",
+  "0001045810-25-000023:I.1A:i002#s006": "reworded",
+  "0001045810-25-000023:I.1A:i002#s007": "reworded",
+  "0001045810-25-000023:I.1A:i002#s008": "reworded",
+  "0001045810-25-000023:I.1A:i002#s009": "reworded",
+  "0001045810-25-000023:I.1A:i002#s010": "present",
+  "0001045810-25-000023:I.1A:i002#s011": "present",
+  "0001045810-25-000023:I.1A:i002#s012": "present",
+  "0001045810-25-000023:I.1A:i002#s013": "reworded",
+  "0001045810-25-000023:I.1A:i002#s014": "present",
+  "0001045810-25-000023:I.1A:i002#s015": "present",
+  "0001045810-25-000023:I.1A:i002#s016": "present",
+  "0001045810-25-000023:I.1A:i002#s017": "present",
+  "0001045810-25-000023:I.1A:i002#s018": "present",
+  "0001045810-25-000023:I.1A:i002#s019": "present",
+  "0001045810-25-000023:I.1A:i002#s020": "present",
+  "0001045810-25-000023:I.1A:i002#s021": "present",
+  "0001045810-25-000023:I.1A:i002#s022": "present",
+  "0001045810-25-000023:I.1A:i002#s023": "present",
+  "0001045810-25-000023:I.1A:i002#s024": "present",
+  "0001045810-25-000023:I.1A:i002#s026": "present",
+  "0001045810-25-000023:I.1A:i002#s028": "reworded",
+  "0001045810-25-000023:I.1A:i002#s029": "present",
+  "0001045810-25-000023:I.1A:i002#s030": "reworded",
+  "0001045810-25-000023:I.1A:i002#s031": "reworded",
+  "0001045810-25-000023:I.1A:i002#s032": "present",
+  "0001045810-25-000023:I.1A:i002#s033": "present",
+  "0001045810-25-000023:I.1A:i002#s034": "added",
+  "0001045810-25-000023:I.1A:i002#s035": "present",
+  "0001045810-25-000023:I.1A:i002#s036": "present",
+  "0001045810-25-000023:I.1A:i002#s037": "present",
+  "0001045810-25-000023:I.1A:i002#s038": "reworded",
+  "0001045810-25-000023:I.1A:i002#s039": "reworded",
+  "0001045810-25-000023:I.1A:i002#s040": "reworded",
+  "0001045810-25-000023:I.1A:i002#s041": "added",
+  "0001045810-25-000023:I.1A:i002#s042": "present",
+  "0001045810-25-000023:I.1A:i002#s043": "present",
+  "0001045810-25-000023:I.1A:i002#s044": "present",
+  "0001045810-25-000023:I.1A:i002#s045": "reworded",
+  "0001045810-25-000023:I.1A:i002#s046": "added",
+  "0001045810-25-000023:I.1A:i002#s047": "present",
+  "0001045810-25-000023:I.1A:i002#s048": "present",
+  "0001045810-25-000023:I.1A:i002#s049": "present",
+  "0001045810-25-000023:I.1A:i002#s050": "present",
+  "0001045810-25-000023:I.1A:i002#s051": "present",
+  "0001045810-25-000023:I.1A:i002#s052": "added",
+  "0001045810-25-000023:I.1A:i002#s053": "added",
+  "0001045810-25-000023:I.1A:i002#s054": "added",
+  "0001045810-25-000023:I.1A:i002#s055": "present",
+  "0001045810-25-000023:I.1A:i002#s057": "present",
+  "0001045810-25-000023:I.1A:i002#s058": "present",
+  "0001045810-25-000023:I.1A:i002#s059": "reworded",
+  "0001045810-25-000023:I.1A:i002#s060": "present",
+  "0001045810-25-000023:I.1A:i002#s061": "present",
+  "0001045810-25-000023:I.1A:i002#s062": "present",
+  "0001045810-25-000023:I.1A:i002#s063": "present",
+  "0001045810-25-000023:I.1A:i002#s064": "present",
+  "0001045810-25-000023:I.1A:i002#s065": "present",
+  "0001045810-25-000023:I.1A:i002#s066": "present",
+  "0001045810-25-000023:I.1A:i002#s067": "reworded",
+  "0001045810-25-000023:I.1A:i004#s000": "present",
+  "0001045810-25-000023:I.1A:i004#s001": "present",
+  "0001045810-25-000023:I.1A:i004#s002": "present",
+  "0001045810-25-000023:I.1A:i004#s003": "present",
+  "0001045810-25-000023:I.1A:i004#s004": "present",
+  "0001045810-25-000023:I.1A:i004#s005": "present",
+  "0001045810-25-000023:I.1A:i004#s006": "present",
+  "0001045810-25-000023:I.1A:i004#s007": "present",
+  "0001045810-25-000023:I.1A:i004#s008": "present",
+  "0001045810-25-000023:I.1A:i004#s009": "present",
+  "0001045810-25-000023:I.1A:i004#s010": "present",
+  "0001045810-25-000023:I.1A:i004#s011": "present",
+  "0001045810-25-000023:I.1A:i004#s012": "present",
+  "0001045810-25-000023:I.1A:i004#s013": "present",
+  "0001045810-25-000023:I.1A:i004#s014": "present",
+  "0001045810-25-000023:I.1A:i004#s015": "present",
+  "0001045810-25-000023:I.1A:i004#s016": "present",
+  "0001045810-25-000023:I.1A:i004#s017": "present",
+  "0001045810-25-000023:I.1A:i004#s018": "present",
+  "0001045810-25-000023:I.1A:i004#s019": "present",
+  "0001045810-25-000023:I.1A:i010#s000": "present",
+  "0001045810-25-000023:I.1A:i010#s001": "present",
+  "0001045810-25-000023:I.1A:i010#s002": "present",
+  "0001045810-25-000023:I.1A:i010#s003": "present",
+  "0001045810-25-000023:I.1A:i010#s004": "present",
+  "0001045810-25-000023:I.1A:i010#s005": "present",
+  "0001045810-25-000023:I.1A:i010#s006": "present",
+  "0001045810-25-000023:I.1A:i010#s007": "present",
+  "0001045810-25-000023:I.1A:i010#s008": "present",
+  "0001045810-25-000023:I.1A:i010#s009": "present",
+  "0001045810-25-000023:I.1A:i010#s010": "present",
+  "0001045810-25-000023:I.1A:i010#s011": "present",
+  "0001045810-25-000023:I.1A:i010#s012": "present",
+  "0001045810-25-000023:I.1A:i010#s013": "present",
+  "0001045810-25-000023:I.1A:i010#s014": "present",
+  "0001045810-25-000023:I.1A:i010#s015": "present",
+  "0001045810-25-000023:I.1A:i010#s016": "present",
+  "0001045810-25-000023:I.1A:i010#s017": "present",
+  "0001045810-25-000023:I.1A:i010#s018": "present",
+  "0001045810-25-000023:I.1A:i010#s019": "present",
+  "0001045810-25-000023:I.1A:i010#s020": "present",
+  "0001045810-25-000023:I.1A:i010#s021": "present",
+  "0001045810-25-000023:I.1A:i010#s022": "present",
+  "0001045810-25-000023:I.1A:i010#s023": "present",
+  "0001045810-25-000023:I.1A:i010#s024": "present",
+  "0001045810-25-000023:I.1A:i010#s025": "present",
+  "0001045810-25-000023:I.1A:i010#s026": "present",
+  "0001045810-25-000023:I.1A:i010#s027": "present",
+  "0001045810-25-000023:I.1A:i011#s000": "present",
+  "0001045810-25-000023:I.1A:i011#s001": "reworded",
+  "0001045810-25-000023:I.1A:i011#s002": "reworded",
+  "0001045810-25-000023:I.1A:i011#s003": "present",
+  "0001045810-25-000023:I.1A:i011#s004": "present",
+  "0001045810-25-000023:I.1A:i011#s005": "added",
+  "0001045810-25-000023:I.1A:i011#s006": "added",
+  "0001045810-25-000023:I.1A:i011#s007": "added",
+  "0001045810-25-000023:I.1A:i011#s008": "present",
+  "0001045810-25-000023:I.1A:i011#s009": "present",
+  "0001045810-25-000023:I.1A:i011#s010": "present",
+  "0001045810-25-000023:I.1A:i011#s011": "present",
+  "0001045810-25-000023:I.1A:i011#s012": "present",
+  "0001045810-25-000023:I.1A:i011#s013": "present",
+  "0001045810-25-000023:I.1A:i011#s014": "present",
+  "0001045810-25-000023:I.1A:i015#s000": "reworded",
+  "0001045810-25-000023:I.1A:i015#s001": "present",
+  "0001045810-25-000023:I.1A:i015#s002": "present",
+  "0001045810-25-000023:I.1A:i015#s003": "present",
+  "0001045810-25-000023:I.1A:i015#s004": "present",
+  "0001045810-25-000023:I.1A:i015#s005": "present",
+  "0001045810-25-000023:I.1A:i015#s006": "present",
+  "0001045810-25-000023:I.1A:i015#s007": "present",
+  "0001045810-25-000023:I.1A:i015#s008": "present",
+  "0001045810-25-000023:I.1A:i015#s009": "present",
+  "0001045810-25-000023:I.1A:i015#s010": "added",
+  "0001045810-25-000023:I.1A:i015#s011": "present",
+  "0001045810-25-000023:I.1A:i015#s012": "added",
+  "0001045810-25-000023:I.1A:i015#s013": "added",
+  "0001045810-25-000023:I.1A:i015#s014": "added",
+  "0001045810-25-000023:I.1A:i015#s015": "present",
+  "0001045810-25-000023:I.1A:i015#s016": "present",
+  "0001045810-25-000023:I.1A:i015#s017": "present",
+  "0001045810-25-000023:I.1A:i015#s018": "present",
+  "0001045810-25-000023:I.1A:i015#s019": "present",
+  "0001045810-25-000023:I.1A:i015#s020": "present",
+  "0001045810-25-000023:I.1A:i015#s021": "present",
+  "0001045810-25-000023:I.1A:i015#s022": "present",
+  "0001045810-25-000023:I.1A:i015#s023": "present",
+  "0001045810-25-000023:I.1A:i015#s024": "present",
+  "0001045810-25-000023:I.1A:i015#s025": "present",
+  "0001045810-25-000023:I.1A:i015#s026": "present",
+  "0001045810-25-000023:I.1A:i015#s027": "present",
+  "0001045810-25-000023:I.1A:i015#s028": "present",
+  "0001045810-25-000023:I.1A:i015#s029": "present",
+  "0001045810-25-000023:I.1A:i015#s030": "present",
+  "0001045810-25-000023:I.1A:i015#s031": "present",
+  "0001045810-25-000023:I.1A:i015#s032": "present",
+  "0001045810-25-000023:I.1A:i015#s033": "present",
+  "0001045810-25-000023:I.1A:i015#s034": "present",
+  "0001045810-25-000023:I.1A:i015#s035": "present",
+  "0001045810-25-000023:I.1A:i015#s036": "present",
+  "0001045810-25-000023:I.1A:i015#s037": "present",
+  "0001045810-25-000023:I.1A:i015#s038": "present",
+  "0001045810-25-000023:I.1A:i015#s039": "present",
+  "0001045810-25-000023:I.1A:i015#s040": "present",
+  "0001045810-25-000023:I.1A:i015#s041": "added",
+  "0001045810-25-000023:I.1A:i015#s042": "present",
+  "0001045810-25-000023:I.1A:i015#s043": "added",
+  "0001045810-25-000023:I.1A:i015#s044": "present",
+  "0001045810-25-000023:I.1A:i015#s045": "present",
+  "0001045810-25-000023:I.1A:i015#s046": "present",
+  "0001045810-25-000023:I.1A:i015#s047": "present",
+  "0001045810-25-000023:I.1A:i015#s048": "present",
+  "0001045810-25-000023:I.1A:i015#s049": "present",
+  "0001045810-25-000023:I.1A:i015#s050": "present",
+  "0001045810-25-000023:I.1A:i015#s051": "present",
+  "0001045810-25-000023:I.1A:i015#s052": "added",
+  "0001045810-25-000023:I.1A:i015#s053": "present",
+  "0001045810-25-000023:I.1A:i015#s054": "added",
+  "0001045810-25-000023:I.1A:i015#s055": "added",
+  "0001045810-25-000023:I.1A:i015#s056": "added",
+  "0001045810-25-000023:I.1A:i015#s057": "added",
+  "0001045810-25-000023:I.1A:i015#s058": "added",
+  "0001045810-25-000023:I.1A:i015#s059": "added",
+  "0001045810-25-000023:I.1A:i015#s060": "added",
+  "0001045810-25-000023:I.1A:i015#s061": "added",
+  "0001045810-25-000023:I.1A:i015#s062": "added",
+  "0001045810-25-000023:I.1A:i015#s063": "added",
+  "0001045810-25-000023:I.1A:i015#s064": "added",
+  "0001045810-25-000023:I.1A:i015#s065": "added",
+  "0001045810-25-000023:I.1A:i015#s066": "added",
+  "0001045810-25-000023:I.1A:i015#s067": "added",
+  "0001045810-25-000023:I.1A:i015#s068": "added",
+  "0001045810-25-000023:I.1A:i015#s069": "added",
+  "0001045810-25-000023:I.1A:i015#s070": "present",
+  "0001045810-25-000023:I.1A:i015#s071": "present",
+  "0001045810-25-000023:I.1A:i015#s072": "present",
+  "0001045810-25-000023:I.1A:i015#s073": "present",
+  "0001045810-25-000023:I.1A:i015#s074": "present",
+  "0001045810-25-000023:I.1A:i015#s075": "present",
+  "0001045810-25-000023:I.1A:i015#s076": "present",
+  "0001045810-25-000023:I.1A:i015#s077": "present",
+  "0001045810-25-000023:I.1A:i015#s078": "present",
+  "0001045810-25-000023:I.1A:i015#s079": "present",
+  "0001045810-25-000023:I.1A:i015#s080": "present",
+  "0001045810-25-000023:I.1A:i015#s081": "present",
+  "0001045810-25-000023:I.1A:i015#s082": "present",
+  "0001045810-25-000023:I.1A:i015#s083": "present",
+  "0001045810-25-000023:I.1A:i015#s084": "present",
+  "0001045810-25-000023:I.1A:i015#s085": "present",
+  "0001045810-25-000023:I.1A:i015#s086": "present",
+  "0001045810-25-000023:I.1A:i015#s087": "present",
+  "0001045810-25-000023:I.1A:i015#s088": "added",
+  "0001045810-25-000023:I.1A:i015#s089": "present",
+  "0001045810-25-000023:I.1A:i015#s090": "present",
+  "0001045810-25-000023:I.1A:i015#s091": "present",
+  "0001045810-25-000023:I.1A:i015#s092": "present",
+  "0001045810-25-000023:I.1A:i015#s093": "present",
+  "0001045810-25-000023:I.1A:i015#s094": "present",
+  "0001045810-25-000023:I.1A:i015#s095": "present",
+  "0001045810-25-000023:I.1A:i015#s096": "present",
+  "0001045810-25-000023:I.1A:i015#s097": "present",
+  "0001045810-25-000023:I.1A:i015#s098": "added",
+  "0001045810-25-000023:I.1A:i015#s099": "added",
+  "0001045810-25-000023:I.1A:i015#s100": "added",
+  "0001045810-25-000023:I.1A:i015#s101": "present",
+  "0001045810-25-000023:I.1A:i015#s102": "present",
+  "0001045810-25-000023:I.1A:i015#s103": "present",
+  "0001045810-25-000023:I.1A:i015#s104": "added",
+  "0001045810-25-000023:I.1A:i015#s105": "added",
+  "0001045810-25-000023:I.1A:i015#s106": "present",
+  "0001045810-25-000023:I.1A:i015#s107": "present",
+  "0001045810-25-000023:I.1A:i015#s108": "present"
+ },
+ "needs_adjudication": [
+  "0001045810-25-000023:I.1A:i002#s056"
+ ],
+ "unlabelled": [],
+ "pairwise_agreement": 0.9807938540332907,
+ "alpha": 0.9468967580504787,
+ "rejected": {
+  "ann3": [
+   [
+    "0001045810-25-000023:I.1A:i002#s008",
+    "quote is not related to the sentence (partial_ratio 61 < 62)"
+   ]
+  ]
+ },
+ "votes": {
+  "0001045810-25-000023:I.1A:i000#s000": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s001": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s003": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s004": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s005": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s006": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s007": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s008": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s009": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s010": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s011": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s012": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s013": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s015": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s016": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s017": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s018": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s019": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s020": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s021": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s022": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s023": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i000#s024": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s000": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s001": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s002": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s003": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s004": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s005": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s006": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s007": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s008": {
+   "ann1": "reworded",
+   "ann2": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s009": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s010": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s011": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s012": {
+   "ann1": "reworded",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s013": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s014": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s015": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s016": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s017": {
+   "ann1": "reworded",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s018": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s019": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s020": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s021": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s022": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s023": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s024": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s026": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s028": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s029": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s030": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s031": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s032": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s033": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s034": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i002#s035": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s036": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s037": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s038": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s039": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s040": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s041": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i002#s042": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s043": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s044": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s045": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s046": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i002#s047": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s048": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s049": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s050": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s051": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s052": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i002#s053": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i002#s054": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i002#s055": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s056": {
+   "ann1": "added",
+   "ann2": "reworded",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s057": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s058": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s059": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002#s060": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s061": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s062": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s063": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s064": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s065": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s066": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i002#s067": {
+   "ann1": "added",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i004#s000": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s001": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s002": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s003": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s004": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s005": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s006": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s007": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s008": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s009": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s010": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s011": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s012": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s013": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s014": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s015": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s016": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s017": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s018": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i004#s019": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s000": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s001": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s002": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s003": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s004": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s005": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s006": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s007": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s008": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s009": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s010": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s011": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s012": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s013": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s014": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s015": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s016": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s017": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s018": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s019": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s020": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s021": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s022": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s023": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s024": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s025": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s026": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i010#s027": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s000": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s001": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i011#s002": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s003": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s004": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s005": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i011#s006": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i011#s007": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i011#s008": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s009": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s010": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s011": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s012": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s013": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i011#s014": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s000": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i015#s001": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s002": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s003": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s004": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s005": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s006": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s007": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s008": {
+   "ann1": "present",
+   "ann2": "reworded",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s009": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s010": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s011": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s012": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s013": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s014": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s015": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s016": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s017": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s018": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s019": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s020": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s021": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s022": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s023": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s024": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s025": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s026": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s027": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s028": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s029": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s030": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s031": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s032": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s033": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s034": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s035": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s036": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s037": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s038": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s039": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s040": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s041": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s042": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s043": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s044": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s045": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s046": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s047": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s048": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s049": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s050": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s051": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s052": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s053": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s054": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s055": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s056": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s057": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s058": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s059": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s060": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s061": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s062": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s063": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s064": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s065": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s066": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s067": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s068": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s069": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s070": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s071": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s072": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s073": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s074": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s075": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s076": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s077": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s078": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s079": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s080": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s081": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s082": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s083": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s084": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s085": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s086": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s087": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s088": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s089": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s090": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s091": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s092": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s093": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s094": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s095": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s096": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s097": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s098": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s099": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s100": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s101": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s102": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s103": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s104": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s105": {
+   "ann1": "added",
+   "ann2": "added",
+   "ann3": "added"
+  },
+  "0001045810-25-000023:I.1A:i015#s106": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s107": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  },
+  "0001045810-25-000023:I.1A:i015#s108": {
+   "ann1": "present",
+   "ann2": "present",
+   "ann3": "present"
+  }
+ },
+ "spans": {
+  "0001045810-25-000023:I.1A:i000#s000": [
+   "0001045810-25-000023:I.1A:i000",
+   4172,
+   4278
+  ],
+  "0001045810-25-000023:I.1A:i000#s001": [
+   "0001045810-25-000023:I.1A:i000",
+   4280,
+   4424
+  ],
+  "0001045810-25-000023:I.1A:i000#s003": [
+   "0001045810-25-000023:I.1A:i000",
+   4465,
+   4826
+  ],
+  "0001045810-25-000023:I.1A:i000#s004": [
+   "0001045810-25-000023:I.1A:i000",
+   4828,
+   4925
+  ],
+  "0001045810-25-000023:I.1A:i000#s005": [
+   "0001045810-25-000023:I.1A:i000",
+   4927,
+   5098
+  ],
+  "0001045810-25-000023:I.1A:i000#s006": [
+   "0001045810-25-000023:I.1A:i000",
+   5100,
+   5155
+  ],
+  "0001045810-25-000023:I.1A:i000#s007": [
+   "0001045810-25-000023:I.1A:i000",
+   5157,
+   5277
+  ],
+  "0001045810-25-000023:I.1A:i000#s008": [
+   "0001045810-25-000023:I.1A:i000",
+   5279,
+   5365
+  ],
+  "0001045810-25-000023:I.1A:i000#s009": [
+   "0001045810-25-000023:I.1A:i000",
+   5367,
+   5675
+  ],
+  "0001045810-25-000023:I.1A:i000#s010": [
+   "0001045810-25-000023:I.1A:i000",
+   5677,
+   5790
+  ],
+  "0001045810-25-000023:I.1A:i000#s011": [
+   "0001045810-25-000023:I.1A:i000",
+   5791,
+   5960
+  ],
+  "0001045810-25-000023:I.1A:i000#s012": [
+   "0001045810-25-000023:I.1A:i000",
+   5961,
+   6117
+  ],
+  "0001045810-25-000023:I.1A:i000#s013": [
+   "0001045810-25-000023:I.1A:i000",
+   6118,
+   6277
+  ],
+  "0001045810-25-000023:I.1A:i000#s015": [
+   "0001045810-25-000023:I.1A:i000",
+   6314,
+   6420
+  ],
+  "0001045810-25-000023:I.1A:i000#s016": [
+   "0001045810-25-000023:I.1A:i000",
+   6421,
+   6522
+  ],
+  "0001045810-25-000023:I.1A:i000#s017": [
+   "0001045810-25-000023:I.1A:i000",
+   6523,
+   6605
+  ],
+  "0001045810-25-000023:I.1A:i000#s018": [
+   "0001045810-25-000023:I.1A:i000",
+   6606,
+   6764
+  ],
+  "0001045810-25-000023:I.1A:i000#s019": [
+   "0001045810-25-000023:I.1A:i000",
+   6765,
+   7004
+  ],
+  "0001045810-25-000023:I.1A:i000#s020": [
+   "0001045810-25-000023:I.1A:i000",
+   7005,
+   7156
+  ],
+  "0001045810-25-000023:I.1A:i000#s021": [
+   "0001045810-25-000023:I.1A:i000",
+   7157,
+   7251
+  ],
+  "0001045810-25-000023:I.1A:i000#s022": [
+   "0001045810-25-000023:I.1A:i000",
+   7252,
+   7406
+  ],
+  "0001045810-25-000023:I.1A:i000#s023": [
+   "0001045810-25-000023:I.1A:i000",
+   7407,
+   7541
+  ],
+  "0001045810-25-000023:I.1A:i000#s024": [
+   "0001045810-25-000023:I.1A:i000",
+   7542,
+   7638
+  ],
+  "0001045810-25-000023:I.1A:i002#s000": [
+   "0001045810-25-000023:I.1A:i002",
+   9535,
+   9741
+  ],
+  "0001045810-25-000023:I.1A:i002#s001": [
+   "0001045810-25-000023:I.1A:i002",
+   9743,
+   9865
+  ],
+  "0001045810-25-000023:I.1A:i002#s002": [
+   "0001045810-25-000023:I.1A:i002",
+   9866,
+   10032
+  ],
+  "0001045810-25-000023:I.1A:i002#s003": [
+   "0001045810-25-000023:I.1A:i002",
+   10033,
+   10138
+  ],
+  "0001045810-25-000023:I.1A:i002#s004": [
+   "0001045810-25-000023:I.1A:i002",
+   10139,
+   10351
+  ],
+  "0001045810-25-000023:I.1A:i002#s005": [
+   "0001045810-25-000023:I.1A:i002",
+   10352,
+   10451
+  ],
+  "0001045810-25-000023:I.1A:i002#s006": [
+   "0001045810-25-000023:I.1A:i002",
+   10452,
+   10645
+  ],
+  "0001045810-25-000023:I.1A:i002#s007": [
+   "0001045810-25-000023:I.1A:i002",
+   10646,
+   10854
+  ],
+  "0001045810-25-000023:I.1A:i002#s008": [
+   "0001045810-25-000023:I.1A:i002",
+   10855,
+   11082
+  ],
+  "0001045810-25-000023:I.1A:i002#s009": [
+   "0001045810-25-000023:I.1A:i002",
+   11083,
+   11185
+  ],
+  "0001045810-25-000023:I.1A:i002#s010": [
+   "0001045810-25-000023:I.1A:i002",
+   11186,
+   11394
+  ],
+  "0001045810-25-000023:I.1A:i002#s011": [
+   "0001045810-25-000023:I.1A:i002",
+   11395,
+   11562
+  ],
+  "0001045810-25-000023:I.1A:i002#s012": [
+   "0001045810-25-000023:I.1A:i002",
+   11562,
+   11763
+  ],
+  "0001045810-25-000023:I.1A:i002#s013": [
+   "0001045810-25-000023:I.1A:i002",
+   11764,
+   12067
+  ],
+  "0001045810-25-000023:I.1A:i002#s014": [
+   "0001045810-25-000023:I.1A:i002",
+   12068,
+   12291
+  ],
+  "0001045810-25-000023:I.1A:i002#s015": [
+   "0001045810-25-000023:I.1A:i002",
+   12292,
+   12499
+  ],
+  "0001045810-25-000023:I.1A:i002#s016": [
+   "0001045810-25-000023:I.1A:i002",
+   12500,
+   12583
+  ],
+  "0001045810-25-000023:I.1A:i002#s017": [
+   "0001045810-25-000023:I.1A:i002",
+   12583,
+   12742
+  ],
+  "0001045810-25-000023:I.1A:i002#s018": [
+   "0001045810-25-000023:I.1A:i002",
+   12743,
+   12800
+  ],
+  "0001045810-25-000023:I.1A:i002#s019": [
+   "0001045810-25-000023:I.1A:i002",
+   12801,
+   12888
+  ],
+  "0001045810-25-000023:I.1A:i002#s020": [
+   "0001045810-25-000023:I.1A:i002",
+   12889,
+   12933
+  ],
+  "0001045810-25-000023:I.1A:i002#s021": [
+   "0001045810-25-000023:I.1A:i002",
+   12934,
+   12999
+  ],
+  "0001045810-25-000023:I.1A:i002#s022": [
+   "0001045810-25-000023:I.1A:i002",
+   13000,
+   13053
+  ],
+  "0001045810-25-000023:I.1A:i002#s023": [
+   "0001045810-25-000023:I.1A:i002",
+   13054,
+   13141
+  ],
+  "0001045810-25-000023:I.1A:i002#s024": [
+   "0001045810-25-000023:I.1A:i002",
+   13142,
+   13231
+  ],
+  "0001045810-25-000023:I.1A:i002#s026": [
+   "0001045810-25-000023:I.1A:i002",
+   13265,
+   13309
+  ],
+  "0001045810-25-000023:I.1A:i002#s028": [
+   "0001045810-25-000023:I.1A:i002",
+   13339,
+   13489
+  ],
+  "0001045810-25-000023:I.1A:i002#s029": [
+   "0001045810-25-000023:I.1A:i002",
+   13490,
+   13650
+  ],
+  "0001045810-25-000023:I.1A:i002#s030": [
+   "0001045810-25-000023:I.1A:i002",
+   13653,
+   13731
+  ],
+  "0001045810-25-000023:I.1A:i002#s031": [
+   "0001045810-25-000023:I.1A:i002",
+   13734,
+   13824
+  ],
+  "0001045810-25-000023:I.1A:i002#s032": [
+   "0001045810-25-000023:I.1A:i002",
+   13825,
+   13922
+  ],
+  "0001045810-25-000023:I.1A:i002#s033": [
+   "0001045810-25-000023:I.1A:i002",
+   13924,
+   14060
+  ],
+  "0001045810-25-000023:I.1A:i002#s034": [
+   "0001045810-25-000023:I.1A:i002",
+   14061,
+   14115
+  ],
+  "0001045810-25-000023:I.1A:i002#s035": [
+   "0001045810-25-000023:I.1A:i002",
+   14115,
+   14238
+  ],
+  "0001045810-25-000023:I.1A:i002#s036": [
+   "0001045810-25-000023:I.1A:i002",
+   14239,
+   14366
+  ],
+  "0001045810-25-000023:I.1A:i002#s037": [
+   "0001045810-25-000023:I.1A:i002",
+   14367,
+   14658
+  ],
+  "0001045810-25-000023:I.1A:i002#s038": [
+   "0001045810-25-000023:I.1A:i002",
+   14658,
+   14836
+  ],
+  "0001045810-25-000023:I.1A:i002#s039": [
+   "0001045810-25-000023:I.1A:i002",
+   14837,
+   15000
+  ],
+  "0001045810-25-000023:I.1A:i002#s040": [
+   "0001045810-25-000023:I.1A:i002",
+   15001,
+   15233
+  ],
+  "0001045810-25-000023:I.1A:i002#s041": [
+   "0001045810-25-000023:I.1A:i002",
+   15234,
+   15353
+  ],
+  "0001045810-25-000023:I.1A:i002#s042": [
+   "0001045810-25-000023:I.1A:i002",
+   15354,
+   15536
+  ],
+  "0001045810-25-000023:I.1A:i002#s043": [
+   "0001045810-25-000023:I.1A:i002",
+   15536,
+   15707
+  ],
+  "0001045810-25-000023:I.1A:i002#s044": [
+   "0001045810-25-000023:I.1A:i002",
+   15708,
+   15858
+  ],
+  "0001045810-25-000023:I.1A:i002#s045": [
+   "0001045810-25-000023:I.1A:i002",
+   15859,
+   16023
+  ],
+  "0001045810-25-000023:I.1A:i002#s046": [
+   "0001045810-25-000023:I.1A:i002",
+   16024,
+   16226
+  ],
+  "0001045810-25-000023:I.1A:i002#s047": [
+   "0001045810-25-000023:I.1A:i002",
+   16227,
+   16458
+  ],
+  "0001045810-25-000023:I.1A:i002#s048": [
+   "0001045810-25-000023:I.1A:i002",
+   16459,
+   16695
+  ],
+  "0001045810-25-000023:I.1A:i002#s049": [
+   "0001045810-25-000023:I.1A:i002",
+   16696,
+   16965
+  ],
+  "0001045810-25-000023:I.1A:i002#s050": [
+   "0001045810-25-000023:I.1A:i002",
+   16966,
+   17127
+  ],
+  "0001045810-25-000023:I.1A:i002#s051": [
+   "0001045810-25-000023:I.1A:i002",
+   17128,
+   17367
+  ],
+  "0001045810-25-000023:I.1A:i002#s052": [
+   "0001045810-25-000023:I.1A:i002",
+   17368,
+   17526
+  ],
+  "0001045810-25-000023:I.1A:i002#s053": [
+   "0001045810-25-000023:I.1A:i002",
+   17527,
+   17727
+  ],
+  "0001045810-25-000023:I.1A:i002#s054": [
+   "0001045810-25-000023:I.1A:i002",
+   17728,
+   17953
+  ],
+  "0001045810-25-000023:I.1A:i002#s055": [
+   "0001045810-25-000023:I.1A:i002",
+   17954,
+   18209
+  ],
+  "0001045810-25-000023:I.1A:i002#s056": [
+   "0001045810-25-000023:I.1A:i002",
+   18209,
+   18349
+  ],
+  "0001045810-25-000023:I.1A:i002#s057": [
+   "0001045810-25-000023:I.1A:i002",
+   18350,
+   18411
+  ],
+  "0001045810-25-000023:I.1A:i002#s058": [
+   "0001045810-25-000023:I.1A:i002",
+   18412,
+   18633
+  ],
+  "0001045810-25-000023:I.1A:i002#s059": [
+   "0001045810-25-000023:I.1A:i002",
+   18633,
+   18828
+  ],
+  "0001045810-25-000023:I.1A:i002#s060": [
+   "0001045810-25-000023:I.1A:i002",
+   18829,
+   18942
+  ],
+  "0001045810-25-000023:I.1A:i002#s061": [
+   "0001045810-25-000023:I.1A:i002",
+   18943,
+   19154
+  ],
+  "0001045810-25-000023:I.1A:i002#s062": [
+   "0001045810-25-000023:I.1A:i002",
+   19155,
+   19575
+  ],
+  "0001045810-25-000023:I.1A:i002#s063": [
+   "0001045810-25-000023:I.1A:i002",
+   19576,
+   19771
+  ],
+  "0001045810-25-000023:I.1A:i002#s064": [
+   "0001045810-25-000023:I.1A:i002",
+   19772,
+   19951
+  ],
+  "0001045810-25-000023:I.1A:i002#s065": [
+   "0001045810-25-000023:I.1A:i002",
+   19952,
+   20114
+  ],
+  "0001045810-25-000023:I.1A:i002#s066": [
+   "0001045810-25-000023:I.1A:i002",
+   20115,
+   20218
+  ],
+  "0001045810-25-000023:I.1A:i002#s067": [
+   "0001045810-25-000023:I.1A:i002",
+   20219,
+   20334
+  ],
+  "0001045810-25-000023:I.1A:i004#s000": [
+   "0001045810-25-000023:I.1A:i004",
+   23523,
+   23688
+  ],
+  "0001045810-25-000023:I.1A:i004#s001": [
+   "0001045810-25-000023:I.1A:i004",
+   23690,
+   23758
+  ],
+  "0001045810-25-000023:I.1A:i004#s002": [
+   "0001045810-25-000023:I.1A:i004",
+   23759,
+   23989
+  ],
+  "0001045810-25-000023:I.1A:i004#s003": [
+   "0001045810-25-000023:I.1A:i004",
+   23990,
+   24302
+  ],
+  "0001045810-25-000023:I.1A:i004#s004": [
+   "0001045810-25-000023:I.1A:i004",
+   24303,
+   24548
+  ],
+  "0001045810-25-000023:I.1A:i004#s005": [
+   "0001045810-25-000023:I.1A:i004",
+   24549,
+   24771
+  ],
+  "0001045810-25-000023:I.1A:i004#s006": [
+   "0001045810-25-000023:I.1A:i004",
+   24772,
+   24929
+  ],
+  "0001045810-25-000023:I.1A:i004#s007": [
+   "0001045810-25-000023:I.1A:i004",
+   24930,
+   25188
+  ],
+  "0001045810-25-000023:I.1A:i004#s008": [
+   "0001045810-25-000023:I.1A:i004",
+   25189,
+   25476
+  ],
+  "0001045810-25-000023:I.1A:i004#s009": [
+   "0001045810-25-000023:I.1A:i004",
+   25477,
+   25798
+  ],
+  "0001045810-25-000023:I.1A:i004#s010": [
+   "0001045810-25-000023:I.1A:i004",
+   25799,
+   25885
+  ],
+  "0001045810-25-000023:I.1A:i004#s011": [
+   "0001045810-25-000023:I.1A:i004",
+   25886,
+   26370
+  ],
+  "0001045810-25-000023:I.1A:i004#s012": [
+   "0001045810-25-000023:I.1A:i004",
+   26371,
+   26599
+  ],
+  "0001045810-25-000023:I.1A:i004#s013": [
+   "0001045810-25-000023:I.1A:i004",
+   26599,
+   26725
+  ],
+  "0001045810-25-000023:I.1A:i004#s014": [
+   "0001045810-25-000023:I.1A:i004",
+   26726,
+   26863
+  ],
+  "0001045810-25-000023:I.1A:i004#s015": [
+   "0001045810-25-000023:I.1A:i004",
+   26864,
+   26915
+  ],
+  "0001045810-25-000023:I.1A:i004#s016": [
+   "0001045810-25-000023:I.1A:i004",
+   26916,
+   27018
+  ],
+  "0001045810-25-000023:I.1A:i004#s017": [
+   "0001045810-25-000023:I.1A:i004",
+   27019,
+   27184
+  ],
+  "0001045810-25-000023:I.1A:i004#s018": [
+   "0001045810-25-000023:I.1A:i004",
+   27185,
+   27538
+  ],
+  "0001045810-25-000023:I.1A:i004#s019": [
+   "0001045810-25-000023:I.1A:i004",
+   27539,
+   27709
+  ],
+  "0001045810-25-000023:I.1A:i010#s000": [
+   "0001045810-25-000023:I.1A:i010",
+   48985,
+   49241
+  ],
+  "0001045810-25-000023:I.1A:i010#s001": [
+   "0001045810-25-000023:I.1A:i010",
+   49243,
+   49395
+  ],
+  "0001045810-25-000023:I.1A:i010#s002": [
+   "0001045810-25-000023:I.1A:i010",
+   49396,
+   49627
+  ],
+  "0001045810-25-000023:I.1A:i010#s003": [
+   "0001045810-25-000023:I.1A:i010",
+   49628,
+   49783
+  ],
+  "0001045810-25-000023:I.1A:i010#s004": [
+   "0001045810-25-000023:I.1A:i010",
+   49784,
+   50221
+  ],
+  "0001045810-25-000023:I.1A:i010#s005": [
+   "0001045810-25-000023:I.1A:i010",
+   50222,
+   50313
+  ],
+  "0001045810-25-000023:I.1A:i010#s006": [
+   "0001045810-25-000023:I.1A:i010",
+   50314,
+   50476
+  ],
+  "0001045810-25-000023:I.1A:i010#s007": [
+   "0001045810-25-000023:I.1A:i010",
+   50477,
+   50628
+  ],
+  "0001045810-25-000023:I.1A:i010#s008": [
+   "0001045810-25-000023:I.1A:i010",
+   50629,
+   50791
+  ],
+  "0001045810-25-000023:I.1A:i010#s009": [
+   "0001045810-25-000023:I.1A:i010",
+   50792,
+   50883
+  ],
+  "0001045810-25-000023:I.1A:i010#s010": [
+   "0001045810-25-000023:I.1A:i010",
+   50884,
+   51045
+  ],
+  "0001045810-25-000023:I.1A:i010#s011": [
+   "0001045810-25-000023:I.1A:i010",
+   51046,
+   51195
+  ],
+  "0001045810-25-000023:I.1A:i010#s012": [
+   "0001045810-25-000023:I.1A:i010",
+   51196,
+   51358
+  ],
+  "0001045810-25-000023:I.1A:i010#s013": [
+   "0001045810-25-000023:I.1A:i010",
+   51359,
+   52027
+  ],
+  "0001045810-25-000023:I.1A:i010#s014": [
+   "0001045810-25-000023:I.1A:i010",
+   52027,
+   52100
+  ],
+  "0001045810-25-000023:I.1A:i010#s015": [
+   "0001045810-25-000023:I.1A:i010",
+   52101,
+   52292
+  ],
+  "0001045810-25-000023:I.1A:i010#s016": [
+   "0001045810-25-000023:I.1A:i010",
+   52293,
+   52421
+  ],
+  "0001045810-25-000023:I.1A:i010#s017": [
+   "0001045810-25-000023:I.1A:i010",
+   52422,
+   52504
+  ],
+  "0001045810-25-000023:I.1A:i010#s018": [
+   "0001045810-25-000023:I.1A:i010",
+   52505,
+   52609
+  ],
+  "0001045810-25-000023:I.1A:i010#s019": [
+   "0001045810-25-000023:I.1A:i010",
+   52610,
+   52775
+  ],
+  "0001045810-25-000023:I.1A:i010#s020": [
+   "0001045810-25-000023:I.1A:i010",
+   52776,
+   52947
+  ],
+  "0001045810-25-000023:I.1A:i010#s021": [
+   "0001045810-25-000023:I.1A:i010",
+   52948,
+   53040
+  ],
+  "0001045810-25-000023:I.1A:i010#s022": [
+   "0001045810-25-000023:I.1A:i010",
+   53041,
+   53129
+  ],
+  "0001045810-25-000023:I.1A:i010#s023": [
+   "0001045810-25-000023:I.1A:i010",
+   53130,
+   53245
+  ],
+  "0001045810-25-000023:I.1A:i010#s024": [
+   "0001045810-25-000023:I.1A:i010",
+   53246,
+   53313
+  ],
+  "0001045810-25-000023:I.1A:i010#s025": [
+   "0001045810-25-000023:I.1A:i010",
+   53314,
+   53412
+  ],
+  "0001045810-25-000023:I.1A:i010#s026": [
+   "0001045810-25-000023:I.1A:i010",
+   53412,
+   53832
+  ],
+  "0001045810-25-000023:I.1A:i010#s027": [
+   "0001045810-25-000023:I.1A:i010",
+   53833,
+   53930
+  ],
+  "0001045810-25-000023:I.1A:i011#s000": [
+   "0001045810-25-000023:I.1A:i011",
+   53932,
+   54236
+  ],
+  "0001045810-25-000023:I.1A:i011#s001": [
+   "0001045810-25-000023:I.1A:i011",
+   54238,
+   54383
+  ],
+  "0001045810-25-000023:I.1A:i011#s002": [
+   "0001045810-25-000023:I.1A:i011",
+   54384,
+   54581
+  ],
+  "0001045810-25-000023:I.1A:i011#s003": [
+   "0001045810-25-000023:I.1A:i011",
+   54582,
+   54699
+  ],
+  "0001045810-25-000023:I.1A:i011#s004": [
+   "0001045810-25-000023:I.1A:i011",
+   54700,
+   54854
+  ],
+  "0001045810-25-000023:I.1A:i011#s005": [
+   "0001045810-25-000023:I.1A:i011",
+   54855,
+   54953
+  ],
+  "0001045810-25-000023:I.1A:i011#s006": [
+   "0001045810-25-000023:I.1A:i011",
+   54954,
+   55082
+  ],
+  "0001045810-25-000023:I.1A:i011#s007": [
+   "0001045810-25-000023:I.1A:i011",
+   55083,
+   55282
+  ],
+  "0001045810-25-000023:I.1A:i011#s008": [
+   "0001045810-25-000023:I.1A:i011",
+   55283,
+   55462
+  ],
+  "0001045810-25-000023:I.1A:i011#s009": [
+   "0001045810-25-000023:I.1A:i011",
+   55463,
+   55652
+  ],
+  "0001045810-25-000023:I.1A:i011#s010": [
+   "0001045810-25-000023:I.1A:i011",
+   55653,
+   55950
+  ],
+  "0001045810-25-000023:I.1A:i011#s011": [
+   "0001045810-25-000023:I.1A:i011",
+   55951,
+   56115
+  ],
+  "0001045810-25-000023:I.1A:i011#s012": [
+   "0001045810-25-000023:I.1A:i011",
+   56116,
+   56378
+  ],
+  "0001045810-25-000023:I.1A:i011#s013": [
+   "0001045810-25-000023:I.1A:i011",
+   56379,
+   56647
+  ],
+  "0001045810-25-000023:I.1A:i011#s014": [
+   "0001045810-25-000023:I.1A:i011",
+   56648,
+   56944
+  ],
+  "0001045810-25-000023:I.1A:i015#s000": [
+   "0001045810-25-000023:I.1A:i015",
+   62142,
+   62321
+  ],
+  "0001045810-25-000023:I.1A:i015#s001": [
+   "0001045810-25-000023:I.1A:i015",
+   62323,
+   62958
+  ],
+  "0001045810-25-000023:I.1A:i015#s002": [
+   "0001045810-25-000023:I.1A:i015",
+   62959,
+   63161
+  ],
+  "0001045810-25-000023:I.1A:i015#s003": [
+   "0001045810-25-000023:I.1A:i015",
+   63162,
+   63566
+  ],
+  "0001045810-25-000023:I.1A:i015#s004": [
+   "0001045810-25-000023:I.1A:i015",
+   63567,
+   63855
+  ],
+  "0001045810-25-000023:I.1A:i015#s005": [
+   "0001045810-25-000023:I.1A:i015",
+   63856,
+   64085
+  ],
+  "0001045810-25-000023:I.1A:i015#s006": [
+   "0001045810-25-000023:I.1A:i015",
+   64086,
+   64289
+  ],
+  "0001045810-25-000023:I.1A:i015#s007": [
+   "0001045810-25-000023:I.1A:i015",
+   64290,
+   64524
+  ],
+  "0001045810-25-000023:I.1A:i015#s008": [
+   "0001045810-25-000023:I.1A:i015",
+   64525,
+   65143
+  ],
+  "0001045810-25-000023:I.1A:i015#s009": [
+   "0001045810-25-000023:I.1A:i015",
+   65144,
+   65215
+  ],
+  "0001045810-25-000023:I.1A:i015#s010": [
+   "0001045810-25-000023:I.1A:i015",
+   65216,
+   65365
+  ],
+  "0001045810-25-000023:I.1A:i015#s011": [
+   "0001045810-25-000023:I.1A:i015",
+   65365,
+   65562
+  ],
+  "0001045810-25-000023:I.1A:i015#s012": [
+   "0001045810-25-000023:I.1A:i015",
+   65563,
+   65691
+  ],
+  "0001045810-25-000023:I.1A:i015#s013": [
+   "0001045810-25-000023:I.1A:i015",
+   65692,
+   65778
+  ],
+  "0001045810-25-000023:I.1A:i015#s014": [
+   "0001045810-25-000023:I.1A:i015",
+   65779,
+   65986
+  ],
+  "0001045810-25-000023:I.1A:i015#s015": [
+   "0001045810-25-000023:I.1A:i015",
+   65987,
+   66286
+  ],
+  "0001045810-25-000023:I.1A:i015#s016": [
+   "0001045810-25-000023:I.1A:i015",
+   66287,
+   66651
+  ],
+  "0001045810-25-000023:I.1A:i015#s017": [
+   "0001045810-25-000023:I.1A:i015",
+   66652,
+   66828
+  ],
+  "0001045810-25-000023:I.1A:i015#s018": [
+   "0001045810-25-000023:I.1A:i015",
+   66828,
+   67567
+  ],
+  "0001045810-25-000023:I.1A:i015#s019": [
+   "0001045810-25-000023:I.1A:i015",
+   67568,
+   67921
+  ],
+  "0001045810-25-000023:I.1A:i015#s020": [
+   "0001045810-25-000023:I.1A:i015",
+   67921,
+   68183
+  ],
+  "0001045810-25-000023:I.1A:i015#s021": [
+   "0001045810-25-000023:I.1A:i015",
+   68184,
+   68280
+  ],
+  "0001045810-25-000023:I.1A:i015#s022": [
+   "0001045810-25-000023:I.1A:i015",
+   68281,
+   68381
+  ],
+  "0001045810-25-000023:I.1A:i015#s023": [
+   "0001045810-25-000023:I.1A:i015",
+   68381,
+   68687
+  ],
+  "0001045810-25-000023:I.1A:i015#s024": [
+   "0001045810-25-000023:I.1A:i015",
+   68687,
+   69065
+  ],
+  "0001045810-25-000023:I.1A:i015#s025": [
+   "0001045810-25-000023:I.1A:i015",
+   69066,
+   69326
+  ],
+  "0001045810-25-000023:I.1A:i015#s026": [
+   "0001045810-25-000023:I.1A:i015",
+   69326,
+   69492
+  ],
+  "0001045810-25-000023:I.1A:i015#s027": [
+   "0001045810-25-000023:I.1A:i015",
+   69493,
+   69716
+  ],
+  "0001045810-25-000023:I.1A:i015#s028": [
+   "0001045810-25-000023:I.1A:i015",
+   69717,
+   69904
+  ],
+  "0001045810-25-000023:I.1A:i015#s029": [
+   "0001045810-25-000023:I.1A:i015",
+   69905,
+   70447
+  ],
+  "0001045810-25-000023:I.1A:i015#s030": [
+   "0001045810-25-000023:I.1A:i015",
+   70448,
+   70849
+  ],
+  "0001045810-25-000023:I.1A:i015#s031": [
+   "0001045810-25-000023:I.1A:i015",
+   70850,
+   71137
+  ],
+  "0001045810-25-000023:I.1A:i015#s032": [
+   "0001045810-25-000023:I.1A:i015",
+   71138,
+   71379
+  ],
+  "0001045810-25-000023:I.1A:i015#s033": [
+   "0001045810-25-000023:I.1A:i015",
+   71379,
+   71566
+  ],
+  "0001045810-25-000023:I.1A:i015#s034": [
+   "0001045810-25-000023:I.1A:i015",
+   71567,
+   71798
+  ],
+  "0001045810-25-000023:I.1A:i015#s035": [
+   "0001045810-25-000023:I.1A:i015",
+   71799,
+   71968
+  ],
+  "0001045810-25-000023:I.1A:i015#s036": [
+   "0001045810-25-000023:I.1A:i015",
+   71968,
+   72160
+  ],
+  "0001045810-25-000023:I.1A:i015#s037": [
+   "0001045810-25-000023:I.1A:i015",
+   72161,
+   72279
+  ],
+  "0001045810-25-000023:I.1A:i015#s038": [
+   "0001045810-25-000023:I.1A:i015",
+   72280,
+   72523
+  ],
+  "0001045810-25-000023:I.1A:i015#s039": [
+   "0001045810-25-000023:I.1A:i015",
+   72524,
+   72865
+  ],
+  "0001045810-25-000023:I.1A:i015#s040": [
+   "0001045810-25-000023:I.1A:i015",
+   72866,
+   73046
+  ],
+  "0001045810-25-000023:I.1A:i015#s041": [
+   "0001045810-25-000023:I.1A:i015",
+   73047,
+   73214
+  ],
+  "0001045810-25-000023:I.1A:i015#s042": [
+   "0001045810-25-000023:I.1A:i015",
+   73215,
+   73651
+  ],
+  "0001045810-25-000023:I.1A:i015#s043": [
+   "0001045810-25-000023:I.1A:i015",
+   73652,
+   73834
+  ],
+  "0001045810-25-000023:I.1A:i015#s044": [
+   "0001045810-25-000023:I.1A:i015",
+   73834,
+   74014
+  ],
+  "0001045810-25-000023:I.1A:i015#s045": [
+   "0001045810-25-000023:I.1A:i015",
+   74015,
+   74380
+  ],
+  "0001045810-25-000023:I.1A:i015#s046": [
+   "0001045810-25-000023:I.1A:i015",
+   74381,
+   74599
+  ],
+  "0001045810-25-000023:I.1A:i015#s047": [
+   "0001045810-25-000023:I.1A:i015",
+   74600,
+   74774
+  ],
+  "0001045810-25-000023:I.1A:i015#s048": [
+   "0001045810-25-000023:I.1A:i015",
+   74775,
+   75018
+  ],
+  "0001045810-25-000023:I.1A:i015#s049": [
+   "0001045810-25-000023:I.1A:i015",
+   75018,
+   75461
+  ],
+  "0001045810-25-000023:I.1A:i015#s050": [
+   "0001045810-25-000023:I.1A:i015",
+   75462,
+   75675
+  ],
+  "0001045810-25-000023:I.1A:i015#s051": [
+   "0001045810-25-000023:I.1A:i015",
+   75676,
+   75896
+  ],
+  "0001045810-25-000023:I.1A:i015#s052": [
+   "0001045810-25-000023:I.1A:i015",
+   75897,
+   76137
+  ],
+  "0001045810-25-000023:I.1A:i015#s053": [
+   "0001045810-25-000023:I.1A:i015",
+   76138,
+   76220
+  ],
+  "0001045810-25-000023:I.1A:i015#s054": [
+   "0001045810-25-000023:I.1A:i015",
+   76220,
+   76306
+  ],
+  "0001045810-25-000023:I.1A:i015#s055": [
+   "0001045810-25-000023:I.1A:i015",
+   76307,
+   76595
+  ],
+  "0001045810-25-000023:I.1A:i015#s056": [
+   "0001045810-25-000023:I.1A:i015",
+   76596,
+   76794
+  ],
+  "0001045810-25-000023:I.1A:i015#s057": [
+   "0001045810-25-000023:I.1A:i015",
+   76795,
+   77014
+  ],
+  "0001045810-25-000023:I.1A:i015#s058": [
+   "0001045810-25-000023:I.1A:i015",
+   77014,
+   77322
+  ],
+  "0001045810-25-000023:I.1A:i015#s059": [
+   "0001045810-25-000023:I.1A:i015",
+   77323,
+   77430
+  ],
+  "0001045810-25-000023:I.1A:i015#s060": [
+   "0001045810-25-000023:I.1A:i015",
+   77431,
+   77595
+  ],
+  "0001045810-25-000023:I.1A:i015#s061": [
+   "0001045810-25-000023:I.1A:i015",
+   77596,
+   77773
+  ],
+  "0001045810-25-000023:I.1A:i015#s062": [
+   "0001045810-25-000023:I.1A:i015",
+   77774,
+   78119
+  ],
+  "0001045810-25-000023:I.1A:i015#s063": [
+   "0001045810-25-000023:I.1A:i015",
+   78120,
+   78210
+  ],
+  "0001045810-25-000023:I.1A:i015#s064": [
+   "0001045810-25-000023:I.1A:i015",
+   78210,
+   78392
+  ],
+  "0001045810-25-000023:I.1A:i015#s065": [
+   "0001045810-25-000023:I.1A:i015",
+   78393,
+   78513
+  ],
+  "0001045810-25-000023:I.1A:i015#s066": [
+   "0001045810-25-000023:I.1A:i015",
+   78513,
+   78662
+  ],
+  "0001045810-25-000023:I.1A:i015#s067": [
+   "0001045810-25-000023:I.1A:i015",
+   78662,
+   78935
+  ],
+  "0001045810-25-000023:I.1A:i015#s068": [
+   "0001045810-25-000023:I.1A:i015",
+   78936,
+   79140
+  ],
+  "0001045810-25-000023:I.1A:i015#s069": [
+   "0001045810-25-000023:I.1A:i015",
+   79140,
+   79488
+  ],
+  "0001045810-25-000023:I.1A:i015#s070": [
+   "0001045810-25-000023:I.1A:i015",
+   79488,
+   79664
+  ],
+  "0001045810-25-000023:I.1A:i015#s071": [
+   "0001045810-25-000023:I.1A:i015",
+   79665,
+   79872
+  ],
+  "0001045810-25-000023:I.1A:i015#s072": [
+   "0001045810-25-000023:I.1A:i015",
+   79873,
+   80043
+  ],
+  "0001045810-25-000023:I.1A:i015#s073": [
+   "0001045810-25-000023:I.1A:i015",
+   80044,
+   80170
+  ],
+  "0001045810-25-000023:I.1A:i015#s074": [
+   "0001045810-25-000023:I.1A:i015",
+   80171,
+   80220
+  ],
+  "0001045810-25-000023:I.1A:i015#s075": [
+   "0001045810-25-000023:I.1A:i015",
+   80221,
+   80362
+  ],
+  "0001045810-25-000023:I.1A:i015#s076": [
+   "0001045810-25-000023:I.1A:i015",
+   80363,
+   80498
+  ],
+  "0001045810-25-000023:I.1A:i015#s077": [
+   "0001045810-25-000023:I.1A:i015",
+   80499,
+   80618
+  ],
+  "0001045810-25-000023:I.1A:i015#s078": [
+   "0001045810-25-000023:I.1A:i015",
+   80619,
+   80759
+  ],
+  "0001045810-25-000023:I.1A:i015#s079": [
+   "0001045810-25-000023:I.1A:i015",
+   80760,
+   80967
+  ],
+  "0001045810-25-000023:I.1A:i015#s080": [
+   "0001045810-25-000023:I.1A:i015",
+   80968,
+   81251
+  ],
+  "0001045810-25-000023:I.1A:i015#s081": [
+   "0001045810-25-000023:I.1A:i015",
+   81251,
+   81894
+  ],
+  "0001045810-25-000023:I.1A:i015#s082": [
+   "0001045810-25-000023:I.1A:i015",
+   81895,
+   82074
+  ],
+  "0001045810-25-000023:I.1A:i015#s083": [
+   "0001045810-25-000023:I.1A:i015",
+   82075,
+   82405
+  ],
+  "0001045810-25-000023:I.1A:i015#s084": [
+   "0001045810-25-000023:I.1A:i015",
+   82405,
+   82722
+  ],
+  "0001045810-25-000023:I.1A:i015#s085": [
+   "0001045810-25-000023:I.1A:i015",
+   82723,
+   83083
+  ],
+  "0001045810-25-000023:I.1A:i015#s086": [
+   "0001045810-25-000023:I.1A:i015",
+   83084,
+   83560
+  ],
+  "0001045810-25-000023:I.1A:i015#s087": [
+   "0001045810-25-000023:I.1A:i015",
+   83561,
+   83890
+  ],
+  "0001045810-25-000023:I.1A:i015#s088": [
+   "0001045810-25-000023:I.1A:i015",
+   83891,
+   84068
+  ],
+  "0001045810-25-000023:I.1A:i015#s089": [
+   "0001045810-25-000023:I.1A:i015",
+   84069,
+   84229
+  ],
+  "0001045810-25-000023:I.1A:i015#s090": [
+   "0001045810-25-000023:I.1A:i015",
+   84230,
+   84393
+  ],
+  "0001045810-25-000023:I.1A:i015#s091": [
+   "0001045810-25-000023:I.1A:i015",
+   84394,
+   84600
+  ],
+  "0001045810-25-000023:I.1A:i015#s092": [
+   "0001045810-25-000023:I.1A:i015",
+   84601,
+   84832
+  ],
+  "0001045810-25-000023:I.1A:i015#s093": [
+   "0001045810-25-000023:I.1A:i015",
+   84833,
+   85133
+  ],
+  "0001045810-25-000023:I.1A:i015#s094": [
+   "0001045810-25-000023:I.1A:i015",
+   85134,
+   85410
+  ],
+  "0001045810-25-000023:I.1A:i015#s095": [
+   "0001045810-25-000023:I.1A:i015",
+   85411,
+   85617
+  ],
+  "0001045810-25-000023:I.1A:i015#s096": [
+   "0001045810-25-000023:I.1A:i015",
+   85618,
+   85856
+  ],
+  "0001045810-25-000023:I.1A:i015#s097": [
+   "0001045810-25-000023:I.1A:i015",
+   85857,
+   85998
+  ],
+  "0001045810-25-000023:I.1A:i015#s098": [
+   "0001045810-25-000023:I.1A:i015",
+   85999,
+   86156
+  ],
+  "0001045810-25-000023:I.1A:i015#s099": [
+   "0001045810-25-000023:I.1A:i015",
+   86156,
+   86340
+  ],
+  "0001045810-25-000023:I.1A:i015#s100": [
+   "0001045810-25-000023:I.1A:i015",
+   86341,
+   86594
+  ],
+  "0001045810-25-000023:I.1A:i015#s101": [
+   "0001045810-25-000023:I.1A:i015",
+   86594,
+   86852
+  ],
+  "0001045810-25-000023:I.1A:i015#s102": [
+   "0001045810-25-000023:I.1A:i015",
+   86853,
+   87097
+  ],
+  "0001045810-25-000023:I.1A:i015#s103": [
+   "0001045810-25-000023:I.1A:i015",
+   87098,
+   87258
+  ],
+  "0001045810-25-000023:I.1A:i015#s104": [
+   "0001045810-25-000023:I.1A:i015",
+   87259,
+   87500
+  ],
+  "0001045810-25-000023:I.1A:i015#s105": [
+   "0001045810-25-000023:I.1A:i015",
+   87501,
+   87850
+  ],
+  "0001045810-25-000023:I.1A:i015#s106": [
+   "0001045810-25-000023:I.1A:i015",
+   87851,
+   87980
+  ],
+  "0001045810-25-000023:I.1A:i015#s107": [
+   "0001045810-25-000023:I.1A:i015",
+   87980,
+   88132
+  ],
+  "0001045810-25-000023:I.1A:i015#s108": [
+   "0001045810-25-000023:I.1A:i015",
+   88133,
+   88329
+  ]
+ },
+ "sampling": {
+  "pair_id": "NVDA-0001045810-24-000029-0001045810-25-000023",
+  "side": "newer",
+  "seed": 20260926,
+  "rng_key": "20260926|NVDA-0001045810-24-000029-0001045810-25-000023|newer",
+  "k": 6,
+  "max_sentences": 320,
+  "min_chars": 40,
+  "n_eligible_items": 23,
+  "eligible_item_ids": [
+   "0001045810-25-000023:I.1A:i000",
+   "0001045810-25-000023:I.1A:i001",
+   "0001045810-25-000023:I.1A:i002",
+   "0001045810-25-000023:I.1A:i003",
+   "0001045810-25-000023:I.1A:i004",
+   "0001045810-25-000023:I.1A:i005",
+   "0001045810-25-000023:I.1A:i006",
+   "0001045810-25-000023:I.1A:i007",
+   "0001045810-25-000023:I.1A:i008",
+   "0001045810-25-000023:I.1A:i009",
+   "0001045810-25-000023:I.1A:i010",
+   "0001045810-25-000023:I.1A:i011",
+   "0001045810-25-000023:I.1A:i012",
+   "0001045810-25-000023:I.1A:i013",
+   "0001045810-25-000023:I.1A:i014",
+   "0001045810-25-000023:I.1A:i015",
+   "0001045810-25-000023:I.1A:i016",
+   "0001045810-25-000023:I.1A:i017",
+   "0001045810-25-000023:I.1A:i018",
+   "0001045810-25-000023:I.1A:i019",
+   "0001045810-25-000023:I.1A:i020",
+   "0001045810-25-000023:I.1A:i021",
+   "0001045810-25-000023:I.1A:i022"
+  ],
+  "eligibility_basis": {
+   "0001045810-25-000023:I.1A:i000": "consensus",
+   "0001045810-25-000023:I.1A:i001": "consensus",
+   "0001045810-25-000023:I.1A:i002": "consensus",
+   "0001045810-25-000023:I.1A:i003": "consensus",
+   "0001045810-25-000023:I.1A:i004": "consensus",
+   "0001045810-25-000023:I.1A:i005": "consensus",
+   "0001045810-25-000023:I.1A:i006": "consensus",
+   "0001045810-25-000023:I.1A:i007": "consensus",
+   "0001045810-25-000023:I.1A:i008": "consensus",
+   "0001045810-25-000023:I.1A:i009": "consensus",
+   "0001045810-25-000023:I.1A:i010": "consensus",
+   "0001045810-25-000023:I.1A:i011": "consensus",
+   "0001045810-25-000023:I.1A:i012": "consensus",
+   "0001045810-25-000023:I.1A:i013": "consensus",
+   "0001045810-25-000023:I.1A:i014": "consensus",
+   "0001045810-25-000023:I.1A:i015": "consensus",
+   "0001045810-25-000023:I.1A:i016": "consensus",
+   "0001045810-25-000023:I.1A:i017": "consensus",
+   "0001045810-25-000023:I.1A:i018": "consensus",
+   "0001045810-25-000023:I.1A:i019": "consensus",
+   "0001045810-25-000023:I.1A:i020": "consensus",
+   "0001045810-25-000023:I.1A:i021": "consensus",
+   "0001045810-25-000023:I.1A:i022": "consensus"
+  },
+  "flagship_item_id": "0001045810-25-000023:I.1A:i015",
+  "overall_largest_item_id": "0001045810-25-000023:I.1A:i015",
+  "flagship_note": null,
+  "flagship_exceeds_cap": false,
+  "dropped_items": [],
+  "n_sentences": 261,
+  "sampled_items": [
+   "0001045810-25-000023:I.1A:i000",
+   "0001045810-25-000023:I.1A:i002",
+   "0001045810-25-000023:I.1A:i004",
+   "0001045810-25-000023:I.1A:i010",
+   "0001045810-25-000023:I.1A:i011",
+   "0001045810-25-000023:I.1A:i015"
+  ]
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "note": "Adjudications and exclusions applied when freezing the development gold (2026-09-26). Provenance: docs/v2/M1B_PLAN.md L.9.",
+ "items": {},
+ "sentences": {
+  "0001045810-25-000023:I.1A:i002#s056": "reworded"
+ },
+ "contested_sentences": [
+  "0001045810-25-000023:I.1A:i015#s098",
+  "0001193125-25-083423:I.3:i000#s006"
+ ],
+ "rationale": {
+  "0001045810-25-000023:I.1A:i002#s056": "three-way split (added/reworded/present); the older text has 'Our demand estimates for new use cases, applications, and services can be incorrect and create volatility in our revenue or supply levels' - the same statement broadened to 'products': reworded.",
+  "0001045810-25-000023:I.1A:i015#s098": "annotators 3/3 added; the LLM council found a looser export-control excess-inventory sentence in the other filing (partial coverage of a compound sentence): boundary case, excluded from scoring.",
+  "0001193125-25-083423:I.3:i000#s006": "annotators 3/3 removed; the council read the later 'delayed until August 2025' sentence as the same deferral with a changed date: boundary case, excluded from scoring."
+ }
+}

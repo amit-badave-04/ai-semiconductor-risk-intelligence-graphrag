@@ -1,0 +1,627 @@
+[
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s000",
+  "label": "present",
+  "quote": "Our new products and changes to existing products could fail to attract or retain users or generate revenue and profits, or otherwise adversely affect our business."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s001",
+  "label": "present",
+  "quote": "Our ability to retain, increase, and engage our user base and to increase our revenue depends heavily on our ability to continue to evolve our existing products"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s002",
+  "label": "present",
+  "quote": "We may introduce significant changes to our existing products or acquire or introduce new and unproven products"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s003",
+  "label": "present",
+  "quote": "we have relatively limited experience with consumer hardware products and virtual and augmented reality technology, which may adversely affect our ability to successfully develop and market these evolving products and technologies"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s004",
+  "label": "present",
+  "quote": "We are also making significant investments in artificial intelligence (AI) initiatives across our business."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s005",
+  "label": "present",
+  "quote": "we continue to launch new AI features on our products, including support for new modalities, conversational AIs, AI profiles, stickers, photos, videos, and editing tools"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s006",
+  "label": "present",
+  "quote": "We continue to incur substantial costs, and we may not be successful in generating profits, in connection with these efforts."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s007",
+  "label": "present",
+  "quote": "we have invested, and expect to continue to invest, significant resources in growing our messaging products to support increasing usage of such products"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s008",
+  "label": "present",
+  "quote": "We have historically monetized messaging in only a limited fashion, and we may not be successful in our efforts to generate meaningful revenue or profits from messaging over the long term."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s009",
+  "label": "present",
+  "quote": "our efforts to implement default end-to-end encryption have been subject to governmental and regulatory scrutiny in multiple jurisdictions"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s010",
+  "label": "present",
+  "quote": "the Nevada Attorney General is seeking to enjoin our offering of default end-to-end encryption on Messenger for all Nevada residents under the age of 18"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i004#s011",
+  "label": "present",
+  "quote": "If our new products or changes to existing products fail to engage users, marketers, or developers, or if our business plans are unsuccessful"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s000",
+  "label": "present",
+  "quote": "We incur significant expenses in operating our business, and some of our investments, particularly our investments in our artificial intelligence initiatives as well as Reality Labs, have the effect of reducing our operating margin and profitability."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s001",
+  "label": "present",
+  "quote": "If our investments are not successful longer-term, our business and financial performance will be harmed."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s002",
+  "label": "present",
+  "quote": "as we broaden our user base, as users increase the amount and types of content they consume and the data they share with us, for example with respect to video"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s003",
+  "label": "present",
+  "quote": "We have previously undertaken cost reduction measures in light of a more challenging operating environment, which may adversely affect these or other business initiatives"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s004",
+  "label": "present",
+  "quote": "from time to time we are subject to settlements, judgments, fines, or other monetary penalties in connection with legal and regulatory developments that may be material to our business"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s005",
+  "label": "present",
+  "quote": "We are also continuing to increase our investments in new platforms and technologies, including as part of our VR, Horizon, and wearables efforts"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s006",
+  "label": "present",
+  "quote": "Some of these investments, particularly our significant investments in Reality Labs, have generated only limited revenue and reduced our operating margin and profitability"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s007",
+  "label": "present",
+  "quote": "our investments in Reality Labs reduced our 2025 overall operating profit by approximately $19.19 billion"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i014#s008",
+  "label": "present",
+  "quote": "If our investments are not successful longer-term, our business and financial performance will be harmed."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s000",
+  "label": "present",
+  "quote": "Our business is dependent on our ability to maintain and scale our technical infrastructure, and any significant disruption in our products and services could damage our reputation, result in a potential loss of users and engagement, and adversely affect our financial results."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s001",
+  "label": "present",
+  "quote": "Our reputation and ability to attract, retain, and serve our users is dependent upon the reliable performance of our products and services and our underlying technical infrastructure."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s002",
+  "label": "present",
+  "quote": "We have experienced, and may in the future experience, interruptions in the availability or performance of our products and services from time to time."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s003",
+  "label": "present",
+  "quote": "Our systems may not be adequately designed or may not operate with the reliability and redundancy necessary to avoid performance delays or outages that could be harmful to our business."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s004",
+  "label": "present",
+  "quote": "If our products or services are unavailable when users attempt to access them, or if they do not load as quickly as expected, users may not use our products or services as often in the future, or at all"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s005",
+  "label": "present",
+  "quote": "We have experienced such issues to varying degrees from time to time."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s006",
+  "label": "present",
+  "quote": "as the amount and types of information shared on our products continue to grow and evolve, as the usage patterns of our global community continue to evolve, and as our internal operational demands continue to grow, especially with the deployment of AI technologies"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s007",
+  "label": "present",
+  "quote": "Although we are making significant investments in our technical infrastructure, it is possible that we may fail to continue to effectively scale and grow our technical infrastructure"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s008",
+  "label": "present",
+  "quote": "our business may be subject to interruptions, delays, or failures resulting from earthquakes, adverse weather conditions, other natural disasters, power loss, terrorism"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s009",
+  "label": "present",
+  "quote": "Global climate change could result in certain types of natural disasters occurring more frequently or with more intense effects."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s010",
+  "label": "present",
+  "quote": "Any such events may result in users being subject to service disruptions or outages and we may not be able to recover our technical infrastructure and user data in a timely manner"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s011",
+  "label": "present",
+  "quote": "have been, and may in the future be, subject to increased energy and/or other costs to maintain the availability or performance of our products and services in connection with any such events"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s012",
+  "label": "present",
+  "quote": "A substantial portion of our technical infrastructure is provided by third parties."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s013",
+  "label": "present",
+  "quote": "Any disruption or failure in the services we receive from these providers could harm our ability to handle existing or increased traffic and could significantly harm our business."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s014",
+  "label": "present",
+  "quote": "Any financial or other difficulties these providers face may adversely affect our business, and we exercise little control over these providers"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s015",
+  "label": "present",
+  "quote": "We have experienced, and expect to continue to experience, various challenges with the supply chain related to supporting our technical infrastructure."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s016",
+  "label": "present",
+  "quote": "we have adjusted, and may continue to adjust in the future, our procurement practices to adapt to the evolving landscape"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s017",
+  "label": "present",
+  "quote": "We may not be able to secure sufficient components, equipment, or services from third parties to satisfy our needs"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i015#s018",
+  "label": "present",
+  "quote": "developments may result in interruptions in the availability or performance of our products or services, require unfavorable changes to existing products or services"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s000",
+  "label": "present",
+  "quote": "Our business is subject to complex and evolving U.S. and foreign laws and regulations regarding privacy, data use, data combination, data protection, content, AI, competition"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s001",
+  "label": "present",
+  "quote": "Many of these laws and regulations are subject to change and uncertain interpretation, and could result in claims, changes to our products and business practices, monetary penalties"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s002",
+  "label": "present",
+  "quote": "We are subject to a variety of laws and regulations in the United States and abroad that involve matters central to our business, including privacy, data use, data combination"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s003",
+  "label": "present",
+  "quote": "The introduction of new products, expansion of our activities in certain jurisdictions, or other actions that we may take may subject us to additional laws, regulations, or other government scrutiny."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s004",
+  "label": "present",
+  "quote": "these U.S. and foreign laws and regulations may impose different obligations from each other"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s005",
+  "label": "present",
+  "quote": "These U.S. federal and state, EU, and other international laws and regulations, which in some cases can be enforced by private parties in addition to government entities, are constantly evolving"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s006",
+  "label": "present",
+  "quote": "the application, interpretation, and enforcement of these laws and regulations are often uncertain, particularly in the new and rapidly evolving industry in which we operate"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s007",
+  "label": "present",
+  "quote": "regulatory or legislative actions or litigation concerning the manner in which we display content to our users, moderate content, provide our services to younger users"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s008",
+  "label": "present",
+  "quote": "We are also subject to evolving laws and regulations that dictate whether, how, and under what circumstances we can transfer, process or receive certain data that is critical to our operations"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s009",
+  "label": "reworded",
+  "quote": "The Court of Justice of the European Union (CJEU) invalidated the Privacy Shield in 2020"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s010",
+  "label": "reworded",
+  "quote": "the bases upon which we have relied for data transfers from the European Union to the United States have been subjected to regulatory and judicial scrutiny"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s011",
+  "label": "present",
+  "quote": "also considered the validity of Standard Contractual Clauses (SCCs) as a basis to transfer user data from the European Union to the United States following a challenge brought by the Irish Data Protection Commission (IDPC)"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s012",
+  "label": "present",
+  "quote": "reliance on SCCs in respect of certain transfers of European Economic Area (EEA) Facebook user data was not in compliance with the GDPR"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s013",
+  "label": "present",
+  "quote": "The IDPC issued an administrative fine of EUR €1.2 billion as well as corrective orders requiring Meta Platforms Ireland to suspend the relevant transfers"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s014",
+  "label": "present",
+  "quote": "We are appealing this Final Decision and it is currently subject to a stay from the Irish High Court."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s015",
+  "label": "reworded",
+  "quote": "in 2022, the European Union and United States reached an agreement on a new EU-U.S. Data Privacy Framework (EU-U.S. DPF)"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s016",
+  "label": "reworded",
+  "quote": "which the European Commission deemed adequate in relation to U.S. data transfers in July 2023"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s017",
+  "label": "removed",
+  "search_terms": [
+   "Department of Commerce",
+   "Data Privacy Framework List",
+   "adequate level of protection",
+   "adequacy decision"
+  ]
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s018",
+  "label": "reworded",
+  "quote": "We have also implemented steps to comply with the above corrective orders and are pending the IDPC's confirmation"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s019",
+  "label": "present",
+  "quote": "The EU-U.S. DPF replaces two prior adequacy frameworks which were invalidated by the CJEU."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s020",
+  "label": "present",
+  "quote": "A further invalidation of the EU-U.S. DPF by the CJEU could create considerable uncertainty and lead to us being unable to offer a number of our most significant products and services, including Facebook and Instagram, in Europe"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s021",
+  "label": "present",
+  "quote": "we have been managing investigations and lawsuits in India and other jurisdictions regarding the 2021 updates to WhatsApp's terms of service and privacy policy"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s022",
+  "label": "present",
+  "quote": "If we are unable to transfer data between and among countries and regions in which we operate, or if we are restricted from sharing data among our products and services"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s023",
+  "label": "present",
+  "quote": "We have been subject to other significant legislative and regulatory developments, which together with proposed or new legislation and regulations could significantly affect our business in the future."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s024",
+  "label": "present",
+  "quote": "we have implemented a number of product changes and controls as a result of requirements under the European General Data Protection Regulation (GDPR), and may implement additional changes in the future"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s025",
+  "label": "present",
+  "quote": "The GDPR also requires submission of personal data breach notifications to our lead European Union privacy regulator, the IDPC"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s026",
+  "label": "present",
+  "quote": "The interpretation of the GDPR is still evolving, including through decisions of the CJEU"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s027",
+  "label": "present",
+  "quote": "We also face potential enforcement from European privacy regulators other than the IDPC"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s028",
+  "label": "present",
+  "quote": "the interpretation and enforcement of the GDPR, as well as the imposition and amount of penalties for non-compliance, are subject to significant uncertainty"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s029",
+  "label": "present",
+  "quote": "Brazil, the United Kingdom, and other countries have enacted similar data protection regulations imposing data privacy-related requirements on products and services"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s030",
+  "label": "present",
+  "quote": "The California Consumer Privacy Act, as amended by the California Privacy Rights Act, also establishes certain transparency rules and creates certain data privacy rights for users"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s031",
+  "label": "present",
+  "quote": "Other states have proposed or enacted similar comprehensive privacy laws that afford users with similar data privacy rights and controls."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s032",
+  "label": "present",
+  "quote": "These laws and regulations are evolving and subject to interpretation, and resulting limitations on our advertising services, or reductions of advertising by marketers"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s033",
+  "label": "present",
+  "quote": "and/or on the privacy rights and controls for users under 18 years old and their parents or guardians"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s034",
+  "label": "present",
+  "quote": "may restrict our ability to offer certain products and services provided to all or certain cohorts of users in those states, adversely affecting our advertising business"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s035",
+  "label": "present",
+  "quote": "In Europe, evolving interpretation of the ePrivacy Directive's requirements regarding the use of cookies and similar technologies"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s036",
+  "label": "present",
+  "quote": "the ePrivacy Directive and national implementation laws impose additional limitations on the use of data across messaging products and include significant penalties for non-compliance"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s037",
+  "label": "present",
+  "quote": "Changes to our products or business practices as a result of these or similar developments have adversely affected, and may in the future adversely affect, our advertising business."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s038",
+  "label": "present",
+  "quote": "in response to regulatory developments in Europe, we announced plans to change the legal basis for behavioral advertising on Facebook and Instagram in the European Union, European Economic Area, and Switzerland"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s039",
+  "label": "present",
+  "quote": "engaging with regulators on our consent model, including regarding compliance with requirements under the GDPR, DMA, and EU consumer laws"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s040",
+  "label": "present",
+  "quote": "in March 2024, the European Commission opened formal proceedings regarding the compliance of our"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s041",
+  "label": "present",
+  "quote": "the European Data Protection Board has published an opinion on the operation of such models under GDPR and European consumer protection organizations have raised concerns"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s042",
+  "label": "present",
+  "quote": "in November 2024, we began offering users in the European Union, European Economic Area, and Switzerland who elect to continue using our services free-of-charge, supported by ads, an option to see less personalized ads"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s043",
+  "label": "present",
+  "quote": "These or any similar developments in the future may negatively impact our user growth and engagement, revenue, and financial results."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s044",
+  "label": "present",
+  "quote": "there are a number of legislative proposals or recently enacted laws in the European Union, the United States, at both the federal and state level, as well as other jurisdictions"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s045",
+  "label": "present",
+  "quote": "the DMA in the European Union imposes restrictions and requirements on companies like ours, including in areas such as the combination of data across services, mergers and acquisitions, and product design"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s046",
+  "label": "present",
+  "quote": "The DMA also includes significant penalties for non-compliance, and its key requirements are enforceable against designated gatekeeper companies as of March 2024."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s047",
+  "label": "present",
+  "quote": "The DMA has caused, and may in the future cause, us to incur significant compliance costs and make changes to our products or business practices."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s048",
+  "label": "present",
+  "quote": "requirements under the DMA will likely be subject to further interpretation and regulatory engagement"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s049",
+  "label": "present",
+  "quote": "Pending or future proposals to modify competition laws in a number of jurisdictions could have similar effects."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s050",
+  "label": "present",
+  "quote": "the DSA, which started to apply to our business as of August 2023, imposes certain restrictions and requirements for our products and services, subjects us to increased compliance costs"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s051",
+  "label": "present",
+  "quote": "The interpretation and enforcement of the DMA, DSA, and OSA, as well as the imposition and amount of penalties for non-compliance, are subject to significant uncertainty."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s052",
+  "label": "present",
+  "quote": "some countries, such as the UK, India, and Turkey, are considering or have passed legislation implementing data protection requirements"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s053",
+  "label": "present",
+  "quote": "new legislation or regulatory decisions that restrict our ability to collect and use information about minors"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s054",
+  "label": "present",
+  "quote": "have passed laws restricting our ability to offer services to minors without parental consent or otherwise limiting the services that we can provide to minors"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s055",
+  "label": "present",
+  "quote": "it is possible that the decisions to enjoin these statutes may be overturned, the injunctive orders may expire, and certain statutes are coming into effect that may not be subject to injunctions"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s056",
+  "label": "present",
+  "quote": "Should enforcement of one or more of these statutes not be enjoined, we may not be able to comply with certain of these statutes by their respective effective dates."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s057",
+  "label": "present",
+  "quote": "recent legislation in Australia imposes a social media ban for users under 16 years old, requiring certain social media companies to take reasonable steps to ensure under 16 year olds do not hold user accounts"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s058",
+  "label": "present",
+  "quote": "new requirements relating to allegedly fraudulent or illegal activities by third parties on our platform, which could continue to cause us to incur significant compliance costs or make changes to our products or business practices"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s059",
+  "label": "present",
+  "quote": "the Province of British Columbia has considered, and may in the future consider, a bill that would permit the government to recover public health-related costs"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s060",
+  "label": "present",
+  "quote": "We are also subject to disclosure, reporting, and diligence requirements regarding our social and environmental risks and initiatives."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s061",
+  "label": "present",
+  "quote": "There has been increased focus on these initiatives by many regulators, investors, and other stakeholders and any actual or perceived failure by us to comply"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i034#s062",
+  "label": "present",
+  "quote": "These laws and regulations, as well as any associated claims, inquiries, or investigations or any government actions, have led to, and may in the future lead to, unfavorable outcomes"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s000",
+  "label": "present",
+  "quote": "Compliance with our FTC consent order, the GDPR, U.S. state privacy laws, youth social media laws, the ePrivacy Directive, the DMA, the DSA, the OSA, and other regulatory and legislative privacy requirements require significant operational resources"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s001",
+  "label": "present",
+  "quote": "We are engaged in ongoing privacy compliance and oversight efforts, including in connection with our modified consent order with the FTC, requirements of the GDPR and UK GDPR"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s002",
+  "label": "present",
+  "quote": "we are maintaining a comprehensive privacy program in connection with the FTC consent order that includes substantial management and board of directors oversight"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s003",
+  "label": "present",
+  "quote": "These compliance and oversight efforts are increasing demand on our systems and resources, and require significant new and ongoing investments"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s004",
+  "label": "present",
+  "quote": "We continually reallocate resources internally to assist with these efforts, and this has had, and will continue to have, an adverse impact on our other business initiatives."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s005",
+  "label": "present",
+  "quote": "these efforts require substantial modifications to our business practices and make some practices such as product and ads development more difficult, time-consuming, and costly"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s006",
+  "label": "present",
+  "quote": "we believe our ability to develop and launch new features, products, and services in a timely manner has been and will continue to be adversely affected"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s007",
+  "label": "present",
+  "quote": "our privacy compliance and oversight efforts have required, and we expect will continue to require, significant time and attention from our management and board of directors"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s008",
+  "label": "present",
+  "quote": "from time to time we notify relevant authorities of instances where we are not in full compliance with these requirements or otherwise discover privacy issues"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s009",
+  "label": "present",
+  "quote": "regulatory and legislative privacy requirements are constantly evolving and can be subject to significant change and uncertain interpretation"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s010",
+  "label": "present",
+  "quote": "we are subject to restrictions and requirements under the DMA, including in areas such as the combination of data across services and product design"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s011",
+  "label": "present",
+  "quote": "The FTC initiated an administrative proceeding against us alleging, among other things, deficient compliance with the FTC consent order"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s012",
+  "label": "present",
+  "quote": "We are challenging the FTC's administrative proceeding."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s013",
+  "label": "present",
+  "quote": "If the challenge is unsuccessful and the FTC is able to impose the proposed order in its current form, it would limit our ability to provide certain features and services"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s014",
+  "label": "present",
+  "quote": "If we are unable to successfully implement and comply with the mandates of the FTC consent order (including any future modifications to the order)"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i036#s015",
+  "label": "present",
+  "quote": "Any of these events could have a material adverse effect on our business, reputation, and financial results."
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i046#s000",
+  "label": "present",
+  "quote": "could make our Class A common stock less attractive to some investors or otherwise harm our stock price"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i046#s001",
+  "label": "present",
+  "quote": "we are not required to have a majority of our board of directors be independent, nor are we required to have a compensation committee or an independent nominating function"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i046#s002",
+  "label": "present",
+  "quote": "In the future we could elect not to have a majority of our board of directors be independent or not to have a compensation committee"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i046#s003",
+  "label": "present",
+  "quote": "should the interests of our controlling stockholder differ from those of other stockholders, the other stockholders may not have the same protections"
+ },
+ {
+  "sentence_id": "0001326801-25-000017:I.1A:i046#s004",
+  "label": "present",
+  "quote": "Our status as a controlled company could make our Class A common stock less attractive to some investors or otherwise harm our stock price."
+ }
+]

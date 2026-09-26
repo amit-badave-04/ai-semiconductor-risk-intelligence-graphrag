@@ -1,0 +1,737 @@
+[
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s000",
+  "label": "present",
+  "quote": "Economic and market uncertainty may adversely impact our business and operating results."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s001",
+  "label": "present",
+  "quote": "Uncertain global or regional economic conditions have and may in the future adversely impact our business."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s002",
+  "label": "present",
+  "quote": "Uncertainty in the economic environment or other unfavorable changes in economic conditions, such as inflation,"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s003",
+  "label": "present",
+  "quote": "During challenging economic times, our current or potential future customers may experience cash flow problems"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s004",
+  "label": "present",
+  "quote": "Additionally, if our customers are not successful in generating sufficient revenue or are unable to secure fin"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s005",
+  "label": "reworded",
+  "quote": "The risk related to our customers potentially defaulting on or delaying payments to us is increased"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s006",
+  "label": "present",
+  "quote": "because we expect that a small number of customers will continue to account for a substantial part of our revenue."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s007",
+  "label": "present",
+  "quote": "Moreover, our key suppliers may reduce their output or become insolvent, thereby adversely impacting our abili"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s008",
+  "label": "present",
+  "quote": "Adverse changes in economic conditions could increase costs of memory, equipment, materials or substrates and"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s009",
+  "label": "added",
+  "search_terms": [
+   "memory shortage",
+   "industry-wide",
+   "outpaced supply",
+   "demand for such components"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s010",
+  "label": "added",
+  "search_terms": [
+   "price of memory",
+   "increased as a result",
+   "shortage",
+   "memory"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s011",
+  "label": "present",
+  "quote": "we could experience a supply shortage or an increase in production costs, which could negatively impact our gross margin and materially adversely affect our business."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s012",
+  "label": "present",
+  "quote": "Our ability to forecast our operating results, make business decisions and execute our business strategy could"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s013",
+  "label": "present",
+  "quote": "In addition, uncertain economic conditions could lead to higher borrowing costs and reduced availability of ca"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s014",
+  "label": "present",
+  "quote": "An economic downturn or increased uncertainty could also lead to failures of counterparties including financia"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i005#s015",
+  "label": "present",
+  "quote": "If a banking institution in which we hold funds fails or is subject to significant adverse conditions in the f"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i007#s000",
+  "label": "present",
+  "quote": "If we cannot adequately protect our technology or other intellectual property in the United States and abroad,"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i007#s001",
+  "label": "present",
+  "quote": "We rely on a combination of protections provided by contracts, including confidentiality and nondisclosure agr"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i007#s002",
+  "label": "present",
+  "quote": "However, we cannot assure you that we will be able to adequately protect our technology or other intellectual"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i007#s003",
+  "label": "present",
+  "quote": "Any patent licensed by us or issued to us could be challenged, invalidated, expire, or circumvented or rights"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i007#s004",
+  "label": "present",
+  "quote": "Furthermore, patent applications that we file may not result in issuance of a patent or, if a patent is issued"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i007#s005",
+  "label": "present",
+  "quote": "Despite our efforts to protect our intellectual property rights, others may independently develop similar prod"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i007#s006",
+  "label": "present",
+  "quote": "In addition, it is difficult to monitor compliance with, and enforce, our intellectual property on a worldwide"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i007#s007",
+  "label": "present",
+  "quote": "In jurisdictions where foreign laws provide less intellectual property protection than afforded in the U.S. an"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i012#s000",
+  "label": "present",
+  "quote": "Our revenue from our semi-custom SoC products is dependent upon our semi-custom SoC products being incorporate"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i012#s001",
+  "label": "present",
+  "quote": "The revenue that we receive from our semi-custom SoC products is in the form of non-recurring engineering fees"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i012#s002",
+  "label": "present",
+  "quote": "As a result, our ability to generate revenue from our semi-custom products depends on our ability to secure cu"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i012#s003",
+  "label": "present",
+  "quote": "Any revenue from sales of our semi-custom SoC products is directly related to sales of the third-party’s produ"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i012#s004",
+  "label": "present",
+  "quote": "Moreover, we have no control over the marketing efforts of these third parties, and we cannot make any assuran"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i012#s005",
+  "label": "present",
+  "quote": "Consequently, the semi-custom SoC product revenue expected by us may not be fully realized and our operating r"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s000",
+  "label": "present",
+  "quote": "Government actions and regulations such as export regulations,"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s001",
+  "label": "added",
+  "search_terms": [
+   "Export Administration Regulations",
+   "administered by",
+   "Belarus",
+   "restrict the export"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s002",
+  "label": "added",
+  "search_terms": [
+   "limit our ability to sell",
+   "in these markets",
+   "certain technologies",
+   "certain customers"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s003",
+  "label": "added",
+  "search_terms": [
+   "Evolving U.S.",
+   "national security",
+   "foreign policy priorities",
+   "semiconductor exports"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s004",
+  "label": "present",
+  "quote": "to a party headquartered in, or with an ultimate parent headquartered in, any of Country Groups D1, D4 or D5, including China."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s005",
+  "label": "present",
+  "quote": "or to customers outside of the United States whose ultimate parent is headquartered in a D5 country (including China), without a license."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s006",
+  "label": "present",
+  "quote": "BIS may issue new licensing requirements and regulatory controls in the future."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s007",
+  "label": "reworded",
+  "quote": "Even new products that fall below the licensing thresholds may not be successful because we have no assurances BIS will agree that the alternative products are not subject to the new licensing requirements"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s008",
+  "label": "added",
+  "search_terms": [
+   "China-based competitors",
+   "Chinese customers",
+   "reduce the need",
+   "develop and sell their own"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s009",
+  "label": "added",
+  "search_terms": [
+   "April 2025",
+   "license requirement",
+   "ultimate parent located",
+   "new license"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s010",
+  "label": "added",
+  "search_terms": [
+   "MI308",
+   "Instinct",
+   "restriction impacts",
+   "AMD Instinct MI308"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s011",
+  "label": "added",
+  "search_terms": [
+   "$800 million",
+   "inventory and related charges",
+   "second quarter of 2025",
+   "800 million"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s012",
+  "label": "added",
+  "search_terms": [
+   "MI308",
+   "China-based customers",
+   "were granted some licenses",
+   "applied for"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s013",
+  "label": "added",
+  "search_terms": [
+   "$360 million",
+   "reversed",
+   "fourth quarter of fiscal year 2025",
+   "began shipping"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s014",
+  "label": "added",
+  "search_terms": [
+   "MI308",
+   "import control rules",
+   "customer demand",
+   "obtain licenses"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s015",
+  "label": "added",
+  "search_terms": [
+   "August 2025",
+   "15% of the revenue",
+   "licensed MI308",
+   "expectation"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s016",
+  "label": "added",
+  "search_terms": [
+   "not published a regulation",
+   "establishing such requirement",
+   "to date",
+   "U.S. government has not"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s017",
+  "label": "added",
+  "search_terms": [
+   "percentage of the revenue",
+   "subject us to litigation",
+   "harm our competitive position",
+   "not subject to such arrangements"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s018",
+  "label": "added",
+  "search_terms": [
+   "Additional export restrictions",
+   "serve China",
+   "other markets",
+   "imposed in the future"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s019",
+  "label": "added",
+  "search_terms": [
+   "unable to sell our inventory",
+   "inventory and related charges",
+   "no assurance that the U.S. government",
+   "grant licenses"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s020",
+  "label": "added",
+  "search_terms": [
+   "temporary",
+   "onerous conditions",
+   "Even if we are granted licenses",
+   "impose onerous"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s021",
+  "label": "added",
+  "search_terms": [
+   "not granted licenses",
+   "competitive product for the China market",
+   "China market",
+   "not subject to licensing"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s022",
+  "label": "added",
+  "search_terms": [
+   "domestic Chinese competitors",
+   "Limits on sales",
+   "China market",
+   "export controls could impact"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s023",
+  "label": "added",
+  "search_terms": [
+   "lose market position",
+   "operating results, and financial condition",
+   "adversely impacted",
+   "As such"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s024",
+  "label": "added",
+  "search_terms": [
+   "AI Diffusion Rule",
+   "January 2025",
+   "final rule",
+   "in-country transfer"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s025",
+  "label": "added",
+  "search_terms": [
+   "rescind",
+   "rescission",
+   "May 2025",
+   "replacement rules"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s026",
+  "label": "added",
+  "search_terms": [
+   "replacement rules",
+   "engage in certain business transactions",
+   "require new export licenses",
+   "product designs"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s027",
+  "label": "added",
+  "search_terms": [
+   "announced plans",
+   "introduce uncertainty",
+   "fall within the scope",
+   "timely matter"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s028",
+  "label": "added",
+  "search_terms": [
+   "planned or existing rules",
+   "key customer and supplier relationships",
+   "competitive positioning in international markets",
+   "increased costs"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s029",
+  "label": "present",
+  "quote": "establishment or increase of any tariffs, trade protection measures or restrictions, or retaliatory actions from foreign governments could result in lost sales"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s030",
+  "label": "added",
+  "search_terms": [
+   "higher tariffs",
+   "trade policies",
+   "instituted or proposed",
+   "imports into the U.S."
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s031",
+  "label": "reworded",
+  "quote": "There is also a possibility of future tariffs, trade protection measures, import or export regulations or other restrictions imposed on our current and future products"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s032",
+  "label": "added",
+  "search_terms": [
+   "costs of doing business",
+   "sales may be negatively affected",
+   "Our customers",
+   "customers costs"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s033",
+  "label": "added",
+  "search_terms": [
+   "inventory impairment",
+   "customer demand for our products may decline",
+   "As such",
+   "ability to generate revenue"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s034",
+  "label": "added",
+  "search_terms": [
+   "tariffs on hardware",
+   "data centers",
+   "AI infrastructure investments",
+   "delay or cancel"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s035",
+  "label": "added",
+  "search_terms": [
+   "produced domestically",
+   "reduce their dependence",
+   "products from another country",
+   "promote products"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s036",
+  "label": "reworded",
+  "quote": "The United States and its allies continue to focus on export restrictions targeting semiconductors associated with AI, including GPUs and associated products and services."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s037",
+  "label": "present",
+  "quote": "The United States has imposed unilateral controls restricting GPUs and associated products, and in the future is likely to further adopt other unilateral or multilateral controls."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s038",
+  "label": "present",
+  "quote": "which may prohibit us from exporting or providing access to our products to any or all customers in one or more markets, including but not limited to China, and could negatively impact our manufacturing, testing and warehousing locations"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s039",
+  "label": "present",
+  "quote": "export controls targeting semiconductors associated with AI including GPUs and associated products and services are further tightened, our ability to export our technology, products or services could be further restricted."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s040",
+  "label": "present",
+  "quote": "We may be at a competitive disadvantage if our competitors are not subject to the same or similar restrictions."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s041",
+  "label": "present",
+  "quote": "such export controls have, and may in the future, subject downstream recipients of our products to additional restrictions on the use, resale, repair or transfer of our products and may have a material adverse effect on us."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s042",
+  "label": "present",
+  "quote": "New export control restrictions may adversely impact the ability of our research and development teams located"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s043",
+  "label": "present",
+  "quote": "In addition, deemed export restrictions could further affect our ability to provide services or develop produc"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s044",
+  "label": "added",
+  "search_terms": [
+   "Continued changes to export control",
+   "interpretation and enforcement",
+   "greater compliance costs",
+   "compliance burdens"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s045",
+  "label": "added",
+  "search_terms": [
+   "pursue alternatives",
+   "alternatives to U.S. semiconductors",
+   "product designs",
+   "potential impact on their product roadmaps"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s046",
+  "label": "present",
+  "quote": "From time to time, governments provide incentives or make other investments that could benefit and give a comp"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s047",
+  "label": "present",
+  "quote": "may not be available to us on acceptable terms or at all."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s048",
+  "label": "present",
+  "quote": "If our competitors can benefit from such government incentives and we cannot, it could strengthen our competit"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s049",
+  "label": "present",
+  "quote": "We have equity interests in two joint ventures (collectively, the THATIC JV) with Higon Information Technology"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s051",
+  "label": "present",
+  "quote": "added certain Chinese entities to the Entity List, including THATIC and the THATIC JV."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s052",
+  "label": "present",
+  "quote": "Since that time, the United States administration has called for changes to domestic and foreign policy, inclu"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s053",
+  "label": "present",
+  "quote": "United States-China trade relations remain uncertain as the United States continues to add more Chinese companies to the Entity List and more regulations targeted to advanced computing"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s054",
+  "label": "added",
+  "search_terms": [
+   "suspend purchasing",
+   "supply chain may be negatively impacted",
+   "adding companies",
+   "contractual obligations to them"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s055",
+  "label": "added",
+  "search_terms": [
+   "September 2025",
+   "50% owned",
+   "military end users",
+   "sanctioned parties"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s056",
+  "label": "added",
+  "search_terms": [
+   "October 2025",
+   "suspend enforcement",
+   "planned to suspend",
+   "one year"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s057",
+  "label": "added",
+  "search_terms": [
+   "reimposed",
+   "reimposed at any time",
+   "restrictions can be",
+   "However, the restrictions"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s058",
+  "label": "added",
+  "search_terms": [
+   "restrictive governmental actions",
+   "trade tensions",
+   "trading partners",
+   "prevent us from doing business"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s059",
+  "label": "added",
+  "search_terms": [
+   "found to have violated",
+   "without our knowledge",
+   "non-U.S. laws",
+   "violation occurred"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s060",
+  "label": "present",
+  "quote": "We may, from time to time, receive technical data from third parties that is subject to the International Traf"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s061",
+  "label": "present",
+  "quote": "Export Administration Regulation (EAR) governs the export and re-export of certain AMD products, including FPG"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s062",
+  "label": "present",
+  "quote": "We are required to maintain an internal compliance program and security infrastructure to meet EAR and ITAR re"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s063",
+  "label": "present",
+  "quote": "An inability to obtain the required export licenses, or to predict when or pursuant to which conditions they w"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s064",
+  "label": "present",
+  "quote": "When we file license applications or Notification Advanced Computing (NAC) exception notices we have no assura"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s065",
+  "label": "present",
+  "quote": "Even if BIS grants a requested license, the license may come with burdensome conditions that we cannot or deci"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i027#s066",
+  "label": "present",
+  "quote": "In addition, security or compliance program failures that could result in penalties or a loss of export privil"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i028#s000",
+  "label": "present",
+  "quote": "If we cannot realize our deferred tax assets, our results of operations could be adversely affected."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i028#s001",
+  "label": "present",
+  "quote": "that can be used to offset taxable income and reduce income taxes payable in future periods."
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i028#s002",
+  "label": "present",
+  "quote": "Each quarter, we consider both positive and negative evidence to determine whether all or a portion of the def"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i028#s003",
+  "label": "present",
+  "quote": "If we determine that some or all of our deferred tax assets are not realizable, it could result in a material"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i033#s000",
+  "label": "present",
+  "quote": "Issues related to the responsible use of AI may result in reputational, competitive and financial harm and lia"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i033#s001",
+  "label": "present",
+  "quote": "We offer products that include capabilities to support AI deployment and we expect this part of our business t"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i033#s002",
+  "label": "present",
+  "quote": "As with many new emerging technologies, AI presents risks and challenges and increasing legal, social and ethi"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i033#s003",
+  "label": "present",
+  "quote": "Third-party misuse of AI applications, models, or solutions, or ineffective or inadequate AI development or de"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i033#s004",
+  "label": "present",
+  "quote": "Moreover, we may be subject to competitive harm, regulatory action and legal liability as a result of new and"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i033#s005",
+  "label": "present",
+  "quote": "Such regulations and changes thereto could cause us to incur greater compliance costs, could impact our abilit"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i033#s006",
+  "label": "present",
+  "quote": "As there continues to be an increasing focus on risks related to AI technologies, there may be an increasing f"
+ },
+ {
+  "sentence_id": "0000002488-26-000018:I.1A:i033#s007",
+  "label": "present",
+  "quote": "If the AI-related products that we offer have unintended consequences, infringe intellectual property rights o"
+ }
+]

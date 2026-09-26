@@ -1,0 +1,163 @@
+{
+ "pair_id": "NVDA-0001045810-25-000023-0001045810-26-000021",
+ "side": "newer",
+ "split": "development",
+ "annotators": [
+  "ann1",
+  "ann2",
+  "ann3"
+ ],
+ "consensus": {
+  "0001045810-26-000021:I.1A:i000": "carried",
+  "0001045810-26-000021:I.1A:i001": "carried",
+  "0001045810-26-000021:I.1A:i002": "carried",
+  "0001045810-26-000021:I.1A:i003": "carried",
+  "0001045810-26-000021:I.1A:i004": "carried",
+  "0001045810-26-000021:I.1A:i005": "carried",
+  "0001045810-26-000021:I.1A:i006": "carried",
+  "0001045810-26-000021:I.1A:i007": "carried",
+  "0001045810-26-000021:I.1A:i008": "carried",
+  "0001045810-26-000021:I.1A:i009": "carried",
+  "0001045810-26-000021:I.1A:i010": "carried",
+  "0001045810-26-000021:I.1A:i011": "carried",
+  "0001045810-26-000021:I.1A:i012": "new",
+  "0001045810-26-000021:I.1A:i013": "carried",
+  "0001045810-26-000021:I.1A:i014": "carried",
+  "0001045810-26-000021:I.1A:i015": "carried",
+  "0001045810-26-000021:I.1A:i016": "carried",
+  "0001045810-26-000021:I.1A:i017": "carried",
+  "0001045810-26-000021:I.1A:i018": "carried",
+  "0001045810-26-000021:I.1A:i019": "carried",
+  "0001045810-26-000021:I.1A:i020": "carried",
+  "0001045810-26-000021:I.1A:i021": "carried",
+  "0001045810-26-000021:I.1A:i022": "carried",
+  "0001045810-26-000021:I.1A:i023": "carried"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001045810-26-000021:I.1A:i000": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i001": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i002": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i003": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i004": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i005": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i006": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i007": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i008": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i009": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i010": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i011": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i012": {
+   "ann1": "new",
+   "ann2": "new",
+   "ann3": "new"
+  },
+  "0001045810-26-000021:I.1A:i013": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i014": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i015": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i016": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i017": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i018": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i019": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i020": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i021": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i022": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  },
+  "0001045810-26-000021:I.1A:i023": {
+   "ann1": "carried",
+   "ann2": "carried",
+   "ann3": "carried"
+  }
+ }
+}

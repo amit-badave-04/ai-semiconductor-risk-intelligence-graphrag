@@ -1,0 +1,512 @@
+[
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s000",
+"label": "present",
+"quote": "could be adversely affected by the availability and quality of materials, supplies, electrical power, water, and capital equipment, or dependency on third-party service providers"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s001",
+"label": "present",
+"quote": "Our supply chain and operations are dependent on the availability of materials that meet exacting standards and the use of third parties to provide us with components and services."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s002",
+"label": "present",
+"quote": "We generally have multiple sources of supply for our materials and services."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s003",
+"label": "present",
+"quote": "only a limited number of suppliers are capable of delivering certain materials, components, and services that meet our standards"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s004",
+"label": "present",
+"quote": "The availability of materials or components such as chemicals, silicon wafers, gases, photoresist, controllers, substrates, lead frames, printed circuit boards, targets, and reticle glass blanks is impacted by various factors."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s005",
+"label": "present",
+"quote": "These factors could include a shortage of raw materials or a disruption in the processing or purification of those raw materials into finished goods."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s006",
+"label": "present",
+"quote": "Shortages or increases in lead times have occurred in the past, are currently occurring with respect to some materials and components, and may occur from time to time in the future because of the nature of the industry."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s007",
+"label": "present",
+"quote": "could limit our bit shipments, which could have a material adverse effect on our business, results of operations, or financial condition"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s008",
+"label": "present",
+"quote": "Our manufacturing processes are also dependent on our relationships with third-party manufacturers of controllers, analog integrated circuits, and other components used in some of our products"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s009",
+"label": "present",
+"quote": "Although we have certain long-term contracts with some of our suppliers, many of these contracts do not provide for long-term capacity or pricing commitments."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s010",
+"label": "present",
+"quote": "our suppliers may allocate capacity to their other customers and capacity and/or materials may not be available when needed or at reasonable prices."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s011",
+"label": "present",
+"quote": "Inflationary pressures may continue to increase costs for materials, supplies, and services."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s012",
+"label": "present",
+"quote": "large swings in demand may exceed our contracted supply and/or our suppliers’ capacity to meet those demand changes"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s013",
+"label": "added",
+"search_terms": [
+"periods of shortage",
+"increased costs",
+"contractual commitments",
+"decrease in revenue"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s014",
+"label": "present",
+"quote": "if any of our suppliers were to cease operations or become insolvent, this could impact their ability to provide us with necessary supplies"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s015",
+"label": "present",
+"quote": "Certain materials are primarily available in a limited number of countries, including rare earth elements, minerals, and metals."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s016",
+"label": "present",
+"quote": "Trade disputes, geopolitical tensions, economic circumstances, political conditions, or public health issues may limit our ability to obtain such materials."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s017",
+"label": "present",
+"quote": "Although these rare earth and other materials are generally available from multiple suppliers, China is the predominant producer of these materials."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s018",
+"label": "reworded",
+"quote": "If China were to restrict or stop exporting these materials, our suppliers’ ability to obtain such supply may be constrained"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s019",
+"label": "present",
+"quote": "Constrained supply of rare earth elements, minerals, and metals may restrict our ability to manufacture certain of our products"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s020",
+"label": "present",
+"quote": "We and/or our suppliers and service providers could be affected by regional conflicts, civil unrest, labor disruptions, sanctions, tariffs, embargoes, or other trade restrictions"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s021",
+"label": "present",
+"quote": "Environmental regulations could limit our ability to procure or use certain chemicals or materials in our operations or products."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s022",
+"label": "present",
+"quote": "In addition, disruptions in transportation lines could delay our receipt of materials."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s023",
+"label": "present",
+"quote": "Our ability to procure components to repair equipment essential for our manufacturing processes could also be negatively impacted by various restrictions or disruptions in supply chains, among other items."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s024",
+"label": "present",
+"quote": "The disruption of our supply of materials, components, or services, or the extension of our lead times could have a material adverse"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s026",
+"label": "present",
+"quote": "Our operations are dependent on a reliable and uninterrupted supply of electrical power and water to our manufacturing facilities."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s027",
+"label": "present",
+"quote": "Any power shortages, capacity constraints, prolonged outages, or significant or unexpected increases in the cost of power could have a material adverse effect"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s028",
+"label": "present",
+"quote": "Our operations are dependent on our ability to procure advanced semiconductor manufacturing equipment that enables the transition to lower cost manufacturing processes."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s029",
+"label": "present",
+"quote": "For certain key types of equipment, including photolithography tools, we are sometimes dependent on a single supplier."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s030",
+"label": "present",
+"quote": "From time to time, we have experienced difficulties in obtaining some equipment on a timely basis due to suppliers’ limited capacity."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s031",
+"label": "present",
+"quote": "Our inability to obtain equipment on a timely basis could adversely affect our ability to transition to next generation manufacturing processes and reduce our costs."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s032",
+"label": "present",
+"quote": "Delays in obtaining equipment could also impede our ability to ramp production and could increase our overall costs of a ramp."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s033",
+"label": "present",
+"quote": "Our inability to obtain advanced semiconductor manufacturing equipment in a timely manner could have a material adverse"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s034",
+"label": "present",
+"quote": "Our construction projects to expand production and R&D capacity are highly dependent on available sources of labor, materials, equipment, and services."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s035",
+"label": "present",
+"quote": "Increasing demand, supply constraints, inflation, and other market conditions could result in increasing shortages and higher costs for these items."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s036",
+"label": "present",
+"quote": "Difficulties in obtaining these resources could result in delays in completion of our construction projects and cost increases, which could have a material adverse effect"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s037",
+"label": "present",
+"quote": "Our inability to source materials, supplies, capital equipment, or third-party services could affect our overall production output and our ability to fulfill customer demand."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s038",
+"label": "present",
+"quote": "Significant or prolonged shortages of our products could halt customer manufacturing and damage our relationships with these customers."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s039",
+"label": "present",
+"quote": "Any damage to our customer relationships as a result of a shortage of our products could have a material adverse effect on our business, results of operations, or financial condition."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i007#s040",
+"label": "present",
+"quote": "they may reduce, cancel, or alter the timing of their purchases with us, which could have a material adverse effect on our business, results of operations, or financial condition."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s000",
+"label": "reworded",
+"quote": "A significant portion of our revenue is concentrated with a select number of customers."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s001",
+"label": "reworded",
+"quote": "Approximately one-half of our total revenue comes from our top ten customers."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s002",
+"label": "added",
+"search_terms": [
+"data center end market",
+"concentrated in the data center",
+"end market",
+"data center products"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s003",
+"label": "reworded",
+"quote": "A disruption in our relationship with any of these customers could adversely affect our business."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s004",
+"label": "present",
+"quote": "We could experience fluctuations in our customer base or the mix of revenue by customer as markets and strategies evolve."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s005",
+"label": "present",
+"quote": "Our customers’ demand for our products may fluctuate due to factors beyond our control."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s006",
+"label": "reworded",
+"quote": "Our inability to meet our customers’ requirements or to qualify our products with them could adversely impact our revenue."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s007",
+"label": "present",
+"quote": "A meaningful change in the inventory strategy of our customers could impact our industry bit demand growth outlook."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s008",
+"label": "added",
+"search_terms": [
+"consolidation of significant end markets",
+"limit the opportunity for sale",
+"end markets",
+"opportunity for sale"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s009",
+"label": "present",
+"quote": "The loss of, or restrictions on our ability to sell to, one or more of our major customers, or any significant reduction in orders from, or a shift in product mix by, customers could have a material adverse effect on our business, results of operations, or financial condition."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i010#s011",
+"label": "present",
+"quote": "Financial Statements and Supplementary Data – Notes to Consolidated Financial Statements – Contingencies."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i016#s000",
+"label": "present",
+"quote": "Compliance with responsible sourcing requirements and any related regulations could increase our operating costs or limit the supply and increase the cost of certain materials, supplies, and services"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i016#s001",
+"label": "present",
+"quote": "We and many of our customers have adopted responsible sourcing programs that require us to meet certain environmental, social and governance criteria, and to periodically report on our performance against these requirements"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i016#s002",
+"label": "present",
+"quote": "Many customer programs require us to remove a supplier within a prescribed period if such supplier ceases to comply with prescribed criteria"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i016#s003",
+"label": "present",
+"quote": "Some of our customers may elect to disqualify us as a supplier (resulting in a permanent or temporary loss of sales to such customer) or reduce purchases from us"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i016#s004",
+"label": "present",
+"quote": "Meeting responsible sourcing requirements may increase operating requirements and costs or limit the sourcing and availability of some of the materials, supplies, and services we use,"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i016#s005",
+"label": "present",
+"quote": "From time to time, we remove suppliers or require our suppliers to remove suppliers from their supply chains based on our responsible sourcing requirements or customer requirements"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i016#s006",
+"label": "present",
+"quote": "Any inability to replace removed suppliers in a timely or cost effective manner may affect our ability and/or the cost to obtain sufficient quantities of materials, supplies, and services"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i016#s007",
+"label": "present",
+"quote": "Our inability to replace suppliers we have removed in a timely or cost-effective manner or comply with customers’ responsible sourcing requirements or with any related regulations could have a material adverse effect"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s000",
+"label": "present",
+"quote": "Claims that our products or manufacturing processes infringe or otherwise violate the intellectual property rights of others, or failure to obtain or renew license agreements covering such intellectual property"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s001",
+"label": "present",
+"quote": "As is typical in the semiconductor and other high technology industries, from time to time others have asserted, and may in the future assert, that our products or manufacturing processes infringe upon, misappropriate, misuse, or otherwise violate their intellectual property rights."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s002",
+"label": "present",
+"quote": "We are unable to predict the outcome of these assertions made against us."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s003",
+"label": "present",
+"quote": "Any of these types of claims, regardless of the merits, could subject us to significant costs to defend or resolve such claims and may consume a substantial portion of management’s time and attention."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s004",
+"label": "present",
+"quote": "As a result of these claims, we may be required to:"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s005",
+"label": "present",
+"quote": "pay significant monetary damages, fines, royalties, or penalties"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s006",
+"label": "present",
+"quote": "enter into license or settlement agreements covering such intellectual property rights"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s007",
+"label": "present",
+"quote": "make material changes to or redesign our products and/or manufacturing processes"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s008",
+"label": "present",
+"quote": "cease manufacturing, having made, selling, offering for sale, importing, marketing, or using products and/or manufacturing processes in certain jurisdictions."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s009",
+"label": "present",
+"quote": "We may not be able to take any of the actions described above on commercially reasonable terms and any of the foregoing results could have a material adverse effect on our business,"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s011",
+"label": "present",
+"quote": "Financial Statements and Supplementary Data – Notes to Consolidated Financial Statements – Contingencies."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s013",
+"label": "present",
+"quote": "We have a number of intellectual property license agreements."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s014",
+"label": "present",
+"quote": "Some of these license agreements require us to make one-time or periodic payments."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s015",
+"label": "present",
+"quote": "We may need to obtain additional licenses or renew existing license agreements in the future."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s016",
+"label": "present",
+"quote": "We are unable to predict whether these license agreements can be obtained or renewed on terms acceptable to us."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i022#s017",
+"label": "present",
+"quote": "The failure to obtain or renew licenses as necessary could have a material adverse effect on our business, results of operations, or financial condition."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s000",
+"label": "present",
+"quote": "Tax-related matters could have a material adverse effect on our business, results of operations, or financial condition."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s001",
+"label": "present",
+"quote": "We are subject to income taxes in the United States and many foreign jurisdictions."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s002",
+"label": "present",
+"quote": "Our provision for income taxes and cash tax liabilities in the future could be adversely affected by numerous factors, including changes in the geographic mix of our earnings among jurisdictions"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s003",
+"label": "present",
+"quote": "Changes to income tax laws and regulations, or the interpretation of such laws, in any of the jurisdictions in which we operate could significantly increase our effective tax rate"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s004",
+"label": "added",
+"search_terms": [
+"One Big Beautiful Bill",
+"OBBBA",
+"corporate and international tax",
+"U.S. tax code"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s005",
+"label": "added",
+"search_terms": [
+"aggregate impact",
+"remains uncertain",
+"OBBBA",
+"impact of the"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s006",
+"label": "added",
+"search_terms": [
+"continue to monitor",
+"regulatory guidance",
+"future developments",
+"interpretations"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s007",
+"label": "present",
+"quote": "Further changes in the tax laws of foreign jurisdictions could arise as a result of the base erosion and profit shifting project"
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s008",
+"label": "added",
+"search_terms": [
+"November 27, 2024",
+"Singapore enacted",
+"enacted legislation",
+"apply to us starting in 2026"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s009",
+"label": "added",
+"search_terms": [
+"continue to monitor",
+"additional guidance",
+"legislative changes",
+"jurisdictions where we operate"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i024#s010",
+"label": "added",
+"search_terms": [
+"high-teens",
+"still evaluating",
+"expect our tax rate",
+"mid to high"
+]
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i032#s000",
+"label": "present",
+"quote": "There can be no assurance that we will continue to declare cash dividends in any particular amounts or at all."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i032#s001",
+"label": "present",
+"quote": "Our Board of Directors has adopted a dividend policy pursuant to which we currently pay a cash dividend on our common shares on a quarterly basis."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i032#s002",
+"label": "present",
+"quote": "The declaration and payment of any dividend is subject to the approval of our Board of Directors and our dividend may be discontinued or reduced at any time."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i032#s003",
+"label": "present",
+"quote": "There can be no assurance that we will declare cash dividends in the future in any particular amounts, or at all."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i032#s004",
+"label": "present",
+"quote": "Future dividends, if any, and their timing and amount, may be affected by, among other factors: our financial condition, results of operations, capital requirements, business conditions, debt service obligations, contractual restrictions, industry practice, legal requirements, regulatory constraints, and other factors that our Board of Directors may deem relevant."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i032#s005",
+"label": "present",
+"quote": "A reduction in or elimination of our dividend payments could have a negative effect on the trading price of our stock."
+},
+{
+"sentence_id": "0000723125-25-000028:I.1A:i032#s006",
+"label": "present",
+"quote": "the payment of dividends is a use of cash, which may reduce the availability of cash for other business purposes, including investments, acquisitions, or repayment of indebtedness."
+}
+]

@@ -28,6 +28,7 @@ from pathlib import Path
 import pandas as pd
 
 from semigraph.eval import gold
+from semigraph.graph.item_pairs import consecutive_pairs, risk_section_text
 from semigraph.parsing import risk_item_quality
 
 DEFAULT_ITEMS = Path("data/interim/risk_items")
@@ -46,36 +47,9 @@ def split_of(pair_id: str) -> str:
     return "development" if pair_id in DEV_PAIRS else "held_out"
 
 
-def consecutive_pairs(items: pd.DataFrame, quality: dict | None = None) -> list[dict]:
-    """Neighbouring annual filings per ticker in filing-date order (only filings that have risk items).
-
-    With ``quality`` (parsing.risk_item_quality.load_quality) every pair carries ``comparable`` and, when False, the
-    ``not_compared_reason``: a pair with a low-coverage or suspect side is never labelled or aligned."""
-    pairs = []
-    filings = items[["ticker", "accession_no", "filing_date"]].drop_duplicates()
-    for ticker, group in filings.groupby("ticker"):
-        ordered = group.sort_values("filing_date")
-        rows = list(ordered.itertuples(index=False))
-        for older, newer in zip(rows, rows[1:]):
-            ok, reason = (risk_item_quality.comparability(older.accession_no, newer.accession_no, quality)
-                          if quality is not None else (True, None))
-            pairs.append({"pair_id": f"{ticker}-{older.accession_no}-{newer.accession_no}", "ticker": ticker,
-                          "older_accession": older.accession_no, "newer_accession": newer.accession_no,
-                          "older_date": str(older.filing_date)[:10], "newer_date": str(newer.filing_date)[:10],
-                          "comparable": ok, "not_compared_reason": reason})
-    return sorted(pairs, key=lambda p: p["pair_id"])
-
-
-def _risk_section_text(items: pd.DataFrame, sections: pd.DataFrame, accession: str) -> str:
-    """The risk-section text of one filing. The section-text lake holds several sections per accession (Item 1, Item 1A,
-    Item 7, ...), so the section is the one the filing's own items say they were cut from, never simply "the first"."""
-    ids = items.loc[items["accession_no"] == accession, "section_id"].unique()
-    if len(ids) != 1:
-        raise KeyError(f"cannot tell which section holds the risk items of {accession}: item section ids {list(ids)}")
-    rows = sections[(sections["accession_no"] == accession) & (sections["section_id"] == ids[0])]
-    if rows.empty:
-        raise KeyError(f"no section text for {accession} (section {ids[0]})")
-    return str(rows.iloc[0]["text"])
+# pairing and the risk-section picker live in the package (the align-items pipeline uses the same rule);
+# the private alias keeps the name the script's own tests use
+_risk_section_text = risk_section_text
 
 
 def _items_of(items: pd.DataFrame, accession: str, *, with_offsets: bool = False) -> list[dict]:
@@ -94,8 +68,8 @@ def write_packets(pairs: list[dict], items: pd.DataFrame, sections: pd.DataFrame
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for pair in (p for p in pairs if p.get("comparable", True)):
-        older_text = _risk_section_text(items, sections, pair["older_accession"])
-        newer_text = _risk_section_text(items, sections, pair["newer_accession"])
+        older_text = risk_section_text(items, sections, pair["older_accession"])
+        newer_text = risk_section_text(items, sections, pair["newer_accession"])
         older_items, newer_items = _items_of(items, pair["older_accession"]), _items_of(items, pair["newer_accession"])
         meta = {"pair_id": pair["pair_id"], "ticker": pair["ticker"], "split": split_of(pair["pair_id"])}
         older = gold.build_packet({**meta, "side": "older"}, older_items, newer_text)
@@ -179,7 +153,7 @@ def write_sentence_packets(pairs: list[dict], items: pd.DataFrame, sections: pd.
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for pair in todo:
-        texts = {s: _risk_section_text(items, sections, pair[f"{s}_accession"]) for s in ("older", "newer")}
+        texts = {s: risk_section_text(items, sections, pair[f"{s}_accession"]) for s in ("older", "newer")}
         for side in sides:
             side_items = _items_of(items, pair[f"{side}_accession"], with_offsets=True)
             _check_offsets(side_items, texts[side])
@@ -235,7 +209,7 @@ def _reports(out_dir: Path, *, sentences: bool):
             yield json.loads(path.read_text(encoding="utf-8"))
 
 
-def _sentence_entry(rep: dict, adjudicated: dict[str, str]) -> dict:
+def _sentence_entry(rep: dict, adjudicated: dict[str, str], contested: frozenset[str] = frozenset()) -> dict:
     allowed = gold.SENTENCE_LABELS_OLDER if rep["side"] == "older" else gold.SENTENCE_LABELS_NEWER
     resolved = {k: v for k, v in adjudicated.items() if k in rep["needs_adjudication"]}
     bad = {k: v for k, v in resolved.items() if v not in allowed}
@@ -245,22 +219,26 @@ def _sentence_entry(rep: dict, adjudicated: dict[str, str]) -> dict:
     return {"split": rep["split"], "labels": labels, "spans": {sid: rep["spans"][sid] for sid in labels},
             "sampling": rep["sampling"], "n_sampled_sentences": len(rep["spans"]),
             "n_unresolved": len(rep["spans"]) - len(labels), "alpha": rep["alpha"],
-            "pairwise_agreement": rep["pairwise_agreement"]}
+            "pairwise_agreement": rep["pairwise_agreement"], "contested": sorted(c for c in contested if c in labels)}
 
 
-def freeze_gold(out_dir: Path, target: Path, adjudicated: dict[str, str] | None = None) -> str:
+def freeze_gold(out_dir: Path, target: Path, adjudicated: dict[str, str] | None = None,
+                contested: list[str] | None = None) -> str:
     """Merge every report's consensus (plus adjudicated labels) into one frozen gold file and return its sha256.
 
     Two layers under the one hash: ``pairs`` (item labels) and ``sentences`` (sentence labels with the section spans that
     scoring needs; ``{}`` when no sentence report exists). ``adjudicated`` maps item ids and sentence ids (separate
-    namespaces) to the adjudicator's label for the disputed ones."""
+    namespaces) to the adjudicator's label for the disputed ones. ``contested`` lists sentence ids a second check
+    disagreed on at a boundary case: they stay frozen with their label but are left out of the scoring records."""
     adjudicated = adjudicated or {}
     labels: dict[str, dict] = {}
     for rep in _reports(out_dir, sentences=False):
         merged = {**rep["consensus"], **{k: v for k, v in adjudicated.items() if k in rep["needs_adjudication"]}}
         labels[f"{rep['pair_id']}|{rep['side']}"] = {"split": rep["split"], "labels": merged,
                                                     "alpha": rep["alpha"], "pairwise_agreement": rep["pairwise_agreement"]}
-    sentences = {f"{rep['pair_id']}|{rep['side']}": _sentence_entry(rep, adjudicated) for rep in _reports(out_dir, sentences=True)}
+    disputed = frozenset(contested or ())
+    sentences = {f"{rep['pair_id']}|{rep['side']}": _sentence_entry(rep, adjudicated, disputed)
+                 for rep in _reports(out_dir, sentences=True)}
     target.parent.mkdir(parents=True, exist_ok=True)
     return gold.freeze({"kind": "risk_items_gold", "pairs": labels, "sentences": sentences}, target)
 
@@ -353,6 +331,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--side", choices=("older", "newer"), required=True)
     f = sub.add_parser("freeze")
     f.add_argument("--out-file", type=Path, default=Path("artifacts/gold/risk_items_gold.json"))
+    f.add_argument("--adjudications", type=Path, default=None,
+                   help='JSON {"items": {id: label}, "sentences": {id: label}, "contested_sentences": [id]}')
     sp = sub.add_parser("sentence-packets", help="sentence-level packets from the item-level reports (run `collect` first)")
     sp.add_argument("--pair-id", action="append")
     sp.add_argument("--dev", action="store_true", help="the six development pairs")
@@ -381,7 +361,9 @@ def main(argv: list[str] | None = None) -> int:
         except (FileNotFoundError, ValueError) as err:
             return _fail(err)
         return 0
-    digest = freeze_gold(args.out, args.out_file)
+    adjudications = json.loads(args.adjudications.read_text(encoding="utf-8")) if args.adjudications else {}
+    digest = freeze_gold(args.out, args.out_file, {**adjudications.get("items", {}), **adjudications.get("sentences", {})},
+                         adjudications.get("contested_sentences"))
     frozen = json.loads(args.out_file.read_text(encoding="utf-8"))
     print(f"frozen {len(frozen['pairs'])} item entries and {len(frozen['sentences'])} sentence entries", file=sys.stderr)
     print(digest)

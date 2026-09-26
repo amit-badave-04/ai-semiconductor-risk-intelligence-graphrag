@@ -454,3 +454,33 @@ def test_a_disputed_largest_item_stays_the_flagship_through_the_report_votes(tmp
     assert manifest["eligible_item_ids"] == [item_id(OLDER, 0), item_id(OLDER, 1)]
     packet = json.loads((tmp_path / f"{PID}.older.sent.packet.json").read_text(encoding="utf-8"))
     assert "vote_majority" not in json.dumps(packet) and "eligib" not in json.dumps({k: v for k, v in packet.items() if k != "instructions"})
+
+
+# --- contested sentences (a second check disagreed on a boundary case): frozen, but never scored -------------------------
+
+def test_a_contested_sentence_is_frozen_flagged_and_left_out_of_the_scoring_records(tmp_path):
+    make_packets(tmp_path)
+    write_labels(tmp_path, "older", "a", GOOD_OLDER)
+    write_labels(tmp_path, "older", "b", GOOD_OLDER)
+    lri.collect_sentences(PID, "older", tmp_path)
+    target = tmp_path / "out" / "gold.json"
+    lri.freeze_gold(tmp_path, target, contested=[sid(OLDER, 0, 1), "unrelated#s000"])
+    entry = json.loads(target.read_text(encoding="utf-8"))["sentences"][f"{PID}|older"]
+    assert entry["contested"] == [sid(OLDER, 0, 1)]                                   # only ids of this side's labels
+    assert sid(OLDER, 0, 1) in entry["labels"]                                         # still frozen with its label
+    records = gold.gold_sentence_records(entry)
+    assert sid(OLDER, 0, 1) not in {r["sentence_id"] for r in records} and len(records) == len(entry["labels"]) - 1
+
+
+def test_the_freeze_command_reads_adjudications_and_contested_ids_from_a_json_file(tmp_path):
+    make_packets(tmp_path)
+    write_labels(tmp_path, "older", "a", GOOD_OLDER[:2])
+    write_labels(tmp_path, "older", "b", [GOOD_OLDER[0], dict(GOOD_OLDER[1], label="reworded", quote=NAC_REWORD_QUOTE)])
+    lri.collect_sentences(PID, "older", tmp_path)
+    adjudications = tmp_path / "adj.json"
+    adjudications.write_text(json.dumps({"sentences": {sid(OLDER, 0, 1): "removed"}, "contested_sentences": [sid(OLDER, 0, 0)]}),
+                             encoding="utf-8")
+    target = tmp_path / "gold.json"
+    assert lri.main(["freeze", "--out", str(tmp_path), "--out-file", str(target), "--adjudications", str(adjudications)]) == 0
+    entry = json.loads(target.read_text(encoding="utf-8"))["sentences"][f"{PID}|older"]
+    assert entry["labels"][sid(OLDER, 0, 1)] == "removed" and entry["contested"] == [sid(OLDER, 0, 0)]

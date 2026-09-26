@@ -1,0 +1,157 @@
+{
+ "pair_id": "NVDA-0001045810-25-000023-0001045810-26-000021",
+ "side": "older",
+ "split": "development",
+ "annotators": [
+  "ann1",
+  "ann2",
+  "ann3"
+ ],
+ "consensus": {
+  "0001045810-25-000023:I.1A:i000": "reworded",
+  "0001045810-25-000023:I.1A:i001": "reworded",
+  "0001045810-25-000023:I.1A:i002": "reworded",
+  "0001045810-25-000023:I.1A:i003": "reworded",
+  "0001045810-25-000023:I.1A:i004": "reworded",
+  "0001045810-25-000023:I.1A:i005": "reworded",
+  "0001045810-25-000023:I.1A:i006": "reworded",
+  "0001045810-25-000023:I.1A:i007": "unchanged",
+  "0001045810-25-000023:I.1A:i008": "reworded",
+  "0001045810-25-000023:I.1A:i009": "reworded",
+  "0001045810-25-000023:I.1A:i010": "reworded",
+  "0001045810-25-000023:I.1A:i011": "reworded",
+  "0001045810-25-000023:I.1A:i012": "reworded",
+  "0001045810-25-000023:I.1A:i013": "unchanged",
+  "0001045810-25-000023:I.1A:i014": "unchanged",
+  "0001045810-25-000023:I.1A:i015": "reworded",
+  "0001045810-25-000023:I.1A:i016": "unchanged",
+  "0001045810-25-000023:I.1A:i017": "reworded",
+  "0001045810-25-000023:I.1A:i018": "unchanged",
+  "0001045810-25-000023:I.1A:i019": "unchanged",
+  "0001045810-25-000023:I.1A:i020": "reworded",
+  "0001045810-25-000023:I.1A:i021": "reworded",
+  "0001045810-25-000023:I.1A:i022": "unchanged"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 0.9420289855072463,
+ "alpha": 0.8650793650793651,
+ "rejected": {},
+ "votes": {
+  "0001045810-25-000023:I.1A:i000": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i001": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i002": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i003": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i004": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i005": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i006": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i007": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-25-000023:I.1A:i008": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i009": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i010": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i011": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i012": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i013": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-25-000023:I.1A:i014": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-25-000023:I.1A:i015": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i016": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-25-000023:I.1A:i017": {
+   "ann1": "unchanged",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i018": {
+   "ann1": "reworded",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-25-000023:I.1A:i019": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-25-000023:I.1A:i020": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i021": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-25-000023:I.1A:i022": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  }
+ }
+}

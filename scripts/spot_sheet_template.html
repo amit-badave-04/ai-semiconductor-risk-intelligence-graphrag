@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spot check: is this sentence still there?</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fbfaf7; --card:#fff; --ink:#1f1e1a; --muted:#6b6a63; --line:#d9d6cc; --accent:#2b5fb4; --ok:#2f6f3e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#191917; --card:#232320; --ink:#ecebe4; --muted:#a3a197; --line:#3a3934; --accent:#7aa7ee; --ok:#7cc48c; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 96px; }
+  h1 { font-size: 22px; margin: 0 0 6px; font-weight: 600; }
+  .lede { color: var(--muted); margin: 0 0 18px; }
+  .bar { position: sticky; top: 0; background: var(--bg); padding: 10px 0; border-bottom: 1px solid var(--line); z-index: 2; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .bar b { font-weight: 600; }
+  article { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 16px 0; }
+  article.done { border-color: var(--ok); }
+  .tag { display:inline-block; font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:6px; padding:1px 7px; margin-right:6px; }
+  .q { margin: 8px 0 6px; color: var(--muted); }
+  blockquote { margin: 6px 0 10px; padding: 8px 12px; border-left: 3px solid var(--accent); background: rgba(43,95,180,.07); font-size: 17px; }
+  .head { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+  fieldset { border: 0; margin: 8px 0; padding: 0; display:grid; gap:6px; }
+  label.opt { display:flex; gap:8px; align-items:flex-start; cursor:pointer; padding:6px 8px; border:1px solid var(--line); border-radius:8px; }
+  label.opt:has(input:checked) { border-color: var(--accent); background: rgba(43,95,180,.09); }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--accent); }
+  .cand { font-size: 14px; margin: 6px 0; padding: 6px 8px; background: rgba(127,127,127,.09); border-radius: 6px; }
+  .search { display:flex; gap:8px; margin: 8px 0; }
+  .search input { flex:1; font: inherit; padding: 6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }
+  button { font: inherit; padding: 6px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); cursor:pointer; }
+  button.primary { background: var(--accent); color:#fff; border-color: var(--accent); }
+  .hit { font-size: 14px; margin: 5px 0; padding: 5px 8px; background: rgba(255,214,0,.14); border-radius: 6px; }
+  mark { background: rgba(255,214,0,.55); color: inherit; }
+  textarea { width:100%; min-height: 120px; font: 13px/1.4 ui-monospace, monospace; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px; box-sizing:border-box; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Spot check: is this sentence still there?</h1>
+  <p class="lede">36 sentences from annual reports. For each one, decide whether the other year's filing says the same thing. Use the closest passages shown, or search the other filing's full text (box under each sentence). Judge from the text only. There are no right answers to aim for.</p>
+  <div class="bar">
+    <span><b id="count">0</b> of <b id="total">0</b> answered</span>
+    <button class="primary" id="finish">Finish and copy my answers</button>
+    <span id="msg" class="head"></span>
+  </div>
+  <div id="rows"></div>
+  <h2 style="font-size:16px">Your answers</h2>
+  <p class="head">Copy everything in the box and paste it into the chat.</p>
+  <textarea id="out" readonly placeholder="Press Finish to fill this box."></textarea>
+</main>
+<script>
+const ROWS = __ROWS__;
+const TEXTS = __TEXTS__;
+const KEY = "semigraph-spot-sheet-v1";
+const OPTS = [
+  ["present", "Yes, it is there (same or nearly the same words)"],
+  ["reworded", "Yes, the same statement is there in different words"],
+  ["absent", "No, it is not stated anywhere in the other filing"],
+  ["unsure", "I can't tell"],
+];
+let answers = {};
+try { answers = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { answers = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(answers)); } catch (e) {} };
+
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (k === "class") n.className = v; else n.setAttribute(k, v); }
+  for (const kid of kids) n.append(kid);
+  return n;
+}
+function refresh() {
+  const n = Object.values(answers).filter(Boolean).length;
+  document.getElementById("count").textContent = n;
+  document.getElementById("total").textContent = ROWS.length;
+  document.querySelectorAll("article").forEach(a => a.classList.toggle("done", !!answers[a.dataset.id]));
+}
+function search(text, term) {
+  const out = []; const t = term.trim().toLowerCase();
+  if (t.length < 3) return out;
+  const low = text.toLowerCase(); let i = 0;
+  while (out.length < 8 && (i = low.indexOf(t, i)) !== -1) { out.push([i, i + t.length]); i += t.length; }
+  return out;
+}
+function renderHits(box, text, term) {
+  box.replaceChildren();
+  const hits = search(text, term);
+  if (!hits.length) { box.append(el("div", {class: "head"}, term.trim().length < 3 ? "Type at least 3 characters." : "No match for that phrase in the other filing.")); return; }
+  for (const [a, b] of hits) {
+    const s = Math.max(0, a - 220), e = Math.min(text.length, b + 220);
+    const d = el("div", {class: "hit"});
+    d.append((s > 0 ? "… " : "") + text.slice(s, a), el("mark", {}, text.slice(a, b)), text.slice(b, e) + (e < text.length ? " …" : ""));
+    box.append(d);
+  }
+}
+const host = document.getElementById("rows");
+ROWS.forEach((r, idx) => {
+  const art = el("article", {"data-id": r.row_id});
+  art.append(el("div", {}, el("span", {class: "tag"}, `${idx + 1} of ${ROWS.length}`), el("span", {class: "tag"}, r.ticker)));
+  art.append(el("div", {class: "q"}, r.direction));
+  art.append(el("blockquote", {}, r.statement));
+  art.append(el("div", {class: "head"}, "From the risk factor: " + (r.item_headline || "(untitled paragraph)")));
+  const fs = el("fieldset");
+  OPTS.forEach(([val, label]) => {
+    const inp = el("input", {type: "radio", name: r.row_id, value: val});
+    if (answers[r.row_id] === val) inp.checked = true;
+    inp.addEventListener("change", () => { answers[r.row_id] = val; save(); refresh(); });
+    fs.append(el("label", {class: "opt"}, inp, el("span", {}, label)));
+  });
+  art.append(fs);
+  const det = el("details");
+  det.append(el("summary", {}, "Closest passages in the other filing, and a search box"));
+  r.closest.forEach(c => det.append(el("div", {class: "cand"}, c)));
+  const box = el("div");
+  const inp = el("input", {type: "search", placeholder: "Search the other filing for a word or phrase"});
+  const btn = el("button", {}, "Search");
+  const go = () => renderHits(box, TEXTS[r.other_file] || "", inp.value);
+  btn.addEventListener("click", go);
+  inp.addEventListener("keydown", ev => { if (ev.key === "Enter") go(); });
+  det.append(el("div", {class: "search"}, inp, btn), box);
+  art.append(det);
+  host.append(art);
+});
+refresh();
+document.getElementById("finish").addEventListener("click", () => {
+  const missing = ROWS.filter(r => !answers[r.row_id]).map(r => r.row_id);
+  const out = {}; ROWS.forEach(r => { out[r.row_id] = answers[r.row_id] || "unsure"; });
+  const text = JSON.stringify(out);
+  document.getElementById("out").value = text;
+  const msg = document.getElementById("msg");
+  msg.textContent = missing.length ? `${missing.length} unanswered (they will count as "can't tell").` : "All answered.";
+  try { navigator.clipboard.writeText(text).then(() => { msg.textContent += " Copied."; }, () => {}); } catch (e) {}
+});
+</script>
+</body>
+</html>

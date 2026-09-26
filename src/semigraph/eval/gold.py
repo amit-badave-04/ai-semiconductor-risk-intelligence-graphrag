@@ -541,9 +541,13 @@ def sentence_spans(sample: Mapping) -> dict[str, list]:
 
 
 def gold_sentence_records(entry: Mapping) -> list[dict]:
-    """A frozen ``sentences`` entry (``labels`` + ``spans``) as the records ``score_passages`` takes, in id order."""
+    """A frozen ``sentences`` entry (``labels`` + ``spans``) as the records ``score_passages`` takes, in id order;
+    ``contested`` sentence ids are left out."""
     records = []
+    contested = set(entry.get("contested") or ())
     for sid in sorted(entry["labels"]):
+        if sid in contested:      # a boundary case a second check disagreed on: neither a hit nor a miss
+            continue
         span = (entry.get("spans") or {}).get(sid)
         if not span:
             raise ValueError(f"no span recorded for sentence {sid}: it cannot be scored")

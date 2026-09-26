@@ -1,0 +1,163 @@
+{
+ "pair_id": "NVDA-0001045810-24-000029-0001045810-25-000023",
+ "side": "older",
+ "split": "development",
+ "annotators": [
+  "ann1",
+  "ann2",
+  "ann3"
+ ],
+ "consensus": {
+  "0001045810-24-000029:I.1A:i000": "reworded",
+  "0001045810-24-000029:I.1A:i001": "reworded",
+  "0001045810-24-000029:I.1A:i002": "reworded",
+  "0001045810-24-000029:I.1A:i003": "reworded",
+  "0001045810-24-000029:I.1A:i004": "reworded",
+  "0001045810-24-000029:I.1A:i005": "reworded",
+  "0001045810-24-000029:I.1A:i006": "reworded",
+  "0001045810-24-000029:I.1A:i007": "reworded",
+  "0001045810-24-000029:I.1A:i008": "reworded",
+  "0001045810-24-000029:I.1A:i009": "unchanged",
+  "0001045810-24-000029:I.1A:i010": "reworded",
+  "0001045810-24-000029:I.1A:i011": "reworded",
+  "0001045810-24-000029:I.1A:i012": "reworded",
+  "0001045810-24-000029:I.1A:i013": "unchanged",
+  "0001045810-24-000029:I.1A:i014": "reworded",
+  "0001045810-24-000029:I.1A:i015": "reworded",
+  "0001045810-24-000029:I.1A:i016": "reworded",
+  "0001045810-24-000029:I.1A:i017": "reworded",
+  "0001045810-24-000029:I.1A:i018": "unchanged",
+  "0001045810-24-000029:I.1A:i019": "reworded",
+  "0001045810-24-000029:I.1A:i020": "reworded",
+  "0001045810-24-000029:I.1A:i021": "unchanged",
+  "0001045810-24-000029:I.1A:i022": "removed",
+  "0001045810-24-000029:I.1A:i023": "reworded"
+ },
+ "needs_adjudication": [],
+ "unlabelled": [],
+ "pairwise_agreement": 1.0,
+ "alpha": 1.0,
+ "rejected": {},
+ "votes": {
+  "0001045810-24-000029:I.1A:i000": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i001": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i002": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i003": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i004": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i005": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i006": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i007": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i008": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i009": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-24-000029:I.1A:i010": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i011": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i012": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i013": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-24-000029:I.1A:i014": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i015": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i016": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i017": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i018": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-24-000029:I.1A:i019": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i020": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  },
+  "0001045810-24-000029:I.1A:i021": {
+   "ann1": "unchanged",
+   "ann2": "unchanged",
+   "ann3": "unchanged"
+  },
+  "0001045810-24-000029:I.1A:i022": {
+   "ann1": "removed",
+   "ann2": "removed",
+   "ann3": "removed"
+  },
+  "0001045810-24-000029:I.1A:i023": {
+   "ann1": "reworded",
+   "ann2": "reworded",
+   "ann3": "reworded"
+  }
+ }
+}

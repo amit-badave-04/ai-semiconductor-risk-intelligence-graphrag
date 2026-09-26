@@ -1,0 +1,532 @@
+[
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s000",
+  "label": "present",
+  "quote": "The markets in which our products are sold are highly competitive and rapidly evolving."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s001",
+  "label": "present",
+  "quote": "The markets in which our products are sold are highly competitive and rapidly evolving."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s002",
+  "label": "reworded",
+  "quote": "Competition is expected to remain intense, driven by rapid technological change, evolving standards, shifting customer preferences, product obsolescence, and frequent product launches from both established and new competitors."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s003",
+  "label": "removed",
+  "search_terms": [
+   "adapt more quickly",
+   "current and new competitors",
+   "emerging technologies",
+   "customer requirements"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s004",
+  "label": "removed",
+  "search_terms": [
+   "AI market",
+   "feature enhancements",
+   "end-user requirements",
+   "legal standards"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s005",
+  "label": "reworded",
+  "quote": "Some of our competitors may possess stronger market positions"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s006",
+  "label": "removed",
+  "search_terms": [
+   "GPUs and other accelerators",
+   "significant opportunity in AI",
+   "intense competition from companies",
+   "supply of GPUs"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s007",
+  "label": "reworded",
+  "quote": "Additionally, we may encounter competition from customers who internally develop products to support similar AI workloads"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s008",
+  "label": "removed",
+  "search_terms": [
+   "Arm-based",
+   "semiconductor designs",
+   "further growth and development",
+   "adoption of Arm"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s009",
+  "label": "removed",
+  "search_terms": [
+   "delays or disruptions",
+   "greater resources",
+   "than anticipated",
+   "invest significantly"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s010",
+  "label": "removed",
+  "search_terms": [
+   "mergers and acquisitions",
+   "several mergers",
+   "last number of years",
+   "consolidation"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s011",
+  "label": "removed",
+  "search_terms": [
+   "consolidation",
+   "fewer suppliers",
+   "mergers and acquisitions",
+   "fewer customers"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s012",
+  "label": "present",
+  "quote": "energy efficiency (including power consumption and battery life, given their impact on total cost of ownership), size (or form factor), selling price, cost, adherence to industry standards (and the creation of open industry standards), level of integration"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s013",
+  "label": "removed",
+  "search_terms": [
+   "introduce competitive new products",
+   "before us",
+   "demand for our products could be adversely impacted",
+   "competitive new products into the market"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s014",
+  "label": "reworded",
+  "quote": "Our competitors may use their market position and financial resources"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s015",
+  "label": "reworded",
+  "quote": "we may lose competitive positioning, which could cause us to lose market share"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s016",
+  "label": "present",
+  "quote": "From time to time, governments provide incentives or make other investments that could benefit and give a comp"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s017",
+  "label": "removed",
+  "search_terms": [
+   "CHIPS Act",
+   "Creating Helpful Incentives",
+   "financial incentives",
+   "Science Act"
+  ]
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s018",
+  "label": "present",
+  "quote": "Government incentives may not be available to us on acceptable terms or at all."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i002#s019",
+  "label": "present",
+  "quote": "If our competitors can benefit from such government incentives and we cannot, it could strengthen our"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s000",
+  "label": "present",
+  "quote": "Our products may be subject to security vulnerabilities that could have a material adverse effect on us."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s001",
+  "label": "present",
+  "quote": "The products that we sell are complex and have been and may in the future be subject to security vulnerabiliti"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s002",
+  "label": "present",
+  "quote": "Our efforts to prevent and address security vulnerabilities may decrease performance, be only partially effect"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s003",
+  "label": "present",
+  "quote": "We may depend on vendors to create mitigations to their technology that we incorporate into our products and t"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s004",
+  "label": "present",
+  "quote": "to deploy our mitigations alone or as part of their own mitigations, and they may delay, decline or modify the implementation of such mitigations."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s005",
+  "label": "present",
+  "quote": "Our relationships with our customers could be adversely affected as some of our customers may stop purchasing"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s006",
+  "label": "present",
+  "quote": "Any of these actions by our customers could adversely affect our revenue."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s007",
+  "label": "present",
+  "quote": "We have and may in the future be subject to claims and litigation related to security vulnerabilities."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i015#s008",
+  "label": "present",
+  "quote": "Actual or perceived security vulnerabilities of our products may subject us to adverse publicity, damage to ou"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i018#s000",
+  "label": "present",
+  "quote": "Our ability to design and introduce new products in a timely manner includes the use of third-party intellectu"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i018#s001",
+  "label": "present",
+  "quote": "In the design and development of new and enhanced products, we rely on third-party intellectual property such"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i018#s002",
+  "label": "present",
+  "quote": "Furthermore, certain product features may rely on intellectual property acquired from third parties that we in"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i018#s003",
+  "label": "present",
+  "quote": "The design requirements necessary to meet customer demand for more features and greater functionality from sem"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i018#s004",
+  "label": "present",
+  "quote": "If the third-party intellectual property that we use becomes unavailable, is not available with required funct"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s000",
+  "label": "present",
+  "quote": "Our business depends on the proper functioning of our internal business processes and information systems and"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s001",
+  "label": "present",
+  "quote": "We rely upon a number of internal business processes and information systems to support key business functions"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s002",
+  "label": "present",
+  "quote": "Our business processes and information systems need to be sufficiently scalable to support the growth of our b"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s003",
+  "label": "present",
+  "quote": "As such, our information systems will continually evolve and adapt in order to meet our business needs."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s004",
+  "label": "present",
+  "quote": "These changes may be costly and disruptive to our operations and could impose substantial demands on managemen"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s005",
+  "label": "present",
+  "quote": "These changes may also require changes in our information systems, modification of internal control procedures"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s006",
+  "label": "present",
+  "quote": "We continuously work on simplifying our information systems and applications through consolidation and standar"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s007",
+  "label": "present",
+  "quote": "There can be no assurance that our business and operations will not experience any disruption in connection wi"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s008",
+  "label": "present",
+  "quote": "Our information technology systems, and those of third-party information technology providers or business part"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s009",
+  "label": "present",
+  "quote": "In addition, as our IT environment continues to evolve, we are embracing new ways of communicating and sharing"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s010",
+  "label": "present",
+  "quote": "However, these practices can also result in a more distributed IT environment, making it more difficult for us"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i022#s011",
+  "label": "present",
+  "quote": "If our security controls cannot keep pace with the speed of these changes or if we are not able to meet regula"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s000",
+  "label": "present",
+  "quote": "Costs related to defective products could have a material adverse effect on us."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s001",
+  "label": "present",
+  "quote": "Products as complex as those we offer may contain defects or failures when first introduced or when new versio"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s002",
+  "label": "present",
+  "quote": "We cannot assure you that, despite our testing procedures, errors will not be found in new products or release"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s003",
+  "label": "present",
+  "quote": "In addition, we may have difficulty identifying the end customers of the defective products in the field."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s004",
+  "label": "present",
+  "quote": "As a result, we could incur substantial costs to implement modifications to correct defects."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s005",
+  "label": "present",
+  "quote": "Any of these problems could materially adversely affect our business."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s006",
+  "label": "present",
+  "quote": "We could be subject to potential product liability claims if one of our products causes, or merely appears to"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s007",
+  "label": "present",
+  "quote": "Claims may be made by consumers or others selling our products, and we may be subject to claims against us eve"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i024#s008",
+  "label": "present",
+  "quote": "A product liability claim, recall or other claim with respect to uninsured liabilities or for amounts in exces"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s000",
+  "label": "present",
+  "quote": "We are subject to environmental laws, conflict minerals regulations, as well as a variety of other laws or reg"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s001",
+  "label": "present",
+  "quote": "Our operations and properties are subject to various United States and foreign laws and regulations, including"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s002",
+  "label": "present",
+  "quote": "In addition, our operations and those of our suppliers are further governed by regulations prohibiting the use"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s003",
+  "label": "present",
+  "quote": "For the manufacturing of our products, these laws and regulations require our suppliers to obtain permits for"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s004",
+  "label": "present",
+  "quote": "Although our management systems are designed to oversee our suppliers\u2019 compliance, we cannot assure you that o"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s005",
+  "label": "present",
+  "quote": "If our suppliers violate or fail to comply with any of them, a range of consequences could result, including f"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s006",
+  "label": "present",
+  "quote": "Such non-compliance from our manufacturing suppliers could result in disruptions in supply, higher sourcing co"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s007",
+  "label": "present",
+  "quote": "We could also be held liable for any and all consequences arising out of exposure to hazardous materials used,"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s008",
+  "label": "present",
+  "quote": "We have been named as a responsible party at three Superfund sites in Sunnyvale, California and we are subject"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s009",
+  "label": "present",
+  "quote": "During the term of such agreements, other parties have agreed to assume most of the foreseeable costs as well"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s010",
+  "label": "present",
+  "quote": "We remain responsible for additional costs beyond the scope of the agreements as well as all remaining costs i"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s011",
+  "label": "present",
+  "quote": "The progress of future remediation efforts cannot be predicted with certainty and these costs may change."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s012",
+  "label": "present",
+  "quote": "Although we have not been, we could be named a potentially responsible party at other Superfund or contaminate"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s013",
+  "label": "present",
+  "quote": "In addition, contamination that has not been identified could exist at our other facilities."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s014",
+  "label": "present",
+  "quote": "Future environmental legal requirements may become more stringent or costly."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s015",
+  "label": "present",
+  "quote": "As such, the costs of complying with current and future environmental and health and safety laws, and our liab"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s016",
+  "label": "present",
+  "quote": "Environmental laws are complex, change frequently and tend to become more stringent over time."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s017",
+  "label": "present",
+  "quote": "For example, the European Union (EU) and China are among a growing number of jurisdictions that have enacted r"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s018",
+  "label": "present",
+  "quote": "These regulations affect semiconductor devices and packaging."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s019",
+  "label": "present",
+  "quote": "As regulations restricting materials in electronic products continue to increase around the world, there is a"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s020",
+  "label": "present",
+  "quote": "Jurisdictions including the EU, Australia, California and China are developing or have finalized market entry"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s021",
+  "label": "present",
+  "quote": "Certain of our products may be excluded from some of these markets which could materially adversely affect us."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s022",
+  "label": "present",
+  "quote": "We incur costs associated with complying with conflict minerals reporting requirements to our customers and th"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s023",
+  "label": "present",
+  "quote": "In addition to the SEC regulation, the EU, China and other jurisdictions are developing new policies focused o"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s024",
+  "label": "present",
+  "quote": "Customers are increasingly seeking information about the source of minerals used in our supply chain beyond th"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s025",
+  "label": "present",
+  "quote": "Given the complexity of mineral supply chains, we may be unable to sufficiently verify the origins of the subj"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s026",
+  "label": "present",
+  "quote": "Moreover, we are likely to encounter challenges to satisfy customers who require that all of the components of"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s027",
+  "label": "present",
+  "quote": "In addition, new or increased regulations limiting the use of such components, or regulation regarding greenho"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s028",
+  "label": "present",
+  "quote": "Our supply chain manufacturing suppliers may be exposed to increased cost of doing business should they be aff"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s029",
+  "label": "present",
+  "quote": "In addition to our Company, customers, governments and authorities continue to focus on eliminating risks of f"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s030",
+  "label": "present",
+  "quote": "Several customers have also issued expectations to eliminate these occurrences, if any, that may impact us."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s031",
+  "label": "present",
+  "quote": "While we have a Human Rights Policy and management systems to identify and avoid these practices in our supply"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s032",
+  "label": "present",
+  "quote": "Our failure to satisfy customer expectations on forced and trafficked labor policies may result in these custo"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s033",
+  "label": "present",
+  "quote": "In addition, many governments have enacted laws around PII, such as the GDPR and the CCPA, and the failure to"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s034",
+  "label": "present",
+  "quote": "The GDPR imposes significant requirements on how we collect, process and transfer personal data, as well as si"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s035",
+  "label": "present",
+  "quote": "New emerging technology trends, such as AI, require us to keep pace with evolving regulations and industry sta"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s036",
+  "label": "present",
+  "quote": "Given the complexity and rapid development of AI, there are various current and proposed regulatory frameworks"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s037",
+  "label": "present",
+  "quote": "For example, the EU AI Act was adopted in 2024 and its implementation will be phased in over the next few year"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s038",
+  "label": "present",
+  "quote": "In other jurisdictions, similar legislation is being considered."
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s039",
+  "label": "present",
+  "quote": "Such laws and regulations may impede our ability to offer certain products and services in certain jurisdictio"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s040",
+  "label": "present",
+  "quote": "We expect that the legal and regulatory environment relating to emerging technologies such as AI will continue to develop and could increase costs"
+ },
+ {
+  "sentence_id": "0000002488-25-000012:I.1A:i033#s041",
+  "label": "present",
+  "quote": "Governments are also considering the new issues in intellectual property law that AI creates, which could resu"
+ }
+]
