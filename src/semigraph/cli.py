@@ -457,5 +457,56 @@ def eval_deployed_cmd(
     typer.echo(f"report -> {out}")
 
 
+def _echo_risk_item_report(report: dict, gate: float) -> None:
+    """Per-filing table for `risk-items`; a filing under the coverage gate is flagged LOW, never hidden."""
+    typer.echo(f"{'ticker':<6} {'form':<7} {'filed':<11} {'section':<8} {'items':>5} {'head':>5} {'para':>5} "
+               f"{'cov%':>6}  {'method':<10} {'summ':>5}  flags")
+    below, suspect, notes = [], [], []
+    for ticker, t in report.items():
+        for f in t["filings"]:
+            flags = ("LOW" if f["low_coverage"] else "") + (" SUSPECT" if f.get("section_suspect") else "") \
+                + (" NOTE" if len(f.get("notes", [])) > 1 else "")
+            summ = str(f["summary_excluded"]) if f.get("summary_found", f["summary_excluded"] > 0) else "-"
+            typer.echo(f"{ticker:<6} {f['form']:<7} {f['filing_date']:<11} {f['section_id']:<8} {f['n_items']:>5} "
+                       f"{f['n_headline']:>5} {f['n_paragraph']:>5} {100 * f['coverage']:>6.1f}  {f['method']:<10} "
+                       f"{summ:>5}  {flags.strip()}")
+            if f["low_coverage"]:
+                below.append(f"{ticker} {f['form']} {f['filing_date']} ({100 * f['coverage']:.1f}%)")
+            if f.get("section_suspect"):
+                suspect.append(f"{ticker} {f['form']} {f['filing_date']} ({f.get('section_chars', '?')} chars)")
+            notes += [f"  {ticker} {f['filing_date']}: {n}" for n in f.get("notes", [])[1:]]
+        for s in t["skipped"]:
+            typer.echo(f"{ticker:<6} {s['form']:<7} {s['filing_date']:<11} SKIPPED: {s['reason']} ({s['accession_no']})")
+    for line in notes:
+        typer.echo(line)
+    for ticker, t in report.items():
+        for w in t["warnings"]:
+            typer.echo(f"WARNING {ticker}: {w}", err=True)
+    typer.echo(f"{len(below)} filing(s) below the {gate:.0%} coverage gate" + (": " + "; ".join(below) if below else ""))
+    typer.echo(f"{len(suspect)} filing(s) with a SUSPECT section text (length far from the neighbouring filing's; "
+               "coverage cannot vouch for them)" + (": " + "; ".join(suspect) if suspect else ""))
+
+
+@app.command("risk-items")
+def risk_items_cmd(
+    ticker: list[str] = typer.Option(None, "--ticker", "-t", help="Tickers (default: every filer in the manifest)"),
+    coverage: bool = typer.Option(False, "--coverage", help="Print the per-filing coverage table only; write nothing"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Detect risk items (one risk-factor headline + its body) in every annual risk section.
+
+    Deterministic, no LLM, free. Writes data/interim/risk_items/<TICKER>_risk_items.parquet and
+    prints a per-filing table: item counts, headline vs paragraph units, coverage of the section
+    text, summary-block bullets excluded. A filing under the coverage gate is flagged LOW."""
+    _setup_logging(verbose)
+    from semigraph.parsing import risk_items
+
+    report = risk_items.build_risk_items(_settings(), list(ticker) if ticker else None, write=not coverage)
+    _echo_risk_item_report(report, risk_items.COVERAGE_MIN)
+    if not coverage:
+        for name, t in report.items():
+            typer.echo(f"{name}: {t['n_items']} items -> {t['path']}" if t.get("written") else f"{name}: nothing written")
+
+
 if __name__ == "__main__":
     app()
