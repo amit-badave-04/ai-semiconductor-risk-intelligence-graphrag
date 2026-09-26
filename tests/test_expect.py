@@ -78,3 +78,10 @@ def test_direction_alone_is_not_an_expectation_and_a_bad_direction_is_an_error()
         check_expectation({"direction": "up"}, "up")
     with pytest.raises(ValueError, match="direction"):
         check_expectation({"pct": 1.0, "direction": "sideways"}, "1.0%")
+
+
+def test_any_of_treats_a_hyphen_like_a_space():
+    """R1 (deployed run): "advanced-computing export requirements" is the same concept as "Advanced Computing"."""
+    assert check_expectation({"any_of": ["Advanced Computing"]}, "the October 2023 advanced-computing export requirements")
+    assert check_expectation({"any_of": ["Foreign-Produced Direct Product"]}, "the foreign produced direct product rule")
+    assert not check_expectation({"any_of": ["Advanced Computing"]}, "the advancedcomputing rule")

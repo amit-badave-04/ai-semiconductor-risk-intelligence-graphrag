@@ -309,7 +309,8 @@ def test_item_rows_are_flat_dicts_that_keep_company_and_lineage_for_the_comparis
     assert row["company"] == "Nvidia" and row["lineage"] == f"{NVDA}:5"
     assert row["change"] == "reworded" and row["older_headline"] == "Old wording" and row["decided_by"] == "rules"
     assert row["older_chunk_ids"] and row["newer_chunk_ids"]
-    assert "older_accession" not in row and "totals" not in row        # pair facts live in the pair rows
+    assert "totals" not in row                                        # the totals live in the pair rows
+    assert (row["older_accession"], row["newer_accession"]) == (OLD, NEW)  # an item names the pair it belongs to
 
 
 # ---------------------------------------------------------------- wiring

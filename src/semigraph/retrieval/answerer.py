@@ -230,7 +230,7 @@ def build_blocks(r: dict) -> tuple[ContextBlocks, str, set[str]]:
         valid_ids.add(k["chunk_id"])
         k_lines.append(f"- {k['company']} ({k['category']}): {k['summary']} [{k['chunk_id']}]")
     t_block, temporal_ids = temporal_block(r.get("temporal") or [], r.get("temporal_pairs") or [],
-                                           r.get("temporal_passages") or [])
+                                           r.get("temporal_passages") or [], r.get("temporal_notices") or [])
     valid_ids |= temporal_ids
     c_lines = []
     for c in r["chunks"]:

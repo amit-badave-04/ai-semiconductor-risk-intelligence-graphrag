@@ -236,6 +236,39 @@ RETURN c.name AS company, c.cik AS cik, 'reworded' AS change, i.item_id AS item_
        """ + _TEMPORAL_PAIR_COLUMNS,
 ])
 
+# The same five members for the pairs a question NAMES (see :func:`select_pairs`): the newer filing is any annual filing in
+# ``$newer_accessions`` instead of the current one. Built from TEMPORAL_QUERY by replacing only the pair match, so the two can
+# never drift apart (tests/test_retrieval_pairs.py pins that the texts differ in exactly that).
+_TEMPORAL_PAIR_SELECTED = (_TEMPORAL_PAIR.replace("(cur:Filing {is_current: true})", "(cur:Filing)")
+                           .replace("WHERE c.cik IN $ids", "WHERE c.cik IN $ids AND cur.accession_no IN $newer_accessions", 1))
+TEMPORAL_SELECTED_QUERY = TEMPORAL_QUERY.replace(_TEMPORAL_PAIR, _TEMPORAL_PAIR_SELECTED)
+
+# EVERY consecutive annual-filing pair of the anchors (not only the current one), one row per pair, with what
+# :func:`select_pairs` needs to pick by fiscal year: the fiscal year of each filing and whether each side has risk items.
+# The graph's ``Filing`` carries no fiscal-year property, so a filing's fiscal year is the YEAR OF THE PERIOD END of its own
+# annual XBRL metrics (``REPORTS_METRIC`` carries the filing's accession; a period of 300+ days is an annual one), which is the
+# benchmark's convention ("FY2025" = the 10-K for the fiscal year ending in 2025, e.g. NVIDIA's ending January 2025). A
+# filing whose metrics are not in the graph has ``null`` there and is never matched by year. Newest pair first per company.
+ANNUAL_PAIRS_QUERY = """MATCH (c:Company)-[:FILED]->(cur:Filing)-[sup:SUPERSEDES {kind: 'rolled'}]->(prev:Filing)
+WHERE c.cik IN $ids AND cur.form IN ['10-K', '10-K/A', '20-F', '20-F/A'] AND prev.form IN ['10-K', '10-K/A', '20-F', '20-F/A']
+CALL (c, cur) {
+  OPTIONAL MATCH (c)-[:REPORTS_METRIC {accession_no: cur.accession_no}]->(m:Metric)
+  WHERE duration.inDays(m.period_start, m.period_end).days >= 300
+  RETURN max(m.period_end) AS cur_pe
+}
+CALL (c, prev) {
+  OPTIONAL MATCH (c)-[:REPORTS_METRIC {accession_no: prev.accession_no}]->(m:Metric)
+  WHERE duration.inDays(m.period_start, m.period_end).days >= 300
+  RETURN max(m.period_end) AS prev_pe
+}
+RETURN c.name AS company, c.cik AS cik,
+       """ + _TEMPORAL_PAIR_COLUMNS + """,
+       cur.is_current AS is_current,
+       toString(prev_pe) AS older_period_end, prev_pe.year AS older_fy, toString(cur_pe) AS newer_period_end, cur_pe.year AS newer_fy,
+       EXISTS { MATCH (:RiskItem {filer_cik: c.cik, accession_no: cur.accession_no}) } AS newer_has_items,
+       EXISTS { MATCH (:RiskItem {filer_cik: c.cik, accession_no: prev.accession_no}) } AS older_has_items
+ORDER BY cik, newer_date DESC"""
+
 # The change layer BELOW the item (M1b plan L.2, L.7): the passages of surviving items that changed between the two
 # filings of a compared pair, read through their item (``HAS_PASSAGE``) and matched on the pair itself (filer and both
 # accessions), so a stale passage of another pair is never read. ``$pairs`` is a list of ``{cik, older, newer}`` for the
@@ -246,7 +279,8 @@ RETURN c.name AS company, c.cik AS cik, 'reworded' AS change, i.item_id AS item_
 PASSAGES_QUERY = """UNWIND $pairs AS pr
 MATCH (i:RiskItem)-[:HAS_PASSAGE]->(p:RiskPassage {filer_cik: pr.cik, older_accession: pr.older, newer_accession: pr.newer})
 """ + _LEAD_MATCH + """
-RETURN pr.cik AS cik, p.passage_id AS passage_id, p.kind AS kind, i.item_id AS item_id, i.headline AS item_headline,
+RETURN pr.cik AS cik, pr.older AS older_accession, pr.newer AS newer_accession, p.passage_id AS passage_id, p.kind AS kind,
+       i.item_id AS item_id, i.headline AS item_headline,
        i.unit_kind AS item_unit_kind, i.section_id AS section_id,
        """ + _LEAD_TEXT + """ AS lead_text,
        p.text AS text, p.counterpart_text AS counterpart_text, p.similarity AS similarity,
@@ -313,11 +347,15 @@ remove removing dropped drop added add adding new newly latest annual report rep
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-]+")
 _PAIR_KEYS = ("company", "cik", "older_accession", "older_form", "older_date", "newer_accession", "newer_form",
               "newer_date")
+# What :func:`select_pairs` adds to a pair beside ``_PAIR_KEYS``: how it was chosen, the fiscal years / period ends of its
+# two filings (for the block's "covers ..." line) and whether the temporal query can be asked for it at all.
+_PAIR_EXTRA_KEYS = ("selection", "older_fy", "newer_fy", "older_period_end", "newer_period_end", "queryable")
 _ITEM_KEYS = ("company", "cik", "change", "item_id", "headline", "older_headline", "unit_kind", "section_id", "seq",
               "length", "older_chunk_ids", "newer_chunk_ids", "decided_by", "sim_embed", "sim_lex", "lineage",
-              "lead_text")
+              "lead_text", "older_accession", "newer_accession")
 _PASSAGE_KEYS = ("cik", "passage_id", "kind", "item_id", "item_headline", "item_unit_kind", "section_id", "lead_text",
-                 "text", "counterpart_text", "similarity", "chunk_ids", "counterpart_chunk_ids")
+                 "text", "counterpart_text", "similarity", "chunk_ids", "counterpart_chunk_ids", "older_accession",
+                 "newer_accession")
 
 
 def _content_tokens(text: str | None) -> set[str]:
@@ -340,40 +378,77 @@ def _rank_key(row: dict, question_tokens: set[str]) -> tuple:
             row.get("item_id") or "")
 
 
-def select_temporal(rows: list[dict], question: str,
-                    caps: Mapping[str, int] = TEMPORAL_CAPS) -> tuple[list[dict], list[dict]]:
-    """Rank and cap the rows of :data:`TEMPORAL_QUERY`: ``(items, pairs)``.
+def _pair_id(row: Mapping) -> tuple:
+    """A pair is one company's comparison of two annual filings; the newer filing's accession names it within the company."""
+    return row.get("cik"), row.get("newer_accession")
 
-    ``pairs`` has one dict per company whose comparison exists (older and newer filing, ``compared`` /
-    ``not_compared_reason`` from the SUPERSEDES edge, and ``totals`` of removed / unsettled / new / reworded items BEFORE
-    the cap, so the answer can say "showing 8 of 21"); ``items`` are flat rows (company, change, headline, chunk ids, ...)
-    in pair order, ``removed``, then ``unsettled`` (older items the text check could not settle: NOT counted as removed),
-    then ``new``, then ``reworded``, each ranked and capped at ``caps``. A pair the loader could not
-    compare (``compared`` False) has all-zero totals and no items, whatever rows arrive for it. A row with no
-    ``compared`` value (a graph from before the loader stamped the edge) means compared. No RiskItem data yet means
-    ``([], [])``."""
-    pairs: dict[int, dict] = {}
-    changes: dict[int, dict[str, list[dict]]] = {}
+
+def _per_pair_caps(caps: Mapping[str, int], n_pairs: int) -> dict[str, int]:
+    """A company's line budget split over its ``n_pairs`` pairs (each list keeps at least one line): one pair keeps ``caps``
+    unchanged, so a question that names no pair renders exactly what it always did."""
+    return dict(caps) if n_pairs <= 1 else {kind: max(1, cap // n_pairs) for kind, cap in caps.items()}
+
+
+def _pair_dict(source: Mapping, caps: Mapping[str, int]) -> dict:
+    compared = source.get("compared") is not False
+    return {**{k: source.get(k) for k in _PAIR_KEYS}, **{k: source[k] for k in _PAIR_EXTRA_KEYS if k in source},
+            "compared": compared, "not_compared_reason": None if compared else source.get("not_compared_reason"),
+            "totals": {c: 0 for c in caps}}
+
+
+def select_temporal(rows: list[dict], question: str, caps: Mapping[str, int] = TEMPORAL_CAPS,
+                    pairs: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
+    """Rank and cap the rows of :data:`TEMPORAL_QUERY` (or :data:`TEMPORAL_SELECTED_QUERY`): ``(items, pairs)``.
+
+    ``pairs`` has one dict per compared filing pair (older and newer filing, ``compared`` / ``not_compared_reason`` from the
+    SUPERSEDES edge, and ``totals`` of removed / unsettled / new / reworded items BEFORE the cap, so the answer can say
+    "showing 8 of 21"); ``items`` are flat rows (company, change, headline, chunk ids, ...) in pair order, ``removed``, then
+    ``unsettled`` (older items the text check could not settle: NOT counted as removed), then ``new``, then ``reworded``,
+    each ranked and capped at ``caps``. A pair the loader could not compare (``compared`` False) has all-zero totals and no
+    items, whatever rows arrive for it. A row with no ``compared`` value (a graph from before the loader stamped the edge)
+    means compared. No RiskItem data yet means ``([], [])``.
+
+    Without ``pairs`` the pairs are the ``'pair'`` rows (the current pair of each company); with ``pairs`` (the output of
+    :func:`select_pairs`) they are exactly those, so a chosen pair with no rows keeps zero totals. Everything is keyed by
+    ``(cik, newer accession)``: two pairs of one company never share items, totals or caps, and when a company has several
+    pairs each list gets its share of the caps (:func:`_per_pair_caps`). A row without ``newer_accession`` (a saved fixture)
+    belongs to its company's only pair."""
+    pair_map: dict[tuple, dict] = {}
+    if pairs is not None:
+        pair_map = {_pair_id(p): _pair_dict(p, caps) for p in pairs}
+    else:
+        for row in rows:
+            if row.get("change") == "pair":
+                pair_map[_pair_id(row)] = _pair_dict(row, caps)
+
+    def owner(row: Mapping) -> tuple | None:
+        if _pair_id(row) in pair_map:
+            return _pair_id(row)
+        if row.get("newer_accession") is None:
+            mine = [key for key in pair_map if key[0] == row.get("cik")]
+            return mine[0] if len(mine) == 1 else None
+        return None
+
+    changes: dict[tuple, dict[str, list[dict]]] = {}
     for row in rows:
-        cik, change = row.get("cik"), row.get("change")
-        if change == "pair":
-            compared = row.get("compared") is not False
-            pairs[cik] = {**{k: row.get(k) for k in _PAIR_KEYS}, "compared": compared,
-                          "not_compared_reason": None if compared else row.get("not_compared_reason"),
-                          "totals": {c: 0 for c in caps}}
-        elif change in caps:
-            changes.setdefault(cik, {c: [] for c in caps})[change].append(row)
+        change = row.get("change")
+        if change in caps and (key := owner(row)) is not None:
+            changes.setdefault(key, {c: [] for c in caps})[change].append(row)
     question_tokens = _content_tokens(question)
+    n_pairs = {cik: sum(1 for k in pair_map if k[0] == cik) for cik in {k[0] for k in pair_map}}
     items: list[dict] = []
-    for cik, pair in pairs.items():
+    for key, pair in pair_map.items():
         if not pair["compared"]:
             continue
-        for change, group in changes.get(cik, {}).items():
+        pair_caps = _per_pair_caps(caps, n_pairs[key[0]])
+        for change, group in changes.get(key, {}).items():
             pair["totals"][change] = len(group)
             ranked = sorted(group, key=lambda r: _rank_key(r, question_tokens))
             items += [{**{k: r.get(k) for k in _ITEM_KEYS}, "older_chunk_ids": list(r.get("older_chunk_ids") or []),
-                       "newer_chunk_ids": list(r.get("newer_chunk_ids") or [])} for r in ranked[:caps[change]]]
-    return items, list(pairs.values())
+                       "newer_chunk_ids": list(r.get("newer_chunk_ids") or []),
+                       "older_accession": pair["older_accession"], "newer_accession": pair["newer_accession"]}
+                      for r in ranked[:pair_caps[change]]]
+    return items, list(pair_map.values())
 
 
 def _passage_rank_key(row: dict, question_tokens: set[str]) -> tuple:
@@ -391,22 +466,37 @@ def select_passages(rows: list[dict], pairs: list[dict], question: str,
     in the fixed order ``removed``, ``added``, ``reworded``. The returned ``pairs`` are copies of the input with
     ``passage_totals`` (per kind, BEFORE the cap) added, so the answer can say "showing 8 of 12". Passages of a pair
     that was not compared, or of a company with no pair, are dropped."""
-    comparable = {p["cik"] for p in pairs if p.get("compared", True)}
-    grouped: dict[int, dict[str, list[dict]]] = {}
+    def key_of(pair: Mapping) -> tuple:
+        return pair.get("cik"), pair.get("older_accession"), pair.get("newer_accession")
+
+    comparable = {key_of(p): p for p in pairs if p.get("compared", True)}
+    n_pairs = {cik: sum(1 for k in comparable if k[0] == cik) for cik in {k[0] for k in comparable}}
+
+    def owner(row: Mapping) -> tuple | None:
+        if key_of(row) in comparable:
+            return key_of(row)
+        if row.get("older_accession") is None and row.get("newer_accession") is None:   # a saved fixture: its company's only pair
+            mine = [k for k in comparable if k[0] == row.get("cik")]
+            return mine[0] if len(mine) == 1 else None
+        return None
+
+    grouped: dict[tuple, dict[str, list[dict]]] = {}
     for row in rows:
-        if row.get("cik") in comparable and row.get("kind") in caps:
-            grouped.setdefault(row["cik"], {kind: [] for kind in caps})[row["kind"]].append(row)
+        if row.get("kind") in caps and (key := owner(row)) is not None:
+            grouped.setdefault(key, {kind: [] for kind in caps})[row["kind"]].append(row)
     tokens = _content_tokens(question)
     passages: list[dict] = []
     with_totals: list[dict] = []
     for pair in pairs:
-        groups = grouped.get(pair["cik"], {})
+        groups = grouped.get(key_of(pair), {})
         with_totals.append({**pair, "passage_totals": {kind: len(groups.get(kind, [])) for kind in caps}})
+        pair_caps = _per_pair_caps(caps, n_pairs.get(pair.get("cik"), 1))
         for kind in caps:
             ranked = sorted(groups.get(kind, []), key=lambda r: _passage_rank_key(r, tokens))
             passages += [{**{k: r.get(k) for k in _PASSAGE_KEYS}, "chunk_ids": list(r.get("chunk_ids") or []),
-                          "counterpart_chunk_ids": list(r.get("counterpart_chunk_ids") or [])}
-                         for r in ranked[:caps[kind]]]
+                          "counterpart_chunk_ids": list(r.get("counterpart_chunk_ids") or []),
+                          "older_accession": pair.get("older_accession"), "newer_accession": pair.get("newer_accession")}
+                         for r in ranked[:pair_caps[kind]]]
     return passages, with_totals
 
 
@@ -450,6 +540,106 @@ def mentioned_periods(question: str) -> dict[str, list]:
             years.update(range(int(start), int(end) + 1))
     kept = sorted(({(y, str(y)) for y in years} | {(int(d[:4]), d) for d in dates}), reverse=True)[:MAX_MENTIONED_PERIODS]
     return {"years": sorted(y for y, label in kept if label.isdigit()), "dates": sorted(d for _, d in kept if not d.isdigit())}
+
+
+# --- which filing pair(s) of a company the temporal layer reads --------------------------------------------------------------
+# A question about a change in the risk disclosures that NAMES fiscal years ("between its FY2024 and FY2025 annual reports")
+# reads the pair of annual filings between them; one that asks about several annual reports ("evolved across its recent annual
+# reports", "in earlier 10-Ks") reads the newest pairs; anything else reads the current pair exactly as before. A metric
+# question that names years is NOT a pair question: it needs a risk-change word AND a disclosure noun.
+MAX_PAIRS_PER_COMPANY = 2
+_MULTI_PAIR_INTENT_RE = re.compile(
+    r"\b(?:across|over|through|throughout)\s+(?:its\s+|the\s+|their\s+)?(?:\w+\s+){0,2}?"
+    r"(?:annual\s+reports|annual\s+filings|10-Ks|20-Fs)\b"
+    r"|\bevolv\w*"
+    r"|\b(?:earlier|previous|prior|past|older|recent|successive)\s+(?:annual\s+reports|annual\s+filings|10-Ks|20-Fs)\b", re.I)
+_RISK_CHANGE_RE = re.compile(
+    r"\b(?:remov\w*|drop(?:s|ped|ping)?|delet\w*|eliminat\w*|withdr\w*|no longer|stop(?:s|ped|ping)?|newly|new|added|adding|"
+    r"reword\w*|chang\w*|differ\w*|appear\w*|disappear\w*)\b", re.I)
+_DISCLOSURE_NOUN_RE = re.compile(
+    r"\b(?:risks?|disclos\w*|10-Ks?|10-Qs?|20-Fs?|annual\s+reports?|filings?|statements?|sentences?|passages?)\b", re.I)
+
+
+def pair_selection_mode(question: str, periods: Mapping[str, list]) -> str | None:
+    """``"named"`` (the question names fiscal years / period-end dates AND asks about a change in a disclosure), ``"multi"``
+    (it asks about several annual reports), or ``None`` (the current pair, as before). Years beat the multi-year wording."""
+    if (periods.get("years") or periods.get("dates")) and _RISK_CHANGE_RE.search(question) \
+            and _DISCLOSURE_NOUN_RE.search(question):
+        return "named"
+    return "multi" if _MULTI_PAIR_INTENT_RE.search(question) else None
+
+
+def _guarded(row: Mapping) -> bool:
+    """A pair the temporal query can read: the loader marked it not compared (it comes back as "comparison not available"), or
+    both filings have risk items."""
+    return row.get("compared") is False or bool(row.get("older_has_items") and row.get("newer_has_items"))
+
+
+def _fiscal_list(years: list[int]) -> str:
+    years = sorted(set(years))
+    return ", ".join(map(str, years[:-1])) + f" and {years[-1]}" if len(years) > 1 else str(years[0])
+
+
+def _chosen(row: Mapping, selection: str) -> dict:
+    """The pair as :func:`select_temporal` takes it. A pair with a side that has no risk items (a filing the loader never
+    parsed) is returned as NOT compared, with the reason, and is not asked of the graph."""
+    out = {**{k: row.get(k) for k in _PAIR_KEYS}, **{k: row.get(k) for k in _PAIR_EXTRA_KEYS if k not in ("selection", "queryable")},
+           "compared": row.get("compared") is not False, "not_compared_reason": row.get("not_compared_reason"),
+           "selection": selection, "queryable": _guarded(row)}
+    if not out["queryable"]:
+        side = "older" if not row.get("older_has_items") else "newer"
+        out.update(compared=False, not_compared_reason=(
+            f"no risk items were loaded for the {row.get(side + '_form')} filed {row.get(side + '_date')} "
+            f"(accession {row.get(side + '_accession')})"))
+    return out
+
+
+def select_pairs(rows: list[dict], question: str, periods: Mapping[str, list], *, mode: str | None = None,
+                 max_pairs: int = MAX_PAIRS_PER_COMPANY) -> tuple[list[dict], list[dict]]:
+    """Choose the filing pair(s) per company from the rows of :data:`ANNUAL_PAIRS_QUERY`: ``(pairs, notices)``.
+
+    ``named``: the pairs whose two filings' fiscal years are both named, else whose newer filing's year is named, else whose
+    older filing's year is (the year of a period end, so "FY2025" is the 10-K for the fiscal year ending in 2025); the
+    ``max_pairs`` newest. ``multi``: the ``max_pairs`` newest pairs the graph can read. Anything else (or no match at all)
+    is the current pair. A named year with no pair in the graph gives the current pair AND a notice saying so, never a
+    silent substitute. Pairs come back oldest first per company; ``notices`` are ``{cik, company, text}``."""
+    mode = mode or pair_selection_mode(question, periods) or "latest"
+    named = sorted({int(y) for y in periods.get("years", [])} | {int(d[:4]) for d in periods.get("dates", [])})
+    by_company: dict[int, list[dict]] = {}
+    for row in rows:
+        by_company.setdefault(row["cik"], []).append(row)
+    chosen: list[dict] = []
+    notices: list[dict] = []
+    for cik, history in by_company.items():
+        history = sorted(history, key=lambda r: r.get("newer_date") or "", reverse=True)
+        company = history[0].get("company")
+        picked: list[dict] = []
+        selection = "latest"
+        if mode == "named" and named:
+            wanted = set(named)
+            for keep in (lambda r: r.get("older_fy") in wanted and r.get("newer_fy") in wanted,
+                         lambda r: r.get("newer_fy") in wanted, lambda r: r.get("older_fy") in wanted):
+                picked = [r for r in history if keep(r)][:max_pairs]
+                if picked:
+                    break
+            selection = "named"
+            if not picked:
+                loaded = [fy for r in history for fy in (r.get("older_fy"), r.get("newer_fy")) if fy is not None]
+                notices.append({"cik": cik, "company": company, "text": (
+                    f"no annual-filing comparison covering fiscal {_fiscal_list(named)} is in the graph for {company} (annual "
+                    f"filings loaded: fiscal {', '.join(map(str, sorted(set(loaded)))) or 'unknown'}); the latest comparison "
+                    "is shown instead")})
+        elif mode == "multi":
+            readable = [r for r in history if _guarded(r)]
+            picked, selection = readable[:max_pairs], "multi"
+            if len(readable) > max_pairs:
+                notices.append({"cik": cik, "company": company, "text": (
+                    f"showing the {max_pairs} most recent of {len(readable)} annual-filing comparisons for {company}")})
+        if not picked:
+            picked = [r for r in history if r.get("is_current") and _guarded(r)][:1]
+            selection = "latest"
+        chosen += [_chosen(r, selection) for r in reversed(picked)]
+    return chosen, notices
 
 
 def _company_edges(driver, anchor_ids: list[int], query: str) -> list[dict]:
@@ -517,7 +707,16 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     metrics = run_cypher(driver, METRICS_QUERY, ids=anchor_ids, periods=METRIC_PERIODS_FETCHED,
                          years=periods["years"], dates=periods["dates"])
     risks = _active_risks(driver, anchor_ids, vec)
-    temporal, temporal_pairs = select_temporal(run_cypher(driver, TEMPORAL_QUERY, ids=anchor_ids), question)
+    mode = pair_selection_mode(question, periods)
+    temporal_notices: list[dict] = []
+    if mode is None:                                    # the current pair of each anchor, exactly as before
+        temporal, temporal_pairs = select_temporal(run_cypher(driver, TEMPORAL_QUERY, ids=anchor_ids), question)
+    else:                                               # the pair(s) the question names (see select_pairs)
+        chosen, temporal_notices = select_pairs(run_cypher(driver, ANNUAL_PAIRS_QUERY, ids=anchor_ids), question, periods,
+                                                mode=mode)
+        newer = [p["newer_accession"] for p in chosen if p.get("queryable")]
+        rows = run_cypher(driver, TEMPORAL_SELECTED_QUERY, ids=anchor_ids, newer_accessions=newer) if newer else []
+        temporal, temporal_pairs = select_temporal(rows, question, pairs=chosen)
     temporal_passages, temporal_pairs = _passages(driver, temporal_pairs, question)
     chunks = run_cypher(driver, EXCERPTS_QUERY, ids=anchor_ids, vec=vec, k=k_chunks,
                         candidates=EXCERPT_CANDIDATES)
@@ -526,7 +725,7 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
                  len(risks), len(temporal), len(temporal_passages), len(chunks))
     return {"anchors": anchors, "edges": edges, "metrics": metrics, "metric_periods": periods, "risks": risks,
             "temporal": temporal, "temporal_pairs": temporal_pairs, "temporal_passages": temporal_passages,
-            "chunks": chunks, "anchor_defaulted": anchor_defaulted}
+            "temporal_notices": temporal_notices, "chunks": chunks, "anchor_defaulted": anchor_defaulted}
 
 
 def vector_retrieve(question: str, driver, embedder, k: int = 8) -> dict:
@@ -534,4 +733,4 @@ def vector_retrieve(question: str, driver, embedder, k: int = 8) -> dict:
     as hybrid_retrieve with the graph layers empty (only retrievable chunks)."""
     chunks = run_cypher(driver, VECTOR_QUERY, k=k, vec=embedder.encode_query(question))
     return {"anchors": {}, "edges": [], "metrics": [], "metric_periods": {"years": [], "dates": []}, "risks": [],
-            "temporal": [], "temporal_pairs": [], "temporal_passages": [], "chunks": chunks}
+            "temporal": [], "temporal_pairs": [], "temporal_passages": [], "temporal_notices": [], "chunks": chunks}

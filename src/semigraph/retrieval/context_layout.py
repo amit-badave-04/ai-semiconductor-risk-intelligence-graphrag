@@ -208,27 +208,59 @@ def _pair_sections(pair: Mapping, mine: list[Mapping], passages: list[Mapping], 
     return lines
 
 
-def temporal_block(items: list[dict], pairs: list[dict], passages: Sequence[Mapping] = ()) -> tuple[str, set[str]]:
+def _belongs(row: Mapping, pair: Mapping) -> bool:
+    """A temporal item or passage row belongs to the pair of its company that it names by accession; a row that names none
+    (a saved fixture) belongs to its company's pair."""
+    return (row.get("cik") == pair.get("cik") and row.get("newer_accession") in (None, pair.get("newer_accession"))
+            and row.get("older_accession") in (None, pair.get("older_accession")))
+
+
+def _covers_line(pair: Mapping) -> str | None:
+    """Which fiscal years a pair chosen for the question compares: none for the current pair (what every question saw before
+    pairs could be chosen), so a question that names no pair renders exactly as it always did. Period-end wording on purpose:
+    the answer prompt forbids "FY2025" labels."""
+    why = {"named": "the question names these fiscal years", "multi": "the question spans several annual reports"}.get(pair.get("selection"))
+    if not why:
+        return None
+    return (f"covers the fiscal year ended {pair.get('older_period_end') or 'an unknown date'} -> the fiscal year ended "
+            f"{pair.get('newer_period_end') or 'an unknown date'} (shown because {why})")
+
+
+def _note_lines(notices: Sequence[Mapping]) -> list[str]:
+    return [f"Note for {n.get('company')}: {_flat(n.get('text')).rstrip('.')}." for n in notices]
+
+
+def temporal_block(items: list[dict], pairs: list[dict], passages: Sequence[Mapping] = (),
+                   notices: Sequence[Mapping] = ()) -> tuple[str, set[str]]:
     """The text-verified temporal block and the chunk ids it makes citable.
 
-    One section per compared company: the two filings, then the removed / added / reworded items with the TOTALS
-    stated beside the capped lists ("showing 8 of 21"), then the passages of surviving items that changed. No comparison
-    at all (no RiskItem data) is ``(none)``; a pair the loader could not compare says so; a comparison in which nothing
-    changed says that."""
-    if not pairs:
+    One section per compared pair (a company has one, or several when the question names fiscal years or spans several annual
+    reports, oldest first): the two filings, the fiscal years a chosen pair covers, then the removed / added / reworded items
+    with the TOTALS stated beside the capped lists ("showing 8 of 21"), then the passages of surviving items that changed. A
+    notice (a named year the graph has no comparison for; a cap on the pairs shown) heads its company's first section, or is
+    a section of its own when the company has none. No comparison at all (no RiskItem data) is ``(none)``; a pair the loader
+    could not compare says so; a comparison in which nothing changed says that."""
+    if not pairs and not notices:
         return NONE_BLOCK, set()
+    by_company: dict[object, list[Mapping]] = {}
+    for notice in notices:
+        by_company.setdefault(notice.get("cik"), []).append(notice)
     valid_ids: set[str] = set()
     sections = []
     for pair in pairs:
-        lines = [f"{pair['company']}: {pair['older_form']} filed {pair['older_date']} (accession {pair['older_accession']}) "
-                 f"compared with {pair['newer_form']} filed {pair['newer_date']} (accession {pair['newer_accession']})"]
+        lines = _note_lines(by_company.pop(pair.get("cik"), []))
+        lines.append(f"{pair['company']}: {pair['older_form']} filed {pair['older_date']} (accession {pair['older_accession']}) "
+                     f"compared with {pair['newer_form']} filed {pair['newer_date']} (accession {pair['newer_accession']})")
+        if covers := _covers_line(pair):
+            lines.append(covers)
         if pair.get("compared") is False:
             reason = _flat(pair.get("not_compared_reason")) or "reason not recorded"
             lines.append(f"{NOT_COMPARED_PREFIX} ({reason})")
         else:
-            lines += _pair_sections(pair, [i for i in items if i.get("cik") == pair.get("cik")],
-                                    [p for p in passages if p.get("cik") == pair.get("cik")], valid_ids)
+            lines += _pair_sections(pair, [i for i in items if _belongs(i, pair)], [p for p in passages if _belongs(p, pair)],
+                                    valid_ids)
         sections.append("\n".join(lines))
+    sections += ["\n".join(_note_lines(rest)) for rest in by_company.values()]
     return "\n\n".join(sections), valid_ids
 
 

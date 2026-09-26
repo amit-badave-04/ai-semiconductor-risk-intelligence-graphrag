@@ -76,6 +76,11 @@ _ATTRIBUTION_WINDOW_WORDS = 8     # how far after the company name a saying verb
 _NEGATION_WINDOW_WORDS = 3        # a negation this close to the company..term span cancels the attribution
 
 
+def _hyphens_as_spaces(text: str) -> str:
+    """``advanced-computing`` and ``advanced computing`` are the same phrase to a reader (and to ``any_of``)."""
+    return re.sub(r"[\-‐-―]", " ", text)
+
+
 def _company_pattern(companies: Sequence[str]) -> str:
     if not isinstance(companies, Sequence) or isinstance(companies, str) or not companies \
             or not all(isinstance(c, str) and c.strip() for c in companies):
@@ -97,10 +102,23 @@ def _sentences(text: str) -> list[str]:
     return out
 
 
+# "the context does not include an Intel filing that ...": a limitation of the SOURCE whose negation reaches over the rest of
+# the statement (further than the few-word window of ``_negated``), so it cancels an attribution that follows it, but only
+# within the same statement: a comma, a semicolon or "and" starts a new one.
+_SOURCE_LIMIT_RE = re.compile(
+    r"\b(?:(?:does|do) not|doesn['’]t|cannot|can['’]t|unable to)\s+(?:be\s+)?"
+    r"(?:contain|include|provide|state|mention|specify|show|report|say|identify|establish|determin\w*|find)\b", re.I)
+_STATEMENT_START_RE = re.compile(r"[,;]|\band\b", re.I)
+
+
 def _negated(clause: str, start: int, end: int) -> bool:
     left = clause[:start].split()[-_NEGATION_WINDOW_WORDS:]
     right = clause[end:].split()[:_NEGATION_WINDOW_WORDS]
-    return bool(_NEGATION_RE.search(" ".join(left) + " " + clause[start:end] + " " + " ".join(right)))
+    if _NEGATION_RE.search(" ".join(left) + " " + clause[start:end] + " " + " ".join(right)):
+        return True
+    head = clause[:start]
+    last_break = max((m.end() for m in _STATEMENT_START_RE.finditer(head)), default=0)
+    return bool(_SOURCE_LIMIT_RE.search(head[last_break:]))
 
 
 def _clause_attributes(clause: str, company: str) -> bool:
@@ -159,6 +177,6 @@ def check_expectation(expect: Mapping, answer: str) -> bool:
     if "direction" in expect:
         checks.append(bool(_DIRECTION_RE[expect["direction"]].search(answer)))
     if "any_of" in expect:
-        lowered = answer.lower()
-        checks.append(any(s.lower() in lowered for s in expect["any_of"]))
+        lowered = _hyphens_as_spaces(answer.lower())
+        checks.append(any(_hyphens_as_spaces(s.lower()) in lowered for s in expect["any_of"]))
     return all(checks)

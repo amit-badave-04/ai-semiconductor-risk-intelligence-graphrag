@@ -90,3 +90,25 @@ def test_the_key_combines_with_the_other_keys():
 def test_a_malformed_company_list_is_an_error_not_a_silent_pass(bad):
     with pytest.raises(ValueError, match="not_company_disclosure"):
         check_expectation({"not_company_disclosure": bad}, "anything")
+
+
+# --- X3 (deployed run): a limitation sentence about the SOURCE is not an attribution, however many times it names the company ---
+
+@pytest.mark.parametrize("sentence", [
+    "The supplied context does not include an Intel filing passage describing what Intel said about the revocation, so "
+    "Intel’s specific disclosure cannot be established from it. %s" % FR,
+    "The context does not include any Intel filing that describes the rule %s." % FR,
+    "The filings do not contain an Intel statement about the revocation %s." % FR,
+])
+def test_a_source_limitation_that_names_the_company_is_not_an_attribution(sentence):
+    assert misattributed_sentences(sentence, ["Intel"]) == []
+
+
+@pytest.mark.parametrize("sentence", [
+    "The context does not mention the date, but Intel disclosed the revocation in its 10-K %s." % FR,      # contrast splits it
+    "The context does not mention the date; Intel disclosed the revocation in its 10-K %s." % FR,
+    "The context does not mention the date, and Intel’s 10-K lists the rule %s." % FR,                     # a new statement after the comma
+    "Intel disclosed the revocation in its 10-K, which the context does not mention %s." % FR,               # the negation comes AFTER
+])
+def test_a_limitation_does_not_excuse_a_later_positive_attribution(sentence):
+    assert misattributed_sentences(sentence, ["Intel"]) == [sentence]
