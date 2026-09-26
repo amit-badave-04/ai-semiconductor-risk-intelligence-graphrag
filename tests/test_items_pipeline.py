@@ -7,6 +7,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import lakefix
+from embedfix import make_embed
 from semigraph.graph import adjudicate as adj
 from semigraph.graph import items
 from semigraph.graph import passage_adjudicate as pad
@@ -28,7 +29,7 @@ def read(settings, name):
 
 
 def file_bytes(settings):
-    return {p.name: p.read_bytes() for p in sorted(items.alignment_dir(settings).iterdir())}
+    return {p.name: p.read_bytes() for p in sorted(items.alignment_dir(settings).iterdir()) if p.is_file()}
 
 
 # --------------------------------------------------------------------------- small pure helpers
@@ -443,13 +444,14 @@ def test_a_dry_run_lists_the_band_estimate_writes_nothing_and_calls_nothing(band
 def test_a_run_over_the_cap_is_refused_before_any_call_and_writes_nothing(band_lake):
     llm = BandLLM()
     with pytest.raises(pad.BudgetExceeded, match="exceeds --max-usd"):
-        items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, max_usd=1e-9, llm=llm)
-    assert llm.passage_calls == 0 and not items.alignment_dir(band_lake).exists()
+        items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, max_usd=1e-9, llm=llm, embed=make_embed())
+    assert llm.passage_calls == 0                                                   # only the derived embedding cache may exist now
+    assert [p.name for p in items.alignment_dir(band_lake).iterdir()] == [items.EMBEDDINGS_DIRNAME]
 
 
 def test_with_the_flag_the_band_is_settled_by_the_verdicts_and_the_files_say_so(band_lake):
     llm = BandLLM()
-    run = items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=llm)
+    run = items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=llm, embed=make_embed())
     assert llm.passage_calls == 4 and llm.item_calls == 0 and run.passage_calls == 4 and run.passage_verdicts_used == 4
     frame = p1(passages_of(band_lake))
     removed = frame[frame["kind"] == "removed"]
@@ -466,21 +468,93 @@ def test_with_the_flag_the_band_is_settled_by_the_verdicts_and_the_files_say_so(
     assert row["band"] == 4 and row["band_answered"] == 4
 
 
-def test_cached_verdicts_are_replayed_without_the_flag_and_the_files_are_byte_identical(band_lake):
-    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM())
+def test_cached_verdicts_are_replayed_for_free_with_the_flag_and_a_zero_budget_and_the_files_are_byte_identical(band_lake):
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=make_embed())
     bought = file_bytes(band_lake)
     for path in items.alignment_dir(band_lake).glob("*.parquet"):
         path.unlink()
-    llm = BandLLM()
-    replay = items.run_align_items(band_lake, [ZZZ], llm=llm)                      # NO --adjudicate-passages
-    assert llm.passage_calls == 0 and replay.passage_verdicts_used == 4 and replay.passage_calls == 0
+    llm, embed = BandLLM(), make_embed()
+    replay = items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, max_usd=0, llm=llm, embed=embed)
+    assert llm.passage_calls == 0 and embed.calls == [] and replay.passage_verdicts_used == 4 and replay.passage_calls == 0
+    assert replay.passage_prompt_version == pad.PROMPT_VERSION and replay.passage_estimate.n_calls == 0
     assert file_bytes(band_lake) == bought and pad.CHECKPOINT_NAME in bought       # three parquets rebuilt from the cache alone
-    again = items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=llm)      # with the flag: nothing left to buy
-    assert llm.passage_calls == 0 and again.passage_estimate.n_calls == 0 and file_bytes(band_lake) == bought
+
+
+def test_a_zero_budget_refuses_as_soon_as_anything_is_uncached_before_embedding_or_writing(band_lake):
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=make_embed())
+    path = items.alignment_dir(band_lake) / pad.CHECKPOINT_NAME
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")                  # one answer is missing again
+    for parquet in items.alignment_dir(band_lake).glob("*.parquet"):
+        parquet.unlink()
+    llm, embed = BandLLM(), make_embed()
+    with pytest.raises(pad.BudgetExceeded, match="exceeds --max-usd"):
+        items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, max_usd=0, llm=llm, embed=embed)
+    assert llm.passage_calls == 0 and embed.calls == [] and not list(items.alignment_dir(band_lake).glob("*.parquet"))
+
+
+def test_a_plain_run_replays_only_the_legacy_version_so_pas_v3_answers_change_nothing_without_the_flag(band_lake):
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=make_embed())
+    plain = items.run_align_items(band_lake, [ZZZ], llm=BandLLM())
+    assert plain.passage_verdicts_used == 0 and plain.passage_prompt_version == pad.LEGACY_PROMPT_VERSION
+    frame = p1(passages_of(band_lake))
+    assert frame[(frame["kind"] == "reworded")]["decided_by"].eq("sentence_reworded_band").all()
+
+
+def test_a_plain_run_reproduces_the_tables_from_legacy_pas_v2_answers_exactly(band_lake):
+    """The answers bought before pas-v3 existed (same rules, lexical candidates) keep giving the tables they gave."""
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=make_embed())
+    path = items.alignment_dir(band_lake) / pad.CHECKPOINT_NAME
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    for r in records:
+        r["key"] = r["key"].replace(f"|{pad.PROMPT_VERSION}|", f"|{pad.LEGACY_PROMPT_VERSION}|")
+        r["prompt_version"] = pad.LEGACY_PROMPT_VERSION
+    path.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in records), encoding="utf-8")
+    v3_tables = {p.name: p.read_bytes() for p in items.alignment_dir(band_lake).glob("*.parquet")}
+    for parquet in list(items.alignment_dir(band_lake).glob("*.parquet")):
+        parquet.unlink()
+    replay = items.run_align_items(band_lake, [ZZZ], llm=BandLLM())
+    assert replay.passage_verdicts_used == 4 and replay.passage_calls == 0
+    assert {p.name: p.read_bytes() for p in items.alignment_dir(band_lake).glob("*.parquet")} == v3_tables
+
+
+def test_buying_without_an_embedder_is_refused_but_a_dry_run_needs_none(band_lake):
+    llm = BandLLM()
+    with pytest.raises(items.AlignItemsError, match="pass `embed`"):
+        items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=llm)
+    assert llm.passage_calls == 0 and not items.alignment_dir(band_lake).exists()
+    assert items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, dry_run=True).passage_estimate.n_calls == 4
+
+
+def test_the_sections_are_embedded_once_under_the_run_dir_and_another_model_reuses_the_vectors(band_lake, tmp_path):
+    out = tmp_path / "elsewhere"
+    embed = make_embed()
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=embed, out_dir=out)
+    cache = out / items.EMBEDDINGS_DIRNAME
+    assert sorted(p.suffix for p in cache.iterdir()) == [".json", ".json", ".npy", ".npy"] and embed.calls
+    assert not (items.alignment_dir(band_lake) / items.EMBEDDINGS_DIRNAME).exists()
+    again = make_embed()
+    run = items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=again, out_dir=out,
+                                model="vendor/other-model")
+    assert run.passage_calls == 4 and again.calls == []                             # repaid answers, but no sentence embedded twice
+
+
+def test_the_prompt_the_model_sees_lists_the_embedding_neighbours_and_the_record_stores_them(band_lake):
+    prompts = []
+
+    class Spy(BandLLM):
+        def __call__(self, prompt, model_cls, **kw):
+            prompts.append(prompt)
+            return super().__call__(prompt, model_cls, **kw)
+
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=Spy(), embed=make_embed())
+    assert prompts and all("SAME fact" in p for p in prompts)
+    lines = [json.loads(line) for line in (items.alignment_dir(band_lake) / pad.CHECKPOINT_NAME).read_text(encoding="utf-8").splitlines()]
+    assert all(1 <= len(r["candidates"]) <= 8 and r["zone"] == "band" for r in lines)
 
 
 def test_without_a_cache_the_same_run_differs_so_the_replay_is_really_used(band_lake):
-    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM())
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=make_embed())
     cached = p1(passages_of(band_lake))
     (items.alignment_dir(band_lake) / pad.CHECKPOINT_NAME).unlink()
     items.run_align_items(band_lake, [ZZZ])
@@ -490,27 +564,27 @@ def test_without_a_cache_the_same_run_differs_so_the_replay_is_really_used(band_
 
 
 def test_a_different_model_does_not_use_the_cached_answers(band_lake):
-    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM())
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), embed=make_embed())
     run = items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, dry_run=True, llm=BandLLM(), model="vendor/other-model")
     assert run.passage_estimate.n_cached == 0 and run.passage_estimate.n_calls == 4
 
 
 def test_a_paraphrase_the_model_calls_different_is_removed_but_only_by_that_verdict(band_lake):
-    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(paraphrase="different"))
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(paraphrase="different"), embed=make_embed())
     frame = p1(passages_of(band_lake))
     assert frame[(frame["kind"] == "removed") & frame["text"].str.contains("Long lead times")].shape[0] == 1
 
 
 def test_the_passage_checkpoint_follows_out_dir(band_lake, tmp_path):
     out = tmp_path / "elsewhere"
-    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), out_dir=out)
+    items.run_align_items(band_lake, [ZZZ], adjudicate_passages=True, llm=BandLLM(), out_dir=out, embed=make_embed())
     assert (out / pad.CHECKPOINT_NAME).exists() and not items.alignment_dir(band_lake).exists()
     assert not passages_of(band_lake, out).empty
 
 
 def test_both_adjudications_share_the_cap_the_passage_step_gets_what_the_item_step_left(band_lake):
     llm = BandLLM()
-    run = items.run_align_items(band_lake, [ZZZ], adjudicate=True, adjudicate_passages=True, max_usd=0.5, llm=llm)
+    run = items.run_align_items(band_lake, [ZZZ], adjudicate=True, adjudicate_passages=True, max_usd=0.5, llm=llm, embed=make_embed())
     assert llm.item_calls == 1 and llm.passage_calls > 0
     item_records = adj.Checkpoint(items.alignment_dir(band_lake) / adj.CHECKPOINT_NAME).records
     spent = sum(r["est_usd_upper_bound"] for r in item_records.values())
@@ -521,7 +595,7 @@ def test_the_passage_step_is_refused_when_the_item_step_left_too_little_and_noth
     item_worst = items.run_align_items(band_lake, [ZZZ], adjudicate=True, dry_run=True).estimate.worst_case_usd
     llm = BandLLM()
     with pytest.raises(pad.BudgetExceeded, match="exceeds --max-usd"):
-        items.run_align_items(band_lake, [ZZZ], adjudicate=True, adjudicate_passages=True, max_usd=item_worst + 1e-5, llm=llm)
+        items.run_align_items(band_lake, [ZZZ], adjudicate=True, adjudicate_passages=True, max_usd=item_worst + 1e-5, llm=llm, embed=make_embed())
     assert llm.item_calls == 1 and llm.passage_calls == 0 and not list(items.alignment_dir(band_lake).glob("*.parquet"))
 
 

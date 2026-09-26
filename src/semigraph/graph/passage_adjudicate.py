@@ -1,13 +1,18 @@
-"""Cheap, safe LLM settlement of the passage layer's lexical BAND (M1b). Calls are OFF by default; cached answers are always replayed.
+"""Cheap, safe LLM settlement of the passage layer's lexical BAND and BELOW zones (M1b). Calls are OFF by default; cached answers
+are replayed.
 
 The passage layer (``graph/passages.py``) cannot tell, from word overlap alone, a real paraphrase from a lookalike between
 ``reword_min`` and ``reword_confident`` (Nvidia's "we transitioned some operations ... out of China and Hong Kong" matches an
-unrelated Hong Kong warehousing sentence at 0.367). Every such BAND sentence gets ONE question for a cheap model, and the answer
-changes the passage layer ONLY through rules enforced here, in code (mirroring ``graph/adjudicate.py``, the item-level version):
+unrelated Hong Kong warehousing sentence at 0.367), and a sentence with no counterpart at all ("confidently removed") may still be
+paraphrased somewhere else in the other section. Every such sentence (zone ``band``; with ``adjudicate_below_band`` also zone
+``below``) gets ONE question for a cheap model, and the answer changes the passage layer ONLY through rules enforced here, in code
+(mirroring ``graph/adjudicate.py``, the item-level version):
 
-* the prompt holds the sentence and up to 5 CANDIDATE SENTENCES of the other filing's section (the lexical best that put the
-  sentence in the band, then alternately the best by word similarity and by ``rapidfuzz.fuzz.partial_ratio``, de-duplicated; each
-  a verbatim sentence of the section);
+* the prompt holds the sentence and up to ``max_candidates`` (8) CANDIDATE SENTENCES of the other filing's section, each a verbatim
+  sentence of it: the lexical best (word similarity), the ``rapidfuzz.fuzz.partial_ratio`` best, then the sentences whose EMBEDDING
+  is closest to the sentence's (``graph/sentence_embed``: cosine over ALL sentences of the other section; the model only ever saw
+  the lexical top 5 before, so a paraphrase sharing few words was never among its candidates). Union in that order, de-duplicated
+  on normalised text, the embedding ranks refilling slots that de-duplication frees;
 * the model answers JSON ``{"verdict": "same" | "different", "candidate": <1-5> | null, "quote": <verbatim text> | null}``
   ("same": some candidate states the same fact; a changed tense, number or date is still the same fact);
 * ``same`` needs a valid quote: the candidate number is one of the shown candidates, the quote (>= 30 normalised characters, the
@@ -19,39 +24,50 @@ changes the passage layer ONLY through rules enforced here, in code (mirroring `
 * ``different`` becomes a ``BandVerdict("different")`` (the passage layer then reports the sentence as removed / added). It cannot
   be checked by code beyond the candidate list; its accuracy is a measured property (``scripts/tune_passages.py --verdicts``);
 * every raw answer is checkpointed to ``passage_adjudications.jsonl`` (one flushed line per call) keyed by (sentence hash |
-  hash of the other section | prompt version | model) and stores the sentence and the candidates the model saw. A re-run never
-  repays, and validation is re-run on every read, so changing a floor never needs a new call. ``align-items`` replays this file
-  whether or not ``--adjudicate-passages`` is given (that flag only buys the missing answers);
+  hash of the other section | prompt version | model) and stores the sentence, its zone and the candidates the model saw. A
+  re-run never repays, and validation is re-run on every read, so changing a floor never needs a new call. ``align-items`` replays
+  the recorded answers of ONE prompt version per run: ``pas-v3`` (this prompt, semantic candidates; what ``--adjudicate-passages``
+  buys and replays) or, without that flag, the legacy ``pas-v2`` answers (the same prompt without the last sentence of the
+  ``same`` rule, lexical candidates only; replay only, never bought again);
 * ``--max-usd`` is checked against the WORST case (every uncached call priced at its prompt size plus the full output cap) before
-  any call, and a running total of per-call upper bounds stops a run that would pass it.
+  any call, and a running total of per-call upper bounds stops a run that would pass it. The estimate is kept per zone. A dry run
+  embeds nothing: it prices the candidates that are not known yet at the longest sentences of the other section (worst case) and
+  at the mean sentence length (likely).
 
 The model call is INJECTED (``llm_json``-compatible). The default is ``adjudicate.default_llm_json`` (Anthropic-shaped models via
 ``semigraph.llm.llm_json``; every other provider through the provider-aware ``llm_text``, which sends ``max_completion_tokens``
-to GPT-6 and validates the JSON with correction turns). The live behaviour of the default model ``openai/gpt-6-luna`` on THIS
-prompt was NOT probed while building (no paid call is allowed then): run ``semigraph align-items --probe-adjudicator`` first
-(two calls, well under a cent; it prints the raw reply, the parsed verdict and whether the code rules accepted it).
+to GPT-6 and validates the JSON with correction turns). The default model ``openai/gpt-6-luna`` runs with
+``reasoning_effort="none"`` (a live probe on ``pas-v2`` showed reasoning made it stricter and ate the token budget); the ``pas-v3``
+wording was NOT probed live while building: run ``semigraph align-items --probe-adjudicator`` first (two calls, well under a cent;
+it prints the raw reply, the parsed verdict and whether the code rules accepted it).
 """
 
 import json
 import logging
 import math
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ValidationError
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 from . import adjudicate as adj
 from .adjudicate import BudgetExceeded, Checkpoint, default_llm_json
-from .align_text import SectionIndex, at_least, in_range, lex_exact, norm, word_tokens
+from .align_text import SectionIndex, at_least, in_range, lex_exact, norm, split_sentences, word_tokens
 from .passages import BandCandidate, BandSentence, BandVerdict
+from .sentence_embed import Neighbour
 
 __all__ = ["BudgetExceeded", "Checkpoint", "default_llm_json"]     # re-exported: one budget error and one call dispatch
 
 logger = logging.getLogger("semigraph.graph.passage_adjudicate")
 
-PROMPT_VERSION = "pas-v2"      # v2: the model is called with reasoning_effort="none" (v1 verdicts came from a reasoning Luna)
+# v3: semantic candidates (up to 8) and a hint on which stretch to quote. v2 (legacy, replay only): lexical candidates, model called with
+# reasoning_effort="none". v1: a reasoning Luna.
+PROMPT_VERSION = "pas-v3"
+LEGACY_PROMPT_VERSION = "pas-v2"
+ZONES = ("band", "below")         # the order in which a budget-limited run buys them
 CHECKPOINT_NAME = "passage_adjudications.jsonl"
 MIN_RELATEDNESS = 62.0            # eval.gold.SENT_REWORDED_MIN_SIM (a test keeps them equal; eval/ is not imported here)
 MIN_QUOTE_CHARS = 30              # eval.gold.SENT_MIN_QUOTE_CHARS
@@ -73,16 +89,19 @@ class PassageAdjudicationParams:
     """Every knob of the settlement. ``max_output_tokens``: the answer is one short JSON object (a quote of 30-200 characters),
     so the cap is small; a hidden-reasoning model would spend more and ``llm_text`` doubles the budget on truncation (real spend
     can then exceed the bound: see the module doc). ``min_relatedness``: floor for ``partial_ratio`` (0-100) of quote vs sentence.
-    ``max_sentence_chars``: the shown sentence is cut here. ``max_quote_chars``: cap of the verbatim probe slice."""
+    ``max_sentence_chars``: the shown sentence is cut here. ``max_quote_chars``: cap of the verbatim probe slice.
+    ``max_candidates``: the most candidates shown per sentence (lexical best, partial best, then the embedding ranks)."""
 
     max_output_tokens: int = 600      # Luna reasons a little before answering (39-96 reasoning tokens in the live probe)
     min_quote_chars: int = MIN_QUOTE_CHARS
     min_relatedness: float = MIN_RELATEDNESS
     max_sentence_chars: int = 1500
     max_quote_chars: int = 1500
+    max_candidates: int = 8
 
     def __post_init__(self) -> None:
         at_least("min_quote_chars", self.min_quote_chars, 1)
+        at_least("max_candidates", self.max_candidates, 2)
         for name in ("max_output_tokens", "max_sentence_chars", "max_quote_chars"):
             at_least(name, getattr(self, name), 100)
         in_range("min_relatedness", self.min_relatedness, 0.0, 100.0)
@@ -107,7 +126,8 @@ qualifiers. A changed tense, number, date or wording is still the same fact. A c
 or a few words is a DIFFERENT fact.
 Answer with ONE JSON object and nothing else: {{"verdict": "same" | "different", "candidate": <candidate number> or null, "quote": <string> or null}}
 - "same": one candidate states the same fact. Give its number as "candidate" and, as "quote", between 30 and 200 characters copied \
-character for character from that candidate (no paraphrase, no ellipsis, no stitching).
+character for character from that candidate (no paraphrase, no ellipsis, no stitching), taking the stretch of the candidate whose \
+wording is closest to the sentence.
 - "different": no candidate states the same fact. Set "candidate" and "quote" to null.
 Check every candidate before you answer "different": a paraphrase that reorders or condenses the sentence is still the same fact. \
 Do not answer "same" for a candidate that merely shares the topic."""
@@ -123,13 +143,91 @@ def build_prompt(sentence: str, candidates: Sequence[BandCandidate], params: Pas
 
 
 # --------------------------------------------------------------------------
+# candidates: lexical (from the passage layer) + semantic (embedding neighbours)
+# --------------------------------------------------------------------------
+
+def combine_candidates(lexical: Sequence[BandCandidate], semantic: Sequence[BandCandidate],
+                       params: PassageAdjudicationParams = PassageAdjudicationParams()) -> tuple[BandCandidate, ...]:
+    """The candidates shown to the model: the lexical best (word similarity), the ``partial_ratio`` best, then ``semantic`` in rank
+    order; de-duplicated on normalised text (a heading can occur twice in a section) and capped at ``max_candidates``, so the
+    embedding ranks refill any slot that de-duplication frees. ``lexical`` is the passage layer's candidate list (both bests are in
+    it); ties between equal scores go to the earlier sentence. Deterministic."""
+    best_words = max(lexical, key=lambda c: (c.lex_sim, -c.start), default=None)
+    best_partial = max(lexical, key=lambda c: (c.partial, -c.start), default=None)
+    chosen: list[BandCandidate] = []
+    seen: set[str] = set()
+    for cand in (best_words, best_partial, *semantic):
+        if cand is None or norm(cand.text) in seen:
+            continue
+        seen.add(norm(cand.text))
+        chosen.append(cand)
+        if len(chosen) == params.max_candidates:
+            break
+    return tuple(chosen)
+
+
+def _as_candidate(sentence: str, other_text: str, start: int, end: int, max_chars: int, cosine: float | None) -> BandCandidate:
+    text = other_text[start:end]
+    return BandCandidate(text[:max_chars], start, end, lex_exact(word_tokens(sentence), word_tokens(text)),
+                         float(fuzz.partial_ratio(sentence, text, processor=default_process)), cosine)
+
+
+def with_semantic_candidates(bands: Sequence[BandSentence], neighbours_of: Callable[[str, int, int, str, int], Sequence[Neighbour]],
+                             older_text: str, newer_text: str, params: PassageAdjudicationParams = PassageAdjudicationParams(),
+                             *, max_chars: int = 1200) -> list[BandSentence]:
+    """``bands`` (with their lexical candidates) whose candidate lists are the union of the lexical best, the ``partial_ratio``
+    best and the embedding neighbours (:func:`combine_candidates`). ``neighbours_of(side, start, end, text, count)`` is
+    ``sentence_embed.PairNeighbours.neighbours``; a listed candidate is cut to ``max_chars`` (its span stays the whole sentence)."""
+    out = []
+    for band in bands:
+        other_text = newer_text if band.side == "older" else older_text
+        found = neighbours_of(band.side, band.start, band.end, band.text, 2 * params.max_candidates)
+        semantic = [_as_candidate(band.text, other_text, n.start, n.end, max_chars, n.cosine) for n in found]
+        out.append(replace(band, candidates=combine_candidates(band.candidates, semantic, params)))
+    return out
+
+
+def with_proxy_candidates(bands: Sequence[BandSentence], older_text: str, newer_text: str,
+                          params: PassageAdjudicationParams = PassageAdjudicationParams(), *, min_chars: int = 40,
+                          max_chars: int = 1200) -> tuple[list[BandSentence], dict[str, int]]:
+    """Stand-ins for the semantic candidates of a dry run, which embeds nothing: after the lexical best and the ``partial_ratio``
+    best, the LONGEST eligible sentences of the other section (cut at ``max_chars``) until there are ``max_candidates``, a true
+    upper bound on the prompt size. Also returns, per band key, how many characters a typical prompt is shorter by (the proxies
+    replaced by sentences of the mean length), for the likely estimate."""
+    per_side = {}
+    for side, text in (("older", older_text), ("newer", newer_text)):
+        spans = [(a, b) for a, b in split_sentences(text) if b - a >= min_chars]
+        spans.sort(key=lambda s: (-min(s[1] - s[0], max_chars), s[0]))
+        cut = [min(b - a, max_chars) for a, b in spans]
+        per_side[side] = (spans, sum(cut) / len(cut) if cut else 0.0)
+    out, saving = [], {}
+    for band in bands:
+        other_text = newer_text if band.side == "older" else older_text
+        spans, mean = per_side["newer" if band.side == "older" else "older"]
+        kept = list(combine_candidates(band.candidates, (), params))
+        seen = {norm(c.text) for c in kept}
+        filler = []
+        for a, b in spans:
+            if len(kept) + len(filler) >= params.max_candidates:
+                break
+            text = other_text[a:a + min(b - a, max_chars)]
+            if norm(text) not in seen:
+                seen.add(norm(text))
+                filler.append(BandCandidate(text, a, b, 0.0, 0.0))
+        out.append(replace(band, candidates=tuple(kept) + tuple(filler)))
+        saving[band.key] = max(0, sum(len(c.text) for c in filler) - round(mean * len(filler)))
+    return out, saving
+
+
+# --------------------------------------------------------------------------
 # tasks, cost, run
 # --------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class Task:
     """One model call. ``key`` identifies the answer in the checkpoint; ``band_key`` is the passage layer's key of the FIRST band
-    sentence that needs it (identical sentences of one pair share the call)."""
+    sentence that needs it (identical sentences of one pair share the call); ``zone``: ``band`` or ``below``. ``likely_chars``: the
+    prompt length a typical run would have when it differs from ``len(prompt)`` (a dry run's stand-in candidates)."""
 
     key: str
     pair_id: str
@@ -138,6 +236,8 @@ class Task:
     sentence: str
     candidates: tuple[BandCandidate, ...]
     prompt: str
+    zone: str = "band"
+    likely_chars: int | None = None
 
 
 def task_key(text_hash: str, other_hash: str, model: str, prompt_version: str = PROMPT_VERSION) -> str:
@@ -146,28 +246,41 @@ def task_key(text_hash: str, other_hash: str, model: str, prompt_version: str = 
 
 
 def plan_tasks(pair_id: str, bands: Sequence[BandSentence], model: str,
-               params: PassageAdjudicationParams = PassageAdjudicationParams()) -> list[Task]:
-    """One task per distinct (sentence, other section) of a pair's band sentences, in enumeration order."""
+               params: PassageAdjudicationParams = PassageAdjudicationParams(), *,
+               likely_saving: Mapping[str, int] | None = None) -> list[Task]:
+    """One task per distinct (sentence, other section) of a pair's band and below sentences, in enumeration order.
+    ``likely_saving``: band key -> characters a typical prompt is shorter than the (stand-in) one, from :func:`with_proxy_candidates`."""
     tasks: dict[str, Task] = {}
     for b in bands:
         key = task_key(b.text_hash, b.other_hash, model)
         if key not in tasks:
-            tasks[key] = Task(key, pair_id, b.key, b.side, b.text, b.candidates, build_prompt(b.text, b.candidates, params))
+            prompt = build_prompt(b.text, b.candidates, params)
+            saving = (likely_saving or {}).get(b.key)
+            tasks[key] = Task(key, pair_id, b.key, b.side, b.text, b.candidates, prompt, b.zone,
+                              len(prompt) - saving if saving else None)
     return list(tasks.values())
 
 
 def estimate_cost(tasks: Sequence[Task], cached_keys: Collection[str], model: str,
                   params: PassageAdjudicationParams = PassageAdjudicationParams()) -> adj.Estimate:
     """What a run would cost: ``worst_case_usd`` prices every uncached call at its prompt size (chars / 3) plus the full output
-    cap, ``likely_usd`` at chars / 4 plus a typical verdict. ``n_items`` counts the distinct questions (band sentences)."""
+    cap, ``likely_usd`` at chars / 4 (``Task.likely_chars`` when set) plus a typical verdict. ``n_items`` counts the distinct
+    questions (band and below sentences)."""
     per_in, per_out, exact = adj.model_prices(model)
     todo = [t for t in tasks if t.key not in cached_keys]
     chars = sum(len(t.prompt) for t in todo)
+    likely_chars = sum(len(t.prompt) if t.likely_chars is None else t.likely_chars for t in todo)
     input_tokens = math.ceil(chars / _CHARS_PER_TOKEN_WORST)
     worst = input_tokens * per_in / 1e6 + len(todo) * params.max_output_tokens * per_out / 1e6
-    likely = math.ceil(chars / 4) * per_in / 1e6 + len(todo) * _LIKELY_OUTPUT_TOKENS * per_out / 1e6
+    likely = math.ceil(likely_chars / 4) * per_in / 1e6 + len(todo) * _LIKELY_OUTPUT_TOKENS * per_out / 1e6
     return adj.Estimate(model, len(tasks), len(tasks) - len(todo), len(todo), input_tokens, len(todo) * params.max_output_tokens,
                         round(worst, 6), round(likely, 6), exact)
+
+
+def estimates_by_zone(tasks: Sequence[Task], cached_keys: Collection[str], model: str, zones: Sequence[str] = ZONES,
+                      params: PassageAdjudicationParams = PassageAdjudicationParams()) -> dict[str, adj.Estimate]:
+    """One estimate per requested zone (an empty zone is an estimate of zero calls)."""
+    return {z: estimate_cost([t for t in tasks if t.zone == z], cached_keys, model, params) for z in zones}
 
 
 def call_cost_upper_bound(prompt: str, model: str, params: PassageAdjudicationParams = PassageAdjudicationParams()) -> float:
@@ -198,8 +311,8 @@ def run_tasks(tasks: Sequence[Task], checkpoint: Checkpoint, llm: Callable[..., 
             continue
         spent += bound
         checkpoint.add({
-            "key": task.key, "pair_id": task.pair_id, "band_key": task.band_key, "side": task.side, "model": model,
-            "prompt_version": PROMPT_VERSION, "sentence": task.sentence,
+            "key": task.key, "pair_id": task.pair_id, "band_key": task.band_key, "side": task.side, "zone": task.zone,
+            "model": model, "prompt_version": PROMPT_VERSION, "sentence": task.sentence,
             "candidates": [{"text": c.text, "start": c.start, "end": c.end} for c in task.candidates],
             "verdict": answer.verdict, "candidate": answer.candidate, "quote": answer.quote,
             "est_usd_upper_bound": round(bound, 6)})
@@ -269,9 +382,10 @@ class Resolved(NamedTuple):
 
 
 def resolve_verdicts(bands: Sequence[BandSentence], records: Mapping[str, Mapping[str, Any]], model: str, *,
-                     older_text: str, newer_text: str,
-                     params: PassageAdjudicationParams = PassageAdjudicationParams()) -> Resolved:
-    """Turn the checkpointed answers into verdicts for these band sentences (validation is re-run here, on every read).
+                     older_text: str, newer_text: str, params: PassageAdjudicationParams = PassageAdjudicationParams(),
+                     prompt_version: str = PROMPT_VERSION) -> Resolved:
+    """Turn the checkpointed answers of ``prompt_version`` into verdicts for these band / below sentences (validation is re-run
+    here, on every read).
 
     An older-side sentence is validated against the NEWER section and a newer-side sentence against the OLDER one."""
     verdicts: dict[str, BandVerdict] = {}
@@ -279,7 +393,7 @@ def resolve_verdicts(bands: Sequence[BandSentence], records: Mapping[str, Mappin
     unanswered: list[str] = []
     indexes: dict[str, SectionIndex] = {}
     for band in bands:
-        record = records.get(task_key(band.text_hash, band.other_hash, model))
+        record = records.get(task_key(band.text_hash, band.other_hash, model, prompt_version))
         if record is None:
             unanswered.append(band.key)
             continue

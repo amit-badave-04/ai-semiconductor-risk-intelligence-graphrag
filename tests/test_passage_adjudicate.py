@@ -7,7 +7,7 @@ Every model call here is a fake ``llm_json`` (or a fake completion for the probe
 import json
 
 import pytest
-from test_passage_bands import DISTRACTORS, HK, PARA, engine, older_band
+from test_passage_bands import DISTRACTORS, HK, PARA, engine
 from test_passages import P, X
 from typer.testing import CliRunner
 
@@ -15,8 +15,9 @@ from semigraph.cli import app
 from semigraph.eval import gold
 from semigraph.graph import adjudicate as adj
 from semigraph.graph import passage_adjudicate as pad
+from semigraph.graph import sentence_embed as se
 from semigraph.graph.align_text import SectionIndex
-from semigraph.graph.passages import BandVerdict
+from semigraph.graph.passages import BandCandidate, BandVerdict
 
 MODEL = "openai/gpt-6-luna"
 runner = CliRunner()
@@ -75,8 +76,16 @@ class TestPrompt:
     def test_a_missing_candidate_list_is_stated(self):
         assert "(no candidate sentence was found)" in pad.build_prompt("A sentence.", [])
 
-    def test_the_prompt_text_is_versioned(self):
-        assert pad.PROMPT_VERSION == "pas-v2"
+    def test_the_prompt_text_is_versioned_and_the_legacy_version_is_kept_for_replay(self):
+        assert pad.PROMPT_VERSION == "pas-v3" and pad.LEGACY_PROMPT_VERSION == "pas-v2"
+
+    def test_v3_asks_for_the_quote_from_the_stretch_of_the_candidate_closest_to_the_sentence(self):
+        assert "whose wording is closest to the sentence" in pad.build_prompt("A sentence.", [])
+
+    def test_all_eight_candidates_are_numbered_in_the_prompt(self):
+        cands = [BandCandidate(f"Candidate sentence number {k} of the other filing.", k * 100, k * 100 + 50, 0.1, 10.0) for k in range(8)]
+        prompt = pad.build_prompt("A sentence.", cands)
+        assert "[8] Candidate sentence number 7" in prompt and "[9]" not in prompt
 
 
 class TestKey:
@@ -445,7 +454,8 @@ def align_run(monkeypatch, tmp_path):
     from semigraph.config import Settings
     from semigraph.graph import items
 
-    state = {"calls": [], "raises": None, "estimate": None, "passage_estimate": None, "budget": None, "used": 0}
+    state = {"calls": [], "raises": None, "estimate": None, "passage_estimate": None, "budget": None, "used": 0, "zones": {},
+             "version": ""}
 
     def fake(settings, tickers=None, **kwargs):
         state["calls"].append({"tickers": tickers, **kwargs})
@@ -457,7 +467,7 @@ def align_run(monkeypatch, tmp_path):
                     "newer_uncertain": 0, "passages_removed": 1, "passages_reworded": 0, "passages_added": 0, "adjudicated": 0,
                     "band": 7, "band_answered": 3}]
         return items.AlignRun(summary, state["estimate"], [], bool(kwargs.get("dry_run")), state["passage_estimate"], state["budget"],
-                              state["used"])
+                              state["used"], 0, state["zones"], state["version"])
 
     monkeypatch.setattr(cli, "_settings", lambda: Settings(data_dir=tmp_path / "data", _env_file=None))
     monkeypatch.setattr(items, "run_align_items", fake)
@@ -508,6 +518,58 @@ def test_the_passage_budget_exceeded_exits_3(align_run):
 def test_the_summary_table_shows_the_band_columns(align_run):
     out = runner.invoke(app, ["align-items"]).output
     assert "band" in out.splitlines()[0]
+
+
+def test_the_below_flag_needs_the_passage_flag_and_runs_nothing_without_it(align_run):
+    result = runner.invoke(app, ["align-items", "--adjudicate-all-absent", "--dry-run"])
+    assert result.exit_code == 2 and "--adjudicate-all-absent needs --adjudicate-passages" in result.output
+    assert align_run["calls"] == []
+
+
+def test_both_passage_flags_switch_the_below_zone_on_and_hand_the_run_a_lazy_sentence_embedder(align_run):
+    result = runner.invoke(app, ["align-items", "--adjudicate-passages", "--adjudicate-all-absent", "--max-usd", "0"])
+    assert result.exit_code == 0, result.output
+    call = align_run["calls"][0]
+    assert call["adjudicate_passages"] is True and call["max_usd"] == 0.0
+    assert call["passage_params"].adjudicate_below_band is True
+    assert isinstance(call["embed"], se.SentenceEmbedder) and call["embed"]._embedder is None      # nothing loaded by the CLI
+
+
+def test_the_passage_flag_alone_supplies_the_embedder_for_the_semantic_candidates_but_not_the_below_zone(align_run):
+    runner.invoke(app, ["align-items", "--adjudicate-passages"])
+    call = align_run["calls"][0]
+    assert isinstance(call["embed"], se.SentenceEmbedder) and "passage_params" not in call
+
+
+def test_a_plain_run_passes_neither_the_embedder_nor_the_below_zone(align_run):
+    runner.invoke(app, ["align-items"])
+    assert set(align_run["calls"][0]) == {"tickers", "adjudicate", "adjudicate_passages", "max_usd", "dry_run"}
+
+
+def test_the_dry_run_prints_a_cost_estimate_for_each_zone_and_the_sum_and_says_nothing_was_embedded(align_run):
+    align_run["passage_estimate"] = adj.Estimate(MODEL, 300, 20, 280, 900000, 168000, 0.0900, 0.0200, True)
+    align_run["zones"] = {"band": adj.Estimate(MODEL, 100, 20, 80, 240000, 48000, 0.0300, 0.0050, True),
+                          "below": adj.Estimate(MODEL, 200, 0, 200, 660000, 120000, 0.0600, 0.0150, True)}
+    align_run["budget"] = 0.5
+    out = runner.invoke(app, ["align-items", "--adjudicate-passages", "--adjudicate-all-absent", "--dry-run"]).output
+    assert "300 sentence(s) (band + below) to settle (20 already answered)" in out and "worst case $0.0900" in out
+    assert "band zone: 100 sentence(s) (20 already answered), 80 call(s), worst case $0.0300, likely $0.0050" in out
+    assert "below-band zone: 200 sentence(s) (0 already answered), 200 call(s), worst case $0.0600, likely $0.0150" in out
+    assert "a dry run embeds nothing" in out and "would be refused" not in out
+
+
+def test_the_guard_message_names_the_sum_when_two_zones_are_over_the_budget(align_run):
+    align_run["passage_estimate"] = adj.Estimate(MODEL, 300, 0, 300, 900000, 180000, 0.9, 0.2, True)
+    align_run["zones"] = {"band": adj.Estimate(MODEL, 100, 0, 100, 1, 1, 0.3, 0.1, True), "below": adj.Estimate(MODEL, 200, 0, 200, 1, 1, 0.6, 0.1, True)}
+    align_run["budget"] = 0.5
+    out = runner.invoke(app, ["align-items", "--adjudicate-passages", "--adjudicate-all-absent", "--dry-run"]).output
+    assert "The worst case exceeds the budget left for this step" in out          # each zone alone fits, the sum does not
+
+
+def test_a_replay_names_the_prompt_version_whose_answers_were_applied(align_run):
+    align_run["used"], align_run["version"] = 12, "pas-v3"
+    out = runner.invoke(app, ["align-items", "--adjudicate-passages", "--max-usd", "0"]).output
+    assert "12 cached passage verdict(s) applied" in out and "pas-v3 answers" in out and "no model was called" in out
 
 
 def test_the_probe_dry_run_prints_the_prompts_and_the_estimate_and_calls_nothing(align_run, monkeypatch):

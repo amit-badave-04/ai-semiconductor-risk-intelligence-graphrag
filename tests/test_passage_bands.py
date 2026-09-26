@@ -328,6 +328,146 @@ def test_the_engine_can_be_asked_repeatedly_and_stays_consistent():
 
 
 # --------------------------------------------------------------------------
+# the BELOW zone: sentences with no counterpart at all (confidently removed / added) that a verdict may still settle
+# --------------------------------------------------------------------------
+
+# Genuine paraphrases that share almost no words (word similarity ~0.12, partial_ratio ~45): no counterpart at any floor.
+BELOW = (X[0], "Natural disasters affecting the factories of our vendors might halt shipments of parts for months at a time.")
+BELOW2 = (X[1], "Rivals may sue us over intellectual property rights, and resolving such lawsuits could be expensive or compel us to change products.")
+# A below-zone paraphrase a verdict CAN legitimately settle: word similarity 0.22 (no counterpart at the floor) yet a stretch of the long
+# candidate resembles the sentence (partial_ratio 69, under the PRESENT floor of 75; a quote of that stretch scores 70, over the gold's 62).
+TARIFF = ("Changes in tariffs and trade restrictions could raise our product costs and reduce demand.",
+          "Shifts in trade policy such as new tariffs or export restrictions might increase what our products cost and weaken customer "
+          "demand, which could hurt margins, delay orders from distributors, and force us to revise guidance.")
+TARIFF_QUOTE = TARIFF[1][20:110]
+ON = dict(adjudicate_below_band=True)
+
+
+def test_the_tariff_fixture_is_below_the_floor_absent_and_yet_quotable_over_the_relatedness_floor():
+    assert lex(*TARIFF) < 0.35 and at.SectionIndex(f"{TARIFF[1]} {X[2]}").probe(TARIFF[0], 75.0, 600) is None
+    assert 62 <= fuzz.partial_ratio(at.norm(TARIFF[0]), at.norm(TARIFF_QUOTE)) and TARIFF_QUOTE in TARIFF[1]
+
+
+def below_pair(**params):
+    """The older sentence BELOW[0] has a paraphrase, BELOW[1], in the newer section; both sit in a band-less neighbourhood."""
+    return engine([[P[0], BELOW[0]]], [[P[0], BELOW[1]]], **params)
+
+
+def below_of(pp, side):
+    return next(b for b in pp.band_sentences() if b.side == side)
+
+
+def test_the_below_fixtures_are_paraphrases_with_no_counterpart_at_the_floor():
+    for old, new in (BELOW, BELOW2):
+        assert lex(old, new) < 0.35 and at.SectionIndex(f"{new} {X[2]}").probe(old, 75.0, 400) is None
+    assert all(lex(s, t) < 0.35 for s in BELOW + BELOW2 for t in P + Y + X[2:])
+
+
+def test_the_below_zone_is_off_by_default_so_a_confident_removal_is_plain_and_not_a_target():
+    pp, so, _ = below_pair()
+    assert PassageParams().adjudicate_below_band is False and pp.band_sentences() == ()
+    removed, added = pp.passages()
+    assert (removed.kind, removed.text, removed.decided_by, removed.band_adjudicated) == ("removed", BELOW[0], "sentence_absent", False)
+    assert (added.kind, added.text) == ("added", BELOW[1]) and so[removed.char_start:removed.char_end] == BELOW[0]
+
+
+def test_with_the_flag_both_sides_of_the_no_counterpart_pair_are_enumerated_as_below_sentences():
+    pp, so, sn = below_pair(**ON)
+    bands = pp.band_sentences()
+    assert [(b.side, b.zone, b.text) for b in bands] == [("older", "below", BELOW[0]), ("newer", "below", BELOW[1])]
+    older = bands[0]
+    assert (older.similarity, older.route) == (0.0, "none") and older.key == f"o0@{so.index(BELOW[0])}"
+    assert older.text_hash == content_hash(BELOW[0]) and older.other_hash == content_hash(sn)
+    assert older.candidates and all(sn[c.start:c.end].startswith(c.text) for c in older.candidates)
+    assert BELOW[1] in [c.text for c in older.candidates]                      # the lexical best even under the floor is listed
+
+
+def test_a_below_sentence_without_a_verdict_stays_removed_exactly_as_with_the_flag_off():
+    off, _, _ = below_pair()
+    on, _, _ = below_pair(**ON)
+    assert on.passages() == off.passages() == on.passages({})
+    assert [(p.kind, p.item_id) for p in on.passages()] == [("removed", "o0"), ("added", "n0")]
+    assert all(p.decided_by == "sentence_absent" and not p.band_adjudicated for p in on.passages())
+
+
+def test_a_different_verdict_keeps_the_removal_and_the_addition_and_says_a_model_settled_them():
+    pp, _, _ = below_pair(**ON)
+    verdicts = {b.key: BandVerdict("different") for b in pp.band_sentences()}
+    settled = pp.passages(verdicts)
+    assert [(p.kind, p.text, p.decided_by, p.band_adjudicated) for p in settled] == [
+        ("removed", BELOW[0], "sentence_absent_llm", True), ("added", BELOW[1], "sentence_absent_llm", True)]
+    assert [(p.kind, p.text, p.char_start, p.char_end) for p in settled] == [
+        (p.kind, p.text, p.char_start, p.char_end) for p in pp.passages()]      # the same passages, only their provenance differs
+
+
+def test_a_verified_same_verdict_turns_the_confident_removal_into_a_reworded_passage_and_the_addition_disappears():
+    pp, _, sn = below_pair(**ON)
+    span = span_of(sn, BELOW[1])
+    (p,) = pp.passages({below_of(pp, "older").key: BandVerdict("same", span)})
+    assert (p.kind, p.text, p.counterpart_text, p.counterpart_span) == ("reworded", BELOW[0], BELOW[1], span)
+    assert p.decided_by == "sentence_reworded_llm" and p.band_adjudicated and 0.0 <= p.similarity <= 1.0
+    assert p.passage_id == "o0:w000" and sn[p.counterpart_span[0]:p.counterpart_span[1]] == p.counterpart_text
+
+
+def test_a_same_verdict_on_the_newer_side_alone_removes_the_addition_and_leaves_the_older_removal():
+    pp, so, _ = below_pair(**ON)
+    span = span_of(so, BELOW[0])
+    both = pp.passages({below_of(pp, "newer").key: BandVerdict("same", span)})
+    assert [(p.kind, p.text) for p in both] == [("removed", BELOW[0])]
+
+
+@pytest.mark.parametrize("verdict", [BandVerdict("same"), BandVerdict("same", (10_000, 10_050)), BandVerdict("same", (5, 5))])
+def test_a_same_verdict_without_a_usable_span_changes_nothing_in_the_below_zone(verdict):
+    pp, _, _ = below_pair(**ON)
+    keys = {b.key: verdict for b in pp.band_sentences()}
+    assert pp.passages(keys) == pp.passages()
+
+
+def test_below_verdicts_are_ignored_when_the_flag_is_off_even_if_a_file_holds_them():
+    on, _, sn = below_pair(**ON)
+    verdicts = {below_of(on, "older").key: BandVerdict("same", span_of(sn, BELOW[1])), below_of(on, "newer").key: BandVerdict("different")}
+    off, _, _ = below_pair()
+    assert off.passages(verdicts) == off.passages()
+    assert [p.kind for p in on.passages(verdicts)] == ["reworded"]
+
+
+def test_sentences_with_a_confident_counterpart_are_never_below_targets_and_zones_keep_the_enumeration_order():
+    older, newer = [[P[0], REWORDED[0][0], HK[0], BELOW[0]]], [[P[0], REWORDED[0][1], HK[1], BELOW[1]]]
+    pp, so, _ = engine(older, newer, **ON)
+    assert [(b.side, b.zone, b.text) for b in pp.band_sentences()] == [
+        ("older", "band", HK[0]), ("older", "below", BELOW[0]), ("newer", "band", HK[1]), ("newer", "below", BELOW[1])]
+    assert REWORDED[0][0] not in [b.text for b in pp.band_sentences()]
+
+
+def test_the_lexical_candidates_of_a_below_sentence_can_be_built_later_and_equal_the_eager_ones():
+    pp, _, _ = below_pair(**ON)
+    eager, light = pp.band_sentences(), pp.band_sentences(candidates=False)
+    assert all(b.candidates == () for b in light) and pp.with_candidates(light) == list(eager)
+    assert pp.with_candidates([]) == []
+
+
+def test_a_below_sentence_verdict_key_is_the_stable_item_offset_key_and_the_engine_stays_consistent():
+    pp, so, _ = below_pair(**ON)
+    assert pp.band_sentences() == pp.band_sentences()
+    assert [b.key for b in pp.band_sentences() if b.side == "older"] == [band_key("o0", so.index(BELOW[0]))]
+
+
+def test_the_below_flag_needs_suppression_for_the_newer_side_like_the_band_does():
+    pp, _, _ = below_pair(suppress_added_with_counterpart=False, **ON)
+    assert [b.side for b in pp.band_sentences()] == ["older"]
+
+
+def test_the_below_flag_works_without_a_band():
+    pp, _, _ = below_pair(reword_confident=None, **ON)
+    assert [b.zone for b in pp.band_sentences()] == ["below", "below"]
+
+
+def test_the_below_flag_must_be_a_bool():
+    with pytest.raises(ValueError):
+        PassageParams(adjudicate_below_band="yes")
+
+
+# --------------------------------------------------------------------------
 # parameters and value objects
 # --------------------------------------------------------------------------
 

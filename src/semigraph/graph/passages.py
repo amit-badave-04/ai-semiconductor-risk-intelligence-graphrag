@@ -48,7 +48,16 @@ Enumeration (:func:`band_sentences`, :meth:`PairPassages.band_sentences`) lists 
 newer order with a stable key (item id + section offset), the hash of its text and of the other section (for caching) and its
 candidate counterparts; the newer side is listed independently of what the older side quotes, so one enumeration covers every
 verdict combination (an older ``different`` uncovers newer sentences that would otherwise be hidden behind a quoted counterpart).
-Enumeration and classification share their code (``_in_band``, ``band_key``).
+Enumeration and classification share their code (``_zone``, ``band_key``).
+
+The BELOW zone (``adjudicate_below_band``, off by default): a sentence with NO counterpart at or above ``reword_min`` is "confidently
+removed / added", but measured on the gold some of them do have a paraphrase in another place of the other section. With the flag
+on they are enumerated too (``BandSentence.zone == "below"``) and a verdict settles them: ``different`` keeps the removal / addition
+(``decided_by`` ``sentence_absent_llm``), a verified ``same`` makes the older sentence ``reworded`` (with exactly that counterpart)
+and the newer one not ``added``, and NO verdict leaves them ``removed`` / ``added`` exactly as without the flag (the flag off, or a
+verdict for a sentence that is not a target under the current parameters, changes nothing). Sentences at or above ``reword_confident``
+are never targets. Candidates of a below sentence have no deciding counterpart: the lexical best (even under the floor) and the
+``partial_ratio`` best come first.
 
 Runs: consecutive classified sentences of one kind in one item form one passage; a PRESENT sentence
 (or, on the newer side, one whose rewording is already reported from the older side) ends the run,
@@ -96,7 +105,7 @@ falls below ``reword_min`` when the sentence is short and is then reported as re
 from bisect import bisect_left, bisect_right
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from numbers import Integral
 from typing import Any, NamedTuple
 
@@ -144,6 +153,7 @@ class PassageParams:
     the legacy tests rely on both). ``band_candidates``: how many candidate sentences of the other section are listed per band
     sentence (the lexical best first, then alternately the best by word similarity and by ``partial_ratio``);
     ``max_candidate_chars``: a listed candidate is cut to this many characters (its span stays the whole sentence).
+    ``adjudicate_below_band``: also enumerate the sentences with no counterpart at all as targets of a verdict (module docstring).
     """
 
     present_min_ratio: float = 75.0
@@ -157,6 +167,7 @@ class PassageParams:
     reword_confident: float | None = 0.50
     band_candidates: int = 5
     max_candidate_chars: int = 1200
+    adjudicate_below_band: bool = False
 
     def __post_init__(self) -> None:
         in_range("present_min_ratio", self.present_min_ratio, 0.0, 100.0, open_low=True)
@@ -169,6 +180,8 @@ class PassageParams:
             in_range("reword_confident", self.reword_confident, 0.0, 1.0, open_low=True)
         at_least("band_candidates", self.band_candidates, 1)
         at_least("max_candidate_chars", self.max_candidate_chars, 100)
+        if not isinstance(self.adjudicate_below_band, bool):
+            raise ValueError(f"adjudicate_below_band must be a bool, got {self.adjudicate_below_band!r}")
 
     @property
     def has_band(self) -> bool:
@@ -200,6 +213,7 @@ class BandCandidate:
     end: int
     lex_sim: float             # word-level lexical similarity to the band sentence (0-1)
     partial: float             # rapidfuzz partial_ratio (0-100)
+    cosine: float | None = None    # embedding similarity, for a candidate the semantic search found (else None)
 
 
 @dataclass(frozen=True)
@@ -209,7 +223,8 @@ class BandSentence:
     ``key``: ``band_key(item_id, start)``; ``start`` / ``end`` / ``text`` refer to the sentence's OWN filing (``side``), as do
     ``text_hash`` (``hashing.content_hash`` of the text) and, for the OTHER filing's whole section, ``other_hash``.
     ``similarity`` / ``route``: the counterpart that put it in the band (``lexical`` word similarity, or ``partial`` for a
-    ``partial_min`` counterpart, whose score is a ``partial_ratio`` / 100)."""
+    ``partial_min`` counterpart, whose score is a ``partial_ratio`` / 100). ``zone``: ``"band"`` or ``"below"`` (no counterpart
+    at all: similarity 0.0, route ``"none"``)."""
 
     key: str
     side: str
@@ -222,6 +237,7 @@ class BandSentence:
     similarity: float
     route: str
     candidates: tuple[BandCandidate, ...]
+    zone: str = "band"
 
 
 @dataclass(frozen=True)
@@ -274,9 +290,13 @@ class _Sentence:
     adjudicated: bool = False    # a model verdict settled this sentence
 
 
-def _in_band(params: PassageParams, hit: _Cp | None) -> bool:
-    """Is this counterpart a band counterpart? A ``partial_min`` counterpart has no word-similarity guarantee: always band."""
-    return hit is not None and params.has_band and (not hit.lexical or hit.sim < params.reword_confident)
+def _zone(params: PassageParams, hit: _Cp | None) -> str | None:
+    """The zone of a sentence not present in the other section: ``"band"`` (a band counterpart; a ``partial_min`` counterpart has
+    no word-similarity guarantee: always band), ``"below"`` (no counterpart at all, only with ``adjudicate_below_band``) or None
+    (settled by the lexical rules alone)."""
+    if hit is None:
+        return "below" if params.adjudicate_below_band else None
+    return "band" if params.has_band and (not hit.lexical or hit.sim < params.reword_confident) else None
 
 
 class _Filing:
@@ -397,13 +417,13 @@ class _Filing:
         ranked = sorted(found, key=lambda r: (-r[1], eligible[r[2]]))
         return [eligible[r[2]] for r in ranked[:count]]
 
-    def candidates(self, sentence: str, hit: _Cp) -> tuple[BandCandidate, ...]:
-        """The counterpart candidates of a band sentence: the counterpart that decided the band first, then alternately the best
-        by word similarity and by ``partial_ratio`` (sentences shorter than ``min_sentence_chars`` are only listed when they are
-        that counterpart), de-duplicated, at most ``band_candidates``."""
+    def candidates(self, sentence: str, hit: _Cp | None) -> tuple[BandCandidate, ...]:
+        """The counterpart candidates of a band sentence: the counterpart that decided the band first (a below sentence has none),
+        then alternately the best by word similarity and by ``partial_ratio`` (sentences shorter than ``min_sentence_chars`` are
+        only listed when they are that counterpart), de-duplicated, at most ``band_candidates``."""
         p, tokens = self.params, word_tokens(sentence)
         by_words, by_partial = self._rank_lexical(tokens, p.band_candidates), self._rank_partial(sentence, p.band_candidates)
-        order = [hit.idx]
+        order = [] if hit is None else [hit.idx]
         for k in range(max(len(by_words), len(by_partial))):
             order += by_words[k:k + 1] + by_partial[k:k + 1]
         chosen, seen = [], set()
@@ -469,35 +489,41 @@ class _Spans:
 
 def _older_sentence(item_id: str, a: int, b: int, sentence: str, base: int, other: _Filing,
                     verdicts: Mapping[str, BandVerdict]) -> _Sentence:
-    """An older sentence that is not present in the newer section: removed, reworded, or a band sentence settled by a verdict."""
+    """An older sentence that is not present in the newer section: removed, reworded, or a band / below sentence settled by a
+    verdict (a below sentence without a usable verdict stays removed, a band sentence stays reworded)."""
     hit = other.counterpart(sentence)
-    if hit is None:
-        return _Sentence(a, b, "removed")
-    if not _in_band(other.params, hit):
-        return _Sentence(a, b, "reworded", hit.idx, hit.idx, hit.sim)
+    zone = _zone(other.params, hit)
+    if zone is None:
+        return _Sentence(a, b, "removed") if hit is None else _Sentence(a, b, "reworded", hit.idx, hit.idx, hit.sim)
     verdict = verdicts.get(band_key(item_id, base + a))
     if verdict is not None and verdict.verdict == "different":
         return _Sentence(a, b, "removed", adjudicated=True)
     span = other.sentence_range(verdict.counterpart_span) if verdict is not None and verdict.counterpart_span else None
     if span is not None:
         return _Sentence(a, b, "reworded", span[0], span[1], other.similarity(sentence, *span), adjudicated=True)
+    if zone == "below":
+        return _Sentence(a, b, "removed")
     return _Sentence(a, b, "reworded", hit.idx, hit.idx, hit.sim, unresolved=True)
 
 
 def _newer_sentence(item_id: str, a: int, b: int, sentence: str, base: int, other: _Filing, reported: _Spans,
                     verdicts: Mapping[str, BandVerdict]) -> _Sentence:
     """A newer sentence that is not present in the older section: added, unless the older side already quotes it or it has a
-    counterpart (a band counterpart only when no ``different`` verdict says the counterpart is another fact)."""
+    counterpart (a band counterpart only when no ``different`` verdict says the counterpart is another fact; a below sentence,
+    which has none, is not added only on a ``same`` verdict with a usable counterpart span)."""
     if reported.covers(base + a):
         return _Sentence(a, b, None)
     if not other.params.suppress_added_with_counterpart:
         return _Sentence(a, b, "added")
     hit = other.counterpart(sentence)
-    if hit is None:
-        return _Sentence(a, b, "added")
-    verdict = verdicts.get(band_key(item_id, base + a)) if _in_band(other.params, hit) else None
+    zone = _zone(other.params, hit)
+    if zone is None:
+        return _Sentence(a, b, "added") if hit is None else _Sentence(a, b, None)
+    verdict = verdicts.get(band_key(item_id, base + a))
     if verdict is not None and verdict.verdict == "different":
         return _Sentence(a, b, "added", adjudicated=True)
+    if zone == "below" and not (verdict is not None and verdict.counterpart_span and other.sentence_range(verdict.counterpart_span)):
+        return _Sentence(a, b, "added")
     return _Sentence(a, b, None)
 
 
@@ -639,10 +665,11 @@ class PairPassages:
         return tuple(out)
 
     def band_sentences(self, *, candidates: bool = True) -> tuple[BandSentence, ...]:
-        """Every band sentence of the pair: older side first (item order, then text order), then the newer side. The newer side
-        is listed whatever the older side quotes (module docstring); it needs ``suppress_added_with_counterpart`` because
-        otherwise a newer sentence with a counterpart is added anyway and there is nothing to settle. ``candidates=False`` skips
-        the (costly) candidate search when only keys, hashes and texts are needed (replaying recorded answers)."""
+        """Every band sentence of the pair (and, with ``adjudicate_below_band``, every below sentence): older side first (item
+        order, then text order), then the newer side. The newer side is listed whatever the older side quotes (module docstring); it
+        needs ``suppress_added_with_counterpart`` because otherwise a newer sentence is added anyway and there is nothing to settle.
+        ``candidates=False`` skips the (costly) candidate search when only keys, hashes and texts are needed (replaying recorded
+        answers, or planning before the candidates of the sentences still to buy are built with :meth:`with_candidates`)."""
         out: list[BandSentence] = []
         sides = [(OLDER, self._older_items, self._older, self._newer)]
         if self.params.suppress_added_with_counterpart:
@@ -654,14 +681,24 @@ class PairPassages:
                     if len(sentence) < self.params.min_sentence_chars or other.contains(sentence):
                         continue
                     hit = other.counterpart(sentence)
-                    if not _in_band(self.params, hit):
+                    zone = _zone(self.params, hit)
+                    if zone is None:
                         continue
                     out.append(BandSentence(
                         key=band_key(item_id, base + a), side=side, item_id=item_id, start=base + a, end=base + b,
                         text=sentence, text_hash=content_hash(sentence), other_hash=other.content_hash,
-                        similarity=hit.sim, route="lexical" if hit.lexical else "partial",
-                        candidates=other.candidates(sentence, hit) if candidates else ()))
+                        similarity=0.0 if hit is None else hit.sim,
+                        route="none" if hit is None else "lexical" if hit.lexical else "partial",
+                        candidates=other.candidates(sentence, hit) if candidates else (), zone=zone))
         return tuple(out)
+
+    def with_candidates(self, bands: Sequence[BandSentence]) -> list[BandSentence]:
+        """``bands`` (of :meth:`band_sentences`, typically with ``candidates=False``) with their LEXICAL candidate lists filled in."""
+        out = []
+        for band in bands:
+            other = self._newer if band.side == OLDER else self._older
+            out.append(replace(band, candidates=other.candidates(band.text, other.counterpart(band.text))))
+        return out
 
 
 def compute_passages(older_items: Sequence[Mapping[str, Any]], newer_items: Sequence[Mapping[str, Any]],

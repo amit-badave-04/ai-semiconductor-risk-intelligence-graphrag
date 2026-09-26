@@ -24,9 +24,16 @@ Output (per ticker, ``data/interim/risk_alignment/``, written atomically, byte-i
 
 Passage adjudication (the lexical band of ``graph/passages.py``): ``adjudicate_passages=True`` (``--adjudicate-passages``) asks the cheap
 model one question per band sentence (after the item-level step, on the SETTLED result, because settling can change which items are
-decomposed) and checkpoints every answer in ``passage_adjudications.jsonl`` next to the tables. INDEPENDENT of the flag, every run
-REPLAYS the answers that file holds for the current model and prompt version (deterministic: the same files give the same tables;
-without the file the band sentences simply stay ``reworded``, marked ``sentence_reworded_band``). The item-level checkpoint, by
+decomposed) and checkpoints every answer in ``passage_adjudications.jsonl`` next to the tables. With ``passage_params.
+adjudicate_below_band`` (``--adjudicate-all-absent``) the sentences with NO counterpart at all are asked too (zone ``below``; a verified
+``same`` turns a wrongly confident removal into a reworded passage, a ``different`` keeps it). The candidates shown to the model are the
+lexical best, the ``partial_ratio`` best and the nearest sentences by embedding (``embed``, ``graph/sentence_embed``; the per-section
+vectors are cached in ``<out dir>/sentence_embeddings/``); a buying run REQUIRES ``embed`` (a dry run embeds nothing and prices stand-in
+candidates) and works under prompt version ``pas-v3``. Every run REPLAYS the recorded answers of ONE prompt version (deterministic: the
+same files give the same tables; without the file the band sentences simply stay ``reworded``, marked ``sentence_reworded_band``):
+``pas-v3`` when ``adjudicate_passages`` is set (a fully cached run replays for free with ``max_usd=0``: it refuses if anything is
+uncached), else the legacy ``pas-v2`` answers of the lexical-candidate prompt, so a plain run reproduces the tables built before ``pas-v3``
+existed. Answers are only looked up (and only embeddings computed) for the sentences not answered yet. The item-level checkpoint, by
 contrast, is only read with ``adjudicate=True``. With both flags ``max_usd`` is one budget: the passage step gets what the item step's
 per-call upper bounds left (a dry run: what its worst-case estimate left).
 
@@ -40,7 +47,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pandas as pd
 import pyarrow as pa
@@ -50,15 +57,17 @@ from ..config import Settings
 from ..parsing.risk_item_quality import load_quality
 from . import adjudicate as adj
 from . import passage_adjudicate as pad
+from . import sentence_embed
 from .alignment import AlignmentResult, AlignParams, align, summarize
 from .item_pairs import consecutive_pairs, risk_section_text
 from .loaders import _chunks_path, _section_texts_path
-from .passages import PairPassages, Passage, PassageParams, compute_passages
+from .passages import BandSentence, PairPassages, Passage, PassageParams, compute_passages
 
 logger = logging.getLogger("semigraph.graph.items")
 
 ALIGNMENT_DIRNAME = "risk_alignment"
 ITEMS_DIRNAME = "risk_items"
+EMBEDDINGS_DIRNAME = "sentence_embeddings"
 DEFAULT_MAX_USD = 0.5
 _S, _I, _F, _B = pa.string(), pa.int64(), pa.float64(), pa.bool_()
 
@@ -208,7 +217,9 @@ class PairOutcome:
     adjudicated: frozenset[str] = frozenset()
     band: int | None = None              # band sentences of the pair (None: not enumerated)
     band_answered: int | None = None     # ... of which a recorded model answer exists
-    band_applied: int = 0                # ... which the code rules turned into a verdict
+    band_applied: int = 0                # ... which the code rules turned into a verdict (band AND below sentences)
+    below: int | None = None             # below sentences of the pair (None: the below zone is off)
+    below_answered: int | None = None    # ... of which a recorded model answer exists
 
 
 def prepare_pair(pair: dict, items: pd.DataFrame, sections: pd.DataFrame, chunks: pd.DataFrame,
@@ -227,11 +238,29 @@ def prepare_pair(pair: dict, items: pd.DataFrame, sections: pd.DataFrame, chunks
 
 @dataclass(frozen=True)
 class BandContext:
-    """The recorded passage answers to replay (``records``: checkpoint key -> raw answer) for ``model`` and the rules' parameters."""
+    """The recorded passage answers to replay (``records``: checkpoint key -> raw answer) for ``model``, the rules' parameters and
+    ONE prompt version (default the legacy ``pas-v2`` of the lexical-candidate prompt: what a plain run has always replayed)."""
 
     records: Mapping[str, Mapping[str, Any]]
     model: str
     params: pad.PassageAdjudicationParams = pad.PassageAdjudicationParams()
+    version: str = pad.LEGACY_PROMPT_VERSION
+
+
+class PairPlan(NamedTuple):
+    """The model tasks of one pair and, per zone (``band`` / ``below``), ``(sentences, of which already answered)``."""
+
+    tasks: list[pad.Task]
+    counts: dict[str, tuple[int, int]]
+
+
+def zone_counts(bands: Sequence[BandSentence], is_answered: Callable[[BandSentence], bool]) -> dict[str, tuple[int, int]]:
+    """``{zone: (sentences, answered)}`` for every zone (a zone without sentences is ``(0, 0)``)."""
+    counts = {zone: [0, 0] for zone in pad.ZONES}
+    for band in bands:
+        counts[band.zone][0] += 1
+        counts[band.zone][1] += bool(is_answered(band))
+    return {zone: (n, answered) for zone, (n, answered) in counts.items()}
 
 
 def settle_pair(work: PairWork, records: Mapping[str, Mapping[str, Any]] | None = None,
@@ -264,23 +293,49 @@ def finalize_pair(work: PairWork, records: Mapping[str, Mapping[str, Any]] | Non
                           work.older_spans, work.newer_spans, passage_params)
     bands = engine.band_sentences(candidates=False)          # replay needs keys and hashes, not the candidate search
     resolved = pad.resolve_verdicts(bands, band.records, band.model, older_text=work.older_text, newer_text=work.newer_text,
-                                    params=band.params)
-    return PairOutcome(work, result, work.result, engine.passages(resolved.verdicts), adjudicated, len(bands),
-                       len(bands) - len(resolved.unanswered), len(resolved.verdicts))
+                                    params=band.params, prompt_version=band.version)
+    unanswered = set(resolved.unanswered)
+    counts = zone_counts(bands, lambda b: b.key not in unanswered)
+    below = counts["below"] if passage_params.adjudicate_below_band else (None, None)
+    return PairOutcome(work, result, work.result, engine.passages(resolved.verdicts), adjudicated, counts["band"][0],
+                       counts["band"][1], len(resolved.verdicts), *below)
 
 
 def plan_band_tasks(work: PairWork, records: Mapping[str, Mapping[str, Any]] | None, model: str,
                     cached: Mapping[str, Any], *, adj_params: adj.AdjudicationParams = adj.AdjudicationParams(),
                     passage_params: PassageParams = PassageParams(),
-                    pas_params: pad.PassageAdjudicationParams = pad.PassageAdjudicationParams()) -> tuple[list[pad.Task], int, int]:
-    """``(model tasks, band sentences, band sentences already answered in cached)`` of one pair, on its SETTLED result."""
+                    pas_params: pad.PassageAdjudicationParams = pad.PassageAdjudicationParams(),
+                    embed: sentence_embed.EmbedFn | None = None, cache_dir: Path | None = None, dry_run: bool = False,
+                    refuse_uncached: bool = False) -> PairPlan:
+    """The model tasks of one pair (band and, with ``adjudicate_below_band``, below sentences) on its SETTLED result, and the
+    per-zone counts of sentences and of those already answered in ``cached``.
+
+    Cheap first: the sentences are enumerated without candidates and only the ones not answered yet get them (the lexical ones, then
+    the embedding neighbours of ``embed``: the sections' sentence vectors are read from ``cache_dir`` or computed, only here). A dry
+    run embeds nothing: the candidates not known yet are priced at stand-ins (``pad.with_proxy_candidates``). ``refuse_uncached``:
+    raise ``BudgetExceeded`` at the first unanswered sentence, before anything is embedded (there is no budget to buy it)."""
     result, _ = settle_pair(work, records, adj_params)
     if result is None:
-        return [], 0, 0
-    bands = PairPassages(work.older_rows, work.newer_rows, result, work.older_text, work.newer_text,
-                         params=passage_params).band_sentences()
-    answered = sum(1 for b in bands if pad.task_key(b.text_hash, b.other_hash, model) in cached)
-    return pad.plan_tasks(work.pair["pair_id"], bands, model, pas_params), len(bands), answered
+        return PairPlan([], {})
+    pair_id = work.pair["pair_id"]
+    engine = PairPassages(work.older_rows, work.newer_rows, result, work.older_text, work.newer_text, params=passage_params)
+    bands = engine.band_sentences(candidates=False)
+    todo = {b.key for b in bands if pad.task_key(b.text_hash, b.other_hash, model) not in cached}
+    counts = zone_counts(bands, lambda b: b.key not in todo)
+    if todo and refuse_uncached:
+        raise pad.BudgetExceeded(f"{pair_id}: passage answers are missing and the worst case of buying them exceeds --max-usd: "
+                                 "no budget is left for this step (nothing was embedded or spent)")
+    fresh, saving = engine.with_candidates([b for b in bands if b.key in todo]), None
+    if todo and dry_run:
+        fresh, saving = pad.with_proxy_candidates(fresh, work.older_text, work.newer_text, pas_params,
+                                                  min_chars=passage_params.min_sentence_chars, max_chars=passage_params.max_candidate_chars)
+    elif todo and embed is not None:
+        near = sentence_embed.PairNeighbours((work.pair["older_accession"], work.older_text), (work.pair["newer_accession"], work.newer_text),
+                                             embed, cache_dir, min_chars=passage_params.min_sentence_chars)
+        fresh = pad.with_semantic_candidates(fresh, near.neighbours, work.older_text, work.newer_text, pas_params,
+                                             max_chars=passage_params.max_candidate_chars)
+    replaced = {b.key: b for b in fresh}
+    return PairPlan(pad.plan_tasks(pair_id, [replaced.get(b.key, b) for b in bands], model, pas_params, likely_saving=saving), counts)
 
 
 # --------------------------------------------------------------------------
@@ -354,7 +409,8 @@ def summary_row(outcome: PairOutcome, *, passages_computed: bool = True) -> dict
             **{f"older_{k}": s["older"][k] for k in ("unchanged", "reworded", "merged", "removed", "uncertain")},
             **{f"newer_{k}": s["newer"][k] for k in ("carried", "new", "uncertain")},
             **{f"passages_{k}": (kinds[k] if passages_computed else None) for k in ("removed", "reworded", "added")},
-            "adjudicated": len(outcome.adjudicated), "band": outcome.band, "band_answered": outcome.band_answered}
+            "adjudicated": len(outcome.adjudicated), "band": outcome.band, "band_answered": outcome.band_answered,
+            "below": outcome.below, "below_answered": outcome.below_answered}
 
 
 # --------------------------------------------------------------------------
@@ -402,8 +458,10 @@ def write_ticker(directory: Path, ticker: str, outcomes: Sequence[PairOutcome]) 
 @dataclass(frozen=True)
 class AlignRun:
     """What ``run_align_items`` did. ``estimate`` is None unless adjudication was requested; ``written`` is empty for a dry run.
-    ``passage_estimate`` / ``passage_budget_usd``: the passage step's estimate and the budget it was checked against (None unless
-    ``adjudicate_passages``); ``passage_verdicts_used``: band verdicts applied (bought now or replayed); ``passage_calls``: calls made."""
+    ``passage_estimate`` / ``passage_budget_usd``: the passage step's estimate (the zones added up: the guard covers the sum) and the
+    budget it was checked against (None unless ``adjudicate_passages``); ``passage_estimates``: the same per zone (``band`` and,
+    with the below zone on, ``below``); ``passage_verdicts_used``: band / below verdicts applied (bought now or replayed);
+    ``passage_calls``: calls made; ``passage_prompt_version``: the version whose answers were replayed and bought."""
 
     summary: list[dict]
     estimate: adj.Estimate | None
@@ -413,6 +471,8 @@ class AlignRun:
     passage_budget_usd: float | None = None
     passage_verdicts_used: int = 0
     passage_calls: int = 0
+    passage_estimates: dict[str, adj.Estimate] = field(default_factory=dict)
+    passage_prompt_version: str = ""
 
 
 def read_ticker_inputs(settings: Settings, ticker: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -438,31 +498,50 @@ def _item_spent(checkpoint: adj.Checkpoint, before: set[str]) -> float:
     return sum(float(r.get("est_usd_upper_bound", 0.0)) for k, r in checkpoint.records.items() if k not in before)
 
 
+class PassageStep(NamedTuple):
+    """What the passage step planned: the total ``estimate``, the same ``by_zone``, the ``calls`` made and, per pair id, the
+    ``counts`` of sentences and answered ones per zone."""
+
+    estimate: adj.Estimate
+    by_zone: dict[str, adj.Estimate]
+    calls: int
+    counts: dict[str, dict[str, tuple[int, int]]]
+
+
 def _settle_passages(per_ticker: Mapping[str, Sequence[PairWork]], tasks: Mapping[str, Sequence[adj.Task]],
                      checkpoint: adj.Checkpoint | None, passage_cp: adj.Checkpoint, model: str, *, max_usd: float, budget: float,
                      dry_run: bool, call: Callable[..., Any], adj_params: adj.AdjudicationParams, passage_params: PassageParams,
-                     pas_params: pad.PassageAdjudicationParams) -> tuple[adj.Estimate, int, dict[str, tuple[int, int]]]:
-    """The passage step: list the band sentences of every compared pair on its settled result, estimate, check ``budget`` BEFORE any
-    call (``BudgetExceeded``), and answer what the checkpoint lacks. Returns ``(estimate, calls made, {pair id: (band, answered)})``.
-    Pairs are planned one at a time and their engines dropped, so the memory of a lake-wide run stays that of one pair."""
+                     pas_params: pad.PassageAdjudicationParams, embed: sentence_embed.EmbedFn | None = None,
+                     cache_dir: Path | None = None) -> PassageStep:
+    """The passage step: list the band (and below) sentences of every compared pair on its settled result, build the candidates of the
+    ones not answered yet, estimate per zone, check ``budget`` against the SUM BEFORE any call (``BudgetExceeded``), and answer what
+    the checkpoint lacks, the band zone before the below zone.
+    Pairs are planned one at a time and their engines dropped, so the memory of a lake-wide run stays that of one pair. With nothing
+    budgeted (``budget <= 0``) the first unanswered sentence refuses the run before any embedding (``--max-usd 0`` replays for free)."""
     planned: list[pad.Task] = []
-    counts: dict[str, tuple[int, int]] = {}
+    counts: dict[str, dict[str, tuple[int, int]]] = {}
+    refuse = not dry_run and budget <= 0
     for works in per_ticker.values():
         for w in works:
             if w.result is None:
                 continue
-            pair_tasks, n_band, n_answered = plan_band_tasks(w, _records_for(w, tasks, checkpoint), model, passage_cp.records,
-                                                             adj_params=adj_params, passage_params=passage_params, pas_params=pas_params)
-            planned += pair_tasks
-            counts[w.pair["pair_id"]] = (n_band, n_answered)
-    unique = list({t.key: t for t in planned}.values())
-    estimate = pad.estimate_cost(unique, set(passage_cp.records), model, pas_params)
+            plan = plan_band_tasks(w, _records_for(w, tasks, checkpoint), model, passage_cp.records, adj_params=adj_params,
+                                   passage_params=passage_params, pas_params=pas_params, embed=embed, cache_dir=cache_dir,
+                                   dry_run=dry_run, refuse_uncached=refuse)
+            planned += plan.tasks
+            counts[w.pair["pair_id"]] = plan.counts
+    unique = sorted({t.key: t for t in planned}.values(), key=lambda t: pad.ZONES.index(t.zone))       # stable: band first
+    cached = set(passage_cp.records)
+    estimate = pad.estimate_cost(unique, cached, model, pas_params)
+    zones = pad.ZONES if passage_params.adjudicate_below_band else pad.ZONES[:1]
+    by_zone = pad.estimates_by_zone(unique, cached, model, zones, pas_params)
     if dry_run:
-        return estimate, 0, counts
+        return PassageStep(estimate, by_zone, 0, counts)
     if estimate.worst_case_usd > budget:
         raise pad.BudgetExceeded(f"worst case ${estimate.worst_case_usd:.4f} for {estimate.n_calls} passage call(s) exceeds --max-usd "
                                  f"${max_usd:.2f} (${budget:.4f} left after the item step): nothing further was spent")
-    return estimate, pad.run_tasks(unique, passage_cp, call, model=model, max_usd=budget, params=pas_params), counts
+    return PassageStep(estimate, by_zone, pad.run_tasks(unique, passage_cp, call, model=model, max_usd=budget, params=pas_params),
+                       counts)
 
 
 def run_align_items(settings: Settings, tickers: Sequence[str] | None = None, *, adjudicate: bool = False,
@@ -471,21 +550,26 @@ def run_align_items(settings: Settings, tickers: Sequence[str] | None = None, *,
                     align_params: AlignParams = AlignParams(),
                     adj_params: adj.AdjudicationParams = adj.AdjudicationParams(),
                     passage_params: PassageParams = PassageParams(),
-                    pas_params: pad.PassageAdjudicationParams = pad.PassageAdjudicationParams()) -> AlignRun:
+                    pas_params: pad.PassageAdjudicationParams = pad.PassageAdjudicationParams(),
+                    embed: sentence_embed.EmbedFn | None = None) -> AlignRun:
     """Align every consecutive annual pair of every ticker and write the three tables per ticker.
 
     Phase 1 (free, pure) aligns every pair. With ``adjudicate``, phase 2 collects the model tasks of the ``uncertain`` / ``removed``
     older items, prints nothing, checks the worst case against ``max_usd`` BEFORE any call (raising ``adjudicate.BudgetExceeded``),
-    and answers the tasks the checkpoint does not hold. With ``adjudicate_passages``, phase 3 does the same for the band sentences of
-    the passage layer on the settled result, against what ``max_usd`` has left after phase 2. ``dry_run`` stops after the estimates:
-    nothing is written, no model is called, and passages are not computed. Phase 4 settles, computes passages and writes; the recorded
-    passage answers of ``passage_adjudications.jsonl`` are applied whether or not ``adjudicate_passages`` is set (module docstring).
-    ``out_dir`` (default: the lake's ``risk_alignment`` directory) redirects the tables AND both checkpoints (tests use it to leave
-    the real files alone)."""
+    and answers the tasks the checkpoint does not hold. With ``adjudicate_passages``, phase 3 does the same for the band (and, with
+    ``passage_params.adjudicate_below_band``, below) sentences of the passage layer on the settled result, against what ``max_usd``
+    has left after phase 2; it needs ``embed`` (sentences to vectors, see ``graph/sentence_embed``) unless ``dry_run``. ``dry_run``
+    stops after the estimates: nothing is written or embedded, no model is called, and passages are not computed. Phase 4 settles,
+    computes passages and writes; the recorded passage answers of ``passage_adjudications.jsonl`` are applied: those of ``pas-v3`` with
+    ``adjudicate_passages``, else the legacy ``pas-v2`` ones (module docstring). ``out_dir`` (default: the lake's ``risk_alignment``
+    directory) redirects the tables, both checkpoints AND the sentence-embedding cache (tests use it to leave the real files alone)."""
     directory = out_dir or alignment_dir(settings)
     tickers = discover_tickers(settings, tickers)
     if not tickers:
         raise AlignItemsError(f"no risk items in {items_dir(settings)}: run `semigraph risk-items` first")
+    if adjudicate_passages and not dry_run and embed is None:
+        raise AlignItemsError("passage adjudication (prompt pas-v3) shows the model the nearest sentences by embedding: pass `embed` "
+                              "(the CLI does). Without it a buying run would record lexical-only answers under the semantic version")
     quality = load_quality(items_dir(settings))
     per_ticker: dict[str, list[PairWork]] = {}
     for ticker in tickers:
@@ -513,26 +597,36 @@ def run_align_items(settings: Settings, tickers: Sequence[str] | None = None, *,
             adj.run_tasks([t for ts in tasks.values() for t in ts], checkpoint, call, model=model, max_usd=max_usd, params=adj_params)
             item_spent = _item_spent(checkpoint, before)
     passage_cp = adj.Checkpoint(directory / pad.CHECKPOINT_NAME)
-    passage_estimate, passage_budget, passage_calls, band_counts = None, None, 0, {}
+    passage_estimate, passage_budget, passage_calls, band_counts, zone_estimates = None, None, 0, {}, {}
+    version = pad.PROMPT_VERSION if adjudicate_passages else pad.LEGACY_PROMPT_VERSION
     if adjudicate_passages:
         passage_budget = max(max_usd - (estimate.worst_case_usd if dry_run and estimate else item_spent), 0.0)
-        passage_estimate, passage_calls, band_counts = _settle_passages(
+        step = _settle_passages(
             per_ticker, tasks, checkpoint, passage_cp, model, max_usd=max_usd, budget=passage_budget, dry_run=dry_run, call=call,
-            adj_params=adj_params, passage_params=passage_params, pas_params=pas_params)
-    band = BandContext(passage_cp.records, model, pas_params) if (adjudicate_passages or passage_cp.records) else None
+            adj_params=adj_params, passage_params=passage_params, pas_params=pas_params, embed=embed,
+            cache_dir=directory / EMBEDDINGS_DIRNAME)
+        passage_estimate, zone_estimates, passage_calls, band_counts = step.estimate, step.by_zone, step.calls, step.counts
+    band = BandContext(passage_cp.records, model, pas_params, version) if (adjudicate_passages or passage_cp.records) else None
     written: list[Path] = []
     summary: list[dict] = []
     used = 0
     for ticker, works in per_ticker.items():
         outcomes = [finalize_pair(w, _records_for(w, tasks, checkpoint), with_passages=not dry_run, adj_params=adj_params,
                                   passage_params=passage_params, band=band) for w in works]
-        outcomes = [replace(o, band=band_counts[o.work.pair["pair_id"]][0], band_answered=band_counts[o.work.pair["pair_id"]][1])
-                    if dry_run and o.work.pair["pair_id"] in band_counts else o for o in outcomes]
+        outcomes = [_with_counts(o, band_counts[o.work.pair["pair_id"]], passage_params) if dry_run and o.work.pair["pair_id"] in band_counts
+                    else o for o in outcomes]
         used += sum(o.band_applied for o in outcomes)
         summary += [summary_row(o, passages_computed=not dry_run) for o in outcomes]
         if not dry_run:
             written += write_ticker(directory, ticker, outcomes)
-    return AlignRun(summary, estimate, written, dry_run, passage_estimate, passage_budget, used, passage_calls)
+    return AlignRun(summary, estimate, written, dry_run, passage_estimate, passage_budget, used, passage_calls, zone_estimates,
+                    version if band is not None else "")
+
+
+def _with_counts(outcome: PairOutcome, counts: Mapping[str, tuple[int, int]], params: PassageParams) -> PairOutcome:
+    """A dry-run outcome carrying the zone counts the passage step enumerated (the below columns only with the below zone on)."""
+    below = counts["below"] if params.adjudicate_below_band else (None, None)
+    return replace(outcome, band=counts["band"][0], band_answered=counts["band"][1], below=below[0], below_answered=below[1])
 
 
 # --------------------------------------------------------------------------
@@ -544,7 +638,7 @@ _COLS = (("pair", "pair_id", 46, "<"), ("older", "older_items", 5, ">"), ("newer
          ("REMOVED", "older_removed", 7, ">"), ("uncert", "older_uncertain", 6, ">"), ("NEW", "newer_new", 4, ">"),
          ("n-unc", "newer_uncertain", 5, ">"), ("p-rem", "passages_removed", 5, ">"), ("p-rew", "passages_reworded", 5, ">"),
          ("p-add", "passages_added", 5, ">"), ("adj", "adjudicated", 4, ">"), ("band", "band", 4, ">"),
-         ("b-ans", "band_answered", 5, ">"))
+         ("b-ans", "band_answered", 5, ">"), ("below", "below", 5, ">"), ("bl-ans", "below_answered", 6, ">"))
 
 
 def format_summary(rows: Sequence[Mapping[str, Any]]) -> str:
@@ -565,6 +659,8 @@ def format_summary(rows: Sequence[Mapping[str, Any]]) -> str:
                 if computed else "not computed (dry run)")
     bands = (f"; band sentences {totals['band']} ({totals['band_answered']} answered)"
              if any(r.get("band") is not None for r in rows if r["compared"]) else "")
+    below = (f", below-band sentences {totals['below']} ({totals['below_answered']} answered)"
+             if any(r.get("below") is not None for r in rows if r["compared"]) else "")
     lines.append(f"{len([r for r in rows if r['compared']])} pair(s) compared, {totals['not_compared']} not compared; "
-                 f"removed items {totals['older_removed']}, new items {totals['newer_new']}, passages {passages}{bands}")
+                 f"removed items {totals['older_removed']}, new items {totals['newer_new']}, passages {passages}{bands}{below}")
     return "\n".join(lines)
