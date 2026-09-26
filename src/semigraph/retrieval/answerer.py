@@ -18,12 +18,19 @@ Battle scars preserved:
   otherwise), transient-only backoff, empty-response retry,
   finish_reason=="length" -> regenerate fresh with a doubled budget.
 
+M1b (truthful temporal layer and numbers): the full-context template lives HERE, once (:data:`CONTEXT_HEADERS`);
+metrics are grouped by fiscal year with a citable ``xbrl:`` id per line and year-over-year computed in code; Federal
+Register rules get their own block (they are external events, never the company's disclosure); the temporal block lists
+text-verified removed / added / reworded risk items with their totals; every answer carries a ``checks`` object.
+
 Importable without a Neo4j driver; ``answer`` receives one.
 """
 
 import logging
 import re
 import time
+from datetime import date
+from typing import NamedTuple
 
 import litellm
 from litellm import completion
@@ -33,13 +40,13 @@ from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
 from ..llm_shape import KNOWN_PRICES_PER_MTOK, completion_params
 from . import ids as _ids
-from .retriever import hybrid_retrieve, vector_retrieve
+from .retriever import METRIC_PERIODS_SHOWN, hybrid_retrieve, vector_retrieve
 from .router import needs_strong_model
-from .verify import verify_answer
+from .verify import answer_checks, verify_answer
 
 logger = logging.getLogger("semigraph.answerer")
 
-# Verbatim notebook 14 answering prompt (packaged as a template file).
+# The answering prompt (packaged as a template file). Placeholders: ``question`` and the six :class:`ContextBlocks` fields.
 ANSWER_PROMPT = read_prompt("answer")
 
 # The citation grammar lives in retrieval/ids.py (chunk, XBRL and Federal Register ids); re-exported here.
@@ -50,48 +57,262 @@ CITE_RE = _ids.CITE_RE
 # us-gaap metric is USD). Keeps USD lines byte-identical to the benchmarked v1 wording.
 DEFAULT_UNIT = "USD"
 
+# The full context the answering model (and the faithfulness judge) sees, as one template: each header is followed by its
+# block, in :class:`ContextBlocks` order. Every consumer that must invert or rebuild the context (eval/bakeoff) imports
+# this - a header is never retyped elsewhere. The temporal header is static: the compared filings are named per company
+# inside the block (several companies can be compared in one answer).
+CONTEXT_HEADERS = (
+    "RELATIONSHIPS:\n",
+    "\n\nEXTERNAL REGULATORY EVENTS (Federal Register rules linked by keyword; not the company's disclosure):\n",
+    "\n\nMETRICS:\n",
+    "\n\nACTIVE RISKS:\n",
+    "\n\nRISK FACTORS REMOVED / ADDED / REWORDED between annual filings (text-verified):\n",
+    "\n\nEXCERPTS:\n",
+)
+# The pre-M1b template (five blocks; DROPPED RISK LINEAGES instead of the external and temporal blocks): saved contexts
+# from earlier benchmark runs still carry these headers.
+LEGACY_CONTEXT_HEADERS = ("RELATIONSHIPS:\n", "\n\nMETRICS:\n", "\n\nACTIVE RISKS:\n",
+                          "\n\nDROPPED RISK LINEAGES:\n", "\n\nEXCERPTS:\n")
+
+RULE_RELATION = "AFFECTED_BY"       # a Federal Register rule linked to a company by keyword heuristic
+NONE_BLOCK = "(none)"
+MAX_CHUNK_IDS_PER_ITEM = 3          # ids printed per side of a temporal item (and per relation edge)
+HEADLINE_MAX_CHARS = 240
+YOY_GAP_DAYS = (350, 380)           # the prior fiscal year ends this many days earlier (52/53-week years, leap years)
+
+
+class ContextBlocks(NamedTuple):
+    """The six blocks of the context, in template order; the field names are the prompt's placeholders."""
+
+    edges_block: str
+    external_block: str
+    metrics_block: str
+    risks_block: str
+    temporal_block: str
+    chunks_block: str
+
+
+def format_full_context(blocks: "ContextBlocks | tuple[str, ...]") -> str:
+    """The full context string: every header of :data:`CONTEXT_HEADERS` followed by its block."""
+    return "".join(header + block for header, block in zip(CONTEXT_HEADERS, blocks, strict=True))
+
+
+def render_prompt(question: str, blocks: ContextBlocks) -> str:
+    """The answering prompt for ``question`` over ``blocks`` (the one place the placeholders are filled)."""
+    return ANSWER_PROMPT.format(question=question, **blocks._asdict())
+
+
+def _metric_amount(m: dict) -> str:
+    """``215,938,000,000 USD``: the metric's own unit (``TWD``/``EUR`` for IFRS filers); none renders as USD."""
+    return f"{m['value']:,.0f} {m.get('unit') or DEFAULT_UNIT}"
+
 
 def format_metric_line(m: dict) -> str:
-    """One METRICS line: ``- <company> <metric> for period <start>..<end>: <value> <unit>``.
+    """One plain metric line: ``- <company> <metric> for period <start>..<end>: <value> <unit>``.
 
     The unit is the metric's own (``TWD``/``EUR`` for IFRS filers); a missing/empty unit
-    renders as USD, exactly as v1 did, so existing USD lines are unchanged.
-    """
-    unit = m.get("unit") or DEFAULT_UNIT
-    return (f"- {m['company']} {m['metric']} for period {m['period_start']}..{m['period_end']}: "
-            f"{m['value']:,.0f} {unit}")
+    renders as USD, exactly as v1 did, so existing USD lines are unchanged. (The METRICS block of the prompt now groups
+    by fiscal year and adds an id and a computed year-over-year: :func:`metrics_lines`.)"""
+    return f"- {m['company']} {m['metric']} for period {m['period_start']}..{m['period_end']}: {_metric_amount(m)}"
 
 
-def build_blocks(r: dict) -> tuple[tuple[str, str, str, str, str], str, set[str]]:
-    """Assemble prompt blocks + the full context string + the set of valid
-    (citable) chunk ids from a retrieval result. Ported from notebook 14.
+def yoy_note(current: dict, prior: dict | None) -> str | None:
+    """The year-over-year sentence for ``current`` against the fiscal year before it, computed in code (the model never
+    does arithmetic): ``computed: +65.5% vs fiscal year ended 2025-01-26 (change +85,441,000,000 USD)``.
 
-    Output for existing data is byte-identical to v1 (pinned by a golden test); the only
-    permitted change is the unit label of non-USD metrics (:func:`format_metric_line`)."""
-    valid_ids = set()
+    None (no computed line) unless ``prior`` is the immediately preceding fiscal year (period ends 350-380 days apart)
+    in the same unit. A zero or negative prior has no meaningful percentage: ``computed: n/m ...`` states the change only."""
+    if prior is None:
+        return None
+    unit = current.get("unit") or DEFAULT_UNIT
+    if unit != (prior.get("unit") or DEFAULT_UNIT):
+        return None
+    try:
+        gap = (date.fromisoformat(current["period_end"]) - date.fromisoformat(prior["period_end"])).days
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not YOY_GAP_DAYS[0] <= gap <= YOY_GAP_DAYS[1]:
+        return None
+    now, before = float(current["value"]), float(prior["value"])
+    change = f"{now - before:+,.0f} {unit}"
+    if before <= 0:
+        return (f"computed: n/m vs fiscal year ended {prior['period_end']} "
+                f"(change {change}; percentage not meaningful, prior value not positive)")
+    return f"computed: {(now - before) / before * 100:+.1f}% vs fiscal year ended {prior['period_end']} (change {change})"
+
+
+def _metric_citation(m: dict) -> str | None:
+    """The ``xbrl:<cik>:<metric>:<period_end>`` id of a metric row, or None when it cannot form a well-formed one."""
+    try:
+        citation = _ids.xbrl_id(m["cik"], m["metric"], m["period_end"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return citation if _ids.XBRL_ID_RE.match(citation) else None
+
+
+def metrics_lines(metrics: list[dict]) -> tuple[list[str], set[str]]:
+    """The METRICS block lines and the ids they make citable.
+
+    Rows are grouped per (company, metric) and the last :data:`METRIC_PERIODS_SHOWN` fiscal periods shown (the next older
+    row is only the base of the oldest shown year-over-year); the output is grouped by company, then ``fiscal year ended
+    <period_end>`` newest first, so a value can only ever appear under its own fiscal year."""
+    series: dict[tuple[str, str], list[dict]] = {}
+    for m in metrics:
+        series.setdefault((m["company"], m["metric"]), []).append(m)
+    rank: dict[str, int] = {}
+    entries: list[tuple[str, str, str, str, str | None]] = []       # (company, period_end, metric, line, citation)
+    for (company, name), group in series.items():
+        rank.setdefault(company, len(rank))
+        group.sort(key=lambda m: m["period_end"], reverse=True)
+        for i, m in enumerate(group[:METRIC_PERIODS_SHOWN]):
+            note = yoy_note(m, group[i + 1] if i + 1 < len(group) else None)
+            citation = _metric_citation(m)
+            line = f"- {name} for period {m['period_start']}..{m['period_end']}: {_metric_amount(m)}"
+            line += f" [{citation}]" if citation else ""
+            line += f" | {note}" if note else ""
+            entries.append((company, m["period_end"], name, line, citation))
+    entries.sort(key=lambda e: e[2])
+    entries.sort(key=lambda e: e[1], reverse=True)
+    entries.sort(key=lambda e: rank[e[0]])
+    lines, group_key = [], None
+    for company, period_end, _, line, _ in entries:
+        if (company, period_end) != group_key:
+            group_key = (company, period_end)
+            lines.append(f"{company}: fiscal year ended {period_end}")
+        lines.append(line)
+    return lines, {citation for *_, citation in entries if citation}
+
+
+def _external_line(edge: dict, valid_ids: set[str]) -> str:
+    """One dated line for a Federal Register rule linked to a company; the rule's own ``fr:`` id is its citation. The
+    company chunk ids on the edge are NOT printed: they are the company's own filing text that matched keywords, and
+    beside a rule they read as its source."""
+    citation = _ids.fr_id(edge["rule_id"]) if edge.get("rule_id") else None
+    if citation and not _ids.FR_ID_RE.match(citation):
+        citation = None
+    if citation:
+        valid_ids.add(citation)
+    label = " ".join([edge.get("date") or "undated", *([f"[{citation}]"] if citation else []), edge["target"]])
+    return f"- {label} (linked to {edge['source']} by {edge.get('link_method') or 'keyword'} match)"
+
+
+_TEMPORAL_SECTIONS = (("removed", "Removed", "text verified absent from the later filing"),
+                      ("new", "Added", "new in the later filing"),
+                      ("reworded", "Reworded", "still disclosed, wording changed"))
+
+
+def _headline_text(item: dict) -> str:
+    text = " ".join((item.get("headline") or "").split())
+    if not text:
+        return f"(untitled passage, section {item.get('section_id')})"
+    return text if len(text) <= HEADLINE_MAX_CHARS else text[:HEADLINE_MAX_CHARS - 3].rstrip() + "..."
+
+
+def _id_list(chunk_ids: list[str] | None, valid_ids: set[str]) -> str:
+    """`` [id] [id]`` for the first ids of a list (the ones printed become citable); empty when there are none."""
+    shown = list(chunk_ids or [])[:MAX_CHUNK_IDS_PER_ITEM]
+    valid_ids.update(shown)
+    return "".join(f" [{i}]" for i in shown)
+
+
+def _temporal_item_line(item: dict, valid_ids: set[str]) -> str:
+    line = f'- "{_headline_text(item)}"'
+    older, newer = _id_list(item.get("older_chunk_ids"), valid_ids), _id_list(item.get("newer_chunk_ids"), valid_ids)
+    if item["change"] == "removed":
+        return line + older
+    if item["change"] == "new":
+        return line + newer
+    meta = [f'earlier wording: "{" ".join(item["older_headline"].split())}"'] if item.get("older_headline") else []
+    meta += [f"decided by {item['decided_by']}"] if item.get("decided_by") else []
+    line += f" ({'; '.join(meta)})" if meta else ""
+    return line + (f" earlier{older}" if older else "") + (f" later{newer}" if newer else "")
+
+
+def temporal_block(items: list[dict], pairs: list[dict]) -> tuple[str, set[str]]:
+    """The text-verified temporal block and the chunk ids it makes citable.
+
+    One section per compared company: the two filings, then the removed / added / reworded items with the TOTALS
+    stated beside the capped lists ("showing 8 of 21"). No comparison at all (no RiskItem data) is ``(none)``; a
+    comparison in which nothing changed says so."""
+    if not pairs:
+        return NONE_BLOCK, set()
+    valid_ids: set[str] = set()
+    sections = []
+    for pair in pairs:
+        mine = [i for i in items if i.get("cik") == pair.get("cik")]
+        lines = [f"{pair['company']}: {pair['older_form']} filed {pair['older_date']} (accession {pair['older_accession']}) "
+                 f"compared with {pair['newer_form']} filed {pair['newer_date']} (accession {pair['newer_accession']})"]
+        for change, label, note in _TEMPORAL_SECTIONS:
+            group = [i for i in mine if i.get("change") == change]
+            total = (pair.get("totals") or {}).get(change, len(group))
+            if not group and not total:
+                lines.append(f"{label} - none found.")
+                continue
+            lines.append(f"{label} - showing {len(group)} of {total} ({note}):")
+            lines += [_temporal_item_line(i, valid_ids) for i in group]
+        sections.append("\n".join(lines))
+    return "\n\n".join(sections), valid_ids
+
+
+def build_blocks(r: dict) -> tuple[ContextBlocks, str, set[str]]:
+    """Assemble prompt blocks + the full context string + the set of valid (citable) ids from a retrieval result.
+
+    Ported from notebook 14, changed in M1b (the goldens in ``tests/test_answerer_context.py``): AFFECTED_BY rows leave
+    RELATIONSHIPS for their own EXTERNAL REGULATORY EVENTS block; METRICS is grouped by fiscal year with ids and computed
+    year-over-year; the temporal block is the text-verified removed / added / reworded item list. The valid ids are
+    chunk ids (relations, risks, excerpts, temporal items), ``xbrl:`` ids and ``fr:`` ids."""
+    valid_ids: set[str] = set()
     e_lines = []
-    for e in r["edges"]:
+    for e in (e for e in r["edges"] if e["relation"] != RULE_RELATION):
         ids = e.get("chunk_ids") or []
         valid_ids.update(ids)
         e_lines.append(f"- {e['source']} {e['relation']} {e['target']} (status={e.get('status')}) "
-                       f"{' '.join('[' + i + ']' for i in ids[:3])}")
-    m_lines = [format_metric_line(m) for m in r["metrics"]]
+                       f"{' '.join('[' + i + ']' for i in ids[:MAX_CHUNK_IDS_PER_ITEM])}")
+    x_lines = [_external_line(e, valid_ids) for e in r["edges"] if e["relation"] == RULE_RELATION]
+    m_lines, metric_ids = metrics_lines(r["metrics"])
+    valid_ids |= metric_ids
     k_lines = []
     for k in r["risks"]:
         valid_ids.add(k["chunk_id"])
         k_lines.append(f"- {k['company']} ({k['category']}): {k['summary']} [{k['chunk_id']}]")
-    t_lines = [f"- {t['company']}: disclosed {t['first_seen']} through {t['last_seen']}, then dropped — "
-               f"e.g. {t['example'][:120]}" for t in r["temporal"]]
+    t_block, temporal_ids = temporal_block(r.get("temporal") or [], r.get("temporal_pairs") or [])
+    valid_ids |= temporal_ids
     c_lines = []
     for c in r["chunks"]:
         valid_ids.add(c["chunk_id"])
         c_lines.append(f"[{c['chunk_id']}]\n{c['text']}\n")
-    blocks = ("\n".join(e_lines) or "(none)", "\n".join(m_lines) or "(none)",
-              "\n".join(k_lines) or "(none)", "\n".join(t_lines) or "(none)",
-              "\n".join(c_lines) or "(none)")
-    full_context = ("RELATIONSHIPS:\n{}\n\nMETRICS:\n{}\n\nACTIVE RISKS:\n{}\n\n"
-                    "DROPPED RISK LINEAGES:\n{}\n\nEXCERPTS:\n{}").format(*blocks)
-    return blocks, full_context, valid_ids
+    blocks = ContextBlocks("\n".join(e_lines) or NONE_BLOCK, "\n".join(x_lines) or NONE_BLOCK,
+                           "\n".join(m_lines) or NONE_BLOCK, "\n".join(k_lines) or NONE_BLOCK, t_block,
+                           "\n".join(c_lines) or NONE_BLOCK)
+    return blocks, format_full_context(blocks), valid_ids
+
+
+_EXCERPTS_MARKER = "\n\nEXCERPTS:\n"        # the last header of the current AND the legacy template
+_EXCERPT_ID_LINE = re.compile(rf"^\[({_ids.CHUNK_ID_PATTERN})\]$")
+
+
+def sources_from_context(context: str) -> dict[str, str]:
+    """citation id -> the text behind it, read back from the full context string: every line of the graph blocks that
+    carries ``[id]`` (a risk summary, an item headline, a rule title, a metric line) and, under EXCERPTS, the chunk text
+    that follows its ``[chunk id]`` line. The verifier uses it to tell whether a percentage in an answer appears in text
+    THAT ANSWER CITES. Production and the bake-off both derive it from the context, so they cannot disagree; it works
+    for the current and the legacy template alike."""
+    head, marker, excerpts = context.partition(_EXCERPTS_MARKER)
+    if not marker:
+        head, excerpts = context, ""
+    parts: dict[str, list[str]] = {}
+    for line in head.splitlines():
+        for citation in CITE_RE.findall(line):
+            parts.setdefault(citation, []).append(line)
+    current = None
+    for line in excerpts.splitlines():
+        header = _EXCERPT_ID_LINE.match(line)
+        if header:
+            current = header.group(1)
+            parts.setdefault(current, [])
+        elif current is not None:
+            parts[current].append(line)
+    return {citation: "\n".join(lines) for citation, lines in parts.items()}
 
 
 def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
@@ -255,7 +476,8 @@ def answer(question: str, driver, embedder, strategy: str = "hybrid",
     Returns a dict with (at least): ``answer``, ``citations`` (sorted cited
     ids), ``context`` (the FULL string the model saw), ``chunk_ids``
     (retrieved evidence-chunk ids), plus the notebook keys ``cited``,
-    ``valid_ids``, ``hallucinated`` and the raw ``retrieval`` result.
+    ``valid_ids``, ``hallucinated``, the raw ``retrieval`` result and (M1b) ``checks``: the deterministic
+    citation / numeric-grounding report of :func:`semigraph.retrieval.verify.answer_checks`.
     """
     if strategy == "hybrid":
         r = hybrid_retrieve(question, driver, embedder, k_chunks=k_chunks, hops=hops)
@@ -263,14 +485,14 @@ def answer(question: str, driver, embedder, strategy: str = "hybrid",
         r = vector_retrieve(question, driver, embedder, k=k_chunks)
     else:
         raise ValueError(f"unknown strategy {strategy!r} — use 'hybrid' or 'vector'")
-    (e_b, m_b, k_b, t_b, c_b), full_context, valid_ids = build_blocks(r)
-    prompt = ANSWER_PROMPT.format(question=question, edges_block=e_b, metrics_block=m_b,
-                                  risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
-    text = (llm or llm_text)(prompt)
+    blocks, full_context, valid_ids = build_blocks(r)
+    text = (llm or llm_text)(render_prompt(question, blocks))
     cited = set(CITE_RE.findall(text))
+    checks = answer_checks(text, cited, valid_ids, full_context, sources=sources_from_context(full_context),
+                           question=question)
     return {"question": question, "strategy": strategy, "answer": text,
             "citations": sorted(cited), "cited": cited, "valid_ids": valid_ids,
-            "hallucinated": cited - valid_ids, "context": full_context,
+            "hallucinated": cited - valid_ids, "context": full_context, "checks": checks.as_dict(),
             "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "retrieval": r}
 
 
@@ -286,19 +508,24 @@ def _sum_usage(a: dict | None, b: dict | None) -> dict | None:
 
 
 def _done_event(text: str, stream, *, question, strategy, valid_ids, chunk_ids, context_chars,
-                usage=None, cost_usd=None, extra=None) -> dict:
-    """The terminal ``done`` event for a finished answer (usage/cost default to the stream's own)."""
+                usage=None, cost_usd=None, extra=None, context=None, sources=None) -> dict:
+    """The terminal ``done`` event for a finished answer (usage/cost default to the stream's own).
+
+    ``checks`` is present for EVERY answer, whether it was released as a draft, escalated, routed straight to the strong
+    model or streamed live: an answer that cannot escalate reports what it fails instead of passing silently."""
     cited = set(CITE_RE.findall(text))
     own_usage = getattr(stream, "usage", None)
+    checks = answer_checks(text, cited, valid_ids, context, sources=sources, question=question)
     return {"event": "done", "question": question, "strategy": strategy, "answer": text,
-            "citations": sorted(cited), "hallucinated": sorted(cited - valid_ids),
+            "citations": sorted(cited), "hallucinated": sorted(cited - valid_ids), "checks": checks.as_dict(),
             "finish_reason": getattr(stream, "finish_reason", None),
             "usage": usage if usage is not None else own_usage,
             "cost_usd": cost_usd if cost_usd is not None else usage_cost(own_usage, getattr(stream, "model", None)),
             "chunk_ids": chunk_ids, "context_chars": context_chars, **(extra or {})}
 
 
-def _live_events(stream, *, question, strategy, valid_ids, chunk_ids, context_chars, carry=None):
+def _live_events(stream, *, question, strategy, valid_ids, chunk_ids, context_chars, carry=None,
+                 context=None, sources=None):
     """Stream ``stream`` to the client as deltas, then the terminal ``done`` (or ``error``) event.
 
     ``carry`` folds an earlier, rejected attempt into the totals: ``{"usage", "cost_usd", "extra"}``
@@ -324,7 +551,7 @@ def _live_events(stream, *, question, strategy, valid_ids, chunk_ids, context_ch
     usage, cost = totals()
     yield _done_event("".join(parts), stream, question=question, strategy=strategy, valid_ids=valid_ids,
                       chunk_ids=chunk_ids, context_chars=context_chars, usage=usage, cost_usd=cost,
-                      extra=carry.get("extra"))
+                      extra=carry.get("extra"), context=context, sources=sources)
 
 
 def _drain(stream) -> tuple[str, str | None]:
@@ -360,10 +587,12 @@ def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_mo
     if error:
         logger.warning("draft model %s failed (%s) - escalating to %s", draft_model, error[:300], escalation_model)
     reasons = ["draft_error"] if error else verify_answer(
-        text, set(CITE_RE.findall(text)), ctx["valid_ids"], getattr(draft, "finish_reason", None), context=context)
+        text, set(CITE_RE.findall(text)), ctx["valid_ids"], getattr(draft, "finish_reason", None), context=context,
+        sources=ctx.get("sources"), question=ctx["question"])
     if not reasons:
         yield {"event": "delta", "text": text}
-        yield _done_event(text, draft, extra={"escalated": False, "answered_by": draft_model, "routed": "cheap"}, **ctx)
+        yield _done_event(text, draft, extra={"escalated": False, "answered_by": draft_model, "routed": "cheap"},
+                          context=context, **ctx)
         return
     logger.info("draft rejected (%s) - escalating to %s", ",".join(reasons), escalation_model)
     yield {"event": "escalated", "reasons": reasons, "from": draft_model, "to": escalation_model}
@@ -373,7 +602,7 @@ def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_mo
     carry = {"usage": draft_usage, "cost_usd": usage_cost(draft_usage, draft_model) if draft_usage else None,
              "extra": {"escalated": True, "escalation_reasons": reasons, "routed": "cheap",
                        "answered_by": getattr(strong, "model", None) or escalation_model}}
-    yield from _live_events(strong, carry=carry, **ctx)
+    yield from _live_events(strong, carry=carry, context=context, **ctx)
 
 
 def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
@@ -385,9 +614,10 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
     (``anchor_defaulted`` is True when no company was detected and retrieval fell back to
     the default anchor — additive; False when the retriever does not report it), then
     ``{"event": "delta", "text"}`` per token batch, finally ``{"event": "done",
-    "answer", "citations", "hallucinated", "finish_reason", "usage", "cost_usd",
+    "answer", "citations", "hallucinated", "checks", "finish_reason", "usage", "cost_usd",
     "chunk_ids", "context_chars"}``. Citations are post-verified exactly like
-    ``answer``. ``llm_stream`` is injectable: ``callable(prompt) ->
+    ``answer``; ``checks`` (``citations_retrieved``, ``numbers_grounded``, ``unmatched_numbers``,
+    ``pseudo_citations``) is on every ``done`` event, including answers that cannot escalate. ``llm_stream`` is injectable: ``callable(prompt) ->
     iterable[str]`` (defaults to :class:`TextStream` with ``stream_kwargs``).
 
     With ``escalation_model`` set, questions about change over time (:func:`needs_strong_model`) stream the
@@ -403,21 +633,21 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
         r = vector_retrieve(question, driver, embedder, k=k_chunks)
     else:
         raise ValueError(f"unknown strategy {strategy!r} — use 'hybrid' or 'vector'")
-    (e_b, m_b, k_b, t_b, c_b), full_context, valid_ids = build_blocks(r)
+    blocks, full_context, valid_ids = build_blocks(r)
     yield {"event": "retrieval", "anchors": r["anchors"],
            "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")},
            "anchor_defaulted": bool(r.get("anchor_defaulted", False))}
-    prompt = ANSWER_PROMPT.format(question=question, edges_block=e_b, metrics_block=m_b,
-                                  risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
+    prompt = render_prompt(question, blocks)
     ctx = {"question": question, "strategy": strategy, "valid_ids": valid_ids,
-           "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "context_chars": len(full_context)}
+           "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "context_chars": len(full_context),
+           "sources": sources_from_context(full_context)}
     if escalation_model and escalation_model == (stream_kwargs.get("model") or get_settings().answer_model):
         escalation_model = None    # one model in both roles is plain live streaming (the documented rollback)
     if escalation_model and needs_strong_model(question):
         strong = (escalation_stream(prompt) if escalation_stream else
                   TextStream(prompt, model=escalation_model, **{k: v for k, v in stream_kwargs.items() if k != "model"}))
         extra = {"escalated": False, "routed": "strong", "answered_by": getattr(strong, "model", None) or escalation_model}
-        yield from _live_events(strong, carry={"extra": extra}, **ctx)
+        yield from _live_events(strong, carry={"extra": extra}, context=full_context, **ctx)
         return
     if escalation_model:
         yield from _draft_then_escalate(prompt, llm_stream=llm_stream, escalation_stream=escalation_stream,
@@ -425,4 +655,4 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
                                         context=full_context, **ctx)
         return
     stream = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
-    yield from _live_events(stream, **ctx)
+    yield from _live_events(stream, context=full_context, **ctx)

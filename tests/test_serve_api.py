@@ -421,3 +421,178 @@ def test_an_escalated_answer_passes_through_with_one_ledger_row_carrying_the_sum
     assert [e["event"] for e in events] == ["retrieval", "escalated", "delta", "done"]
     assert len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.031
     assert any(a["answer"] == "Strong answer." for a in fakes.answers.values())
+
+
+# ---------------------------------------------------------------- M1b: the evidence endpoint resolves every citation id form
+
+XBRL = "xbrl:1045810:revenue:2026-01-25"
+FR = "fr:2026-19537"
+
+
+def capture_cypher(monkeypatch, rows):
+    seen = {}
+
+    def fake(driver, query, **params):
+        seen["query"], seen["params"] = query, params
+        return rows
+
+    monkeypatch.setattr(routes, "run_cypher", fake)
+    return seen
+
+
+def test_a_chunk_id_still_resolves_through_the_chunk_query_and_reports_its_type(client, monkeypatch):
+    seen = capture_cypher(monkeypatch, [{"chunk_id": CID, "text": "t", "item_headlines": ["Export controls could restrict sales"]}])
+    body = client.get(f"/api/evidence/{CID}").json()
+    assert seen["query"] == routes.EVIDENCE_QUERY and seen["params"] == {"id": CID}
+    assert body["type"] == "chunk" and body["item_headlines"] == ["Export controls could restrict sales"]
+
+
+def test_the_chunk_query_also_returns_the_risk_item_headline_when_the_chunk_belongs_to_an_item():
+    q = routes.EVIDENCE_QUERY
+    assert "OPTIONAL MATCH (ri:RiskItem {filer_cik: c.cik, accession_no: f.accession_no}) WHERE $id IN ri.chunk_ids" in q
+    assert "collect(ri.headline) AS item_headlines" in q
+    for kept in ("e.status", "e.is_current", "e.valid_to", "AMENDS", "s.title AS section_title", "f.form AS form"):
+        assert kept in q
+
+
+def test_an_xbrl_id_resolves_to_the_metric_node_with_its_filing(client, monkeypatch):
+    row = {"metric_id": "1045810:revenue:2026-01-25", "metric": "revenue", "concept": "Revenues",
+           "value": 215938000000.0, "unit": "USD", "period_start": "2025-01-27", "period_end": "2026-01-25",
+           "company": "Nvidia", "cik": 1045810, "accession_no": "0001045810-26-000021", "form": "10-K",
+           "filing_date": "2026-02-25", "source_url": "https://www.sec.gov/x"}
+    seen = capture_cypher(monkeypatch, [row])
+    body = client.get(f"/api/evidence/{XBRL}").json()
+    assert seen["query"] == routes.XBRL_EVIDENCE_QUERY and seen["params"] == {"id": "1045810:revenue:2026-01-25"}
+    assert body["type"] == "xbrl" and body["value"] == 215938000000.0 and body["accession_no"] == "0001045810-26-000021"
+
+
+def test_the_xbrl_query_reads_the_metric_the_edge_accession_and_reaches_the_filing_optionally():
+    q = routes.XBRL_EVIDENCE_QUERY
+    assert "MATCH (m:Metric {metric_id: $id})" in q
+    assert "OPTIONAL MATCH (c:Company)-[rel:REPORTS_METRIC]->(m)" in q
+    assert "OPTIONAL MATCH (f:Filing {accession_no: rel.accession_no})" in q      # the first-disclosing filing may not be in the graph
+    for col in ("m.value AS value", "m.unit AS unit", "AS period_start", "AS period_end", "m.concept AS concept",
+                "rel.accession_no AS accession_no", "c.name AS company"):
+        assert col in q
+
+
+def test_a_federal_register_id_resolves_to_the_rule_and_says_it_is_external(client, monkeypatch):
+    row = {"document_number": "2026-19537", "title": "Implementation of Additional Export Controls",
+           "publication_date": "2026-03-12", "url": "https://www.federalregister.gov/d/2026-19537",
+           "kind": "entity_list", "topics": ["china"], "relevant": True, "abstract": "a"}
+    seen = capture_cypher(monkeypatch, [row])
+    body = client.get(f"/api/evidence/{FR}").json()
+    assert seen["query"] == routes.FR_EVIDENCE_QUERY and seen["params"] == {"id": "2026-19537"}
+    assert body["type"] == "fr" and body["kind"] == "entity_list" and body["document_number"] == "2026-19537"
+    assert body["source"] == "federal_register" and body["external"] is True
+    assert "not a company disclosure" in body["note"]
+
+
+def test_a_correction_notice_id_is_accepted(client, monkeypatch):
+    seen = capture_cypher(monkeypatch, [{"document_number": "C1-2026-16628", "title": "t"}])
+    assert client.get("/api/evidence/fr:C1-2026-16628").status_code == 200
+    assert seen["params"] == {"id": "C1-2026-16628"}
+
+
+def test_the_federal_register_query_reads_the_rule_node():
+    q = routes.FR_EVIDENCE_QUERY
+    assert "MATCH (x:ExportControl {rule_id: $id})" in q
+    for col in ("x.rule_id AS document_number", "x.title AS title", "toString(x.date) AS publication_date",
+                "x.url AS url", "x.kind AS kind", "x.topics AS topics", "x.relevant AS relevant"):
+        assert col in q
+
+
+@pytest.mark.parametrize("bad", ["Reported Metrics", "xbrl:notacik:revenue:2026-01-25", "xbrl:1045810:Revenue:2026-01-25",
+                                 "fr:12", "fr:", "0001045810-26-000021:I.1A", "x" * 200,
+                                 "xbrl:1045810:" + "a" * 150 + ":2026-01-25"])
+def test_a_malformed_evidence_id_is_a_400_and_never_reaches_the_database(client, monkeypatch, bad):
+    seen = capture_cypher(monkeypatch, [])
+    assert client.get(f"/api/evidence/{bad}").status_code == 400
+    assert seen == {}
+
+
+@pytest.mark.parametrize("evidence_id", [XBRL, FR])
+def test_an_unknown_but_well_formed_id_is_a_404(client, monkeypatch, evidence_id):
+    capture_cypher(monkeypatch, [])
+    assert client.get(f"/api/evidence/{evidence_id}").status_code == 404
+
+
+def test_every_evidence_form_is_behind_the_read_rate_limit(client, monkeypatch):
+    capture_cypher(monkeypatch, [{"x": 1}])
+    n = FakeSettings.read_rate_limit_per_minute
+    codes = [client.get(f"/api/evidence/{XBRL}").status_code for _ in range(n + 1)]
+    assert codes[:-1] == [200] * n and codes[-1] == 429
+
+
+def test_the_route_still_exposes_the_chunk_id_pattern_the_id_module_owns():
+    from semigraph.retrieval import ids
+
+    assert routes.CHUNK_ID_RE is ids.CHUNK_ID_RE
+
+
+# ---------------------------------------------------------------- M1b: the route logs the answer checks
+
+CLEAN_CHECKS = {"citations_retrieved": True, "numbers_grounded": True, "unmatched_numbers": [], "pseudo_citations": []}
+
+
+def stream_with(checks, routed="strong"):
+    def stream(question, driver, embedder, strategy="hybrid", **kw):
+        yield {"event": "retrieval", "anchors": {}, "counts": {}}
+        yield {"event": "done", "answer": "A.", "citations": [], "hallucinated": [], "finish_reason": "stop",
+               "usage": None, "cost_usd": 0.01, "routed": routed, "escalated": False, "answered_by": "strong/m",
+               **({"checks": checks} if checks is not None else {})}
+    return stream
+
+
+def test_the_done_log_line_carries_the_checks(client, monkeypatch, caplog):
+    monkeypatch.setattr(routes, "answer_stream", stream_with(CLEAN_CHECKS))
+    caplog.set_level("INFO", logger="semigraph.serve")
+    list(routes._paid_stream(client.app.state, Q + " log", "hybrid", "iph"))
+    line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("answered "))
+    assert "checks=" in line and "'numbers_grounded': True" in line
+
+
+def test_a_strong_routed_answer_that_fails_a_check_is_logged_as_a_warning_not_hidden(client, monkeypatch, caplog):
+    failed = {"citations_retrieved": True, "numbers_grounded": False, "unmatched_numbers": ["$190 billion"],
+              "pseudo_citations": ["Reported Metrics"]}
+    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
+    caplog.set_level("INFO", logger="semigraph.serve")
+    events = [json.loads(e.data) for e in routes._paid_stream(client.app.state, Q + " warn", "hybrid", "iph")]
+    warning = next(r for r in caplog.records if r.levelname == "WARNING" and "failed checks" in r.getMessage())
+    assert "$190 billion" in warning.getMessage() and "routed=strong" in warning.getMessage()
+    assert events[-1]["checks"] == failed                     # and the client still receives them on the done event
+
+
+def test_an_event_without_checks_is_logged_without_error(client, monkeypatch):
+    monkeypatch.setattr(routes, "answer_stream", stream_with(None))
+    assert list(routes._paid_stream(client.app.state, Q + " nochecks", "hybrid", "iph"))
+
+
+def test_an_answer_whose_checks_failed_is_not_cached_so_the_failure_cannot_vanish_on_replay(client, fakes, monkeypatch):
+    """A cached replay carries no ``checks`` (the store does not persist them): caching a strong-routed answer that failed
+    them would show it as clean for the whole TTL."""
+    failed = {"citations_retrieved": True, "numbers_grounded": False, "unmatched_numbers": ["$190 billion"],
+              "pseudo_citations": []}
+    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
+    events = [json.loads(e.data) for e in routes._paid_stream(client.app.state, Q + " failed", "hybrid", "iph")]
+    assert events[-1]["checks"] == failed
+    assert fakes.answers == {} and len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.01   # still on the ledger
+
+
+@pytest.mark.parametrize("failed", [
+    {"citations_retrieved": False, "numbers_grounded": True, "unmatched_numbers": [], "pseudo_citations": []},
+    {"citations_retrieved": True, "numbers_grounded": True, "unmatched_numbers": [], "pseudo_citations": ["Excerpts"]},
+])
+def test_any_failed_check_keeps_the_answer_out_of_the_cache(client, fakes, monkeypatch, failed):
+    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
+    list(routes._paid_stream(client.app.state, Q + " failed too", "hybrid", "iph"))
+    assert fakes.answers == {}
+
+
+def test_an_answer_with_clean_checks_or_no_checks_is_cached_as_before(client, fakes, monkeypatch):
+    monkeypatch.setattr(routes, "answer_stream", stream_with(CLEAN_CHECKS))
+    list(routes._paid_stream(client.app.state, Q + " clean", "hybrid", "iph"))
+    assert len(fakes.answers) == 1
+    monkeypatch.setattr(routes, "answer_stream", stream_with(None))
+    list(routes._paid_stream(client.app.state, Q + " unchecked", "hybrid", "iph"))
+    assert len(fakes.answers) == 2

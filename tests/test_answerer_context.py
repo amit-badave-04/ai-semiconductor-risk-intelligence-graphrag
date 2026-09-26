@@ -1,10 +1,16 @@
-"""Answer-context tests — C2.1 (units), C2.5 (anchor_defaulted), C2.6 (byte-parity).
+"""Answer-context tests - the M1b goldens, units (C2.1), anchor_defaulted (C2.5).
 
-The GOLDEN_* literals below were captured by running the v1 (pre-C2) ``build_blocks``
-and ``ANSWER_PROMPT.format`` (git HEAD) on ``golden_retrieval()`` BEFORE answerer.py was
-edited for C2 — they were pasted from that run, not written by hand. They are the only
-honest proof that the prompt-visible context for existing data is byte-identical to the
-benchmarked v1 wording; the sole permitted difference is the unit label of non-USD metrics.
+PROVENANCE OF THE GOLDENS (changed deliberately in M1b; the v1 note said "do not regenerate from the current code"):
+
+- ``GOLDEN_EDGES`` (the two company relations), ``GOLDEN_RISKS`` and ``GOLDEN_CHUNKS`` are the v1 literals, captured from
+  the pre-C2 code and unchanged: those blocks must stay byte-identical to what the benchmark was run against.
+- ``GOLDEN_EXTERNAL``, ``GOLDEN_METRICS``, ``GOLDEN_TEMPORAL``, ``GOLDEN_CONTEXT`` and the header names are NEW in M1b.
+  They were written BY HAND from ``docs/v2/M1B_PLAN.md`` section D and the live-test audit BEFORE the implementation
+  existed (percentages and differences computed independently with plain arithmetic), never pasted from a run.
+  What changed and why: the AFFECTED_BY row moved out of RELATIONSHIPS into its own EXTERNAL REGULATORY EVENTS block
+  (it is a Federal Register rule linked by keyword, not the company's disclosure); METRICS is grouped by fiscal year with
+  a citable ``xbrl:`` id per line and code-computed year-over-year; the DROPPED RISK LINEAGES block became the text-verified
+  RISK FACTORS REMOVED / ADDED / REWORDED block; the answer prompt got new rules and a sixth placeholder.
 
 No Neo4j, no network, no real LLM.
 """
@@ -21,17 +27,23 @@ from semigraph.retrieval import (
     build_blocks,
     format_metric_line,
 )
+from semigraph.retrieval.answerer import CONTEXT_HEADERS, LEGACY_CONTEXT_HEADERS, render_prompt
 
 CID_A = "0001045810-26-000021:I.1:0320"
 CID_B = "0001045810-26-000021:I.1A:0345"
 CID_C = "0001045810-24-000029:I.1A:0152"
 CID_D = "0001046179-26-000007:I.1A:0011"
+OLD_ACC, NEW_ACC = "0001045810-25-000023", "0001045810-26-000021"
 QUESTION = "How does Nvidia depend on TSMC?"
 
 
 def golden_retrieval() -> dict:
-    """Fixture: one row of every shape build_blocks prints. Metric rows deliberately cover
-    a missing ``unit`` key, ``unit='USD'`` and ``unit=None`` (all must render as v1: USD)."""
+    """Fixture: one row of every shape build_blocks prints. Metric rows cover 4 Nvidia fiscal years (the 4th is only the
+    base of the 3rd's year-over-year), a missing ``unit`` key/None (USD), a negative prior (n/m) and a TWD filer."""
+    def m(company, cik, metric, value, start, end, **kw):
+        return {"company": company, "cik": cik, "metric": metric, "value": value,
+                "period_start": start, "period_end": end, **kw}
+
     return {
         "anchors": {"Nvidia": 1045810},
         "edges": [
@@ -41,15 +53,22 @@ def golden_retrieval() -> dict:
              "quote": None, "chunk_ids": None},
             {"source": "Nvidia", "relation": "AFFECTED_BY",
              "target": "Implementation of Additional Export Controls: Certain Advanced Computing Items",
-             "status": "Active", "quote": None, "chunk_ids": [CID_B]},
+             "status": "Active", "quote": None, "chunk_ids": [CID_B], "rule_id": "2026-19537",
+             "date": "2026-03-12", "url": "https://www.federalregister.gov/d/2026-19537", "kind": "entity_list",
+             "link_source": "federal_register", "link_method": "keyword", "external": True},
         ],
         "metrics": [
-            {"company": "Nvidia", "metric": "revenue", "value": 130497000000.0,
-             "period_start": "2024-01-29", "period_end": "2025-01-26"},
-            {"company": "Nvidia", "metric": "rnd", "value": 12914000000.0, "unit": "USD",
-             "period_start": "2024-01-29", "period_end": "2025-01-26"},
-            {"company": "AMD", "metric": "net_income", "value": 1641000000.4,
-             "period_start": "2024-01-01", "period_end": "2024-12-28", "unit": None},
+            m("Nvidia", 1045810, "revenue", 215938000000.0, "2025-01-27", "2026-01-25"),
+            m("Nvidia", 1045810, "revenue", 130497000000.0, "2024-01-29", "2025-01-26"),
+            m("Nvidia", 1045810, "revenue", 60922000000.0, "2023-01-30", "2024-01-28"),
+            m("Nvidia", 1045810, "revenue", 26974000000.0, "2022-01-31", "2023-01-29"),
+            m("Nvidia", 1045810, "rnd", 18497000000.0, "2025-01-27", "2026-01-25", unit="USD"),
+            m("Nvidia", 1045810, "rnd", 12914000000.0, "2024-01-29", "2025-01-26", unit="USD"),
+            m("AMD", 2488, "net_income", 1641000000.4, "2024-01-01", "2024-12-28", unit=None),
+            m("Intel", 50863, "net_income", -267000000.0, "2024-12-29", "2025-12-27"),
+            m("Intel", 50863, "net_income", -18756000000.0, "2023-12-31", "2024-12-28"),
+            m("TSMC", 1046179, "revenue", 2894308000000.0, "2024-01-01", "2024-12-31", unit="TWD"),
+            m("TSMC", 1046179, "revenue", 2161736000000.0, "2023-01-01", "2023-12-31", unit="TWD"),
         ],
         "risks": [
             {"company": "Nvidia", "category": "regulatory", "chunk_id": CID_B, "score": 0.91,
@@ -58,10 +77,28 @@ def golden_retrieval() -> dict:
              "summary": "Geographic concentration of manufacturing in Taiwan."},
         ],
         "temporal": [
-            {"company": "Nvidia", "lineage": "1045810:3", "first_seen": "2023-02-24",
-             "last_seen": "2025-02-26",
-             "example": "COVID-related supply disruption risk that was disclosed in earlier annual "
-                        "reports and dropped from the latest one, with a long tail of detail here."},
+            {"company": "Nvidia", "cik": 1045810, "change": "removed", "lineage": "1045810:3", "item_id": "i1",
+             "headline": "We may not be able to sell to China without an export license", "older_headline": None,
+             "unit_kind": "headline", "section_id": "I.1A", "seq": 3, "decided_by": None,
+             "older_chunk_ids": [f"{OLD_ACC}:I.1A:0210", f"{OLD_ACC}:I.1A:0211"], "newer_chunk_ids": []},
+            {"company": "Nvidia", "cik": 1045810, "change": "removed", "lineage": "1045810:4", "item_id": "i2",
+             "headline": "Our Hong Kong operations may face transition risks", "older_headline": None,
+             "unit_kind": "headline", "section_id": "I.1A", "seq": 4, "decided_by": None,
+             "older_chunk_ids": [f"{OLD_ACC}:I.1A:0230"], "newer_chunk_ids": []},
+            {"company": "Nvidia", "cik": 1045810, "change": "new", "lineage": "1045810:40", "item_id": "i3",
+             "headline": "We depend on a small number of customers for a large share of revenue",
+             "older_headline": None, "unit_kind": "headline", "section_id": "I.1A", "seq": 40, "decided_by": None,
+             "older_chunk_ids": [], "newer_chunk_ids": [f"{NEW_ACC}:I.1A:0350"]},
+            {"company": "Nvidia", "cik": 1045810, "change": "reworded", "lineage": "1045810:9", "item_id": "i4",
+             "headline": "Acquisitions and strategic investments may not deliver expected benefits",
+             "older_headline": "We may not realize the benefits of acquisitions", "unit_kind": "headline",
+             "section_id": "I.1A", "seq": 9, "decided_by": "luna",
+             "older_chunk_ids": [f"{OLD_ACC}:I.1A:0140"], "newer_chunk_ids": [f"{NEW_ACC}:I.1A:0347"]},
+        ],
+        "temporal_pairs": [
+            {"company": "Nvidia", "cik": 1045810, "older_accession": OLD_ACC, "older_form": "10-K",
+             "older_date": "2025-02-26", "newer_accession": NEW_ACC, "newer_form": "10-K", "newer_date": "2026-02-25",
+             "totals": {"removed": 21, "new": 12, "reworded": 9}},
         ],
         "chunks": [
             {"chunk_id": CID_C, "score": 0.88,
@@ -73,165 +110,163 @@ def golden_retrieval() -> dict:
     }
 
 
-# --- v1 goldens (captured from the pre-C2 code; do not regenerate from the current code) ---
+# --- the goldens (see the module docstring for their provenance) ---
 
-GOLDEN_BLOCKS = (
-    (
-        '- Nvidia DEPENDS_ON TSMC (status=Active) [0001045810-26-000021:I.1:0320] [0001045810-26-000021:I.1A:0345] [0001045810-24-000029:I.1A:0152]\n'
-        '- Nvidia COMPETES_WITH AMD (status=Active) \n'
-        '- Nvidia AFFECTED_BY Implementation of Additional Export Controls: Certain Advanced Computing Items (status=Active) [0001045810-26-000021:I.1A:0345]'
-    ),
-    (
-        '- Nvidia revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD\n'
-        '- Nvidia rnd for period 2024-01-29..2025-01-26: 12,914,000,000 USD\n'
-        '- AMD net_income for period 2024-01-01..2024-12-28: 1,641,000,000 USD'
-    ),
-    (
-        '- Nvidia (regulatory): Export controls could restrict sales of our data-center products to China. [0001045810-26-000021:I.1A:0345]\n'
-        '- TSMC (supply_chain): Geographic concentration of manufacturing in Taiwan. [0001046179-26-000007:I.1A:0011]'
-    ),
-    (
-        '- Nvidia: disclosed 2023-02-24 through 2025-02-26, then dropped — e.g. COVID-related supply disruption risk that was disclosed in earlier annual reports and dropped from the latest one, with '
-    ),
-    (
-        '[0001045810-24-000029:I.1A:0152]\n'
-        'Export controls affect our China sales.\n'
-        'Second line.\n'
-        '\n'
-        '[0001045810-26-000021:I.1:0320]\n'
-        'We rely on third-party foundries.\n'
-        ''
-    ),
+GOLDEN_EDGES = (
+    '- Nvidia DEPENDS_ON TSMC (status=Active) [0001045810-26-000021:I.1:0320] [0001045810-26-000021:I.1A:0345] [0001045810-24-000029:I.1A:0152]\n'
+    '- Nvidia COMPETES_WITH AMD (status=Active) '
+)
+
+GOLDEN_EXTERNAL = (
+    '- 2026-03-12 [fr:2026-19537] Implementation of Additional Export Controls: Certain Advanced Computing Items '
+    '(linked to Nvidia by keyword match)'
+)
+
+GOLDEN_METRICS = (
+    'Nvidia: fiscal year ended 2026-01-25\n'
+    '- revenue for period 2025-01-27..2026-01-25: 215,938,000,000 USD [xbrl:1045810:revenue:2026-01-25] | computed: +65.5% vs fiscal year ended 2025-01-26 (change +85,441,000,000 USD)\n'
+    '- rnd for period 2025-01-27..2026-01-25: 18,497,000,000 USD [xbrl:1045810:rnd:2026-01-25] | computed: +43.2% vs fiscal year ended 2025-01-26 (change +5,583,000,000 USD)\n'
+    'Nvidia: fiscal year ended 2025-01-26\n'
+    '- revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD [xbrl:1045810:revenue:2025-01-26] | computed: +114.2% vs fiscal year ended 2024-01-28 (change +69,575,000,000 USD)\n'
+    '- rnd for period 2024-01-29..2025-01-26: 12,914,000,000 USD [xbrl:1045810:rnd:2025-01-26]\n'
+    'Nvidia: fiscal year ended 2024-01-28\n'
+    '- revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD [xbrl:1045810:revenue:2024-01-28] | computed: +125.9% vs fiscal year ended 2023-01-29 (change +33,948,000,000 USD)\n'
+    'AMD: fiscal year ended 2024-12-28\n'
+    '- net_income for period 2024-01-01..2024-12-28: 1,641,000,000 USD [xbrl:2488:net_income:2024-12-28]\n'
+    'Intel: fiscal year ended 2025-12-27\n'
+    '- net_income for period 2024-12-29..2025-12-27: -267,000,000 USD [xbrl:50863:net_income:2025-12-27] | computed: n/m vs fiscal year ended 2024-12-28 (change +18,489,000,000 USD; percentage not meaningful, prior value not positive)\n'
+    'Intel: fiscal year ended 2024-12-28\n'
+    '- net_income for period 2023-12-31..2024-12-28: -18,756,000,000 USD [xbrl:50863:net_income:2024-12-28]\n'
+    'TSMC: fiscal year ended 2024-12-31\n'
+    '- revenue for period 2024-01-01..2024-12-31: 2,894,308,000,000 TWD [xbrl:1046179:revenue:2024-12-31] | computed: +33.9% vs fiscal year ended 2023-12-31 (change +732,572,000,000 TWD)\n'
+    'TSMC: fiscal year ended 2023-12-31\n'
+    '- revenue for period 2023-01-01..2023-12-31: 2,161,736,000,000 TWD [xbrl:1046179:revenue:2023-12-31]'
+)
+
+GOLDEN_RISKS = (
+    '- Nvidia (regulatory): Export controls could restrict sales of our data-center products to China. [0001045810-26-000021:I.1A:0345]\n'
+    '- TSMC (supply_chain): Geographic concentration of manufacturing in Taiwan. [0001046179-26-000007:I.1A:0011]'
+)
+
+GOLDEN_TEMPORAL = (
+    'Nvidia: 10-K filed 2025-02-26 (accession 0001045810-25-000023) compared with 10-K filed 2026-02-25 (accession 0001045810-26-000021)\n'
+    'Removed - showing 2 of 21 (text verified absent from the later filing):\n'
+    '- "We may not be able to sell to China without an export license" [0001045810-25-000023:I.1A:0210] [0001045810-25-000023:I.1A:0211]\n'
+    '- "Our Hong Kong operations may face transition risks" [0001045810-25-000023:I.1A:0230]\n'
+    'Added - showing 1 of 12 (new in the later filing):\n'
+    '- "We depend on a small number of customers for a large share of revenue" [0001045810-26-000021:I.1A:0350]\n'
+    'Reworded - showing 1 of 9 (still disclosed, wording changed):\n'
+    '- "Acquisitions and strategic investments may not deliver expected benefits" (earlier wording: "We may not realize the benefits of acquisitions"; decided by luna) earlier [0001045810-25-000023:I.1A:0140] later [0001045810-26-000021:I.1A:0347]'
+)
+
+GOLDEN_CHUNKS = (
+    '[0001045810-24-000029:I.1A:0152]\n'
+    'Export controls affect our China sales.\n'
+    'Second line.\n'
+    '\n'
+    '[0001045810-26-000021:I.1:0320]\n'
+    'We rely on third-party foundries.\n'
+    ''
 )
 
 GOLDEN_CONTEXT = (
-    'RELATIONSHIPS:\n'
-    '- Nvidia DEPENDS_ON TSMC (status=Active) [0001045810-26-000021:I.1:0320] [0001045810-26-000021:I.1A:0345] [0001045810-24-000029:I.1A:0152]\n'
-    '- Nvidia COMPETES_WITH AMD (status=Active) \n'
-    '- Nvidia AFFECTED_BY Implementation of Additional Export Controls: Certain Advanced Computing Items (status=Active) [0001045810-26-000021:I.1A:0345]\n'
-    '\n'
-    'METRICS:\n'
-    '- Nvidia revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD\n'
-    '- Nvidia rnd for period 2024-01-29..2025-01-26: 12,914,000,000 USD\n'
-    '- AMD net_income for period 2024-01-01..2024-12-28: 1,641,000,000 USD\n'
-    '\n'
-    'ACTIVE RISKS:\n'
-    '- Nvidia (regulatory): Export controls could restrict sales of our data-center products to China. [0001045810-26-000021:I.1A:0345]\n'
-    '- TSMC (supply_chain): Geographic concentration of manufacturing in Taiwan. [0001046179-26-000007:I.1A:0011]\n'
-    '\n'
-    'DROPPED RISK LINEAGES:\n'
-    '- Nvidia: disclosed 2023-02-24 through 2025-02-26, then dropped — e.g. COVID-related supply disruption risk that was disclosed in earlier annual reports and dropped from the latest one, with \n'
-    '\n'
-    'EXCERPTS:\n'
-    '[0001045810-24-000029:I.1A:0152]\n'
-    'Export controls affect our China sales.\n'
-    'Second line.\n'
-    '\n'
-    '[0001045810-26-000021:I.1:0320]\n'
-    'We rely on third-party foundries.\n'
-    ''
+    'RELATIONSHIPS:\n' + GOLDEN_EDGES + '\n\n'
+    "EXTERNAL REGULATORY EVENTS (Federal Register rules linked by keyword; not the company's disclosure):\n"
+    + GOLDEN_EXTERNAL + '\n\n'
+    'METRICS:\n' + GOLDEN_METRICS + '\n\n'
+    'ACTIVE RISKS:\n' + GOLDEN_RISKS + '\n\n'
+    'RISK FACTORS REMOVED / ADDED / REWORDED between annual filings (text-verified):\n' + GOLDEN_TEMPORAL + '\n\n'
+    'EXCERPTS:\n' + GOLDEN_CHUNKS
 )
 
-GOLDEN_VALID_IDS = ['0001045810-24-000029:I.1A:0152', '0001045810-26-000021:I.1:0320', '0001045810-26-000021:I.1A:0345', '0001046179-26-000007:I.1A:0011']
-
-GOLDEN_PROMPT = (
-    'You are a semiconductor supply-chain analyst. Answer the question using ONLY the context below,\n'
-    'retrieved from SEC filings via a knowledge graph.\n'
-    '\n'
-    'Rules:\n'
-    '- Cite evidence after every factual sentence using [chunk_id] (ids appear in the context).\n'
-    '- KNOWN RELATIONSHIPS, REPORTED METRICS and DROPPED RISK LINEAGES come from the knowledge graph.\n'
-    '- If the context does not contain the answer, say so plainly — never fill gaps from memory.\n'
-    '- Be concise. Use bullet lists for enumerations.\n'
-    '\n'
-    'QUESTION: How does Nvidia depend on TSMC?\n'
-    '\n'
-    '=== KNOWN RELATIONSHIPS ===\n'
-    '- Nvidia DEPENDS_ON TSMC (status=Active) [0001045810-26-000021:I.1:0320] [0001045810-26-000021:I.1A:0345] [0001045810-24-000029:I.1A:0152]\n'
-    '- Nvidia COMPETES_WITH AMD (status=Active) \n'
-    '- Nvidia AFFECTED_BY Implementation of Additional Export Controls: Certain Advanced Computing Items (status=Active) [0001045810-26-000021:I.1A:0345]\n'
-    '\n'
-    '=== REPORTED METRICS (deterministic, from XBRL) ===\n'
-    '- Nvidia revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD\n'
-    '- Nvidia rnd for period 2024-01-29..2025-01-26: 12,914,000,000 USD\n'
-    '- AMD net_income for period 2024-01-01..2024-12-28: 1,641,000,000 USD\n'
-    '\n'
-    '=== DISCLOSED RISKS (currently active, semantically ranked) ===\n'
-    '- Nvidia (regulatory): Export controls could restrict sales of our data-center products to China. [0001045810-26-000021:I.1A:0345]\n'
-    '- TSMC (supply_chain): Geographic concentration of manufacturing in Taiwan. [0001046179-26-000007:I.1A:0011]\n'
-    '\n'
-    '=== RISK LINEAGES DROPPED FROM THE LATEST ANNUAL REPORT (bitemporal layer) ===\n'
-    '- Nvidia: disclosed 2023-02-24 through 2025-02-26, then dropped — e.g. COVID-related supply disruption risk that was disclosed in earlier annual reports and dropped from the latest one, with \n'
-    '\n'
-    '=== SOURCE EXCERPTS ===\n'
-    '[0001045810-24-000029:I.1A:0152]\n'
-    'Export controls affect our China sales.\n'
-    'Second line.\n'
-    '\n'
-    '[0001045810-26-000021:I.1:0320]\n'
-    'We rely on third-party foundries.\n'
-    '\n'
-    ''
-)
+GOLDEN_VALID_IDS = sorted([
+    CID_C, CID_A, CID_B, CID_D,
+    "xbrl:1045810:revenue:2026-01-25", "xbrl:1045810:rnd:2026-01-25", "xbrl:1045810:revenue:2025-01-26",
+    "xbrl:1045810:rnd:2025-01-26", "xbrl:1045810:revenue:2024-01-28", "xbrl:2488:net_income:2024-12-28",
+    "xbrl:50863:net_income:2025-12-27", "xbrl:50863:net_income:2024-12-28",
+    "xbrl:1046179:revenue:2024-12-31", "xbrl:1046179:revenue:2023-12-31",
+    "fr:2026-19537",
+    f"{OLD_ACC}:I.1A:0210", f"{OLD_ACC}:I.1A:0211", f"{OLD_ACC}:I.1A:0230", f"{NEW_ACC}:I.1A:0350",
+    f"{OLD_ACC}:I.1A:0140", f"{NEW_ACC}:I.1A:0347",
+])
 
 
+# --- the shared template: ONE definition of the headers (eval/bakeoff inverts it) ---
 
-def render_prompt(blocks: tuple[str, str, str, str, str]) -> str:
-    e_b, m_b, k_b, t_b, c_b = blocks
-    return ANSWER_PROMPT.format(question=QUESTION, edges_block=e_b, metrics_block=m_b,
-                                risks_block=k_b, temporal_block=t_b, chunks_block=c_b)
+def test_context_headers_are_the_single_definition_of_the_template():
+    assert CONTEXT_HEADERS == (
+        "RELATIONSHIPS:\n",
+        "\n\nEXTERNAL REGULATORY EVENTS (Federal Register rules linked by keyword; not the company's disclosure):\n",
+        "\n\nMETRICS:\n",
+        "\n\nACTIVE RISKS:\n",
+        "\n\nRISK FACTORS REMOVED / ADDED / REWORDED between annual filings (text-verified):\n",
+        "\n\nEXCERPTS:\n",
+    )
+    assert LEGACY_CONTEXT_HEADERS == ("RELATIONSHIPS:\n", "\n\nMETRICS:\n", "\n\nACTIVE RISKS:\n",
+                                      "\n\nDROPPED RISK LINEAGES:\n", "\n\nEXCERPTS:\n")
+    blocks, full_context, _ = build_blocks(golden_retrieval())
+    rebuilt = CONTEXT_HEADERS[0] + blocks[0]
+    for header, block in zip(CONTEXT_HEADERS[1:], blocks[1:], strict=True):
+        rebuilt += header + block
+    assert rebuilt == full_context                      # the template IS the headers, joined with the blocks
 
 
-# --- C2.6: byte-parity with v1 for existing (USD / unit-less) data ---
+# --- the goldens ---
 
-def test_blocks_match_v1_golden_byte_for_byte():
+def test_blocks_match_the_goldens_byte_for_byte():
     blocks, _, _ = build_blocks(golden_retrieval())
-    assert blocks == GOLDEN_BLOCKS
+    assert tuple(blocks) == (GOLDEN_EDGES, GOLDEN_EXTERNAL, GOLDEN_METRICS, GOLDEN_RISKS, GOLDEN_TEMPORAL,
+                             GOLDEN_CHUNKS)
+    assert (blocks.edges_block, blocks.external_block, blocks.metrics_block, blocks.risks_block,
+            blocks.temporal_block, blocks.chunks_block) == tuple(blocks)
 
 
-def test_full_context_matches_v1_golden_byte_for_byte():
+def test_full_context_matches_the_golden_byte_for_byte():
     _, full_context, valid_ids = build_blocks(golden_retrieval())
     assert full_context == GOLDEN_CONTEXT
     assert sorted(valid_ids) == GOLDEN_VALID_IDS
 
 
-def test_prompt_matches_v1_golden_byte_for_byte():
+def test_the_unchanged_v1_blocks_are_still_byte_identical_to_v1():
+    """The relations (minus the moved AFFECTED_BY row), the risks and the excerpts are what the benchmark ran on."""
     blocks, _, _ = build_blocks(golden_retrieval())
-    assert render_prompt(blocks) == GOLDEN_PROMPT
+    assert blocks.edges_block == GOLDEN_EDGES and blocks.risks_block == GOLDEN_RISKS
+    assert blocks.chunks_block == GOLDEN_CHUNKS
+
+
+def test_the_prompt_places_each_block_under_its_own_heading_in_order():
+    blocks, _, _ = build_blocks(golden_retrieval())
+    prompt = render_prompt(QUESTION, blocks)
+    assert prompt == ANSWER_PROMPT.format(question=QUESTION, **blocks._asdict())
+    positions = [prompt.index(h) for h in (
+        "=== KNOWN RELATIONSHIPS ===", "=== EXTERNAL REGULATORY EVENTS", "=== REPORTED METRICS",
+        "=== DISCLOSED RISKS", "=== RISK FACTORS REMOVED / ADDED / REWORDED", "=== SOURCE EXCERPTS ===")]
+    assert positions == sorted(positions)
+    for block in (GOLDEN_EDGES, GOLDEN_EXTERNAL, GOLDEN_METRICS, GOLDEN_RISKS, GOLDEN_TEMPORAL, GOLDEN_CHUNKS):
+        assert block in prompt
+    assert f"QUESTION: {QUESTION}" in prompt
 
 
 def test_usd_metric_lines_render_identically_with_or_without_unit_key():
     with_unit = golden_retrieval()
     without_unit = copy.deepcopy(with_unit)
-    for m in with_unit["metrics"]:
-        m["unit"] = "USD"
-    for m in without_unit["metrics"]:
-        m.pop("unit", None)
+    for row in with_unit["metrics"]:
+        if row["company"] != "TSMC":
+            row["unit"] = "USD"
+    for row in without_unit["metrics"]:
+        if row["company"] != "TSMC":
+            row.pop("unit", None)
     assert build_blocks(with_unit)[1] == build_blocks(without_unit)[1] == GOLDEN_CONTEXT
 
 
-# --- C2.1: non-USD metrics are labelled with their own unit (the only allowed change) ---
+# --- C2.1: non-USD metrics are labelled with their own unit ---
 
-def test_non_usd_units_change_only_the_unit_token():
+def test_non_usd_lines_never_say_usd_and_carry_their_unit_in_value_and_change():
     r = golden_retrieval()
-    r["metrics"][0]["unit"] = "TWD"      # Nvidia revenue row, relabelled
-    r["metrics"][2]["unit"] = "EUR"      # AMD net income row, relabelled
-    _, full_context, _ = build_blocks(r)
-    expected = (GOLDEN_CONTEXT
-                .replace("2025-01-26: 130,497,000,000 USD", "2025-01-26: 130,497,000,000 TWD")
-                .replace("2024-12-28: 1,641,000,000 USD", "2024-12-28: 1,641,000,000 EUR"))
-    assert expected != GOLDEN_CONTEXT
-    assert full_context == expected
-    assert "TWD" in render_prompt(build_blocks(r)[0])
-
-
-def test_non_usd_line_never_says_usd():
-    r = golden_retrieval()
-    r["metrics"] = [{"company": "TSMC", "metric": "revenue", "value": 3809054000000.0,
-                     "unit": "TWD", "period_start": "2024-01-01", "period_end": "2024-12-31"}]
-    (_, m_block, *_rest), _, _ = build_blocks(r)
-    assert m_block == "- TSMC revenue for period 2024-01-01..2024-12-31: 3,809,054,000,000 TWD"
-    assert "USD" not in m_block
+    r["metrics"] = [row for row in r["metrics"] if row["company"] == "TSMC"]
+    blocks, _, _ = build_blocks(r)
+    assert "USD" not in blocks.metrics_block
+    assert "2,894,308,000,000 TWD" in blocks.metrics_block and "+732,572,000,000 TWD" in blocks.metrics_block
 
 
 @pytest.mark.parametrize("metric, expected", [
@@ -258,7 +293,7 @@ def test_format_metric_line(metric, expected):
     assert format_metric_line(metric) == expected
 
 
-# --- C2.5: anchor honesty — the retrieval event carries anchor_defaulted (additive) ---
+# --- C2.5: anchor honesty - the retrieval event carries anchor_defaulted (additive) ---
 
 def _stream_events(monkeypatch, retrieval: dict) -> list[dict]:
     monkeypatch.setattr(answerer_mod, "hybrid_retrieve", lambda *a, **kw: retrieval)
@@ -288,11 +323,12 @@ def test_retrieval_event_defaults_anchor_defaulted_false_when_key_absent(monkeyp
     assert ev["anchor_defaulted"] is False
 
 
-def test_retrieval_event_counts_are_unchanged(monkeypatch):
+def test_retrieval_event_counts_keep_their_five_keys(monkeypatch):
+    """``edges`` still counts the AFFECTED_BY rows and ``temporal`` the shown item rows: consumers are unchanged."""
     r = golden_retrieval()
     r["anchor_defaulted"] = True
     ev = _stream_events(monkeypatch, r)[0]
-    assert ev["counts"] == {"edges": 3, "metrics": 3, "risks": 2, "temporal": 1, "chunks": 2}
+    assert ev["counts"] == {"edges": 3, "metrics": 11, "risks": 2, "temporal": 4, "chunks": 2}
     assert set(ev) == {"event", "anchors", "counts", "anchor_defaulted"}
 
 

@@ -114,7 +114,8 @@ def test_an_uncited_dollar_figure_that_is_not_in_the_retrieved_context_is_still_
                                            "period_end": "2026-01-25", "value": 215938000000.0}]}
     monkeypatch.setattr(answerer_mod, "hybrid_retrieve", lambda *a, **kw: retrieval)
     events = run(Stream(["Nvidia's revenue for that year was $190 billion."], model="cheap/m"), Stream([GOOD], model="strong/m"))
-    assert events[1]["event"] == "escalated" and events[1]["reasons"] == ["no_citation"]
+    # M1b: the invented figure is reported as an ungrounded number as well as an uncited claim
+    assert events[1]["event"] == "escalated" and events[1]["reasons"] == ["no_citation", "ungrounded_number"]
 
 
 # --- review findings W1-W3, S3 ---

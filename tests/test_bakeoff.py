@@ -211,7 +211,7 @@ def _by_question(good: bool):
             text = ("It was $215.9 billion [%s]." % VALID[1]) if good else ("It was $190 billion [%s]." % VALID[1])
         elif "Who supplies" in prompt:
             text = "Nvidia depends on TSMC [%s]." % VALID[0]
-        elif "Dropped" in prompt:
+        elif "Dropped risks?" in prompt:
             text = "Yes, several risks were dropped [%s]." % VALID[0]
         else:
             text = "The context does not contain Samsung's revenue."
@@ -333,3 +333,31 @@ def test_score_deployed_counts_routes_escalations_and_judges_the_open_questions(
     assert s["routes"] == {"cheap": 2, "strong": 1} and s["escalated"] == 1
     assert s["mechanical"] == {"passed": 2, "of": 2} and s["judged"]["open_correct"] == 1
     assert s["total_cost_usd"] == pytest.approx(0.061) and s["avg_cost_usd"] == pytest.approx(0.061 / 3)
+
+
+# --- saved (pre-M1b) contexts stay readable, but old dropped-lineage text is never relabelled "text-verified" ---
+
+LEGACY = ("RELATIONSHIPS:\n- Nvidia DEPENDS_ON TSMC (status=Active) [0001-25-000001:I.1:0001]\n\nMETRICS:\n(none)\n\n"
+          "ACTIVE RISKS:\n(none)\n\nDROPPED RISK LINEAGES:\n- Nvidia dropped a China risk [0001-25-000001:I.1:0001]\n\n"
+          "EXCERPTS:\n[0001-25-000001:II.7:0002]\nRevenue was $215.9 billion.\n")
+
+
+def test_a_pre_m1b_context_is_split_with_external_and_temporal_blocks_empty():
+    blocks = bo.split_context(LEGACY)
+    assert blocks.edges_block.startswith("- Nvidia DEPENDS_ON TSMC")
+    assert blocks.external_block == "(none)" and blocks.temporal_block == "(none)"
+    assert "China risk" not in bo.build_prompt("Q?", LEGACY)      # never re-rendered under the "text-verified" heading
+
+
+def test_the_mechanical_score_hands_the_verifier_the_cited_sources_and_the_question(monkeypatch):
+    seen = {}
+
+    def spy(text, cited, valid, finish, context=None, *, sources=None, question=None):
+        seen.update(sources=sources, question=question)
+        return []
+
+    monkeypatch.setattr(bo, "verify_answer", spy)
+    row = {**base_row(), "cited": [VALID[1]], "hallucinated": False, "finish_reason": "stop", "latency_s": 1.0, "error": None,
+           "answer": "Revenue was $215.9 billion [%s]." % VALID[1]}
+    bo.score_mechanical([row], BENCH, contexts={"N2": context()})
+    assert seen["question"] == "Revenue FY26?" and "Revenue was $215.9 billion." in seen["sources"][VALID[1]]

@@ -19,7 +19,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 from ..artifacts import load_examples
 from ..graph.client import run_cypher
 from ..retrieval.answerer import answer_stream
-from ..retrieval.ids import CHUNK_ID_RE
+from ..retrieval.ids import CHUNK_ID_RE, classify_id, metric_id_of, rule_id_of  # noqa: F401 - CHUNK_ID_RE: re-exported (tests/test_ids.py)
 from . import guard, store
 
 logger = logging.getLogger("semigraph.serve")
@@ -40,18 +40,48 @@ MSG_BUSY = "The service is busy answering other questions — try again in a mom
 
 
 # The citation drawer: the excerpt, where it comes from, and its FRESHNESS — a paragraph a later
-# amendment restated is ``corrected`` and names the amending filing (AMD's 10-K/A, Item 7).
+# amendment restated is ``corrected`` and names the amending filing (AMD's 10-K/A, Item 7). When the chunk lies inside a
+# risk item (M1b) the item's headline comes along (empty until the loader has produced RiskItem nodes).
 EVIDENCE_QUERY = """MATCH (e:EvidenceSpan {chunk_id: $id})
 OPTIONAL MATCH (e)-[:FROM_SECTION]->(s:FilingSection)<-[:HAS_SECTION]-(f:Filing)<-[:FILED]-(c:Company)
 OPTIONAL MATCH (e)-[:MENTIONS]->(m:Company)
 OPTIONAL MATCH (amender:Filing)-[:AMENDS]->(f)
 WITH e, s, f, c, collect(DISTINCT m.name) AS mentions, collect(DISTINCT amender.accession_no) AS amenders
+OPTIONAL MATCH (ri:RiskItem {filer_cik: c.cik, accession_no: f.accession_no}) WHERE $id IN ri.chunk_ids
+WITH e, s, f, c, mentions, amenders, ri ORDER BY ri.seq
+WITH e, s, f, c, mentions, amenders, collect(ri.headline) AS item_headlines
 RETURN e.chunk_id AS chunk_id, e.text AS text, e.source_url AS source_url,
        s.section_key AS section_key, s.title AS section_title, f.accession_no AS accession_no,
        f.form AS form, toString(f.filing_date) AS filing_date, c.name AS filer,
        e.status AS status, e.is_current AS is_current, e.retrievable AS retrievable,
        toString(e.valid_to) AS valid_to, f.superseded_by AS superseded_by,
-       CASE WHEN e.status = 'corrected' THEN head(amenders) END AS corrected_by, mentions"""
+       CASE WHEN e.status = 'corrected' THEN head(amenders) END AS corrected_by, mentions, item_headlines"""
+
+# A reported financial fact (``xbrl:<cik>:<metric>:<period_end>``): the Metric node, and the filing that first disclosed
+# it (the accession rides on the REPORTS_METRIC edge; an older filing may not be in the graph, so the join is optional).
+XBRL_EVIDENCE_QUERY = """MATCH (m:Metric {metric_id: $id})
+OPTIONAL MATCH (c:Company)-[rel:REPORTS_METRIC]->(m)
+OPTIONAL MATCH (f:Filing {accession_no: rel.accession_no})
+RETURN m.metric_id AS metric_id, m.metric AS metric, m.concept AS concept, m.value AS value, m.unit AS unit,
+       toString(m.period_start) AS period_start, toString(m.period_end) AS period_end,
+       c.name AS company, c.cik AS cik, rel.accession_no AS accession_no, f.form AS form,
+       toString(f.filing_date) AS filing_date, f.url AS source_url
+LIMIT 1"""
+
+# A Federal Register rule (``fr:<document_number>``): an EXTERNAL event that a keyword heuristic links to companies.
+FR_EVIDENCE_QUERY = """MATCH (x:ExportControl {rule_id: $id})
+RETURN x.rule_id AS document_number, x.title AS title, toString(x.date) AS publication_date, x.url AS url,
+       x.kind AS kind, x.topics AS topics, x.relevant AS relevant, x.abstract AS abstract"""
+
+MAX_EVIDENCE_ID_CHARS = 120
+# id form -> (query, the query parameter derived from the id, static fields added to every answer of that form)
+_EVIDENCE = {
+    "chunk": (EVIDENCE_QUERY, lambda evidence_id: evidence_id, {}),
+    "xbrl": (XBRL_EVIDENCE_QUERY, metric_id_of, {}),
+    "fr": (FR_EVIDENCE_QUERY, rule_id_of,
+           {"source": "federal_register", "external": True,
+            "note": "A Federal Register rule linked to companies by keyword match; not a company disclosure."}),
+}
 
 
 class AskRequest(BaseModel):
@@ -127,15 +157,19 @@ async def stats(request: Request):
             "models": {"llm": s.answer_model, "escalation": s.escalation_model or None, "embedder": st.embedder.name}}
 
 
-@router.get("/api/evidence/{chunk_id}")
-async def evidence(chunk_id: str, request: Request):
+@router.get("/api/evidence/{evidence_id}")
+async def evidence(evidence_id: str, request: Request):
+    """Resolve one citation id: a filing chunk, a reported XBRL fact (``xbrl:...``) or a Federal Register rule
+    (``fr:...``). The answer's ``type`` says which; a malformed id is 400, an unknown one 404."""
     _read_gate(request)
-    if not CHUNK_ID_RE.match(chunk_id):
-        raise HTTPException(status_code=400, detail="malformed chunk id")
-    rows = await run_in_threadpool(run_cypher, request.app.state.driver, EVIDENCE_QUERY, id=chunk_id)
+    kind = classify_id(evidence_id) if len(evidence_id) <= MAX_EVIDENCE_ID_CHARS else None
+    if kind is None:
+        raise HTTPException(status_code=400, detail="malformed evidence id")
+    query, to_param, static = _EVIDENCE[kind]
+    rows = await run_in_threadpool(run_cypher, request.app.state.driver, query, id=to_param(evidence_id))
     if not rows:
-        raise HTTPException(status_code=404, detail="no evidence span with that id")
-    return rows[0]
+        raise HTTPException(status_code=404, detail="no evidence with that id")
+    return {"type": kind, **rows[0], **static}
 
 
 @router.post("/api/ask")
@@ -170,6 +204,21 @@ async def ask(body: AskRequest, request: Request):
     return EventSourceResponse(_paid_stream(st, question, strategy, iph, snapshot_id), ping=15, sep="\n")
 
 
+def _checks_failed(done: dict) -> bool:
+    """True when the answer's ``checks`` report a problem (an event without ``checks`` reports none)."""
+    checks = done.get("checks")
+    return bool(checks) and not (checks.get("numbers_grounded", True) and checks.get("citations_retrieved", True)
+                                 and not checks.get("pseudo_citations"))
+
+
+def _warn_on_failed_checks(done: dict) -> None:
+    """An answer that cannot escalate (routed straight to the strong model, or streamed live) is released whatever the
+    deterministic checks find: say so in the log instead of letting it pass silently."""
+    if _checks_failed(done):
+        logger.warning("answer released with failed checks (routed=%s escalated=%s by=%s): %s", done.get("routed"),
+                       done.get("escalated"), done.get("answered_by"), done.get("checks"))
+
+
 def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = ""):
     """Sync generator (runs in the threadpool): slot -> retrieval -> LLM deltas -> done.
 
@@ -192,13 +241,16 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
                                 usage=ev.get("usage"), cost_usd=ev.get("cost_usd"))
                 logged = True
             if ev["event"] == "done":
-                if ev["answer"].strip() and ev["finish_reason"] != "length":
+                # A cached replay carries no ``checks`` (the store does not persist them), so an answer that failed any
+                # is not cached: it would otherwise look clean for the whole TTL.
+                if ev["answer"].strip() and ev["finish_reason"] != "length" and not _checks_failed(ev):
                     store.put_answer(st.driver, question=question, strategy=strategy, answer=ev["answer"],
                                      citations=ev["citations"], hallucinated=ev["hallucinated"],
                                      usage=ev["usage"], cost_usd=ev["cost_usd"], snapshot_id=snapshot_id)
-                logger.info("answered strategy=%s citations=%d hallucinated=%d cost=%s routed=%s escalated=%s by=%s",
+                logger.info("answered strategy=%s citations=%d hallucinated=%d cost=%s routed=%s escalated=%s by=%s checks=%s",
                             strategy, len(ev["citations"]), len(ev["hallucinated"]), ev["cost_usd"],
-                            ev.get("routed"), ev.get("escalated"), ev.get("answered_by"))
+                            ev.get("routed"), ev.get("escalated"), ev.get("answered_by"), ev.get("checks"))
+                _warn_on_failed_checks(ev)
             elif ev["event"] == "error":
                 logger.warning("answer failed mid-stream: %s (cost=%s)", ev["detail"], ev.get("cost_usd"))
                 ev = {"event": "error", "detail": "The answer could not be completed — please try again."}

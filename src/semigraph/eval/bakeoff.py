@@ -18,7 +18,8 @@ from pathlib import Path
 
 from ..llm import TRANSIENT
 from ..llm_shape import completion_params
-from ..retrieval.answerer import ANSWER_PROMPT, CITE_RE, answer_stream, usage_cost
+from ..retrieval.answerer import (ANSWER_PROMPT, CITE_RE, CONTEXT_HEADERS, LEGACY_CONTEXT_HEADERS, NONE_BLOCK,
+                                  ContextBlocks, answer_stream, render_prompt, sources_from_context, usage_cost)
 from ..retrieval.verify import verify_answer
 from .runner import JUDGE_PROMPT, NUM_PAT, REFUSAL_PAT, AnswerBudgetExceeded, Correct, parse_numbers  # noqa: F401
 
@@ -28,37 +29,44 @@ ANSWER_MAX_TOKENS = 2400          # what production allows (LLM_ANSWER_MAX_TOKEN
 OUT_TOKENS_ASSUMED = 1300         # typical hybrid answer (v2 baseline: ~1.2k completion tokens), for estimates
 JUDGE_CALL_USD = 0.01             # conservative upper bound per Sonnet correctness-judge call (~2k in, 300 out)
 NUMERIC_TOLERANCE = 0.005
-CONTEXT_HEADERS = ("RELATIONSHIPS:\n", "\n\nMETRICS:\n", "\n\nACTIVE RISKS:\n", "\n\nDROPPED RISK LINEAGES:\n",
-                   "\n\nEXCERPTS:\n")
-
 
 # --- prompt reconstruction -------------------------------------------------------------------------------
 
-def split_context(context: str) -> tuple[str, str, str, str, str]:
-    """Invert ``build_blocks``' full-context template into its five blocks; refuses anything it cannot reproduce."""
-    if not context.startswith(CONTEXT_HEADERS[0]):
-        raise ValueError("context does not start with the RELATIONSHIPS header")
-    starts, cursor, blocks = [len(CONTEXT_HEADERS[0])], len(CONTEXT_HEADERS[0]), []
-    for header in CONTEXT_HEADERS[1:]:
-        try:
-            at = context.index(header, cursor)
-        except ValueError:
-            raise ValueError(f"context is missing the {header.strip()!r} header") from None
+def _split_on(context: str, headers: tuple[str, ...]) -> tuple[str, ...] | None:
+    """The blocks between ``headers`` (None if the context does not use this template); never guesses."""
+    if not context.startswith(headers[0]):
+        return None
+    starts, cursor, blocks = [len(headers[0])], len(headers[0]), []
+    for header in headers[1:]:
+        at = context.find(header, cursor)
+        if at < 0:
+            return None
         blocks.append(context[starts[-1]:at])
         cursor = at + len(header)
         starts.append(cursor)
     blocks.append(context[cursor:])
-    rebuilt = ("RELATIONSHIPS:\n{}\n\nMETRICS:\n{}\n\nACTIVE RISKS:\n{}\n\nDROPPED RISK LINEAGES:\n{}\n\n"
-               "EXCERPTS:\n{}").format(*blocks)
-    if rebuilt != context:
-        raise ValueError("context could not be reproduced from its blocks")
-    return tuple(blocks)  # type: ignore[return-value]
+    rebuilt = "".join(h + b for h, b in zip(headers, blocks, strict=True))
+    return tuple(blocks) if rebuilt == context else None
+
+
+def split_context(context: str) -> ContextBlocks:
+    """Invert ``build_blocks``' full-context template into its six blocks; refuses anything it cannot reproduce.
+
+    A context saved before M1b (five blocks, DROPPED RISK LINEAGES) is accepted too: its external and temporal blocks
+    become ``(none)``. The old dropped-lineage text was never text-verified, so it is NOT re-rendered under the new
+    "text-verified" heading."""
+    current = _split_on(context, CONTEXT_HEADERS)
+    if current is not None:
+        return ContextBlocks(*current)
+    legacy = _split_on(context, LEGACY_CONTEXT_HEADERS)
+    if legacy is not None:
+        edges, metrics, risks, _dropped, chunks = legacy
+        return ContextBlocks(edges, NONE_BLOCK, metrics, risks, NONE_BLOCK, chunks)
+    raise ValueError("context is not a current or a legacy answer context (headers missing or out of order)")
 
 
 def build_prompt(question: str, context: str) -> str:
-    e, m, k, t, c = split_context(context)
-    return ANSWER_PROMPT.format(question=question, edges_block=e, metrics_block=m, risks_block=k,
-                                temporal_block=t, chunks_block=c)
+    return render_prompt(question, split_context(context))
 
 
 # --- answering -------------------------------------------------------------------------------------------
@@ -180,8 +188,12 @@ def score_mechanical(rows: list[dict], benchmark: list[dict], contexts: dict[str
                 failed_ids.append(r["id"])
         if not errored and not r["hallucinated"]:
             valid_cites += 1
-        reasons = ["error"] if errored else verify_answer(r["answer"], set(r["cited"]), set(r["valid_ids"]), r["finish_reason"],
-                                                              context=(contexts or {}).get(r["id"]))
+        context = (contexts or {}).get(r["id"])
+        # production passes the same three extras (answerer._check_draft): sources bound percentages to cited text, the
+        # question lets an answer restate a figure it was asked about
+        reasons = ["error"] if errored else verify_answer(
+            r["answer"], set(r["cited"]), set(r["valid_ids"]), r["finish_reason"], context=context,
+            sources=sources_from_context(context) if context else None, question=by_id[r["id"]].get("q"))
         if reasons:
             escalation_ids.append(r["id"])
     n = len(rows) or 1

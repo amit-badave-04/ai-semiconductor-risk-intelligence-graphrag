@@ -26,6 +26,7 @@ from semigraph.retrieval import (
     llm_text,
     vector_retrieve,
 )
+from semigraph.retrieval.answerer import CONTEXT_HEADERS
 from semigraph.retrieval.retriever import (
     ACTIVE_RISKS_PER_ANCHOR,
     ACTIVE_RISKS_QUERY,
@@ -52,14 +53,19 @@ def synthetic_retrieval():
         "edges": [{"source": "Nvidia", "relation": "DEPENDS_ON", "target": "TSMC",
                    "status": "Active", "quote": "We utilize foundries",
                    "chunk_ids": [CID1]}],
-        "metrics": [{"company": "Nvidia", "metric": "revenue", "value": 60922000000.0,
+        "metrics": [{"company": "Nvidia", "cik": 1045810, "metric": "revenue", "value": 60922000000.0,
                      "period_start": "2023-01-30", "period_end": "2024-01-28"}],
         "risks": [{"company": "Nvidia", "category": "supply_chain",
                    "summary": "Geographic concentration of suppliers",
                    "chunk_id": CID2, "score": 0.9}],
-        "temporal": [{"company": "Nvidia", "lineage": "1045810:3",
-                      "first_seen": "2023-02-24", "last_seen": "2025-02-26",
-                      "example": "COVID-related supply disruption risk"}],
+        "temporal": [{"company": "Nvidia", "cik": 1045810, "change": "removed", "lineage": "1045810:3",
+                      "item_id": "0001045810-25-000023:I.1A:7", "headline": "COVID-related supply disruption risk",
+                      "unit_kind": "headline", "older_headline": None, "older_chunk_ids": [CID3],
+                      "newer_chunk_ids": [], "decided_by": None}],
+        "temporal_pairs": [{"company": "Nvidia", "cik": 1045810,
+                            "older_accession": "0001045810-25-000023", "older_form": "10-K", "older_date": "2025-02-26",
+                            "newer_accession": "0001045810-26-000021", "newer_form": "10-K", "newer_date": "2026-02-25",
+                            "totals": {"removed": 1, "new": 0, "reworded": 0}}],
         "chunks": [{"chunk_id": CID3, "score": 0.88,
                     "text": "Export controls affect our China sales.",
                     "source_url": "https://www.sec.gov/x"}],
@@ -70,16 +76,15 @@ def synthetic_retrieval():
 
 def test_build_blocks_collects_valid_ids_from_all_layers():
     blocks, full_context, valid_ids = build_blocks(synthetic_retrieval())
-    assert valid_ids == {CID1, CID2, CID3}
+    assert valid_ids == {CID1, CID2, CID3, "xbrl:1045810:revenue:2024-01-28"}
 
 
-def test_build_blocks_full_context_has_all_five_sections():
+def test_build_blocks_full_context_has_all_six_sections():
     _, full_context, _ = build_blocks(synthetic_retrieval())
-    for header in ("RELATIONSHIPS:", "METRICS:", "ACTIVE RISKS:",
-                   "DROPPED RISK LINEAGES:", "EXCERPTS:"):
-        assert header in full_context
-    # the bitemporal layer is surfaced in the context the model (and judge) sees
-    assert "disclosed 2023-02-24 through 2025-02-26, then dropped" in full_context
+    for header in CONTEXT_HEADERS:
+        assert header.strip() in full_context
+    # the text-verified temporal layer is surfaced in the context the model (and judge) sees
+    assert "COVID-related supply disruption risk" in full_context
     assert "60,922,000,000 USD" in full_context
     assert "Export controls affect our China sales." in full_context
 
@@ -87,8 +92,8 @@ def test_build_blocks_full_context_has_all_five_sections():
 def test_build_blocks_empty_layers_render_none_placeholders():
     empty = {"anchors": {}, "edges": [], "metrics": [], "risks": [],
              "temporal": [], "chunks": []}
-    (e_b, m_b, k_b, t_b, c_b), full_context, valid_ids = build_blocks(empty)
-    assert (e_b, m_b, k_b, t_b, c_b) == ("(none)",) * 5
+    blocks, full_context, valid_ids = build_blocks(empty)
+    assert tuple(blocks) == ("(none)",) * 6
     assert valid_ids == set()
 
 
@@ -141,13 +146,13 @@ def test_answer_returns_full_context_and_flags_hallucinations(monkeypatch):
     assert out["answer"] == fake_answer_text
     assert out["citations"] == sorted([CID1, "0009999999-99-999999:I.1A:0001"])
     assert out["hallucinated"] == {"0009999999-99-999999:I.1A:0001"}
-    assert out["valid_ids"] == {CID1, CID2, CID3}
+    assert out["valid_ids"] == {CID1, CID2, CID3, "xbrl:1045810:revenue:2024-01-28"}
     assert out["chunk_ids"] == [CID3]
     # the full context string is what the answering model saw
-    assert "DROPPED RISK LINEAGES:" in out["context"]
+    assert CONTEXT_HEADERS[4].strip() in out["context"]
     # and the prompt embedded the question + every block
     assert "How does Nvidia depend on TSMC?" in prompts[0]
-    assert "=== RISK LINEAGES DROPPED FROM THE LATEST ANNUAL REPORT (bitemporal layer) ===" in prompts[0]
+    assert "=== RISK FACTORS REMOVED / ADDED / REWORDED between annual filings (text-verified) ===" in prompts[0]
 
 
 def test_answer_vector_strategy_dispatch(monkeypatch):
@@ -475,7 +480,7 @@ def test_vector_retrieve_filters_retrievable_in_index():
     out = vector_retrieve("q", d, FakeEmbedder(), k=7)
     (p,) = d.of("vector")
     assert p == {"k": 7, "vec": QUERY_VEC}
-    assert set(out) == {"anchors", "edges", "metrics", "risks", "temporal", "chunks"}
+    assert set(out) == {"anchors", "edges", "metrics", "risks", "temporal", "temporal_pairs", "chunks"}
 
 
 # --- 2026.05 compatibility guard: every SEARCH ... WHERE stays inside the verified grammar ---
@@ -500,7 +505,9 @@ def test_search_where_uses_only_verified_predicates_on_declared_index_properties
 
 def test_metrics_query_selects_unit():
     assert "m.unit AS unit" in METRICS_QUERY
-    assert "ORDER BY m.period_end DESC LIMIT 20" in METRICS_QUERY
+    # M1b: no more "newest 20 rows across four metrics" (it paired FY2020 revenue with FY2021 net income);
+    # the last periods are chosen PER METRIC in a CALL subquery (tests/test_retrieval_m1b.py pins the shape)
+    assert "LIMIT 20" not in METRICS_QUERY and "LIMIT $periods" in METRICS_QUERY
 
 
 def test_metric_units_flow_through_hybrid_result():
@@ -535,9 +542,9 @@ def test_anchor_defaulted_false_when_company_detected(caplog):
     assert not [r for r in caplog.records if "default" in r.getMessage().lower()]
 
 
-def test_hybrid_result_shape_is_v1_plus_anchor_defaulted_only():
+def test_hybrid_result_shape_is_v1_plus_anchor_defaulted_and_temporal_pairs():
     out = hybrid_retrieve("How does Nvidia depend on TSMC?", FakeDriver(), FakeEmbedder())
-    assert set(out) == {"anchors", "edges", "metrics", "risks", "temporal", "chunks",
+    assert set(out) == {"anchors", "edges", "metrics", "risks", "temporal", "temporal_pairs", "chunks",
                         "anchor_defaulted"}
     assert out["edges"] == [] and out["risks"] == []
 

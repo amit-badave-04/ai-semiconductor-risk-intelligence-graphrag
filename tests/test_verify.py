@@ -69,11 +69,13 @@ def test_an_uncited_figure_found_in_the_metrics_block_passes():
 
 
 def test_an_uncited_figure_not_in_the_context_still_fails():
-    assert verify_answer("Revenue was $190 billion.", set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
+    # M1b: an uncited figure that is not in the context is now ALSO reported as an ungrounded number
+    assert verify_answer("Revenue was $190 billion.", set(), VALID, "stop", context=METRICS_CTX) == ["no_citation", "ungrounded_number"]
 
 
 def test_one_ungrounded_figure_among_grounded_ones_fails():
-    assert verify_answer("Revenue was $215.9 billion, up from $50 billion.", set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
+    assert verify_answer("Revenue was $215.9 billion, up from $50 billion.", set(), VALID, "stop",
+                         context=METRICS_CTX) == ["no_citation", "ungrounded_number"]
 
 
 def test_an_uncited_answer_with_no_figure_still_fails_even_with_a_context():
@@ -86,15 +88,19 @@ def test_without_a_context_the_old_rule_applies():
 
 # --- review finding C1: a stray negation must not turn an uncited claim into a "refusal" ---
 
-@pytest.mark.parametrize("text", [
-    "Nvidia's largest customer is Microsoft at 19% of revenue. This isn't a small concentration.",
-    "TSMC depends on ASML for EUV tools; the filing does not specify the contract length.",
-    "Nvidia's gross margin is 90%. Data not available for 2019.",
-    "Revenue grew 300% to $215.9 billion, and Nvidia plans to acquire Intel next year.",
-    "Nvidia designs GPUs. The context does not contain more detail.",          # claim first, disclaimer second
+# (text, reasons): M1b adds ``ungrounded_number`` after ``no_citation`` when the stray claim also states a figure that
+# no context line supports; the claims with no figure keep exactly the old single reason.
+@pytest.mark.parametrize("text,expected", [
+    ("Nvidia's largest customer is Microsoft at 19% of revenue. This isn't a small concentration.",
+     ["no_citation", "ungrounded_number"]),
+    ("TSMC depends on ASML for EUV tools; the filing does not specify the contract length.", ["no_citation"]),
+    ("Nvidia's gross margin is 90%. Data not available for 2019.", ["no_citation", "ungrounded_number"]),
+    ("Revenue grew 300% to $215.9 billion, and Nvidia plans to acquire Intel next year.",
+     ["no_citation", "ungrounded_number"]),
+    ("Nvidia designs GPUs. The context does not contain more detail.", ["no_citation"]),   # claim first, disclaimer second
 ])
-def test_an_uncited_draft_with_a_stray_negation_or_an_ungrounded_claim_is_escalated(text):
-    assert verify_answer(text, set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
+def test_an_uncited_draft_with_a_stray_negation_or_an_ungrounded_claim_is_escalated(text, expected):
+    assert verify_answer(text, set(), VALID, "stop", context=METRICS_CTX) == expected
 
 
 @pytest.mark.parametrize("text", [
@@ -110,10 +116,11 @@ def test_a_clear_refusal_up_front_is_released_uncited(text):
 
 def test_a_refusal_that_states_figures_is_not_a_refusal():
     assert verify_answer("The context does not contain Samsung's revenue, but Nvidia earned $999 billion.", set(), VALID, "stop",
-                         context=METRICS_CTX) == ["no_citation"]
+                         context=METRICS_CTX) == ["no_citation", "ungrounded_number"]
 
 
 def test_an_uncited_grounded_figure_is_accepted_only_for_a_short_answer_without_percentages():
     long_answer = "Nvidia's revenue was $215.9 billion. " + "Analysts also expect further growth. " * 15
     assert verify_answer(long_answer, set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
-    assert verify_answer("Revenue was $215.9 billion, up 5%.", set(), VALID, "stop", context=METRICS_CTX) == ["no_citation"]
+    assert verify_answer("Revenue was $215.9 billion, up 5%.", set(), VALID, "stop",
+                         context=METRICS_CTX) == ["no_citation", "ungrounded_number"]
