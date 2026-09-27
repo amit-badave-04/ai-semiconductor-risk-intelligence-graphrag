@@ -79,27 +79,32 @@ reasoning.
 ### v2 (2026-09-27): the deployed configuration on the 60-question benchmark
 
 Production configuration (GPT-6 Luna answers, Sonnet 5 on escalation and for the correctness judge), graph snapshot
-`snap-20260924-97c6597d58`; three runs, reports in `artifacts/eval_report.v2{,b,c}-deployed.json`. Full account, including
-every change made between the runs, in [docs/v2/M1B_PLAN.md](docs/v2/M1B_PLAN.md) **L.13**.
+`snap-20260924-97c6597d58`; four runs, reports in `artifacts/eval_report.v2{,b,c,d}-deployed.json`, the full account (every
+change made between runs, the judge's history, an independent closing review) in [docs/v2/M1B_PLAN.md](docs/v2/M1B_PLAN.md)
+**L.13 and L.14**.
 
-| | first run (before fixes) | final run |
+| | first run (before fixes) | **final run (run 4)** |
 |---|---|---|
-| mechanical checks (41: numbers, citations, refusals, misattribution) | 38 / 41 | **41 / 41** |
+| mechanical checks (41: numbers, citations, refusals, misattribution) | 38 / 41 | **40 / 41** (the same first-run answers score 41 / 41 under the final checks) |
 | citation validity | 100 % | 100 % |
-| open questions judged correct (23) | 10 / 23 (first judge) | **20 / 23** |
-| same first-run answers under the revised judge | 18 / 23 | |
-| escalations to Sonnet | 1 / 60 | 1 / 60 |
-| answers per 60 questions / cost | $0.83 | **$0.80 (about $0.013 each, 4.2 s average)** |
+| open questions judged correct (23) | 10 / 23 (first judge) | **17 / 23** (accepted judge cj-v4); the first-run answers score 16 / 23 under the same judge |
+| escalations to Sonnet | 1 / 60 | 2 / 60 |
+| answers that fail their own checks | 12 | 5 |
+| answers for 60 questions | $0.83 | **$0.85 (about $0.014 each, 4.3 s average)**, against about $0.047 each on Sonnet alone |
 
-**Read the judged figure with the attribution in mind:** most of the jump from 10 to 20 is the correctness judge being
-revised (it penalised the hedged wording the service is required to use), not the product; the retrieval fix (questions
-about an older filing pair, T7 and T12) accounts for 2 of the 10 extra correct answers. The revised judge was accepted
-against 12 frozen adversarial probes, but it was tuned after seeing failures, so that acceptance is not blind. Still
-failing: three multi-year or ambiguous temporal questions (T1, T2, T3) and one retrieval miss (X4, M2 scope). The
-plan's held-out gates for the change layer **do not all pass** (sentence-level removal precision 0.882 vs the 0.90 gate;
-risk-factor-level removal and "new" precision 1/3 and 6/12); the wording is hedged accordingly ([L.11](docs/v2/M1B_PLAN.md)).
-There has been **no human validation**: the gold labels come from blind LLM annotators with machine-checked quotes,
-and the owner's spot check was delegated to an LLM council (disclosed in L.9).
+**How to read this.** The mechanical gain is entirely the checker: it was too brittle (it rejected correct refusals and
+correctly hedged answers). The judged gain is mostly the judge: under one fixed judge the first-run answers score 16 and
+the final ones 17, so the product effect on judged correctness is about one question. What the product work did change is
+measurable elsewhere: answers failing their own checks fell from 12 to 5, questions about an older filing pair now read that
+pair, and an empty-list sentence no longer cites unrelated text. The judge was revised three times after seeing failures and
+is accepted against 19 frozen adversarial probes, but that acceptance is not blind, and it is noisy in use (on two answers it
+misapplies its own count tolerance). Not met: mechanical 100 % (one answer stated revenue as $60,922,000,000 and the check
+looks for "60.9"). Still failing: multi-year synthesis (T1, T3), reworded-risk-factor counts that differ from the annotators'
+by more than two on some filings (T6, T9), a retrieval miss (X4, M2 scope). The plan's held-out gates for the change layer
+**do not all pass** (sentence-level removal precision 0.882 vs the 0.90 gate; risk-factor-level removal and "new" precision
+1/3 and 6/12), so the service words changes as "wording was not found ..., a differently worded version may exist"
+([L.11](docs/v2/M1B_PLAN.md)). There has been **no human validation**: gold labels come from blind LLM annotators with
+machine-checked quotes, and the owner's spot check was delegated to an LLM council (L.9).
 
 > **Historical, withdrawn as current claims.** Every table below this line was produced by an evaluation
 > instrument that could not detect false "dropped risk" claims or numeric errors on temporal questions (its
