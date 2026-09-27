@@ -71,6 +71,17 @@ def judged_incorrect(report: dict) -> dict[str, str]:
             for qid, n in report["judged"]["votes"].items() if n * 2 <= votes}
 
 
+def parse_excludes(items: list[str]) -> dict[str, str]:
+    """``--exclude ID=REASON`` options as an id -> reason map (a reason is required: what is left out is on record)."""
+    out: dict[str, str] = {}
+    for item in items:
+        qid, sep, reason = item.partition("=")
+        if not (qid.strip() and sep and reason.strip()):
+            raise ValueError(f"--exclude expects ID=REASON, got {item!r}")
+        out[qid.strip()] = reason.strip()
+    return out
+
+
 def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *, source: str,
                    strict: bool = False, deployed: bool = False, exclude: dict[str, str] | None = None) -> dict:
     """One example per benchmark question, in benchmark order, from its hybrid run, each with its computed ``checks``.
@@ -127,6 +138,8 @@ def main() -> int:
     ap.add_argument("--source", default=None, help="provenance line stored in the file")
     ap.add_argument("--report", type=Path, default=None,
                     help="the deployed-eval report of those runs: questions its judge graded incorrect are not seeded")
+    ap.add_argument("--exclude", action="append", default=[], metavar="ID=REASON",
+                    help="leave this question out of the examples (repeatable); the reason is recorded under 'excluded'")
     ap.add_argument("--out", type=Path, default=EXAMPLES_PATH)
     ap.add_argument("--strict", action="store_true",
                     help="write nothing and exit non-zero when any example would be refused at seeding")
@@ -137,7 +150,8 @@ def main() -> int:
                       else f"benchmark run {args.runs.name}, hybrid system, Claude Sonnet 5")
     source = args.source or default_source
     try:
-        exclude = judged_incorrect(json.loads(args.report.read_text(encoding="utf-8"))) if args.report else None
+        exclude = {**(judged_incorrect(json.loads(args.report.read_text(encoding="utf-8"))) if args.report else {}),
+                   **parse_excludes(args.exclude)} or None
         doc = build_examples(runs, benchmark, args.snapshot, source=source, strict=args.strict, deployed=args.deployed,
                              exclude=exclude)
     except ValueError as e:

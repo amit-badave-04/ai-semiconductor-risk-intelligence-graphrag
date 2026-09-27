@@ -228,3 +228,13 @@ def test_the_ids_a_report_judged_incorrect_by_majority_are_the_ones_to_exclude()
 def test_excluding_an_unknown_id_is_an_error_not_a_silent_no_op():
     with pytest.raises(ValueError, match="not in the benchmark"):
         be.build_examples(deployed_runs(), BENCH, SNAP, source="s", deployed=True, exclude={"ZZ": "typo"})
+
+
+# --- --exclude ID=REASON: an example the owner or a reviewer does not want pre-seeded, with the reason on record ---
+
+def test_exclude_options_parse_into_an_id_to_reason_map_and_reject_a_malformed_one():
+    assert be.parse_excludes(["R2=answer says only one company is affected", "T6=citation on a none-found sentence"]) == {
+        "R2": "answer says only one company is affected", "T6": "citation on a none-found sentence"}
+    for bad in ("R2", "=reason", "R2="):
+        with pytest.raises(ValueError, match="ID=REASON"):
+            be.parse_excludes([bad])
