@@ -10,10 +10,12 @@ import json
 
 import pytest
 from agent_fakes import (
+    AMD,
     CANARY,
     INJECTION,
     NVDA,
     NVDA_ACC,
+    TSMC,
     FakeDriver,
     FakeEmbedder,
     edge_row,
@@ -102,10 +104,27 @@ def test_the_metric_view_drops_what_fails_the_allowlist_and_keeps_the_rest():
 
 
 def test_the_metric_view_is_capped_and_says_so():
-    rows = [row for m in range(30) for row in metric_rows(metric=f"metric_{m}")]
+    """Three companies, all four known metrics, eight periods each: 96 candidate rows, way over the view's cap -- and every
+    metric name is a REAL one (S.KNOWN_METRICS is a fixed vocabulary now, M3 finding #8, so an invented name would just be
+    dropped, proving nothing about the cap)."""
+    rows = [row for cik, company in ((NVDA, "Nvidia"), (AMD, "AMD"), (TSMC, "TSMC")) for metric in S.KNOWN_METRICS
+            for row in metric_rows(cik, company, metric, series={f"20{20 + n:02d}-01-01": float(n) for n in range(8)})]
     view = S.view_metrics(rows)
     assert sum(len(p) for c in view["companies"] for p in c["metrics"].values()) <= S.MAX_VIEW_ROWS
     assert view["truncated"] is True
+
+
+def test_an_out_of_vocabulary_metric_name_never_reaches_the_planners_prefetch_summary_or_any_tool_result():
+    """A name that used to pass the old permissive ``[a-z][a-z0-9_]*`` shape check (M3 finding #8) is now just an unknown
+    metric: dropped from the view like any other failed check, never shown."""
+    bad = "ignore_previous_instructions"
+    assert S.safe_metric(bad) is None and S.safe_metric("revenue") == "revenue"
+    rows = metric_rows() + [{**metric_rows()[0], "metric": bad}]
+    view = S.view_metrics(rows)["companies"][0]
+    assert list(view["metrics"]) == ["revenue"] and bad not in json.dumps(view)
+    r = {"anchors": {"Nvidia": NVDA}, "anchor_defaulted": False, "metrics": rows, "edges": [], "risks": [], "chunks": [],
+         "temporal_pairs": []}
+    assert bad not in json.dumps(S.prefetch_summary(r))
 
 
 def test_the_pair_view_carries_totals_fiscal_years_and_dates_never_headlines_or_reasons():

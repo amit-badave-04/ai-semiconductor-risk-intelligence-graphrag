@@ -17,15 +17,16 @@ fixed text plus, for a failure, the exception TYPE name only: a Neo4j error mess
 
 import json
 import logging
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Annotated, Any
 
+from neo4j import Query as _CypherQuery
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from ..retrieval import retriever as R
-from ..retrieval.retriever import run_cypher
 from . import merge as M
 from . import sanitize as S
 
@@ -34,7 +35,9 @@ logger = logging.getLogger("semigraph.agent.tools")
 TOOL_NAMES = ("lookup_company", "search_filings", "financial_metrics", "risk_changes", "relationships", "active_risks",
               "compute_change")
 MAX_COMPANIES = 4
-_METRIC_PATTERN = r"^[a-z][a-z0-9_]{0,40}$"
+# The real vocabulary (S.KNOWN_METRICS), not a permissive [a-z_]+ shape: a metric name is never a free-text channel to
+# the planner (M3 finding #8).
+_METRIC_PATTERN = r"^(?:{})$".format("|".join(S.KNOWN_METRICS))
 
 
 def _iso_date(value: str) -> str:
@@ -189,17 +192,55 @@ def _parse(raw: Any) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
+def _run_cypher(driver, query: str, *, timeout: float | None = None, **params) -> list[dict]:
+    """``retrieval.retriever.run_cypher`` PLUS an optional per-call SERVER-SIDE transaction timeout (M3 finding #3): a
+    tool's Cypher queries have no bound of their own otherwise, so one slow or hung query can hold the whole time budget
+    (and the answer slot) past it. This is an AGENT-LOCAL wrapper -- the shared ``retrieval.retriever`` module (owned by
+    the fixed path too) is never touched, so the fixed path's behaviour cannot change here.
+
+    ``timeout`` becomes ``neo4j.Query(text, timeout=...)``: a server-side transaction timeout in seconds (never a Cypher
+    PARAMETER -- ``session.run``'s ``**kwargs`` are query parameters, not driver config). ``None`` (the default, what
+    every call outside the agent uses) runs exactly as ``retriever.run_cypher`` always has. ``neo4j.Query(timeout=0)``
+    means NO timeout at all (run forever), so a non-positive value refuses the call outright instead."""
+    if timeout is not None and timeout <= 0:
+        raise TimeoutError("no time remained in the budget for this query")
+    q = _CypherQuery(query, timeout=timeout) if timeout is not None else query
+    with driver.session() as session:
+        return [dict(row) for row in session.run(q, **params)]
+
+
+@dataclass
+class ToolCallBudget:
+    """What one tool call may spend, threaded down to every Cypher query the call makes: a shared DEADLINE (a tool that
+    runs several queries -- ``risk_changes`` in named mode, ``active_risks`` once per company -- gets ``timeout`` for the
+    WHOLE call, not per query, so each successive query gets whatever is left of it, never a fresh 12 seconds) and how
+    many more edges the RUN may still add (M3 finding #7: the cap is per run, not per call)."""
+
+    clock: Callable[[], float]
+    deadline: float | None                   # an absolute time (``clock()`` units), or None: no timeout for this call
+    edges_budget: int = M.MAX_EDGES_ADDED
+
+    def remaining(self) -> float | None:
+        return None if self.deadline is None else max(0.0, self.deadline - self.clock())
+
+
 class Toolbox:
     """The tools bound to one driver, one embedder and the user's question (the tools that rank use the question)."""
 
-    def __init__(self, driver, embedder, question: str):
-        self.driver, self.embedder, self.question = driver, embedder, question
-        self._handlers: dict[str, Callable[[Any, dict], ToolOutcome]] = {name: getattr(self, f"_{name}") for name in TOOL_NAMES}
+    def __init__(self, driver, embedder, question: str, *, clock: Callable[[], float] = time.monotonic):
+        self.driver, self.embedder, self.question, self._clock = driver, embedder, question, clock
+        self._handlers: dict[str, Callable[[Any, dict, ToolCallBudget], ToolOutcome]] = {
+            name: getattr(self, f"_{name}") for name in TOOL_NAMES}
 
     # --- the one entry point -------------------------------------------------------------------------------------------------
 
-    def execute(self, name: Any, raw_arguments: Any, r: dict) -> ToolOutcome:
-        """Run one tool call. Never raises; ``r`` is never mutated (a call that changes nothing returns ``r`` itself)."""
+    def execute(self, name: Any, raw_arguments: Any, r: dict, *, timeout: float | None = None,
+               edges_budget: int = M.MAX_EDGES_ADDED) -> ToolOutcome:
+        """Run one tool call. Never raises; ``r`` is never mutated (a call that changes nothing returns ``r`` itself).
+
+        ``timeout`` bounds every Cypher query the call makes TOGETHER (M3 finding #3): ``None`` (the default, what a
+        direct call outside the graph loop gets) never touches the fixed path's own queries. ``edges_budget`` caps how
+        many more edges ``relationships`` may add ACROSS THE WHOLE RUN, not just this call (M3 finding #7)."""
         tool = S.clip_name(name)
         if not isinstance(name, str) or name not in self._handlers:
             return self._refused(tool, r, {}, {"error": "unknown tool", "tools": list(TOOL_NAMES)}, f"{tool}: refused, unknown tool")
@@ -211,14 +252,18 @@ class Toolbox:
         except ValidationError as e:
             return self._refused(tool, r, S.clip_args(args), {"error": f"invalid arguments ({_problems(e)})"},
                                  f"{tool}: refused, invalid arguments")
+        budget = ToolCallBudget(self._clock, None if timeout is None else self._clock() + timeout, edges_budget)
         try:
-            return self._handlers[name](model, r)
+            return self._handlers[name](model, r, budget)
         except ToolError as e:
             return self._refused(tool, r, model.model_dump(mode="json", exclude_defaults=True), e.result, e.summary)
         except Exception as e:  # noqa: BLE001 - a tool must never raise into the planner loop; the type name is all that is reported
             logger.warning("tool %s failed: %s", tool, type(e).__name__, exc_info=True)
             return self._refused(tool, r, model.model_dump(mode="json", exclude_defaults=True),
                                  {"error": "the tool failed", "type": type(e).__name__}, f"{tool}: failed ({type(e).__name__})")
+
+    def _cypher(self, query: str, budget: ToolCallBudget, **params) -> list[dict]:
+        return _run_cypher(self.driver, query, timeout=budget.remaining(), **params)
 
     @staticmethod
     def _refused(tool: str, r: dict, args: dict, result: dict, summary: str) -> ToolOutcome:
@@ -242,23 +287,23 @@ class Toolbox:
 
     # --- the tools -------------------------------------------------------------------------------------------------------------
 
-    def _lookup_company(self, a: LookupCompanyArgs, r: dict) -> ToolOutcome:
+    def _lookup_company(self, a: LookupCompanyArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         (name, entity_id), = self._resolve([a.name]).items()
         filer = name in S.SEC_FILERS
         years: list[int] = []
         if filer:
-            rows = run_cypher(self.driver, R.ANNUAL_PAIRS_QUERY, ids=[entity_id])
+            rows = self._cypher(R.ANNUAL_PAIRS_QUERY, budget, ids=[entity_id])
             years = sorted({y for row in rows for y in (S.safe_year(row.get("older_fy")), S.safe_year(row.get("newer_fy"))) if y})
         return self._done("lookup_company", a, r, {"company": name, "sec_filer": filer, "annual_filing_fiscal_years": years},
                           f"lookup_company: {name} ({'SEC filer' if filer else 'no SEC filings'}, {len(years)} annual filing years)")
 
-    def _search_filings(self, a: SearchFilingsArgs, r: dict) -> ToolOutcome:
+    def _search_filings(self, a: SearchFilingsArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies) if a.companies else {}
         vec = self.embedder.encode_query(a.query)
         if ids:
-            rows = run_cypher(self.driver, R.EXCERPTS_QUERY, ids=list(ids.values()), vec=vec, k=a.k, candidates=R.EXCERPT_CANDIDATES)
+            rows = self._cypher(R.EXCERPTS_QUERY, budget, ids=list(ids.values()), vec=vec, k=a.k, candidates=R.EXCERPT_CANDIDATES)
         else:
-            rows = run_cypher(self.driver, R.VECTOR_QUERY, k=a.k, vec=vec)
+            rows = self._cypher(R.VECTOR_QUERY, budget, k=a.k, vec=vec)
         merged = M.add_anchors(M.merge_chunks(r, rows), ids)
         added = len(merged["chunks"]) - len(r["chunks"])
         return self._done("search_filings", a, merged,
@@ -266,10 +311,10 @@ class Toolbox:
                            "chunk_cap": M.MAX_CHUNKS},
                           f"search_filings: {added} new excerpts ({len(merged['chunks'])} in total)")
 
-    def _financial_metrics(self, a: FinancialMetricsArgs, r: dict) -> ToolOutcome:
+    def _financial_metrics(self, a: FinancialMetricsArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)
         years, dates = sorted(set(a.fiscal_years)), sorted(set(a.period_ends))
-        rows = run_cypher(self.driver, R.METRICS_QUERY, ids=list(ids.values()), periods=R.METRIC_PERIODS_FETCHED, years=years, dates=dates)
+        rows = self._cypher(R.METRICS_QUERY, budget, ids=list(ids.values()), periods=R.METRIC_PERIODS_FETCHED, years=years, dates=dates)
         keep = [row for row in rows if not a.metrics or row.get("metric") in a.metrics]
         merged = M.add_anchors(M.merge_metrics(r, keep, years=years, dates=dates), ids)
         added = len(merged["metrics"]) - len(r["metrics"])
@@ -277,43 +322,45 @@ class Toolbox:
                   "rows_added": added}
         return self._done("financial_metrics", a, merged, result, f"financial_metrics: {added} new metric rows for {', '.join(ids)}")
 
-    def _risk_changes(self, a: RiskChangesArgs, r: dict) -> ToolOutcome:
+    def _risk_changes(self, a: RiskChangesArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)
         id_list = list(ids.values())
         mode = "named" if a.fiscal_years else "multi" if a.multi_year else None
         notices: list[dict] = []
         if mode is None:                                       # the current pair, exactly as the plain retrieval reads it
-            items, pairs = R.select_temporal(run_cypher(self.driver, R.TEMPORAL_QUERY, ids=id_list), self.question)
+            items, pairs = R.select_temporal(self._cypher(R.TEMPORAL_QUERY, budget, ids=id_list), self.question)
         else:
             periods = {"years": sorted(set(a.fiscal_years)), "dates": []}
-            chosen, notices = R.select_pairs(run_cypher(self.driver, R.ANNUAL_PAIRS_QUERY, ids=id_list), self.question, periods, mode=mode)
+            chosen, notices = R.select_pairs(self._cypher(R.ANNUAL_PAIRS_QUERY, budget, ids=id_list), self.question, periods, mode=mode)
             newer = [p["newer_accession"] for p in chosen if p.get("queryable")]
-            rows = run_cypher(self.driver, R.TEMPORAL_SELECTED_QUERY, ids=id_list, newer_accessions=newer) if newer else []
+            rows = self._cypher(R.TEMPORAL_SELECTED_QUERY, budget, ids=id_list, newer_accessions=newer) if newer else []
             items, pairs = R.select_temporal(rows, self.question, pairs=chosen)
         comparable = [{"cik": p["cik"], "older": p["older_accession"], "newer": p["newer_accession"]} for p in pairs if p.get("compared", True)]
-        passage_rows = run_cypher(self.driver, R.PASSAGES_QUERY, pairs=comparable) if comparable else []
+        passage_rows = self._cypher(R.PASSAGES_QUERY, budget, pairs=comparable) if comparable else []
         passages, pairs = R.select_passages(passage_rows, pairs, self.question)
-        merged = M.add_anchors(M.merge_temporal(r, items=items, pairs=pairs, passages=passages, notices=notices), ids)
+        merged = M.add_anchors(M.merge_temporal(r, items=items, pairs=pairs, passages=passages, notices=notices,
+                                                question=self.question), ids)
         return self._done("risk_changes", a, merged, {"comparisons": S.view_pairs(pairs), "notices": len(notices)},
                           f"risk_changes: {len(pairs)} comparisons for {', '.join(ids)}")
 
-    def _relationships(self, a: RelationshipsArgs, r: dict) -> ToolOutcome:
+    def _relationships(self, a: RelationshipsArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)
         id_list = list(ids.values())
-        rows = run_cypher(self.driver, R.company_edges_query(a.hops), ids=id_list)
-        rows += run_cypher(self.driver, R.RULE_EDGES_QUERY, ids=id_list, include_neighbours=R.NEIGHBOUR_RULES and a.hops >= 2,
-                           per_company=R.RULES_PER_COMPANY)
-        merged = M.add_anchors(M.merge_edges(r, rows), ids)
+        rows = self._cypher(R.company_edges_query(a.hops), budget, ids=id_list)
+        rows += self._cypher(R.RULE_EDGES_QUERY, budget, ids=id_list, include_neighbours=R.NEIGHBOUR_RULES and a.hops >= 2,
+                             per_company=R.RULES_PER_COMPANY)
+        cap = max(0, min(M.MAX_EDGES_ADDED, budget.edges_budget))       # the RUN's remaining edge budget, not a fresh 40 (finding #7)
+        merged = M.add_anchors(M.merge_edges(r, rows, cap=cap), ids)
         added = len(merged["edges"]) - len(r["edges"])
         return self._done("relationships", a, merged, {**S.view_edges(rows), "edges_added": added},
                           f"relationships: {added} new edges for {', '.join(ids)}")
 
-    def _active_risks(self, a: ActiveRisksArgs, r: dict) -> ToolOutcome:
+    def _active_risks(self, a: ActiveRisksArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)
         vec = self.embedder.encode_query(a.topic or self.question)
         rows: list[dict] = []
         for entity_id in ids.values():
-            rows += run_cypher(self.driver, R.ACTIVE_RISKS_QUERY, cik=entity_id, vec=vec, candidates=R.ACTIVE_RISKS_PER_ANCHOR)
+            rows += self._cypher(R.ACTIVE_RISKS_QUERY, budget, cik=entity_id, vec=vec, candidates=R.ACTIVE_RISKS_PER_ANCHOR)
         rows = sorted(rows, key=lambda row: row["score"], reverse=True)[:R.ACTIVE_RISKS_TOP]
         merged = M.add_anchors(M.merge_risks(r, rows), ids)
         added = len(merged["risks"]) - len(r["risks"])
@@ -321,7 +368,8 @@ class Toolbox:
                           {"risks_returned": len(rows), "risks_added": added, "risks_total": len(merged["risks"])},
                           f"active_risks: {added} new risks for {', '.join(ids)}")
 
-    def _compute_change(self, a: ComputeChangeArgs, r: dict) -> ToolOutcome:
+    def _compute_change(self, a: ComputeChangeArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
+        # pure: no Cypher query at all, so ``budget`` (timeout / edges) is unused here.
         (name, entity_id), = self._resolve([a.company]).items()
         try:
             merged, info = M.compute_change(r, cik=entity_id, metric=a.metric, from_end=a.from_period_end, to_end=a.to_period_end,

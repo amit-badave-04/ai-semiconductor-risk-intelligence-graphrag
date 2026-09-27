@@ -8,16 +8,22 @@ needs it. The graph plans the RETRIEVAL only; the answer is streamed afterwards 
   A failing prefetch is the fixed path's own failure and propagates.
 - ``plan``: one planner call, only while the limits (4 tool calls, 3 model calls, the time budget) allow. Reaching the tool or model
   limit ends planning and the answer uses what was gathered. A planner exception or a budget expiry sets ``fallback_reason`` and ends
-  planning, and the answer then uses the PLAIN PREFETCH (see below).
+  planning (see below for what the answer uses).
 - ``tools``: runs the calls the planner asked for, in order. Calls past the tool limit are neither run nor recorded; refused calls
   (an invented tool, invalid arguments) count as calls; every call gets a ``role: tool`` reply.
 - ``finalize``: stamps the planning time. The retrieval dict it leaves is the input of the writer.
 
 State updates are new values, never mutations; the graph runs with ``stream_mode="values"`` so the last consistent state survives a
-node bug or the recursion limit. WHENEVER ``fallback_reason`` is set (a planner error, the time budget, a bug, the recursion limit)
-the retrieval dict the writer answers from is the untouched PLAIN prefetch (``prefetch_r``): a fallback answers exactly as the fixed
-path would, so "fallback_reason is set" and "this is not an agent answer" are the same fact (the eval scores it so). The tool calls
-that did run stay in ``tool_calls`` and the step events. The planner's spend lives in a run-local
+node bug or the recursion limit. ``fallback_reason`` (a planner error, the time budget, a bug, the recursion limit) is always
+REPORTED for the eval and the audit trail, but it is NOT always a full discard (M3 finding #10, resolving the plan/config
+inconsistency the review found: plan section 1 already said exceeding a LIMIT goes to finalize with what was gathered; the code
+used to treat a time-budget expiry as a full discard regardless): the retrieval dict the writer answers from is the untouched
+PLAIN prefetch (``prefetch_r``) only when NO tool call has succeeded yet (a planner exception or timeout before any call, an
+unsupported-tool-calling 400, a time-budget expiry before any call succeeded); once at least one tool call has already
+succeeded, a later fallback (of any reason) still finalizes with what was gathered (the merged retrieval dict is always a
+superset of the pairs and notices the prefetch itself would have shown -- see :func:`~semigraph.agent.merge.merge_temporal`),
+``fallback_reason`` staying set so the eval and the audit trail still know planning did not finish cleanly. The tool calls that
+did run stay in ``tool_calls`` and the step events either way. The planner's spend lives in a run-local
 :class:`~semigraph.agent.state.Ledger`, so a bug cannot lose a paid call.
 """
 
@@ -33,10 +39,10 @@ from langgraph.graph import END, START, StateGraph
 
 from ..retrieval.answerer import usage_cost
 from ..retrieval.retriever import hybrid_retrieve
+from . import merge as M
 from . import planner as P
-from .sanitize import clip_name
 from .state import MIN_CALL_BUDGET_S, AgentState, Ledger, Limits, PlannerTurn, initial_state, recursion_limit_for
-from .tools import Toolbox, tool_specs
+from .tools import TOOL_NAMES, Toolbox, tool_specs
 from .trace import Tracer, as_safe
 
 logger = logging.getLogger("semigraph.agent")
@@ -51,7 +57,8 @@ def _now() -> float:
 class AgentResult:
     """What one planning run leaves: the retrieval dict the writer answers from and the facts ``done.agent`` reports."""
 
-    r: dict                         # what the writer answers from: the plain prefetch when ``fallback_reason`` is set, else the merged dict
+    r: dict                         # what the writer answers from: the plain prefetch ONLY when fallback_reason is set AND no
+                                     # tool call has succeeded yet; the merged dict otherwise (M3 finding #10)
     tool_calls: list[dict]          # one {"tool", "args", "ok"} per step event, in order; the prefetch is not one
     model_calls: int
     elapsed_s: float                # the planning phase only (prefetch to finalize), never the writer
@@ -144,22 +151,32 @@ def _plan_node(d: _Deps):
 def _tools_node(d: _Deps):
     def tools(state: AgentState) -> dict:
         r, steps, messages = state["r"], list(state["steps"]), list(state["messages"])
+        edges_added = state.get("edges_added", 0)
         expired = False
         for call in state["pending"]:
             if len(steps) >= d.limits.max_tool_calls:
                 messages.append(P.tool_message(call["id"], {"error": "the tool call limit is reached"}))
                 continue
-            if expired or _now() - state["t0"] >= d.limits.time_budget_s:
+            remaining = d.limits.time_budget_s - (_now() - state["t0"])
+            if expired or remaining <= 0:
                 expired = True
                 messages.append(P.tool_message(call["id"], {"error": "the time budget is used up"}))
                 continue
-            with d.tracer.span("tool", tool=clip_name(call["name"])) as span:
-                outcome = d.toolbox.execute(call["name"], call["arguments"], r)
+            name = call["name"]
+            # The tracer span carries the tool NAME only after it is known to be one of the declared tools (a planner
+            # (or a hijacked one) can send anything): recording the raw, possibly question-steered name as a span
+            # attribute before the toolbox validates it would put unvalidated planner text in the trace (R2 review).
+            span_tool = name if isinstance(name, str) and name in TOOL_NAMES else "invalid"
+            timeout = min(remaining, d.limits.tool_call_cap_s)
+            edges_budget = max(0, M.MAX_EDGES_ADDED - edges_added)
+            with d.tracer.span("tool", tool=span_tool) as span:
+                outcome = d.toolbox.execute(name, call["arguments"], r, timeout=timeout, edges_budget=edges_budget)
                 span.set(ok=outcome.ok)
+            edges_added += max(0, len(outcome.r.get("edges", [])) - len(r.get("edges", [])))
             r = outcome.r
             steps.append({"n": len(steps) + 1, "tool": outcome.tool, "args": outcome.args, "summary": outcome.summary, "ok": outcome.ok})
             messages.append(P.tool_message(call["id"], outcome.result))
-        update: dict = {"r": r, "steps": steps, "messages": messages, "pending": []}
+        update: dict = {"r": r, "steps": steps, "messages": messages, "pending": [], "edges_added": edges_added}
         if expired:
             d.tracer.event("fallback", reason="time_budget")
             return {**update, "fallback_reason": "time_budget", "stop_reason": "time_budget"}
@@ -205,11 +222,16 @@ def _build_graph(d: _Deps):
 # --- the runner ---------------------------------------------------------------------------------------------------------------
 
 def _result(state: dict, ledger: Ledger) -> AgentResult:
-    """The outcome of a run. A fallback answers from the untouched prefetch (``prefetch_r``); the tool calls that did run are
-    still reported."""
+    """The outcome of a run (M3 finding #10). A fallback with ZERO successful tool calls answers from the untouched
+    prefetch (``prefetch_r``): nothing was gathered worth keeping. A fallback with AT LEAST ONE successful tool call
+    finalizes with what was gathered (the merged ``r``) instead -- ``fallback_reason`` is still reported, but the merged
+    context (a superset of the prefetch's own pairs/notices) is what the writer answers from. The tool calls that did run
+    are reported either way."""
     fallback = state.get("fallback_reason")
     steps = state.get("steps", [])
-    return AgentResult(r=state["prefetch_r"] if fallback else state["r"],
+    any_tool_succeeded = any(s.get("ok") for s in steps)
+    use_prefetch = bool(fallback) and not any_tool_succeeded
+    return AgentResult(r=state["prefetch_r"] if use_prefetch else state["r"],
                        tool_calls=[{"tool": s["tool"], "args": s["args"], "ok": s["ok"]} for s in steps],
                        model_calls=ledger.model_calls, elapsed_s=state.get("elapsed_s", round(_now() - state["t0"], 3)),
                        fallback_reason=fallback, stop_reason=state.get("stop_reason") or "planner_done",
@@ -218,15 +240,19 @@ def _result(state: dict, ledger: Ledger) -> AgentResult:
 
 def run_agent(question: str, driver, embedder, *, planner: Callable[..., PlannerTurn], planner_model: str, limits: Limits,
               tracer: Tracer | None = None, k_chunks: int = 8, hops: int = 2,
-              recursion_limit: int | None = None) -> Generator[dict, None, AgentResult]:
+              recursion_limit: int | None = None, ledger: Ledger | None = None) -> Generator[dict, None, AgentResult]:
     """Run the planning graph; yield one ``step`` event per tool call as its turn completes and RETURN the :class:`AgentResult`.
 
     Raises only when the prefetch itself fails. Any later failure (a planner error, the time budget, a bug in a node, the recursion
-    limit) ends planning with a ``fallback_reason`` and the plain prefetch as the result's ``r``. ``recursion_limit`` defaults to
-    :func:`~semigraph.agent.state.recursion_limit_for` (12 at the default limits)."""
+    limit) ends planning with a ``fallback_reason``; the result's ``r`` is the plain prefetch only when no tool call had already
+    succeeded, else the merged dict gathered so far (M3 finding #10, see :func:`_result`). ``recursion_limit`` defaults to
+    :func:`~semigraph.agent.state.recursion_limit_for` (12 at the default limits). ``ledger`` is normally created here, but
+    a caller (``stream.py``, M3 finding #6) may pass its OWN so it can still read the planner's accrued spend if the
+    generator is abandoned (``GeneratorExit``) before this function ever returns -- a local ``Ledger`` would be lost with
+    the abandoned generator frame."""
     tracer = as_safe(tracer)
-    ledger = Ledger()
-    deps = _Deps(question, driver, embedder, Toolbox(driver, embedder, question), planner, planner_model, limits, tracer, ledger,
+    ledger = ledger if ledger is not None else Ledger()
+    deps = _Deps(question, driver, embedder, Toolbox(driver, embedder, question, clock=_now), planner, planner_model, limits, tracer, ledger,
                  tool_specs(), k_chunks, hops)
     config = {"recursion_limit": recursion_limit or recursion_limit_for(limits)}
     state: dict = dict(initial_state(question, _now()))

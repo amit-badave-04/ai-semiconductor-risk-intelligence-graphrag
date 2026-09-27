@@ -23,7 +23,7 @@ from ..retrieval.answerer import build_blocks, stream_answer_for_context, usage_
 from . import planner as P
 from .graph import AgentResult, run_agent
 from .planner import LiteLLMPlanner
-from .state import Limits
+from .state import Ledger, Limits
 from .trace import as_safe
 
 logger = logging.getLogger("semigraph.agent")
@@ -76,32 +76,52 @@ def _run(question: str, driver, embedder, strategy: str, *, timeout, max_tokens,
     writer_kwargs = {k: v for k, v in stream_kwargs.items() if k not in _PREFETCH_ARGS}
     if timeout is not None:
         writer_kwargs["timeout"] = timeout
+    # Kept HERE (not inside ``run_agent``, M3 finding #6) so it survives an abandoned stream: if the client disconnects
+    # mid-plan, ``.close()`` throws ``GeneratorExit`` at whatever ``yield`` this generator (or ``run_agent``'s, reached
+    # through the ``yield from`` below) is suspended at, and a ``Ledger`` local to ``run_agent`` would be lost with that
+    # abandoned frame before ``plan.planner_usage`` (or any event) ever records what it had already spent.
+    ledger = Ledger()
+    terminal_emitted = False
     try:
-        with tracer.span("agent", strategy=strategy, planner_model=planner_model, question_chars=len(question)) as span:
-            plan = yield from run_agent(question, driver, embedder, planner=planner or LiteLLMPlanner(planner_model),
-                                        planner_model=planner_model, limits=Limits.from_settings(settings), tracer=tracer, **prefetch)
-            planner_cost = _planner_cost(plan, planner_model)
-            agent = _agent_info(plan, planner_model, planner_cost)
-            span.set(tool_calls=len(plan.tool_calls), model_calls=plan.model_calls, fallback_reason=plan.fallback_reason,
-                     stop_reason=plan.stop_reason, planner_cost_usd=planner_cost)
-            try:
-                for event in stream_answer_for_context(question, plan.r, strategy, llm_stream=llm_stream,
-                                                       escalation_model=escalation_model, escalation_stream=escalation_stream,
-                                                       max_tokens=max_tokens, **writer_kwargs):
-                    event = _fold_spend(event, planner_cost, agent)
-                    if event["event"] in ("done", "error"):
-                        span.set(outcome=event["event"], cost_usd=event.get("cost_usd"))
-                    yield event
-            except Exception as e:  # noqa: BLE001 - see below: the planner's spend must not vanish with an unexpected failure
-                if not planner_cost:
-                    raise                                   # nothing was spent by the agent: exactly the fixed path's behaviour
-                logger.exception("the answer phase failed after the planner had cost $%.6f", planner_cost)
-                span.set(outcome="error", cost_usd=planner_cost)
-                yield {"event": "error", "detail": f"{type(e).__name__}: {e}", "partial": "", "usage": None, "cost_usd": planner_cost,
-                       "strategy": strategy}
-            return plan.r, agent
-    finally:
-        tracer.flush()
+        try:
+            with tracer.span("agent", strategy=strategy, planner_model=planner_model, question_chars=len(question)) as span:
+                plan = yield from run_agent(question, driver, embedder, planner=planner or LiteLLMPlanner(planner_model),
+                                            planner_model=planner_model, limits=Limits.from_settings(settings), tracer=tracer,
+                                            ledger=ledger, **prefetch)
+                planner_cost = _planner_cost(plan, planner_model)
+                agent = _agent_info(plan, planner_model, planner_cost)
+                span.set(tool_calls=len(plan.tool_calls), model_calls=plan.model_calls, fallback_reason=plan.fallback_reason,
+                         stop_reason=plan.stop_reason, planner_cost_usd=planner_cost)
+                try:
+                    for event in stream_answer_for_context(question, plan.r, strategy, llm_stream=llm_stream,
+                                                           escalation_model=escalation_model, escalation_stream=escalation_stream,
+                                                           max_tokens=max_tokens, **writer_kwargs):
+                        event = _fold_spend(event, planner_cost, agent)
+                        if event["event"] in ("done", "error"):
+                            span.set(outcome=event["event"], cost_usd=event.get("cost_usd"))
+                            terminal_emitted = True
+                        yield event
+                except Exception as e:  # noqa: BLE001 - see below: the planner's spend must not vanish with an unexpected failure
+                    if not planner_cost:
+                        raise                               # nothing was spent by the agent: exactly the fixed path's behaviour
+                    logger.exception("the answer phase failed after the planner had cost $%.6f", planner_cost)
+                    span.set(outcome="error", cost_usd=planner_cost)
+                    terminal_emitted = True
+                    yield {"event": "error", "detail": f"{type(e).__name__}: {e}", "partial": "", "usage": None,
+                           "cost_usd": planner_cost, "strategy": strategy}
+                return plan.r, agent
+        finally:
+            tracer.flush()
+    except GeneratorExit:
+        # Best effort only: this must never turn an abandoned stream into a raised exception of its own, so a broken
+        # ``usage_cost`` (an unknown model, a malformed ledger) is swallowed rather than replacing the GeneratorExit.
+        try:
+            spend = usage_cost(ledger.usage, planner_model) or 0.0
+        except Exception:  # noqa: BLE001 - see above
+            spend = 0.0
+        if spend and not terminal_emitted:
+            logger.warning("the agent stream was abandoned before a terminal event; the planner had already cost $%.6f", spend)
+        raise
 
 
 def agent_answer_stream(question: str, driver, embedder, strategy: str = "agent", *, timeout=None, max_tokens: int = 1200,
@@ -112,9 +132,11 @@ def agent_answer_stream(question: str, driver, embedder, strategy: str = "agent"
     Events: zero or more ``{"event": "step", "n", "tool", "args", "summary", "ok"}`` (one per planner tool call; the summary is
     counts / ids / fiscal years only), then exactly the ``answer_stream`` grammar (``retrieval``, ``delta``*, ``done`` | ``error``).
     ``done`` additionally carries ``agent``: ``tool_calls`` (one ``{"tool", "args", "ok"}`` per step event, the prefetch excluded),
-    ``model_calls``, ``elapsed_s`` (the planning phase), ``fallback_reason`` (None unless the agent degraded: the answer is then the plain retrieval),
-    ``planner_model``, ``planner_usage``, ``planner_cost_usd``, ``planner_prompt_version`` and ``stop_reason``. ``cost_usd`` of ``done``
-    and of ``error`` includes the planner; ``usage`` is the writer's.
+    ``model_calls``, ``elapsed_s`` (the planning phase), ``fallback_reason`` (None unless planning did not finish cleanly -- a
+    planner error, the time budget, a bug, the recursion limit; the answer is the plain prefetch only when that happened before
+    any tool call succeeded, else the merged context gathered so far, M3 finding #10), ``planner_model``, ``planner_usage``,
+    ``planner_cost_usd``, ``planner_prompt_version`` and ``stop_reason``. ``cost_usd`` of ``done`` and of ``error`` includes the
+    planner; ``usage`` is the writer's.
 
     ``planner`` is an injectable ``callable(messages, tools, *, timeout) -> PlannerTurn`` (default: :class:`LiteLLMPlanner` on
     ``settings.agent_planner_model``); ``settings`` supplies the limits; ``tracer`` follows :class:`semigraph.agent.trace.Tracer`.

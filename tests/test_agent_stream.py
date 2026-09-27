@@ -31,6 +31,36 @@ AGENT_KEYS = {"tool_calls", "model_calls", "elapsed_s", "fallback_reason", "plan
               "planner_prompt_version", "stop_reason"}
 
 
+def test_an_abandoned_stream_logs_the_planners_already_accrued_spend(caplog):
+    """M3 finding #6: a client disconnect mid-plan closes the generator before a terminal event is ever emitted; the
+    planner's already-accrued spend must not silently vanish from the audit trail -- a best-effort warning logs the
+    dollar amount (from the SAME ledger ``run_agent`` was recording into, not a value recomputed after the fact)."""
+    planner = ScriptedPlanner(turn(FM), turn())          # one tool call already happened; a second plan call never runs
+    gen = S.agent_answer_stream(QUESTION, FakeDriver.world(), FakeEmbedder(), planner=planner, settings=make_settings(),
+                                llm_stream=FakeWriter(GOOD))
+    first = next(gen)
+    assert first["event"] == "step"                      # the planner's one call already happened and was recorded
+    expected_cost = usage_cost({"prompt_tokens": 500, "completion_tokens": 40}, LUNA)
+    with caplog.at_level("WARNING", logger="semigraph.agent"):
+        gen.close()                                       # simulates the client disconnecting: no more events are ever asked for
+    warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert any(f"{expected_cost:.6f}" in message for message in warnings), warnings
+
+
+def test_a_stream_closed_after_done_logs_nothing_the_terminal_event_already_carried_the_spend(caplog):
+    """Closing the generator once it is exhausted (the normal case: the consumer read every event through ``done``) is not
+    an abandoned stream -- nothing was lost, so no warning is logged."""
+    planner = ScriptedPlanner(turn(FM), turn())
+    events = stream(planner, fallback=None)
+    assert events[-1]["event"] == "done" and events[-1]["agent"]["planner_cost_usd"] > 0
+    gen = S.agent_answer_stream(QUESTION, FakeDriver.world(), FakeEmbedder(), planner=ScriptedPlanner(turn(FM), turn()),
+                                settings=make_settings(), llm_stream=FakeWriter(GOOD))
+    with caplog.at_level("WARNING", logger="semigraph.agent"):
+        list(gen)                                          # drain it fully, then...
+        gen.close()                                        # ...closing an already-exhausted generator is a no-op
+    assert not [r for r in caplog.records if r.levelname == "WARNING" and "abandoned" in r.message]
+
+
 def stream(planner=None, writer=None, *, question=QUESTION, driver=None, settings=None, fallback=None, **kw):
     """Collect the events. A run that ends in ``done`` must have the ``fallback_reason`` the test expects (None for a happy path,
     M3 requirement 3: a silent 400 -> fallback must never be mistaken for an agent run)."""
@@ -369,7 +399,7 @@ def test_agent_answer_raises_on_an_error_event_like_answer_does():
 
 def test_a_failing_prefetch_raises_out_of_the_stream_like_the_plain_path_does():
     class Down(FakeDriver):
-        def answer(self, query, params):
+        def answer(self, query, params, *, timeout=None):
             raise ConnectionError("neo4j unreachable")
 
     with pytest.raises(ConnectionError):

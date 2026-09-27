@@ -33,7 +33,7 @@
           ],
           "finish_reason": "tool_calls",
           "usage": {
-            "prompt_tokens": 1680,
+            "prompt_tokens": 1678,
             "completion_tokens": 47
           }
         },
@@ -57,7 +57,7 @@
           ],
           "finish_reason": "tool_calls",
           "usage": {
-            "prompt_tokens": 1672,
+            "prompt_tokens": 1670,
             "completion_tokens": 31
           }
         },
@@ -83,7 +83,7 @@
           ],
           "finish_reason": "tool_calls",
           "usage": {
-            "prompt_tokens": 1664,
+            "prompt_tokens": 1662,
             "completion_tokens": 38
           }
         },
@@ -106,7 +106,7 @@
           ],
           "finish_reason": "tool_calls",
           "usage": {
-            "prompt_tokens": 1660,
+            "prompt_tokens": 1658,
             "completion_tokens": 19
           }
         },
@@ -132,7 +132,7 @@
           ],
           "finish_reason": "tool_calls",
           "usage": {
-            "prompt_tokens": 1684,
+            "prompt_tokens": 1682,
             "completion_tokens": 38
           }
         }
@@ -166,7 +166,7 @@
           "finish_reason": "tool_calls",
           "usage": {
             "prompt_tokens": 3373,
-            "completion_tokens": 174
+            "completion_tokens": 176
           }
         },
         {
@@ -190,7 +190,7 @@
           "finish_reason": "tool_calls",
           "usage": {
             "prompt_tokens": 3362,
-            "completion_tokens": 90
+            "completion_tokens": 89
           }
         },
         {
@@ -209,7 +209,7 @@
           "finish_reason": "stop",
           "usage": {
             "prompt_tokens": 3346,
-            "completion_tokens": 51
+            "completion_tokens": 60
           }
         },
         {
@@ -244,13 +244,13 @@
           "finish_reason": "stop",
           "usage": {
             "prompt_tokens": 3385,
-            "completion_tokens": 79
+            "completion_tokens": 85
           }
         }
       ],
       "accepted_the_real_schemas": true,
       "all_arguments_valid": true,
-      "cost_usd": 0.03855
+      "cost_usd": 0.03871
     }
   ]
 }

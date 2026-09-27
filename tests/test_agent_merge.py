@@ -7,7 +7,7 @@ behaviour" true, because whatever a failed step leaves behind is still exactly t
 import copy
 
 import pytest
-from agent_fakes import NVDA, NVDA_ACC, NVDA_REVENUE, chunk_row, edge_row, metric_rows, risk_row, rule_row, temporal_rows
+from agent_fakes import NVDA, NVDA_ACC, NVDA_REVENUE, chunk_row, edge_row, metric_rows, passage_row, risk_row, rule_row, temporal_rows
 
 from semigraph.agent import merge as M
 from semigraph.retrieval.answerer import build_blocks, sources_from_context
@@ -66,28 +66,49 @@ def test_metrics_merge_unions_the_periods_of_the_prefetch_and_tolerates_a_missin
     assert M.merge_metrics(bare, [], years=[2020], dates=[])["metric_periods"] == {"years": [2020], "dates": []}
 
 
-# --- temporal: per-company replace --------------------------------------------------------------------------------------------
+# --- temporal: union by (cik, newer_accession), never a per-company replace (M3 finding #4) -------------------------------
 
-def test_temporal_merge_replaces_only_the_companies_it_returns():
-    nvda = temporal_rows(removed=("old nvda item",), new=())
+def test_temporal_merge_unions_a_new_pair_alongside_the_companys_existing_one_and_keeps_other_companies():
+    """A call for an OLDER named pair (n24 -> n25) on a company whose ``r`` already holds its CURRENT pair (n25 -> n26)
+    ADDS the named pair -- it does not replace the current one -- while a company the call never touched (AMD) is left
+    exactly as it was."""
+    current = temporal_rows(removed=("old nvda item",), new=())                              # NVDA's current pair: n25 -> n26
     amd = temporal_rows("AMD", 2488, "0000002488-24-000012", "0000002488-25-000010", removed=("amd item",), new=())
-    items = [row for row in nvda + amd if row["change"] != "pair"]
-    pairs = [{"company": "Nvidia", "cik": NVDA, "newer_accession": NVDA_ACC["n26"]},
-             {"company": "AMD", "cik": 2488, "newer_accession": "0000002488-25-000010"}]
-    r = retrieval(temporal=items, temporal_pairs=pairs, temporal_passages=[{"cik": NVDA, "passage_id": "p"}, {"cik": 2488, "passage_id": "q"}],
+    current_items = [row for row in current if row["change"] != "pair"]
+    amd_items = [row for row in amd if row["change"] != "pair"]
+    p_passage = passage_row(cik=NVDA, older=NVDA_ACC["n25"], newer=NVDA_ACC["n26"], n=1)
+    q_passage = passage_row(cik=2488, older="0000002488-24-000012", newer="0000002488-25-000010", n=2)
+    r = retrieval(temporal=[*current_items, *amd_items], temporal_pairs=[current[0], amd[0]],
+                  temporal_passages=[p_passage, q_passage],
                   temporal_notices=[{"cik": NVDA, "text": "n"}, {"cik": 2488, "text": "m"}])
-    new_item = {"cik": NVDA, "change": "new", "item_id": "fresh"}
-    out = pure(M.merge_temporal, r, items=[new_item], pairs=[{"company": "Nvidia", "cik": NVDA, "newer_accession": "x"}],
-               passages=[{"cik": NVDA, "passage_id": "fresh"}], notices=[])
-    assert [i["item_id"] for i in out["temporal"] if i["cik"] == NVDA] == ["fresh"]
-    assert [i["item_id"] for i in out["temporal"] if i["cik"] == 2488] == ["2488-old-0"]
-    assert [p["newer_accession"] for p in out["temporal_pairs"]] == ["0000002488-25-000010", "x"]
-    assert [p["passage_id"] for p in out["temporal_passages"]] == ["q", "fresh"]
-    assert [n["cik"] for n in out["temporal_notices"]] == [2488]
+    named = temporal_rows(older=NVDA_ACC["n24"], newer=NVDA_ACC["n25"], removed=(), new=("fresh risk",))
+    named_items = [row for row in named if row["change"] != "pair"]
+    fresh_passage = passage_row(cik=NVDA, older=NVDA_ACC["n24"], newer=NVDA_ACC["n25"], n=3)
+    out = pure(M.merge_temporal, r, items=named_items, pairs=[named[0]], passages=[fresh_passage], notices=[])
+    assert {p["newer_accession"] for p in out["temporal_pairs"] if p["cik"] == NVDA} == {NVDA_ACC["n26"], NVDA_ACC["n25"]}
+    assert [i["item_id"] for i in out["temporal"] if i["cik"] == 2488] == [i["item_id"] for i in amd_items]   # AMD untouched
+    nvda_headlines = {i["headline"] for i in out["temporal"] if i["cik"] == NVDA}
+    assert "old nvda item" in nvda_headlines and "fresh risk" in nvda_headlines                # kept AND added, not replaced
+    passage_ids = {p["passage_id"] for p in out["temporal_passages"]}
+    assert passage_ids == {p_passage["passage_id"], q_passage["passage_id"], fresh_passage["passage_id"]}
+    assert [n["cik"] for n in out["temporal_notices"]] == [NVDA, 2488]                         # notices unioned, not dropped
+
+
+def test_temporal_merge_replaces_the_exact_same_pair_when_a_call_repeats_it():
+    """A second call about the exact SAME pair (same ``newer_accession``) refreshes it: its old items belonged to that one
+    question and are replaced, not doubled."""
+    old = temporal_rows(removed=("stale item",), new=())
+    r = retrieval(temporal=[row for row in old if row["change"] != "pair"], temporal_pairs=[old[0]])
+    fresh = temporal_rows(removed=("refreshed item",), new=())                                # same older/newer as ``old``
+    out = pure(M.merge_temporal, r, items=[row for row in fresh if row["change"] != "pair"], pairs=[fresh[0]], passages=[], notices=[])
+    headlines = [i["headline"] for i in out["temporal"] if i["cik"] == NVDA]
+    assert headlines == ["refreshed item"]                                                    # not ["stale item", "refreshed item"]
+    assert len(out["temporal_pairs"]) == 1
 
 
 def test_temporal_merge_with_no_pairs_changes_nothing():
-    r = retrieval(temporal=[{"cik": NVDA, "change": "removed"}], temporal_pairs=[{"cik": NVDA}])
+    r = retrieval(temporal=[{"cik": NVDA, "change": "removed", "newer_accession": NVDA_ACC["n26"]}],
+                  temporal_pairs=[{"cik": NVDA, "newer_accession": NVDA_ACC["n26"]}])
     out = pure(M.merge_temporal, r, items=[], pairs=[], passages=[], notices=[])
     assert out["temporal"] == r["temporal"] and out["temporal_pairs"] == r["temporal_pairs"]
 
@@ -132,11 +153,46 @@ def test_compute_change_writes_a_line_in_the_grammar_the_verifier_grounds_with_b
     old, new = NVDA_REVENUE["2025-01-26"], NVDA_REVENUE["2026-01-25"]
     pct = (new - old) / old * 100
     ids = [xbrl_id(NVDA, "revenue", "2025-01-26"), xbrl_id(NVDA, "revenue", "2026-01-25")]
-    assert out["computed"] == [info["line"]] and info["ids"] == ids
+    assert out["computed"] == [M.COMPUTED_HEADER, info["line"]] and info["ids"] == ids
     assert info["line"].startswith(f"computed: {pct:+.1f}%")
     assert all(f"[{i}]" in info["line"] for i in ids)
     assert f"{new - old:+,.0f} USD" in info["line"]
     assert _COMPUTED_PERCENT_RE.match(info["line"])                          # the verifier's own grammar (verify._COMPUTED_PERCENT_RE)
+
+
+def test_a_computed_line_between_adjacent_fiscal_years_keeps_the_original_year_over_year_wording():
+    """350-380 days apart (retrieval.answerer.yoy_note's own window): the exact wording this line has always had, byte for
+    byte, never the 'over N fiscal years' phrasing (M3 finding #5)."""
+    out, info = M.compute_change(_r(), cik=NVDA, metric="revenue", from_end="2025-01-26", to_end="2026-01-25")
+    old, new = NVDA_REVENUE["2025-01-26"], NVDA_REVENUE["2026-01-25"]
+    pct = (new - old) / old * 100
+    old_id, new_id = xbrl_id(NVDA, "revenue", "2025-01-26"), xbrl_id(NVDA, "revenue", "2026-01-25")
+    assert info["line"] == (f"computed: {pct:+.1f}% change in revenue for Nvidia from period ended 2025-01-26 [{old_id}] "
+                            f"to period ended 2026-01-25 [{new_id}] (change {new - old:+,.0f} USD)")
+    assert "fiscal years" not in info["line"]
+
+
+def test_a_computed_line_over_several_fiscal_years_says_how_many_and_still_matches_the_verifiers_grammar():
+    """A 3-year span (2023-01-29 to 2026-01-25): the label says so instead of reading as year-over-year, and cites both
+    facts with 'fiscal year ended' (M3 finding #5), while the verifier's grounding grammar keeps matching."""
+    out, info = M.compute_change(_r(), cik=NVDA, metric="revenue", from_end="2023-01-29", to_end="2026-01-25")
+    old, new = NVDA_REVENUE["2023-01-29"], NVDA_REVENUE["2026-01-25"]
+    pct = (new - old) / old * 100
+    old_id, new_id = xbrl_id(NVDA, "revenue", "2023-01-29"), xbrl_id(NVDA, "revenue", "2026-01-25")
+    assert info["line"] == (f"computed: {pct:+.1f}% change in revenue for Nvidia over 3 fiscal years, from fiscal year "
+                            f"ended 2023-01-29 [{old_id}] to fiscal year ended 2026-01-25 [{new_id}] "
+                            f"(change {new - old:+,.0f} USD)")
+    assert _COMPUTED_PERCENT_RE.match(info["line"])
+
+
+def test_a_near_year_gap_that_is_not_quite_adjacent_keeps_the_neutral_wording_not_a_wrong_year_count():
+    """400 days apart: rounds to 1 fiscal year but is outside the adjacent window -- the label must not claim 'over 1
+    fiscal years' (round(days/365.25) can round UP from under a year, or a gap can just miss the adjacent window), so it
+    falls back to the plain period-ended wording instead (M3 finding #5)."""
+    rows = metric_rows(series={"2024-01-01": 100.0e9, "2025-02-05": 120.0e9})            # 401 days apart
+    out, info = M.compute_change(retrieval(metrics=rows), cik=NVDA, metric="revenue", from_end="2024-01-01", to_end="2025-02-05")
+    assert "fiscal years" not in info["line"] and "over" not in info["line"]
+    assert "from period ended 2024-01-01" in info["line"] and "to period ended 2025-02-05" in info["line"]
 
 
 def test_compute_change_is_pure_and_idempotent():
@@ -248,10 +304,28 @@ def test_a_metric_row_with_an_unreadable_cik_is_skipped_not_fatal():
 
 
 def test_at_most_four_computed_lines_are_kept_and_a_repeat_is_not_a_new_one():
-    full = _r(computed=[f"computed: +1.0% line {n}" for n in range(M.MAX_COMPUTED)])
+    full = _r(computed=[M.COMPUTED_HEADER, *[f"computed: +1.0% line {n}" for n in range(M.MAX_COMPUTED)]])
     with pytest.raises(M.ComputeError, match="too many"):
         M.compute_change(full, cik=NVDA, metric="revenue", from_end="2025-01-26", to_end="2026-01-25")
     once, info = M.compute_change(_r(computed=[f"computed: +1.0% line {n}" for n in range(M.MAX_COMPUTED - 1)]), cik=NVDA,
                                   metric="revenue", from_end="2025-01-26", to_end="2026-01-25")
     again, _ = M.compute_change(once, cik=NVDA, metric="revenue", from_end="2025-01-26", to_end="2026-01-25")
-    assert again["computed"] == once["computed"] and len(once["computed"]) == M.MAX_COMPUTED and once["computed"][-1] == info["line"]
+    lines = [line for line in once["computed"] if line != M.COMPUTED_HEADER]
+    assert again["computed"] == once["computed"] and len(lines) == M.MAX_COMPUTED and lines[-1] == info["line"]
+    assert once["computed"][0] == M.COMPUTED_HEADER
+
+
+def test_a_computed_header_is_added_once_and_never_counts_toward_the_cap():
+    """M3 finding #9: ``r['computed']`` carries a one-time 'Computed changes:' header the first time any line is added, so
+    several computed lines from different companies do not visually sit under the wrong METRICS header; the header is
+    never counted as one of MAX_COMPUTED lines."""
+    out, info = M.compute_change(_r(), cik=NVDA, metric="revenue", from_end="2025-01-26", to_end="2026-01-25")
+    assert out["computed"] == [M.COMPUTED_HEADER, info["line"]]
+    again, info2 = M.compute_change(out, cik=NVDA, metric="revenue", from_end="2023-01-29", to_end="2024-01-28")
+    assert again["computed"].count(M.COMPUTED_HEADER) == 1
+    assert again["computed"] == [M.COMPUTED_HEADER, info["line"], info2["line"]]
+    # the header must never itself count against the cap: MAX_COMPUTED real lines still fit alongside it
+    full = _r(computed=[M.COMPUTED_HEADER, *[f"computed: +1.0% line {n}" for n in range(M.MAX_COMPUTED - 1)]])
+    grown, info3 = M.compute_change(full, cik=NVDA, metric="revenue", from_end="2025-01-26", to_end="2026-01-25")
+    assert len([line for line in grown["computed"] if line != M.COMPUTED_HEADER]) == M.MAX_COMPUTED
+    assert grown["computed"][-1] == info3["line"]

@@ -23,7 +23,7 @@ fixture rows, never typed in.
 
 import copy
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from semigraph.agent.state import PlannerTurn, ToolCall
 from semigraph.config import Settings
@@ -141,7 +141,13 @@ class _Session:
         return False
 
     def run(self, query, **params):
-        return self.driver.answer(query, params)
+        # ``query`` is either the plain text (the fixed path, and any agent call with no timeout) or a ``neo4j.Query``
+        # (an agent tool call with a per-call timeout, M3 finding #3): unwrap it rather than treat it as the query text,
+        # and hand the timeout to ``answer`` SEPARATELY from the Cypher parameters (never inside ``params`` -- exact
+        # ``driver.params_of(...)`` assertions elsewhere must see only the real Cypher parameters).
+        text = getattr(query, "text", query)
+        timeout = getattr(query, "timeout", None)
+        return self.driver.answer(text, params, timeout=timeout)
 
 
 class FakeDriver:
@@ -150,30 +156,51 @@ class FakeDriver:
     NAMES = ("company_edges", "rule_edges", "metrics", "active_risks", "temporal", "temporal_selected", "annual_pairs",
              "passages", "excerpts", "vector")
 
-    def __init__(self, **layers):
+    def __init__(self, *, slow: Mapping[str, float] | None = None, **layers):
         unknown = set(layers) - set(self.NAMES)
         if unknown:
             raise ValueError(f"unknown layer(s): {sorted(unknown)}")
         self.layers: dict[str, list | Callable] = {name: layers.get(name, []) for name in self.NAMES}
         self.calls: list[tuple[str, dict]] = []
+        self.timeouts: list[tuple[str, float | None]] = []
+        # {layer name: how long that query "takes", in REAL seconds} for a timeout test (M3 finding #3): ``answer`` sleeps
+        # for at most ``min(that duration, the timeout it was given)`` and raises past a timeout that cut it short, so a
+        # test proves the elapsed WALL-CLOCK time of several such calls is bounded near the per-call cap rather than the
+        # sum of the full "slow" durations, without a real query or a real hang.
+        self.slow: dict[str, float] = dict(slow or {})
         self._names = _query_names()
 
     def session(self, **kw):
         return _Session(self)
 
-    def answer(self, query: str, params: dict) -> list[dict]:
+    def answer(self, query: str, params: dict, *, timeout: float | None = None) -> list[dict]:
         name = self._names.get(query)
         if name is None:
             raise AssertionError(f"the agent ran a Cypher query that is not one of the retriever's: {query[:80]!r}")
         self.calls.append((name, copy.deepcopy(params)))
+        self.timeouts.append((name, timeout))
+        self._simulate_slowness(name, timeout)
         rows = self.layers[name]
         return copy.deepcopy(rows(params) if callable(rows) else rows)
+
+    def _simulate_slowness(self, name: str, timeout: float | None) -> None:
+        duration = self.slow.get(name)
+        if duration is None:
+            return
+        import time as _time
+
+        _time.sleep(duration if timeout is None else min(duration, timeout))
+        if timeout is not None and duration > timeout:
+            raise TimeoutError(f"{name} query exceeded its {timeout}s timeout")
 
     def names(self) -> list[str]:
         return [name for name, _ in self.calls]
 
     def params_of(self, name: str) -> list[dict]:
         return [p for n, p in self.calls if n == name]
+
+    def timeouts_of(self, name: str) -> list[float | None]:
+        return [t for n, t in self.timeouts if n == name]
 
     @classmethod
     def world(cls, **override) -> "FakeDriver":
@@ -251,16 +278,19 @@ def poison_rows(rows: list[dict], keys=FREE_TEXT_KEYS, *, company_names=False) -
 
 
 def poisoned_world() -> FakeDriver:
-    """The default world with the injection in every free-text field of every layer."""
+    """The default world with the injection in every free-text field of every layer, INCLUDING ``annual_pairs`` (its
+    ``company`` field): ``select_pairs``' own notice text is built from that row's company name, so a clean
+    ``annual_pairs`` layer would let a regression that leaked notice text into the planner pass every test (M3
+    finding #2)."""
     clean = FakeDriver.world()
 
     def wrap(name, names=False):
         layer = clean.layers[name]
         return lambda params: poison_rows(layer(params) if callable(layer) else layer, company_names=names)
 
-    return FakeDriver.world(**{name: wrap(name, name in ("company_edges", "rule_edges", "metrics"))
+    return FakeDriver.world(**{name: wrap(name, name in ("company_edges", "rule_edges", "metrics", "annual_pairs"))
                                for name in ("company_edges", "rule_edges", "metrics", "active_risks", "temporal",
-                                            "temporal_selected", "passages", "excerpts", "vector")})
+                                            "temporal_selected", "passages", "excerpts", "vector", "annual_pairs")})
 
 
 # --- the planner ------------------------------------------------------------------------------------------------------------

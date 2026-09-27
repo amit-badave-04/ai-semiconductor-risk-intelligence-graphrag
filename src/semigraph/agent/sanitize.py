@@ -14,6 +14,7 @@ field that fails its check is dropped (or shown as None), never repaired. The te
 graph can return and assert that none of it reaches a planner message.
 """
 
+import json
 import re
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
@@ -29,11 +30,18 @@ MAX_PERIODS_PER_METRIC = 6
 MAX_RULE_IDS = 8
 MAX_ARG_CHARS = 80
 MAX_ARG_ITEMS = 10
+MAX_ARGS_TOTAL_CHARS = 600      # the TOTAL a call's clipped arguments may serialize to (see clip_args: the per-item bounds
+                                # above compose combinatorially -- 10 keys x 10 nested items x 10 list items x 80 chars is
+                                # 80,000 characters even though every individual piece is bounded -- so the built structure
+                                # is re-clipped against this total before it is ever put in a step event)
 MAX_NAME_CHARS = 40
 RELATIONS = ("SUPPLIES_TO", "DEPENDS_ON", "CUSTOMER_OF", "COMPETES_WITH", "AFFECTED_BY")
 RULE_RELATION = "AFFECTED_BY"
+# The graph's only Metric names (ingestion.xbrl.KEY_CONCEPTS' keys): the allowlist is the actual vocabulary, not a
+# permissive shape check, so a metric name is never a free-text channel to the planner (M3 finding #8).
+KNOWN_METRICS = ("revenue", "net_income", "rnd", "capex")
 
-_METRIC_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}\Z")
+_METRIC_RE = re.compile(r"^(?:{})\Z".format("|".join(KNOWN_METRICS)))
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
 _UNIT_RE = re.compile(r"^[A-Za-z]{3}(?:/[A-Za-z]{1,10})?\Z")
 _YEAR_RANGE = (1990, 2100)
@@ -237,8 +245,30 @@ def _clip_value(value: Any, depth: int) -> Any:
 
 
 def clip_args(args: Any) -> dict:
-    """The arguments of a call the planner made, bounded (a string 80 characters, a list 10 items, two levels deep) so a refused
-    call can be recorded and shown without carrying anything large."""
+    """The arguments of a call the planner made, bounded (a string 80 characters, a list 10 items, two levels deep, the
+    WHOLE structure :data:`MAX_ARGS_TOTAL_CHARS`) so a refused call can be recorded and shown without carrying anything
+    large. The per-item bounds alone do not compose into a total bound (10 top-level keys, each a dict of 10 keys, each a
+    list of 10 eighty-character strings, is 80,000 characters), so the built structure is re-clipped against the total
+    afterwards."""
     if not isinstance(args, Mapping):
         return {}
-    return {str(k)[:MAX_NAME_CHARS]: _clip_value(v, 2) for k, v in list(args.items())[:MAX_ARG_ITEMS]}
+    clipped = {str(k)[:MAX_NAME_CHARS]: _clip_value(v, 2) for k, v in list(args.items())[:MAX_ARG_ITEMS]}
+    return _shrink_to_total(clipped, MAX_ARGS_TOTAL_CHARS)
+
+
+def _shrink_to_total(value: dict, budget: int) -> dict:
+    """``value`` (already bounded per item and per depth) with keys dropped or replaced by a placeholder, in order, until
+    its JSON form fits ``budget`` characters."""
+    if len(json.dumps(value)) <= budget:
+        return value
+    trimmed: dict = {}
+    for k, v in value.items():
+        candidate = {**trimmed, k: v}
+        if len(json.dumps(candidate)) <= budget:
+            trimmed = candidate
+            continue
+        shortened = {**trimmed, k: "...(clipped)"}
+        if len(json.dumps(shortened)) <= budget:
+            trimmed = shortened
+        break
+    return trimmed

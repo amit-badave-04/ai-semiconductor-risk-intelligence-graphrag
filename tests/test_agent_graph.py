@@ -1,9 +1,11 @@
 """The LangGraph loop: prefetch -> plan -> tools -> plan ... -> finalize (docs/v2/M3_AGENT_PLAN.md section 1).
 
-What is pinned here: the planner only ADDS to the prefetch; the limits (4 tool calls, 3 model calls, the time budget) hold whatever
-the planner asks for; every planner call gets ``timeout = min(remaining budget, cap)`` (requirement 4); a planner exception, a
-budget expiry or a bug in the loop degrades to what was gathered and never raises (only a failing PREFETCH raises: that is the
-fixed path's own failure); step events and ``tool_calls`` are one-to-one.
+What is pinned here: the planner only ADDS to the prefetch (a call for a pair/company the prefetch already covers UNIONS with
+it, never replaces the whole thing, M3 finding #4); the limits (4 tool calls, 3 model calls, the time budget) hold whatever the
+planner asks for; every planner call gets ``timeout = min(remaining budget, cap)`` (requirement 4); a planner exception, a
+budget expiry or a bug in the loop degrades to the plain prefetch ONLY when no tool call has already succeeded, else it
+finalizes with what was gathered instead (M3 finding #10) -- and never raises either way (only a failing PREFETCH raises: that
+is the fixed path's own failure); step events and ``tool_calls`` are one-to-one.
 """
 
 import copy
@@ -20,6 +22,7 @@ from agent_fakes import (
 )
 
 from semigraph.agent import graph as G
+from semigraph.agent import merge as M
 from semigraph.agent.state import Limits
 from semigraph.agent.tools import tool_specs
 from semigraph.retrieval.retriever import hybrid_retrieve
@@ -156,6 +159,27 @@ def test_a_zero_limit_means_the_planner_is_never_called():
         assert result.r == prefetch_r() and result.planner_usage == {"prompt_tokens": 0, "completion_tokens": 0}
 
 
+def test_relationships_edges_are_capped_across_the_whole_run_not_per_call():
+    """M3 finding #7: the 40-edge cap is per RUN, not per call -- four ``relationships`` calls, each returning 20 brand-new
+    distinct edges (a per-call cap would let each one add up to 40, ~2.5x the intended context growth over the run), add
+    at most ``merge.MAX_EDGES_ADDED`` edges COMBINED."""
+    calls = {"n": 0}
+
+    def company_edges(params):
+        calls["n"] += 1
+        return [{"source": "Nvidia", "relation": "DEPENDS_ON", "target": f"call{calls['n']}-{i}", "status": "Active",
+                 "quote": None, "chunk_ids": []} for i in range(20)]
+
+    driver = FakeDriver.world(company_edges=company_edges, rule_edges=lambda p: [])
+    call = ("relationships", {"companies": ["Nvidia"]})
+    planner = ScriptedPlanner(turn(call), turn(call), turn(call), turn(call), turn())
+    events, result, _ = run(planner, driver=driver, limits=Limits(4, 5, 25.0))
+    assert len(result.tool_calls) == 4 and all(c["ok"] for c in result.tool_calls)
+    prefetch_edges = 20                                        # the prefetch's OWN company_edges call: not a tool call, not capped
+    added = len(result.r["edges"]) - prefetch_edges
+    assert added == M.MAX_EDGES_ADDED                          # exactly 40, not 20 (a per-call cap stuck too low) or 80 (uncapped)
+
+
 def test_refused_calls_count_toward_the_limit_and_are_recorded_as_failed():
     bad = ("run_cypher", {"query": "MATCH (n) DETACH DELETE n"})
     planner = ScriptedPlanner(turn(bad, bad, bad, bad, bad))
@@ -167,10 +191,10 @@ def test_refused_calls_count_toward_the_limit_and_are_recorded_as_failed():
 
 def test_a_failing_tool_does_not_stop_the_loop():
     class Flaky(FakeDriver):
-        def answer(self, query, params):
+        def answer(self, query, params, *, timeout=None):
             if params.get("ids") == [1046179]:
                 raise RuntimeError("neo4j is down")
-            return super().answer(query, params)
+            return super().answer(query, params, timeout=timeout)
 
     driver = Flaky(**FakeDriver.world().layers)
     planner = ScriptedPlanner(turn(FM), turn(("financial_metrics", {"companies": ["AMD"]})), turn())
@@ -179,19 +203,24 @@ def test_a_failing_tool_does_not_stop_the_loop():
     assert json.loads(planner.calls[1]["messages"][-1]["content"]) == {"error": "the tool failed", "type": "RuntimeError"}
 
 
-# --- fallback: the agent degrades to the plain retrieval and never errors ----------------------------------------------------
+# --- fallback: never worse than the fixed path, but never a full discard once a tool call succeeded (M3 finding #10) -------
 
-def test_a_planner_exception_falls_back_to_the_prefetch_and_says_why():
+def test_a_planner_exception_with_zero_successful_tool_calls_falls_back_to_the_prefetch_and_says_why():
     events, result, _ = run(ScriptedPlanner(RuntimeError("400: tools are not supported with reasoning")), fallback='planner_error:RuntimeError')
     assert events == [] and result.r == prefetch_r() and result.tool_calls == []
     assert result.fallback_reason == "planner_error:RuntimeError" and result.stop_reason == "fallback" and result.model_calls == 1
     assert result.planner_usage == {"prompt_tokens": 0, "completion_tokens": 0}
 
 
-def test_a_planner_exception_after_a_tool_answers_from_the_plain_prefetch_but_reports_the_call_that_ran():
+def test_a_planner_exception_after_a_successful_tool_call_keeps_the_merged_result_not_the_plain_prefetch():
+    """M3 finding #10: plan section 1 says exceeding a LIMIT goes to finalize with what was gathered; a fallback is not
+    fundamentally different once a tool call has already succeeded -- discarding it would throw away real, already-fetched
+    data for no reason. ``fallback_reason`` is still reported (for the eval and the audit trail), but ``r`` is the merged
+    dict, not ``prefetch_r()``."""
     events, result, _ = run(ScriptedPlanner(turn(FM), ValueError("boom")), fallback="planner_error:ValueError")
     assert result.fallback_reason == "planner_error:ValueError" and len(events) == 1 and len(result.tool_calls) == 1
-    assert result.r == prefetch_r() and not any(m["cik"] == 1046179 for m in result.r["metrics"]) and result.model_calls == 2
+    assert result.tool_calls[0]["ok"] is True
+    assert result.r != prefetch_r() and any(m["cik"] == 1046179 for m in result.r["metrics"]) and result.model_calls == 2
 
 
 def test_a_bug_in_the_loop_is_a_fallback_not_an_error_and_the_planners_spend_is_still_counted(monkeypatch):
@@ -218,7 +247,7 @@ def test_a_planner_that_returns_something_that_is_not_a_turn_is_a_planner_error(
 
 def test_a_failing_prefetch_is_the_fixed_paths_own_failure_and_propagates():
     class Down(FakeDriver):
-        def answer(self, query, params):
+        def answer(self, query, params, *, timeout=None):
             raise ConnectionError("neo4j unreachable")
 
     planner = ScriptedPlanner(turn())
@@ -227,9 +256,10 @@ def test_a_failing_prefetch_is_the_fixed_paths_own_failure_and_propagates():
     assert planner.calls == []
 
 
-def test_the_recursion_limit_is_a_fallback_that_answers_from_the_plain_prefetch():
+def test_the_recursion_limit_is_a_fallback_that_keeps_the_tool_call_that_already_succeeded():
     events, result, _ = run(ScriptedPlanner(turn(FM), repeat=True), recursion_limit=4, fallback="recursion_limit")
-    assert result.fallback_reason == "recursion_limit" and result.r == prefetch_r() and len(result.tool_calls) == 1
+    assert result.fallback_reason == "recursion_limit" and len(result.tool_calls) == 1 and result.tool_calls[0]["ok"] is True
+    assert result.r != prefetch_r() and any(m["cik"] == 1046179 for m in result.r["metrics"])
     assert result.stop_reason == "fallback"
 
 
@@ -285,6 +315,20 @@ def test_a_planner_call_gets_min_of_the_remaining_budget_and_the_per_call_cap(cl
     assert planner.calls[0]["timeout"] == 5.0                               # remaining (5 s) < cap
 
 
+def test_a_tool_calls_timeout_is_min_of_the_remaining_budget_and_the_tool_call_cap(clock):
+    """M3 finding #3: the LOOP (not just ``Toolbox.execute`` in isolation) passes a per-call timeout down to the Cypher
+    queries a tool call makes -- a regression back to ``timeout=None`` here would pass every ``Toolbox``-level test but
+    leave every REAL tool call in a run unbounded again. The prefetch's own query is untouched (``None``: the fixed
+    path's behaviour), only the TOOL call's gets the budget."""
+    def spend_then_metrics(messages, timeout):
+        clock.t += 3.0
+        return turn(FM)
+
+    planner = ScriptedPlanner(spend_then_metrics, turn())
+    events, result, driver = run(planner, limits=Limits(4, 3, 8.0))
+    assert driver.timeouts_of("metrics") == [None, 5.0]         # prefetch (untouched), then min(8 - 3, tool_call_cap_s=12)
+
+
 def test_the_timeout_shrinks_with_the_remaining_budget(clock):
     def slow_tool_turn(messages, timeout):
         clock.t += 9.0
@@ -310,7 +354,12 @@ def test_a_slow_model_against_a_short_budget_is_abandoned_at_the_budget(clock):
     assert result.fallback_reason == "planner_error:TimeoutError" and result.elapsed_s == 5.0
 
 
-def test_an_expired_budget_stops_planning_and_answers_from_the_plain_prefetch(clock):
+def test_an_expired_budget_after_a_successful_tool_call_finalizes_with_what_was_gathered_not_the_plain_prefetch(clock):
+    """M3 finding #10 (the spec inconsistency): plan section 1 says exceeding a limit goes to finalize with what was
+    gathered; the code used to treat ANY time-budget expiry as a full discard of tool calls that had already succeeded.
+    ``fallback_reason`` is still ``"time_budget"`` (still reported, for the eval and the audit trail), but ``r`` keeps the
+    FM call's merged metrics -- it is NOT ``prefetch_r()``. (The zero-successful-calls case, where the budget expires
+    before any pending call gets to run, is ``test_a_budget_that_expires_between_tool_calls_skips_the_rest`` below.)"""
     def tools_then_expire(messages, timeout):
         clock.t += 24.5                                                       # 0.5 s left: below the minimum for a new call
         return turn(FM)
@@ -318,7 +367,8 @@ def test_an_expired_budget_stops_planning_and_answers_from_the_plain_prefetch(cl
     planner = ScriptedPlanner(tools_then_expire, turn())
     events, result, _ = run(planner, fallback='time_budget')
     assert len(planner.calls) == 1 and result.fallback_reason == "time_budget" and result.stop_reason == "time_budget"
-    assert len(events) == 1 and len(result.tool_calls) == 1 and result.r == prefetch_r()
+    assert len(events) == 1 and len(result.tool_calls) == 1 and result.tool_calls[0]["ok"] is True
+    assert result.r != prefetch_r() and any(m["cik"] == 1046179 for m in result.r["metrics"])
 
 
 def test_a_limit_is_not_a_fallback_and_answers_from_what_was_gathered():
@@ -327,13 +377,15 @@ def test_a_limit_is_not_a_fallback_and_answers_from_what_was_gathered():
     assert any(m["cik"] == 1046179 for m in result.r["metrics"]) and result.r != prefetch_r()
 
 
-def test_a_budget_that_expires_between_tool_calls_skips_the_rest(clock):
+def test_a_budget_that_expires_between_tool_calls_skips_the_rest_and_falls_back_since_nothing_succeeded(clock):
+    """The zero-successful-tool-calls case of M3 finding #10: the budget is already spent before EITHER pending call gets
+    to run, so nothing was gathered worth keeping and the answer is the untouched prefetch."""
     def spend_then_call_two(messages, timeout):
         clock.t += 25.0
         return turn(FM, LOOKUP)
 
     events, result, _ = run(ScriptedPlanner(spend_then_call_two), fallback='time_budget')
-    assert events == [] and result.fallback_reason == "time_budget" and result.tool_calls == []
+    assert events == [] and result.fallback_reason == "time_budget" and result.tool_calls == [] and result.r == prefetch_r()
 
 
 def test_elapsed_time_covers_the_planning_phase_only(clock):
@@ -387,6 +439,15 @@ def test_the_loop_reports_spans_generations_and_the_fallback_to_the_tracer():
         "prompt_tokens": 500, "completion_tokens": 40}
     assert generations[0]["cost_usd"] == pytest.approx(500 * 0.10 / 1e6 + 40 * 0.50 / 1e6)
     assert ("event", "fallback", {"reason": "planner_error:RuntimeError"}) in tracer.log
+
+
+def test_an_unknown_tool_names_carries_invalid_in_the_tracer_span_not_the_raw_planner_text():
+    """R2 (serving-seam security) review: the tracer span used to record the planner's raw, possibly question-steered tool
+    NAME before the toolbox validated it. It must instead carry ``"invalid"`` for anything outside the declared set."""
+    tracer = Recorder()
+    run(ScriptedPlanner(turn(("run_cypher", {"query": "MATCH (n) DETACH DELETE n"})), turn()), tracer=tracer)
+    tool_spans = [entry[2] for entry in tracer.log if entry[0] == "span" and entry[1] == "tool"]
+    assert tool_spans == [{"tool": "invalid"}]
 
 
 def test_a_tracer_that_raises_does_not_change_the_run():

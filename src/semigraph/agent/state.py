@@ -9,7 +9,11 @@ from typing import Any, TypedDict
 # A planner call gets ``timeout = min(remaining budget, PLANNER_CALL_CAP_S)``: LangGraph runs synchronously here, so the request
 # timeout is the ONLY thing that can stop a hung model from holding the whole plan (and an answer slot) past its budget.
 PLANNER_CALL_CAP_S = 12.0
-# Below this much remaining budget no planner call is started (a time_budget fallback: the answer is the plain retrieval).
+# A TOOL call gets the same treatment (M3 finding #3): its Cypher queries have no bound of their own otherwise, so one slow
+# or hung query can hold the whole time budget (and the answer slot) past it, exactly like an unbounded planner call would.
+TOOL_CALL_CAP_S = 12.0
+# Below this much remaining budget no planner call is started (a ``time_budget`` fallback_reason: the answer is the plain
+# prefetch only when no tool call has succeeded yet, else what was already gathered -- M3 finding #10).
 MIN_CALL_BUDGET_S = 1.0
 # LangGraph counts every node execution: prefetch + (plan + tools) x model calls + finalize is 8 at the default limits. The
 # recursion limit is a BACKSTOP against a routing bug (an endless loop), never a limit the loop should meet: 12 at the defaults,
@@ -26,6 +30,7 @@ class Limits:
     max_model_calls: int
     time_budget_s: float
     planner_call_cap_s: float = PLANNER_CALL_CAP_S
+    tool_call_cap_s: float = TOOL_CALL_CAP_S
 
     @classmethod
     def from_settings(cls, settings) -> "Limits":
@@ -65,11 +70,16 @@ class AgentState(TypedDict, total=False):
     question: str
     t0: float                       # the clock at the start of the run: the budget is measured from here
     r: dict[str, Any]               # the retrieval dict (prefetch, then the tool merges)
-    prefetch_r: dict[str, Any]      # the plain hybrid retrieval, never touched: what a FALLBACK answers from
+    prefetch_r: dict[str, Any]      # the plain hybrid retrieval, never touched: what a fallback with ZERO successful tool
+                                     # calls answers from (one WITH a successful call answers from ``r`` instead: finding #10)
     messages: list[dict]            # the planner conversation
     pending: list[dict]             # the tool calls of the last planner turn, not yet run: {"id", "name", "arguments"}
+    edges_added: int                # edges ADDED by ``relationships`` calls so far in the RUN (not per call): caps the
+                                     # total at merge.MAX_EDGES_ADDED across every call, not per call (M3 finding #7)
     steps: list[dict]               # the tool calls run so far: {"n", "tool", "args", "summary", "ok"}
-    fallback_reason: str | None     # set when the agent degraded to the plain retrieval (a planner error, the time budget, a bug)
+    fallback_reason: str | None     # set on a planner error, the time budget or a bug; the ANSWER degrades to the plain
+                                     # retrieval only when no tool call had already succeeded (finding #10) -- otherwise
+                                     # this is still reported (for the eval and the audit trail) but ``r`` keeps what was gathered
     stop_reason: str | None         # why planning ended: planner_done | tool_limit | model_limit | time_budget | fallback
     elapsed_s: float
 
@@ -104,4 +114,5 @@ def add_usage(total: dict, usage: dict | None) -> dict:
 
 
 def initial_state(question: str, t0: float) -> AgentState:
-    return {"question": question, "t0": t0, "messages": [], "pending": [], "steps": [], "fallback_reason": None, "stop_reason": None}
+    return {"question": question, "t0": t0, "messages": [], "pending": [], "steps": [], "fallback_reason": None,
+            "stop_reason": None, "edges_added": 0}

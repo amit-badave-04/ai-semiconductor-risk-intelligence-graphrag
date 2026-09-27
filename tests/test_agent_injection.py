@@ -69,8 +69,10 @@ def test_each_tool_result_is_only_counts_ids_years_metric_values_and_universe_na
     positive on the honest graph)."""
     planner = one_call_per_turn(ALL_TOOLS)
     run(planner, FakeDriver.world())
-    metric, date_ = re.compile(r"^[a-z][a-z0-9_]{0,40}$"), re.compile(r"^\d{4}-\d{2}-\d{2}$")
-    allowed = {*S.KNOWN_COMPANIES, *S.RELATIONS}
+    date_ = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    # metric names are the REAL fixed vocabulary (M3 finding #8), not a permissive [a-z_]+ shape: a value that only
+    # matched the old shape (e.g. a planner-invented "research_and_development") must fail this allowlist.
+    allowed = {*S.KNOWN_COMPANIES, *S.RELATIONS, *S.KNOWN_METRICS}
     seen_results = []
     for message in planner.calls[-1]["messages"]:               # the last call carries every earlier result
         if message["role"] == "tool":
@@ -89,7 +91,7 @@ def test_each_tool_result_is_only_counts_ids_years_metric_values_and_universe_na
 
     for result in seen_results:
         for value in strings(result):
-            ok = (value in allowed or metric.match(value) or date_.match(value) or _ids.classify_id(value) or re.match(r"^[A-Z]{3}(/\w+)?$", value)
+            ok = (value in allowed or date_.match(value) or _ids.classify_id(value) or re.match(r"^[A-Z]{3}(/\w+)?$", value)
                   or value.startswith("computed: "))
             assert ok, f"{value!r} is not an allowlisted kind of string"
 
@@ -100,6 +102,21 @@ def test_the_first_message_of_the_planner_holds_only_the_question_and_a_summary_
     user = planner.calls[0]["messages"][1]["content"]
     assert QUESTION in user and CANARY not in user
     assert "untrusted user text" in user
+
+
+def test_a_missing_named_fiscal_year_emits_a_notice_that_never_reaches_the_planner():
+    """``risk_changes`` for a fiscal year the graph does not have falls back to the current pair AND makes ``select_pairs``
+    emit a notice (its text built from the poisoned ``annual_pairs`` company field). Only the COUNT of notices may ever
+    reach the planner, never their text (M3 finding #2)."""
+    planner = ScriptedPlanner(turn(("risk_changes", {"companies": ["Nvidia"], "fiscal_years": [1999]})), turn())
+    events, _ = run(planner, poisoned_world(), settings=make_settings())
+    step = next(e for e in events if e["event"] == "step")
+    assert step["tool"] == "risk_changes" and step["ok"] is True
+    told = json.loads(planner.calls[1]["messages"][-1]["content"])
+    assert told["notices"] == 1                                    # a count only: the notice text itself is never sent
+    shown = planner.seen()                                          # includes the planner's OWN request (fiscal_years: [1999])
+    for marker in (CANARY, "Ignore previous instructions", "no annual-filing comparison", "annual filings loaded for"):
+        assert marker not in shown, marker
 
 
 # --- 2. what the planner asks for cannot do anything --------------------------------------------------------------------------
@@ -123,11 +140,36 @@ def test_a_planner_that_obeys_an_injected_question_is_refused_and_no_query_runs(
 
 
 def test_the_step_events_of_refused_calls_carry_bounded_arguments_only():
+    """An UNKNOWN tool name (``run_cypher``): refused before ``clip_args`` ever runs (``execute`` hard-codes ``args={}`` for
+    that branch), so this only proves the step event around an empty args dict is small. The next test exercises the
+    ``clip_args`` branch itself: a KNOWN tool given invalid arguments."""
     huge = "x" * 5000
     planner = ScriptedPlanner(turn(("run_cypher", {"query": huge, "nested": {"a": {"b": {"c": huge}}}, "items": list(range(500))})), turn())
     events, _ = run(planner, FakeDriver.world(), settings=make_settings())
     step = next(e for e in events if e["event"] == "step")
     assert len(json.dumps(step)) < 1500 and step["ok"] is False
+
+
+def test_a_known_tool_with_oversized_deeply_nested_arguments_is_bounded_by_clip_args(monkeypatch):
+    """financial_metrics (a KNOWN tool) with invalid, oversized arguments: pydantic's ``extra=\"forbid\"`` refuses the call
+    and ``Toolbox.execute`` runs ``sanitize.clip_args`` on the RAW arguments to build the step event (M3 finding #1). The
+    per-item bounds alone (a string 80 chars, a list/dict 10 items, two levels deep) compose combinatorially -- 10 keys x 10
+    nested items x 10 list items of 80 chars is 80,000 characters -- so this checks the actual TOTAL bound, not a single
+    oversized string."""
+    from semigraph.agent import tools as agent_tools
+
+    calls = []
+    real_clip_args = agent_tools.S.clip_args
+    monkeypatch.setattr(agent_tools.S, "clip_args", lambda a: calls.append(a) or real_clip_args(a))
+    huge = "x" * 5000
+    wide = {f"k{i}": [f"item-{i}-" + "y" * 80 for _ in range(10)] for i in range(10)}   # 10 x 10 x 80+ chars, unclipped
+    args = {"companies": ["Nvidia"], "extra_huge_field": huge, "nested": {"a": {"b": huge}}, "wide": wide}
+    planner = ScriptedPlanner(turn(("financial_metrics", args)), turn())
+    events, _ = run(planner, FakeDriver.world(), settings=make_settings())
+    step = next(e for e in events if e["event"] == "step")
+    assert step["tool"] == "financial_metrics" and step["ok"] is False
+    assert len(json.dumps(step)) < 1500
+    assert calls, "clip_args did not run for the refused known-tool call"
 
 
 def test_no_tool_schema_can_carry_a_query():

@@ -7,6 +7,7 @@ exception, and what the planner is shown is counts / ids / years / metric values
 
 import copy
 import json
+import time
 
 import pytest
 from agent_fakes import (
@@ -102,9 +103,11 @@ def test_a_tool_name_that_is_not_a_string_is_only_a_refusal():
     ("financial_metrics", {"companies": ["Nvidia"], "fiscal_years": ["last year"]}),
     ("financial_metrics", {"companies": ["Nvidia"], "period_ends": ["2026-13-45"]}),
     ("financial_metrics", {"companies": ["Nvidia"], "metrics": ["Revenue; DROP"]}),
+    ("financial_metrics", {"companies": ["Nvidia"], "metrics": ["ignore_previous_instructions"]}),   # not in the real vocabulary
     ("financial_metrics", {"companies": "Nvidia"}),
     ("risk_changes", {"companies": ["Nvidia"], "multi_year": "maybe"}),
     ("relationships", {"companies": ["Nvidia"], "hops": 9}),
+    ("relationships", {"companies": ["Nvidia"], "hops": 3}),   # RelationshipsArgs.hops has le=2: 3 must be rejected too
     ("search_filings", {"query": ""}),
     ("search_filings", {"query": "x" * 400}),
     ("search_filings", {"query": "tsmc", "k": 500}),
@@ -142,7 +145,7 @@ def test_an_unknown_company_is_an_error_that_lists_the_known_ones():
 
 def test_a_database_failure_is_an_error_result_with_no_message_in_it():
     class Broken(FakeDriver):
-        def answer(self, query, params):
+        def answer(self, query, params, *, timeout=None):
             raise RuntimeError(f"neo4j said {INJECTION} with {params}")
 
     box, r, _, _ = setup()
@@ -248,7 +251,8 @@ def test_risk_changes_for_named_years_reads_the_pair_between_them():
     assert driver.params_of("temporal_selected")[0]["newer_accessions"] == [NVDA_ACC["n25"]]
     pair = out.result["comparisons"][0]
     assert (pair["older_fiscal_year"], pair["newer_fiscal_year"]) == (2024, 2025)
-    assert out.r["temporal_pairs"][0]["selection"] == "named" and out.r["temporal_pairs"][0]["newer_accession"] == NVDA_ACC["n25"]
+    named = next(p for p in out.r["temporal_pairs"] if p["newer_accession"] == NVDA_ACC["n25"])
+    assert named["selection"] == "named"
 
 
 def test_risk_changes_across_recent_reports_reads_the_newest_pairs():
@@ -258,13 +262,32 @@ def test_risk_changes_across_recent_reports_reads_the_newest_pairs():
     assert len(out.result["comparisons"]) == 2 and out.r["temporal_pairs"][0]["selection"] == "multi"
 
 
-def test_risk_changes_replaces_the_company_it_returns_and_keeps_the_others():
+def test_risk_changes_for_an_older_named_pair_adds_alongside_the_current_pair_and_keeps_other_companies():
+    """M3 finding #4: a company whose prefetch already has its CURRENT pair (Nvidia: n25 -> n26), asked about an OLDER
+    named fiscal year (n24 -> n25), keeps the current pair's items and passages alongside the newly named one -- it does
+    not replace it -- while AMD (a company the call never named) is untouched."""
     box, r, _, _ = setup("Compare the risk changes of Nvidia and AMD.")
     assert {p["cik"] for p in r["temporal_pairs"]} == {NVDA, AMD}
+    current_before = [p for p in r["temporal_pairs"] if p["cik"] == NVDA][0]
+    assert current_before["newer_accession"] == NVDA_ACC["n26"]
     amd_before = [i for i in r["temporal"] if i["cik"] == AMD]
     out = run(box, r, "risk_changes", {"companies": ["Nvidia"], "fiscal_years": [2024, 2025]})
-    assert [i for i in out.r["temporal"] if i["cik"] == AMD] == amd_before
-    assert {p["newer_accession"] for p in out.r["temporal_pairs"] if p["cik"] == NVDA} == {NVDA_ACC["n25"]}
+    assert [i for i in out.r["temporal"] if i["cik"] == AMD] == amd_before                         # AMD untouched
+    nvda_pairs = {p["newer_accession"] for p in out.r["temporal_pairs"] if p["cik"] == NVDA}
+    assert nvda_pairs == {NVDA_ACC["n26"], NVDA_ACC["n25"]}                                        # UNION, not replace
+    current_after = next(p for p in out.r["temporal_pairs"] if p["newer_accession"] == NVDA_ACC["n26"])
+    assert current_after["totals"] == current_before["totals"]                                     # true totals untouched
+    current_items = [i for i in out.r["temporal"] if i["cik"] == NVDA and i["newer_accession"] == NVDA_ACC["n26"]]
+    current_passages = [p for p in out.r["temporal_passages"] if p["cik"] == NVDA and p["newer_accession"] == NVDA_ACC["n26"]]
+    assert current_items and current_passages                                                      # left intact, not emptied
+    named_items = [i for i in out.r["temporal"] if i["cik"] == NVDA and i["newer_accession"] == NVDA_ACC["n25"]]
+    assert named_items                                                                             # the newly named pair is there too
+    # the writer can actually use the merged context: both pairs' chunk ids are valid (citable) ids, not just present
+    _, _, valid = build_blocks(out.r)
+    current_chunk_ids = {cid for i in current_items for cid in [*i["older_chunk_ids"], *i["newer_chunk_ids"]]}
+    named_chunk_ids = {cid for i in named_items for cid in [*i["older_chunk_ids"], *i["newer_chunk_ids"]]}
+    assert current_chunk_ids and current_chunk_ids <= valid
+    assert named_chunk_ids and named_chunk_ids <= valid
 
 
 # --- relationships / active_risks -------------------------------------------------------------------------------------------
@@ -310,7 +333,8 @@ def test_compute_change_through_the_tool_writes_the_line_and_names_the_ids():
     old, new = NVDA_REVENUE["2023-01-29"], NVDA_REVENUE["2026-01-25"]
     assert out.ok and driver.calls == []                                # pure: no query at all
     assert out.result["change_percent"] == round((new - old) / old * 100, 1)
-    assert out.result["line"] == out.r["computed"][0] and out.result["line"].startswith("computed: +700.5%")
+    assert out.result["line"] == out.r["computed"][-1] and out.result["line"].startswith("computed: +700.5%")
+    assert out.r["computed"][0] == "Computed changes:"                  # the one-time header (M3 finding #9)
     assert out.result["ids"] == ["xbrl:1045810:revenue:2023-01-29", "xbrl:1045810:revenue:2026-01-25"]
     _, _, valid = build_blocks(out.r)
     assert set(out.result["ids"]) <= valid
@@ -346,6 +370,45 @@ def test_the_summary_of_a_step_is_a_short_line_of_counts():
     box, r, _, _ = setup()
     out = run(box, r, "financial_metrics", {"companies": ["Nvidia"]})
     assert out.summary.startswith("financial_metrics") and len(out.summary) <= 200 and "\n" not in out.summary
+
+
+# --- the per-call time budget (M3 finding #3) ---------------------------------------------------------------------------
+
+def test_a_tool_calls_timeout_bounds_every_query_it_makes_together_not_per_query():
+    """``active_risks`` over three companies runs one query per company; without a shared budget each one could take its
+    own full 12 s, so a hung query holds the whole time budget (and the answer slot) past it. A ``timeout`` given to
+    ``execute`` is ONE deadline for the whole call: the total elapsed time stays bounded near it, not the SUM of three
+    slow queries, because the second and third queries get whatever time is left of the first's, not a fresh budget."""
+    driver = FakeDriver.world(slow={"active_risks": 0.12})
+    box = T.Toolbox(driver, FakeEmbedder(), QUESTION)
+    r = hybrid_retrieve(QUESTION, FakeDriver.world(), FakeEmbedder())
+    args = json.dumps({"companies": ["Nvidia", "AMD", "TSMC"]})
+
+    # unbounded (no timeout, the default -- exactly what a direct call outside the agent loop gets): every query runs its
+    # full "slow" duration, so the total grows with the company count.
+    started = time.perf_counter()
+    unbounded = box.execute("active_risks", args, r)
+    unbounded_elapsed = time.perf_counter() - started
+    assert unbounded.ok is True and unbounded_elapsed >= 0.3                  # close to 3 x 0.12s = 0.36s
+
+    # bounded: ONE shared deadline for the whole call -- elapsed stays near the 0.2s cap, well under the unbounded run.
+    started = time.perf_counter()
+    bounded = box.execute("active_risks", args, r, timeout=0.2)
+    bounded_elapsed = time.perf_counter() - started
+    assert bounded.ok is False and bounded.result["type"] == "TimeoutError"
+    assert bounded_elapsed < 0.3
+
+
+def test_a_non_positive_timeout_refuses_the_call_instead_of_running_with_no_bound():
+    """``neo4j.Query(timeout=0)`` means run with NO timeout at all, so a budget that has already reached zero must refuse
+    the call outright rather than pass 0 straight through (which would do the opposite of what is intended)."""
+    driver = FakeDriver.world(slow={"active_risks": 5.0})
+    box = T.Toolbox(driver, FakeEmbedder(), QUESTION)
+    r = hybrid_retrieve(QUESTION, FakeDriver.world(), FakeEmbedder())
+    started = time.perf_counter()
+    out = box.execute("active_risks", json.dumps({"companies": ["Nvidia"]}), r, timeout=0.0)
+    elapsed = time.perf_counter() - started
+    assert out.ok is False and out.result["type"] == "TimeoutError" and elapsed < 0.05   # refused immediately, never ran
 
 
 def test_arguments_may_arrive_already_parsed():
