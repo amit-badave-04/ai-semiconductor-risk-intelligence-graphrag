@@ -960,6 +960,11 @@ def _claim_kind(clause: str, about_a_disclosure: bool, before: str = "", after: 
     return None
 
 
+# "unverifiable for removal", "not verified as removal": the noun "removal" there says nothing was verified (the "Not matched" list's own
+# wording, which the answer prompt asks for), not that a disclosure was removed.
+_UNVERIFIED_REMOVAL_RE = re.compile(r"\b(?:unverifi\w+|not\s+verifi\w+)\s+(?:for|as)\s+removals?\b", re.I)
+
+
 def _clause_claims(line: str, supported: set[str], comparison: bool = False) -> list[str]:
     """Removal claims of one line, judged clause by clause: each must cite ids, and only ids of the removed lists. A claim
     with none of its own takes the ids of the comma-clauses that follow it (up to the next claim that is not a restatement of
@@ -967,8 +972,9 @@ def _clause_claims(line: str, supported: set[str], comparison: bool = False) -> 
     "see the "..." list"); an item put under one is. A clause that says a listed item "is on the list", with nothing to cite,
     takes the ids of the clause before it ("X [id], which is on the "..." list")."""
     claims = []
+    line = _UNVERIFIED_REMOVAL_RE.sub("unverified", line)
     about_a_disclosure = bool(_DISCLOSURE_RE.search(_BRACKETED_RE.sub(" ", line)))
-    masked = _mask_abbreviations(_mask_quotes(_QUOTED_LABEL_RE.sub(_quoted_label, line)))
+    masked =_mask_abbreviations(_mask_quotes(_QUOTED_LABEL_RE.sub(_quoted_label, line)))
     earlier_ids: list[str] = []
     for part in _HARD_SPLIT_RE.split(masked):
         clauses = [c for c in (x.replace(_GAP, " ").replace(_SEMI, ";").replace(_ABBREV_MASK, ".").strip()
