@@ -132,15 +132,22 @@ class Boot:
         return serve_main.bootstrap(object())
 
 
-def test_the_committed_legacy_examples_are_refused_gracefully_and_none_are_served(monkeypatch, caplog):
-    """examples.json predates ``checks`` and the template fingerprint: it WILL be refused, until step 9 regenerates it.
-    The service still starts, says why, and serves no seeded example (nothing would be cached, nothing listed)."""
-    boot = Boot(monkeypatch, {**load_examples(), "snapshot_id": SNAP})
+def test_the_committed_examples_match_the_current_template_and_seed_exactly_the_ones_whose_checks_pass(monkeypatch, caplog):
+    """examples.json is regenerated from the deployed-path benchmark run (scripts/build_examples.py --deployed): its template
+    fingerprint is the running build's, every example carries the service's own checks, the ones that fail them are refused (and
+    named in the log), and the questions the correctness judge rejected are recorded under excluded and are not in the file.
+    If this fails after you changed answer.txt or CONTEXT_HEADERS: regenerate the file (it needs a paid deployed run)."""
+    doc = load_examples()
+    assert store.examples_match_template(doc), "answer.txt / CONTEXT_HEADERS changed since examples.json was generated"
+    boot = Boot(monkeypatch, {**doc, "snapshot_id": SNAP})
     caplog.set_level(logging.INFO, logger="semigraph.serve.main")
     driver, embedder, stats, snapshot, example_ids = boot.run()
-    assert boot.puts == [] and example_ids == frozenset() and snapshot["id"] == SNAP
+    refused = {e["id"] for e in doc["examples"] if store.refusal_reason(e)}
+    assert example_ids == frozenset(e["id"] for e in doc["examples"]) - refused and len(boot.puts) == len(example_ids)
+    assert example_ids and all(e["checks"] for e in doc["examples"])
+    assert not ({x["id"] for x in doc.get("excluded", [])} & {e["id"] for e in doc["examples"]})
     messages = " | ".join(r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING)
-    assert "NOT seeded" in messages and "template" in messages
+    assert "template" not in messages and all(f"example {i} refused" in messages for i in refused)
 
 
 def test_examples_of_the_current_template_are_seeded_and_only_the_valid_ones_are_listed(monkeypatch, caplog):

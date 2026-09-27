@@ -63,12 +63,22 @@ def deployed_checks(run: dict) -> dict:
     return dict(checks)
 
 
+def judged_incorrect(report: dict) -> dict[str, str]:
+    """id -> reason for every question a deployed-eval report graded incorrect by the correctness judge's majority vote: the
+    example answers are demo material, so an answer the judge rejected is not pre-seeded (a click on it is answered live)."""
+    votes = int(report.get("votes") or 3)
+    return {qid: f"judged incorrect by the correctness judge: {n} of {votes} votes correct"
+            for qid, n in report["judged"]["votes"].items() if n * 2 <= votes}
+
+
 def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *, source: str,
-                   strict: bool = False, deployed: bool = False) -> dict:
+                   strict: bool = False, deployed: bool = False, exclude: dict[str, str] | None = None) -> dict:
     """One example per benchmark question, in benchmark order, from its hybrid run, each with its computed ``checks``.
 
     With ``deployed`` the runs are ``eval-deployed`` rows (router, cheap draft, verifier, escalation) and carry the
     service's own ``checks`` instead of a context to recompute them from.
+
+    exclude (id -> reason) leaves those questions out and records them under excluded.
 
     An example whose checks fail is written all the same (seeding refuses it; see :func:`refused_examples`); with
     ``strict`` the build raises instead, listing every one."""
@@ -78,8 +88,14 @@ def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *,
     missing = [b["id"] for b in benchmark if b["id"] not in hybrid]
     if missing:
         raise ValueError(f"no {'deployed' if deployed else 'hybrid'} run for benchmark question(s): {', '.join(missing)}")
+    exclude = exclude or {}
+    unknown = sorted(set(exclude) - {b["id"] for b in benchmark})
+    if unknown:
+        raise ValueError(f"cannot exclude {', '.join(unknown)}: not in the benchmark")
     examples = []
     for b in benchmark:
+        if b["id"] in exclude:
+            continue
         r = hybrid[b["id"]]
         if not r["answer"].strip():
             raise ValueError(f"{b['id']}: empty answer")
@@ -93,6 +109,8 @@ def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *,
                          "citations": sorted(r["cited"]), "hallucinated": [], "checks": checks})
     doc = {"source": source, "snapshot_id": snapshot_id, "template_fingerprint": template_fingerprint(),
            "examples": examples}
+    if exclude:
+        doc["excluded"] = [{"id": qid, "reason": reason} for qid, reason in sorted(exclude.items())]
     refused = refused_examples(doc)
     if strict and refused:
         raise ValueError("examples that fail their own checks cannot be served:\n  "
@@ -107,6 +125,8 @@ def main() -> int:
                     help="--runs is an `eval-deployed` file: rows carry the service's own checks (no context needed)")
     ap.add_argument("--snapshot", required=True, help="snapshot id of the graph those runs were answered against")
     ap.add_argument("--source", default=None, help="provenance line stored in the file")
+    ap.add_argument("--report", type=Path, default=None,
+                    help="the deployed-eval report of those runs: questions its judge graded incorrect are not seeded")
     ap.add_argument("--out", type=Path, default=EXAMPLES_PATH)
     ap.add_argument("--strict", action="store_true",
                     help="write nothing and exit non-zero when any example would be refused at seeding")
@@ -117,11 +137,15 @@ def main() -> int:
                       else f"benchmark run {args.runs.name}, hybrid system, Claude Sonnet 5")
     source = args.source or default_source
     try:
-        doc = build_examples(runs, benchmark, args.snapshot, source=source, strict=args.strict, deployed=args.deployed)
+        exclude = judged_incorrect(json.loads(args.report.read_text(encoding="utf-8"))) if args.report else None
+        doc = build_examples(runs, benchmark, args.snapshot, source=source, strict=args.strict, deployed=args.deployed,
+                             exclude=exclude)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     args.out.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    for entry in doc.get("excluded", []):
+        print(f"  not seeded: {entry['id']}: {entry['reason']}")
     print(f"wrote {len(doc['examples'])} examples for {args.snapshot} (template {doc['template_fingerprint']}) -> {args.out}")
     for example_id, reason in refused_examples(doc):
         print(f"  the service will REFUSE to seed {example_id}: {reason}", file=sys.stderr)

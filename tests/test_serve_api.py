@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import semigraph.serve.routes as routes
+from semigraph.artifacts import load_examples
 from semigraph.serve import store
 from semigraph.serve.guard import RateLimiter
 
@@ -129,7 +130,7 @@ def test_index_sets_security_headers(client):
 
 def test_examples_lists_benchmark_questions_without_answers(client):
     body = client.get("/api/examples").json()
-    assert len(body["examples"]) == 20
+    assert len(body["examples"]) == len(load_examples()["examples"])          # no bootstrap state: every packaged example is listed
     assert set(body["examples"][0]) == {"id", "type", "question"}
 
 

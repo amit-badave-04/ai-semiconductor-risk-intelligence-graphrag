@@ -209,3 +209,22 @@ def test_a_deployed_row_that_failed_its_checks_is_written_but_listed_as_refused(
     assert [i for i, _ in be.refused_examples(doc)] == ["N1"]
     with pytest.raises(ValueError, match="N1"):
         be.build_examples(deployed_runs(checks=bad), BENCH, SNAP, source="s", deployed=True, strict=True)
+
+
+# --- a question the correctness judge graded incorrect is not seeded (third deployed run: T1, T2, T3 were judged 0 of 3) ---
+
+def test_excluded_ids_are_left_out_of_the_examples_and_recorded_with_the_reason():
+    doc = be.build_examples(deployed_runs(), BENCH, SNAP, source="s", deployed=True, exclude={"N1": "judged incorrect: 0 of 3 votes"})
+    assert [e["id"] for e in doc["examples"]] == ["U1"]
+    assert doc["excluded"] == [{"id": "N1", "reason": "judged incorrect: 0 of 3 votes"}]
+
+
+def test_the_ids_a_report_judged_incorrect_by_majority_are_the_ones_to_exclude():
+    report = {"votes": 3, "judged": {"votes": {"A": 3, "B": 2, "C": 1, "D": 0}}}
+    assert be.judged_incorrect(report) == {"C": "judged incorrect by the correctness judge: 1 of 3 votes correct",
+                                           "D": "judged incorrect by the correctness judge: 0 of 3 votes correct"}
+
+
+def test_excluding_an_unknown_id_is_an_error_not_a_silent_no_op():
+    with pytest.raises(ValueError, match="not in the benchmark"):
+        be.build_examples(deployed_runs(), BENCH, SNAP, source="s", deployed=True, exclude={"ZZ": "typo"})
