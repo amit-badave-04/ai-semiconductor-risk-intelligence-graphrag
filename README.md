@@ -12,19 +12,24 @@ keyword matches to *external* Federal Register rules, not statements the company
 multi-hop supply-chain and export-control questions with citations that are checked against the
 retrieved context before the answer is released.
 
-**🔗 Live demo:** https://semigraph.fly.dev/ — click any of the 20 benchmark questions (free, cached)
-or ask your own (a GPT-6 Luna draft that must pass automatic checks, escalated to Claude Sonnet 5 when a
+**🔗 Live demo:** https://semigraph.fly.dev/ — click one of the pre-cached example questions (free, instant;
+about 50 of the 60 benchmark questions) or ask your own (a GPT-6 Luna draft that must pass automatic checks, escalated to Claude Sonnet 5 when a
 check fails or the question is about change over time; bot-gated and capped per day). Every citation
 chip opens the SEC excerpt, XBRL fact or Federal Register rule it points to. The owner parks the demo when
 it is not in use; if the page does not load, it is offline (see [Operations](#operations-start--stop)).
 
-> **Status (2026-09-26): v2 is a work in progress, and the temporal layer is being rebuilt.** An independent
-> review found that the "risks dropped from the latest annual report" answers contained false drops, and that
-> the benchmark used to score them could not see that. Milestone M1b replaces the drop layer with a text-grounded
-> comparison of individual risk items and re-measures accuracy with a source-text-grounded instrument.
-> Read [docs/v2/REVIEW_2026-09-26.md](docs/v2/REVIEW_2026-09-26.md) (what was wrong and why) and
-> [docs/v2/M1B_PLAN.md](docs/v2/M1B_PLAN.md) (the fix). Accuracy figures from the earlier instrument are kept below
-> as history only.
+> **Status (2026-09-27): v2, milestone M1b built and measured; the change-over-time claims are hedged to what was
+> measured, and four of the plan's ten quality gates still fail.** An independent review (2026-09-26) found that the
+> "risks dropped from the latest annual report" answers contained false drops and that the benchmark could not see
+> that. M1b replaced the drop layer with a text-grounded comparison of individual risk items and sentences between
+> consecutive annual filings (all consecutive pairs are in the graph; a question names the pair(s) it wants), and
+> re-measured with a source-text-grounded instrument. The service words every change claim only as strongly as its
+> measured precision ("no longer appears as a separate risk factor", "wording was not found in the newer filing; a
+> differently worded version may exist"), never "removed". **Not done yet:** the agent with tools (M3), document upload
+> and freshness (M4), the new frontend and the 1,000-user serving layer (M5), and the search upgrade (M2).
+> Read [docs/v2/M1B_PLAN.md](docs/v2/M1B_PLAN.md) L.10-L.13 for the numbers and how they were obtained, and
+> [docs/v2/REVIEW_2026-09-26.md](docs/v2/REVIEW_2026-09-26.md) for what was wrong before. Figures from the earlier
+> instrument are kept below as history only.
 
 > Data is public SEC EDGAR and Federal Register material. This is a research/portfolio system, not
 > investment advice.
@@ -37,10 +42,14 @@ it is not in use; if the page does not load, it is offline (see [Operations](#op
   suppliers → the export-control regime, every hop cited to a filing excerpt.
 - **Export-control exposure screening** — which companies are `AFFECTED_BY` which BIS rules, with
   the disclosure that proves it.
-- **Risk evolution over time (being rebuilt in M1b)** — risks newly introduced, **removed** or reworded
-  between annual reports. The layer deployed today clusters LLM-extracted summaries and can report a risk as
-  dropped while it is still in the newer filing word for word; M1b compares individual risk items and checks
-  every candidate removal against the newer filing's full text before it is reported.
+- **Risk evolution over time (M1b)** — risk factors and sentences that no longer match, newly match or were
+  reworded between two annual reports, computed by comparing the filings' own text (no LLM summaries), for any
+  consecutive pair ("between its FY2024 and FY2025 annual reports") or across the recent ones. A candidate removal is
+  checked against the newer filing's full text, borderline cases go to a cheap adjudicator whose quotes are verified in
+  code, and what the text check cannot settle is shown as "Not matched", never as removed. Measured precision is
+  published with the wording it licenses ([L.11](docs/v2/M1B_PLAN.md)): sentences flagged as missing from the newer
+  filing were right 45 of 51 times on the held-out sample, risk-factor-level removals only 1 of 3 (2 more had been
+  folded into another risk factor), so the service does not say "removed".
 - **Deterministic financial lookups** — revenue, capex, R&D per fiscal period straight from XBRL
   facts; numbers are never parsed out of prose by a model, and each figure in an answer is checked
   against the retrieved context.
@@ -67,7 +76,32 @@ reasoning.
 
 ## Results
 
-> **Historical, withdrawn as current claims.** Every table in this section was produced by an evaluation
+### v2 (2026-09-27): the deployed configuration on the 60-question benchmark
+
+Production configuration (GPT-6 Luna answers, Sonnet 5 on escalation and for the correctness judge), graph snapshot
+`snap-20260924-97c6597d58`; three runs, reports in `artifacts/eval_report.v2{,b,c}-deployed.json`. Full account, including
+every change made between the runs, in [docs/v2/M1B_PLAN.md](docs/v2/M1B_PLAN.md) **L.13**.
+
+| | first run (before fixes) | final run |
+|---|---|---|
+| mechanical checks (41: numbers, citations, refusals, misattribution) | 38 / 41 | **41 / 41** |
+| citation validity | 100 % | 100 % |
+| open questions judged correct (23) | 10 / 23 (first judge) | **20 / 23** |
+| same first-run answers under the revised judge | 18 / 23 | |
+| escalations to Sonnet | 1 / 60 | 1 / 60 |
+| answers per 60 questions / cost | $0.83 | **$0.80 (about $0.013 each, 4.2 s average)** |
+
+**Read the judged figure with the attribution in mind:** most of the jump from 10 to 20 is the correctness judge being
+revised (it penalised the hedged wording the service is required to use), not the product; the retrieval fix (questions
+about an older filing pair, T7 and T12) accounts for 2 of the 10 extra correct answers. The revised judge was accepted
+against 12 frozen adversarial probes, but it was tuned after seeing failures, so that acceptance is not blind. Still
+failing: three multi-year or ambiguous temporal questions (T1, T2, T3) and one retrieval miss (X4, M2 scope). The
+plan's held-out gates for the change layer **do not all pass** (sentence-level removal precision 0.882 vs the 0.90 gate;
+risk-factor-level removal and "new" precision 1/3 and 6/12); the wording is hedged accordingly ([L.11](docs/v2/M1B_PLAN.md)).
+There has been **no human validation**: the gold labels come from blind LLM annotators with machine-checked quotes,
+and the owner's spot check was delegated to an LLM council (disclosed in L.9).
+
+> **Historical, withdrawn as current claims.** Every table below this line was produced by an evaluation
 > instrument that could not detect false "dropped risk" claims or numeric errors on temporal questions (its
 > judge was calibrated by AI labellers who saw the same retrieved context as the model, not the filing; the
 > two example answers the review found wrong were rated correct unanimously). The benchmark is being
