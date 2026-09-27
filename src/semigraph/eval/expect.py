@@ -163,7 +163,14 @@ def misattributed_sentences(answer: str, companies: Sequence[str]) -> list[str]:
     source of a saying verb or filing noun in it, and no negation sits next to that phrase. The clauses of a sentence
     are split at ``;`` and contrast words (while, whereas, but, however, although, though), so "NVIDIA's 10-K covers
     export controls, while the BIS rule [fr:...] is separate" is not flagged. Known limits (left to the judge): an
-    attribution with a chunk citation or with no citation, and an attribution in a clause that does not itself cite the rule."""
+    attribution with a chunk citation or with no citation, and an attribution in a clause that does not itself cite the rule.
+
+    The negation reach is a WORD-LIST heuristic (window, prepositional negation, source-limit scope, presupposing leads and saying verbs), so
+    it has gaps in both directions (closing reviews, 2026-09-27): "There is no doubt NVIDIA disclosed ...", "Unlike AMD, which did not, NVIDIA
+    disclosed ..." and "... does not state why NVIDIA disclosed ..." pass; "the section where NVIDIA's 10-K discusses the rule" and "any rule
+    other than the one NVIDIA's 10-K names" pass although the code of 0a9d566 flagged them; "does not provide any evidence that NVIDIA's 10-K
+    discusses this rule" is flagged (the lead word "that" cannot tell a complementizer from a relative pronoun). It is a mechanical half of a
+    mechanical-plus-judge probe, not a proof."""
     company = _company_pattern(companies)
     flagged = []
     for sentence in _sentences(answer):

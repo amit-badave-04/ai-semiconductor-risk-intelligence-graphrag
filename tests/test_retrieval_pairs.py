@@ -474,3 +474,20 @@ def test_a_disclosure_question_with_evolution_wording_is_still_a_multi_year_ques
     for q in ("How has Nvidia's disclosed risk profile evolved across its recent annual reports?",
               "How have Nvidia's risk factors evolved?"):
         assert pair_selection_mode(q, mentioned_periods(q)) == "multi", q
+
+
+# --- third closing review L1: other financial statements are not disclosure nouns either ---
+
+@pytest.mark.parametrize("question", [
+    "How did Nvidia's income statements change between fiscal 2024 and fiscal 2025?",
+    "What changed in Nvidia's statements of cash flows in fiscal 2025?",
+    "How did the consolidated statements of operations change between fiscal 2024 and fiscal 2025?",
+    "What changed in Nvidia's balance sheet statement in fiscal 2025?",
+])
+def test_a_financial_statement_is_not_a_disclosure_noun(question):
+    assert pair_selection_mode(question, mentioned_periods(question)) is None
+
+
+def test_a_statement_the_company_made_is_still_a_disclosure_noun():
+    q = "Was the statement about the 2022 export controls removed from Nvidia's FY2026 10-K?"
+    assert pair_selection_mode(q, mentioned_periods(q)) == "named"

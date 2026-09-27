@@ -559,7 +559,12 @@ _RISK_CHANGE_RE = re.compile(
 # What the question is ABOUT must be a disclosure, not a filing: "how did revenue change according to its 10-K" mentions a filing and a
 # change but asks about a metric (closing review M4), so the generic nouns (10-K, filing, annual report) are not enough.
 _DISCLOSURE_NOUN_RE = re.compile(
-    r"\b(?:risks?|disclos\w*|(?<!financial )statements?|sentences?|passages?|wording|language|paragraphs?)\b", re.I)
+    r"\b(?:risks?|disclos\w*|"
+    # a company's "statement" is a disclosure; the financial statements are not ("income statements", "consolidated statements of
+    # operations", "statements of cash flows", "balance sheet statement")
+    r"(?<!financial )(?<!income )(?<!consolidated )(?<!balance sheet )statements?"
+    r"(?!\s+of\s+(?:cash|income|operations|financial|comprehensive|stockholders|shareholders))|"
+    r"sentences?|passages?|wording|language|paragraphs?)\b", re.I)
 # "in the last 3 years", "over the past few years": several annual reports, when the question is about a disclosure.
 _SPAN_YEARS_RE = re.compile(
     r"\b(?:last|past|previous|recent)\s+(?:\d+|two|three|four|five|several|few)\s+(?:fiscal\s+)?years\b|\b(?:last|past)\s+years\b", re.I)

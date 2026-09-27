@@ -185,3 +185,20 @@ def test_a_refusal_states_no_scaled_number_even_without_a_currency_symbol():
     assert not is_refusal_answer("Samsung's revenue was 300 trillion won; the filing does not say more.")
     assert not is_refusal_answer("Revenue was 258.9 trillion KRW, but the filings do not state the segment.")
     assert is_refusal_answer("The context does not give Samsung's revenue; Qualcomm says licensees with 10% or more of its revenue include Samsung.")
+
+
+# --- third closing review S1: with is_none_report gone, an answer that only says a list is empty is uncited and FAILS no_citation ---
+# (the answer prompt says not to cite that sentence; the cost is stated in docs/v2/M1B_PLAN.md L.13: such an answer escalates / shows a warning)
+
+@pytest.mark.parametrize("text", [
+    "The text check found no risk factor that no longer appears as a separate risk factor.",
+    "The check found none; Nvidia has no export-control exposure in China.",
+    "None found. Nvidia never discussed China in its 10-K.",
+    "The comparison found no tariff risk in Nvidia's filings, so Nvidia does not face tariff exposure.",
+])
+def test_an_uncited_answer_that_reports_an_empty_list_fails_no_citation_and_no_exemption_exists(text):
+    from semigraph.retrieval.verify import answer_checks, failed_check_names
+
+    checks = answer_checks(text, set(), set(), "RELATIONSHIPS:\n(none)", question="q")
+    assert checks.has_citation is False and "no_citation" in failed_check_names(checks.as_dict())
+    assert "is_none_report" not in checks.as_dict()
