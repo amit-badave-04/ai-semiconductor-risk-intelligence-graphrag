@@ -39,3 +39,26 @@ Estimate: 8-9 engineering days (3 workers in parallel ~ 3 calendar days + 2 inte
 
 ## 5. Obsolete in the earlier plan after M1b
 `risk_timeline` "active vs dropped lineages" tool (read RiskItem/RiskPassage via TEMPORAL_QUERY/PASSAGES_QUERY); an LLM router (keep the deterministic `needs_strong_model`); a separate citation-verifier node (verify.py already does it); structured claims `{text, cite_ids}` (would change the prompt and invalidate seeded examples); LiteLLM Router as the fallback layer (the fallback IS draft -> verify -> escalate); AI SDK stream encoder (M5).
+
+## 6. Interface contract and acceptance requirements (fixed 2026-09-27, before the workers started)
+
+Step 0 is committed (`0152842`, `05f40f6`, `a8b6c71`): `stream_answer_for_context`, the opt-in `strategy=agent` (guard, lazy import in `routes._stream_fn`, `agent_enabled` in `/api/stats`), `computed` lines in METRICS, the agent and Langfuse settings, the optional `agent` extra, and `scripts/probe_tool_calling.py`. The live probe (`artifacts/agent_tool_probe.json`, ~$0.013) found: **`openai/gpt-6-luna` rejects function tools on `/v1/chat/completions` unless `reasoning_effort="none"`** (a 400 otherwise); with it, single, parallel (two calls in one turn), `role: tool` round trip and `tool_choice="none"` all pass; Sonnet 5 passes all four unchanged.
+
+**The one entry point** (`semigraph/agent/stream.py`, imported lazily by the route):
+
+```python
+def agent_answer_stream(question, driver, embedder, strategy="agent", *, timeout=None, max_tokens=1200,
+                        escalation_model=None, settings=None, planner=None, tracer=None,
+                        llm_stream=None, escalation_stream=None, **stream_kwargs) -> Iterator[dict]
+```
+Events: zero or more `{"event": "step", "n": int, "tool": str, "args": dict, "summary": str, "ok": bool}` (summary = counts / ids / fiscal years only, never filing prose), then exactly the `answer_stream` grammar (`retrieval`, `delta`*, `done` | `error`). `done` carries `agent: {"tool_calls": [{"tool", "args", "ok"}], "model_calls": int, "elapsed_s": float, "fallback_reason": str | None, "planner_model": str, "planner_usage": {...}, "planner_cost_usd": float}`. `planner` is an injectable callable (tests use a scripted fake); `tracer` follows `semigraph.agent.trace.Tracer` (duck-typed: `span(name, **attrs)` context manager whose handle has `set(**attrs)`, `event(name, **attrs)`, `generation(*, name, model, usage, cost_usd, input_chars, output_chars)`, `flush()`; none of them may ever raise). `settings` supplies the limits.
+
+**Acceptance requirements (each one needs a test):**
+1. **Spend is complete.** `_paid_stream` writes the ledger row and the daily ceiling from `done` / `error` `usage` and `cost_usd`; `stream_answer_for_context` prices only the writer. `agent_answer_stream` folds the planner's cost into BOTH terminal events: each model priced at its own rates (`llm_shape.KNOWN_PRICES_PER_MTOK`), dollars added, never tokens summed and priced once. Tests: a fake planner that reports usage, on the `done` path and on the `error` path.
+2. **`compute_change` is fully wired or absent.** It accepts only facts that are already in `r["metrics"]` (fetched through `financial_metrics`), its line carries BOTH `[xbrl:...]` ids (so `valid_ids` and `sources_from_context` see them), and one end-to-end test through `verify.answer_checks` shows an answer citing the computed figure passes and one with the figure moved by a point fails (`verify._COMPUTED_PERCENT_RE` is the grammar).
+3. **The Luna finding is enforced.** The planner call passes `completion_params(model, budget, reasoning_effort="none")` for `openai/` models; a unit test pins the kwargs sent to `litellm.completion`. Every happy-path T0 case asserts `fallback_reason is None` (a silent 400 -> fallback must not be scored as an agent answer).
+4. **The time budget is real.** LangGraph runs synchronously here, so every planner call gets `timeout=min(remaining_budget, planner_call_cap)` and a test with a slow fake model shows the fallback fires inside the budget.
+5. **Fail fast.** When `AGENT_ENABLED=true`, `serve/main.py`'s lifespan imports `semigraph.agent.stream` so a missing langgraph stops the service at boot, not on the first agent question.
+6. The template fingerprint stays `ed30fa9cc9` (pinned in `tests/test_agent_seam.py`).
+
+**Owner gates:** Langfuse cloud is NOT enabled by default (`tracing.py` is a no-op unless public key, secret key and host are all set, and needs the owner's sign-off plus a privacy line on the page; the default trace carries lengths and hashes, never the question or answer text). The T2 paid run (~$2-2.5) needs an ask. Every subagent call names its model (`sonnet`; `opus` for verification); at most 3 run at once; files are disjoint (A: `src/semigraph/agent/**`, `tests/agent/**`; B: `serve/{routes,main,tracing}.py`, `static/index.html`, serve tests; C: `eval/**` additions, `artifacts/agent_benchmark.json`, `cli.py` additions, DeepEval evaluation). Run tests with `.venv/Scripts/python -m pytest` (never `uv run`: OneDrive locks `.venv` while it rebuilds the project).

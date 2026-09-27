@@ -56,7 +56,9 @@ def test_computed_lines_are_appended_to_the_metrics_block_as_data_and_change_not
 
 
 def test_the_template_is_not_touched_by_the_seam():
-    assert len(template_fingerprint()) == 10
+    """Computed lines are DATA in METRICS: the agent must never change the prompt template (seeded examples, the cache and the
+    eval baselines are keyed to it). A deliberate template change updates this pin AND re-runs the benchmark."""
+    assert template_fingerprint() == "ed30fa9cc9"
 
 
 def test_stream_answer_for_context_is_what_answer_stream_delegates_to():
