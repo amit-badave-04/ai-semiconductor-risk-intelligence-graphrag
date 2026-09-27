@@ -181,6 +181,38 @@ checks line reports only what `checks` proves: cited ids were retrieved, numbers
 unmatched numbers or bracketed pseudo-citations are listed as warnings. None of this proves a sentence is supported by the
 passage it cites.
 
+## The M3 agent (`strategy=agent`)
+
+Opt-in: a cheap retrieval planner (`AGENT_PLANNER_MODEL`, default `openai/gpt-6-luna`) adds up to `AGENT_MAX_TOOL_CALLS`
+bounded, read-only lookups in front of the SAME shared writer the fixed path uses (`stream_answer_for_context`) — never a
+separate answer format, never its own citation or verification rules. A planner failure of any kind falls back to the
+plain retrieval with no error shown to the visitor.
+
+| Setting | Role | Default |
+|---|---|---|
+| `AGENT_ENABLED` | turns the strategy on; `guard.validate_strategy` rejects `agent` and `/api/stats` reports `agent_enabled` when off | `false` |
+| `AGENT_PLANNER_MODEL` | plans tool calls only; the answer still comes from `ANSWER_MODEL` / `ESCALATION_MODEL` | `openai/gpt-6-luna` |
+| `AGENT_MAX_TOOL_CALLS` / `AGENT_MAX_MODEL_CALLS` / `AGENT_TIME_BUDGET_S` | bounds on one run | `4` / `3` / `25` |
+
+Production values are pinned in `fly.toml [env]`, so a redeploy reproduces them. The API image ships `langgraph` in
+`deploy/requirements-serve.txt` unconditionally (`AGENT_ENABLED` is then a config flip, not an image rebuild), but
+`serve/main.py`'s lifespan only imports `semigraph.agent.stream` when the flag is on, so a deployment with it off never
+needs the package to actually work. Turning it on for the first time: `flyctl ssh console -a semigraph -C "printenv
+AGENT_ENABLED"` after deploy to confirm, then watch `flyctl logs -a semigraph` for `neo4j reachable` and no import error
+at boot (a missing `langgraph` in a future slimmed image would fail fast there, before the first agent question, not on it).
+
+**Ship gate** (docs/v2/M3_AGENT_PLAN.md section 7): the flag was turned on only after a live paid evaluation showed the
+agent never scores worse than the fixed path on the 60-question benchmark, adds no new safety-check failure the fixed
+path did not already have on the identical question, and stays within the latency/cost envelope. That evaluation is
+`semigraph eval-agent` (PAID; needs `--confirm-paid` and `--max-usd`); re-run it after any change to the planner prompt,
+the tool set, or the shared answer prompt.
+
+**Revert to fixed-path only:** `flyctl secrets set` is not needed — `AGENT_ENABLED` is a plain (non-secret) `[env]` value;
+set it to `false` in `fly.toml` and `flyctl deploy --ha=false --remote-only --yes`, or flip it without a deploy with
+`flyctl secrets set AGENT_ENABLED=false` (subject to the same env-vs-secret precedence caveat as the answering models
+above — verify with the `printenv` check after either path). No existing question can be mid-flight in a way this
+affects: `strategy` is chosen once per request.
+
 ## Troubleshooting
 
 - `/healthz` 503 → the API cannot reach Neo4j: `flyctl status -a semigraph-neo4j` (machine must be

@@ -24,6 +24,9 @@ swap_size_mb = 1024
   ESCALATION_MODEL = "anthropic/claude-sonnet-5"
   # The Fly edge proxy sets this from the real connection; never trust it elsewhere.
   CLIENT_IP_HEADER = "fly-client-ip"
+  # Opt-in retrieval-planning agent (strategy=agent), docs/RUNBOOK.md "The M3 agent" / docs/v2/M3_AGENT_PLAN.md section 7.
+  # Enabled 2026-09-27 after a live paid ship-gate evaluation showed no regression vs the fixed path. Revert: set "false".
+  AGENT_ENABLED = "true"
 
 [http_service]
   internal_port = 8080
