@@ -478,7 +478,7 @@ def test_a_real_tool_name_still_passes_through_the_tool_attribute():
 # ---------------------------------------------------------------- R2: the mid-stream log redactor catches secret-shaped text
 
 @pytest.mark.parametrize("text,secret", [
-    ("BadRequestError: upstream rejected key sk-live-abcdef1234567890", "sk-live-abcdef1234567890"),
+    ("BadRequestError: upstream rejected key sk-live-abcdef1234567890", "sk-live-abcdef1234567890"),   # fake canary, never a real key — gitleaks:allow
     ("connection refused: Authorization: Bearer abc123-canary-bearer-token", "Bearer abc123-canary-bearer-token"),
 ])
 def test_redact_secret_shaped_removes_a_secret_shaped_substring_and_is_bounded(text, secret):

@@ -320,7 +320,7 @@ def test_mid_stream_error_event_still_logs_spend(client, fakes, monkeypatch):
 def test_the_mid_stream_error_log_line_redacts_a_secret_shaped_string_in_the_exception_text(client, fakes, monkeypatch, caplog):
     """The client-facing message is already generic (asserted above); this is the SERVER log line, which used to carry
     ``ev["detail"]`` (an f-string of the provider exception's type and text) verbatim."""
-    secret = "sk-live-abcdef1234567890"
+    secret = "sk-live-abcdef1234567890"    # a fake, deliberately secret-shaped canary for the redaction test below, never a real key — gitleaks:allow
 
     def failing(*a, **kw):
         yield {"event": "retrieval", "anchors": {}, "counts": {}}
