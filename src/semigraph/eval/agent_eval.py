@@ -402,10 +402,13 @@ def _tool_calls(row: Mapping) -> list[dict]:
 
 
 def _agent_missing(row: Mapping) -> bool:
-    """A row being scored as an agent run has no ``agent`` object and did not error: a fixed-path row (or an agent row that lost
-    its agent object) that would otherwise vacuously pass every agent-specific gate (M3 R3 review, HIGH finding 1). A genuine
-    error row has no agent object either, by contract, and is scored on its own terms (its ``step`` events, its reported cost)."""
-    return row.get("agent") is None and not row.get("error")
+    """A row being scored as an agent run has no usable ``agent`` object and did not error: a fixed-path row, an agent row that lost
+    its agent object, or one with an empty/malformed agent object (``{}``, or one with no ``tool_calls`` key) — every shape that
+    would otherwise vacuously pass agent-specific gates (M3 R3 review, HIGH finding 1; the empty-object case per the fix
+    verification's Warning W1). A genuine error row has no agent object either, by contract, and is scored on its own terms (its
+    ``step`` events, its reported cost)."""
+    agent = row.get("agent")
+    return (agent is None or "tool_calls" not in agent) and not row.get("error")
 
 
 def trajectory_failures(item: Mapping, row: Mapping, limits: AgentLimits) -> list[str]:
@@ -473,11 +476,12 @@ def fallback_failures(item: Mapping, row: Mapping) -> list[str]:
     """A FULL fallback (zero successful tool calls: a planner exception, a 400 on tool calling, or a time-budget expiry before any
     call succeeded) answers with the plain hybrid retrieval and must not be scored as an agent answer. Only a case that declares
     ``expects_fallback`` may (and then must) show one. A PARTIAL fallback (:func:`is_partial_fallback`) is never a failure here — it
-    kept a merged, never-worse-than-the-prefetch result — and is reported separately, not gated. A row with no agent object at all
-    (and no error) is a different failure (``agent_missing``): there is no ``fallback_reason`` to read one way or the other."""
-    agent = row.get("agent")
-    if agent is None:
-        return ["agent_missing"] if _agent_missing(row) else []
+    kept a merged, never-worse-than-the-prefetch result — and is reported separately, not gated. A row with no usable agent object
+    (``_agent_missing``, and no error) is a different failure (``agent_missing``): there is no ``fallback_reason`` to read one way or
+    the other."""
+    if _agent_missing(row):
+        return ["agent_missing"]
+    agent = row.get("agent") or {}
     reason = agent.get("fallback_reason")
     if item.get("expects_fallback"):
         return [] if reason else ["fallback_expected_but_none"]
@@ -509,9 +513,9 @@ def spend_failures(row: Mapping) -> list[str]:
         return ["spend_missing"]
     if row.get("error"):
         return []
-    agent = row.get("agent")
-    if agent is None:
-        return ["agent_missing"] if _agent_missing(row) else []
+    if _agent_missing(row):
+        return ["agent_missing"]
+    agent = row.get("agent") or {}
     planner_cost = agent.get("planner_cost_usd")
     if planner_cost is None:
         return ["spend_missing"]
@@ -519,7 +523,12 @@ def spend_failures(row: Mapping) -> list[str]:
     model, usage = agent.get("planner_model"), agent.get("planner_usage")
     if model in KNOWN_PRICES_PER_MTOK and usage and abs(usage_cost(usage, model) - planner_cost) > COST_TOLERANCE_USD:
         failures.append("planner_cost_mismatch")
-    if (agent.get("model_calls") or 0) > 0 and not _usage_has_tokens(usage):
+    # A full fallback (every planning turn failed before any tool call could succeed) legitimately has no usage to report: the
+    # provider call itself raised, so there was nothing to price. Only a run that made model calls AND kept at least one successful
+    # tool call (or never fell back at all) is expected to have priceable planner usage (M3 fix-verification suggestion: the
+    # original check would fail the spend gate on a case that correctly used, and expected, this exact fallback).
+    full_fallback = bool(agent.get("fallback_reason")) and not is_partial_fallback(row)
+    if (agent.get("model_calls") or 0) > 0 and not _usage_has_tokens(usage) and not full_fallback:
         # a planner that made model calls but reported zero usage would otherwise read as a free run (M3 R3 review, MEDIUM finding 6)
         failures.append("planner_usage_missing")
     if cost + COST_TOLERANCE_USD < planner_cost:
@@ -587,7 +596,15 @@ def is_judged(item: Mapping) -> bool:
 
 def judge_agent_runs(rows: list[dict], items: list[dict], judge, *, votes: int = 3, judge_model: str | None = None,
                      as_of: str | None = None) -> dict:
-    """``bakeoff.judge_open`` (majority of ``votes``, the one judge prompt) over the rows whose item ``is_judged``."""
+    """``bakeoff.judge_open`` (majority of ``votes``, the one judge prompt) over the rows whose item ``is_judged``.
+
+    Refuses an item that declares ``judge_notes_from`` but was never resolved (``judge_notes`` empty): scoring it as-is would
+    silently skip the judge — for example the misattribution gate would pass A22 on the mechanical guard alone — instead of
+    grading it (M3 fix-verification Warning W2). Callers pass items through :func:`build_run_set` first."""
+    unresolved = sorted(it["id"] for it in items if it.get("judge_notes_from") and not it.get("judge_notes"))
+    if unresolved:
+        raise ValueError(f"{', '.join(unresolved)}: judge_notes_from set but judge_notes was never resolved "
+                        "(pass items through build_run_set/resolve_judge_notes first)")
     by_id = {it["id"]: it for it in items}
     return judge_open([r for r in rows if is_judged(by_id[r["id"]])], items, judge, votes=votes, model=judge_model, as_of=as_of, detail=True)
 
@@ -809,6 +826,11 @@ def score_agent_runs(rows: list[dict], items: list[dict], *, limits: AgentLimits
     from ..agent.planner import PLANNER_PROMPT_VERSION      # lazy: no module outside semigraph.agent may import it at module level
 
     by_id = {it["id"]: it for it in items}
+    unresolved = sorted(it["id"] for it in items if it.get("judge_notes_from") and not it.get("judge_notes"))
+    if unresolved:
+        raise ValueError(f"{', '.join(unresolved)}: judge_notes_from set but judge_notes was never resolved "
+                        "(pass items through build_run_set/resolve_judge_notes first) — scoring these directly would silently "
+                        "skip the judge instead of grading them (M3 fix-verification Warning W2)")
     unknown = sorted({r["id"] for r in rows} - set(by_id))
     if unknown:
         raise ValueError(f"runs for unknown question(s): {', '.join(unknown)}")

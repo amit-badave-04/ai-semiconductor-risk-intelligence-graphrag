@@ -113,6 +113,21 @@ def test_a_row_scored_as_an_agent_run_with_no_agent_object_fails_instead_of_pass
     assert (gate(result, "trajectory"), gate(result, "no_fallback"), gate(result, "spend_consistent")) == (False, False, False)
 
 
+def test_an_empty_or_malformed_agent_object_is_agent_missing_too():
+    """``agent={}`` (or one with no ``tool_calls`` key) is not the same shape as ``agent=None``, but must fail exactly the same
+    (M3 fix-verification Warning W1: the real stream never builds this shape, but the scorer must not silently pass it)."""
+    it = item()
+    empty_agent_row = row(it, events())
+    empty_agent_row["agent"] = {}
+    s = ae.score_run(it, empty_agent_row, LIMITS)
+    assert s["trajectory_failures"] == ["agent_missing"]
+    assert s["fallback_failures"] == ["agent_missing"]
+    assert s["spend_failures"] == ["agent_missing"]
+    no_tool_calls_key_row = row(it, events())
+    no_tool_calls_key_row["agent"] = {"model_calls": 1}      # an agent object present but with no "tool_calls" key
+    assert ae.score_run(it, no_tool_calls_key_row, LIMITS)["trajectory_failures"] == ["agent_missing"]
+
+
 # --- limits and fallback ----------------------------------------------------------------------------------------------
 
 def test_the_limits_come_from_the_settings_not_from_the_harness():
@@ -200,6 +215,21 @@ def test_a_planner_that_made_model_calls_but_reports_zero_usage_is_not_read_as_f
     assert score()["spend_failures"] == []                                             # the normal case is unaffected
     no_calls_no_usage = events(model_calls=0, planner_usage={"prompt_tokens": 0, "completion_tokens": 0})
     assert score(evs=no_calls_no_usage)["spend_failures"] == []                        # 0 model calls: zero usage is honest
+
+
+def test_a_full_fallback_from_a_planner_error_is_not_read_as_a_missing_planner_spend():
+    """A full fallback (every planning turn failed before any tool call succeeded) legitimately has no usage to report — the
+    provider call itself raised, so there was nothing to price. This must not ALSO fail with ``planner_usage_missing`` on top of
+    the (correct, gated separately) ``fallback:`` failure (M3 fix-verification suggestion)."""
+    full_fallback = events(tools=(), model_calls=1, planner_usage={"prompt_tokens": 0, "completion_tokens": 0},
+                           fallback_reason="planner_error: RuntimeError")
+    s = score(evs=full_fallback)
+    assert s["spend_failures"] == []                     # not planner_usage_missing: nothing legitimately usable was ever returned
+    assert s["fallback_failures"] == ["fallback:planner_error: RuntimeError"]     # the fallback itself is still gated, correctly
+    # a PARTIAL fallback (a successful tool call happened) still expects real planner usage, so the check still applies to it
+    partial_fallback_no_usage = events(tools=("financial_metrics",), ok=True, model_calls=2,
+                                       planner_usage={"prompt_tokens": 0, "completion_tokens": 0}, fallback_reason="time_budget")
+    assert "planner_usage_missing" in score(evs=partial_fallback_no_usage)["spend_failures"]
 
 
 def test_an_error_row_only_needs_its_cost_to_be_reported():
@@ -419,6 +449,19 @@ def test_a_guard_caught_misattribution_violation_still_fails_with_no_judge_run()
     violating = events((), answer="NVIDIA disclosed the BIS 50% affiliates rule in its 10-K [fr:2025-19001].", cited=("fr:2025-19001",))
     result = run_all([(x, violating)])
     assert result["judged"] is None and gate(result, "misattribution") is False
+
+
+def test_scoring_an_item_with_judge_notes_from_that_was_never_resolved_is_refused_not_silently_unjudged():
+    """An item carrying ``judge_notes_from`` but no resolved ``judge_notes`` (i.e. it bypassed ``build_run_set`` /
+    ``resolve_judge_notes``) must not be scored as-is: ``is_judged`` would silently read it as unverified and skip the judge, so a
+    real misattribution probe like A22 would pass on the mechanical guard alone (M3 fix-verification Warning W2)."""
+    x = {"id": "A22", "type": "misattribution", "q": "Question A22?", "expect": {"not_company_disclosure": ["NVIDIA", "Nvidia"]},
+         "judge_notes_from": ["X1"], "split": "main"}                     # note: judge_notes itself was never resolved
+    rows = [row(x, events((), answer="NVIDIA disclosed the rule.", cited=()))]
+    with pytest.raises(ValueError, match="A22.*judge_notes_from.*never resolved"):
+        ae.score_agent_runs(rows, [x], limits=LIMITS, judge=judge_marking_wrong())
+    with pytest.raises(ValueError, match="A22.*judge_notes_from.*never resolved"):
+        ae.judge_agent_runs(rows, [x], judge_marking_wrong(), votes=3)
 
 
 def test_the_baseline_comparison_is_refused_when_the_instrument_or_the_questions_differ():
