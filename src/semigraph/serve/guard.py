@@ -19,6 +19,7 @@ logger = logging.getLogger("semigraph.serve.guard")
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 MAX_BUCKETS = 20_000
 STRATEGIES = ("hybrid", "vector")
+AGENT_STRATEGY = "agent"
 
 
 class RateLimiter:
@@ -70,10 +71,12 @@ def validate_question(question: str, max_chars: int) -> str:
     return q
 
 
-def validate_strategy(strategy: str) -> str:
+def validate_strategy(strategy: str, *, agent_enabled: bool = False) -> str:
+    """``agent`` is an opt-in strategy: neither accepted nor advertised while the deployment has it off."""
     s = (strategy or "hybrid").lower()
-    if s not in STRATEGIES:
-        raise HTTPException(status_code=400, detail=f"strategy must be one of {STRATEGIES}")
+    allowed = STRATEGIES + (AGENT_STRATEGY,) if agent_enabled else STRATEGIES
+    if s not in allowed:
+        raise HTTPException(status_code=400, detail=f"strategy must be one of {allowed}")
     return s
 
 

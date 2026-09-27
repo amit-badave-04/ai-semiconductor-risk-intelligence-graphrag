@@ -78,6 +78,19 @@ class Settings(BaseSettings):
     turnstile_required: bool = False          # true = fail CLOSED for live questions when unconfigured/invalid
     read_rate_limit_per_minute: int = 120     # per address, free read endpoints (stats/evidence/examples)
 
+    # --- Agent (semigraph.agent, docs/v2/M3_AGENT_PLAN.md): OPT-IN retrieval planner, strategy=agent; off = never imported by serve ---
+    agent_enabled: bool = False
+    agent_planner_model: str = "openai/gpt-6-luna"   # plans the tool calls only; the answer still goes through answer_model/escalation
+    agent_max_tool_calls: int = 4
+    agent_max_model_calls: int = 3
+    agent_time_budget_s: int = 25             # wall clock for the whole plan; on expiry the plain hybrid retrieval answers
+
+    # --- Langfuse tracing (semigraph.serve.tracing): sampled, fail-open; no key = no tracing ---
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = Field("", repr=False)
+    langfuse_host: str = ""
+    langfuse_sample_rate: float = 0.1
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"

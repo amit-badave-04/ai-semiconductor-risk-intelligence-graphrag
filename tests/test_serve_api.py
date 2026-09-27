@@ -45,6 +45,7 @@ class FakeSettings:
     llm_model = "anthropic/claude-sonnet-5"
     answer_model = "anthropic/claude-sonnet-5"
     escalation_model = ""
+    agent_enabled = False
 
 
 class Fakes:
@@ -154,6 +155,37 @@ def test_ask_rejects_short_and_long_questions(client):
 
 def test_ask_rejects_unknown_strategy(client):
     assert client.post("/api/ask", json={"question": Q, "strategy": "magic"}).status_code == 400
+
+
+def test_the_agent_strategy_is_refused_and_unadvertised_while_the_agent_is_off(client, fakes):
+    assert client.get("/api/stats").json()["agent_enabled"] is False
+    r = client.post("/api/ask", json={"question": Q, "strategy": "agent"})
+    assert r.status_code == 400 and "agent" not in r.text
+    assert fakes.queries == []                                     # refused before any ledger write
+
+
+def test_an_enabled_agent_streams_through_the_lazily_imported_agent_and_is_ledgered_as_agent(client, fakes, monkeypatch):
+    import sys
+    import types
+    seen = {}
+
+    def agent_stream(question, driver, embedder, strategy="agent", **kw):
+        seen.update(kw)
+        yield from fake_answer_stream(question, driver, embedder, strategy)
+
+    stub = types.ModuleType("semigraph.agent.stream")
+    stub.agent_answer_stream = agent_stream
+    monkeypatch.setitem(sys.modules, "semigraph.agent", types.ModuleType("semigraph.agent"))
+    monkeypatch.setitem(sys.modules, "semigraph.agent.stream", stub)
+    client.app.state.settings.agent_enabled = True
+    try:
+        assert client.get("/api/stats").json()["agent_enabled"] is True
+        events = parse_sse(client.post("/api/ask", json={"question": Q, "strategy": "agent"}).text)
+    finally:
+        client.app.state.settings.agent_enabled = False
+    assert events[-1]["event"] == "done" and events[-1]["strategy"] == "agent"
+    assert seen["settings"] is client.app.state.settings           # the agent reads its limits from the service's settings
+    assert fakes.queries[-1]["strategy"] == "agent" and fakes.queries[-1]["cached"] is False
 
 
 def test_ask_streams_retrieval_deltas_and_done_then_caches(client, fakes):

@@ -160,7 +160,8 @@ async def stats(request: Request):
             "limits": {"max_queries_per_day": s.max_queries_per_day,
                        "per_ip": f"{s.rate_limit_questions} per {s.rate_limit_window_seconds // 60} min",
                        "max_question_chars": s.max_question_chars},
-            "models": {"llm": s.answer_model, "escalation": s.escalation_model or None, "embedder": st.embedder.name}}
+            "models": {"llm": s.answer_model, "escalation": s.escalation_model or None, "embedder": st.embedder.name},
+            "agent_enabled": s.agent_enabled}
 
 
 @router.get("/api/evidence/{evidence_id}")
@@ -182,7 +183,7 @@ async def evidence(evidence_id: str, request: Request):
 async def ask(body: AskRequest, request: Request):
     st, s = request.app.state, request.app.state.settings
     question = guard.validate_question(body.question, s.max_question_chars)
-    strategy = guard.validate_strategy(body.strategy)
+    strategy = guard.validate_strategy(body.strategy, agent_enabled=s.agent_enabled)
     ip = guard.client_ip(request, s.client_ip_header)
     iph = guard.ip_hash(ip)
     snapshot_id = getattr(st, "snapshot_id", "")
@@ -225,6 +226,15 @@ def _warn_on_failed_checks(done: dict) -> None:
                        done.get("escalated"), done.get("answered_by"), done.get("checks"))
 
 
+def _stream_fn(strategy: str):
+    """The event-stream function for a strategy. The agent package (langgraph) is imported only when an ``agent`` question
+    is actually served, so a deployment with ``AGENT_ENABLED`` off never needs it installed."""
+    if strategy != guard.AGENT_STRATEGY:
+        return answer_stream
+    from ..agent.stream import agent_answer_stream
+    return agent_answer_stream
+
+
 def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = ""):
     """Sync generator (runs in the threadpool): slot -> retrieval -> LLM deltas -> done.
 
@@ -239,9 +249,10 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
         return
     logged = False
     try:
-        for ev in answer_stream(question, st.driver, st.embedder, strategy=strategy,
-                                timeout=s.llm_request_timeout_s, max_tokens=s.llm_answer_max_tokens,
-                                escalation_model=s.escalation_model or None):
+        extra = {"settings": s} if strategy == guard.AGENT_STRATEGY else {}
+        for ev in _stream_fn(strategy)(question, st.driver, st.embedder, strategy=strategy,
+                                       timeout=s.llm_request_timeout_s, max_tokens=s.llm_answer_max_tokens,
+                                       escalation_model=s.escalation_model or None, **extra):
             if ev["event"] in ("done", "error"):
                 store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False,
                                 usage=ev.get("usage"), cost_usd=ev.get("cost_usd"))

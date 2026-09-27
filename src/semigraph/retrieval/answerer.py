@@ -225,6 +225,9 @@ def build_blocks(r: dict) -> tuple[ContextBlocks, str, set[str]]:
     periods = r.get("metric_periods") or {}
     m_lines, metric_ids = metrics_lines(r["metrics"], years=periods.get("years") or (), dates=periods.get("dates") or ())
     valid_ids |= metric_ids
+    # Lines a planner computed in code from cited facts (``semigraph.agent``) ride in METRICS as plain data: no template change.
+    # They carry the ``[xbrl:...]`` ids of the facts they derive from, so the verifier reads their figures from those sources.
+    m_lines.extend(r.get("computed") or [])
     k_lines = []
     for k in r["risks"]:
         valid_ids.add(k["chunk_id"])
@@ -590,6 +593,18 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
         r = vector_retrieve(question, driver, embedder, k=k_chunks)
     else:
         raise ValueError(f"unknown strategy {strategy!r} — use 'hybrid' or 'vector'")
+    yield from stream_answer_for_context(question, r, strategy, llm_stream=llm_stream, escalation_model=escalation_model,
+                                         escalation_stream=escalation_stream, **stream_kwargs)
+
+
+def stream_answer_for_context(question: str, r: dict, strategy: str, *, llm_stream=None, escalation_model: str | None = None,
+                              escalation_stream=None, **stream_kwargs):
+    """Everything :func:`answer_stream` does AFTER retrieval: build the six blocks from the retrieval dict ``r``, emit the
+    ``retrieval`` event, then draft / verify / escalate or stream live, ending in the ``done`` event.
+
+    A second retrieval planner (the agent, ``semigraph.agent``) hands its own merged ``r`` (the same dict shape as
+    :func:`hybrid_retrieve` returns) to this function, so the verifier, the router, the escalation and the checks are the
+    ONE implementation for both paths."""
     blocks, full_context, valid_ids = build_blocks(r)
     yield {"event": "retrieval", "anchors": r["anchors"],
            "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")},
