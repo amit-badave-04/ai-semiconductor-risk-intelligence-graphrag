@@ -50,9 +50,14 @@ it is not in use; if the page does not load, it is offline (see [Operations](#op
   retrieved and that numbers match the retrieved context, shows unmatched numbers and bracketed
   pseudo-citations as warnings, and declines when the corpus lacks the facts. These checks do not
   prove that a sentence is supported by the passage it cites.
-- **A reproducible evaluation harness** — a 20-question gold benchmark, mechanical checks first,
-  LLM judges second, a failure taxonomy, and a second judge family to check judge bias. Its
-  instrument is being replaced by a source-text-grounded one (see the status note above).
+- **Deep research (opt-in agent, M3)** — a small planning model adds a few extra graph lookups
+  (financial metrics, risk changes, company relationships) before the answer is written, shown live
+  as they run; the answer still goes through the same citation and grounding checks as every other
+  question, and a planner failure of any kind falls back to the direct retrieval with no visible error.
+- **A reproducible evaluation harness** — a 60-question benchmark scored mechanically first (numbers,
+  citations, refusals), then by an LLM judge accepted against 19 adversarial probes before being
+  trusted, plus a dedicated agent benchmark (trajectory, spend, safety checks) gating the agent
+  separately from the fixed retrieval path.
 
 ## Why a graph, not vector RAG
 
@@ -385,8 +390,9 @@ data/                 git-ignored data lake (raw, interim, processed) — rebuil
 
 1. **M1b — shipped.** A text-grounded temporal layer and a source-text-grounded evaluation instrument;
    see [docs/v2/M1B_PLAN.md](docs/v2/M1B_PLAN.md).
-2. **M3 — a thin retrieval-planning agent** on top of the temporal layer, opt-in and never worse than
-   today's fixed retrieval.
+2. **M3 — shipped.** A thin, opt-in retrieval-planning agent that adds bounded, read-only lookups (financial
+   metrics, risk changes, relationships) in front of the same cited, checked answer path, cleared for
+   production on a live evaluation against the fixed retrieval path; see [docs/v2/M3_AGENT_PLAN.md](docs/v2/M3_AGENT_PLAN.md).
 3. **M2 — reranker, adaptive k and a BM25 / vector fusion channel** to sharpen retrieval further.
 4. **M4 — document upload** with freshness and staleness against the live corpus.
 5. **M5 — a new frontend and a scaled serving layer.**
