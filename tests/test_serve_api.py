@@ -8,7 +8,9 @@ level, so what is exercised is exactly the routing + policy logic.
 """
 
 import json
+import sys
 import threading
+import types
 
 import pytest
 from fastapi import FastAPI
@@ -91,6 +93,33 @@ def fakes(monkeypatch):
     f.install(monkeypatch)
     monkeypatch.setattr(routes, "answer_stream", fake_answer_stream)
     return f
+
+
+# ---------------------------------------------------------------- R2: strategy=agent must clear every gate too (never exempt)
+
+def install_agent_stream_that_must_not_run(monkeypatch):
+    """A ``semigraph.agent.stream`` stub for a gate that must refuse the request before a single byte of an answer, whichever
+    strategy: turns a regression that exempted ``strategy=agent`` from the gate into a hard test failure (0 planner calls)
+    instead of a quietly-passing green run."""
+    def never(*a, **kw):
+        pytest.fail("a gate-refused /api/ask must never reach the agent stream")
+    stub = types.ModuleType("semigraph.agent.stream")
+    stub.agent_answer_stream = never
+    monkeypatch.setitem(sys.modules, "semigraph.agent", types.ModuleType("semigraph.agent"))
+    monkeypatch.setitem(sys.modules, "semigraph.agent.stream", stub)
+
+
+def install_counting_agent_stream(monkeypatch, calls: list):
+    """A WORKING ``semigraph.agent.stream`` stub that records every call it receives. For a gate whose quota must first be
+    exhausted by real (accepted) requests — the per-IP window, the free tier — what proves the gate is not exempting the
+    agent is that ``calls`` stops growing exactly when the gate starts refusing, not that it is never called at all."""
+    def counted(question, driver, embedder, strategy="agent", **kw):
+        calls.append((question, strategy))
+        yield from fake_answer_stream(question, driver, embedder, strategy)
+    stub = types.ModuleType("semigraph.agent.stream")
+    stub.agent_answer_stream = counted
+    monkeypatch.setitem(sys.modules, "semigraph.agent", types.ModuleType("semigraph.agent"))
+    monkeypatch.setitem(sys.modules, "semigraph.agent.stream", stub)
 
 
 @pytest.fixture
@@ -209,23 +238,37 @@ def test_cached_answers_bypass_kill_switch_and_ceiling(client, fakes):
     assert parse_sse(client.post("/api/ask", json={"question": Q}).text)[0]["cached"] is True
 
 
-def test_kill_switch_blocks_paid_answers_with_503(client, fakes):
+@pytest.mark.parametrize("strategy", ["hybrid", "agent"])
+def test_kill_switch_blocks_paid_answers_with_503(client, fakes, monkeypatch, strategy):
+    client.app.state.settings.agent_enabled = True
+    install_agent_stream_that_must_not_run(monkeypatch)
     fakes.policy["kill_switch"] = "on"
-    r = client.post("/api/ask", json={"question": Q})
+    r = client.post("/api/ask", json={"question": Q, "strategy": strategy})
     assert r.status_code == 503 and "paused" in r.json()["detail"]
+    assert fakes.queries == []                                     # refused before a ledger write, whichever strategy
 
 
-def test_daily_ceiling_blocks_with_429(client, fakes):
+@pytest.mark.parametrize("strategy", ["hybrid", "agent"])
+def test_daily_ceiling_blocks_with_429(client, fakes, monkeypatch, strategy):
+    client.app.state.settings.agent_enabled = True
+    install_agent_stream_that_must_not_run(monkeypatch)
     fakes.paid_today = FakeSettings.max_queries_per_day
-    r = client.post("/api/ask", json={"question": Q})
+    r = client.post("/api/ask", json={"question": Q, "strategy": strategy})
     assert r.status_code == 429 and "budget" in r.json()["detail"]
+    assert fakes.queries == []
 
 
-def test_per_ip_rate_limit_after_window_quota(client, fakes):
+@pytest.mark.parametrize("strategy", ["hybrid", "agent"])
+def test_per_ip_rate_limit_after_window_quota(client, fakes, monkeypatch, strategy):
+    client.app.state.settings.agent_enabled = True
+    calls: list = []
+    install_counting_agent_stream(monkeypatch, calls)
     for i in range(FakeSettings.rate_limit_questions):
-        assert client.post("/api/ask", json={"question": f"{Q} variant {i}"}).status_code == 200
-    r = client.post("/api/ask", json={"question": f"{Q} variant last"})
+        assert client.post("/api/ask", json={"question": f"{Q} variant {i}", "strategy": strategy}).status_code == 200
+    calls_before, queries_before = len(calls), len(fakes.queries)
+    r = client.post("/api/ask", json={"question": f"{Q} variant last", "strategy": strategy})
     assert r.status_code == 429 and "address" in r.json()["detail"]
+    assert len(calls) == calls_before and len(fakes.queries) == queries_before   # the refused call reaches neither
 
 
 def test_busy_slot_emits_error_event_and_keeps_slot_accounting(client):
@@ -274,13 +317,35 @@ def test_mid_stream_error_event_still_logs_spend(client, fakes, monkeypatch):
     assert fakes.answers == {}
 
 
-def test_free_tier_window_gates_cache_hits_before_any_write(client, fakes):
-    client.post("/api/ask", json={"question": Q})  # paid, populates the cache
-    n_before = len(fakes.queries)
+def test_the_mid_stream_error_log_line_redacts_a_secret_shaped_string_in_the_exception_text(client, fakes, monkeypatch, caplog):
+    """The client-facing message is already generic (asserted above); this is the SERVER log line, which used to carry
+    ``ev["detail"]`` (an f-string of the provider exception's type and text) verbatim."""
+    secret = "sk-live-abcdef1234567890"
+
+    def failing(*a, **kw):
+        yield {"event": "retrieval", "anchors": {}, "counts": {}}
+        yield {"event": "error", "detail": f"BadRequestError: upstream rejected key {secret}",
+               "usage": {"prompt_tokens": 5, "completion_tokens": 0}, "cost_usd": 0.002, "strategy": "hybrid"}
+    monkeypatch.setattr(routes, "answer_stream", failing)
+    caplog.set_level("WARNING", logger="semigraph.serve")
+    events = parse_sse(client.post("/api/ask", json={"question": Q}).text)
+    assert events[-1]["event"] == "error" and secret not in events[-1]["detail"]
+    line = next(r.getMessage() for r in caplog.records if "mid-stream" in r.getMessage())
+    assert secret not in line and "***" in line
+
+
+@pytest.mark.parametrize("strategy", ["hybrid", "agent"])
+def test_free_tier_window_gates_cache_hits_before_any_write(client, fakes, monkeypatch, strategy):
+    client.app.state.settings.agent_enabled = True
+    calls: list = []
+    install_counting_agent_stream(monkeypatch, calls)
+    client.post("/api/ask", json={"question": Q, "strategy": strategy})  # paid, populates the cache
+    n_before, calls_before = len(fakes.queries), len(calls)
     for _ in range(FakeSettings.free_rate_limit_questions - 1):
-        assert client.post("/api/ask", json={"question": Q}).status_code == 200
-    assert client.post("/api/ask", json={"question": Q}).status_code == 429
+        assert client.post("/api/ask", json={"question": Q, "strategy": strategy}).status_code == 200
+    assert client.post("/api/ask", json={"question": Q, "strategy": strategy}).status_code == 429
     assert len(fakes.queries) == n_before + FakeSettings.free_rate_limit_questions - 1
+    assert len(calls) == calls_before                    # every request after the first is a cache hit: 0 more planner calls
 
 
 def test_admin_non_ascii_header_is_404_not_500(client):
@@ -327,9 +392,12 @@ def test_admin_disabled_when_no_token_configured(client):
     assert client.get("/api/admin/policy", headers={"X-Admin-Token": ""}).status_code == 404
 
 
-def test_turnstile_required_fails_closed_without_keys(client, fakes):
+@pytest.mark.parametrize("strategy", ["hybrid", "agent"])
+def test_turnstile_required_fails_closed_without_keys(client, fakes, monkeypatch, strategy):
+    client.app.state.settings.agent_enabled = True
+    install_agent_stream_that_must_not_run(monkeypatch)
     client.app.state.settings.turnstile_required = True
-    r = client.post("/api/ask", json={"question": Q})
+    r = client.post("/api/ask", json={"question": Q, "strategy": strategy})
     assert r.status_code == 403 and "Bot check" in r.json()["detail"]
     assert fakes.queries == []
 

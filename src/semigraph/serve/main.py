@@ -28,6 +28,7 @@ logger = logging.getLogger("semigraph.serve.main")
 
 CONNECT_RETRY_S = 90  # the database machine may still be booting after START
 AGENT_MODULE = "semigraph.agent.stream"
+TRACER_SHUTDOWN_TIMEOUT_S = 3  # a hung Langfuse endpoint must not delay teardown (or the driver close after it) indefinitely
 
 
 def connect_with_retry(settings):
@@ -130,6 +131,17 @@ def shutdown_tracer(tracer) -> None:
         logger.exception("tracer shutdown failed")
 
 
+def shutdown_tracer_bounded(tracer) -> None:
+    """``shutdown_tracer`` on a daemon thread, joined with a short timeout: a hung Langfuse endpoint (network stall on
+    ``flush``/``shutdown``) must not delay teardown past ``TRACER_SHUTDOWN_TIMEOUT_S``, and must never keep
+    ``driver.close()`` (called right after, in the lifespan's ``finally``) from running. The thread is a daemon and is
+    simply abandoned if it does not finish in time — it does not stop the process from exiting, and ``shutdown_tracer``
+    itself never raises, so there is nothing left to join later."""
+    thread = threading.Thread(target=shutdown_tracer, args=(tracer,), daemon=True)
+    thread.start()
+    thread.join(TRACER_SHUTDOWN_TIMEOUT_S)
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -157,8 +169,10 @@ async def lifespan(app: FastAPI):
     app.state.answer_slots = threading.BoundedSemaphore(settings.max_concurrent_answers)
     logger.info("semigraph %s serving — graph: %s", __version__, stats)
     yield
-    await run_in_threadpool(shutdown_tracer, app.state.tracer)
-    driver.close()
+    try:
+        await run_in_threadpool(shutdown_tracer_bounded, app.state.tracer)
+    finally:
+        driver.close()
 
 
 def create_app() -> FastAPI:

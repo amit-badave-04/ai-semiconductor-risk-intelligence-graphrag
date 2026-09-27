@@ -321,7 +321,8 @@ def test_without_a_salt_the_hash_is_random_per_process_and_not_derived_from_the_
 
 
 def test_a_configured_hash_salt_groups_repeats_across_restarts_and_an_explicit_salt_wins(langfuse):
-    configured = {"langfuse_hash_salt": "owner-chosen-salt"}
+    long_salt = "owner-chosen-salt-0123456789abcdef"           # >= MIN_SALT_CHARS: accepted as configured
+    configured = {"langfuse_hash_salt": long_salt}
     a, client_a = tracer_and_client(settings=dict(configured))
     a.for_request(QUESTION).close()
     b, client_b = tracer_and_client(settings=dict(configured))                # a restart
@@ -330,7 +331,33 @@ def test_a_configured_hash_salt_groups_repeats_across_restarts_and_an_explicit_s
     c.for_request(QUESTION).close()
     ha, hb, hc = (metadata_of(cl.roots[0])["question_hash"] for cl in (client_a, client_b, client_c))
     assert ha == hb and hc != ha
-    assert ha not in secret_derived_hashes(QUESTION) and "owner-chosen-salt" not in sent(client_a)
+    assert ha not in secret_derived_hashes(QUESTION) and long_salt not in sent(client_a)
+
+
+def test_a_short_configured_hash_salt_is_rejected_with_a_warning_and_falls_back_to_random(langfuse, caplog):
+    """A short or guessable salt (``"semigraph"``) would let whoever holds the traces dictionary-recover a hashed question."""
+    short = {"langfuse_hash_salt": "semigraph"}
+    with caplog.at_level(logging.WARNING, logger="semigraph.serve.tracing"):
+        a, client_a = tracer_and_client(settings=dict(short))
+        a.for_request(QUESTION).close()
+        b, client_b = tracer_and_client(settings=dict(short))                 # a restart with the same short salt
+        b.for_request(QUESTION).close()
+    ha = metadata_of(client_a.roots[0])["question_hash"]
+    hb = metadata_of(client_b.roots[0])["question_hash"]
+    assert ha != hb                                                           # NOT grouped: the short salt was never trusted
+    assert any("LANGFUSE_HASH_SALT" in r.getMessage() for r in caplog.records)
+    assert "semigraph" not in " ".join(r.getMessage() for r in caplog.records)  # the rejected salt itself is not logged
+
+
+def test_a_hash_salt_of_exactly_the_minimum_length_is_accepted(langfuse):
+    salt = "x" * tracing.MIN_SALT_CHARS
+    a, client_a = tracer_and_client(settings={"langfuse_hash_salt": salt})
+    a.for_request(QUESTION).close()
+    b, client_b = tracer_and_client(settings={"langfuse_hash_salt": salt})
+    b.for_request(QUESTION).close()
+    ha = metadata_of(client_a.roots[0])["question_hash"]
+    hb = metadata_of(client_b.roots[0])["question_hash"]
+    assert ha == hb                                                            # accepted: groups across restarts
 
 
 def test_using_the_factory_directly_still_produces_a_flat_trace_per_call(langfuse):
@@ -395,7 +422,7 @@ def test_the_useful_facts_still_arrive_next_to_the_scrubbed_ones(langfuse):
      {"tool": "compute_change", "model": "openai/gpt-6-luna", "strategy": "agent"}),
     ({"fallback_reason": "planner_error: BadRequestError"}, {"fallback_reason": "planner_error"}),
     ({"fallback_reason": "time budget exhausted"}, {"fallback_reason": "time"}),
-    ({"tool": "two words"}, {"tool_chars": 9}),
+    ({"tool": "two words"}, {"tool": "invalid"}),                # not label-shaped AND not a real tool: still the placeholder
     ({"summary": "Fetched revenue for FY2024-2026"}, {"summary_chars": 31}),
     ({"prompt_tokens": 12, "token": "sk-x"}, {"prompt_tokens": 12}),
     ({"headers": {"a": "b"}, "ip": "1.2.3.4", "authorization": "Bearer x", "secret": "s", "password": "p"}, {}),
@@ -422,6 +449,46 @@ def test_scrub_attrs_is_bounded_on_depth_and_width():
     wide = {f"k{i}": i for i in range(500)}
     assert "f" not in json.dumps(tracing.scrub_attrs(deep))
     assert len(tracing.scrub_attrs(wide)) <= tracing.MAX_ATTRS
+
+
+# ---------------------------------------------------------------- R2: a "tool" attribute is a closed set, not a label pattern
+
+def test_the_literal_tool_tuple_is_kept_in_sync_with_agent_tools_tool_names():
+    """A test-only import (tracing.py itself must never import agent code at runtime — see the comment above the tuple in
+    tracing.py). This is what stops the two from silently drifting apart."""
+    from semigraph.agent import tools as agent_tools
+
+    assert set(tracing._AGENT_TOOL_NAMES) == set(agent_tools.TOOL_NAMES)
+    assert len(tracing._AGENT_TOOL_NAMES) == len(set(tracing._AGENT_TOOL_NAMES)) == len(agent_tools.TOOL_NAMES)
+
+
+@pytest.mark.parametrize("canary", ["Zurich", "check_card_4111111111111111", "0001045810-26-000021"])
+def test_a_label_shaped_tool_name_outside_the_known_tuple_is_reduced_to_the_placeholder(canary):
+    """The vulnerability this closes: a malicious or steered tool name is often label-shaped (``_LABEL_RE`` would pass it
+    verbatim) without being one of the seven real tools."""
+    assert tracing._LABEL_RE.fullmatch(canary), "the canary must be label-shaped for this test to mean anything"
+    assert tracing.scrub_attrs({"tool": canary}) == {"tool": "invalid"}
+
+
+def test_a_real_tool_name_still_passes_through_the_tool_attribute():
+    for name in tracing._AGENT_TOOL_NAMES:
+        assert tracing.scrub_attrs({"tool": name}) == {"tool": name}
+
+
+# ---------------------------------------------------------------- R2: the mid-stream log redactor catches secret-shaped text
+
+@pytest.mark.parametrize("text,secret", [
+    ("BadRequestError: upstream rejected key sk-live-abcdef1234567890", "sk-live-abcdef1234567890"),
+    ("connection refused: Authorization: Bearer abc123-canary-bearer-token", "Bearer abc123-canary-bearer-token"),
+])
+def test_redact_secret_shaped_removes_a_secret_shaped_substring_and_is_bounded(text, secret):
+    out = tracing.redact_secret_shaped(text)
+    assert secret not in out and "***" in out
+
+
+def test_redact_secret_shaped_truncates_to_max_chars():
+    out = tracing.redact_secret_shaped("x" * 10_000, max_chars=50)
+    assert len(out) == 50
 
 
 # ---------------------------------------------------------------- the caller's exceptions are never swallowed

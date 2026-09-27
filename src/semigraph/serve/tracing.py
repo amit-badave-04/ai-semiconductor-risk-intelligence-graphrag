@@ -6,11 +6,14 @@ set; only then is the optional ``langfuse`` package imported (never at module im
 Three properties are enforced HERE, whatever the caller passes:
 
 * **Nothing free-text leaves the process.** Every attribute goes through :func:`scrub_attrs`: numbers, booleans and short
-  identifier-like labels (tool, model, fallback code ...) pass; any other string is reduced to its LENGTH; keys that name an IP,
+  identifier-like labels (model, fallback code ...) pass; any other string is reduced to its LENGTH; keys that name an IP,
   a header, a token or a key are dropped; ``question`` becomes ``question_chars`` plus a salted hash (the salt is random per
-  process, or ``langfuse_hash_salt`` when the owner wants grouping across restarts; it is NEVER derived from the Langfuse secret,
-  because the OTLP exporter sends that secret to the recipient of the traces, who could then confirm a guessed question). Nothing
-  is ever sent as an
+  process, or ``langfuse_hash_salt`` when the owner wants grouping across restarts AND it is at least ``MIN_SALT_CHARS`` long —
+  a short or guessable configured salt is ignored, with a warning, because it would let whoever holds it dictionary-recover a
+  hashed question; it is NEVER derived from the Langfuse secret, because the OTLP exporter sends that secret to the recipient
+  of the traces, who could then confirm a guessed question). A ``tool``-keyed attribute is a label ONLY when it is one of the
+  agent's own tool names (``_AGENT_TOOL_NAMES``); anything else — including a label-shaped string a steered planner invented —
+  is reduced to a fixed placeholder instead of passing verbatim. Nothing is ever sent as an
   observation ``input`` or ``output``, and the client is built with a masking hook and an export filter that drops every span
   that is not ours (a litellm or OpenTelemetry integration would otherwise ship whole prompts).
 * **Tracing can never break or slow an answer.** Every SDK call sits behind one guard: the first failure switches tracing off for
@@ -56,6 +59,7 @@ HASH_CHARS = 16
 MAX_LOG_CHARS = 300
 UNNAMED = "unnamed"
 SALT_BYTES = 32
+MIN_SALT_CHARS = 32   # a configured LANGFUSE_HASH_SALT shorter than this is a dictionary-guessable key: rejected, not used
 
 _KEY_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,59}")
 _LABEL_RE = re.compile(r"[A-Za-z0-9_.:/\-]{1,80}")
@@ -65,10 +69,22 @@ _REASON_HEAD_RE = re.compile(r"[A-Za-z0-9_.\-]{1,60}")
 # ``prompt_tokens: 12`` is a count, not a token).
 _SECRET_KEY_RE = re.compile(r"(?i)(^|_)(ips?|ip_?address|headers?|authorization|auth|bearer|cookies?|secret|password|passwd|"
                             r"api_?key|access_?key|tokens?|credentials?)($|_)")
-_LABEL_KEYS = frozenset({"tool", "model", "planner_model", "answered_by", "strategy", "status", "kind", "routed", "finish_reason",
+_LABEL_KEYS = frozenset({"model", "planner_model", "answered_by", "strategy", "status", "kind", "routed", "finish_reason",
                          "error_type", "name", "stage", "node", "level"})
 _REASON_KEYS = frozenset({"fallback_reason", "reason"})   # a code such as ``planner_error``: only the leading token is kept
 _HEX_KEYS = frozenset({"question_hash"})
+# The seven read-only tools the planner may call (semigraph/agent/tools.py TOOL_NAMES). Defense in depth for a steered or
+# malicious tool name that is still label-shaped (e.g. "check_card_4111111111111111" matches ``_LABEL_RE`` but is not a real
+# tool): tracing.py does NOT import agent code at runtime (docs/v2/M3_AGENT_PLAN.md section 6 keeps the slim serve image free
+# of langgraph while the agent is off), so this is a hand-kept literal copy — tests/test_tracing.py cross-checks it against
+# ``semigraph.agent.tools.TOOL_NAMES`` (a test-only import) so the two can never silently drift.
+_AGENT_TOOL_NAMES = ("lookup_company", "search_filings", "financial_metrics", "risk_changes", "relationships",
+                     "active_risks", "compute_change")
+_INVALID_TOOL_LABEL = "invalid"
+# A general, provider-agnostic scrub for a log line that may quote a third-party exception message (a bearer token or an
+# ``sk-``/``pk_``-style API key embedded in a provider's own error text): distinct from ``_Health.redact``'s exact-match
+# replacement of THIS process's own configured keys, which cannot know a key it never held.
+_SECRET_SHAPED_RE = re.compile(r"(?i)(bearer\s+[a-z0-9._~+/=\-]{8,})|((?:sk|pk|rk|ak)[-_](?:live|test)?[-_]?[a-z0-9]{6,})")
 
 
 # ---------------------------------------------------------------- scrubbing: what may leave the process
@@ -86,6 +102,10 @@ def _text_entries(key: str, text: str, hasher: Callable[[str], str] | None) -> d
     if key in _REASON_KEYS:
         head = _REASON_HEAD_RE.match(text)
         return {key: head.group(0)} if head else {f"{key}_chars": len(text)}
+    if key == "tool":
+        # A closed set, not a label pattern: a steered planner's tool name can be label-shaped (``_LABEL_RE`` would pass it)
+        # without being one of the seven real tools, so anything outside ``_AGENT_TOOL_NAMES`` is reduced to a placeholder.
+        return {key: text if text in _AGENT_TOOL_NAMES else _INVALID_TOOL_LABEL}
     if key in _LABEL_KEYS and _LABEL_RE.fullmatch(text):
         return {key: text}
     return {f"{key}_chars": len(text)}
@@ -175,6 +195,15 @@ def _make_hasher(salt: bytes) -> Callable[[str], str]:
     return lambda text: hmac.new(salt, text.encode("utf-8", "replace"), hashlib.sha256).hexdigest()[:HASH_CHARS]
 
 
+def redact_secret_shaped(text: str, *, max_chars: int = MAX_LOG_CHARS) -> str:
+    """A log-safe copy of ``text``: secret-shaped substrings (a ``Bearer`` token, an ``sk-``/``pk_``-style API key) become
+    ``***`` whatever process they came from, truncated to ``max_chars`` either way (an unbounded exception message is itself
+    a way to fill the log). For a caller's OWN known keys, ``_Health.redact`` is exact and should run first; this catches a
+    key it never held — one a third-party provider's own error text quotes. Shared by ``serve.routes`` (the mid-stream error
+    log) and this module (``_Health.redact``); never raises."""
+    return _SECRET_SHAPED_RE.sub("***", text)[:max_chars]
+
+
 # ---------------------------------------------------------------- the no-op
 
 class _NullSpan:
@@ -235,7 +264,7 @@ class _Health:
     def redact(self, text: str) -> str:
         for secret in self._secrets:
             text = text.replace(secret, "***")
-        return text[:MAX_LOG_CHARS]
+        return redact_secret_shaped(text)
 
     def fail(self, exc: Exception, where: str) -> None:
         with self._lock:
@@ -456,10 +485,20 @@ def _export_filter(module: Any) -> Callable[[Any], bool]:
 
 
 def _salt(explicit: bytes | str | None, settings: Any) -> bytes:
-    """The key of the question hash: the explicit argument, else ``langfuse_hash_salt``, else a random per-process key."""
-    for candidate in (explicit, getattr(settings, "langfuse_hash_salt", "")):
-        if candidate:
-            return candidate.encode("utf-8") if isinstance(candidate, str) else bytes(candidate)
+    """The key of the question hash: the explicit argument (trusted, no length check — it is test/script controlled, never
+    from an env var), else ``langfuse_hash_salt`` when it is at least ``MIN_SALT_CHARS`` long, else a random per-process key.
+    A short or guessable configured salt (``"semigraph"``) would let whoever receives the traces dictionary-recover which
+    question a hash corresponds to, so it is ignored — with a warning (this runs once, at ``get_tracer`` construction, not
+    per request) — rather than trusted; ``.env.example`` documents the safe way to generate one (``secrets.token_hex(32)``)."""
+    if explicit:
+        return explicit.encode("utf-8") if isinstance(explicit, str) else bytes(explicit)
+    configured = getattr(settings, "langfuse_hash_salt", "")
+    if configured:
+        if len(configured) >= MIN_SALT_CHARS:
+            return configured.encode("utf-8")
+        logger.warning("LANGFUSE_HASH_SALT is %d characters (< %d): too short to resist a dictionary guess — ignoring it "
+                       "and using a random per-process salt instead. Generate a safe one with: "
+                       "python -c \"import secrets; print(secrets.token_hex(32))\"", len(configured), MIN_SALT_CHARS)
     return secrets.token_bytes(SALT_BYTES)
 
 

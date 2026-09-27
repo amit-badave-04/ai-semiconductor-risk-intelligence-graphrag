@@ -4,6 +4,8 @@ Neo4j and the embedder are never touched: ``bootstrap`` is replaced by a stub th
 stub too: a temporary ``semigraph.agent`` whose ``stream`` module raises the way a missing langgraph would."""
 
 import sys
+import threading
+import time
 import types
 
 import pytest
@@ -125,3 +127,27 @@ def test_without_langfuse_keys_the_app_gets_the_no_op_tracer(monkeypatch, boot):
     use_settings(monkeypatch)
     with TestClient(main.create_app()) as client:
         assert client.app.state.tracer.enabled is False
+
+
+# ---------------------------------------------------------------- R2: tracer shutdown is bounded, the driver closes regardless
+
+class HungTracer:
+    """A tracer whose ``shutdown`` never returns, as a hung Langfuse endpoint would. Deliberately never released: the test
+    must prove teardown moves on WITHOUT waiting for it, not that it completes late."""
+
+    enabled = True
+
+    def shutdown(self):
+        threading.Event().wait()  # a fresh Event nothing ever sets: blocks the calling (daemon) thread forever
+
+
+def test_a_hung_tracer_does_not_delay_shutdown_past_the_bound_and_the_driver_still_closes(monkeypatch, boot):
+    use_settings(monkeypatch)
+    monkeypatch.setattr(main.tracing, "get_tracer", lambda s: HungTracer())
+    monkeypatch.setattr(main, "TRACER_SHUTDOWN_TIMEOUT_S", 0.2)
+    started = time.monotonic()
+    with TestClient(main.create_app()):
+        pass
+    elapsed = time.monotonic() - started
+    assert elapsed < 2.0                                    # bounded well under the hang, not the real (infinite) wait
+    assert boot.order[-1] == "driver.close"                 # closed even though the tracer's shutdown thread never finished

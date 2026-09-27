@@ -22,7 +22,7 @@ from ..graph.client import run_cypher
 from ..retrieval.answerer import answer_stream
 from ..retrieval.ids import CHUNK_ID_RE, classify_id, metric_id_of, rule_id_of  # noqa: F401 - CHUNK_ID_RE: re-exported (tests/test_ids.py)
 from ..retrieval.verify import checks_failed
-from . import guard, store
+from . import guard, store, tracing
 
 logger = logging.getLogger("semigraph.serve")
 router = APIRouter()
@@ -304,7 +304,11 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
                             ev.get("routed"), ev.get("escalated"), ev.get("answered_by"), ev.get("checks"))
                 _warn_on_failed_checks(ev)
             elif ev["event"] == "error":
-                logger.warning("answer failed mid-stream: %s (cost=%s)", ev["detail"], ev.get("cost_usd"))
+                # The client-facing message below is already generic; ``ev["detail"]`` is not — it can be an f-string of a
+                # provider exception's type and text (retrieval/answerer.py), which can itself quote a secret-shaped
+                # substring (a key embedded in a provider's own error message). Redact before it ever reaches the log.
+                logger.warning("answer failed mid-stream: %s (cost=%s)", tracing.redact_secret_shaped(ev["detail"]),
+                               ev.get("cost_usd"))
                 ev = {"event": "error", "detail": "The answer could not be completed — please try again."}
             yield _sse(ev)
     except Exception as e:  # noqa: BLE001 — report, never hang the stream
