@@ -90,17 +90,18 @@ change made between runs, the judge's history, an independent closing review) in
 | open questions judged correct (23) | 10 / 23 (first judge) | **17 / 23** (accepted judge cj-v4); the first-run answers score 16 / 23 under the same judge |
 | escalations to Sonnet | 1 / 60 | 2 / 60 |
 | answers that fail their own checks | 12 | 5 |
-| answers for 60 questions | $0.83 | **$0.85 (about $0.014 each, 4.3 s average)**, against about $0.047 each on Sonnet alone |
+| answers for 60 questions | $0.83 | **$0.85 (about $0.014 each, 4.3 s average)**, against about $0.047 each on Sonnet alone (a list-price estimate for 16k input / 1.5k output tokens, not a measurement) |
 
 **How to read this.** The mechanical gain is entirely the checker: it was too brittle (it rejected correct refusals and
 correctly hedged answers). The judged gain is mostly the judge: under one fixed judge the first-run answers score 16 and
 the final ones 17, so the product effect on judged correctness is about one question. What the product work did change is
 measurable elsewhere: answers failing their own checks fell from 12 to 5, questions about an older filing pair now read that
 pair, and an empty-list sentence no longer cites unrelated text. The judge was revised three times after seeing failures and
-is accepted against 19 frozen adversarial probes, but that acceptance is not blind, and it is noisy in use (on two answers it
-misapplies its own count tolerance). Not met: mechanical 100 % (one answer stated revenue as $60,922,000,000 and the check
-looks for "60.9"). Still failing: multi-year synthesis (T1, T3), reworded-risk-factor counts that differ from the annotators'
-by more than two on some filings (T6, T9), a retrieval miss (X4, M2 scope). The plan's held-out gates for the change layer
+is accepted against 19 frozen adversarial probes, but that acceptance is not blind, no probe covers a count that is within its
+tolerance, and in use it misapplies that tolerance (T6 in the final run, and T4, T6, T7 when run 3's answers are re-judged), so the
+final 17 contains at least one judge arithmetic error. Not met: mechanical 100 % (one answer stated revenue as $60,922,000,000 and the check
+looks for "60.9"). Still failing: multi-year synthesis (T1, T3), a reworded-risk-factor count that differs from the annotators'
+by more than two (T9: 18 against 14; T6 is a judge error), a retrieval miss (X4, M2 scope). The plan's held-out gates for the change layer
 **do not all pass** (sentence-level removal precision 0.882 vs the 0.90 gate; risk-factor-level removal and "new" precision
 1/3 and 6/12), so the service words changes as "wording was not found ..., a differently worded version may exist"
 ([L.11](docs/v2/M1B_PLAN.md)). There has been **no human validation**: gold labels come from blind LLM annotators with

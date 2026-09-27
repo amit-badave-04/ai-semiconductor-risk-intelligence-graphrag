@@ -28,6 +28,7 @@ Output artifacts (notebook 14 paths, parameterized):
 
 import json
 import logging
+import re
 import time
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -83,10 +84,14 @@ RECALL_PROMPT = read_prompt("recall_judge")
 REFUSAL_PAT = REFUSAL_RE
 
 
+_SCALED_NUMBER_RE = re.compile(r"\d[\d,.]*\s*(?:trillion|billion|million|bn|tn)\b", re.I)
+
+
 def is_refusal_answer(text: str) -> bool:
-    """A refusal the benchmark scores as correct: the (deliberately loose) refusal wording AND no money figure. A real refusal states
-    no amount; an answer that gives one and then says "the filing does not provide ..." is an answer (closing review M3)."""
-    return bool(REFUSAL_PAT.search(text)) and not money_values(text)
+    """A refusal the benchmark scores as correct: the (deliberately loose) refusal wording AND no amount. A real refusal states no
+    figure: neither a currency amount nor a scaled number without a symbol ("220 billion", "300 trillion won"); an answer that gives
+    one and then says "the filing does not provide ..." is an answer (closing reviews M3)."""
+    return bool(REFUSAL_PAT.search(text)) and not money_values(text) and not _SCALED_NUMBER_RE.search(text)
 
 # --- the correctness judge: ONE renderer for every call site (score_runs, bakeoff.judge_open, eval-deployed) ---------
 JUDGE_MAX_TOKENS = 600           # the verdict now carries up to five unsupported claims; 300 truncated

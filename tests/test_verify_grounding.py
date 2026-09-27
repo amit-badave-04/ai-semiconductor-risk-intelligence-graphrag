@@ -214,39 +214,21 @@ def test_checks_are_json_serialisable():
         "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
 
 
-# --- X1 (second deployed run): a figure inside the NAME of a thing the question named, quoted back, is not an echoed claim ---
-
-def test_a_figure_inside_a_quoted_phrase_copied_from_the_question_is_not_an_echoed_number():
-    from semigraph.retrieval.verify import answer_checks
-
-    question = "What did NVIDIA disclose about the BIS 50% affiliates rule?"
-    text = 'The context has no NVIDIA disclosure about a "BIS 50% affiliates rule." [fr:2025-19001]'
-    checks = answer_checks(text, {"fr:2025-19001"}, {"fr:2025-19001"}, "context without the figure", sources={}, question=question)
-    assert checks.echoed_numbers == () and checks.unmatched_numbers == ()
-
-
-def test_a_figure_the_question_states_is_still_echoed_when_the_answer_asserts_it_outside_a_quote():
-    from semigraph.retrieval.verify import answer_checks
-
-    question = "Did Nvidia's revenue grow 50% last year?"
-    for text in ("Yes, revenue grew 50% [x:1:1].", 'Yes, "revenue grew 50%" [x:1:1].', 'The answer is "yes": it grew 50% [x:1:1].'):
-        checks = answer_checks(text, {"x:1:1"}, {"x:1:1"}, "context without the figure", sources={}, question=question)
-        assert checks.echoed_numbers == ("50%",), text
-
-
-# --- closing review H1: the exemption is for NAMES (a capitalised phrase ending in a rule/act/policy noun), never for a quoted VALUE ---
+# --- a figure only the QUESTION states is echoed however the answer wraps it (closing reviews 1 and 2 removed the quoted-name exemption:
+# a heuristic cannot tell the NAME of a rule from a quoted VALUE, and "A 25% policy" passed as grounded) ---
 
 @pytest.mark.parametrize("question,text", [
+    ("What did NVIDIA disclose about the BIS 50% affiliates rule?", 'The context has no NVIDIA disclosure about a "BIS 50% affiliates rule." [fr:2025-19001]'),
+    ("Does Nvidia face a 25% policy?", 'Nvidia faces "a 25% policy" [x:1:1].'),
+    ("Is there a 60% China revenue rule?", "There is \"Nvidia's 60% China Revenue Rule\" [x:1:1]."),
     ('Did Nvidia report "revenue of $99 billion" in fiscal 2025?', 'Yes, Nvidia reported "revenue of $99 billion" in fiscal 2025 [xbrl:x].'),
     ("Does TSMC expect a 40% tariff?", 'TSMC expects "a 40% tariff" [x:1:1].'),
-    ("Did Nvidia's margin reach 75%?", 'Nvidia\'s "75% gross margin" was reached [x:1:1].'),
-    ("Did the BIS 50% affiliates rule take effect?", 'Yes, the "BIS 50% affiliates rule" took effect [x:1:1].'),        # a name is exempt ONLY for the figure inside it ...
+    ("Did Nvidia's revenue grow 50% last year?", "Yes, revenue grew 50% [x:1:1]."),
+    ("Did Nvidia's revenue grow 50% last year?", 'The answer is "yes": it grew 50% [x:1:1].'),
 ])
-def test_a_quoted_value_from_the_question_is_still_flagged_as_an_echo_or_ungrounded(question, text):
+def test_a_figure_only_the_question_states_is_echoed_quoted_or_not(question, text):
     from semigraph.retrieval.verify import answer_checks
 
-    checks = answer_checks(text, {"x:1:1"}, {"x:1:1"}, "context without the figure", sources={}, question=question)
-    if "BIS 50%" in text:                          # ... and the name case is the one exempt example: it must stay clean
-        assert checks.echoed_numbers == ()
-    else:
-        assert checks.echoed_numbers or checks.unmatched_numbers, text
+    checks = answer_checks(text, {"x:1:1", "fr:2025-19001", "xbrl:x"}, {"x:1:1", "fr:2025-19001", "xbrl:x"}, "context without the figure",
+                           sources={}, question=question)
+    assert checks.echoed_numbers or checks.unmatched_numbers, text

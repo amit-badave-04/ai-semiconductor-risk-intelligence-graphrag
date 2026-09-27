@@ -555,10 +555,11 @@ _MULTI_PAIR_INTENT_RE = re.compile(
     r"|\b(?:earlier|previous|prior|past|older|recent|successive)\s+(?:annual\s+reports|annual\s+filings|10-Ks|20-Fs)\b", re.I)
 _RISK_CHANGE_RE = re.compile(
     r"\b(?:remov\w*|drop(?:s|ped|ping)?|delet\w*|eliminat\w*|withdr\w*|no longer|stop(?:s|ped|ping)?|newly|new|add(?:s|ed|ing)?|"
-    r"reword\w*|chang\w*|differ\w*|appear\w*|disappear\w*)\b", re.I)
+    r"reword\w*|chang\w*|differ\w*|appear\w*|disappear\w*|evolv\w*)\b", re.I)
 # What the question is ABOUT must be a disclosure, not a filing: "how did revenue change according to its 10-K" mentions a filing and a
 # change but asks about a metric (closing review M4), so the generic nouns (10-K, filing, annual report) are not enough.
-_DISCLOSURE_NOUN_RE = re.compile(r"\b(?:risks?|disclos\w*|statements?|sentences?|passages?|wording|language|paragraphs?)\b", re.I)
+_DISCLOSURE_NOUN_RE = re.compile(
+    r"\b(?:risks?|disclos\w*|(?<!financial )statements?|sentences?|passages?|wording|language|paragraphs?)\b", re.I)
 # "in the last 3 years", "over the past few years": several annual reports, when the question is about a disclosure.
 _SPAN_YEARS_RE = re.compile(
     r"\b(?:last|past|previous|recent)\s+(?:\d+|two|three|four|five|several|few)\s+(?:fiscal\s+)?years\b|\b(?:last|past)\s+years\b", re.I)
@@ -571,7 +572,7 @@ def pair_selection_mode(question: str, periods: Mapping[str, list]) -> str | Non
     about_a_disclosure_change = bool(_RISK_CHANGE_RE.search(question) and _DISCLOSURE_NOUN_RE.search(question))
     if (periods.get("years") or periods.get("dates")) and about_a_disclosure_change:
         return "named"
-    if _MULTI_PAIR_INTENT_RE.search(question) or (about_a_disclosure_change and _SPAN_YEARS_RE.search(question)):
+    if about_a_disclosure_change and (_MULTI_PAIR_INTENT_RE.search(question) or _SPAN_YEARS_RE.search(question)):
         return "multi"
     return None
 

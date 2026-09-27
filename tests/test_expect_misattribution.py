@@ -155,3 +155,15 @@ def test_a_negation_that_is_not_about_the_company_or_a_presupposed_disclosure_do
 def test_a_negation_directly_before_the_filing_phrase_still_cancels_the_attribution(sentence):
     company = ["Intel"] if "Intel" in sentence else NV
     assert misattributed_sentences(sentence, company) == []
+
+
+# --- second closing review: the source-limit exception needs a NON-presupposing company span (an indefinite "an Intel filing", "what Intel said") ---
+
+@pytest.mark.parametrize("sentence", [
+    "The context does not show the rule text that NVIDIA's 10-K discusses at length %s." % FR,
+    "The filings do not say more than NVIDIA reports in its 10-K about the rule %s." % FR,
+    "The context does not go beyond what NVIDIA says in its annual report %s." % FR,
+    "The context cannot establish more than that NVIDIA's annual report discusses this BIS rule %s." % FR,
+])
+def test_a_source_limit_does_not_cancel_an_attribution_the_sentence_presupposes(sentence):
+    assert misattributed_sentences(sentence, NV) == [sentence]

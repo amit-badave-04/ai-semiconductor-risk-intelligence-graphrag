@@ -45,7 +45,6 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from .context_layout import removal_supported_ids
 from .ids import CITE_RE
 from .removal_claims import unsupported_removal_claims
 from .textutil import A as _A
@@ -219,21 +218,6 @@ def refusal_shaped(text: str) -> bool:
             and bool(_OPENING_REFUSAL_RE.search(t)) and all(_is_limitation(c) for c in _clauses(t)))
 
 
-# An uncited answer that only reports an EMPTY comparison ("the text check found no risk factor that no longer appears", "none found") has
-# nothing to cite: an id printed beside a reworded item would send the reader to text that does not show the absence (closing review M5).
-# It is exempt from ``no_citation`` only when the context's removed lists really are empty (an answer that ignores listed items is not a
-# report of an empty list) and it states no money figure; every other check still applies.
-_NONE_FINDING_RE = re.compile(
-    r"\bnone\s+found\b|\b(?:text\s+check|comparison|check)\b[^.;\n]{0,80}?\b(?:found|identified|shows|lists|flagged)\s+(?:no|none)\b"
-    r"|\bno\s+(?:older\s+)?(?:risk\s+factors?|paragraphs?)\b[^.;\n]{0,80}?\b(?:no\s+longer|removed|dropped|flagged)\b", re.I)
-
-
-def none_report_shaped(text: str, context: str | None) -> bool:
-    """An answer that reports an empty comparison and the context agrees that nothing is listed under a removed heading."""
-    return (context is not None and bool(_NONE_FINDING_RE.search(text)) and not money_values(text)
-            and not removal_supported_ids(context))
-
-
 # --- numeric grounding ---------------------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -293,35 +277,6 @@ def _amount_status(amount: _Amount, known: list[tuple[float, str | None]], asked
     return "echoed" if _amount_known(amount, asked_known) else "unmatched"
 
 
-_QUOTED_SPAN_RE = re.compile(r'["“”]([^"“”\n]{2,120})["“”]')
-
-
-def _squash(text: str) -> str:
-    return " ".join(text.lower().split()).strip(" .,;:!?\"'“”‘’")
-
-
-# The head noun of a NAME the question may have given a thing ("the BIS 50% affiliates rule"): a quoted phrase is exempt only when it
-# is such a name, so a quoted VALUE ("revenue of $99 billion", "a 40% tariff") stays an echo.
-_NAME_HEADS = frozenset("rule rules act acts policy policies framework regulation regulations law laws order orders directive "
-                        "program programs initiative list agreement treaty standard protocol amendment decision".split())
-
-
-def _quoted_from_question(text: str, position: int, question: str) -> bool:
-    """True when the figure at ``position`` sits inside a QUOTED NAME that the question itself contains verbatim: a capitalised phrase
-    ending in a rule / act / policy noun and holding no currency amount ("a 'BIS 50% affiliates rule'"). The answer is naming the
-    thing the asker named, not asserting the asker's figure. A quoted value, a quote with other words and a figure stated outside a
-    quote are still echoes (closing review H1: a quoted "revenue of $99 billion" copied from the question must not pass)."""
-    asked = _squash(question)
-    for m in _QUOTED_SPAN_RE.finditer(text):
-        span = m.group(1)
-        if not (m.start() <= position < m.end()) or _squash(span) not in asked or _amounts(span):
-            continue
-        words = re.findall(r"[A-Za-z][\w'’-]*", span)
-        if words and words[-1].lower() in _NAME_HEADS and any(w[:1].isupper() for w in words):
-            return True
-    return False
-
-
 def _check_figures(text: str, cited: set[str], context: str, sources: Mapping[str, str], question: str) -> _Figures:
     """Every amount and percentage of ``text`` against the context; what only the question states is ``echoed``."""
     known, asked_amounts = _known_amounts(context), _amounts(question)
@@ -330,14 +285,10 @@ def _check_figures(text: str, cited: set[str], context: str, sources: Mapping[st
     asked_percent = _plain_percentages(question) + [
         float(v.replace(",", "")) for v in _COMPUTED_PERCENT_RE.findall(question)]
     found: list[tuple[int, str, str]] = []
-    def status_of(position: int, status: str) -> str:
-        return "quoted" if status == "echoed" and _quoted_from_question(text, position, question) else status
-
     for a in _amounts(text):
-        found.append((a.start, a.shown, status_of(a.start, _amount_status(a, known, asked_amounts))))
+        found.append((a.start, a.shown, _amount_status(a, known, asked_amounts)))
     for m in _PERCENT_VALUE_RE.finditer(text):
-        found.append((m.start(), m.group(0).strip(),
-                      status_of(m.start(), _percent_status(text, m, computed, cited_percent, asked_percent))))
+        found.append((m.start(), m.group(0).strip(), _percent_status(text, m, computed, cited_percent, asked_percent)))
     unmatched: list[str] = []
     echoed: list[str] = []
     for _, shown, status in sorted(found):
@@ -390,7 +341,6 @@ class AnswerChecks:
     has_citation: bool = True
     is_refusal: bool = False
     removal_claims: tuple[str, ...] = ()
-    is_none_report: bool = False       # uncited, but only because it reports an empty comparison (see none_report_shaped)
 
     def as_dict(self) -> dict:
         out = {"citations_retrieved": self.citations_retrieved, "numbers_grounded": self.numbers_grounded,
@@ -399,8 +349,6 @@ class AnswerChecks:
                "has_citation": self.has_citation, "is_refusal": self.is_refusal,
                "unsupported_removal_claim": bool(self.removal_claims),
                "unsupported_removal_sentences": list(self.removal_claims)}
-        if self.is_none_report:            # emitted only when true, so every payload written before this key existed is unchanged
-            out["is_none_report"] = True
         return out
 
 
@@ -421,7 +369,7 @@ def failed_check_names(checks: object) -> list[str]:
         names.append("pseudo_citation")
     if checks.get("unsupported_removal_claim"):
         names.append("unsupported_removal_claim")
-    if checks.get("has_citation") is False and not checks.get("is_refusal") and not checks.get("is_none_report"):
+    if checks.get("has_citation") is False and not checks.get("is_refusal"):
         names.append("no_citation")
     return names
 
@@ -442,7 +390,7 @@ def answer_checks(text: str, cited: set[str], valid_ids: set[str], context: str 
         citations_retrieved=not (cited - valid_ids), numbers_grounded=not (figures.unmatched or figures.echoed),
         unmatched_numbers=figures.unmatched, pseudo_citations=_pseudo_citations(text, cited, valid_ids),
         echoed_numbers=figures.echoed, numbers_checked=figures.checked, has_citation=bool(cited),
-        is_refusal=refusal_shaped(text), is_none_report=not cited and none_report_shaped(text, context),
+        is_refusal=refusal_shaped(text),
         removal_claims=() if context is None else unsupported_removal_claims(text, context))
 
 
@@ -473,7 +421,7 @@ def verify_answer(text: str, cited: set[str], valid_ids: set[str], finish_reason
     if cited - valid_ids:
         reasons.append("invalid_citation")
     checks = answer_checks(text, cited, valid_ids, context, sources=sources, question=question)
-    if not checks.has_citation and not checks.is_refusal and not checks.is_none_report:
+    if not checks.has_citation and not checks.is_refusal:
         reasons.append("no_citation")
     if not checks.numbers_grounded:
         reasons.append("ungrounded_number")

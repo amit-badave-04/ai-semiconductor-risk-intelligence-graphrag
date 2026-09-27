@@ -115,8 +115,13 @@ _STATEMENT_START_RE = re.compile(r"[,;]|\band\b", re.I)
 _PREP_NEGATION_RE = re.compile(r"\b(?:not|never)\s+(?:as\s+part\s+of|part\s+of|from|in|among|one\s+of|by)\s*$", re.I)
 # A past-tense saying verb right after the company presupposes the disclosure ("the exact date NVIDIA DISCLOSED the rule"); after a
 # question word it is only hypothetical ("what Intel SAID about it"), which a source limitation may cancel.
-_PAST_SAYING_RE = re.compile(r"\b(?:disclosed|reported|stated|said|announced|acknowledged|described|mentioned|warned|highlighted|cited|filed)\b", re.I)
+_PAST_SAYING_RE = re.compile(
+    r"\b(?:disclos(?:e|es|ed)|report(?:s|ed)|state(?:s|d)|say|says|said|announce(?:s|d)|acknowledge(?:s|d)|describe(?:s|d)|mention(?:s|ed)|"
+    r"warn(?:s|ed)|highlight(?:s|ed)|cite(?:s|d)|discuss(?:es|ed)|list(?:s|ed)|file(?:s|d))\b", re.I)
 _QUESTION_WORD_RE = re.compile(r"\b(?:what|whether|if|how|why)\s*$", re.I)
+# "the rule text THAT NVIDIA's 10-K discusses", "MORE THAN NVIDIA reports", "BEYOND WHAT NVIDIA says": the limitation is about something
+# else and the company's statement is taken for granted, so the limitation does not cancel it.
+_PRESUPPOSING_LEAD_RE = re.compile(r"\b(?:that|which|whose|because|since|beyond|besides|more\s+than|other\s+than|apart\s+from)\s+(?:what\s+)?$", re.I)
 
 
 def _negated(clause: str, start: int, end: int) -> bool:
@@ -130,7 +135,7 @@ def _negated(clause: str, start: int, end: int) -> bool:
     last_break = max((m.end() for m in _STATEMENT_START_RE.finditer(head)), default=0)
     if not _SOURCE_LIMIT_RE.search(head[last_break:]):
         return False
-    presupposed = _PAST_SAYING_RE.search(clause[start:end]) and not _QUESTION_WORD_RE.search(head)
+    presupposed = (_PAST_SAYING_RE.search(clause[start:end]) and not _QUESTION_WORD_RE.search(head)) or _PRESUPPOSING_LEAD_RE.search(head)
     return not presupposed
 
 

@@ -456,3 +456,21 @@ def test_a_pair_that_cannot_be_compared_does_not_halve_the_caps_of_the_pair_that
     many = [item_row("removed", n, ACC["n26"], ACC["n25"]) for n in range(1, 10)]
     items, _ = select_temporal(many, "q", pairs=chosen)
     assert len([i for i in items if i["change"] == "removed"]) == TEMPORAL_CAPS["removed"]           # 8, not 4
+
+
+# --- second closing review: the multi-year wording needs a risk-change word AND a disclosure noun, like the named mode ---
+
+@pytest.mark.parametrize("question", [
+    "How has TSMC's revenue evolved over the past three years?",
+    "How has Nvidia's data center revenue evolved?",
+    "What was the change in Intel's net income in fiscal 2024 per its financial statements?",
+    "How did operating expenses evolve across Nvidia's annual reports?",
+])
+def test_a_metric_question_is_never_a_pair_question_even_with_multi_year_or_evolution_wording(question):
+    assert pair_selection_mode(question, mentioned_periods(question)) is None
+
+
+def test_a_disclosure_question_with_evolution_wording_is_still_a_multi_year_question():
+    for q in ("How has Nvidia's disclosed risk profile evolved across its recent annual reports?",
+              "How have Nvidia's risk factors evolved?"):
+        assert pair_selection_mode(q, mentioned_periods(q)) == "multi", q

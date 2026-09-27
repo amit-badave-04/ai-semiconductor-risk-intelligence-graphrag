@@ -174,3 +174,14 @@ def test_the_benchmark_refusal_predicate_rejects_an_answer_that_states_a_money_f
     assert not is_refusal_answer("Intel's 2012 revenue was $53.3 billion; Intel does not always give quarterly guidance.")
     assert not is_refusal_answer("AMD's revenue in fiscal 2010 was $6.5 billion, and the 10-K provides no segment breakdown.")
     assert not is_refusal_answer("Nvidia's revenue was 60.9 billion USD, but the filing does not state the segment.")
+
+
+# --- second closing review: a scaled number without a currency symbol is a figure too ---
+
+def test_a_refusal_states_no_scaled_number_even_without_a_currency_symbol():
+    from semigraph.eval.runner import is_refusal_answer
+
+    assert not is_refusal_answer("Samsung's revenue was about 220 billion, although the filings don't provide a segment breakdown.")
+    assert not is_refusal_answer("Samsung's revenue was 300 trillion won; the filing does not say more.")
+    assert not is_refusal_answer("Revenue was 258.9 trillion KRW, but the filings do not state the segment.")
+    assert is_refusal_answer("The context does not give Samsung's revenue; Qualcomm says licensees with 10% or more of its revenue include Samsung.")
