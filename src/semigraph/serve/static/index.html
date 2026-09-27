@@ -37,6 +37,7 @@
   dl.facts { display:grid; grid-template-columns:max-content 1fr; gap:4px 14px; margin:10px 0; font-size:13px } dl.facts dt { color:var(--muted) } dl.facts dd { margin:0; word-break:break-word }
   .err { color:var(--bad) } footer { max-width:1100px; margin:0 auto; padding:0 20px 40px; color:var(--muted); font-size:12px } footer p { margin:10px 0 0 }
   a { color:var(--accent) }
+  .steps ol { margin:8px 0 0; padding-left:22px; font-size:13px; color:var(--muted) } .steps li { margin:2px 0 }
 </style>
 </head>
 <body>
@@ -62,8 +63,10 @@
       <span class="hint" id="limits"></span>
     </div>
     <div class="hint" style="margin-top:6px">Accuracy figures shown on earlier versions of this page are withdrawn: the benchmark behind them could not detect false &ldquo;dropped risk&rdquo; claims. A source-text-grounded re-measurement is in progress (<a href="https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag/blob/v2/docs/v2/M1B_PLAN.md" target="_blank" rel="noopener">plan</a>, <a href="https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag/blob/v2/docs/v2/REVIEW_2026-09-26.md" target="_blank" rel="noopener">review</a>).</div>
+    <div class="hint" id="agentHint" hidden></div>
     <div id="turnstile-widget" class="row"></div>
     <div id="status"></div>
+    <div class="steps" aria-live="polite" aria-relevant="additions"><ol id="agentSteps" aria-label="What the research agent did" hidden></ol></div>
     <div id="answer"></div>
     <div id="meta" hidden></div>
   </section>
@@ -79,6 +82,7 @@
 </aside>
 <footer>
   Live questions cost real money (<span id="costNote">one or two model calls each</span>), so they are rate-limited per address and capped per day; benchmark questions are served from a saved evaluation run. Financial figures come from XBRL facts, not from model parsing. Each answer is checked so that every cited id was retrieved and every number matches the retrieved context; those checks do not prove that a sentence is supported by the passage it cites, so read the source. Source code and methodology: <a href="https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag">GitHub</a>.
+  <p id="tracingNote" hidden></p>
   <p id="reliability"><b>How reliable are change claims?</b> Statements about what changed between two annual filings come from an automatic text comparison, and each kind is worded only as strongly as it held up when two people checked a small held-out sample by hand (the samples are small, so read the counts as rough guides). <b>A risk factor labelled &ldquo;no longer appears as a separate risk factor&rdquo;:</b> 4 of 4 checked cases were gone as a standalone risk factor, but 2 of the 4 had been folded into another risk factor rather than dropped, so it does not mean the company stopped disclosing the risk. <b>&ldquo;Not matched&rdquo;:</b> the text check could not settle these older risk factors, so they are never shown as removed. <b>&ldquo;No matching risk factor found in the earlier filing&rdquo;:</b> only 6 of 12 checked cases were really new; the other 6 were already disclosed earlier, for example split out of an older risk factor. <b>A sentence whose &ldquo;wording was not found&rdquo; in the other filing:</b> 6 of the 51 sentences flagged as missing from the newer filing were still stated in different words (sentences flagged as new did better: 1 of 48).</p>
 </footer>
 <script>
@@ -281,6 +285,32 @@ function costNote(models) {
   return "one or two model calls each";
 }
 
+// ---- The opt-in research agent (strategy "agent"): the option, the step timeline and the privacy line.
+// A `step` event carries a tool name and a summary (counts, ids, fiscal years). Both are server text: they are only ever shown
+// through textContent, never through innerHTML.
+const STEP_VERBS = {
+  lookup_company: ["Looked up", " "], search_filings: ["Searched the filings", ": "], financial_metrics: ["Fetched", " "],
+  risk_changes: ["Compared risk disclosures", ": "], relationships: ["Checked relationships", ": "],
+  active_risks: ["Listed active risks", ": "], compute_change: ["Computed", " "],
+};
+const MAX_STEP_CHARS = 140, MAX_STEPS_SHOWN = 12;
+const AGENT_OPTION_LABEL = "Deep research (agent): plans extra lookups first";
+const AGENT_HINT = "Deep research: a small planning model chooses a few extra graph lookups, listed below as they run, before the answer is written. It is slower and costs a little more; the same checks apply to the answer.";
+const TRACING_NOTE = "Deep research questions are traced for debugging, at a sampling rate the operator sets. A trace holds the length of the question and a one-way hash of it, the names of the tools and models used, token counts, cost, timings and any fallback reason; never the text of the question or the answer, and never your address.";
+
+const agentEnabled = (stats) => !!stats && stats.agent_enabled === true;
+const tracingNote = (stats) => (agentEnabled(stats) && stats.tracing === true ? TRACING_NOTE : "");
+
+function stepText(ev) {
+  ev = ev && typeof ev === "object" ? ev : {};
+  const tool = typeof ev.tool === "string" && /^[a-z][a-z0-9_]{0,40}$/.test(ev.tool) ? ev.tool : "";
+  const known = Object.prototype.hasOwnProperty.call(STEP_VERBS, tool);
+  const [verb, joiner] = known ? STEP_VERBS[tool] : [tool ? "Ran " + tool.replace(/_/g, " ") : "Ran a tool", ": "];
+  const raw = typeof ev.summary === "string" ? ev.summary.replace(/\s+/g, " ").trim() : "";
+  const summary = raw.length > MAX_STEP_CHARS ? raw.slice(0, MAX_STEP_CHARS) + "…" : raw;
+  return verb + (summary ? joiner + summary : "") + (ev.ok === false ? " (failed)" : "");
+}
+
 function retrievalStatus(ev) {
   const c = (ev && ev.counts) || {}, names = ev && ev.anchors ? Object.keys(ev.anchors) : [];
   const parts = [`anchors: ${ev && ev.anchor_defaulted ? "no company detected; defaulting to Nvidia" : (names.join(", ") || "none")}`];
@@ -360,6 +390,23 @@ const TURNSTILE_SITE_KEY = "__TURNSTILE_SITE_KEY__";
 const $ = (id) => document.getElementById(id);
 let turnstileToken = null, modelsInfo = null;
 const evidenceCache = new Map();
+let stepsShown = 0;
+
+function clearSteps() { const ol = $("agentSteps"); ol.textContent = ""; ol.hidden = true; stepsShown = 0; }
+function addStep(ev) {
+  if (stepsShown >= MAX_STEPS_SHOWN) return;
+  const li = document.createElement("li"); li.textContent = stepText(ev);
+  $("agentSteps").appendChild(li); $("agentSteps").hidden = false; stepsShown += 1;
+}
+// Idempotent: loadStats() runs after every answer. Nothing agent-related is visible while the service reports it off.
+function syncAgentUi(stats) {
+  const on = agentEnabled(stats), select = $("strategy"), option = select.querySelector('option[value="agent"]'), note = tracingNote(stats);
+  if (on && !option) { const o = document.createElement("option"); o.value = "agent"; o.textContent = AGENT_OPTION_LABEL; select.appendChild(o); }
+  if (!on && option) { if (select.value === "agent") select.value = "hybrid"; option.remove(); }
+  $("agentHint").textContent = on ? AGENT_HINT : ""; $("agentHint").hidden = !on;
+  $("tracingNote").textContent = note; $("tracingNote").hidden = !note;
+  if (!on) clearSteps();
+}
 
 async function loadStats() {
   try {
@@ -368,6 +415,7 @@ async function loadStats() {
     $("stats").innerHTML = statsHtml(s);
     $("limits").textContent = limitsText(s);
     $("costNote").textContent = costNote(s.models);
+    syncAgentUi(s);
   } catch (e) { $("stats").textContent = "statistics unavailable"; }
 }
 
@@ -381,8 +429,10 @@ function setStatus(text, cls) { $("status").innerHTML = cls ? `<span class="${cl
 
 async function ask() {
   const question = $("q").value.trim(); if (!question) return;
-  $("ask").disabled = true; $("answer").innerHTML = ""; $("meta").hidden = true; setStatus("retrieving from the graph…");
-  const body = { question, strategy: $("strategy").value, turnstile_token: turnstileToken };
+  const strategy = $("strategy").value;
+  $("ask").disabled = true; $("answer").innerHTML = ""; $("meta").hidden = true; clearSteps();
+  setStatus(strategy === "agent" ? "the research agent is choosing lookups…" : "retrieving from the graph…");
+  const body = { question, strategy, turnstile_token: turnstileToken };
   let resp;
   try { resp = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
   catch (e) { setStatus("network error — is the service online?", "err"); $("ask").disabled = false; return; }
@@ -393,7 +443,8 @@ async function ask() {
     for (const l of chunk.split("\n")) { if (l.startsWith("event:")) event = l.slice(6).trim(); else if (l.startsWith("data:")) data += l.slice(5).trim(); }
     if (!data) return;
     let ev; try { ev = JSON.parse(data); } catch (_) { return; }
-    if (event === "retrieval") { setStatus(retrievalStatus(ev) + " — generating…"); }
+    if (event === "step") { addStep(ev); }
+    else if (event === "retrieval") { setStatus(retrievalStatus(ev) + " — generating…"); }
     else if (event === "escalated") { setStatus(escalationStatus(ev)); }
     else if (event === "delta") { text += ev.text; $("answer").innerHTML = renderMarkdown(text); }
     else if (event === "done") { text = ev.answer; $("answer").innerHTML = renderMarkdown(text); finish(ev); }

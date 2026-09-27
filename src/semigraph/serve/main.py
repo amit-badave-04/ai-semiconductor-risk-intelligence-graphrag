@@ -4,6 +4,7 @@
 """
 
 import contextlib
+import importlib
 import logging
 import threading
 import time
@@ -20,12 +21,13 @@ from ..graph.schema import apply_schema
 from ..retrieval.answerer import template_fingerprint
 from .guard import RateLimiter
 from .routes import router
-from . import store
+from . import store, tracing
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("semigraph.serve.main")
 
 CONNECT_RETRY_S = 90  # the database machine may still be booting after START
+AGENT_MODULE = "semigraph.agent.stream"
 
 
 def connect_with_retry(settings):
@@ -109,15 +111,38 @@ def seed_examples(driver, examples: dict, snapshot_id: str) -> frozenset[str]:
     return frozenset(result.seeded_ids)
 
 
+def require_agent_package() -> None:
+    """Import the agent at boot when ``AGENT_ENABLED``: a missing langgraph must stop the service HERE, not on the first agent
+    question (and not after the Neo4j start-up retry either: this runs before ``bootstrap``)."""
+    try:
+        importlib.import_module(AGENT_MODULE)
+    except Exception:
+        logger.error("AGENT_ENABLED is set but %s cannot be imported: install the optional 'agent' extra "
+                     "(pip install '.[agent]', which brings langgraph) or unset AGENT_ENABLED", AGENT_MODULE)
+        raise
+
+
+def shutdown_tracer(tracer) -> None:
+    """Flush and stop the tracing client (the only blocking flush: a request never waits for it). Never raises."""
+    try:
+        getattr(tracer, "shutdown", lambda: None)()
+    except Exception:  # noqa: BLE001 - a failing flush must not keep the database driver open
+        logger.exception("tracer shutdown failed")
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    if settings.agent_enabled:
+        require_agent_package()
     if settings.turnstile_required and not settings.turnstile_secret_key:
         logger.error("TURNSTILE_REQUIRED without TURNSTILE_SECRET_KEY: live questions will be refused")
     elif settings.is_production and not settings.turnstile_secret_key:
         logger.warning("production without Turnstile: cost is bounded only by the daily ceiling (%d) and the per-IP window",
                        settings.max_queries_per_day)
     driver, embedder, stats, snapshot, example_ids = await run_in_threadpool(bootstrap, settings)
+    # A no-op unless all three langfuse settings are set (only then is langfuse imported, hence off the event loop).
+    app.state.tracer = await run_in_threadpool(tracing.get_tracer, settings)
     app.state.settings = settings
     app.state.driver = driver
     app.state.embedder = embedder
@@ -132,6 +157,7 @@ async def lifespan(app: FastAPI):
     app.state.answer_slots = threading.BoundedSemaphore(settings.max_concurrent_answers)
     logger.info("semigraph %s serving — graph: %s", __version__, stats)
     yield
+    await run_in_threadpool(shutdown_tracer, app.state.tracer)
     driver.close()
 
 

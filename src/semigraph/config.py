@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = Field("", repr=False)
     langfuse_host: str = ""
     langfuse_sample_rate: float = 0.1
+    langfuse_hash_salt: str = Field("", repr=False)   # empty = a random salt per process (question hashes group within one process only)
 
     @property
     def is_production(self) -> bool:

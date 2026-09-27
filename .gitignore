@@ -34,3 +34,6 @@ deploy/neo4j/seed/*.dump
 
 # Local backups of graph dumps (v1-final etc.)
 data/backups/
+
+# DeepEval (evaluated in an isolated environment, see docs/v2/M3_AGENT_PLAN.md) writes this in the working directory
+.deepeval/

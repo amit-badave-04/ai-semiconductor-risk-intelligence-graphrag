@@ -14,6 +14,7 @@ const EXPORTS = [
   "esc", "shortModel", "classifyCitation", "chipLabel", "reasonText", "answerBadge", "checksSummary", "metaHtml",
   "renderMarkdown", "statsHtml", "limitsText", "costNote", "retrievalStatus", "safeUrl", "formatNumber",
   "evidenceView", "escalationStatus", "CITE", "checksPassed", "examplesHtml",
+  "agentEnabled", "stepText", "tracingNote", "syncAgentUi", "addStep", "clearSteps",
 ];
 
 function stubElement() {
@@ -21,7 +22,7 @@ function stubElement() {
     style: {}, dataset: {}, innerHTML: "", textContent: "", value: "", hidden: false, disabled: false,
     classList: { add() {}, remove() {}, toggle() {} },
     addEventListener() {}, appendChild() {}, setAttribute() {}, querySelectorAll() { return []; },
-    closest() { return null; },
+    closest() { return null; }, querySelector() { return null; }, remove() {},
   };
 }
 
@@ -33,11 +34,13 @@ export function pageScript() {
   return scripts[0][1].replace("__TURNSTILE_SITE_KEY__", "");
 }
 
-export function loadPage() {
+// `custom` lets a test supply its own elements: `{ elements: { id: element }, createElement: (tag) => element }`.
+export function loadPage(custom = {}) {
   const elements = new Map();
   const document = {
-    getElementById(id) { if (!elements.has(id)) elements.set(id, stubElement()); return elements.get(id); },
-    addEventListener() {}, createElement() { return stubElement(); }, head: { appendChild() {} },
+    getElementById(id) { if (!elements.has(id)) elements.set(id, (custom.elements || {})[id] || stubElement()); return elements.get(id); },
+    addEventListener() {}, createElement(tag) { return custom.createElement ? custom.createElement(tag) : stubElement(); },
+    head: { appendChild() {} },
   };
   // fetch never settles: the page's start-up calls (stats, examples) must not resolve or reject during a test.
   const sandbox = { document, window: {}, fetch: () => new Promise(() => {}), console, TextDecoder };

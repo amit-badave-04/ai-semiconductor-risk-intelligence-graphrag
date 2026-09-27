@@ -8,6 +8,7 @@ import logging
 import re
 import secrets
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -161,7 +162,9 @@ async def stats(request: Request):
                        "per_ip": f"{s.rate_limit_questions} per {s.rate_limit_window_seconds // 60} min",
                        "max_question_chars": s.max_question_chars},
             "models": {"llm": s.answer_model, "escalation": s.escalation_model or None, "embedder": st.embedder.name},
-            "agent_enabled": s.agent_enabled}
+            "agent_enabled": s.agent_enabled,
+            # True only while a sample of agent questions is really traced: the page shows its privacy line on this flag.
+            "tracing": bool(s.agent_enabled and getattr(getattr(st, "tracer", None), "enabled", False))}
 
 
 @router.get("/api/evidence/{evidence_id}")
@@ -235,6 +238,37 @@ def _stream_fn(strategy: str):
     return agent_answer_stream
 
 
+def _nothing() -> None:
+    return None
+
+
+def _stream_extras(st, question: str, strategy: str) -> tuple[dict, Callable[[], None]]:
+    """The extra keyword arguments of the agent stream and the cleanup to run when the request ends (nothing for the fixed path).
+
+    ``st.tracer`` is a FACTORY (``tracing.LangfuseTracer.for_request``): the per-request tracer draws the sampling decision once
+    and keeps its own span stack, which one shared object could not do for a sync generator that the SSE layer drives through
+    the threadpool. It is closed in the cleanup, on every path. A tracer without ``for_request`` is passed through as is and is
+    never closed here. A failing tracer never breaks an answer."""
+    if strategy != guard.AGENT_STRATEGY:
+        return {}, _nothing
+    tracer = getattr(st, "tracer", None)
+    factory = getattr(tracer, "for_request", None)
+    if not callable(factory):
+        return {"settings": st.settings, "tracer": tracer}, _nothing
+    try:
+        request_tracer = factory(question, strategy=strategy)
+    except Exception:  # noqa: BLE001 - tracing must never break an answer
+        logger.exception("creating the request tracer failed; answering untraced")
+        return {"settings": st.settings, "tracer": None}, _nothing
+
+    def close() -> None:
+        try:
+            request_tracer.close()
+        except Exception:  # noqa: BLE001
+            logger.exception("closing the request tracer failed")
+    return {"settings": st.settings, "tracer": request_tracer}, close
+
+
 def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = ""):
     """Sync generator (runs in the threadpool): slot -> retrieval -> LLM deltas -> done.
 
@@ -247,9 +281,9 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
     if not st.answer_slots.acquire(blocking=False):
         yield _sse({"event": "error", "detail": MSG_BUSY})
         return
-    logged = False
+    logged, close_tracer = False, _nothing
     try:
-        extra = {"settings": s} if strategy == guard.AGENT_STRATEGY else {}
+        extra, close_tracer = _stream_extras(st, question, strategy)
         for ev in _stream_fn(strategy)(question, st.driver, st.embedder, strategy=strategy,
                                        timeout=s.llm_request_timeout_s, max_tokens=s.llm_answer_max_tokens,
                                        escalation_model=s.escalation_model or None, **extra):
@@ -289,6 +323,7 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
                 store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False)
             except Exception:  # noqa: BLE001
                 logger.exception("ledger write failed for an abandoned answer")
+        close_tracer()
         st.answer_slots.release()
 
 
