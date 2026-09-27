@@ -14,3 +14,5 @@ litellm>=1.90.2
 pydantic>=2.13
 pydantic-settings>=2.14
 python-dotenv>=1.2
+# Opt-in agent (AGENT_ENABLED=true; docs/v2/M3_AGENT_PLAN.md): shipped in the image so the flag is a config change, imported only when the flag is on
+langgraph>=1.2.7
