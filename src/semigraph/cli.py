@@ -678,5 +678,118 @@ def risk_items_cmd(
             typer.echo(f"{name}: {t['n_items']} items -> {t['path']}" if t.get("written") else f"{name}: nothing written")
 
 
+def _refuse(message: str) -> None:
+    """A usage error: say why on stderr and exit 2, before anything is bought."""
+    typer.echo(message, err=True)
+    raise typer.Exit(2)
+
+
+@app.command("eval-agent")
+def eval_agent_cmd(
+    benchmark: Path = typer.Option(None, "--benchmark", help="Agent benchmark file (default: artifacts/agent_benchmark.json)"),
+    include_main: bool = typer.Option(True, "--include-main/--agent-only", help="Also run the main benchmark (the questions the fixed path is compared on)"),
+    limit: int = typer.Option(None, help="Only the first N questions of the run set"),
+    runs: str = typer.Option(None, "--runs", help="Score this saved runs file OFFLINE (a path, or a name inside data/processed): answers nothing, needs no database"),
+    runs_file: str = typer.Option("eval_agent.jsonl", help="Checkpoint log inside data/processed for a live run (an interrupted run resumes)"),
+    baseline: Path = typer.Option(Path("artifacts/eval_report.v2d-deployed.json"), help="The fixed path's deployed-eval report to compare against"),
+    report_name: str = typer.Option("eval_report.agent.json", help="Report file name inside artifacts/"),
+    model: str = typer.Option(None, help="Cheap draft model (default: ANSWER_MODEL from settings)"),
+    escalation_model: str = typer.Option(None, help="Strong model for routed/rejected answers (default: ESCALATION_MODEL from settings)"),
+    votes: int = typer.Option(3, help="Correctness-judge votes per judged answer (majority; must equal the baseline's)"),
+    max_usd: float = typer.Option(None, "--max-usd", help="Hard cap on ANSWERING spend, planner included (required for a live run)"),
+    confirm_paid: bool = typer.Option(False, "--confirm-paid", help="Authorise paid calls: the live run and the judge. Without it nothing is bought"),
+    no_judge: bool = typer.Option(False, "--no-judge", help="Score for free even when paid calls are confirmed (trajectory, spend, mechanical checks only)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan and the estimate and stop: scores nothing, buys nothing"),
+    verbose: bool = typer.Option(False, "-v"),
+):
+    """Score the M3 agent: trajectory, spend and answers, against the fixed path (PAID unless --dry-run or --runs).
+
+    A live run needs --confirm-paid and --max-usd and prints its cost estimate first; --runs re-scores a saved run for $0 (the judge
+    is paid, so it runs only with --confirm-paid). Exit codes: 2 usage, 4 a gate failed, 5 the spend cap stopped the run."""
+    _setup_logging(verbose)
+    from semigraph.artifacts import load_benchmark
+    from semigraph.eval import agent_eval as ae
+    from semigraph.eval.runner import data_as_of
+
+    settings, main = _settings(), load_benchmark()
+    limits, raw = ae.limits_from_settings(settings), ae.read_agent_benchmark(benchmark)
+    if problems := ae.benchmark_problems(raw, main, limits=limits):
+        _refuse("the agent benchmark is malformed:\n  " + "\n  ".join(problems))
+    run_set = ae.build_run_set(raw, main, include_main=include_main, limit=limit)
+    typer.echo(ae.plan_line(run_set))
+    base = json.loads(baseline.read_text(encoding="utf-8")) if baseline.exists() else None
+    model, escalation_model = model or settings.answer_model, escalation_model or settings.escalation_model
+    estimate = _agent_estimate(ae, run_set, base, settings, limits, votes, model, escalation_model, baseline)
+    if dry_run:
+        typer.echo("\n".join(ae.describe_plan(run_set)))
+        return
+    if runs:
+        path = Path(runs) if Path(runs).exists() else settings.processed_dir / runs
+        if not path.exists():
+            _refuse(f"--runs {runs}: no such file (looked for {Path(runs)} and {path})")
+        wanted = {it["id"] for it in run_set}
+        rows = [r for r in ae.read_rows(path) if r["id"] in wanted]
+    else:
+        rows = _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_usd, confirm_paid)
+    judge = None
+    if confirm_paid and not no_judge:
+        from semigraph.llm import llm_json
+
+        judge = llm_json
+    result = ae.score_agent_runs(rows, run_set, limits=limits, judge=judge, votes=votes, judge_model=settings.llm_model,
+                                 as_of=data_as_of(settings), baseline=base)
+    typer.echo("\n".join(ae.format_gates(result)))
+    if judge is None:
+        typer.echo("judge: skipped (judged questions are not graded; pass --confirm-paid to pay for it)")
+    if result["baseline_also_fails"]:
+        typer.echo(f"note: the fixed path also fails {result['baseline_also_fails']}")
+    out = Path("artifacts") / report_name
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"estimate": estimate, "baseline": str(baseline) if base else None, "votes": votes, **result}, indent=2),
+                   encoding="utf-8")
+    typer.echo(f"clears every gate: {result['clears_all_gates']}; report -> {out}")
+    if any(g["passed"] is False for g in result["gates"].values()):
+        raise typer.Exit(4)
+
+
+def _agent_estimate(ae, run_set, base, settings, limits, votes, model, escalation_model, baseline_path) -> dict | None:
+    """Print the cost estimate of the run set (None, with the reason, when there is no baseline report to price the writer from)."""
+    if base is None:
+        typer.echo(f"baseline report {baseline_path} not found: the comparison gates stay unevaluated and there is no estimate")
+        return None
+    try:
+        est = ae.estimate_agent_run(run_set, baseline=base, limits=limits, planner_model=settings.agent_planner_model, votes=votes,
+                                    draft_model=model, escalation_model=escalation_model or ae.DEFAULT_ESCALATION_MODEL)
+    except ValueError as e:
+        _refuse(str(e))
+    typer.echo("\n".join(ae.format_estimate(est)))
+    return est
+
+
+def _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_usd, confirm_paid) -> list[dict]:
+    """The one paid branch of ``eval-agent``: refuses without --confirm-paid, --max-usd and an escalation model, then answers every question."""
+    from semigraph.embeddings import Embedder
+    from semigraph.eval import agent_eval as ae
+    from semigraph.eval.runner import AnswerBudgetExceeded
+    from semigraph.graph import client
+
+    if not confirm_paid:
+        _refuse("refusing to run: a live evaluation buys model calls (see the estimate above). Re-run with --confirm-paid to authorise it, "
+                "or use --dry-run / --runs to spend nothing")
+    if max_usd is None:
+        _refuse("a live run needs an explicit spend cap: pass --max-usd")
+    if not escalation_model:
+        _refuse("no escalation model: pass --escalation-model or set ESCALATION_MODEL (the run must match the deployed configuration)")
+    driver = client.get_driver(settings)
+    try:
+        answer_events = ae.agent_answer_events(driver, Embedder(), model=model, escalation_model=escalation_model)
+        return ae.run_agent_benchmark(run_set, answer_events, settings.processed_dir / runs_file, max_usd=max_usd)
+    except AnswerBudgetExceeded as e:
+        typer.echo(f"Stopped: {e}. Nothing further was spent; answers so far are checkpointed.", err=True)
+        raise typer.Exit(5) from e
+    finally:
+        driver.close()
+
+
 if __name__ == "__main__":
     app()
