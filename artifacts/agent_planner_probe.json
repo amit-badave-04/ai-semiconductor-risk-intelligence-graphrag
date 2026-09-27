@@ -1,0 +1,256 @@
+{
+  "tool_names": [
+    "lookup_company",
+    "search_filings",
+    "financial_metrics",
+    "risk_changes",
+    "relationships",
+    "active_risks",
+    "compute_change"
+  ],
+  "results": [
+    {
+      "model": "openai/gpt-6-luna",
+      "cases": [
+        {
+          "id": "A01",
+          "ok": true,
+          "expected_tools": [
+            "financial_metrics"
+          ],
+          "forbidden_tools": [
+            "risk_changes",
+            "relationships",
+            "active_risks"
+          ],
+          "calls": [
+            {
+              "tool": "financial_metrics",
+              "arguments": "{\"companies\":[\"Nvidia\",\"AMD\"],\"metrics\":[\"revenue\"],\"period_ends\":[\"2025-01-26\",\"2024-12-28\"]}",
+              "args_valid": true,
+              "problem": ""
+            }
+          ],
+          "finish_reason": "tool_calls",
+          "usage": {
+            "prompt_tokens": 1680,
+            "completion_tokens": 47
+          }
+        },
+        {
+          "id": "A10",
+          "ok": true,
+          "expected_tools": [
+            "risk_changes"
+          ],
+          "forbidden_tools": [
+            "compute_change",
+            "financial_metrics"
+          ],
+          "calls": [
+            {
+              "tool": "risk_changes",
+              "arguments": "{\"companies\":[\"Nvidia\"],\"fiscal_years\":[2024,2025]}",
+              "args_valid": true,
+              "problem": ""
+            }
+          ],
+          "finish_reason": "tool_calls",
+          "usage": {
+            "prompt_tokens": 1672,
+            "completion_tokens": 31
+          }
+        },
+        {
+          "id": "A13",
+          "ok": true,
+          "expected_tools": [],
+          "forbidden_tools": [
+            "risk_changes",
+            "relationships",
+            "active_risks",
+            "search_filings",
+            "compute_change",
+            "lookup_company"
+          ],
+          "calls": [
+            {
+              "tool": "financial_metrics",
+              "arguments": "{\"companies\":[\"Nvidia\"],\"metrics\":[\"revenue\"],\"period_ends\":[\"2026-01-25\"]}",
+              "args_valid": true,
+              "problem": ""
+            }
+          ],
+          "finish_reason": "tool_calls",
+          "usage": {
+            "prompt_tokens": 1664,
+            "completion_tokens": 38
+          }
+        },
+        {
+          "id": "A15",
+          "ok": true,
+          "expected_tools": [],
+          "forbidden_tools": [
+            "compute_change",
+            "risk_changes",
+            "financial_metrics"
+          ],
+          "calls": [
+            {
+              "tool": "lookup_company",
+              "arguments": "{\"name\":\"SK hynix\"}",
+              "args_valid": true,
+              "problem": ""
+            }
+          ],
+          "finish_reason": "tool_calls",
+          "usage": {
+            "prompt_tokens": 1660,
+            "completion_tokens": 19
+          }
+        },
+        {
+          "id": "A17",
+          "ok": true,
+          "expected_tools": [],
+          "forbidden_tools": [
+            "risk_changes",
+            "relationships",
+            "active_risks",
+            "search_filings",
+            "compute_change",
+            "lookup_company"
+          ],
+          "calls": [
+            {
+              "tool": "financial_metrics",
+              "arguments": "{\"companies\":[\"Nvidia\"],\"metrics\":[\"revenue\"],\"period_ends\":[\"2026-01-25\"]}",
+              "args_valid": true,
+              "problem": ""
+            }
+          ],
+          "finish_reason": "tool_calls",
+          "usage": {
+            "prompt_tokens": 1684,
+            "completion_tokens": 38
+          }
+        }
+      ],
+      "accepted_the_real_schemas": true,
+      "all_arguments_valid": true,
+      "cost_usd": 0.00092
+    },
+    {
+      "model": "anthropic/claude-sonnet-5",
+      "cases": [
+        {
+          "id": "A01",
+          "ok": true,
+          "expected_tools": [
+            "financial_metrics"
+          ],
+          "forbidden_tools": [
+            "risk_changes",
+            "relationships",
+            "active_risks"
+          ],
+          "calls": [
+            {
+              "tool": "financial_metrics",
+              "arguments": "{\"companies\": [\"Nvidia\", \"AMD\"], \"metrics\": [\"revenue\"], \"period_ends\": [\"2025-01-26\", \"2024-12-28\"]}",
+              "args_valid": true,
+              "problem": ""
+            }
+          ],
+          "finish_reason": "tool_calls",
+          "usage": {
+            "prompt_tokens": 3373,
+            "completion_tokens": 174
+          }
+        },
+        {
+          "id": "A10",
+          "ok": true,
+          "expected_tools": [
+            "risk_changes"
+          ],
+          "forbidden_tools": [
+            "compute_change",
+            "financial_metrics"
+          ],
+          "calls": [
+            {
+              "tool": "risk_changes",
+              "arguments": "{\"companies\": [\"Nvidia\"], \"fiscal_years\": [2024, 2025]}",
+              "args_valid": true,
+              "problem": ""
+            }
+          ],
+          "finish_reason": "tool_calls",
+          "usage": {
+            "prompt_tokens": 3362,
+            "completion_tokens": 90
+          }
+        },
+        {
+          "id": "A13",
+          "ok": true,
+          "expected_tools": [],
+          "forbidden_tools": [
+            "risk_changes",
+            "relationships",
+            "active_risks",
+            "search_filings",
+            "compute_change",
+            "lookup_company"
+          ],
+          "calls": [],
+          "finish_reason": "stop",
+          "usage": {
+            "prompt_tokens": 3346,
+            "completion_tokens": 51
+          }
+        },
+        {
+          "id": "A15",
+          "ok": true,
+          "expected_tools": [],
+          "forbidden_tools": [
+            "compute_change",
+            "risk_changes",
+            "financial_metrics"
+          ],
+          "calls": [],
+          "finish_reason": "stop",
+          "usage": {
+            "prompt_tokens": 3340,
+            "completion_tokens": 100
+          }
+        },
+        {
+          "id": "A17",
+          "ok": true,
+          "expected_tools": [],
+          "forbidden_tools": [
+            "risk_changes",
+            "relationships",
+            "active_risks",
+            "search_filings",
+            "compute_change",
+            "lookup_company"
+          ],
+          "calls": [],
+          "finish_reason": "stop",
+          "usage": {
+            "prompt_tokens": 3385,
+            "completion_tokens": 79
+          }
+        }
+      ],
+      "accepted_the_real_schemas": true,
+      "all_arguments_valid": true,
+      "cost_usd": 0.03855
+    }
+  ]
+}
