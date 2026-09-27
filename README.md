@@ -282,9 +282,9 @@ sequenceDiagram
     else live question
         API->>API: kill switch, daily ceiling, Turnstile, per-address window, concurrency slot
         API->>ONNX: embed the question (query instruction, 1024-dim)
-        API->>DB: relation subgraph (2 hops), XBRL metrics, active risks (vector), risk changes (legacy lineages; M1b: text-verified items), scoped excerpts (vector)
+        API->>DB: relation subgraph (2 hops), XBRL metrics, active risks (vector), risk changes (text-verified items, aligned across annual filings), scoped excerpts (vector)
         API-->>UI: retrieval event (anchors, counts)
-        API->>LLM: prompt with five context blocks (12-21k tokens), streamed
+        API->>LLM: prompt with six context blocks (12-21k tokens), streamed
         LLM-->>UI: delta events, token by token
         API->>API: extract citation ids, check them and the numbers against the retrieved context
         API->>DB: ledger row (tokens, cost) + cache the answer
