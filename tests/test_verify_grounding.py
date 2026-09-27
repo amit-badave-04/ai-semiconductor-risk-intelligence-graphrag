@@ -232,3 +232,21 @@ def test_a_figure_the_question_states_is_still_echoed_when_the_answer_asserts_it
     for text in ("Yes, revenue grew 50% [x:1:1].", 'Yes, "revenue grew 50%" [x:1:1].', 'The answer is "yes": it grew 50% [x:1:1].'):
         checks = answer_checks(text, {"x:1:1"}, {"x:1:1"}, "context without the figure", sources={}, question=question)
         assert checks.echoed_numbers == ("50%",), text
+
+
+# --- closing review H1: the exemption is for NAMES (a capitalised phrase ending in a rule/act/policy noun), never for a quoted VALUE ---
+
+@pytest.mark.parametrize("question,text", [
+    ('Did Nvidia report "revenue of $99 billion" in fiscal 2025?', 'Yes, Nvidia reported "revenue of $99 billion" in fiscal 2025 [xbrl:x].'),
+    ("Does TSMC expect a 40% tariff?", 'TSMC expects "a 40% tariff" [x:1:1].'),
+    ("Did Nvidia's margin reach 75%?", 'Nvidia\'s "75% gross margin" was reached [x:1:1].'),
+    ("Did the BIS 50% affiliates rule take effect?", 'Yes, the "BIS 50% affiliates rule" took effect [x:1:1].'),        # a name is exempt ONLY for the figure inside it ...
+])
+def test_a_quoted_value_from_the_question_is_still_flagged_as_an_echo_or_ungrounded(question, text):
+    from semigraph.retrieval.verify import answer_checks
+
+    checks = answer_checks(text, {"x:1:1"}, {"x:1:1"}, "context without the figure", sources={}, question=question)
+    if "BIS 50%" in text:                          # ... and the name case is the one exempt example: it must stay clean
+        assert checks.echoed_numbers == ()
+    else:
+        assert checks.echoed_numbers or checks.unmatched_numbers, text

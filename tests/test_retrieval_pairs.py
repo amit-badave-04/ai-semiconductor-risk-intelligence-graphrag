@@ -119,7 +119,7 @@ def test_years_with_no_pair_in_the_graph_show_the_latest_pair_and_say_so():
     assert newer_accessions(pairs) == [ACC["n26"]] and pairs[0]["selection"] == "latest"
     (notice,) = notices
     assert notice["cik"] == NVDA and notice["company"] == "Nvidia"
-    for part in ("no annual-filing comparison covering fiscal 2020 and 2021", "Nvidia", "fiscal 2023, 2024, 2025, 2026",
+    for part in ("no annual-filing comparison covering the fiscal years ending in 2020 and 2021", "Nvidia", "the fiscal years ending in 2023, 2024, 2025, 2026",
                  "latest comparison is shown instead"):
         assert part in notice["text"], part
 
@@ -130,7 +130,7 @@ def test_the_notice_does_not_promise_a_latest_comparison_when_the_current_pair_c
     pairs, notices = choose("Did Nvidia remove any risk factors between FY2020 and FY2021?", rows)
     assert pairs == []
     (notice,) = notices
-    assert "no annual-filing comparison covering fiscal 2020 and 2021" in notice["text"]
+    assert "no annual-filing comparison covering the fiscal years ending in 2020 and 2021" in notice["text"]
     assert "is shown instead" not in notice["text"] and "no readable comparison of the latest annual filings" in notice["text"]
 
 
@@ -368,7 +368,7 @@ def test_the_notice_of_an_unmatched_year_reaches_the_result_and_the_latest_pair_
     d = Driver({ANNUAL_PAIRS_QUERY: nvda_history(), TEMPORAL_SELECTED_QUERY: [pair_row(ACC["n25"], ACC["n26"], 2025, 2026)]})
     r = hybrid_retrieve("Did Nvidia remove any risk factors between FY2020 and FY2021?", d, Embedder())
     assert d.params_of(TEMPORAL_SELECTED_QUERY) == [{"ids": [NVDA], "newer_accessions": [ACC["n26"]]}]
-    assert len(r["temporal_notices"]) == 1 and "no annual-filing comparison covering fiscal 2020 and 2021" in r["temporal_notices"][0]["text"]
+    assert len(r["temporal_notices"]) == 1 and "no annual-filing comparison covering the fiscal years ending in 2020 and 2021" in r["temporal_notices"][0]["text"]
 
 
 def test_a_named_pair_that_cannot_be_compared_runs_no_temporal_query_at_all():
@@ -386,3 +386,73 @@ def test_a_multi_year_question_queries_both_pairs_and_the_passages_of_both():
     (passage_call,) = d.params_of(PASSAGES_QUERY)
     assert passage_call == {"pairs": [{"cik": NVDA, "older": ACC["n24"], "newer": ACC["n25"]},
                                       {"cik": NVDA, "older": ACC["n25"], "newer": ACC["n26"]}]}
+
+
+# --- closing review M4: ranges, "since", "last N years", metric questions that only mention a filing, and a notice with no bare fiscal year ---
+
+def longer_history():
+    """FY2022 -> FY2026: four pairs, newest first."""
+    return [*nvda_history(), annual("0001045810-22-000036", ACC["n23"], 2022, 2023)]
+
+
+def test_two_named_years_more_than_one_apart_select_every_pair_between_them_up_to_the_cap():
+    pairs, notices = choose("Which risk factors did Nvidia remove between FY2023 and FY2025?", nvda_history())
+    assert newer_accessions(pairs) == [ACC["n24"], ACC["n25"]] and notices == [] and {p["selection"] for p in pairs} == {"named"}
+
+
+def test_a_named_range_with_more_pairs_than_the_cap_says_how_many_are_shown():
+    pairs, notices = choose("Which risk factors did Nvidia remove between FY2022 and FY2026?", longer_history())
+    assert newer_accessions(pairs) == [ACC["n25"], ACC["n26"]]
+    (notice,) = notices
+    assert "showing the 2 most recent of 4 annual-filing comparisons for Nvidia" in notice["text"]
+
+
+def test_since_a_year_selects_the_pairs_from_that_year_on_and_says_when_it_shows_fewer():
+    pairs, notices = choose("What risks has Nvidia added since 2023?", nvda_history())
+    assert newer_accessions(pairs) == [ACC["n25"], ACC["n26"]]
+    assert notices and "2 most recent of 3" in notices[0]["text"]
+
+
+def test_a_year_named_as_a_range_end_that_the_graph_lacks_still_uses_the_years_it_has():
+    """T14: "the 2022 export controls" is not a loaded fiscal year, so it does not widen the selection to a range."""
+    q = "Does NVIDIA's FY2026 10-K still say it transitioned operations after the 2022 export controls, or was that statement removed?"
+    pairs, notices = choose(q, nvda_history())
+    assert newer_accessions(pairs) == [ACC["n26"]] and notices == []
+
+
+@pytest.mark.parametrize("question", [
+    "What changed in Nvidia's risk factors in the last 3 years?",
+    "Which risk factors did Nvidia add over the past few years?",
+])
+def test_a_last_n_years_question_about_risk_disclosures_asks_for_the_newest_pairs(question):
+    assert pair_selection_mode(question, mentioned_periods(question)) == "multi"
+    pairs, _ = choose(question, nvda_history())
+    assert len(pairs) == 2 and {p["selection"] for p in pairs} == {"multi"}
+
+
+@pytest.mark.parametrize("question", [
+    "How did Nvidia's revenue change between fiscal 2024 and fiscal 2025 according to its 10-K?",
+    "What was Nvidia's net income in fiscal 2024 per its financial statements?",
+    "How did gross margin differ between FY2024 and FY2025 filings?",
+    "What was Nvidia's revenue over the last 3 years?",
+    "How did Nvidia's capital expenditure change in the past two years?",
+])
+def test_a_metric_question_that_merely_names_a_filing_keeps_the_current_pair(question):
+    assert pair_selection_mode(question, mentioned_periods(question)) is None
+
+
+def test_the_notice_names_no_bare_fiscal_year_because_the_answer_prompt_forbids_that_label():
+    _, notices = choose("Did Nvidia remove any risk factors between FY2020 and FY2021?", nvda_history())
+    text = notices[0]["text"]
+    assert "the fiscal years ending in 2020 and 2021" in text and "annual filings loaded for the fiscal years ending in 2023, 2024, 2025, 2026" in text
+    assert "covering fiscal" not in text and "loaded: fiscal" not in text
+
+
+def test_a_pair_that_cannot_be_compared_does_not_halve_the_caps_of_the_pair_that_can():
+    chosen = [{**chosen_two()[0], "compared": False, "queryable": False, "not_compared_reason": "no risk items were loaded"}, chosen_two()[1]]
+    items, pairs = select_temporal(two_pair_rows(), "q", pairs=chosen)
+    shown = [i for i in items if i["newer_accession"] == ACC["n26"] and i["change"] == "removed"]
+    assert len(shown) == 2 and pairs[1]["totals"]["removed"] == 2
+    many = [item_row("removed", n, ACC["n26"], ACC["n25"]) for n in range(1, 10)]
+    items, _ = select_temporal(many, "q", pairs=chosen)
+    assert len([i for i in items if i["change"] == "removed"]) == TEMPORAL_CAPS["removed"]           # 8, not 4

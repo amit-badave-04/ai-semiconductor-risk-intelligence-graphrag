@@ -796,8 +796,8 @@ class TestNamedPairRetrieval:
         assert retrieve.issued(TEMPORAL_SELECTED_QUERY) == [{"ids": [NVDA], "newer_accessions": [N26]}]
         (pair,) = r["temporal_pairs"]
         assert (pair["older_accession"], pair["newer_accession"], pair["selection"]) == (N25, N26, "latest")
-        notice = ("no annual-filing comparison covering fiscal 2020 and 2021 is in the graph for Nvidia (annual filings loaded: "
-                  "fiscal 2024, 2025, 2026); the latest comparison is shown instead")
+        notice = ("no annual-filing comparison covering the fiscal years ending in 2020 and 2021 is in the graph for Nvidia (annual filings loaded for "
+                  "the fiscal years ending in 2024, 2025, 2026); the latest comparison is shown instead")
         assert r["temporal_notices"] == [{"cik": NVDA, "company": "Nvidia", "text": notice}]
         block = render(r)[0]
         first, rest = block.split("\n", 1)
@@ -808,7 +808,7 @@ class TestNamedPairRetrieval:
     def test_a_filing_with_no_xbrl_is_never_matched_by_year_and_the_notice_lists_only_the_known_years(self, retrieve):
         r = retrieve("Did ASML remove any risk factors in its FY2024 annual report?")        # l24 has no fiscal year; l25 is FY2025
         (notice,) = r["temporal_notices"]
-        assert "covering fiscal 2024" in notice["text"] and "annual filings loaded: fiscal 2025)" in notice["text"]
+        assert "covering the fiscal year ending in 2024" in notice["text"] and "annual filings loaded for the fiscal years ending in 2025)" in notice["text"]
         (pair,) = r["temporal_pairs"]
         assert (pair["older_accession"], pair["newer_accession"], pair["selection"]) == (L24, L25, "latest")
 
@@ -829,7 +829,7 @@ class TestNamedPairRetrieval:
         r = retrieve("Did Micron remove any risk factors between FY2020 and FY2021?")       # m26 -> m25: neither side has risk items
         assert r["temporal_pairs"] == [] and retrieve.issued(TEMPORAL_SELECTED_QUERY) == []
         (notice,) = r["temporal_notices"]
-        assert "no annual-filing comparison covering fiscal 2020 and 2021" in notice["text"]
+        assert "no annual-filing comparison covering the fiscal years ending in 2020 and 2021" in notice["text"]
         assert "is shown instead" not in notice["text"]
 
     def test_a_pair_the_loader_marked_not_compared_passes_through_with_its_own_reason_and_reads_no_item(self, retrieve):

@@ -435,7 +435,7 @@ def select_temporal(rows: list[dict], question: str, caps: Mapping[str, int] = T
         if change in caps and (key := owner(row)) is not None:
             changes.setdefault(key, {c: [] for c in caps})[change].append(row)
     question_tokens = _content_tokens(question)
-    n_pairs = {cik: sum(1 for k in pair_map if k[0] == cik) for cik in {k[0] for k in pair_map}}
+    n_pairs = {cik: sum(1 for k, p in pair_map.items() if k[0] == cik and p["compared"]) for cik in {k[0] for k in pair_map}}   # only pairs that show items share the caps
     items: list[dict] = []
     for key, pair in pair_map.items():
         if not pair["compared"]:
@@ -554,19 +554,26 @@ _MULTI_PAIR_INTENT_RE = re.compile(
     r"|\bevolv\w*"
     r"|\b(?:earlier|previous|prior|past|older|recent|successive)\s+(?:annual\s+reports|annual\s+filings|10-Ks|20-Fs)\b", re.I)
 _RISK_CHANGE_RE = re.compile(
-    r"\b(?:remov\w*|drop(?:s|ped|ping)?|delet\w*|eliminat\w*|withdr\w*|no longer|stop(?:s|ped|ping)?|newly|new|added|adding|"
+    r"\b(?:remov\w*|drop(?:s|ped|ping)?|delet\w*|eliminat\w*|withdr\w*|no longer|stop(?:s|ped|ping)?|newly|new|add(?:s|ed|ing)?|"
     r"reword\w*|chang\w*|differ\w*|appear\w*|disappear\w*)\b", re.I)
-_DISCLOSURE_NOUN_RE = re.compile(
-    r"\b(?:risks?|disclos\w*|10-Ks?|10-Qs?|20-Fs?|annual\s+reports?|filings?|statements?|sentences?|passages?)\b", re.I)
+# What the question is ABOUT must be a disclosure, not a filing: "how did revenue change according to its 10-K" mentions a filing and a
+# change but asks about a metric (closing review M4), so the generic nouns (10-K, filing, annual report) are not enough.
+_DISCLOSURE_NOUN_RE = re.compile(r"\b(?:risks?|disclos\w*|statements?|sentences?|passages?|wording|language|paragraphs?)\b", re.I)
+# "in the last 3 years", "over the past few years": several annual reports, when the question is about a disclosure.
+_SPAN_YEARS_RE = re.compile(
+    r"\b(?:last|past|previous|recent)\s+(?:\d+|two|three|four|five|several|few)\s+(?:fiscal\s+)?years\b|\b(?:last|past)\s+years\b", re.I)
+_SINCE_RE = re.compile(r"\b(?:since|after)\s+(?:fiscal\s+(?:year\s+)?|FY\s?)?(20\d{2})\b", re.I)
 
 
 def pair_selection_mode(question: str, periods: Mapping[str, list]) -> str | None:
     """``"named"`` (the question names fiscal years / period-end dates AND asks about a change in a disclosure), ``"multi"``
     (it asks about several annual reports), or ``None`` (the current pair, as before). Years beat the multi-year wording."""
-    if (periods.get("years") or periods.get("dates")) and _RISK_CHANGE_RE.search(question) \
-            and _DISCLOSURE_NOUN_RE.search(question):
+    about_a_disclosure_change = bool(_RISK_CHANGE_RE.search(question) and _DISCLOSURE_NOUN_RE.search(question))
+    if (periods.get("years") or periods.get("dates")) and about_a_disclosure_change:
         return "named"
-    return "multi" if _MULTI_PAIR_INTENT_RE.search(question) else None
+    if _MULTI_PAIR_INTENT_RE.search(question) or (about_a_disclosure_change and _SPAN_YEARS_RE.search(question)):
+        return "multi"
+    return None
 
 
 def _guarded(row: Mapping) -> bool:
@@ -617,17 +624,30 @@ def select_pairs(rows: list[dict], question: str, periods: Mapping[str, list], *
         selection = "latest"
         missed: str | None = None                 # a named year with no pair: the notice is finished once the fallback is known
         if mode == "named" and named:
-            wanted = set(named)
+            loaded = sorted({fy for r in history for fy in (r.get("older_fy"), r.get("newer_fy")) if fy is not None})
+            present = [y for y in named if y in loaded]
+            since = _SINCE_RE.search(question)
+            if since:                              # "since 2023": that year and every later one the graph has
+                wanted = {y for y in loaded if y >= int(since.group(1))}
+            elif len(present) >= 2:                # two years the graph has: every pair between them, however far apart
+                wanted = {y for y in loaded if min(present) <= y <= max(present)}
+            else:                                  # a year the graph lacks ("the 2022 export controls") does not widen it
+                wanted = set(named)
+            matched: list[dict] = []
             for keep in (lambda r: r.get("older_fy") in wanted and r.get("newer_fy") in wanted,
                          lambda r: r.get("newer_fy") in wanted, lambda r: r.get("older_fy") in wanted):
-                picked = [r for r in history if keep(r)][:max_pairs]
-                if picked:
+                matched = [r for r in history if keep(r)]
+                if matched:
                     break
-            selection = "named"
+            picked, selection = matched[:max_pairs], "named"
+            if len(matched) > max_pairs:
+                notices.append({"cik": cik, "company": company, "text": (
+                    f"showing the {max_pairs} most recent of {len(matched)} annual-filing comparisons for {company} that fall in the "
+                    "named years")})
             if not picked:
-                loaded = [fy for r in history for fy in (r.get("older_fy"), r.get("newer_fy")) if fy is not None]
-                missed = (f"no annual-filing comparison covering fiscal {_fiscal_list(named)} is in the graph for {company} "
-                          f"(annual filings loaded: fiscal {', '.join(map(str, sorted(set(loaded)))) or 'unknown'})")
+                years = ("the fiscal years ending in " if len(named) > 1 else "the fiscal year ending in ") + _fiscal_list(named)
+                missed = (f"no annual-filing comparison covering {years} is in the graph for {company} (annual filings loaded for "
+                          f"the fiscal years ending in {', '.join(map(str, loaded)) or 'unknown'})")
         elif mode == "multi":
             readable = [r for r in history if _guarded(r)]
             picked, selection = readable[:max_pairs], "multi"

@@ -39,7 +39,7 @@ from ..artifacts import load_benchmark, read_prompt
 from ..llm import llm_json
 from ..retrieval.answerer import TextStream, answer, usage_cost
 from ..retrieval.ids import CITE_RE
-from ..retrieval.verify import REFUSAL_RE
+from ..retrieval.verify import REFUSAL_RE, money_values
 from .expect import NUM_PAT, check_expectation, parse_numbers  # noqa: F401  (re-exported: eval/__init__, bakeoff)
 
 logger = logging.getLogger("semigraph.eval")
@@ -81,6 +81,12 @@ RECALL_PROMPT = read_prompt("recall_judge")
 
 # Verbatim notebook 14 programmatic patterns (the refusal wording is shared with the serving-side verifier).
 REFUSAL_PAT = REFUSAL_RE
+
+
+def is_refusal_answer(text: str) -> bool:
+    """A refusal the benchmark scores as correct: the (deliberately loose) refusal wording AND no money figure. A real refusal states
+    no amount; an answer that gives one and then says "the filing does not provide ..." is an answer (closing review M3)."""
+    return bool(REFUSAL_PAT.search(text)) and not money_values(text)
 
 # --- the correctness judge: ONE renderer for every call site (score_runs, bakeoff.judge_open, eval-deployed) ---------
 JUDGE_MAX_TOKENS = 600           # the verdict now carries up to five unsupported claims; 300 truncated
@@ -248,7 +254,7 @@ def score_runs(runs: list[dict], benchmark: list[dict], *, judge=None, judge_mod
         ans = run["answer"]
         # correctness
         if run["type"] == "refusal":
-            row["correct"] = bool(REFUSAL_PAT.search(ans))
+            row["correct"] = is_refusal_answer(ans)
         elif b.get("expect"):
             row["correct"] = check_expectation(b["expect"], ans)
             if row["correct"] and needs_judge(b):       # a probe: the guard passed, the judge decides the rest

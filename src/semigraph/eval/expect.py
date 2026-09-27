@@ -74,7 +74,6 @@ _TERM_RE = re.compile(rf"\b{_TERMS}\b", re.I)
 _NEGATION_RE = re.compile(r"\b(?:not|no|never|neither|nor|without|none|nothing|cannot)\b|n['’]t\b", re.I)
 _ATTRIBUTION_WINDOW_WORDS = 8     # how far after the company name a saying verb / filing noun still refers to it
 _NEGATION_WINDOW_WORDS = 3        # a negation this close AFTER the company..term span cancels the attribution
-_NEGATION_LEFT_WORDS = 4          # ... and this close BEFORE it ("not as part of Nvidia's own filings")
 
 
 def _hyphens_as_spaces(text: str) -> str:
@@ -112,14 +111,27 @@ _SOURCE_LIMIT_RE = re.compile(
 _STATEMENT_START_RE = re.compile(r"[,;]|\band\b", re.I)
 
 
+# "not as part of Nvidia's own filings", "not from Nvidia's 10-K": a negation and a preposition phrase right before the company.
+_PREP_NEGATION_RE = re.compile(r"\b(?:not|never)\s+(?:as\s+part\s+of|part\s+of|from|in|among|one\s+of|by)\s*$", re.I)
+# A past-tense saying verb right after the company presupposes the disclosure ("the exact date NVIDIA DISCLOSED the rule"); after a
+# question word it is only hypothetical ("what Intel SAID about it"), which a source limitation may cancel.
+_PAST_SAYING_RE = re.compile(r"\b(?:disclosed|reported|stated|said|announced|acknowledged|described|mentioned|warned|highlighted|cited|filed)\b", re.I)
+_QUESTION_WORD_RE = re.compile(r"\b(?:what|whether|if|how|why)\s*$", re.I)
+
+
 def _negated(clause: str, start: int, end: int) -> bool:
-    left = clause[:start].split()[-_NEGATION_LEFT_WORDS:]
+    left = clause[:start].split()[-_NEGATION_WINDOW_WORDS:]
     right = clause[end:].split()[:_NEGATION_WINDOW_WORDS]
     if _NEGATION_RE.search(" ".join(left) + " " + clause[start:end] + " " + " ".join(right)):
         return True
     head = clause[:start]
+    if _PREP_NEGATION_RE.search(head):
+        return True
     last_break = max((m.end() for m in _STATEMENT_START_RE.finditer(head)), default=0)
-    return bool(_SOURCE_LIMIT_RE.search(head[last_break:]))
+    if not _SOURCE_LIMIT_RE.search(head[last_break:]):
+        return False
+    presupposed = _PAST_SAYING_RE.search(clause[start:end]) and not _QUESTION_WORD_RE.search(head)
+    return not presupposed
 
 
 def _clause_attributes(clause: str, company: str) -> bool:

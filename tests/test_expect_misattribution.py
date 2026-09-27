@@ -133,3 +133,25 @@ def test_a_negation_up_to_four_words_before_the_company_cancels_the_attribution(
 ])
 def test_a_negation_that_is_not_about_the_attribution_does_not_excuse_it(sentence):
     assert misattributed_sentences(sentence, NV) == [sentence]
+
+
+# --- closing review M3: a wider negation window and the source-limit scope must not excuse a real attribution ---
+
+@pytest.mark.parametrize("sentence", [
+    "It is not clear exactly how NVIDIA reported the new policy in its filing %s." % FR,
+    "The context does not show the exact date NVIDIA disclosed the rule in its 10-K %s." % FR,
+    "The context does not list every rule, but NVIDIA disclosed this one in its 10-K %s." % FR,
+])
+def test_a_negation_that_is_not_about_the_company_or_a_presupposed_disclosure_does_not_excuse_the_attribution(sentence):
+    assert misattributed_sentences(sentence, NV) == [sentence]
+
+
+@pytest.mark.parametrize("sentence", [
+    'The rule, linked to Nvidia only by keyword match, is not part of Nvidia\'s own filings %s.' % FR,
+    "This is a Federal Register rule, not from Nvidia's 10-K %s." % FR,
+    "The rule is a BIS action, not in Nvidia's annual report %s." % FR,
+    "The supplied context does not include an Intel filing passage describing what Intel said about the revocation %s." % FR,
+])
+def test_a_negation_directly_before_the_filing_phrase_still_cancels_the_attribution(sentence):
+    company = ["Intel"] if "Intel" in sentence else NV
+    assert misattributed_sentences(sentence, company) == []

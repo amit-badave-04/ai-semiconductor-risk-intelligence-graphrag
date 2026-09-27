@@ -284,12 +284,26 @@ def _squash(text: str) -> str:
     return " ".join(text.lower().split()).strip(" .,;:!?\"'“”‘’")
 
 
+# The head noun of a NAME the question may have given a thing ("the BIS 50% affiliates rule"): a quoted phrase is exempt only when it
+# is such a name, so a quoted VALUE ("revenue of $99 billion", "a 40% tariff") stays an echo.
+_NAME_HEADS = frozenset("rule rules act acts policy policies framework regulation regulations law laws order orders directive "
+                        "program programs initiative list agreement treaty standard protocol amendment decision".split())
+
+
 def _quoted_from_question(text: str, position: int, question: str) -> bool:
-    """True when the figure at position sits inside a QUOTED phrase that the question itself contains verbatim: the answer is
-    naming the thing the asker named ("a 'BIS 50% affiliates rule'"), not asserting the asker's figure. A figure quoted with other
-    words, or stated outside a quote, is still an echo."""
+    """True when the figure at ``position`` sits inside a QUOTED NAME that the question itself contains verbatim: a capitalised phrase
+    ending in a rule / act / policy noun and holding no currency amount ("a 'BIS 50% affiliates rule'"). The answer is naming the
+    thing the asker named, not asserting the asker's figure. A quoted value, a quote with other words and a figure stated outside a
+    quote are still echoes (closing review H1: a quoted "revenue of $99 billion" copied from the question must not pass)."""
     asked = _squash(question)
-    return any(m.start() <= position < m.end() and _squash(m.group(1)) in asked for m in _QUOTED_SPAN_RE.finditer(text))
+    for m in _QUOTED_SPAN_RE.finditer(text):
+        span = m.group(1)
+        if not (m.start() <= position < m.end()) or _squash(span) not in asked or _amounts(span):
+            continue
+        words = re.findall(r"[A-Za-z][\w'’-]*", span)
+        if words and words[-1].lower() in _NAME_HEADS and any(w[:1].isupper() for w in words):
+            return True
+    return False
 
 
 def _check_figures(text: str, cited: set[str], context: str, sources: Mapping[str, str], question: str) -> _Figures:

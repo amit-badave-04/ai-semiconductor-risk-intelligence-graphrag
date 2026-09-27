@@ -23,7 +23,7 @@ from ..retrieval.answerer import (ANSWER_PROMPT, CITE_RE, CONTEXT_HEADERS, LEGAC
                                   ContextBlocks, answer_stream, render_prompt, sources_from_context, usage_cost)
 from ..retrieval.verify import failed_check_names, verify_answer
 from .expect import check_expectation
-from .runner import (JUDGE_MAX_TOKENS, JUDGE_PROMPT, JUDGE_PROMPT_VERSION, NUM_PAT, REFUSAL_PAT,  # noqa: F401
+from .runner import (JUDGE_MAX_TOKENS, JUDGE_PROMPT, JUDGE_PROMPT_VERSION, NUM_PAT, REFUSAL_PAT, is_refusal_answer,  # noqa: F401
                      AnswerBudgetExceeded, Correct, needs_judge, parse_numbers, render_judge_prompt)
 
 logger = logging.getLogger("semigraph.bakeoff")
@@ -158,7 +158,7 @@ def _answer_one(model: str, base: dict, complete, price, max_tokens: int) -> dic
 def _mechanical(item: dict, answer: str) -> bool | None:
     """True/False for questions with a deterministic expectation; None for open questions (need the judge)."""
     if item["type"] == "refusal":
-        return bool(REFUSAL_PAT.search(answer))
+        return is_refusal_answer(answer)
     return check_expectation(item["expect"], answer) if item.get("expect") else None
 
 

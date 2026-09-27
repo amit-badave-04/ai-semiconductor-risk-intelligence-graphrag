@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from ..artifacts import read_prompt
 from ..llm import llm_json
-from .runner import REFUSAL_PAT
+from .runner import is_refusal_answer
 
 logger = logging.getLogger("semigraph.eval.error_analysis")
 
@@ -49,7 +49,7 @@ def is_failure(score: dict) -> bool:
 def mechanical_label(score: dict, run: dict, bench: dict) -> str | None:
     """Label from the scores alone when they are unambiguous; None otherwise."""
     answer = run.get("answer", "")
-    refused = bool(REFUSAL_PAT.search(answer))
+    refused = is_refusal_answer(answer)
     if bench["type"] == "refusal" and not score.get("correct", True):
         return "REFUSAL_MISSED"
     if bench["type"] != "refusal" and refused and not score.get("correct", True):

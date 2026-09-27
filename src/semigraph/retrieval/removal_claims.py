@@ -20,7 +20,8 @@ splitting them would trade one cohesive module for a wall of cross-imports.
 Known limits (a heuristic, not a parser; 2026-09-27 adversarial review, about 1,100 crafted sentences over three rounds): a POSITIVE claim built around
 an earlier unrelated negation ("Without warning Nvidia removed X", "None of this changes the fact that Nvidia removed X") can slip
 through, and some honest sentences that mix a negation with a hedge word ("Far from being removed, ... was expanded") are still
-flagged. The check is a safety net against a model that ignores the hedged wording, not against an adversary; the prompt, the
+flagged. Vocabulary gaps (missed by the version before this module too): "is absent from", "is missing from", "is gone from", "cut", "took out",
+"was not carried over", "did not survive into", "did not retain", "does not contain ... any more" are not recognised as removal wording at all. The check is a safety net against a model that ignores the hedged wording, not against an adversary; the prompt, the
 context labels and the judge are the other layers.
 """
 

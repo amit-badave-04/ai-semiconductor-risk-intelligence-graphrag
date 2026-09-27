@@ -162,3 +162,15 @@ def test_refusal_pattern_accepts_a_negated_give_have_list_or_describe_with_an_op
                                   "The filing has a Samsung section."])
 def test_the_wider_refusal_pattern_still_ignores_positive_statements_about_giving_listing_or_having(text):
     assert not REFUSAL_RE.search(text)
+
+
+# --- closing review M3: a refusal answer states no money figure (a fabricated answer that mentions "does not always give ..." fails) ---
+
+def test_the_benchmark_refusal_predicate_rejects_an_answer_that_states_a_money_figure():
+    from semigraph.eval.runner import is_refusal_answer
+
+    assert is_refusal_answer("The provided context does not give Samsung’s total annual revenue.")
+    assert is_refusal_answer("The context does not give Samsung's revenue; it reports that Samsung is among Qualcomm's customers with 10% or more of its revenue.")
+    assert not is_refusal_answer("Intel's 2012 revenue was $53.3 billion; Intel does not always give quarterly guidance.")
+    assert not is_refusal_answer("AMD's revenue in fiscal 2010 was $6.5 billion, and the 10-K provides no segment breakdown.")
+    assert not is_refusal_answer("Nvidia's revenue was 60.9 billion USD, but the filing does not state the segment.")
