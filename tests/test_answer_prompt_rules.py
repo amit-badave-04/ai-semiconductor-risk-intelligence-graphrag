@@ -22,10 +22,12 @@ def test_a_wording_not_found_finding_is_stated_as_is_without_a_conclusion_or_a_c
     assert "The hedge already says what the finding is worth" in FLAT
 
 
-def test_an_empty_list_finding_still_carries_a_citation_from_the_pairs_section():
-    """Second deployed run (T6): a truthful "none found" answer had nothing to cite and failed the no_citation check."""
-    assert "Keep at least one citation in the answer even when the finding is that a list is empty" in FLAT
-    assert "cite an id printed in that pair's section" in FLAT
+def test_an_empty_list_sentence_is_never_given_the_id_of_an_unrelated_item():
+    """Closing review M5: the first version of this rule ("keep at least one citation") made the model cite a reworded item on the sentence
+    that says nothing was removed (five seeded examples did). Items are cited on their own lines; an empty-list sentence stays uncited."""
+    assert "Cite the id printed beside each item you list, on that item's own line" in FLAT
+    assert "never attach an id to the sentence that says a list is empty or that nothing was found" in FLAT
+    assert "Keep at least one citation" not in FLAT
 
 
 def test_a_no_longer_appears_finding_is_not_denied_either():

@@ -964,6 +964,8 @@ def _claim_kind(clause: str, about_a_disclosure: bool, before: str = "", after: 
 # "unverifiable for removal", "not verified as removal": the noun "removal" there says nothing was verified (the "Not matched" list's own
 # wording, which the answer prompt asks for), not that a disclosure was removed.
 _UNVERIFIED_REMOVAL_RE = re.compile(r"\b(?:unverifi\w+|not\s+verifi\w+)\s+(?:for|as)\s+removals?\b", re.I)
+# "beyond the removal question", "the question asks about removal": the noun names what the QUESTION is about, it says nothing was removed.
+_REMOVAL_QUESTION_RE = re.compile(r"\bremovals?\s+(?:question|part|aspect)\b|\b(?:asks?|asking)\s+(?:specifically\s+)?about\s+removals?\b", re.I)
 
 
 def _clause_claims(line: str, supported: set[str], comparison: bool = False) -> list[str]:
@@ -973,7 +975,7 @@ def _clause_claims(line: str, supported: set[str], comparison: bool = False) -> 
     "see the "..." list"); an item put under one is. A clause that says a listed item "is on the list", with nothing to cite,
     takes the ids of the clause before it ("X [id], which is on the "..." list")."""
     claims = []
-    line = _UNVERIFIED_REMOVAL_RE.sub("unverified", line)
+    line = _REMOVAL_QUESTION_RE.sub("question", _UNVERIFIED_REMOVAL_RE.sub("unverified", line))
     about_a_disclosure = bool(_DISCLOSURE_RE.search(_BRACKETED_RE.sub(" ", line)))
     masked =_mask_abbreviations(_mask_quotes(_QUOTED_LABEL_RE.sub(_quoted_label, line)))
     earlier_ids: list[str] = []

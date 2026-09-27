@@ -31,3 +31,23 @@ def test_a_statement_that_nothing_is_unverified_for_removal_is_not_a_removal_cla
 ])
 def test_the_same_words_do_not_excuse_a_positive_claim(text):
     assert flagged(text), text
+
+
+# --- run 4 (T5, T8): "beyond the removal question" names the QUESTION, it does not say anything was removed ---
+
+@pytest.mark.parametrize("text", [
+    "Beyond the removal question: the comparison did find at least 32 risk factors reworded (still disclosed, wording changed).",
+    "For context beyond the removal question: at least one risk factor found no matching text in the earlier filing, so it is new or restructured.",
+    "But since the question specifically asks about removal, the answer is: the text check found none.",
+    "Regarding the removal part of the question, the text check found no risk factor that no longer appears.",
+])
+def test_a_phrase_that_names_the_removal_question_is_not_a_removal_claim(text):
+    assert flagged(text) == []
+
+
+@pytest.mark.parametrize("text", [
+    "Nvidia answered the question by confirming the removal of the indebtedness risk factor.",
+    "The removal question is settled: the indebtedness risk factor was removed.",
+])
+def test_naming_the_question_does_not_excuse_a_positive_claim_in_the_same_sentence(text):
+    assert flagged(text), text

@@ -73,9 +73,9 @@ Rules:
 - For a yes/no question about a change ("Did X remove ...", "Does the filing still say ..."), begin with one sentence
   that gives the finding in the hedged wording above, then list only the items that bear on the question (the ones
   under the heading the question is about, and the new ones only when asked). Do not list reworded risk factors or
-  unrelated counts unless the question asks about them. Keep at least one citation in the answer even when the finding
-  is that a list is empty: cite an id printed in that pair's section (for example one beside a reworded item you
-  mention) so the finding is tied to the filings compared.
+  unrelated counts unless the question asks about them. Cite the id printed beside each item you list, on that item's
+  own line, and never attach an id to the sentence that says a list is empty or that nothing was found: nothing
+  supports an empty list, and the id of an unrelated item would send the reader to text that does not show it.
 - If the context does not contain the answer, say so plainly — never fill gaps from memory.
 - Be concise. Use bullet lists for enumerations.
 
