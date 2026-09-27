@@ -138,7 +138,7 @@ function escalationStatus(ev) {
 function checksPassed(c) {
   return !(c && typeof c === "object" && (c.citations_retrieved === false || c.numbers_grounded === false ||
     list(c.unmatched_numbers).length || list(c.echoed_numbers).length || list(c.pseudo_citations).length ||
-    c.unsupported_removal_claim === true || (c.has_citation === false && c.is_refusal !== true)));
+    c.unsupported_removal_claim === true || (c.has_citation === false && c.is_refusal !== true && c.is_none_report !== true)));
 }
 
 // What actually happened to this answer, and nothing more. `defaultModel` (from /api/stats) names the model of a live stream.
@@ -168,7 +168,7 @@ function checksSummary(ev) {
   const c = ev.checks && typeof ev.checks === "object" ? ev.checks : null;
   const badges = [{ text: `${cites.length} citation${cites.length === 1 ? "" : "s"}`, cls: "" }], warnings = [];
   const unmatched = c ? list(c.unmatched_numbers) : [], echoed = c ? list(c.echoed_numbers) : [];
-  const uncited = !!c && c.has_citation === false && c.is_refusal !== true;
+  const uncited = !!c && c.has_citation === false && c.is_refusal !== true && c.is_none_report !== true;
   // Citations: green only when there is something cited and every cited id was retrieved; zero citations is never green.
   if (hall.length || (c && c.citations_retrieved === false)) {
     badges.push({ text: hall.length ? `${hall.length} cited id(s) not in the retrieved context` : "some cited ids were not in the retrieved context", cls: "bad" });
@@ -177,6 +177,7 @@ function checksSummary(ev) {
     badges.push({ text: "no citation: this answer cites no source", cls: "warn" });
     warnings.push("This answer cites no source and is not a refusal: read it as unsupported.");
   } else if (c && c.has_citation === false && c.is_refusal === true) badges.push({ text: "declines to answer: nothing to cite", cls: "" });
+  else if (c && c.has_citation === false && c.is_none_report === true) badges.push({ text: "reports an empty comparison: nothing to cite", cls: "" });
   else if (cites.length) badges.push({ text: "cited ids were retrieved", cls: "ok" });
   // Numbers: green only when figures were examined and all matched; a figure only the question states is never a match.
   if (!c) badges.push({ text: "numbers not checked", cls: "" });

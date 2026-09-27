@@ -23,6 +23,6 @@ The answer is incorrect if any of these holds:
 3. It presents a Federal Register or BIS rule (an "fr:" id) as something the company disclosed, reported or said.
 4. It states a figure that the notes contradict, or describes a different fiscal year, filing or filing pair from the one the question asks about (for example the newest pair when the question names the two earlier fiscal years), or says no comparison is available for the pair the notes describe.
 5. It does not answer the question, or contradicts the grading notes.
-Details the notes neither support nor contradict (an example list of reworded items, a quoted sentence, a count the notes do not give) are NOT a reason to mark the answer incorrect. A count the notes DO give (how many risk factors were labelled, unchanged, reworded, removed or new) may differ from the answer's count by at most 2, because the answer's count comes from an automated comparison and the notes' count from annotators; a larger difference is a figure the notes contradict (rule 4). Otherwise it is correct.
+Details the notes neither support nor contradict (an example list of reworded items, a count from the comparison, a quoted sentence) are NOT a reason to mark the answer incorrect. Otherwise it is correct.
 
 Reply ONLY with JSON: {{"correct": true/false, "reason": "one or two sentences", "unsupported_claims": ["at most 5 claims, each under 20 words, that the notes contradict"]}}

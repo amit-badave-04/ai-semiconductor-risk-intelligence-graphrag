@@ -133,8 +133,10 @@ def test_the_shipped_probes_file_is_frozen_pinned_and_holds_the_designed_probe_s
     doc = ja.load_probes(SHIPPED, pin=ja.PINNED_PROBES_SHA256)                  # hash + pin + shape
     by_id = {p["id"]: p for p in doc["probes"]}
     wrong = {"legacy-T1", "legacy-T3", "real-T7", "real-T12", "syn-T5-removed-advertising", "syn-T7-none-removed-hedged",
-             "syn-T8-removed-new-item", "syn-T11-stopped-reworded", "syn-T4-carried-over-unchanged"}
-    right = {"real-T8", "real-T10", "real-T11"}          # real T4/T6/T9 are dropped (their counts differ from the notes'), and real-T5 was dropped after review
+             "syn-T8-removed-new-item", "syn-T11-stopped-reworded", "syn-T4-carried-over-unchanged",
+             "syn-Q2-off-target", "syn-Q1-denies-disclosure", "syn-X3-attributes-rule-to-intel", "syn-T5-fabricated-new-risk-factor",
+             "syn-T6-fabricated-count"}
+    right = {"real-T8", "real-T10", "real-T11", "real-Q2", "real-X3"}          # real T4/T6/T9 are dropped (their counts differ from the notes'), and real-T5 was dropped after review
     assert {i for i, p in by_id.items() if not p["expected_correct"]} == wrong
     assert {i for i, p in by_id.items() if p["expected_correct"]} == right
     assert doc["as_of"] == "2026-09-24"
@@ -154,7 +156,7 @@ def test_the_shipped_probes_resolve_against_the_real_benchmark_and_temporal_note
     args = ja._parse(["--probes", str(SHIPPED), "--temporal", str(ROOT / ja.DEFAULT_TEMPORAL), "--gold", str(ROOT / ja.DEFAULT_GOLD),
                       "--benchmark", str(ROOT / ja.DEFAULT_BENCHMARK)])
     doc, items, rows, as_of = ja._load_cases(args)
-    assert len(items) == len(rows) == 12 and as_of == "2026-09-24"
+    assert len(items) == len(rows) == 19 and as_of == "2026-09-24"
     notes = {i["id"]: i["judge_notes"] for i in items}
     temporal = json.loads((ROOT / ja.DEFAULT_TEMPORAL).read_text(encoding="utf-8"))
     assert notes["legacy-T1"] == temporal["legacy_notes"]["T1"] and notes["legacy-T3"] == temporal["legacy_notes"]["T3"]
@@ -162,21 +164,26 @@ def test_the_shipped_probes_resolve_against_the_real_benchmark_and_temporal_note
     assert all(n.strip() for n in notes.values())
 
 
-DEPLOYED_RUNS = ROOT / "data" / "processed" / "eval_runs.v2-deployed.jsonl"
+DEPLOYED_RUNS = [ROOT / "data" / "processed" / f"eval_runs.{tag}-deployed.jsonl" for tag in ("v2", "v2b", "v2c")]
 
 
-@pytest.mark.skipif(not DEPLOYED_RUNS.exists(), reason="the deployed run rows are not in this checkout (data/processed is not versioned)")
-def test_the_real_deployed_probes_are_verbatim_copies_of_the_deployed_rows_and_synthetic_ids_come_from_them():
-    rows = {r["id"]: r for r in (json.loads(x) for x in DEPLOYED_RUNS.read_text(encoding="utf-8").splitlines() if x.strip())}
+@pytest.mark.skipif(not all(f.exists() for f in DEPLOYED_RUNS), reason="the deployed run rows are not in this checkout (data/processed is not versioned)")
+def test_the_real_deployed_probes_are_verbatim_copies_of_a_deployed_row_and_synthetic_ids_come_from_them():
+    rows: dict[str, list[dict]] = {}
+    for f in DEPLOYED_RUNS:
+        for x in f.read_text(encoding="utf-8").splitlines():
+            if x.strip():
+                row = json.loads(x)
+                rows.setdefault(row["id"], []).append(row)
     for p in ja.load_probes(SHIPPED, pin=None)["probes"]:
         if p["kind"] == "legacy_wrong":
             continue
-        row = rows[p["notes_from"]["benchmark"]]
-        assert p["question"] == row["q"], p["id"]
+        candidates = rows[p["notes_from"]["benchmark"]]
+        assert all(p["question"] == row["q"] for row in candidates), p["id"]
         if p["kind"] == "deployed_real":
-            assert p["answer"] == row["answer"] and p["valid_ids"] == row["valid_ids"], p["id"]
+            assert any(p["answer"] == row["answer"] and p["valid_ids"] == row["valid_ids"] for row in candidates), p["id"]
         else:
-            assert set(p["valid_ids"]) <= set(row["valid_ids"]), p["id"]
+            assert set(p["valid_ids"]) <= {i for row in candidates for i in row["valid_ids"]}, p["id"]
 
 
 # --- the probes file: hash, pin, shape ---------------------------------------------------------------------------------------
@@ -359,7 +366,7 @@ def test_the_oracle_judge_is_a_pass_and_the_report_records_the_instrument(setup,
     assert len(judge.calls) == 15 and all(kw["max_tokens"] == runner.JUDGE_MAX_TOKENS for _, kw in judge.calls)
     doc = _report(setup)
     assert doc["verdict"] == "PASS" and doc["as_of"] == "2026-09-24" and doc["votes"] == 3 and doc["n_probes"] == 5
-    assert doc["judge_prompt_version"] == runner.JUDGE_PROMPT_VERSION == "cj-v3"
+    assert doc["judge_prompt_version"] == runner.JUDGE_PROMPT_VERSION == "cj-v4"
     assert doc["prompt_sha256"] == hashlib.sha256(runner.JUDGE_PROMPT.encode("utf-8")).hexdigest()
     assert doc["probes_sha256"] == setup.digest and doc["probes_pinned"] is True and doc["model"]
     assert doc["leniency_failures"] == [] and doc["strictness_failures"] == [] and doc["errors"] == {}
@@ -452,7 +459,8 @@ def test_zero_votes_is_refused(setup, capsys):
 # score and in the acceptance report). If this test fails you edited correctness_judge.txt: bump runner.JUDGE_PROMPT_VERSION, add the
 # new (version, sha256) here, and re-run scripts/judge_acceptance.py against the frozen probes.
 JUDGE_PROMPT_VERSIONS = {"cj-v2": "8f92cf059b1e4c484a89b48150776c17638b9d75263424fce0b48f73583bf7c3",
-                         "cj-v3": "e5b727c722dac1eb77db16721cc945f8d42a037558a6ac6e71e037564f8c637d"}
+                         "cj-v3": "e5b727c722dac1eb77db16721cc945f8d42a037558a6ac6e71e037564f8c637d",
+                         "cj-v4": "ee6696d2c2e76b086364bb6d8dec3c099baf9858a92db6b748cb879394c5cc0b"}
 
 
 def test_the_judge_prompt_version_names_exactly_this_prompt_text():

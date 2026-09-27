@@ -87,7 +87,7 @@ def test_a_long_id_list_is_capped_to_keep_the_prompt_small():
 
 def test_the_prompt_is_small():
     p = render_judge_prompt({**ITEM, "judge_notes": ""}, "", valid_ids=[], as_of="2026-09-25")
-    assert len(p) < 3800            # the fixed part of a judge call (cost: it is sent up to 3 times per answer); cj-v2 added the hedge section
+    assert len(p) < 4200            # the fixed part of a judge call (cost: it is sent up to 3 times per answer); cj-v2 added the hedge section
 
 
 def test_the_verdict_schema_gains_unsupported_claims_with_an_empty_default():

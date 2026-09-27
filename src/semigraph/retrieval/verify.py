@@ -45,6 +45,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from .context_layout import removal_supported_ids
 from .ids import CITE_RE
 from .removal_claims import unsupported_removal_claims
 from .textutil import A as _A
@@ -218,6 +219,21 @@ def refusal_shaped(text: str) -> bool:
             and bool(_OPENING_REFUSAL_RE.search(t)) and all(_is_limitation(c) for c in _clauses(t)))
 
 
+# An uncited answer that only reports an EMPTY comparison ("the text check found no risk factor that no longer appears", "none found") has
+# nothing to cite: an id printed beside a reworded item would send the reader to text that does not show the absence (closing review M5).
+# It is exempt from ``no_citation`` only when the context's removed lists really are empty (an answer that ignores listed items is not a
+# report of an empty list) and it states no money figure; every other check still applies.
+_NONE_FINDING_RE = re.compile(
+    r"\bnone\s+found\b|\b(?:text\s+check|comparison|check)\b[^.;\n]{0,80}?\b(?:found|identified|shows|lists|flagged)\s+(?:no|none)\b"
+    r"|\bno\s+(?:older\s+)?(?:risk\s+factors?|paragraphs?)\b[^.;\n]{0,80}?\b(?:no\s+longer|removed|dropped|flagged)\b", re.I)
+
+
+def none_report_shaped(text: str, context: str | None) -> bool:
+    """An answer that reports an empty comparison and the context agrees that nothing is listed under a removed heading."""
+    return (context is not None and bool(_NONE_FINDING_RE.search(text)) and not money_values(text)
+            and not removal_supported_ids(context))
+
+
 # --- numeric grounding ---------------------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -374,14 +390,18 @@ class AnswerChecks:
     has_citation: bool = True
     is_refusal: bool = False
     removal_claims: tuple[str, ...] = ()
+    is_none_report: bool = False       # uncited, but only because it reports an empty comparison (see none_report_shaped)
 
     def as_dict(self) -> dict:
-        return {"citations_retrieved": self.citations_retrieved, "numbers_grounded": self.numbers_grounded,
-                "numbers_checked": self.numbers_checked, "unmatched_numbers": list(self.unmatched_numbers),
-                "echoed_numbers": list(self.echoed_numbers), "pseudo_citations": list(self.pseudo_citations),
-                "has_citation": self.has_citation, "is_refusal": self.is_refusal,
-                "unsupported_removal_claim": bool(self.removal_claims),
-                "unsupported_removal_sentences": list(self.removal_claims)}
+        out = {"citations_retrieved": self.citations_retrieved, "numbers_grounded": self.numbers_grounded,
+               "numbers_checked": self.numbers_checked, "unmatched_numbers": list(self.unmatched_numbers),
+               "echoed_numbers": list(self.echoed_numbers), "pseudo_citations": list(self.pseudo_citations),
+               "has_citation": self.has_citation, "is_refusal": self.is_refusal,
+               "unsupported_removal_claim": bool(self.removal_claims),
+               "unsupported_removal_sentences": list(self.removal_claims)}
+        if self.is_none_report:            # emitted only when true, so every payload written before this key existed is unchanged
+            out["is_none_report"] = True
+        return out
 
 
 def failed_check_names(checks: object) -> list[str]:
@@ -401,7 +421,7 @@ def failed_check_names(checks: object) -> list[str]:
         names.append("pseudo_citation")
     if checks.get("unsupported_removal_claim"):
         names.append("unsupported_removal_claim")
-    if checks.get("has_citation") is False and not checks.get("is_refusal"):
+    if checks.get("has_citation") is False and not checks.get("is_refusal") and not checks.get("is_none_report"):
         names.append("no_citation")
     return names
 
@@ -422,7 +442,7 @@ def answer_checks(text: str, cited: set[str], valid_ids: set[str], context: str 
         citations_retrieved=not (cited - valid_ids), numbers_grounded=not (figures.unmatched or figures.echoed),
         unmatched_numbers=figures.unmatched, pseudo_citations=_pseudo_citations(text, cited, valid_ids),
         echoed_numbers=figures.echoed, numbers_checked=figures.checked, has_citation=bool(cited),
-        is_refusal=refusal_shaped(text),
+        is_refusal=refusal_shaped(text), is_none_report=not cited and none_report_shaped(text, context),
         removal_claims=() if context is None else unsupported_removal_claims(text, context))
 
 
@@ -453,7 +473,7 @@ def verify_answer(text: str, cited: set[str], valid_ids: set[str], finish_reason
     if cited - valid_ids:
         reasons.append("invalid_citation")
     checks = answer_checks(text, cited, valid_ids, context, sources=sources, question=question)
-    if not checks.has_citation and not checks.is_refusal:
+    if not checks.has_citation and not checks.is_refusal and not checks.is_none_report:
         reasons.append("no_citation")
     if not checks.numbers_grounded:
         reasons.append("ungrounded_number")

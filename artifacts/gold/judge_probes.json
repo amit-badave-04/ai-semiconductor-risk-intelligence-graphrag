@@ -1,6 +1,6 @@
 {
   "as_of": "2026-09-24",
-  "description": "Adversarial acceptance probes for the correctness judge (scripts/judge_acceptance.py). expected_correct is a fact about the answer's relation to the grading notes named in notes_from (basis says which). Frozen: edit only with review and re-pin PINNED_PROBES_SHA256 in the script.",
+  "description": "Adversarial acceptance probes for the correctness judge (scripts/judge_acceptance.py). expected_correct is a fact about the answer's relation to the grading notes named in notes_from (basis says which). Frozen: edit only with review and re-pin PINNED_PROBES_SHA256 in the script. Extended 2026-09-27 (closing review M1) with 7 probes: fabricated count, unsupported 'new' claim, off-target answer, a denial, a rule attributed to the company, and two real non-temporal answers.",
   "dropped_after_review": [
     {
       "id": "real-T5",
@@ -249,7 +249,119 @@
         "0000002488-26-000018:I.1A:0035",
         "0000002488-26-000018:I.1A:0036"
       ]
+    },
+    {
+      "answer": "ASML discloses geopolitical risks that could disrupt its operations, supply chain, customer service, sales, or growth prospects, including:\n\n- **Trade restrictions and export controls:** Geopolitical tensions may lead to more export controls, sanctions, tariffs, and other trade restrictions. Licensing requirements can delay or prevent deliveries of systems, technology, and services, including to some customers in China; the scope of restrictions may also expand. [0001628280-26-011378:I.3:0003]\n- **Tariffs and changing trade policies:** Tariffs can raise ASML’s costs and reduce margins or competitiveness, while also increasing customers’ import costs and potentially harming demand. Changes in national regulations, treaties, and trade, security, or investment policies may affect ASML and its suppliers and customers. [0001628280-26-011378:I.3:0003]\n- **Countermeasures and conflicting rules:** Countries affected by export restrictions may introduce countermeasures, potentially creating conflicting regulations and legal liabilities. [0001628280-26-011378:I.3:0003]\n- **Restricted raw materials:** Materials controlled by particular countries may become restricted or unavailable, affecting ASML, its suppliers, and its customers; ASML cites Chinese export controls on certain minerals as an example. [0001628280-26-011378:I.3:0003]\n- **Geopolitical instability and asset nationalization:** Instability or nationalization of assets could affect ASML’s business and operations. [0001628280-26-011378:I.3:0003]\n- **Regional conflict risks:** Changes in cross-strait relations or other developments in Taiwan could impair ASML’s ability to serve customers there; deteriorating relations between South Korea and North Korea, or conflict, could disrupt service to South Korean customers; and regional tensions involving Israel could further affect operations. [0001628280-26-011378:I.3:0003]\n- **Wider global shocks:** ASML says wars, geopolitical tensions, and international responses—including new regulations or tariffs—may exacerbate many of its risks. [0001628280-26-011378:I.3:0000]",
+      "basis": "The notes ask for ASML-disclosed geopolitical risks (export restrictions, China exposure) citing ASML chunks: the answer lists trade restrictions and export controls including licensing that can delay deliveries to some customers in China, tariffs and countermeasures, each citing an ASML chunk.",
+      "expected_correct": true,
+      "id": "real-Q2",
+      "kind": "deployed_real",
+      "notes_from": {
+        "benchmark": "Q2"
+      },
+      "question": "What geopolitical risks does ASML disclose?",
+      "source": "data/processed/eval_runs.v2c-deployed.jsonl row Q2 (final run), verbatim",
+      "valid_ids": [
+        "0001628280-26-011378:I.3:0000",
+        "0001628280-26-011378:I.3:0003"
+      ]
+    },
+    {
+      "answer": "The context identifies a September 2, 2025 Federal Register rule titled “Revocation of Validated End-User Authorizations in the People’s Republic of China,” but labels it as an external regulatory event, not Intel’s disclosure. [fr:2025-16735]\n\nThe supplied context does not include an Intel filing passage describing the revocation’s scope, Intel’s response, or its business impact, so it does not establish what Intel disclosed about those points.",
+      "basis": "The notes' correct answer says the rule is a BIS Federal Register action cited as fr:, says Intel's filings do not discuss it and does not attribute it to Intel: the answer labels it an external regulatory event, not Intel's disclosure, cites only the fr: id and says the context has no Intel passage on it.",
+      "expected_correct": true,
+      "id": "real-X3",
+      "kind": "deployed_real",
+      "notes_from": {
+        "benchmark": "X3"
+      },
+      "question": "What did Intel disclose about the BIS revocation of Validated End-User authorizations in China?",
+      "source": "data/processed/eval_runs.v2c-deployed.jsonl row X3 (final run), verbatim",
+      "valid_ids": [
+        "fr:2025-16735"
+      ]
+    },
+    {
+      "answer": "ASML discloses that geopolitical developments affect it mainly through currency exchange-rate movements and inflation in its cost base, which can change the euro value of its sales and its margins. The provided excerpts do not discuss export restrictions, tariffs or China. [0001628280-26-011378:I.3:0000]",
+      "basis": "The notes ask for ASML-disclosed geopolitical risks including export restrictions and China exposure: the answer names only currency and inflation, says the excerpts do not discuss export restrictions or China, and so omits exactly what the notes require (an incomplete, off-target answer).",
+      "expected_correct": false,
+      "id": "syn-Q2-off-target",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "Q2"
+      },
+      "question": "What geopolitical risks does ASML disclose?",
+      "source": "written for this test in the style of the deployed answers; cites a real Q2 chunk id",
+      "valid_ids": [
+        "0001628280-26-011378:I.3:0000"
+      ]
+    },
+    {
+      "answer": "TSMC's annual report does not describe any supply-chain-related risks; the supplied excerpts of the 20-F discuss only its financial results. [0001628280-26-025362:I.3:0001]",
+      "basis": "The notes say the answer should present TSMC-disclosed risks with citations from TSM 20-F chunks (the deployed answer to the same question lists electricity, water, power interruptions and supply-chain set-up costs): an answer that denies any such disclosure contradicts the notes.",
+      "expected_correct": false,
+      "id": "syn-Q1-denies-disclosure",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "Q1"
+      },
+      "question": "What supply-chain related risks does TSMC disclose in its annual report?",
+      "source": "written for this test; cites a real Q1 chunk id",
+      "valid_ids": [
+        "0001628280-26-025362:I.3:0001"
+      ]
+    },
+    {
+      "answer": "Intel disclosed in its filings that BIS revoked the Validated End-User authorizations for its Dalian facility in China, as described in the Federal Register rule of September 2, 2025 [fr:2025-16735].",
+      "basis": "The notes say Intel's filings in the corpus do not discuss the rule (372 Intel chunks searched) and that a correct answer does not attribute it to Intel: the answer states that Intel disclosed it (rule 3: a Federal Register rule presented as the company's own disclosure).",
+      "expected_correct": false,
+      "id": "syn-X3-attributes-rule-to-intel",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "X3"
+      },
+      "question": "What did Intel disclose about the BIS revocation of Validated End-User authorizations in China?",
+      "source": "written for this test; cites the real fr: id",
+      "valid_ids": [
+        "fr:2025-16735"
+      ]
+    },
+    {
+      "answer": "Based on the automated text comparison between Meta's two most recent annual reports, no risk factor was found that no longer appears as a separate risk factor. One risk factor was added in the newer 10-K and has no counterpart in the FY2024 report: the risk factor on data-center power and supply constraints for AI infrastructure [0001628280-26-003942:I.1A:0038].",
+      "basis": "The notes say no risk factor is new (48 of 48 carried over from the older filing, 0 new): the answer states as a fact that a risk factor was added in the newer 10-K and has no counterpart in the older one (an unsupported 'new' claim, contradicted by the notes).",
+      "expected_correct": false,
+      "id": "syn-T5-fabricated-new-risk-factor",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "T5"
+      },
+      "question": "Did Meta remove any risk factors between its FY2024 and FY2025 annual reports?",
+      "source": "written for this test; the removal sentence is the hedged wording and cites the real T5 chunk id",
+      "valid_ids": [
+        "0001628280-26-003942:I.1A:0038"
+      ]
+    },
+    {
+      "answer": "Comparing Micron's 10-K filed 2024-10-04 with its 10-K filed 2025-10-03, the text check found no risk factor that no longer appears as a separate risk factor [0000723125-25-000028:I.1A:0006]. At least 45 risk factors were reworded (still disclosed, with changed wording), of which 4 are listed: materials and supplies availability [0000723125-25-000028:I.1A:0015], security breaches [0000723125-25-000028:I.1A:0023], gross margins [0000723125-25-000028:I.1A:0006] and export restrictions [0000723125-25-000028:I.1A:0035].",
+      "basis": "The notes give the count: 33 risk factors labelled, 5 unchanged, 28 reworded, 0 merged, 0 removed. The answer states at least 45 reworded, a figure that is 17 above the notes' 28 (not a one-item difference): rule 4, a figure the notes contradict.",
+      "expected_correct": false,
+      "id": "syn-T6-fabricated-count",
+      "kind": "synthetic",
+      "notes_from": {
+        "benchmark": "T6"
+      },
+      "question": "Did Micron remove any risk factors between its FY2024 and FY2025 annual reports?",
+      "source": "written for this test; the hedged wording and the ids are those of the real T6 answer",
+      "valid_ids": [
+        "0000723125-25-000028:I.1A:0006",
+        "0000723125-25-000028:I.1A:0007",
+        "0000723125-25-000028:I.1A:0015",
+        "0000723125-25-000028:I.1A:0016",
+        "0000723125-25-000028:I.1A:0023",
+        "0000723125-25-000028:I.1A:0024",
+        "0000723125-25-000028:I.1A:0035"
+      ]
     }
   ],
-  "sha256": "997ea65fbce48b8fb0168066016d340ab8ef1f5323e63246f8850f1600d24ba9"
+  "sha256": "7f3c19b1f50d3483d078f7df48ab47187cfb05747bcb17561d12e682bc5dd2e5"
 }

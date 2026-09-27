@@ -60,7 +60,7 @@ DEFAULT_REPORT = Path("artifacts/judge_acceptance.json")
 # ``gold.verify_frozen`` trusts the hash stored INSIDE a file, so a probe file rewritten together with its hash would pass it. The
 # accepted probe set is therefore pinned here, exactly as the gold files are pinned in ``gold.KNOWN_GOLD_SHA256``. Changing a probe
 # is a reviewed edit of this constant in the commit that changes the file.
-PINNED_PROBES_SHA256 = "997ea65fbce48b8fb0168066016d340ab8ef1f5323e63246f8850f1600d24ba9"   # 12 probes: real-T5 dropped after review
+PINNED_PROBES_SHA256 = "7f3c19b1f50d3483d078f7df48ab47187cfb05747bcb17561d12e682bc5dd2e5"   # 19 probes: real-T5 dropped after review, 7 added by the closing review
 VOTES = 3
 PROBE_KEYS = ("id", "notes_from", "question", "answer", "valid_ids", "expected_correct", "basis")
 NOTE_SOURCES = ("benchmark", "temporal_legacy")
