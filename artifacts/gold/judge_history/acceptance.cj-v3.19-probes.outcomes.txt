@@ -1,0 +1,26 @@
+Recorded outcome of the correctness-judge acceptance run that used prompt cj-v3 on the 19-probe set (2026-09-27, closing review M1). The JSON report of this run
+was overwritten by the next run; this is copied from the run log. Verdict FAIL: one leniency failure (a fabricated count, 45 reworded against the notes' 28,
+graded correct 3/3), which motivated cj-v4.
+
+  syn-T6-fabricated-count: 3 of 3 votes 'correct' (expected INCORRECT)
+     e.g. The answer correctly conveys that the text check found no risk factor removed, consistent with the notes' conclusion that no risk factor was removed. The reworded count (45) and examples are not directly contradicted by the notes, which only confirm 28 reworded out of 33 total, but the ans
+  legacy-T1                          expected INCORRECT 0/3  ok
+  legacy-T3                          expected INCORRECT 0/3  ok
+  real-T8                            expected correct   3/3  ok
+  real-T10                           expected correct   3/3  ok
+  real-T11                           expected correct   3/3  ok
+  real-T7                            expected INCORRECT 0/3  ok
+  real-T12                           expected INCORRECT 0/3  ok
+  syn-T5-removed-advertising         expected INCORRECT 0/3  ok
+  syn-T7-none-removed-hedged         expected INCORRECT 0/3  ok
+  syn-T8-removed-new-item            expected INCORRECT 0/3  ok
+  syn-T11-stopped-reworded           expected INCORRECT 0/3  ok
+  syn-T4-carried-over-unchanged      expected INCORRECT 0/3  ok
+  real-Q2                            expected correct   3/3  ok
+  real-X3                            expected correct   3/3  ok
+  syn-Q2-off-target                  expected INCORRECT 0/3  ok
+  syn-Q1-denies-disclosure           expected INCORRECT 0/3  ok
+  syn-X3-attributes-rule-to-intel    expected INCORRECT 0/3  ok
+  syn-T5-fabricated-new-risk-factor  expected INCORRECT 0/3  ok
+  syn-T6-fabricated-count            expected INCORRECT 3/3  leniency_failure
+acceptance: FAIL: the judge grades a wrong answer correct and/or a consistent answer incorrect: the instrument is not accepted
