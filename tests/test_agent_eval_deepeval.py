@@ -14,7 +14,7 @@ import pytest
 os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 os.environ.setdefault("DEEPEVAL_DISABLE_DOTENV", "1")
 
-from agentevalfix import GOOD_ANSWER, LIMITS, error_events, events, item, row  # noqa: E402
+from agentevalfix import CLEAN_CHECKS, GOOD_ANSWER, LIMITS, error_events, events, item, row  # noqa: E402
 
 from semigraph.eval import deepeval_metrics as dm  # noqa: E402
 
@@ -38,12 +38,13 @@ def test_the_dimensions_read_the_one_scorer_so_the_wrapper_cannot_disagree_with_
 
 
 @pytest.mark.parametrize("dimension, evs, needle", [
-    ("trajectory", events(("search_filings",)), "missing_tool:financial_metrics"),
+    ("trajectory", events(("financial_metrics", "risk_changes")), "forbidden_tool:risk_changes"),   # a missing expected tool is
+                                                                                                     # advisory only (section 7)
     ("limits", events(model_calls=9), "model_calls"),
-    ("fallback", events(fallback_reason="planner_error"), "fallback:planner_error"),
+    ("fallback", events(tools=(), fallback_reason="planner_error"), "fallback:planner_error"),   # zero tool calls: a full fallback
     ("spend", events(cost_delta=0.05), "writer_cost_mismatch"),
     ("answer", events(answer="Nvidia's revenue was $1.0 billion [xbrl:1045810:revenue:2026-01-25]."), "mechanical"),
-    ("citations", events(hallucinated=("0001-25-000001:I.1A:0001",)), "invalid_citation"),
+    ("citations", events(checks={**CLEAN_CHECKS, "citations_retrieved": False}), "citations_not_retrieved"),
 ])
 def test_each_dimension_names_what_failed(dimension, evs, needle):
     failures = dm.dimension_failures(scored(evs=evs), dimension)
@@ -103,12 +104,12 @@ def test_a_clean_run_passes_every_metric_through_assert_test():
 
 @needs_deepeval
 @pytest.mark.parametrize("evs", [
-    events(("search_filings",)),                                           # trajectory
+    events(("financial_metrics", "risk_changes")),                         # trajectory: a FORBIDDEN tool call gates (section 7)
     events(model_calls=9),                                                 # limits
-    events(fallback_reason="planner_error"),                               # fallback
+    events(tools=(), fallback_reason="planner_error"),                     # fallback: zero tool calls, a full fallback
     events(cost_delta=0.05),                                               # spend
     events(answer="Nvidia's revenue was $1.0 billion [xbrl:1045810:revenue:2026-01-25]."),    # answer
-    events(hallucinated=("0001-25-000001:I.1A:0001",)),                    # citations
+    events(checks={**CLEAN_CHECKS, "citations_retrieved": False}),         # citations
     error_events(),                                                        # an error row fails the answer
 ])
 def test_a_failing_run_fails_assert_test(evs):
@@ -123,9 +124,24 @@ def test_a_failing_run_fails_assert_test(evs):
 def test_the_metric_reports_its_reason_and_a_zero_or_one_score():
     it = item()
     metric = dm.AgentRunMetric(it, "trajectory", LIMITS)
-    assert metric.measure(dm.case_from_row(it, row(it, events(("search_filings",))))) == 0.0
-    assert metric.is_successful() is False and "missing_tool:financial_metrics" in metric.reason
+    assert metric.measure(dm.case_from_row(it, row(it, events(("financial_metrics", "risk_changes"))))) == 0.0
+    assert metric.is_successful() is False and "forbidden_tool:risk_changes" in metric.reason
     assert metric.measure(dm.case_from_row(it, row(it, events(("financial_metrics",))))) == 1.0 and metric.is_successful() is True
+
+
+@needs_deepeval
+def test_the_citations_metric_and_the_checks_clean_gate_agree_on_the_same_row():
+    """The DeepEval citations dimension and agent_eval's checks_clean gate must read the SAME failed_check_names / checks data,
+    not two separately-reasoned checks that could disagree (M3 R3 review, HIGH finding 2)."""
+    from semigraph.eval import agent_eval as ae
+
+    it = item()
+    r = row(it, events(checks={**CLEAN_CHECKS, "has_citation": False}))       # A21-shaped: no_citation
+    s = ae.score_run(it, r, LIMITS)
+    metric = dm.AgentRunMetric(it, "citations", LIMITS)
+    metric.measure(dm.case_from_row(it, r))
+    assert metric.is_successful() is False and "no_citation" in metric.reason
+    assert s["checks_clean_failures"] == ["no_citation"]
 
 
 @needs_deepeval

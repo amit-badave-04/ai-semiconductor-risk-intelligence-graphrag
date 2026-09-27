@@ -157,7 +157,7 @@ def test_the_judge_runs_offline_only_when_paid_calls_are_confirmed(env, monkeypa
         return Correct(correct=True, reason="ok")
 
     monkeypatch.setattr(llm, "llm_json", judge)
-    result = invoke("--agent-only", "--runs", "runs.jsonl", "--confirm-paid")
+    result = invoke("--agent-only", "--runs", "runs.jsonl", "--confirm-paid", "--max-usd", "1.0")
     assert result.exit_code == 0, result.output
     assert len(seen) == 3 and all("[T7]" in p for p in seen)                       # A10 only, three votes, notes resolved from T7
     report = json.loads((env / "artifacts" / "eval_report.agent.json").read_text(encoding="utf-8"))
@@ -167,6 +167,24 @@ def test_the_judge_runs_offline_only_when_paid_calls_are_confirmed(env, monkeypa
 def test_no_judge_skips_it_even_when_paid_calls_are_confirmed(env):
     saved_runs(env)
     assert invoke("--agent-only", "--runs", "runs.jsonl", "--confirm-paid", "--no-judge").exit_code == 0
+
+
+def test_the_judge_needs_max_usd_even_offline_with_runs(env):
+    """--max-usd was not required for the judge in --runs mode, so it never capped the judge's spend there (M3 R3 review,
+    MEDIUM finding 7): a confirmed judge run without --max-usd must be refused before anything is bought."""
+    saved_runs(env)
+    result = invoke("--agent-only", "--runs", "runs.jsonl", "--confirm-paid")
+    assert result.exit_code == 2 and "--max-usd" in result.output
+
+
+def test_the_judges_worst_case_over_max_usd_is_refused_before_anything_is_bought(env):
+    """A10 alone is judged: 1 question x 3 votes x JUDGE_CALL_USD; a --max-usd below that must refuse (M3 R3 review, MEDIUM
+    finding 7), mirroring the bakeoff command's own up-front refusal. ``env`` already forbids the judge (llm_json): if the
+    refusal did not fire first, that stand-in would raise instead."""
+    saved_runs(env)
+    tiny = ae.JUDGE_CALL_USD * 3 * 1 - 0.001
+    result = invoke("--agent-only", "--runs", "runs.jsonl", "--confirm-paid", "--max-usd", f"{tiny:.6f}")
+    assert result.exit_code == 2 and "judge" in result.output.lower() and "--max-usd" in result.output
 
 
 def test_a_missing_baseline_leaves_the_comparison_gates_unevaluated_instead_of_failing(env):
@@ -208,7 +226,15 @@ def test_a_live_run_without_an_escalation_model_is_refused(env, monkeypatch):
     assert result.exit_code == 2 and "escalation" in result.output.lower()
 
 
+_TINY_ESTIMATE = {"questions": 2, "judged_questions": 0, "votes": 3, "answers_usd_likely": 0.0, "answers_usd_worst_case": 0.0,
+                  "planner_usd_likely": 0.0, "planner_usd_worst_case": 0.0, "judge_usd_worst_case": 0.0,
+                  "total_likely_usd": 0.0, "total_worst_case_usd": 0.0, "assumptions": {}}
+
+
 def test_the_spend_cap_stops_a_live_run_with_its_own_exit_code(env, monkeypatch):
+    """The up-front worst-case estimate is mocked to a value BELOW --max-usd (finding 11's new refusal is about THAT estimate,
+    tested separately below), isolating the ORIGINAL guarantee this test covers: the ACTUAL running spend still trips --max-usd
+    mid-run and is reported with its own exit code."""
     from semigraph import embeddings
     from semigraph.graph import client
 
@@ -219,5 +245,68 @@ def test_the_spend_cap_stops_a_live_run_with_its_own_exit_code(env, monkeypatch)
     monkeypatch.setattr(client, "get_driver", lambda settings=None: FakeDriver())
     monkeypatch.setattr(embeddings, "Embedder", lambda: object())
     monkeypatch.setattr(ae, "agent_answer_events", lambda *a, **k: (lambda item: events(item["expected_tools"])))
+    monkeypatch.setattr(ae, "estimate_agent_run", lambda *a, **k: dict(_TINY_ESTIMATE))
     result = invoke("--agent-only", "--confirm-paid", "--max-usd", "0.0001", "--no-judge")
     assert result.exit_code == 5 and "cap" in result.output.lower()
+
+
+def test_a_live_run_refuses_up_front_when_the_worst_case_exceeds_max_usd_instead_of_getting_cut_off(env, monkeypatch):
+    """M3 R3 review, LOW finding 11: the REAL (unmocked) worst-case estimate for a live run must be compared to --max-usd BEFORE
+    the first question is answered, mirroring bakeoff's up-front refusal, instead of starting and being cut off mid-run."""
+    from semigraph import embeddings
+    from semigraph.graph import client
+
+    asked = []
+
+    class FakeDriver:
+        def close(self):
+            pass
+
+    def fake_events(driver, embedder, *, model, escalation_model, **kw):
+        def answer(item):
+            asked.append(item["id"])
+            return events(item["expected_tools"])
+        return answer
+
+    monkeypatch.setattr(client, "get_driver", lambda settings=None: FakeDriver())
+    monkeypatch.setattr(embeddings, "Embedder", lambda: object())
+    monkeypatch.setattr(ae, "agent_answer_events", fake_events)
+    result = invoke("--agent-only", "--confirm-paid", "--max-usd", "0.0001", "--no-judge")
+    assert result.exit_code == 2 and asked == []                      # refused before the first question, not cut off mid-run
+    assert "worst case" in result.output.lower()
+
+
+def test_a_live_run_refuses_when_no_baseline_report_exists_to_estimate_from(env, monkeypatch):
+    """M3 R3 review, MEDIUM finding 8: a confirmed LIVE run must never silently proceed with no cost estimate."""
+    monkeypatch.setattr(cli, "_DEFAULT_AGENT_BASELINE", env / "does-not-exist.json")
+    result = runner.invoke(cli.app, ["eval-agent", "--benchmark", "bench.json", "--agent-only", "--confirm-paid", "--max-usd", "1.0", "--no-judge"])
+    assert result.exit_code == 2
+    assert "baseline" in result.output.lower() or "estimated" in result.output.lower()
+
+
+def test_the_default_baseline_path_is_anchored_to_the_repository_not_the_cwd():
+    assert cli._DEFAULT_AGENT_BASELINE.is_absolute()
+    assert cli._DEFAULT_AGENT_BASELINE.name == "eval_report.v2d-deployed.json"
+    assert cli._DEFAULT_AGENT_BASELINE.parent.name == "artifacts"
+
+
+def test_a_live_run_from_a_different_cwd_still_finds_the_default_baseline_and_estimates_first(env, monkeypatch):
+    """The default --baseline path resolves relative to the repository (like agent_eval.AGENT_BENCHMARK_PATH), not the CWD: a
+    live run started with no --baseline flag, from ``env``'s own temp CWD, must still find it and print an estimate before
+    spending (M3 R3 review, MEDIUM finding 8)."""
+    real_baseline = env / "real_baseline.json"
+    real_baseline.write_text(json.dumps(BASELINE), encoding="utf-8")
+    monkeypatch.setattr(cli, "_DEFAULT_AGENT_BASELINE", real_baseline)
+    from semigraph import embeddings
+    from semigraph.graph import client
+
+    class FakeDriver:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(client, "get_driver", lambda settings=None: FakeDriver())
+    monkeypatch.setattr(embeddings, "Embedder", lambda: object())
+    monkeypatch.setattr(ae, "agent_answer_events", lambda *a, **k: (lambda item: events(item["expected_tools"])))
+    result = runner.invoke(cli.app, ["eval-agent", "--benchmark", "bench.json", "--agent-only", "--confirm-paid", "--max-usd", "1.0", "--no-judge"])
+    assert result.exit_code == 0, result.output
+    assert "estimate" in result.output.lower()

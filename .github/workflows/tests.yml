@@ -50,6 +50,7 @@ jobs:
           enable-cache: true
       - run: uv python install 3.13
       - run: uv sync --extra serve --extra agent
+      # This intentionally installs a click version outside uv.lock, inside this isolated job only: expected and harmless, not a bug to "fix".
       - run: uv pip install "deepeval>=4.2.6,<5"
       - run: uv run --no-sync pytest -q -p no:deepeval tests/test_agent_eval_deepeval.py
 

@@ -35,8 +35,11 @@ def step_events(tools, ok=True) -> list[dict]:
 
 def events(tools=("financial_metrics",), *, ok=True, model_calls=2, elapsed_s=4.0, fallback_reason=None, answer=GOOD_ANSWER,
            cited=(XBRL,), hallucinated=(), checks=None, escalated=False, answered_by=LUNA, planner_model=LUNA,
-           planner_usage=None, writer_usage=None, cost_delta=0.0, planner_cost_delta=0.0, with_agent=True, step_tools=None) -> list[dict]:
-    """A whole run: ``retrieval``, the ``step`` events, ``delta``, and a ``done`` whose spend is consistent unless a delta is given."""
+           planner_usage=None, writer_usage=None, cost_delta=0.0, planner_cost_delta=0.0, with_agent=True, step_tools=None,
+           planner_prompt_version=None) -> list[dict]:
+    """A whole run: ``retrieval``, the ``step`` events, ``delta``, and a ``done`` whose spend is consistent unless a delta is given.
+    ``planner_prompt_version`` is omitted (as production rows never are) unless a test needs to pin one (see the "stale planner
+    prompt" tests)."""
     planner_usage = planner_usage or {"prompt_tokens": 2500, "completion_tokens": 150}
     writer_usage = writer_usage or {"prompt_tokens": 12000, "completion_tokens": 300}
     planner_cost = usage_cost(planner_usage, planner_model)
@@ -46,6 +49,8 @@ def events(tools=("financial_metrics",), *, ok=True, model_calls=2, elapsed_s=4.
              "model_calls": model_calls, "elapsed_s": elapsed_s, "fallback_reason": fallback_reason,
              "planner_model": planner_model, "planner_usage": planner_usage,
              "planner_cost_usd": round(planner_cost + planner_cost_delta, 6)}
+    if planner_prompt_version is not None:
+        agent["planner_prompt_version"] = planner_prompt_version
     done = {"event": "done", "question": "q", "strategy": "agent", "answer": answer, "citations": sorted(cited),
             "hallucinated": sorted(hallucinated), "checks": CLEAN_CHECKS if checks is None else checks,
             "finish_reason": "stop", "usage": writer_usage, "cost_usd": round(planner_cost + writer_cost + cost_delta, 6),

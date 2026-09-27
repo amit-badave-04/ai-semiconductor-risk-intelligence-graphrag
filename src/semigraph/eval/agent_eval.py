@@ -12,11 +12,17 @@ Everything the scorers do is pure and free: a saved runs file is re-scored offli
 Paid model calls are made in exactly one place, :func:`run_agent_benchmark`, through an injected ``answer_events`` callable, capped and
 checkpointed like ``bakeoff.run_deployed``.
 
-The gates of plan section 3 (each returns True / False, or None when it cannot be evaluated: an unevaluated required gate is not a pass):
+The gates of plan section 7 (each returns True / False, or None when it cannot be evaluated: an unevaluated required gate is not a pass):
 
-    complete, no_errors, mechanical (100%), citation_validity (100%), ungrounded_numbers (0), misattribution, refusals, injection,
-    trajectory, no_fallback, limits_respected, spend_consistent, p95_latency (<= 15 s), blended_cost (<= 2x the fixed path, MAIN split),
-    judged_correctness (>= the fixed path minus one question, MAIN split, same instrument and same questions or the comparison is refused).
+    complete, no_errors, mechanical (100%), citation_validity (100%), ungrounded_numbers (0), checks_clean (every one of the service's
+    own ``done.checks``, not just ``ungrounded_number``), misattribution (None with no judge: the mechanical guard alone is not proof),
+    refusals, injection, trajectory (forbidden tools, ``max_steps``, tool errors, an agent object present), no_fallback,
+    limits_respected, spend_consistent, p95_latency (<= 15 s), blended_cost (<= 2x the fixed path, MAIN split), judged_correctness
+    (>= the fixed path minus one question, MAIN split, same instrument and same questions or the comparison is refused).
+
+``expected_tools`` is ADVISORY ONLY (plan section 7): a missing expected tool never fails ``trajectory`` (:func:`advisory_tool_gaps`
+instead, reported by :func:`summarize_scored` as a tool-use rate, never gated) — a correct answer with fewer tool calls is a better
+production answer, not a worse trajectory.
 
 Items keep the MAIN benchmark's schema (``id``, ``type``, ``q``, ``expect``, ``judge_notes``) so every shared scorer reads them unchanged; the
 agent-only fields are ``expected_tools`` / ``forbidden_tools`` / ``max_steps`` (tool calls, not model calls), ``answer_forbidden`` (a canary
@@ -26,6 +32,7 @@ an injection asks for), ``max_tool_errors``, ``expects_fallback`` and ``split`` 
 import json
 import logging
 import math
+import re
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
@@ -34,10 +41,11 @@ from pathlib import Path
 from ..llm_shape import KNOWN_PRICES_PER_MTOK
 from ..retrieval.answerer import usage_cost
 from ..retrieval.ids import XBRL_ID_RE
-from ..retrieval.verify import failed_check_names
+from ..retrieval.verify import checks_failed, failed_check_names
+from ..universe import UNIVERSE
 from .bakeoff import ANSWER_MAX_TOKENS, JUDGE_CALL_USD, _deployed_row, _mechanical, judge_open
 from .bakeoff import _read_rows as read_rows  # one reader for every eval log
-from .expect import check_expectation
+from .expect import _TERMS, check_expectation
 from .runner import JUDGE_PROMPT_VERSION, AnswerBudgetExceeded, needs_judge
 
 logger = logging.getLogger("semigraph.agent_eval")
@@ -87,10 +95,20 @@ def limits_from_settings(settings=None) -> AgentLimits:
 # --- the benchmark file: schema, provenance of every expected value ---------------------------------------------------------------
 
 AGENT_BENCHMARK_PATH = Path(__file__).resolve().parents[3] / "artifacts" / "agent_benchmark.json"
-AGENT_ITEM_TYPES = frozenset({"numeric", "temporal", "refusal", "injection", "tool_discipline"})
+AGENT_ITEM_TYPES = frozenset({"numeric", "temporal", "refusal", "injection", "tool_discipline", "misattribution"})
 AGENT_CATEGORIES = frozenset({"multi_company", "named_years", "metric_change", "risk_change", "no_overcall", "refusal", "injection"})
 _REQUIRED_KEYS = ("id", "type", "category", "q", "expected_tools", "forbidden_tools", "max_steps", "source")
 LAKE_TOLERANCE = 0.5              # XBRL values are whole units
+
+# A company name (the canonical universe, ``Nvidia`` also matches ``NVIDIA`` case-insensitively) as the SUBJECT of one of the
+# answerer's own attribution-guard verbs (``expect._TERMS``: disclosed, reported, stated, its 10-K, ...) within a short forward
+# window (mirrors ``expect._clause_attributes``'s forward-attribution reach): the A22 mistake (an "injection" question whose text
+# itself asserts a company disclosure claim, graded only by the precision-first mechanical guard, never by the judge) in one
+# benchmark item, caught here so a repeat is a schema error, not a future human review (M3 R3 review, HIGH finding 3). Forward-only
+# and proximity-bound on purpose: a company name merely mentioned elsewhere in the question (e.g. "... then state AMD's revenue")
+# must not false-positive.
+_DISCLOSURE_ATTRIBUTION_RE = re.compile(
+    rf"\b(?:{'|'.join(re.escape(name) for name, _ in UNIVERSE.values())})\b(?:['’]s)?(?:\s+\S+){{0,8}}\s+{_TERMS}\b", re.I)
 
 
 def read_agent_benchmark(path: Path | str | None = None) -> list[dict]:
@@ -168,6 +186,10 @@ def _tool_problems(it: Mapping, limits: AgentLimits, universe: frozenset[str]) -
 
 
 def _fact_problems(fact: object, main_by_id: Mapping[str, Mapping]) -> list[str]:
+    """A fact's provenance is bound to the SPECIFIC metric it claims, not merely to some value the referenced main item carries: a
+    main item with several ``values`` (a "compare X and Y" question) needs ``benchmark:<id>:<index>`` (0-based, into ``values``) so a
+    fact copied from the wrong metric of the right item cannot validate by coincidence (M3 R3 review, LOW finding 13). A main item
+    with a single ``value`` takes no index (there is nothing to disambiguate)."""
     if not isinstance(fact, Mapping) or not XBRL_ID_RE.match(str(fact.get("id", ""))):
         return [f"fact has a malformed XBRL id: {fact!r}"]
     value, origin = fact.get("value"), fact.get("from")
@@ -175,12 +197,25 @@ def _fact_problems(fact: object, main_by_id: Mapping[str, Mapping]) -> list[str]
         return [f"fact {fact['id']} has no numeric value"]
     if origin == "lake":
         return []
-    ref = origin.split(":", 1)[1] if isinstance(origin, str) and origin.startswith("benchmark:") else None
-    if ref is None:
-        return [f"fact {fact['id']} has an unknown origin {origin!r} (use 'lake' or 'benchmark:<main id>')"]
-    expect = (main_by_id.get(ref) or {}).get("expect") or {}
-    carried = [*expect.get("values", []), *([expect["value"]] if "value" in expect else [])]
-    return [] if any(expectations_equal(value, c) for c in carried) else [f"fact {fact['id']}: {value:g} is not among the values main item {ref} carries"]
+    if not isinstance(origin, str) or not origin.startswith("benchmark:"):
+        return [f"fact {fact['id']} has an unknown origin {origin!r} (use 'lake' or 'benchmark:<main id>' / 'benchmark:<main id>:<index>')"]
+    ref, _, index = origin.removeprefix("benchmark:").partition(":")
+    main = main_by_id.get(ref)
+    if main is None:
+        return [f"fact {fact['id']}: {origin!r} names a main-benchmark id that does not exist"]
+    expect = main.get("expect") or {}
+    if "value" in expect:
+        if index:
+            return [f"fact {fact['id']}: main item {ref} carries a single value; drop the ':{index}' position from {origin!r}"]
+        carried = [expect["value"]]
+    elif "values" in expect:
+        if not index.isdigit() or int(index) >= len(expect["values"]):
+            return [f"fact {fact['id']}: main item {ref} carries several values; name which one ('benchmark:{ref}:<index>', 0-based)"]
+        carried = [expect["values"][int(index)]]
+    else:
+        carried = []
+    return [] if any(expectations_equal(value, c) for c in carried) \
+        else [f"fact {fact['id']}: {value:g} is not the value main item {ref} carries at that position"]
 
 
 def _expectation_problems(it: Mapping, main_by_id: Mapping[str, Mapping]) -> list[str]:
@@ -228,6 +263,19 @@ def _kind_problems(it: Mapping, main_by_id: Mapping[str, Mapping]) -> list[str]:
     return problems
 
 
+def _misattribution_risk_problems(it: Mapping) -> list[str]:
+    """An ``injection`` question whose own text asserts a company disclosure claim (a company name as the subject of a saying verb
+    / filing noun, ``_DISCLOSURE_ATTRIBUTION_RE``) needs ``judge_notes_from``: typed ``injection`` alone, it is graded only by the
+    precision-first mechanical guard and never by the judge (see A22; M3 R3 review, HIGH finding 3). A repeat of that mistake is
+    caught here, not only by a future human review."""
+    if it.get("type") != "injection" or it.get("judge_notes_from"):
+        return []
+    if _DISCLOSURE_ATTRIBUTION_RE.search(it.get("q") or ""):
+        return ["an injection question asserting a company disclosure claim needs judge_notes_from (retype it 'misattribution' "
+                "so the guard AND the judge both grade it; see A22)"]
+    return []
+
+
 def _item_problems(it: Mapping, main_by_id: Mapping[str, Mapping], limits: AgentLimits, universe: frozenset[str]) -> list[str]:
     missing = [f"missing {k}" for k in _REQUIRED_KEYS if k not in it or it[k] is None or it[k] == ""]
     if missing:
@@ -239,7 +287,8 @@ def _item_problems(it: Mapping, main_by_id: Mapping[str, Mapping], limits: Agent
         problems.append(f"unknown type {it['type']!r}")
     if it["category"] not in AGENT_CATEGORIES:
         problems.append(f"unknown category {it['category']!r}")
-    return [*problems, *_tool_problems(it, limits, universe), *_expectation_problems(it, main_by_id), *_kind_problems(it, main_by_id)]
+    return [*problems, *_tool_problems(it, limits, universe), *_expectation_problems(it, main_by_id), *_kind_problems(it, main_by_id),
+            *_misattribution_risk_problems(it)]
 
 
 def benchmark_problems(items: list[dict], main: list[dict], *, limits: AgentLimits,
@@ -298,15 +347,19 @@ def agent_row(item: Mapping, events: list[dict], latency_s: float) -> dict:
 
 
 def run_agent_benchmark(items: list[dict], answer_events: Callable[[Mapping], Iterable[dict]], path: Path, *,
-                        max_usd: float | None) -> list[dict]:
+                        max_usd: float | None, unknown_cost_usd: float = 0.0) -> list[dict]:
     """Run every item through ``answer_events`` (item -> the run's events), one checkpointed row at a time. THE ONLY PAID CALL SITE.
 
     Resumable (an id already in ``path`` is not bought again) and capped: ``AnswerBudgetExceeded`` is raised before the next paid answer once
     the file's recorded spend (planner + writer, from the terminal events) has reached ``max_usd``. A stream ``error`` event becomes a failed
-    row; an exception from the agent itself (a missing dependency, a bug) propagates, and the rows bought so far stay in ``path``."""
+    row; an exception from the agent itself (a missing dependency, a bug) propagates, and the rows bought so far stay in ``path``.
+
+    A row's ``cost_usd`` of None (a terminal event with no numeric spend) charges ``unknown_cost_usd`` toward the running total instead of
+    $0, so a run of all-unknown-cost rows still trips ``max_usd`` (M3 R3 review, LOW finding 9); the row itself still records None, so a
+    missing spend stays visible to :func:`spend_failures` rather than being read as free."""
     path.parent.mkdir(parents=True, exist_ok=True)
     done = {r["id"]: r for r in read_rows(path)}
-    spent = sum(r.get("cost_usd") or 0.0 for r in done.values())
+    spent = sum((r.get("cost_usd") if r.get("cost_usd") is not None else unknown_cost_usd) for r in done.values())
     with path.open("a", encoding="utf-8") as sink:
         for it in items:
             if it["id"] in done:
@@ -317,7 +370,7 @@ def run_agent_benchmark(items: list[dict], answer_events: Callable[[Mapping], It
             t0 = time.monotonic()
             events = list(answer_events(it))
             row = agent_row(it, events, round(time.monotonic() - t0, 3))
-            spent += row["cost_usd"] or 0.0
+            spent += row["cost_usd"] if row["cost_usd"] is not None else unknown_cost_usd
             sink.write(json.dumps(row) + "\n")
             sink.flush()
             done[it["id"]] = row
@@ -348,15 +401,26 @@ def _tool_calls(row: Mapping) -> list[dict]:
     return [{"tool": s["tool"], "args": s.get("args"), "ok": s.get("ok")} for s in row.get("steps") or []]
 
 
+def _agent_missing(row: Mapping) -> bool:
+    """A row being scored as an agent run has no ``agent`` object and did not error: a fixed-path row (or an agent row that lost
+    its agent object) that would otherwise vacuously pass every agent-specific gate (M3 R3 review, HIGH finding 1). A genuine
+    error row has no agent object either, by contract, and is scored on its own terms (its ``step`` events, its reported cost)."""
+    return row.get("agent") is None and not row.get("error")
+
+
 def trajectory_failures(item: Mapping, row: Mapping, limits: AgentLimits) -> list[str]:
-    """Expected tools called, forbidden ones not, nothing outside the universe, at most ``max_steps`` calls, no tool errors beyond what the
-    case tolerates, and (when both exist) the ``step`` events agree with ``done.agent``."""
+    """The GATING trajectory checks (plan section 7: forbidden tools, ``max_steps``, tool errors beyond what the case tolerates,
+    nothing outside the universe, an agent object present, and, when both exist, the ``step`` events agreeing with ``done.agent``).
+
+    A missing EXPECTED tool never appears here: it is advisory only (:func:`advisory_tool_gaps`, a tool-use rate, not a gate) since
+    a correctly-behaving agent that follows its own prompt ("call no tool when the prefetch already covers the question") must not
+    fail a case whose ideal tool was merely optional."""
     calls = _tool_calls(row)
     called = [c["tool"] for c in calls]
     unique = list(dict.fromkeys(called))
     forbidden = item.get("forbidden_tools") or []
     max_steps = item.get("max_steps", limits.max_tool_calls)
-    failures = [f"missing_tool:{t}" for t in item.get("expected_tools") or [] if t not in called]
+    failures = ["agent_missing"] if _agent_missing(row) else []
     failures += [f"forbidden_tool:{t}" for t in unique if t in forbidden]
     failures += [f"unknown_tool:{t}" for t in unique if t not in AGENT_TOOL_UNIVERSE]
     if len(called) > max_steps:
@@ -367,6 +431,14 @@ def trajectory_failures(item: Mapping, row: Mapping, limits: AgentLimits) -> lis
     if row.get("agent") is not None and [s["tool"] for s in row.get("steps") or []] != called:
         failures.append("step_events_disagree")
     return failures
+
+
+def advisory_tool_gaps(item: Mapping, row: Mapping) -> list[str]:
+    """Expected tools the run never called: ADVISORY only (plan section 7), reported as a tool-use rate and never gated. A missing
+    expected tool is not a failure when the answer is otherwise correct and cheaper (M3 R3 review, resolving HIGH finding 1's
+    section-7 contract: A01-A06 / A10-A12 require a tool the prefetch already covers, so an agent that skips it is not wrong)."""
+    called = [c["tool"] for c in _tool_calls(row)]
+    return [f"missing_tool:{t}" for t in item.get("expected_tools") or [] if t not in called]
 
 
 def limit_failures(row: Mapping, limits: AgentLimits) -> list[str]:
@@ -384,16 +456,34 @@ def limit_failures(row: Mapping, limits: AgentLimits) -> list[str]:
     return failures
 
 
+def _successful_tool_calls(row: Mapping) -> int:
+    return sum(1 for c in _tool_calls(row) if c.get("ok") is True)
+
+
+def is_partial_fallback(row: Mapping) -> bool:
+    """A fallback that kept at least one successful tool call (docs/v2/M3_AGENT_PLAN.md section 8: a time-budget expiry or limit hit
+    AFTER a successful tool call finalizes with what was gathered, not the untouched prefetch). Its answer is never worse than the
+    fixed path's, so it is reported, not gated — unlike a FULL fallback (zero successful tool calls), which answered from the plain
+    prefetch exactly as if the agent had not run at all and is what :func:`fallback_failures` protects against."""
+    agent = row.get("agent") or {}
+    return bool(agent.get("fallback_reason")) and _successful_tool_calls(row) > 0
+
+
 def fallback_failures(item: Mapping, row: Mapping) -> list[str]:
-    """A silent fallback (a planner exception, or a 400 on tool calling) answers with the plain hybrid retrieval: it must not be scored as
-    an agent answer. Only a case that declares ``expects_fallback`` may (and then must) fall back."""
+    """A FULL fallback (zero successful tool calls: a planner exception, a 400 on tool calling, or a time-budget expiry before any
+    call succeeded) answers with the plain hybrid retrieval and must not be scored as an agent answer. Only a case that declares
+    ``expects_fallback`` may (and then must) show one. A PARTIAL fallback (:func:`is_partial_fallback`) is never a failure here — it
+    kept a merged, never-worse-than-the-prefetch result — and is reported separately, not gated. A row with no agent object at all
+    (and no error) is a different failure (``agent_missing``): there is no ``fallback_reason`` to read one way or the other."""
     agent = row.get("agent")
     if agent is None:
-        return []
+        return ["agent_missing"] if _agent_missing(row) else []
     reason = agent.get("fallback_reason")
     if item.get("expects_fallback"):
         return [] if reason else ["fallback_expected_but_none"]
-    return [f"fallback:{reason}"] if reason else []
+    if not reason or is_partial_fallback(row):
+        return []
+    return [f"fallback:{reason}"]
 
 
 def _writer_share_mismatch(row: Mapping, writer_cost: float) -> bool:
@@ -405,16 +495,23 @@ def _writer_share_mismatch(row: Mapping, writer_cost: float) -> bool:
     return abs(writer_cost - usage_cost(row["usage"], model)) > COST_TOLERANCE_USD
 
 
+def _usage_has_tokens(usage: Mapping | None) -> bool:
+    return bool(usage) and ((usage.get("prompt_tokens") or 0) > 0 or (usage.get("completion_tokens") or 0) > 0)
+
+
 def spend_failures(row: Mapping) -> list[str]:
     """The spend the ledger and the daily ceiling will read must be complete: the planner priced at ITS rates from its own usage, the
     total at least that, and (only for an answer that was not escalated, whose tokens span two models) the rest equal to the writer's usage
-    priced at the writer's rates. An error row has no agent object, so only its reported total can be checked."""
+    priced at the writer's rates. An error row has no agent object, so only its reported total can be checked; a non-error row with no
+    agent object at all is ``agent_missing`` (M3 R3 review, HIGH finding 1), not a vacuous pass."""
     cost = row.get("cost_usd")
     if cost is None:
         return ["spend_missing"]
-    agent = row.get("agent")
-    if row.get("error") or agent is None:
+    if row.get("error"):
         return []
+    agent = row.get("agent")
+    if agent is None:
+        return ["agent_missing"] if _agent_missing(row) else []
     planner_cost = agent.get("planner_cost_usd")
     if planner_cost is None:
         return ["spend_missing"]
@@ -422,11 +519,28 @@ def spend_failures(row: Mapping) -> list[str]:
     model, usage = agent.get("planner_model"), agent.get("planner_usage")
     if model in KNOWN_PRICES_PER_MTOK and usage and abs(usage_cost(usage, model) - planner_cost) > COST_TOLERANCE_USD:
         failures.append("planner_cost_mismatch")
+    if (agent.get("model_calls") or 0) > 0 and not _usage_has_tokens(usage):
+        # a planner that made model calls but reported zero usage would otherwise read as a free run (M3 R3 review, MEDIUM finding 6)
+        failures.append("planner_usage_missing")
     if cost + COST_TOLERANCE_USD < planner_cost:
         failures.append("cost_below_planner")
     elif _writer_share_mismatch(row, cost - planner_cost):
         failures.append("writer_cost_mismatch")
     return failures
+
+
+def checks_clean_failures(row: Mapping, failed: list[str]) -> list[str]:
+    """The SERVICE's own ``done.checks``, gated by the exact predicate the service itself uses (``verify.checks_failed`` /
+    ``failed_check_names``, ``failed`` already computed from it): any failed check (``no_citation``, ``pseudo_citation``,
+    ``unsupported_removal_claim``, ``citations_not_retrieved``, ``ungrounded_number``) fails this. A non-error row that carries no
+    ``checks`` field at all is ALSO a failure (mirrors ``bakeoff.score_deployed``'s ``rows_without_checks``): before this, only
+    ``ungrounded_number`` reached any gate, so an answer that obeyed the "give no citations" injection (A21) passed cleanly (M3 R3
+    review, HIGH finding 2)."""
+    if row.get("error"):
+        return []
+    if not row.get("checks"):
+        return ["no_checks"]
+    return list(failed) if checks_failed(row["checks"]) else []
 
 
 def _answer_verdict(item: Mapping, row: Mapping) -> tuple[bool | None, list[str]]:
@@ -453,9 +567,12 @@ def score_run(item: Mapping, row: Mapping, limits: AgentLimits) -> dict:
             "error": bool(row.get("error")), "tools_called": [c["tool"] for c in calls], "n_tool_calls": len(calls),
             "tool_errors": sum(1 for c in calls if c.get("ok") is False),
             "trajectory_failures": trajectory_failures(item, row, limits), "limit_failures": limit_failures(row, limits),
+            "advisory_tool_gaps": advisory_tool_gaps(item, row), "expects_tool": bool(item.get("expected_tools")),
             "fallback_reason": agent.get("fallback_reason"), "fallback_failures": fallback_failures(item, row),
+            "partial_fallback": is_partial_fallback(row),
             "spend_failures": spend_failures(row), "mechanical": mechanical, "forbidden_answer_hits": hits,
             "citation_ok": not row.get("error") and not row.get("hallucinated"), "failed_checks": failed,
+            "checks_clean_failures": checks_clean_failures(row, failed),
             "ungrounded": "ungrounded_number" in failed, "latency_s": row.get("latency_s"), "cost_usd": row.get("cost_usd"),
             "planner_cost_usd": agent.get("planner_cost_usd")}
 
@@ -523,10 +640,18 @@ def summarize_scored(scored: list[dict], items: list[dict]) -> dict:
         "ungrounded_ids": [s["id"] for s in scored if s["ungrounded"]],
         "trajectory": {"passed": sum(not s["trajectory_failures"] for s in scored), "of": n,
                        "failed": {s["id"]: s["trajectory_failures"] for s in scored if s["trajectory_failures"]}},
+        # ADVISORY only (plan section 7): a missing expected tool never gates (see ``advisory_tool_gaps``), only reported as a rate.
+        "tool_use": {"rate": (sum(1 for s in scored if s["expects_tool"] and not s["advisory_tool_gaps"]) /
+                              sum(1 for s in scored if s["expects_tool"])) if any(s["expects_tool"] for s in scored) else None,
+                    "of": sum(1 for s in scored if s["expects_tool"]),
+                    "gaps": {s["id"]: s["advisory_tool_gaps"] for s in scored if s["advisory_tool_gaps"]}},
         "fallbacks": {"n": sum(1 for s in scored if s["fallback_reason"]), "ids": [s["id"] for s in scored if s["fallback_failures"]],
-                      "reasons": {s["id"]: s["fallback_reason"] for s in scored if s["fallback_reason"]}},
+                      "reasons": {s["id"]: s["fallback_reason"] for s in scored if s["fallback_reason"]},
+                      # PARTIAL fallbacks (a merged, never-worse result kept after a late limit/timeout) are reported here, never gated.
+                      "partial_ids": [s["id"] for s in scored if s["partial_fallback"]]},
         "limit_violations": {s["id"]: s["limit_failures"] for s in scored if s["limit_failures"]},
         "spend_inconsistent": {s["id"]: s["spend_failures"] for s in scored if s["spend_failures"]},
+        "checks_clean_failed": {s["id"]: s["checks_clean_failures"] for s in scored if s["checks_clean_failures"]},
         "tool_errors": sum(s["tool_errors"] for s in scored),
         "tool_calls": {"total": sum(s["n_tool_calls"] for s in scored), "by_tool": by_tool,
                        "avg": _mean([s["n_tool_calls"] for s in scored]),
@@ -592,20 +717,64 @@ def _cost_gate(summary: dict, baseline: Mapping | None) -> dict:
                                                     f"(ratio {main_avg / fixed:.2f}, limit {COST_RATIO_MAX:g})")
 
 
-def _also_fails(summary: dict, baseline: Mapping | None) -> list[str]:
-    """The mechanical failures the fixed path (the baseline report's ``failed_ids``) fails too: a gate the baseline itself misses is a
-    question about the gate, not about the agent."""
-    return sorted(set((baseline or {}).get("failed_ids") or []) & set(summary["mechanical"]["failed_ids"]))
+def _baseline_checks_failed_ids(baseline: Mapping | None) -> set[str]:
+    """Ids the fixed path's OWN deployed-eval report already flagged via a failed service check (``checks_failed``) or a missing one
+    (``rows_without_checks``, ``bakeoff.score_deployed``): a broader net than its deterministic ``failed_ids`` alone, so a mechanical
+    failure the agent shares with the fixed path's OWN check failures (not only its OWN wrong answers) is still "no regression"."""
+    base = baseline or {}
+    return set(base.get("checks_failed") or {}) | set(base.get("rows_without_checks") or [])
+
+
+def _baseline_judged_failures(baseline: Mapping | None) -> set[str]:
+    """Ids the fixed path's OWN judge rejected by majority (the same rule :func:`_judged_failures` applies to this run)."""
+    base = baseline or {}
+    judged, votes = base.get("judged") or {}, base.get("votes")
+    if not judged or not votes:
+        return set()
+    return {i for i, n in (judged.get("votes") or {}).items() if n * 2 <= votes}
+
+
+def _also_fails(summary: dict, baseline: Mapping | None, *, misattributed: Iterable[str] = ()) -> dict[str, list[str]]:
+    """The ids THIS run fails that the fixed path (``baseline``, its deployed-eval report) already failed too, by dimension: a gate
+    the baseline itself misses is a question about the gate, not about the agent (plan section 7, "reported, not gated").
+    ``mechanical`` is broadened by the baseline's own ``checks_failed`` / ``rows_without_checks`` (a check failure the baseline also
+    had is not a regression either); ``misattribution`` compares against the baseline's OWN judge (majority-fail), since a judged
+    probe has no deterministic ``failed_ids`` entry to overlap with (M3 R3 review, MEDIUM finding 5)."""
+    out = {}
+    mech = sorted((set((baseline or {}).get("failed_ids") or []) | _baseline_checks_failed_ids(baseline))
+                  & set(summary["mechanical"]["failed_ids"]))
+    if mech:
+        out["mechanical"] = mech
+    mis = sorted(_baseline_judged_failures(baseline) & set(misattributed))
+    if mis:
+        out["misattribution"] = mis
+    return out
+
+
+def _misattribution_gate(summary: dict, judged: dict | None, misattributed: list[str]) -> dict:
+    """A hard PASS from the mechanical guard ALONE, with no judge having run, is misleading (the guard is precision-first: it misses
+    real cases). Unevaluated (None) unless either no such question exists or a judge ran; a guard-caught violation is still a real,
+    judge-independent FAIL (the guard has few false positives) even without a judge (M3 R3 review, MEDIUM finding 5)."""
+    bucket = summary["misattribution"]
+    if not bucket["of"]:
+        return _gate(None, "no such question in this run")
+    if judged is None and not bucket["failed_ids"]:
+        return _gate(None, "not evaluated: no judge ran (a mechanical-only pass is not proof; the guard is precision-first)")
+    return _all_pass(bucket, misattributed)
 
 
 def evaluate_gates(summary: dict, *, judged: dict | None = None, baseline: Mapping | None = None, items: list[dict] = (),
                    votes: int = 3) -> dict:
-    """The plan section 3 gates over a summary. ``baseline`` is the fixed path's deployed-eval report."""
+    """The plan section 3 / 7 gates over a summary. ``baseline`` is the fixed path's deployed-eval report."""
     cit, latency = summary["citation_validity"], summary["latency"]
     misattributed = _judged_failures(judged, [it["id"] for it in items if it["type"] == "misattribution"], votes)
+    also = _also_fails(summary, baseline, misattributed=misattributed)
     mechanical = _all_pass(summary["mechanical"])
-    if also := _also_fails(summary, baseline):
-        mechanical["detail"] += f" (the fixed path also fails: {', '.join(also)})"
+    if also.get("mechanical"):
+        mechanical["detail"] += f" (the fixed path also fails: {', '.join(also['mechanical'])})"
+    misattribution = _misattribution_gate(summary, judged, misattributed)
+    if also.get("misattribution"):
+        misattribution["detail"] += f" (the fixed path also fails: {', '.join(also['misattribution'])})"
     return {
         "complete": _gate(bool(summary["n"]) and not summary["missing_ids"],
                           f"{summary['n']} answered" + (f"; missing: {', '.join(summary['missing_ids'])}" if summary["missing_ids"] else "")),
@@ -614,7 +783,8 @@ def evaluate_gates(summary: dict, *, judged: dict | None = None, baseline: Mappi
         "citation_validity": _gate(None if cit is None else cit == 1.0, "no runs" if cit is None else
                                    f"{cit:.3f}" + (f"; invalid: {', '.join(summary['invalid_citation_ids'])}" if summary["invalid_citation_ids"] else "")),
         "ungrounded_numbers": _ids_gate(summary["ungrounded_ids"], "answers with an ungrounded number"),
-        "misattribution": _all_pass(summary["misattribution"], misattributed),
+        "checks_clean": _ids_gate(summary["checks_clean_failed"], "runs with a failed or missing service check"),
+        "misattribution": misattribution,
         "refusals": _all_pass(summary["refusals"]),
         "injection": _all_pass(summary["injection"]),
         "trajectory": _ids_gate(summary["trajectory"]["failed"], "trajectories failed"),
@@ -632,21 +802,35 @@ def score_agent_runs(rows: list[dict], items: list[dict], *, limits: AgentLimits
                      judge_model: str | None = None, as_of: str | None = None, baseline: Mapping | None = None) -> dict:
     """Score saved runs against their items: free checks always, the paid judge only when ``judge`` is given.
 
-    Returns ``rows`` (per-run scores), ``summary``, ``judged`` (None without a judge), ``gates``, ``unevaluated_gates`` and
-    ``clears_all_gates`` (every gate True: a gate that could not be evaluated is not a pass)."""
+    Returns ``rows`` (per-run scores), ``summary``, ``judged`` (None without a judge), ``gates``, ``unevaluated_gates``,
+    ``clears_all_gates`` (every gate True: a gate that could not be evaluated is not a pass), ``baseline_also_fails`` and
+    ``stale_planner_prompt`` (ids scored with a ``planner_prompt_version`` other than the running configuration's: surfaced, not
+    gated, since a saved run answers with whatever prompt WAS live at the time; M3 R3 review, LOW finding 10)."""
+    from ..agent.planner import PLANNER_PROMPT_VERSION      # lazy: no module outside semigraph.agent may import it at module level
+
     by_id = {it["id"]: it for it in items}
     unknown = sorted({r["id"] for r in rows} - set(by_id))
     if unknown:
         raise ValueError(f"runs for unknown question(s): {', '.join(unknown)}")
+    ids = [r["id"] for r in rows]
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    if dupes:
+        raise ValueError(f"the runs file has more than one row for: {', '.join(dupes)} (each question must be scored once)")
     scored = [score_run(by_id[r["id"]], r, limits) for r in rows]
     judged = judge_agent_runs(rows, items, judge, votes=votes, judge_model=judge_model, as_of=as_of) if judge else None
     summary = summarize_scored(scored, items)
     gates = evaluate_gates(summary, judged=judged, baseline=baseline, items=items, votes=votes)
-    also = _also_fails(summary, baseline)
+    misattributed = _judged_failures(judged, [it["id"] for it in items if it["type"] == "misattribution"], votes)
+    also = _also_fails(summary, baseline, misattributed=misattributed)
+    stale = sorted(r["id"] for r in rows
+                   if (v := (r.get("agent") or {}).get("planner_prompt_version")) is not None and v != PLANNER_PROMPT_VERSION)
+    if stale:
+        logger.warning("scored run(s) %s were planned with a planner prompt other than the running configuration (%r)",
+                       ", ".join(stale), PLANNER_PROMPT_VERSION)
     return {"rows": scored, "summary": summary, "judged": judged, "gates": gates,
             "unevaluated_gates": [g for g, v in gates.items() if v["passed"] is None],
             "clears_all_gates": all(v["passed"] is True for v in gates.values()),
-            "baseline_also_fails": {"mechanical": also} if also else {}}
+            "baseline_also_fails": also, "stale_planner_prompt": stale}
 
 
 # --- the T2 estimate ------------------------------------------------------------------------------------------------------------
@@ -695,6 +879,13 @@ def estimate_agent_run(items: list[dict], *, baseline: Mapping, limits: AgentLim
                             "planner_calls_max": limits.max_model_calls, "planner_tokens_per_call": [PLANNER_PROMPT_TOKENS, PLANNER_COMPLETION_TOKENS],
                             "worst_case_answer_tokens": [WORST_ANSWER_PROMPT_TOKENS, WORST_ANSWER_COMPLETION_TOKENS],
                             "worst_case_answer_models": [draft_model, escalation_model], "judge_usd_per_vote": JUDGE_CALL_USD}}
+
+
+def unknown_cost_estimate(estimate: Mapping) -> float:
+    """The conservative per-question cost this SAME T2 estimator already computes (its worst-case answer plus planner spend, spread
+    over its question count): what :func:`run_agent_benchmark` charges a row whose terminal event carried no numeric ``cost_usd``,
+    never a newly-invented number (M3 R3 review, LOW finding 9)."""
+    return (estimate["answers_usd_worst_case"] + estimate["planner_usd_worst_case"]) / estimate["questions"]
 
 
 # --- presentation (pure, so the CLI's output is tested without a terminal) ------------------------------------------------------

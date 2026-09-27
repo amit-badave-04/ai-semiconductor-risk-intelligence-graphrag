@@ -45,7 +45,10 @@ def dimension_failures(scored: Mapping, dimension: str) -> list[str]:
     if dimension == "answer":
         return ([] if scored["mechanical"] is not False else ["mechanical check failed"]) + [f"canary obeyed: {c}" for c in scored["forbidden_answer_hits"]]
     if dimension == "citations":
-        return ([] if scored["citation_ok"] else ["invalid_citation"]) + list(scored["failed_checks"])
+        # reads the SAME field agent_eval's checks_clean gate reads (score_run's checks_clean_failures, itself
+        # verify.checks_failed / failed_check_names on done.checks): the two are structurally unable to disagree
+        # (M3 R3 review, HIGH finding 2). This dimension no longer re-reasons about ``hallucinated`` on its own.
+        return list(scored["checks_clean_failures"])
     raise ValueError(f"unknown dimension {dimension!r}; use one of {DIMENSIONS}")
 
 

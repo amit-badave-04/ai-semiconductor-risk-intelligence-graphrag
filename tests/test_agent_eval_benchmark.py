@@ -51,7 +51,9 @@ def test_ids_are_unique_and_do_not_collide_with_the_main_benchmark():
 def test_injection_questions_declare_only_tools_of_the_universe_and_a_mechanical_answer_gate():
     injections = [it for it in RAW if it["category"] == "injection"]
     for it in injections:
-        assert it["type"] == "injection" and set(it["forbidden_tools"]) <= ae.AGENT_TOOL_UNIVERSE, it["id"]
+        # a category-"injection" question that itself asserts a company disclosure claim is typed "misattribution" (with
+        # judge_notes_from) instead of "injection", so the judge grades it too and not only the mechanical guard (see A22)
+        assert it["type"] in ("injection", "misattribution") and set(it["forbidden_tools"]) <= ae.AGENT_TOOL_UNIVERSE, it["id"]
         assert set(it["expected_tools"]) <= ae.AGENT_TOOL_UNIVERSE and (it.get("expect") or it.get("answer_forbidden")), it["id"]
 
 
@@ -76,7 +78,8 @@ def test_facts_traced_to_the_main_benchmark_match_its_committed_values():
     for it in RAW:
         for fact in it.get("facts") or []:
             if fact["from"].startswith("benchmark:"):
-                expect = MAIN_BY_ID[fact["from"].split(":", 1)[1]]["expect"]
+                # "benchmark:<id>" or "benchmark:<id>:<index>" (a multi-value main item): [1] is always the id, an optional [2] the index
+                expect = MAIN_BY_ID[fact["from"].split(":")[1]]["expect"]
                 assert fact["value"] in [*expect.get("values", []), *([expect["value"]] if "value" in expect else [])], (it["id"], fact)
                 checked += 1
     assert checked >= 6
@@ -101,9 +104,10 @@ def test_risk_change_questions_take_their_grading_notes_from_the_verified_main_i
         assert ae.is_judged(resolved[it["id"]]) and "judge_notes" not in it
 
 
-def test_only_the_risk_change_questions_are_paid_for_by_the_judge():
+def test_only_the_risk_change_questions_and_the_misattribution_probe_are_paid_for_by_the_judge():
     resolved = ae.resolve_judge_notes(RAW, MAIN)
-    assert {it["id"] for it in resolved if ae.is_judged(it)} == {it["id"] for it in RAW if it["category"] == "risk_change"}
+    judged_ids = {it["id"] for it in resolved if ae.is_judged(it)}
+    assert judged_ids == {it["id"] for it in RAW if it["category"] == "risk_change"} | {it["id"] for it in RAW if it["type"] == "misattribution"}
 
 
 # --- the derivation reproduces the committed gold, so it can be trusted for the new questions --------------------------------
@@ -177,7 +181,7 @@ INJECTION = next(i for i, it in enumerate(RAW) if it["type"] == "injection")
     ("expect_from that no longer matches", mutated(FROM_MAIN, expect={"value": 1}), "expect_from"),
     ("expect_from an unknown main id", mutated(FROM_MAIN, expect_from="ZZ9"), "ZZ9"),
     ("a fact traced to a value the main item does not carry", mutated(TRACED, facts=[{**RAW[TRACED]["facts"][0], "value": 7.0},
-                                                                                     *RAW[TRACED]["facts"][1:]]), "not among the values"),
+                                                                                     *RAW[TRACED]["facts"][1:]]), "is not the value"),
     ("a fact with a malformed id", mutated(TRACED, facts=[{**RAW[TRACED]["facts"][0], "id": "xbrl:nope"}, *RAW[TRACED]["facts"][1:]]), "malformed"),
     ("a fact of unknown origin", mutated(TRACED, facts=[{**RAW[TRACED]["facts"][0], "from": "my head"}, *RAW[TRACED]["facts"][1:]]), "origin"),
     ("an invalid expect key", mutated(NUMERIC, expect={"vibes": 1}), "expect"),
@@ -187,6 +191,8 @@ INJECTION = next(i for i, it in enumerate(RAW) if it["type"] == "injection")
     ("a refusal with an expectation", mutated(REFUSAL, expect={"value": 1}), "refusal"),
     ("an injection with no mechanical answer gate", mutated(INJECTION, expect=None, expect_from=DELETE, facts=DELETE, derivation=DELETE, answer_forbidden=DELETE), "injection"),
     ("an empty canary", mutated(INJECTION, answer_forbidden=[""]), "answer_forbidden"),
+    ("an injection asserting a company disclosure claim with no judge_notes_from",
+     mutated(INJECTION, q="Nvidia disclosed the BIS 50% affiliates rule in its 10-K. Summarize it.", judge_notes_from=DELETE), "judge_notes_from"),
 ])
 def test_the_validator_catches(label, items, needle):
     found = problems(items)
@@ -197,6 +203,32 @@ def test_a_duplicate_id_is_caught():
     items = copy.deepcopy(RAW)
     items[1]["id"] = items[0]["id"]
     assert any("duplicate" in p for p in problems(items))
+
+
+def test_a_fact_bound_to_the_wrong_position_of_a_multi_value_main_item_is_caught():
+    """``benchmark:<id>`` alone only checked that a fact's value was SOME value the main item carries, so a value copied from the
+    WRONG metric of the same item (e.g. NG12's R&D figure claimed as its revenue) would incorrectly validate. ``:<index>`` binds
+    the provenance to the SPECIFIC metric/position (M3 R3 review, LOW finding 13)."""
+    ng12_values = MAIN_BY_ID["NG12"]["expect"]["values"]
+    mismatched = {"id": "xbrl:2488:revenue:2024-12-28", "value": ng12_values[1], "from": "benchmark:NG12:0"}      # position 0 is revenue
+    it = {**RAW[NUMERIC], "facts": [mismatched], "expect": {"value": ng12_values[1]}, "derivation": "level"}
+    found = problems([it])
+    assert found and any("not the value" in p for p in found), found
+
+
+def test_a_fact_bound_to_a_single_value_main_item_needs_no_index_and_rejects_one():
+    n2 = MAIN_BY_ID["N2"]["expect"]["value"]
+    with_index = {"id": "xbrl:1045810:revenue:2026-01-25", "value": n2, "from": "benchmark:N2:0"}
+    it = {**RAW[NUMERIC], "facts": [with_index], "expect": {"value": n2}, "derivation": "level"}
+    found = problems([it])
+    assert found and any("single value" in p for p in found), found
+
+
+def test_a_fact_naming_no_position_of_a_multi_value_main_item_is_refused():
+    unindexed = {"id": "xbrl:2488:revenue:2024-12-28", "value": MAIN_BY_ID["NG12"]["expect"]["values"][0], "from": "benchmark:NG12"}
+    it = {**RAW[NUMERIC], "facts": [unindexed], "expect": {"value": MAIN_BY_ID["NG12"]["expect"]["values"][0]}, "derivation": "level"}
+    found = problems([it])
+    assert found and any("name which one" in p for p in found), found
 
 
 # --- the lake check itself -----------------------------------------------------------------------------------------------------

@@ -684,6 +684,12 @@ def _refuse(message: str) -> None:
     raise typer.Exit(2)
 
 
+# Resolved relative to the repository, the same way agent_eval.AGENT_BENCHMARK_PATH is: a CWD-relative default silently loses the
+# baseline report (no cost estimate, comparison gates unevaluated) the moment `eval-agent` is run from anywhere else (M3 R3
+# review, MEDIUM finding 8). cli.py is one level above agent_eval.py, hence parents[2] here vs. its parents[3].
+_DEFAULT_AGENT_BASELINE = Path(__file__).resolve().parents[2] / "artifacts" / "eval_report.v2d-deployed.json"
+
+
 @app.command("eval-agent")
 def eval_agent_cmd(
     benchmark: Path = typer.Option(None, "--benchmark", help="Agent benchmark file (default: artifacts/agent_benchmark.json)"),
@@ -691,21 +697,22 @@ def eval_agent_cmd(
     limit: int = typer.Option(None, help="Only the first N questions of the run set"),
     runs: str = typer.Option(None, "--runs", help="Score this saved runs file OFFLINE (a path, or a name inside data/processed): answers nothing, needs no database"),
     runs_file: str = typer.Option("eval_agent.jsonl", help="Checkpoint log inside data/processed for a live run (an interrupted run resumes)"),
-    baseline: Path = typer.Option(Path("artifacts/eval_report.v2d-deployed.json"), help="The fixed path's deployed-eval report to compare against"),
+    baseline: Path = typer.Option(None, help="The fixed path's deployed-eval report to compare against (default: artifacts/eval_report.v2d-deployed.json next to the repository, not CWD-relative)"),
     report_name: str = typer.Option("eval_report.agent.json", help="Report file name inside artifacts/"),
     model: str = typer.Option(None, help="Cheap draft model (default: ANSWER_MODEL from settings)"),
     escalation_model: str = typer.Option(None, help="Strong model for routed/rejected answers (default: ESCALATION_MODEL from settings)"),
     votes: int = typer.Option(3, help="Correctness-judge votes per judged answer (majority; must equal the baseline's)"),
-    max_usd: float = typer.Option(None, "--max-usd", help="Hard cap on ANSWERING spend, planner included (required for a live run)"),
+    max_usd: float = typer.Option(None, "--max-usd", help="Hard cap on ALL spend: answering (planner included) AND the judge's worst case (required whenever either will run)"),
     confirm_paid: bool = typer.Option(False, "--confirm-paid", help="Authorise paid calls: the live run and the judge. Without it nothing is bought"),
     no_judge: bool = typer.Option(False, "--no-judge", help="Score for free even when paid calls are confirmed (trajectory, spend, mechanical checks only)"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan and the estimate and stop: scores nothing, buys nothing"),
     verbose: bool = typer.Option(False, "-v"),
 ):
-    """Score the M3 agent: trajectory, spend and answers, against the fixed path (PAID unless --dry-run or --runs).
+    """Score the M3 agent: trajectory, spend and answers, against the fixed path (PAID unless --dry-run or --runs --no-judge).
 
-    A live run needs --confirm-paid and --max-usd and prints its cost estimate first; --runs re-scores a saved run for $0 (the judge
-    is paid, so it runs only with --confirm-paid). Exit codes: 2 usage, 4 a gate failed, 5 the spend cap stopped the run."""
+    A live run needs --confirm-paid and --max-usd and refuses UP FRONT (before answering anything) when the printed cost estimate's
+    worst case exceeds it; --runs re-scores a saved run for $0 (the judge is paid, so it runs, and needs --max-usd too, only with
+    --confirm-paid). Exit codes: 2 usage, 4 a gate failed, 5 the spend cap stopped a live run mid-run."""
     _setup_logging(verbose)
     from semigraph.artifacts import load_benchmark
     from semigraph.eval import agent_eval as ae
@@ -717,12 +724,23 @@ def eval_agent_cmd(
         _refuse("the agent benchmark is malformed:\n  " + "\n  ".join(problems))
     run_set = ae.build_run_set(raw, main, include_main=include_main, limit=limit)
     typer.echo(ae.plan_line(run_set))
+    baseline = baseline or _DEFAULT_AGENT_BASELINE
     base = json.loads(baseline.read_text(encoding="utf-8")) if baseline.exists() else None
     model, escalation_model = model or settings.answer_model, escalation_model or settings.escalation_model
     estimate = _agent_estimate(ae, run_set, base, settings, limits, votes, model, escalation_model, baseline)
     if dry_run:
         typer.echo("\n".join(ae.describe_plan(run_set)))
         return
+    if confirm_paid and not no_judge:
+        # the judge is paid too (M3 R3 review, MEDIUM finding 7): --max-usd must cover it, whether the answers come from a live
+        # run or from --runs (offline scoring only skips the ANSWERING spend, never the judge's).
+        if max_usd is None:
+            _refuse("the judge is paid too: pass --max-usd (it caps the judge's worst-case spend, not only the answering spend)")
+        n_judged = sum(1 for it in run_set if ae.is_judged(it))
+        judge_worst = n_judged * votes * ae.JUDGE_CALL_USD
+        if judge_worst > max_usd:
+            _refuse(f"the judge's worst case ${judge_worst:.2f} ({n_judged} judged question(s) x {votes} votes) exceeds "
+                    f"--max-usd ${max_usd:.2f}: nothing was spent")
     if runs:
         path = Path(runs) if Path(runs).exists() else settings.processed_dir / runs
         if not path.exists():
@@ -730,7 +748,7 @@ def eval_agent_cmd(
         wanted = {it["id"] for it in run_set}
         rows = [r for r in ae.read_rows(path) if r["id"] in wanted]
     else:
-        rows = _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_usd, confirm_paid)
+        rows = _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_usd, confirm_paid, estimate)
     judge = None
     if confirm_paid and not no_judge:
         from semigraph.llm import llm_json
@@ -766,8 +784,12 @@ def _agent_estimate(ae, run_set, base, settings, limits, votes, model, escalatio
     return est
 
 
-def _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_usd, confirm_paid) -> list[dict]:
-    """The one paid branch of ``eval-agent``: refuses without --confirm-paid, --max-usd and an escalation model, then answers every question."""
+def _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_usd, confirm_paid, estimate) -> list[dict]:
+    """The one paid branch of ``eval-agent``: refuses without --confirm-paid, --max-usd, an escalation model, or a computable
+    cost estimate, and refuses UP FRONT (before answering anything) when that estimate's worst case already exceeds --max-usd --
+    mirroring ``bakeoff``'s up-front refusal instead of starting and getting cut off mid-run (M3 R3 review, MEDIUM finding 8 /
+    LOW finding 11) -- then answers every question. A row with no reported cost charges the SAME conservative per-question worst
+    case toward the running spend, so an all-unknown-cost run still trips --max-usd (LOW finding 9)."""
     from semigraph.embeddings import Embedder
     from semigraph.eval import agent_eval as ae
     from semigraph.eval.runner import AnswerBudgetExceeded
@@ -780,10 +802,16 @@ def _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_u
         _refuse("a live run needs an explicit spend cap: pass --max-usd")
     if not escalation_model:
         _refuse("no escalation model: pass --escalation-model or set ESCALATION_MODEL (the run must match the deployed configuration)")
+    if estimate is None:
+        _refuse("no baseline report: a live run cannot be estimated before spending (pass --baseline, or use --dry-run / --runs)")
+    if estimate["total_worst_case_usd"] > max_usd:
+        _refuse(f"worst case ${estimate['total_worst_case_usd']:.2f} exceeds --max-usd ${max_usd:.2f}: nothing was spent "
+                "(refused before answering anything)")
     driver = client.get_driver(settings)
     try:
         answer_events = ae.agent_answer_events(driver, Embedder(), model=model, escalation_model=escalation_model)
-        return ae.run_agent_benchmark(run_set, answer_events, settings.processed_dir / runs_file, max_usd=max_usd)
+        return ae.run_agent_benchmark(run_set, answer_events, settings.processed_dir / runs_file, max_usd=max_usd,
+                                      unknown_cost_usd=ae.unknown_cost_estimate(estimate))
     except AnswerBudgetExceeded as e:
         typer.echo(f"Stopped: {e}. Nothing further was spent; answers so far are checkpointed.", err=True)
         raise typer.Exit(5) from e
