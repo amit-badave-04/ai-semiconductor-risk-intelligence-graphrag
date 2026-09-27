@@ -6,6 +6,14 @@
 #   unit          the developer set (uv.lock: the SDK, the pipeline and the serve extra)
 #   serve-shipped exactly what the API image installs (deploy/requirements-serve.txt, e.g. litellm 1.100.0),
 #                 so a shipped dependency cannot drift from what CI exercised.
+#
+# serve-shipped has NO pandas, rapidfuzz or sentence-transformers. A test module its selection matches by name that needs one of
+# them starts with pytest.importorskip(...) and states why; eval and pipeline tests live in files the selection does not match.
+# Reproduce it on a developer machine (a throwaway venv outside the repo, then the pytest command of the step below):
+#   uv venv <tmp>/sv --python 3.13
+#   uv pip install --python <tmp>/sv/Scripts/python.exe -r deploy/requirements-serve.txt pytest    (bin/python on Linux/macOS)
+#   uv pip install --python <tmp>/sv/Scripts/python.exe --no-deps -e .
+# On GitHub Actions typer renders CLI errors as a wrapped, coloured box; CLI tests assert on tests/cliout.plain(result.output).
 name: tests
 
 on:

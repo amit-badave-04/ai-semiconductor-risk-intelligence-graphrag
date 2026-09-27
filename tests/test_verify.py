@@ -164,28 +164,8 @@ def test_the_wider_refusal_pattern_still_ignores_positive_statements_about_givin
     assert not REFUSAL_RE.search(text)
 
 
-# --- closing review M3: a refusal answer states no money figure (a fabricated answer that mentions "does not always give ..." fails) ---
-
-def test_the_benchmark_refusal_predicate_rejects_an_answer_that_states_a_money_figure():
-    from semigraph.eval.runner import is_refusal_answer
-
-    assert is_refusal_answer("The provided context does not give Samsung’s total annual revenue.")
-    assert is_refusal_answer("The context does not give Samsung's revenue; it reports that Samsung is among Qualcomm's customers with 10% or more of its revenue.")
-    assert not is_refusal_answer("Intel's 2012 revenue was $53.3 billion; Intel does not always give quarterly guidance.")
-    assert not is_refusal_answer("AMD's revenue in fiscal 2010 was $6.5 billion, and the 10-K provides no segment breakdown.")
-    assert not is_refusal_answer("Nvidia's revenue was 60.9 billion USD, but the filing does not state the segment.")
-
-
-# --- second closing review: a scaled number without a currency symbol is a figure too ---
-
-def test_a_refusal_states_no_scaled_number_even_without_a_currency_symbol():
-    from semigraph.eval.runner import is_refusal_answer
-
-    assert not is_refusal_answer("Samsung's revenue was about 220 billion, although the filings don't provide a segment breakdown.")
-    assert not is_refusal_answer("Samsung's revenue was 300 trillion won; the filing does not say more.")
-    assert not is_refusal_answer("Revenue was 258.9 trillion KRW, but the filings do not state the segment.")
-    assert is_refusal_answer("The context does not give Samsung's revenue; Qualcomm says licensees with 10% or more of its revenue include Samsung.")
-
+# The benchmark's ``is_refusal_answer`` (refusal wording AND no figure) is eval code: its tests are in tests/test_eval_pure.py, which needs
+# the pipeline dependencies (pandas) that the serve image does not ship.
 
 # --- third closing review S1: with is_none_report gone, an answer that only says a list is empty is uncited and FAILS no_citation ---
 # (the answer prompt says not to cite that sentence; the cost is stated in docs/v2/M1B_PLAN.md L.13: such an answer escalates / shows a warning)

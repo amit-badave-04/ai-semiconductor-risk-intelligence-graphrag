@@ -5,8 +5,14 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import lakefix
-from semigraph.config import Settings
+import pytest
+
+# A pipeline-script test: it needs pandas (the lake fixtures) which the API image does not ship. The ``unit`` CI job runs it; the
+# ``serve-shipped`` job's ``tests/test_verify*.py`` selection also matches this file by name and skips it here, with this reason.
+pytest.importorskip("pandas", reason="scripts/verify_graph.py is pipeline code; the serve-shipped dependency set has no pandas")
+
+import lakefix  # noqa: E402
+from semigraph.config import Settings  # noqa: E402
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "verify_graph.py"
 spec = importlib.util.spec_from_file_location("verify_graph", SCRIPT)

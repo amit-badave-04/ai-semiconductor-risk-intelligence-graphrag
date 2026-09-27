@@ -6,8 +6,13 @@ import sys
 from pathlib import Path
 
 import pytest
-import verifyfix as vf
-from verifyfix import PairSpec
+
+# A pipeline-script test: it needs pandas (the lake fixtures) which the API image does not ship. The ``unit`` CI job runs it; the
+# ``serve-shipped`` job's ``tests/test_verify*.py`` selection also matches this file by name and skips it here, with this reason.
+pytest.importorskip("pandas", reason="scripts/verify_temporal.py is pipeline code; the serve-shipped dependency set has no pandas")
+
+import verifyfix as vf  # noqa: E402
+from verifyfix import PairSpec  # noqa: E402
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "verify_temporal.py"
 spec = importlib.util.spec_from_file_location("verify_temporal", SCRIPT)

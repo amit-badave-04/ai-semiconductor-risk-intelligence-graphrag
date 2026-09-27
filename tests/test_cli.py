@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from cliout import plain
 from typer.testing import CliRunner
 
 from semigraph.cli import app
@@ -250,7 +251,8 @@ def test_build_graph_refuses_an_as_of_older_than_the_lake(graph_calls):
     result = runner.invoke(app, ["build-graph", "--as-of", "2026-06-30"])
 
     assert result.exit_code != 0
-    assert "newer than --as-of" in result.output and "apply_schema" not in names(graph_calls)
+    # a parameter error: on GitHub Actions typer draws it as a wrapped, coloured box (see tests/cliout.py)
+    assert "newer than --as-of" in plain(result.output) and "apply_schema" not in names(graph_calls)
 
 
 def test_build_graph_accepts_an_as_of_on_or_after_the_newest_data(graph_calls):

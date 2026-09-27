@@ -202,7 +202,11 @@ def test_passage_chunk_ids_become_citable_and_only_three_are_printed():
 
 def test_a_passage_up_to_the_stored_cap_is_quoted_whole_and_the_quote_limit_matches_it():
     """graph/passages.py cuts a passage at max_passage_chars (450), so the block must quote 450 characters: with 300 the NAC and
-    Hong Kong sentences in the middle of a stored passage were clipped out of the answer context."""
+    Hong Kong sentences in the middle of a stored passage were clipped out of the answer context.
+
+    The stored cap lives in the PIPELINE package (``graph/passages.py`` needs rapidfuzz), which the API image does not ship: this
+    cross-layer check runs in the ``unit`` CI job and is skipped, with this reason, in ``serve-shipped``."""
+    pytest.importorskip("rapidfuzz", reason="graph.passages is pipeline code; the serve-shipped dependency set has no rapidfuzz")
     from semigraph.graph.passages import PassageParams
 
     assert PASSAGE_QUOTE_CHARS >= PassageParams().max_passage_chars == 450
