@@ -25,6 +25,8 @@ dependencies = [
 [project.optional-dependencies]
 # second-scorer evaluation stack (M6 backlog: judge diversity)
 eval = ["ragas>=0.4.3"]
+# opt-in retrieval-planning agent (semigraph.agent, docs/v2/M3_AGENT_PLAN.md): only needed where AGENT_ENABLED=true
+agent = ["langgraph>=1.2.7"]
 # web service (semigraph.serve): FastAPI + torch-free ONNX query embeddings
 serve = [
     "fastapi>=0.141",
