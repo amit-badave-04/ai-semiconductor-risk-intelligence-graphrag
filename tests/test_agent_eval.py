@@ -349,6 +349,57 @@ def test_each_failure_mode_flips_its_own_gate(failing, name):
     assert gate(result, name) is False, (name, result["gates"][name])
 
 
+def test_mechanical_and_misattribution_never_gate_the_ship_decision():
+    """docs/v2/M3_AGENT_PLAN.md section 7: mechanical-100% and misattribution-4/4 are ALWAYS shown but never gate — the fixed path
+    itself cannot clear either bar (v2d: mechanical 40/41, misattribution judged 0/3 on X4), so holding the agent to them would make
+    ``clears_all_gates`` unwinnable on facts unrelated to the agent (found by the first live ship-gate run, 2026-09-27). Two runs,
+    identical except that one fails mechanically: flipping "mechanical" must change nothing else about the ship decision."""
+    assert ae.REPORTED_NOT_GATED == {"mechanical", "misattribution"}
+    clean = run_all([(item("A01"), events()), (main_item("N2"), events(()))])
+    broken = run_all([(item("A01"), events(answer=f"Nvidia's revenue was $199.9 billion [{XBRL}].")), (main_item("N2"), events(()))])
+    assert gate(clean, "mechanical") is True and gate(broken, "mechanical") is False
+    assert "mechanical" not in broken["unevaluated_gates"]      # not "unevaluated" either: a real, computed, non-gating number
+    assert [g for g, v in broken["gates"].items() if v["passed"] is False] == ["mechanical"]
+    assert clean["clears_all_gates"] == broken["clears_all_gates"]      # mechanical's own result changes nothing about the decision
+
+
+def test_a_checks_clean_failure_the_baseline_also_has_on_the_same_question_does_not_gate():
+    """A service-check failure the fixed path's OWN deployed-eval report already has on the SAME question is inherited, not
+    introduced by the agent — the same 'not a regression' reasoning ``mechanical`` already gets via ``_also_fails``, extended to
+    ``checks_clean`` after the first live ship-gate run found it missing (X1 fails ``ungrounded_number`` in both v2d and the agent
+    run; before this fix the agent's ``checks_clean`` gate failed on it anyway)."""
+    baseline = fixed_baseline(checks_failed={"X1": ["ungrounded_number"]})
+    x1 = {"id": "X1", "type": "misattribution", "q": "What did NVIDIA disclose about the rule?",
+         "expect": {"not_company_disclosure": ["NVIDIA", "Nvidia"]}, "judge_notes": "verified notes", "split": "main"}
+    inherited = events((), answer="The rule affects 50% affiliates [fr:2025-19001].",
+                       checks={**CLEAN_CHECKS, "numbers_grounded": False, "unmatched_numbers": ["50%"], "echoed_numbers": ["50%"]})
+    result = run_all([(x1, inherited)], baseline=baseline)
+    assert gate(result, "checks_clean") is True                          # excluded: the baseline fails the identical check here too
+    assert result["baseline_also_fails"]["checks_clean"] == ["X1"]
+    # a DIFFERENT id with the same check failure, absent from the baseline, still gates normally
+    a01 = item("A01")
+    new_failure = events(checks={**CLEAN_CHECKS, "numbers_grounded": False, "unmatched_numbers": ["$5B"], "echoed_numbers": ["$5B"]})
+    result2 = run_all([(x1, inherited), (a01, new_failure)], baseline=baseline)
+    assert gate(result2, "checks_clean") is False and "A01" in result2["gates"]["checks_clean"]["detail"]
+    assert "X1" not in result2["gates"]["checks_clean"]["detail"].split("(")[0]     # X1 only in the "also fails" note, not the count
+
+
+def test_an_ungrounded_number_the_baseline_also_has_on_the_same_question_does_not_gate():
+    """The same inherited-vs-introduced treatment as ``checks_clean``, for ``ungrounded_numbers`` specifically: X1 has an ungrounded
+    number in BOTH the ``v2d`` baseline and this run (M3 fix, closing the first live ship-gate run's finding)."""
+    baseline = fixed_baseline(checks_failed={"X1": ["ungrounded_number"]})
+    x1 = {"id": "X1", "type": "misattribution", "q": "What did NVIDIA disclose about the rule?",
+         "expect": {"not_company_disclosure": ["NVIDIA", "Nvidia"]}, "judge_notes": "verified notes", "split": "main"}
+    inherited = events((), answer="The rule affects 50% affiliates [fr:2025-19001].",
+                       checks={**CLEAN_CHECKS, "numbers_grounded": False, "unmatched_numbers": ["50%"], "echoed_numbers": ["50%"]})
+    result = run_all([(x1, inherited)], baseline=baseline)
+    assert gate(result, "ungrounded_numbers") is True and result["baseline_also_fails"]["ungrounded_numbers"] == ["X1"]
+    a01 = item("A01")
+    new_failure = events(checks={**CLEAN_CHECKS, "numbers_grounded": False, "unmatched_numbers": ["$5B"], "echoed_numbers": ["$5B"]})
+    result2 = run_all([(x1, inherited), (a01, new_failure)], baseline=baseline)
+    assert gate(result2, "ungrounded_numbers") is False and "A01" in result2["gates"]["ungrounded_numbers"]["detail"]
+
+
 def test_the_run_is_incomplete_when_a_question_has_no_row():
     items = [item("A01"), item("A02")]
     result = ae.score_agent_runs([row(items[0], events())], items, limits=LIMITS)

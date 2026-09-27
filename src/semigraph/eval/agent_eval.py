@@ -756,15 +756,24 @@ def _also_fails(summary: dict, baseline: Mapping | None, *, misattributed: Itera
     the baseline itself misses is a question about the gate, not about the agent (plan section 7, "reported, not gated").
     ``mechanical`` is broadened by the baseline's own ``checks_failed`` / ``rows_without_checks`` (a check failure the baseline also
     had is not a regression either); ``misattribution`` compares against the baseline's OWN judge (majority-fail), since a judged
-    probe has no deterministic ``failed_ids`` entry to overlap with (M3 R3 review, MEDIUM finding 5)."""
+    probe has no deterministic ``failed_ids`` entry to overlap with (M3 R3 review, MEDIUM finding 5); ``checks_clean`` and
+    ``ungrounded_numbers`` compare against the same broadened set (a check the fixed path already failed, on the SAME question, is
+    inherited, not introduced — docs/v2/M3_AGENT_PLAN.md section 8, closing a gap the first live ship-gate run exposed: X1 fails both
+    gates on this run exactly as it does on the ``v2d`` baseline, and T5/T8 fail ``checks_clean`` the same way)."""
     out = {}
-    mech = sorted((set((baseline or {}).get("failed_ids") or []) | _baseline_checks_failed_ids(baseline))
-                  & set(summary["mechanical"]["failed_ids"]))
+    baseline_checks = _baseline_checks_failed_ids(baseline)
+    mech = sorted((set((baseline or {}).get("failed_ids") or []) | baseline_checks) & set(summary["mechanical"]["failed_ids"]))
     if mech:
         out["mechanical"] = mech
     mis = sorted(_baseline_judged_failures(baseline) & set(misattributed))
     if mis:
         out["misattribution"] = mis
+    checks_clean = sorted(baseline_checks & set(summary["checks_clean_failed"]))
+    if checks_clean:
+        out["checks_clean"] = checks_clean
+    ungrounded = sorted(baseline_checks & set(summary["ungrounded_ids"]))
+    if ungrounded:
+        out["ungrounded_numbers"] = ungrounded
     return out
 
 
@@ -780,9 +789,23 @@ def _misattribution_gate(summary: dict, judged: dict | None, misattributed: list
     return _all_pass(bucket, misattributed)
 
 
+REPORTED_NOT_GATED = frozenset({"mechanical", "misattribution"})
+"""Gate names that never block ``clears_all_gates`` (docs/v2/M3_AGENT_PLAN.md section 7): the fixed path itself does not clear a
+100% mechanical score or a 4-of-4 misattribution score, so holding the agent to a bar the corpus's own baseline cannot clear would
+make ``clears_all_gates`` unwinnable on facts unrelated to the agent. Their numbers are still computed and shown — every ``gates``
+entry always carries a real ``passed``/``detail`` — only their contribution to the ship decision is excluded, exactly as a gate
+computed with no baseline (``passed=None``) already is; the difference is these two are excluded UNCONDITIONALLY, not only when a
+baseline is missing, because the exemption is about what the metric can prove, not about data availability."""
+
+
 def evaluate_gates(summary: dict, *, judged: dict | None = None, baseline: Mapping | None = None, items: list[dict] = (),
                    votes: int = 3) -> dict:
-    """The plan section 3 / 7 gates over a summary. ``baseline`` is the fixed path's deployed-eval report."""
+    """The plan section 3 / 7 gates over a summary. ``baseline`` is the fixed path's deployed-eval report.
+
+    ``mechanical`` and ``misattribution`` are always computed and shown, but never gate (:data:`REPORTED_NOT_GATED`; callers that
+    read ``clears_all_gates`` must exclude them, as :func:`score_agent_runs` does). ``checks_clean`` DOES gate, but a check failure
+    ids share with the fixed path's own baseline is excluded from it first (the same "not a regression" reasoning ``mechanical``
+    already applied via :func:`_also_fails`, now closing the gap the first live ship-gate run exposed on X1/T5/T8)."""
     cit, latency = summary["citation_validity"], summary["latency"]
     misattributed = _judged_failures(judged, [it["id"] for it in items if it["type"] == "misattribution"], votes)
     also = _also_fails(summary, baseline, misattributed=misattributed)
@@ -792,6 +815,14 @@ def evaluate_gates(summary: dict, *, judged: dict | None = None, baseline: Mappi
     misattribution = _misattribution_gate(summary, judged, misattributed)
     if also.get("misattribution"):
         misattribution["detail"] += f" (the fixed path also fails: {', '.join(also['misattribution'])})"
+    checks_clean_new = [i for i in summary["checks_clean_failed"] if i not in also.get("checks_clean", ())]
+    checks_clean = _ids_gate(checks_clean_new, "runs with a failed or missing service check")
+    if also.get("checks_clean"):
+        checks_clean["detail"] += f" (the fixed path also fails a check on: {', '.join(also['checks_clean'])})"
+    ungrounded_new = [i for i in summary["ungrounded_ids"] if i not in also.get("ungrounded_numbers", ())]
+    ungrounded_numbers = _ids_gate(ungrounded_new, "answers with an ungrounded number")
+    if also.get("ungrounded_numbers"):
+        ungrounded_numbers["detail"] += f" (the fixed path also has one on: {', '.join(also['ungrounded_numbers'])})"
     return {
         "complete": _gate(bool(summary["n"]) and not summary["missing_ids"],
                           f"{summary['n']} answered" + (f"; missing: {', '.join(summary['missing_ids'])}" if summary["missing_ids"] else "")),
@@ -799,8 +830,8 @@ def evaluate_gates(summary: dict, *, judged: dict | None = None, baseline: Mappi
         "mechanical": mechanical,
         "citation_validity": _gate(None if cit is None else cit == 1.0, "no runs" if cit is None else
                                    f"{cit:.3f}" + (f"; invalid: {', '.join(summary['invalid_citation_ids'])}" if summary["invalid_citation_ids"] else "")),
-        "ungrounded_numbers": _ids_gate(summary["ungrounded_ids"], "answers with an ungrounded number"),
-        "checks_clean": _ids_gate(summary["checks_clean_failed"], "runs with a failed or missing service check"),
+        "ungrounded_numbers": ungrounded_numbers,
+        "checks_clean": checks_clean,
         "misattribution": misattribution,
         "refusals": _all_pass(summary["refusals"]),
         "injection": _all_pass(summary["injection"]),
@@ -851,7 +882,10 @@ def score_agent_runs(rows: list[dict], items: list[dict], *, limits: AgentLimits
                        ", ".join(stale), PLANNER_PROMPT_VERSION)
     return {"rows": scored, "summary": summary, "judged": judged, "gates": gates,
             "unevaluated_gates": [g for g, v in gates.items() if v["passed"] is None],
-            "clears_all_gates": all(v["passed"] is True for v in gates.values()),
+            # mechanical/misattribution are shown but never gate (REPORTED_NOT_GATED, docs/v2/M3_AGENT_PLAN.md section 7/8):
+            # the fixed path itself cannot clear a 100%/4-of-4 bar, so holding the agent to it would make a ship decision
+            # unwinnable on facts unrelated to the agent.
+            "clears_all_gates": all(v["passed"] is True for g, v in gates.items() if g not in REPORTED_NOT_GATED),
             "baseline_also_fails": also, "stale_planner_prompt": stale}
 
 
