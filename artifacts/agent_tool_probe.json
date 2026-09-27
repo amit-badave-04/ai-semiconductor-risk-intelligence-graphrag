@@ -1,0 +1,178 @@
+{
+  "litellm": null,
+  "results": [
+    {
+      "model": "openai/gpt-6-luna",
+      "usable_as_planner": true,
+      "checks": {
+        "single": {
+          "ok": true,
+          "message": {
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "call_gFffNVsdZNOOKMd9k0MlVe1R",
+                "name": "lookup_company",
+                "args": {
+                  "name": "Nvidia"
+                }
+              }
+            ],
+            "finish_reason": "tool_calls"
+          },
+          "usage": {
+            "prompt_tokens": 177,
+            "completion_tokens": 18
+          }
+        },
+        "parallel": {
+          "ok": true,
+          "n_calls_in_turn": 2,
+          "message": {
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "call_ZbCLLwf2rnTbYEtV5OjjOsCG",
+                "name": "lookup_company",
+                "args": {
+                  "name": "Nvidia"
+                }
+              },
+              {
+                "id": "call_bq88F5ckUOmb8n4yNx27S8fR",
+                "name": "lookup_company",
+                "args": {
+                  "name": "AMD"
+                }
+              }
+            ],
+            "finish_reason": "tool_calls"
+          },
+          "usage": {
+            "prompt_tokens": 177,
+            "completion_tokens": 48
+          }
+        },
+        "roundtrip": {
+          "ok": true,
+          "second_turn": {
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "call_qlV8pern59K83utARS2MJpUr",
+                "name": "lookup_company",
+                "args": {
+                  "name": "TSMC"
+                }
+              }
+            ],
+            "finish_reason": "tool_calls"
+          },
+          "usage": {
+            "prompt_tokens": 414,
+            "completion_tokens": 36
+          }
+        },
+        "tool_choice_none": {
+          "ok": true,
+          "message": {
+            "content": "Nvidia is **highly exposed to TSMC as a manufacturing supplier**, especially for its leading-edge AI and GPU chips. Nvidia designs its processors but relies on outside foundries to fabricate them; TSMC is its principal advanced-chip manufacturer.\n\nThat creates meaningful **supply and geopolitical concentration risk**: a disruption at TSMC\u2014whether from a natural disaster, capacity constraints, or tensions around Taiwan\u2014could limit Nvidia\u2019s ability to ship its most important products. Moving production elsewhere would likely take time and could involve engineering, capacity, and performance trade-offs.\n\nThe exposure isn\u2019t necessarily exclusive: Nvidia can use other suppliers for some products or stages of production, and it can hold inventory or secure capacity in advance. But those measures don\u2019t quickly replace TSMC\u2019s role in manufacturing its most advanced chips. I can\u2019t verify Nvidia\u2019s latest supplier mix or the precise share of its production tied to TSMC here.",
+            "tool_calls": [],
+            "finish_reason": "stop"
+          },
+          "usage": {
+            "prompt_tokens": 177,
+            "completion_tokens": 190
+          }
+        }
+      },
+      "cost_usd": 0.00024
+    },
+    {
+      "model": "anthropic/claude-sonnet-5",
+      "usable_as_planner": true,
+      "checks": {
+        "single": {
+          "ok": true,
+          "message": {
+            "content": "I'll look up both companies to gather relevant information on this relationship.",
+            "tool_calls": [
+              {
+                "id": "toolu_01GmXViX5E9i9JjTx9wwQmmG",
+                "name": "lookup_company",
+                "args": {
+                  "name": "Nvidia"
+                }
+              },
+              {
+                "id": "toolu_01DVx3m7M1Gw11pYwYCKTZub",
+                "name": "lookup_company",
+                "args": {
+                  "name": "TSMC"
+                }
+              }
+            ],
+            "finish_reason": "tool_calls"
+          },
+          "usage": {
+            "prompt_tokens": 525,
+            "completion_tokens": 124
+          }
+        },
+        "parallel": {
+          "ok": true,
+          "n_calls_in_turn": 2,
+          "message": {
+            "content": "I'll look up both companies to get their information.",
+            "tool_calls": [
+              {
+                "id": "toolu_012mbG4Bo2HKjp97BjT4LqxH",
+                "name": "lookup_company",
+                "args": {
+                  "name": "Nvidia"
+                }
+              },
+              {
+                "id": "toolu_014CndnYBLFoF6QerY2XrHhv",
+                "name": "lookup_company",
+                "args": {
+                  "name": "AMD"
+                }
+              }
+            ],
+            "finish_reason": "tool_calls"
+          },
+          "usage": {
+            "prompt_tokens": 528,
+            "completion_tokens": 115
+          }
+        },
+        "roundtrip": {
+          "ok": true,
+          "second_turn": {
+            "content": "Based on the lookup, I have identified Nvidia's SEC filer information (CIK 1045810), with data available for fiscal years 2024\u20132026. However, I should note an important limitation: my tool only resolves company identifiers and available fiscal years in a filings graph \u2014 it does not return the actual financial disclosures, risk factor text, or supply chain details from within those filings.\n\nSo while I can confirm *that* Nvidia has filings covering this period, I can't pull specific figures (like percentage of wafers sourced from TSMC, dollar concentration risk, or exact risk-factor language) without deeper document access.\n\nThat said, here's what is broadly and reliably known about Nvidia's exposure to TSMC, which you should verify against Nvidia's actual 10-K risk factors for FY2024\u20132026:\n\n**Nature of the exposure:**\n- **Sole-source manufacturing dependency**: Nvidia is fabless \u2014 it design",
+            "tool_calls": [],
+            "finish_reason": "length"
+          },
+          "usage": {
+            "prompt_tokens": 1166,
+            "completion_tokens": 424
+          }
+        },
+        "tool_choice_none": {
+          "ok": true,
+          "message": {
+            "content": "I'll look up information on both companies to assess this relationship.",
+            "tool_calls": [],
+            "finish_reason": "stop"
+          },
+          "usage": {
+            "prompt_tokens": 525,
+            "completion_tokens": 20
+          }
+        }
+      },
+      "cost_usd": 0.01232
+    }
+  ]
+}
