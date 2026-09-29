@@ -219,6 +219,14 @@ def test_the_m4_routers_are_mounted():
      "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef") + ">/evidence/<doc>"),
     ("/api/stats", "/api/stats"),
     ("/api/evidence/doc:0123456789ab:v1:0001", "/api/evidence/<doc>"),
+    # second Opus review, finding 9 partial: uvicorn logs the PERCENT-QUOTED path, and a query may follow the id directly
+    ("/api/workspace/0123456789abcdef0123456789abcdef/evidence/doc%3A0123456789ab%3Av1%3A0003",
+     "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef") + ">/evidence/<doc>"),
+    ("/api/workspace/0123456789abcdef0123456789abcdef?t=1",
+     "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef") + ">"),
+    ("/api/evidence/doc%3A0123456789ab%3Av1%3A0001", "/api/evidence/<doc>"),
+    ("/api/company/NVDA/risk-changes?limit=20", "/api/company/NVDA/risk-changes?limit=20"),
+    ("/api/x?id=doc%3A0123456789ab%3Av1%3A0001", "/api/x"),
 ])
 def test_the_access_log_redacts_workspace_ids_doc_ids_and_workspace_query_strings(path, expected):
     assert main.redact_access_path(path) == expected
@@ -232,3 +240,12 @@ def test_the_access_log_filter_rewrites_uvicorns_record_in_place():
     assert main.WorkspaceAccessLogFilter().filter(record) is True
     assert "a" * 32 not in record.getMessage() and "<ws:" in record.getMessage()
     assert any(isinstance(f, main.WorkspaceAccessLogFilter) for f in logging.getLogger("uvicorn.access").filters)
+
+
+def test_the_process_is_hardened_before_anything_else_boots(monkeypatch, boot):
+    """docs/v2/M4_PLAN.md 5 (second Opus review S1): the non-dumpable call precedes bootstrap, threads and subprocesses."""
+    use_settings(monkeypatch)
+    monkeypatch.setattr(main.hardening, "make_process_non_dumpable", lambda: boot.order.append("harden") or True)
+    with TestClient(main.create_app()):
+        pass
+    assert boot.order[:2] == ["harden", "bootstrap"]

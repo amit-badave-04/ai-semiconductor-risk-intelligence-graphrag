@@ -607,6 +607,31 @@ G3 (SEC path unchanged) was independently confirmed. G6 (parity) PASSED on 2026-
 13. **G1 smoke** asserts the currency flip, superseded evidence, a stale citation (via `as_of` = v1's instant) and 404 on every
     workspace route after DELETE.
 
+## 16. Revision 5: the second Opus review (2026-09-30)
+
+Round 3 (07b31f3) added the G2 route-level leak harness (13 tests, both venvs, a negative control; no leak found). G1 PASSED on
+the real local graph (3ab9c91, `artifacts/workspace_smoke.json`: 8 of 8 required checks, $0.004). A second Opus review re-ran
+the original repro scripts: 24 of 29 first-review findings fixed, 5 partially (6, 9, 15, 27, 29), plus 14 new (1 HIGH: the
+freshness loop busy-spun when a due check was not admitted, a regression of 15.10; 3 MEDIUM; 10 LOW). Contract changes:
+
+1. **Process hardening:** the API marks itself non-dumpable (`prctl(PR_SET_DUMPABLE, 0)`, `serve/hardening.py`) first in the
+   lifespan, so a compromised parser child of the same uid cannot read `/proc/<api pid>/environ` (the exec-time block that
+   holds the Fly secrets). Proven on Linux (WSL Ubuntu 24.04): without it a child reads the secret, with it `DENIED`; the
+   Linux-only test runs in CI.
+2. **Upload availability** additionally needs the Turnstile secret in production (`routes.uploads_available`), with a boot
+   ERROR when it is missing, so the page never advertises routes that fail closed.
+3. **Access log:** redaction decodes uvicorn's percent-quoted path and splits the query first.
+4. **Freshness loop:** a non-admitted or failing due check waits at least 60 s before retrying; the lease is released at the
+   end of every check.
+5. The remaining items (negation flips next to ordinary rewordings, the `without` boilerplate, a bounded negation check, the
+   interrupted-job start pass and lost terminal writes, the read-rate window before authentication, the ask-as-of selection,
+   sequential multi-file uploads with fresh Turnstile tokens, smoke robustness, the scoped `CALL` form) are fixed in fix
+   round 4; a third Opus review verifies them before the deploy.
+6. **Contract additions in fix round 4:** the change report carries `negation_check_skipped` (sentence pairs the bounded
+   negation check did not examine; never silent); `repo.fail_interrupted_jobs` restores a job whose version is already
+   committed to `ready` instead of failing it; the job progress page reconnects up to 3 times before reporting a lost
+   connection; every workspace route, uploads included, takes the in-memory read-rate window before its database lookup.
+
 ## Audit trail
 
 - 2026-09-29: plan written by fable-architect from the code map and the live-web research report (both read-only). No code changed.

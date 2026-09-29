@@ -46,6 +46,8 @@ def _driver_stub(monkeypatch, ciks=None, known=None, fr_count=0, lease_ok=True, 
             if lease_error is not None:
                 raise lease_error
             return [{"ok": lease_ok}]
+        if query == monitor_mod.RELEASE_LEASE_QUERY:
+            return []
         if query == monitor_mod.GET_FRESHNESS_QUERY:
             return []
         if query == monitor_mod.PUT_FRESHNESS_QUERY:
@@ -197,6 +199,56 @@ def test_acquire_lease_maps_the_ok_column(monkeypatch):
     assert monitor_mod._acquire_lease(object(), "m1") is False
     monkeypatch.setattr(monitor_mod, "run_cypher", lambda d, q, **p: [])
     assert monitor_mod._acquire_lease(object(), "m1") is False
+
+
+# ---------------------------------------------------------------------- lease release (C1/R1: stale-lease-on-restart)
+
+def test_release_lease_sends_the_holders_own_id(monkeypatch):
+    seen = {}
+
+    def fake_run_cypher(driver, query, **params):
+        seen["query"] = query
+        seen["params"] = params
+        return []
+
+    monkeypatch.setattr(monitor_mod, "run_cypher", fake_run_cypher)
+    monitor_mod._release_lease(object(), "m1")
+    assert seen["query"] == monitor_mod.RELEASE_LEASE_QUERY
+    assert seen["params"] == {"me": "m1"}
+
+
+def test_release_lease_never_raises_when_the_write_fails(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(monitor_mod, "run_cypher", boom)
+    monitor_mod._release_lease(object(), "m1")  # must not raise
+
+
+def test_run_check_releases_the_lease_this_machine_holds_when_the_check_succeeds(monkeypatch):
+    _driver_stub(monkeypatch)
+    _stub_check_once(monkeypatch)
+    released = []
+    monkeypatch.setattr(monitor_mod, "_release_lease", lambda driver, holder: released.append(holder))
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    m._busy.acquire()
+    m._run_check()
+    assert released == [m._machine_id]
+
+
+def test_run_check_releases_the_lease_even_when_the_check_itself_raises(monkeypatch):
+    _driver_stub(monkeypatch)
+
+    def boom(*a, **kw):
+        raise RuntimeError("sec 403")
+
+    monkeypatch.setattr(monitor_mod, "check_once", boom)
+    released = []
+    monkeypatch.setattr(monitor_mod, "_release_lease", lambda driver, holder: released.append(holder))
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    m._busy.acquire()
+    m._run_check()
+    assert released == [m._machine_id]
 
 
 # ---------------------------------------------------------------------- persistence round trip
@@ -479,6 +531,77 @@ def test_safe_try_check_survives_an_unexpected_error_from_try_check_itself(monke
     m._safe_try_check()   # must not raise — the polling thread must survive
 
 
+# ---------------------------------------------------------------------- _run loop busy-spin regression (C1/R1)
+#
+# docs/v2/M4_PLAN.md 15.10's anchored-wait loop recomputes `_next_wait_seconds()` from `_last` on every wake, but a
+# non-admitted attempt (lease denied, lease query raising, or `_busy` held by an admin check_now) never touches
+# `_last`. An overdue check therefore used to recompute the SAME <=0 wait on every pass and spin the real `_run`
+# loop at 100% of a core. Each test below runs the REAL `_run` (not `_try_check` in isolation) for about a second
+# with `freshness_boot_delay_s=0` (so the boot check fires immediately, already overdue), counts how many times
+# `_try_check` actually got invoked, and confirms `stop()` still returns within its bound regardless.
+
+def _count_try_check_calls(monkeypatch):
+    calls = []
+    original = monitor_mod.FreshnessMonitor._try_check
+
+    def counting(self):
+        calls.append(1)
+        return original(self)
+
+    monkeypatch.setattr(monitor_mod.FreshnessMonitor, "_try_check", counting)
+    return calls
+
+
+def _run_briefly_then_stop(m, run_seconds=1.0, stop_timeout=5.0):
+    m.start()
+    time.sleep(run_seconds)
+    started = time.monotonic()
+    m.stop(timeout=stop_timeout)
+    stop_elapsed = time.monotonic() - started
+    assert stop_elapsed < stop_timeout, f"_run did not stop within {stop_timeout}s (took {stop_elapsed:.2f}s)"
+    assert not m._thread.is_alive()
+
+
+def test_run_loop_does_not_busy_spin_when_the_lease_is_denied(monkeypatch):
+    _driver_stub(monkeypatch, lease_ok=False)
+    settings = FakeSettings()
+    settings.freshness_boot_delay_s = 0
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    calls = _count_try_check_calls(monkeypatch)
+
+    _run_briefly_then_stop(m)
+
+    assert len(calls) <= 2, f"expected at most a couple of attempts in ~1s, got {len(calls)} (busy-spin regression)"
+
+
+def test_run_loop_does_not_busy_spin_when_the_lease_query_raises(monkeypatch):
+    _driver_stub(monkeypatch, lease_error=RuntimeError("neo4j connection reset"))
+    settings = FakeSettings()
+    settings.freshness_boot_delay_s = 0
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    calls = _count_try_check_calls(monkeypatch)
+
+    _run_briefly_then_stop(m)
+
+    assert len(calls) <= 2, f"expected at most a couple of attempts in ~1s, got {len(calls)} (busy-spin regression)"
+
+
+def test_run_loop_does_not_busy_spin_while_an_admin_check_now_holds_busy(monkeypatch):
+    _driver_stub(monkeypatch)   # the lease itself would succeed — _busy being held is the only obstacle
+    settings = FakeSettings()
+    settings.freshness_boot_delay_s = 0
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._busy.acquire()   # simulates an admin POST /api/admin/freshness/check already running
+    calls = _count_try_check_calls(monkeypatch)
+
+    try:
+        _run_briefly_then_stop(m)
+    finally:
+        m._busy.release()
+
+    assert len(calls) <= 2, f"expected at most a couple of attempts in ~1s, got {len(calls)} (busy-spin regression)"
+
+
 # ---------------------------------------------------------------------- status_payload / summary
 
 def test_status_payload_reports_never_with_no_history(monkeypatch):
@@ -529,6 +652,40 @@ def test_status_payload_reports_unconfigured_even_with_a_recent_ok_check():
     m = monitor_mod.FreshnessMonitor(object(), settings)
     m._last = {**_stub_result(), "status": "ok"}
     assert m.status_payload()["status"] == "unconfigured"
+
+
+def test_status_payload_blanks_a_stale_persisted_result_once_unconfigured(monkeypatch):
+    """R5 (M4 review round 2): SEC_USER_AGENT was configured when this good check ran and persisted, then dropped
+    (e.g. a secrets rotation). The payload must not go on presenting that OLD result as if it were current — the
+    frontend's freshnessLine relies on `checked_at` being null to render "freshness check unavailable" instead of
+    a "Data as of ... N filings pending" line built from days-old data."""
+    settings = FakeSettings()
+    settings.sec_user_agent = ""
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._last = {"checked_at": (datetime.now(UTC) - timedelta(days=10)).isoformat(), "as_of": "2026-09-14",
+              "snapshot_id": "snap-1", "snapshot_as_of": "2026-09-14", "status": "ok", "error": None,
+              "last_error_at": None, "pending_count": 4, "pending_filings": [{"ticker": "NVDA"}],
+              "federal_register": {"graph_count": 1, "live_count": 2, "new_since": 1}, "unresolved": [],
+              "duration_s": 1.0}
+    payload = m.status_payload()
+    assert payload["status"] == "unconfigured"
+    assert payload["checked_at"] is None
+    assert payload["snapshot_as_of"] is None
+    assert payload["pending_count"] == 0
+    assert payload["pending_filings"] == []
+    assert payload["federal_register"] is None
+    assert payload["unresolved"] == []
+    assert payload["duration_s"] is None
+    assert payload["next_check_at"] is None
+
+
+def test_summary_blanks_a_stale_persisted_result_once_unconfigured():
+    settings = FakeSettings()
+    settings.sec_user_agent = ""
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._last = {**_stub_result(), "checked_at": (datetime.now(UTC) - timedelta(days=10)).isoformat(),
+              "status": "ok", "pending_count": 4}
+    assert m.summary() == {"status": "unconfigured", "checked_at": None, "pending_count": 0}
 
 
 # ---------------------------------------------------------------------- next_check_at (finding: known item)
@@ -614,5 +771,49 @@ def test_start_if_enabled_starts_a_monitor_when_enabled(monkeypatch):
     monitor_mod.start_if_enabled(App)
     try:
         assert isinstance(App.state.freshness_monitor, monitor_mod.FreshnessMonitor)
+    finally:
+        monitor_mod.stop(App)
+
+
+def test_start_if_enabled_logs_one_error_naming_the_missing_setting_when_unconfigured(monkeypatch, caplog):
+    """R5 (M4 review round 2): FRESHNESS_ENABLED with SEC_USER_AGENT missing must not boot silently — the operator
+    otherwise has no signal short of noticing the page go stale. Exactly one ERROR, naming the setting, never a
+    (non-existent) value."""
+    _driver_stub(monkeypatch)
+    settings = FakeSettings()
+    settings.sec_user_agent = ""
+    settings.freshness_boot_delay_s = 999
+
+    class App:
+        class state:
+            pass
+
+    App.state.settings = settings
+    App.state.driver = object()
+    with caplog.at_level("ERROR", logger="semigraph.serve.monitor"):
+        monitor_mod.start_if_enabled(App)
+    try:
+        error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert len(error_records) == 1
+        assert "SEC_USER_AGENT" in error_records[0].getMessage()
+    finally:
+        monitor_mod.stop(App)
+
+
+def test_start_if_enabled_logs_nothing_when_properly_configured(monkeypatch, caplog):
+    _driver_stub(monkeypatch)
+    settings = FakeSettings()
+    settings.freshness_boot_delay_s = 999
+
+    class App:
+        class state:
+            pass
+
+    App.state.settings = settings
+    App.state.driver = object()
+    with caplog.at_level("ERROR", logger="semigraph.serve.monitor"):
+        monitor_mod.start_if_enabled(App)
+    try:
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
     finally:
         monitor_mod.stop(App)

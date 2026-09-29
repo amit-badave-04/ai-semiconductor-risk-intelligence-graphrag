@@ -98,11 +98,16 @@ RETURN w.workspace_id AS workspace_id"""
 # scan of the ENTIRE graph, every public label included, once per label in the list) on the throwaway instance. A
 # literal label lets the planner use a NodeByLabelScan instead — the difference between touching a few hundred
 # User* nodes and touching the whole graph every 15 minutes, now that the sweeper always runs (finding 26).
+#
+# CALL () { ... } — the EXPLICIT, empty variable-scope clause (round-4 review, finding R4): plain `CALL { ... }`
+# (no scope clause at all) is deprecated on Neo4j 2026.07.1 and logs a DEPRECATION notification on every single
+# sweep cycle (the sweeper runs this every 15 minutes, always, since finding 26). This subquery imports no outer
+# variable, so `()` is correct, not `(x)` for some `x`.
 _SWEEP_ORPHANS_LABELS = tuple(label for label in _USER_LABELS if label != "UserWorkspace")
 _SWEEP_ORPHANS_UNION_MEMBER = """MATCH (n:{label}) WHERE n.workspace_id IS NOT NULL
   AND NOT EXISTS {{ MATCH (w:UserWorkspace) WHERE w.workspace_id = n.workspace_id }}
 RETURN n.workspace_id AS workspace_id"""
-SWEEP_ORPHANS_SELECT_QUERY = "CALL {{\n{members}\n}}\nRETURN DISTINCT workspace_id LIMIT {batch}".format(
+SWEEP_ORPHANS_SELECT_QUERY = "CALL () {{\n{members}\n}}\nRETURN DISTINCT workspace_id LIMIT {batch}".format(
     members="\nUNION\n".join(_SWEEP_ORPHANS_UNION_MEMBER.format(label=label) for label in _SWEEP_ORPHANS_LABELS),
     batch=SWEEP_SELECT_BATCH)
 
@@ -115,8 +120,19 @@ RETURN j.workspace_id AS workspace_id, j.job_id AS job_id, j.payload AS payload 
 
 FAIL_INTERRUPTED_JOB_UPDATE_QUERY = """MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id})
 WHERE NOT j.state IN $terminal_states
-SET j.state = 'failed', j.payload = $payload, j.updated_at = $now
+SET j.state = $state, j.payload = $payload, j.updated_at = $now
 RETURN j.job_id AS job_id"""
+
+# Round-4 review, finding 27 residual 1: before EVER marking a stale job "failed", check whether its OWN
+# (document_id, version) already has a committed UserVersion — the terminal "ready" write can keep failing (its own
+# retry budget is independent of put_version's) even though put_version's transaction fully committed. $ws-bound,
+# like every other per-job follow-up query here.
+JOB_VERSION_EXISTS_QUERY = """MATCH (v:UserVersion {workspace_id: $ws, document_id: $document_id, version: $version})
+OPTIONAL MATCH (v)-[:HAS_CHUNK]->(c:UserChunk {workspace_id: $ws})
+WITH v, count(c) AS chunks
+OPTIONAL MATCH (v)-[:HAS_UNIT]->(u:UserUnit {workspace_id: $ws})
+RETURN chunks, count(u) AS units, v.items_compared AS items_compared,
+       v.not_compared_reason AS not_compared_reason, v.suspicious AS suspicious"""
 
 # uploads.jobs.TERMINAL_STATES, duplicated here (a plain tuple, never an import of uploads.jobs — this module stays
 # strictly below the job layer, never above it) so fail_interrupted_jobs never needs jobs.py to be importable.
@@ -616,6 +632,29 @@ def put_job(driver, ws: str, job: dict) -> None:
         raise WorkspaceGone("the workspace no longer exists")
 
 
+def _recovered_or_interrupted_payload(session, ws: str, payload: dict) -> tuple[dict, str]:
+    """The #27 residual (round-4 reliability review): a job's TERMINAL ``ready`` write can keep failing AFTER
+    ``put_version`` already committed the version — the two have independent retry budgets, so one can exhaust its
+    attempts while the other quietly succeeds. Marking such a job ``failed``/``interrupted`` would misreport a
+    fully-succeeded upload; leaving its stale non-terminal state to replay forever would be just as wrong. When the
+    job's own ``(document_id, version)`` already has a committed ``UserVersion``, this reconstructs the SAME
+    ``ready`` payload ``uploads.jobs._process`` would have persisted — straight from that version's own data, never
+    from the job's stale payload — instead of the usual ``interrupted`` one. Returns ``(new_payload, new_state)``."""
+    document_id, version = payload.get("document_id"), payload.get("version")
+    if document_id is not None and version is not None:
+        rows = session.run(JOB_VERSION_EXISTS_QUERY, ws=ws, document_id=document_id, version=version).data()
+        if rows:
+            v = rows[0]
+            ready_payload = {**payload, "state": "ready", "chunks": v["chunks"], "units": v["units"],
+                             "items_compared": v["items_compared"], "not_compared_reason": v["not_compared_reason"],
+                             "suspicious": v["suspicious"]}
+            ready_payload.pop("error", None)
+            return ready_payload, "ready"
+    interrupted_payload = {**payload, "state": "failed",
+                           "error": {"code": "interrupted", "message": _INTERRUPTED_ERROR_MESSAGE}}
+    return interrupted_payload, "failed"
+
+
 def fail_interrupted_jobs(driver, now: datetime | None = None, *, older_than_s: int = FAIL_INTERRUPTED_AFTER_S,
                           exclude: frozenset[tuple[str, str]] | set[tuple[str, str]] = frozenset()) -> int:
     """Marks ``failed`` (error code ``interrupted``) any ``UserJob`` left in a non-terminal state for longer than
@@ -623,11 +662,16 @@ def fail_interrupted_jobs(driver, now: datetime | None = None, *, older_than_s: 
     except the ``(workspace_id, job_id)`` pairs in ``exclude`` (the jobs the calling process still has open: a live job's
     progress writes are best-effort, so its stored ``updated_at`` can look stale while it runs). The upload sweeper passes
     a threshold derived from the job budgets (``uploads.jobs``); the default only serves a caller without settings.
+
+    BEFORE marking a candidate ``failed``, checks whether its own ``(document_id, version)`` already has a committed
+    ``UserVersion`` (:func:`_recovered_or_interrupted_payload`, finding 27 residual 1) — if so it is instead
+    recovered to ``ready``, never mislabelled ``interrupted`` over a version that actually succeeded.
+
     Rewrites the STORED ``payload`` too, not just ``state``: :func:`get_job` replays ``payload`` verbatim, so leaving it
     alone would keep showing e.g. "embedding" forever to a client that reconnects after a restart. The per-job UPDATE
     stays ``$ws``-bound and re-checks the state, so a job that raced to a real ready/failed in the meantime is left
     untouched (0 rows, not double-counted). ``now`` defaults to the current instant; idempotent; returns the number of
-    jobs marked.
+    jobs marked (failed OR recovered to ready).
     """
     now = now if now is not None else datetime.now(UTC)
     _require_aware_datetime(now, "now")
@@ -636,21 +680,24 @@ def fail_interrupted_jobs(driver, now: datetime | None = None, *, older_than_s: 
     with driver.session() as session:
         candidates = session.run(FAIL_INTERRUPTED_JOBS_SELECT_QUERY, terminal_states=terminal,
                                  threshold=threshold).data()
-        fixed = 0
+        fixed, recovered = 0, 0
         for row in candidates:
             if (row["workspace_id"], row["job_id"]) in exclude:
                 continue
             payload = json.loads(row["payload"]) if row["payload"] else {}
-            new_payload = {**payload, "state": "failed",
-                          "error": {"code": "interrupted", "message": _INTERRUPTED_ERROR_MESSAGE}}
+            new_payload, new_state = _recovered_or_interrupted_payload(session, row["workspace_id"], payload)
             updated = session.run(FAIL_INTERRUPTED_JOB_UPDATE_QUERY, ws=row["workspace_id"], job_id=row["job_id"],
-                                  terminal_states=terminal, payload=json.dumps(new_payload, default=str),
-                                  now=now).data()
+                                  terminal_states=terminal, state=new_state,
+                                  payload=json.dumps(new_payload, default=str), now=now).data()
             if updated:
-                fixed += 1
+                recovered += 1 if new_state == "ready" else 0
+                fixed += 1 if new_state == "failed" else 0
     if fixed:
         logger.info("marked %d interrupted job(s) failed at start", fixed)
-    return fixed
+    if recovered:
+        logger.info("recovered %d job(s) to ready: a committed version was found after their terminal write "
+                    "kept failing", recovered)
+    return fixed + recovered
 
 
 def get_job(driver, ws: str, job_id: str) -> dict | None:

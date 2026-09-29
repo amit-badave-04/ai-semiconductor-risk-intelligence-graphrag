@@ -18,7 +18,20 @@ workspace route (GET/DELETE workspace, POST documents, GET jobs, GET changes, GE
 uploaded or answered text ever lands in the committed artifact (docs/v2/M4_PLAN.md 11). This script is NOT run by
 this worker (docs/v2/M4_PLAN.md: "the main session runs G1"); :func:`redact`, :func:`evaluate_g1` and
 :func:`within_budget` are pure and unit-tested with fakes (``tests/test_serve_workspace_smoke.py``); only
-:func:`run` touches the network — it is never invoked by this worker's test suite.
+:func:`_run_g1` (and the real ``run``/``main`` that wrap it) touch the network — a real server is never contacted
+by this worker's test suite, which instead drives :func:`_run_g1`, :func:`_run_as_of_and_cleanup` and :func:`_ask`
+with an injected fake client (the same pattern :func:`_all_workspace_routes_404` was already tested with).
+
+Round-2 review finding C6: a SECOND G1 run within the 10-minute ask rate-limit window (plan G8 allows exactly this)
+previously let any non-2xx response — most commonly a 429 on the third, merely observational, ``as_of=yesterday``
+ask — raise straight out of ``run()``. That skipped the DELETE at the end of the happy path entirely (the
+workspace then lingered until its 24 h TTL) and never wrote ``artifacts/workspace_smoke.json``, so a transient or
+rate-limited run left no G1 verdict at all. Two independent fixes close this: (1) :func:`_ask` never raises on a
+non-2xx response any more — it returns an ``{"error": ..., "status_code": ...}`` marker, so a single rate-limited
+or transient-error ask degrades only the ONE G1 check that ask feeds, never the checks after it; and (2)
+:func:`_run_g1` wraps every step in ``try/except/finally``: on ANY exception (an upload, a workspace fetch, a
+malformed response) it still deletes the workspace it created and returns a report — carrying an ``"error"`` field
+and whatever partial results were gathered — instead of letting the exception propagate out of ``run()``/``main()``.
 """
 
 from __future__ import annotations
@@ -163,10 +176,16 @@ def _wait_for_job(client, base_url: str, ws: str, token: str, job_id: str) -> di
 
 
 def _ask(client, base_url: str, ws: str, token: str, question: str, *, as_of: str | None = None) -> dict:
+    """C6: never raises on a non-2xx response (a rate limit, a transient 5xx) — it returns an ``{"error":
+    True, "status_code": ...}`` marker instead. Every caller already treats a missing ``citations``/``workspace``
+    key as "this ask produced nothing to cite", so a failed ask degrades exactly the ONE G1 check it feeds instead
+    of raising out of :func:`_run_g1` and aborting every check that runs after it — most importantly the merely
+    OBSERVATIONAL ``as_of=yesterday`` ask, which must never abort the change-report/evidence/delete checks."""
     body = {"question": question, "workspace_id": ws, "as_of": as_of}
     r = client.post(f"{base_url}/api/ask", json=body, headers={"X-Workspace-Token": token},
                     timeout=REQUEST_TIMEOUT_S)
-    r.raise_for_status()
+    if r.status_code >= 400:
+        return {"error": True, "status_code": r.status_code}
     done: dict = {}
     for block in r.text.split("\n\n"):
         data = "".join(line[5:].strip() for line in block.split("\n") if line.startswith("data:"))
@@ -292,20 +311,63 @@ def _run_as_of_and_cleanup(client, base_url: str, ws: str, token: str, document_
                      "evidence": ev.json() if ev.status_code == 200 else {"status_code": ev.status_code}}}
 
 
-def run(base_url: str, max_usd: float) -> dict:
-    import httpx
+def _redact_exception_text(exc: Exception, ws: str | None, token: str | None) -> str:
+    """``str(exc)`` with the raw workspace id and token scrubbed (docs/v2/M4_PLAN.md 5, 11): an ``httpx`` error
+    from a failed step routinely embeds the REQUEST URL it was raised for (``"...for url
+    'http://host/api/workspace/<ws>/documents'..."``), which would otherwise put a raw workspace id straight into
+    the committed artifact — the one thing every other value here goes through :func:`redact` to avoid."""
+    text = f"{type(exc).__name__}: {exc}"
+    if ws:
+        text = text.replace(ws, f"<ws:{_ws_hash(ws)}>")
+    if token:
+        text = text.replace(token, "<secret>")
+    return text
 
-    with httpx.Client() as client:
+
+def _run_g1(client, base_url: str, max_usd: float) -> dict:
+    """The whole G1 run against an already-open ``client`` (real ``httpx.Client`` from :func:`run`, or a fake in
+    tests). C6: EVERY step from workspace creation through the final delete-and-404 probes runs inside one
+    try/except/finally, so a step that raises (a transient 5xx, a malformed response, anything :func:`_ask`'s own
+    non-raising fix does not already cover) still reaches the ``finally`` — which deletes the workspace it created,
+    best-effort, exactly once — and this function still RETURNS a report (never raises), with an ``"error"`` key
+    and whatever partial ``results``/``steps`` were gathered before the failure. ``evaluate_g1`` already treats a
+    missing result key as failed, so a partial report still yields a correct (all-failing) G1 verdict instead of no
+    verdict — and no artifact — at all."""
+    created: dict | None = None
+    ws = token = None
+    first: dict = {"results": {}, "spend": 0.0, "steps": {}}
+    second: dict = {"results": {}, "spend": 0.0, "steps": {}}
+    error: str | None = None
+    try:
         created = _create_workspace(client, base_url)
         ws, token = created["workspace_id"], created["token"]
         first = _run_versions(client, base_url, ws, token)
         second = _run_as_of_and_cleanup(client, base_url, ws, token, first["document_id"], first["v1_id_hint"],
                                         first["steps"]["job1"].get("job_id") or first["steps"]["v1_upload"]["job_id"])
+    except Exception as exc:   # noqa: BLE001 — C6: ANY step failing must still delete the workspace and report
+        error = _redact_exception_text(exc, ws, token)
+    finally:
+        if ws is not None:
+            try:
+                client.delete(f"{base_url}/api/workspace/{ws}", headers={"X-Workspace-Token": token},
+                             timeout=REQUEST_TIMEOUT_S)
+            except Exception:
+                pass   # best-effort: an unreachable service here still leaves the workspace to its own 24h TTL
 
-    results = {**first["results"], **second["results"]}
-    spend = round(first["spend"] + second["spend"], 6)
-    steps = redact({"created": created, **first["steps"], **second["steps"]})
-    return {"results": results, "spend_usd": spend, "within_budget": within_budget(spend, max_usd), "steps": steps}
+    results = {**first.get("results", {}), **second.get("results", {})}
+    spend = round(first.get("spend", 0.0) + second.get("spend", 0.0), 6)
+    steps = redact({"created": created, **first.get("steps", {}), **second.get("steps", {})})
+    out = {"results": results, "spend_usd": spend, "within_budget": within_budget(spend, max_usd), "steps": steps}
+    if error is not None:
+        out["error"] = error
+    return out
+
+
+def run(base_url: str, max_usd: float) -> dict:
+    import httpx
+
+    with httpx.Client() as client:
+        return _run_g1(client, base_url, max_usd)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -317,18 +379,24 @@ def main(argv: list[str] | None = None) -> int:
     report = run(args.base_url, args.max_usd)
     failures = evaluate_g1(report["results"])
     notes = _budget_notes(report["results"])
+    # C6: `report["error"]` is only present when a step raised partway (_run_g1's try/finally still ran the
+    # workspace's DELETE and returned whatever partial results it had) — the artifact and the exit code both
+    # reflect that instead of this process crashing with no artifact written at all.
     out = {"base_url": args.base_url, "max_usd": args.max_usd, "spend_usd": report["spend_usd"],
           "within_budget": report["within_budget"], "results": report["results"], "failures": failures,
-          "notes": notes, "steps": report["steps"], "generated_at": datetime.now(UTC).isoformat()}
+          "notes": notes, "error": report.get("error"), "steps": report["steps"],
+          "generated_at": datetime.now(UTC).isoformat()}
     ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
     ARTIFACT_PATH.write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
     print(f"spend: ${report['spend_usd']:.4f} (budget ${args.max_usd:.2f}) — within budget: {report['within_budget']}")
+    if report.get("error"):
+        print(f"ERROR: a step raised partway through the run: {report['error']}")
     for f in failures:
         print(f"FAIL: {f}")
     for n in notes:
         print(f"note: {n}")
     print(f"wrote {ARTIFACT_PATH}")
-    return 0 if not failures and report["within_budget"] else 1
+    return 0 if not failures and report["within_budget"] and not report.get("error") else 1
 
 
 if __name__ == "__main__":

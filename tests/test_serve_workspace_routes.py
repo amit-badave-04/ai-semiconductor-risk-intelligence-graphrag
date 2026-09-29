@@ -478,6 +478,47 @@ def test_workspace_get_routes_take_the_read_rate_window(client):
     assert r.status_code == 429
 
 
+# ---------------------------------------------------------------- round-2 review S4/R2: the read-rate window must
+# run BEFORE authentication, so a caller who never has a valid token (a wrong token or an unknown workspace) is
+# rate-limited too, instead of paying an unbounded number of Neo4j lookups. The 404 must stay indistinguishable
+# from the authenticated-but-unknown case either way.
+
+
+@pytest.mark.parametrize("method,path,ws,token", [
+    ("get", "/api/workspace/{ws}", WS, "wrong-token"),
+    ("get", "/api/workspace/{ws}", "f" * 32, TOKEN),
+    ("delete", "/api/workspace/{ws}", WS, "wrong-token"),
+    ("get", "/api/workspace/{ws}/jobs/does-not-exist", WS, "wrong-token"),
+    ("get", "/api/workspace/{ws}/changes?document_id=" + DOC + "&from=1&to=2", WS, "wrong-token"),
+    ("get", "/api/workspace/{ws}/evidence/doc:0123456789ab:v1:0001", WS, "wrong-token"),
+])
+def test_a_wrong_token_or_unknown_workspace_request_is_rate_limited_not_just_the_authenticated_ones(
+        client, fake_repo, method, path, ws, token):
+    """S4/R2: before the fix, ``_require_read_rate`` ran AFTER ``_authenticate``, so a request that never
+    authenticates (wrong token, unknown workspace) skipped the limiter entirely and paid an unbounded number of
+    Neo4j lookups. With a 1-request window, the FIRST such request still gets 404 (the limiter allowed it), but the
+    SECOND must be 429 from the limiter itself, before a second lookup ever runs."""
+    client.app.state.read_rate_limiter = guard.RateLimiter(1, 86400)
+    full_path = path.format(ws=ws)
+    lookups_before = len(fake_repo.touched)
+    r1 = getattr(client, method)(full_path, headers=_auth(token))
+    assert r1.status_code == 404
+    assert r1.json()["detail"] == routes.MSG_WORKSPACE_NOT_FOUND
+    r2 = getattr(client, method)(full_path, headers=_auth(token))
+    assert r2.status_code == 429
+    assert r2.headers["cache-control"] == "no-store"
+    # touch() only runs on a SUCCESSFUL auth, so this also proves no extra lookup slipped through on request 2.
+    assert len(fake_repo.touched) == lookups_before
+
+
+def test_delete_workspace_also_takes_the_read_rate_window(client):
+    client.app.state.read_rate_limiter = guard.RateLimiter(1, 86400)
+    assert client.delete(f"/api/workspace/{WS}", headers=_auth()).status_code == 204
+    r = client.delete(f"/api/workspace/{WS}", headers=_auth())
+    assert r.status_code == 429
+    assert r.headers["cache-control"] == "no-store"
+
+
 def test_an_unknown_job_id_is_404(client):
     r = client.get(f"/api/workspace/{WS}/jobs/does-not-exist", headers=_auth())
     assert r.status_code == 404
@@ -526,3 +567,19 @@ def test_evidence_route_takes_the_read_rate_window(client):
     path = f"/api/workspace/{WS}/evidence/doc:0123456789ab:v1:0001"
     assert client.get(path, headers=_auth()).status_code == 200
     assert client.get(path, headers=_auth()).status_code == 429
+
+
+def test_an_upload_with_a_wrong_token_is_rate_limited_before_any_database_lookup(client, fake_repo, monkeypatch):
+    """docs/v2/M4_PLAN.md 16: like every other workspace route, the upload takes the in-memory read-rate window BEFORE
+    authentication, so a wrong-token flood never reaches the database; the per-address upload window stays in place."""
+    lookups = []
+    real = repo.authenticate           # the fixture installed the fake's bound method on the module
+    monkeypatch.setattr(repo, "authenticate", lambda *a, **kw: (lookups.append(1), real(*a, **kw))[1])
+    client.app.state.read_rate_limiter = guard.RateLimiter(1, 86400)
+    wrong = {"X-Workspace-Token": "wrong", "X-Turnstile-Token": "t"}
+    files = {"file": ("a.md", b"# a\nbody\n", "text/markdown")}
+    assert client.post(f"/api/workspace/{WS}/documents", headers=wrong, files=files).status_code == 404
+    assert lookups == [1]
+    r = client.post(f"/api/workspace/{WS}/documents", headers=wrong, files=files)
+    assert r.status_code == 429 and r.headers["cache-control"] == "no-store"
+    assert lookups == [1]          # the second, rate-limited request never reached the workspace lookup

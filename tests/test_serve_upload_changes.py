@@ -256,6 +256,139 @@ def test_compare_versions_tense_only_edit_still_lands_in_minor_rewordings_with_n
 
 
 # --------------------------------------------------------------------------
+# round-4 review, finding C2: a negation flip must still be reported when the SAME unit also carries an ordinary
+# reworded passage on a different sentence
+# --------------------------------------------------------------------------
+
+def test_compare_versions_negation_flip_still_reported_when_the_unit_also_has_a_reworded_passage():
+    """_apply_negation_flips used to skip a unit's negation check entirely once compute_passages already gave it a
+    real passage from a DIFFERENT sentence, silently dropping a genuine negation-polarity reversal sitting right
+    next to an ordinary rewording. Exact text from the round-4 review's own repro
+    (m4review2/negation_probe.py, case "flip_plus_reword")."""
+    v1 = _build_view(fx.NEGATION_FLIP_PLUS_REWORD_V1)
+    v2 = _build_view(fx.NEGATION_FLIP_PLUS_REWORD_V2)
+    report = C.compare_versions(v1, v2)
+    changed_headlines = {c["headline"] for c in report["changed"]}
+    assert "Export Control Exposure" in changed_headlines
+    entry = next(c for c in report["changed"] if c["headline"] == "Export Control Exposure")
+    quotes = [(p["kind"], p["quote"]) for p in entry["passages"]]
+    # the ordinary reworded revenue passage survives...
+    assert any(kind == "reworded" and "Revenue from China" in quote for kind, quote in quotes)
+    # ...AND the negation flip on the export-control sentence is no longer silently dropped.
+    removed = next(q for k, q in quotes if k == "removed")
+    added = next(q for k, q in quotes if k == "added")
+    assert removed == "We are not subject to the new export licensing rules for advanced accelerators."
+    assert added == "We are subject to the new export licensing rules for advanced accelerators."
+
+
+def test_compare_versions_negation_flip_is_never_duplicated_when_already_quoted_by_a_real_passage():
+    """The other half of C2: a flip must be appended only when its older sentence is not ALREADY covered by an
+    existing removed/reworded quote — never reported twice."""
+    v1, v2 = _build_view(fx.NEGATION_GROWTH_V1), _build_view(fx.NEGATION_GROWTH_V2)
+    report = C.compare_versions(v1, v2)
+    outlook = next(c for c in report["changed"] if c["headline"] == "Market Trends And Outlook Today")
+    removed_quotes = [p["quote"] for p in outlook["passages"] if p["kind"] == "removed"]
+    assert len(removed_quotes) == len(set(removed_quotes)) == 1
+
+
+# --------------------------------------------------------------------------
+# round-4 review, finding C4: "without" must stay a real negator for a genuine polarity change, but the fixed
+# boilerplate phrase "including, without limitation," must never itself be read as one
+# --------------------------------------------------------------------------
+
+def test_compare_versions_without_limitation_boilerplate_is_not_reported_as_a_negation_flip():
+    v1 = _build_view(fx.WITHOUT_LIMITATION_BOILERPLATE_V1)
+    v2 = _build_view(fx.WITHOUT_LIMITATION_BOILERPLATE_V2)
+    report = C.compare_versions(v1, v2)
+    assert "Export Control Exposure" not in {c["headline"] for c in report["changed"]}
+
+
+def test_compare_versions_a_real_without_polarity_change_is_still_caught():
+    v1 = _build_view(fx.WITHOUT_REAL_NEGATION_V1)
+    v2 = _build_view(fx.WITHOUT_REAL_NEGATION_V2)
+    report = C.compare_versions(v1, v2)
+    changed_headlines = {c["headline"] for c in report["changed"]}
+    assert "Supplier Agreement Terms" in changed_headlines
+    entry = next(c for c in report["changed"] if c["headline"] == "Supplier Agreement Terms")
+    quotes = _quotes_by_kind(entry)
+    assert quotes["removed"] == "We renewed the supplier agreement without any change in terms this quarter."
+    assert quotes["added"] == "We renewed the supplier agreement with a change in terms this quarter."
+
+
+def test_negation_count_ignores_without_limitation_but_still_counts_a_real_without():
+    assert C._negation_count("including, without limitation, accelerators and networking equipment") == 0
+    assert C._negation_count("We renewed the agreement without any change in terms.") == 1
+    assert C._negation_count("Including, without limitation, this clause remains without recourse.") == 1
+
+
+# --------------------------------------------------------------------------
+# round-4 review, finding S3: the negation-polarity check must be bounded (a per-unit sentence-count cap and an
+# overall work budget), and every skip must be visible in the report, never silent
+# --------------------------------------------------------------------------
+
+def _sentence_row(n_sentences: int, tag: str) -> dict:
+    """``n_sentences`` distinct, capitalized one-line sentences (``graph.align_text.split_sentences`` only splits
+    right before an UPPERCASE letter) with no negator words at all, so any flip found would be a test bug, not a
+    real one."""
+    text = " ".join(f"{tag}{i} is fine." for i in range(n_sentences))
+    return {"text": text, "char_start": 0, "headline": f"{tag} Section"}
+
+
+def test_negation_flip_passages_skips_a_unit_pair_over_the_per_unit_sentence_cap():
+    older_row, newer_row = _sentence_row(150, "Alpha"), _sentence_row(150, "Beta")   # 150*150 = 22,500 > the cap
+    view = C.VersionView(text="", units=(), chunk_spans=(), method="text", chars_per_page=1000.0)
+    budget = {"remaining": C.MAX_NEGATION_WORK_BUDGET}
+    assert 150 * 150 > C.MAX_NEGATION_PAIRS_PER_UNIT
+    assert C._negation_flip_passages(older_row, newer_row, view, view, budget) is None
+    assert budget["remaining"] == C.MAX_NEGATION_WORK_BUDGET      # nothing spent on a pair that was never run
+
+
+def test_negation_flip_passages_runs_a_pair_within_the_per_unit_cap_and_spends_the_budget():
+    older_row, newer_row = _sentence_row(10, "Alpha"), _sentence_row(10, "Beta")
+    view = C.VersionView(text="", units=(), chunk_spans=(), method="text", chars_per_page=1000.0)
+    budget = {"remaining": C.MAX_NEGATION_WORK_BUDGET}
+    result = C._negation_flip_passages(older_row, newer_row, view, view, budget)
+    assert result == []                                            # ran fully; no negators anywhere, so no flips
+    assert budget["remaining"] == C.MAX_NEGATION_WORK_BUDGET - 100
+
+
+def test_apply_negation_flips_skips_a_unit_pair_once_the_overall_work_budget_is_exhausted():
+    """Two unit pairs each individually within MAX_NEGATION_PAIRS_PER_UNIT, whose COMBINED cost still exceeds
+    MAX_NEGATION_WORK_BUDGET: the first is checked in full, the second is skipped and counted — never silently."""
+    from semigraph.graph.alignment import Evidence, OlderDecision
+
+    n = 141    # 141*141 = 19,881 <= the per-unit cap (20,000); two of them together exceed the work budget
+    assert n * n <= C.MAX_NEGATION_PAIRS_PER_UNIT < 2 * n * n
+    older_by_id = {f"u{i}": _sentence_row(n, f"Older{i}") for i in range(2)}
+    newer_by_id = {f"v{i}": _sentence_row(n, f"Newer{i}") for i in range(2)}
+    decisions = [OlderDecision(item_id=f"u{i}", label="unchanged", matched_newer_id=f"v{i}", decided_by="test",
+                               evidence=Evidence())
+                for i in range(2)]
+    view = C.VersionView(text="", units=(), chunk_spans=(), method="text", chars_per_page=1000.0)
+    changed: dict = {}
+    promoted, skipped = C._apply_negation_flips(decisions, older_by_id, newer_by_id, view, view, changed)
+    assert promoted == set()
+    assert skipped == 1
+
+
+def test_compare_versions_surfaces_negation_check_skipped_from_the_report(monkeypatch, md_v1, md_v2):
+    """The wiring, isolated from the aligner's own behaviour: whatever _apply_negation_flips reports as skipped
+    must reach the top-level report, never disappear silently."""
+    monkeypatch.setattr(C, "_apply_negation_flips", lambda *a, **k: (set(), 3))
+    report = C.compare_versions(md_v1, md_v2)
+    assert report["negation_check_skipped"] == 3
+
+
+def test_not_compared_and_first_version_reports_carry_negation_check_skipped_too(md_v1):
+    """Schema consistency (docs/v2/M4_PLAN.md 15.6/15): a "not compared" report must carry the SAME key set as a
+    fully-compared one, so a consumer never needs a special case."""
+    same = _build_view(fx.MD_V1)
+    report = C.compare_versions(md_v1, same)
+    assert report["not_compared_reason"] == "identical_content"
+    assert report["negation_check_skipped"] == 0
+
+
+# --------------------------------------------------------------------------
 # not_compared_reason guards
 # --------------------------------------------------------------------------
 
@@ -265,6 +398,7 @@ def test_compare_versions_identical_content(md_v1):
     assert report == {
         "items_compared": False, "not_compared_reason": "identical_content",
         "added": [], "removed": [], "changed": [], "minor_rewordings": [], "unchanged_count": len(md_v1.units),
+        "negation_check_skipped": 0,
     }
 
 

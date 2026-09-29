@@ -36,6 +36,12 @@ LEASE_MINUTES = 30
 # docs/v2/M4_PLAN.md 15.10: a failed check is retried sooner than a full `freshness_poll_hours` wait, so a transient
 # SEC/Federal-Register outage clears itself well inside one poll interval instead of sitting at `error` for hours.
 ERROR_RETRY_MINUTES = 30
+# M4 review round 2 (correctness finding, "the freshness poll loop busy-spins"): `_next_wait_seconds()` is
+# recomputed from `_last`, which a non-admitted attempt (lease denied, lease query raising, or an admin
+# `check_now` holding `_busy`) never touches. Without a floor, an overdue check that keeps being refused
+# recomputes a still-<=0 wait on every pass and spins the loop at 100% of a core. `_run` floors the wait at this
+# many seconds after any attempt that did not actually run a check, regardless of why.
+NOT_ADMITTED_RETRY_S = 60
 
 COMPANY_CIK_QUERY = "MATCH (c:Company) WHERE c.ticker IS NOT NULL RETURN c.ticker AS ticker, c.cik AS cik"
 KNOWN_ACCESSIONS_QUERY = "MATCH (:Company)-[:FILED]->(f:Filing) RETURN f.accession_no AS accession_no"
@@ -55,6 +61,14 @@ SET l._lock = true
 WITH l WHERE l.until IS NULL OR l.until < $now OR l.holder = $me
 SET l.holder = $me, l.until = $now + duration({minutes: $minutes})
 RETURN l.holder = $me AS ok"""
+
+# Run at the end of every check this machine actually started, so a restarted (or simply finished) machine's NEXT
+# boot check need not wait out the full LEASE_MINUTES before it can be admitted. Guarded by `l.holder = $me`
+# (never a bare MATCH-and-clear) so a release that arrives late — this machine's lease already expired and a
+# different machine has since taken it over — cannot clobber the new holder's live lease.
+RELEASE_LEASE_QUERY = """MATCH (l:SvcLease {key: 'freshness'})
+WHERE l.holder = $me
+SET l.holder = null, l.until = null"""
 
 GET_FRESHNESS_QUERY = """MATCH (f:SvcFreshness {key: 'latest'})
 RETURN f.checked_at AS checked_at, f.as_of AS as_of, f.snapshot_id AS snapshot_id,
@@ -156,6 +170,16 @@ def _acquire_lease(driver, holder: str) -> bool:
     return bool(rows) and bool(rows[0]["ok"])
 
 
+def _release_lease(driver, holder: str) -> None:
+    """Best-effort release of the lease THIS ``holder`` holds. Guarded like every other lease/DB call in this
+    module: a failed release must never crash the check that just finished or leave ``_busy`` held — the next
+    lease attempt (this holder or another) simply falls back to waiting out ``until`` as before."""
+    try:
+        run_cypher(driver, RELEASE_LEASE_QUERY, me=holder)
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.exception("releasing the freshness lease failed")
+
+
 def _load_persisted(driver) -> dict | None:
     try:
         rows = run_cypher(driver, GET_FRESHNESS_QUERY)
@@ -246,15 +270,26 @@ class FreshnessMonitor:
             self._last = _load_persisted(self.driver)   # first action ON THE THREAD, never on the event loop
         if self._stop_event.wait(self.settings.freshness_boot_delay_s):
             return
+        admitted = True   # nothing was refused yet, so no floor applies to the very first wait below
         if self._is_stale_or_missing():
-            self._safe_try_check()
+            admitted = self._safe_try_check()
         # ANCHORED on the same due time status_payload()'s next_check_at reports (docs/v2/M4_PLAN.md 15.10),
         # recomputed fresh on every wake — never a flat interval restarted from "now". A monitor that boots with an
         # already-somewhat-stale good check (say 5 h into a 6 h poll interval) must wait only the REMAINING 1 h, not
         # a further full 6 h; a check that just failed must wake again after ERROR_RETRY_MINUTES from the failure,
         # not from whenever the loop happens to next look.
-        while not self._stop_event.wait(max(0.0, self._next_wait_seconds())):
-            self._safe_try_check()
+        #
+        # EXCEPT: when the previous attempt was never actually admitted (the lease denied or raising, or an admin
+        # check_now holding `_busy`), `_last` is untouched, so an overdue check recomputes the SAME <=0 wait on
+        # every pass. Flooring at NOT_ADMITTED_RETRY_S turns that busy-spin into a plain 60 s retry cadence,
+        # without changing the schedule status_payload() reports (which reads `_last`, never this local flag).
+        while True:
+            wait_s = self._next_wait_seconds()
+            if not admitted:
+                wait_s = max(wait_s, NOT_ADMITTED_RETRY_S)
+            if self._stop_event.wait(max(0.0, wait_s)):
+                return
+            admitted = self._safe_try_check()
 
     def _next_wait_seconds(self) -> float:
         """Seconds from NOW until the next check is due — the single source of truth :meth:`_next_check_at` and
@@ -268,25 +303,29 @@ class FreshnessMonitor:
             return max(1, self.settings.freshness_poll_hours) * 3600
         return (datetime.fromisoformat(due_iso) - datetime.now(UTC)).total_seconds()
 
-    def _safe_try_check(self) -> None:
+    def _safe_try_check(self) -> bool:
         """``_try_check`` should never raise (every I/O path below is already guarded), but the polling thread must
-        survive even a genuinely unexpected error — a dead daemon thread means no more polls until a restart."""
+        survive even a genuinely unexpected error — a dead daemon thread means no more polls until a restart.
+        Returns whether a check actually ran (see :meth:`_try_check`); an unexpected error here counts as "did
+        not run", so ``_run`` floors its next wait exactly as it would for a lease denial."""
         try:
-            self._try_check()
+            return self._try_check()
         except Exception:  # noqa: BLE001 - see the docstring
             logger.exception("the freshness poll loop hit an unexpected error")
+            return False
 
     def _is_stale_or_missing(self) -> bool:
         """True exactly when the schedule says a check is due NOW — derived from :meth:`_next_wait_seconds` so this
         can never encode different age/backoff rules than the loop that actually acts on it."""
         return self._next_wait_seconds() <= 0
 
-    def _try_check(self) -> None:
+    def _try_check(self) -> bool:
         """Background-loop path: skip silently when a check is already running, another machine holds the lease, or
         the lease attempt itself fails (a transient Neo4j hiccup must release the lock and let the NEXT poll try
-        again, never leave ``_busy`` held forever)."""
+        again, never leave ``_busy`` held forever). Returns whether a check actually ran — ``_run`` floors its next
+        wait after ``False`` so an overdue check that keeps being refused or erroring never busy-spins."""
         if not self.configured or not self._busy.acquire(blocking=False):
-            return
+            return False
         try:
             admitted = _acquire_lease(self.driver, self._machine_id)
         except Exception:  # noqa: BLE001 - see the docstring
@@ -294,11 +333,14 @@ class FreshnessMonitor:
             admitted = False
         if not admitted:
             self._busy.release()
-            return
+            return False
         self._run_check()
+        return True
 
     def _run_check(self) -> dict:
-        """Assumes ``self._busy`` is already held; always releases it, whoever called this."""
+        """Assumes ``self._busy`` is already held; always releases the lease THIS machine holds and then ``_busy``,
+        whoever called this — a killed process (deploy, OOM) must never leave the next process's due boot check
+        waiting out the full ``LEASE_MINUTES`` for a lease nobody is using any more."""
         try:
             try:
                 result = {**check_once(self.driver, self.settings), "status": "ok", "error": None,
@@ -313,6 +355,7 @@ class FreshnessMonitor:
                 self._last = result
             return result
         finally:
+            _release_lease(self.driver, self._machine_id)
             self._busy.release()
 
     def check_now(self, timeout_s: int = 120) -> dict:
@@ -332,13 +375,25 @@ class FreshnessMonitor:
         return self.status_payload()
 
     def status_payload(self) -> dict:
-        """The ``GET /api/freshness`` / admin-check response shape (docs/v2/M4_PLAN.md 4.1, 15.10). In-memory only."""
+        """The ``GET /api/freshness`` / admin-check response shape (docs/v2/M4_PLAN.md 4.1, 15.10). In-memory only.
+
+        M4 review round 2 (finding: "an old persisted result renders as current"): once ``configured`` goes False
+        — ``SEC_USER_AGENT`` dropped, e.g. in a secrets rotation — a good check persisted BEFORE that change would
+        otherwise still fill ``checked_at``/``pending_count``/``pending_filings``/etc. here, even though ``status``
+        already says ``"unconfigured"``. That data is blanked below so this is the one place both callers
+        (``monitor_routes``, ``/api/stats`` via :meth:`summary`) read from, rather than something each caller's own
+        rendering must remember to special-case. The existing frontend already reads it correctly for free:
+        ``freshnessLine``'s `if (!f.checked_at) return "freshness check unavailable"` fires once ``checked_at`` is
+        null, instead of building a "Data as of ... N filings pending" line out of stale data."""
         with self._state_lock:
             last = dict(self._last) if self._last else {}
+        status = self._status_for(last)
+        if status == "unconfigured":
+            last = {}
         return {
             "configured": self.configured,
             "enabled": self.settings.freshness_enabled,
-            "status": self._status_for(last),
+            "status": status,
             "checked_at": last.get("checked_at"),
             "snapshot_as_of": last.get("snapshot_as_of"),   # the graph's OWN data date — never the check's `as_of`
             "last_error_at": last.get("last_error_at"),
@@ -407,11 +462,18 @@ def summary_without_a_monitor(settings) -> dict:
 
 
 def start_if_enabled(app) -> None:
-    """Create and start the monitor when ``FRESHNESS_ENABLED``; ``app.state.freshness_monitor`` is None otherwise."""
+    """Create and start the monitor when ``FRESHNESS_ENABLED``; ``app.state.freshness_monitor`` is None otherwise.
+
+    Logs one ERROR here, at boot, when ``FRESHNESS_ENABLED`` is set but ``SEC_USER_AGENT`` is missing (M4 review
+    round 2): the monitor still starts — idle, never failing boot over it — but with no signal at all an operator
+    has no way to notice a dropped secret short of watching the page go quiet. Names the missing SETTING only,
+    never a value (there is nothing to log: an empty/missing ``SEC_USER_AGENT`` has no value worth naming)."""
     app.state.freshness_monitor = None
     if not app.state.settings.freshness_enabled:
         return
     monitor = FreshnessMonitor(app.state.driver, app.state.settings)
+    if not monitor.configured:
+        logger.error("FRESHNESS_ENABLED is set but SEC_USER_AGENT is missing — the freshness monitor is idle")
     monitor.start()
     app.state.freshness_monitor = monitor
 

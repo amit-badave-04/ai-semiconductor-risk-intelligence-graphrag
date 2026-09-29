@@ -457,6 +457,19 @@ def test_sweep_orphans_rejects_a_naive_now():
         repo.sweep_orphans(FakeDriver(), datetime(2026, 1, 1))
 
 
+# ---------------------------------------------------------------------- round-4 review, finding R4: scoped CALL
+
+def test_sweep_orphans_select_query_uses_the_scoped_call_subquery_form():
+    """Neo4j 2026.07.1 deprecates a subquery `CALL { ... }` with no variable-scope clause and logs a DEPRECATION
+    notification every time it runs — the sweeper always runs this query, on every 15-minute cycle (finding 26)."""
+    assert "CALL () {" in repo.SWEEP_ORPHANS_SELECT_QUERY
+
+
+def test_no_query_ever_uses_the_deprecated_unscoped_call_subquery_form():
+    for name, text in _query_constants().items():
+        assert not re.search(r"CALL\s*\{", text), f"{name} uses the deprecated unscoped CALL {{ ... }} form"
+
+
 # ---------------------------------------------------------------------- fail_interrupted_jobs (finding 27 seam)
 
 def test_fail_interrupted_jobs_marks_a_stale_non_terminal_job_failed_with_a_rewritten_payload():
@@ -519,6 +532,44 @@ def test_fail_interrupted_jobs_never_touches_an_excluded_job_and_honours_a_calle
     updated = [params["job_id"] for query, params in driver.session_run_calls
                if query == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY]
     assert updated == ["dead"]
+
+
+def test_fail_interrupted_jobs_recovers_a_job_to_ready_when_its_version_already_committed():
+    """Round-4 review, finding 27 residual 1: the job's terminal 'ready' write kept failing, but put_version had
+    already committed the version underneath it — fail_interrupted_jobs must recover the job to 'ready', never
+    mark it 'failed'/'interrupted' over a version that actually succeeded."""
+    stale_payload = json.dumps({"job_id": "j1", "state": "indexing", "document_id": "d1", "version": 2,
+                                "progress": {"done": 40, "total": 40}})
+    version_row = {"chunks": 40, "units": 12, "items_compared": True, "not_compared_reason": None,
+                  "suspicious": False}
+    driver = FakeDriver(session_run_responses={
+        repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1", "payload": stale_payload}],
+        repo.JOB_VERSION_EXISTS_QUERY: [version_row],
+        repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "j1"}]})
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 1
+    query, params = [c for c in driver.session_run_calls if c[0] == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY][0]
+    assert params["state"] == "ready"
+    rewritten = json.loads(params["payload"])
+    assert rewritten["state"] == "ready"
+    assert rewritten["chunks"] == 40 and rewritten["units"] == 12
+    assert "error" not in rewritten
+    assert rewritten["document_id"] == "d1" and rewritten["version"] == 2
+    version_exists_call = [c for c in driver.session_run_calls if c[0] == repo.JOB_VERSION_EXISTS_QUERY][0]
+    assert version_exists_call[1] == {"ws": "ws1", "document_id": "d1", "version": 2}
+
+
+def test_fail_interrupted_jobs_still_marks_failed_when_no_committed_version_exists():
+    """The other half: a job with a document_id/version but no committed UserVersion yet is genuinely interrupted,
+    exactly as before this fix."""
+    stale_payload = json.dumps({"job_id": "j1", "state": "embedding", "document_id": "d1", "version": 1})
+    driver = FakeDriver(session_run_responses={
+        repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1", "payload": stale_payload}],
+        repo.JOB_VERSION_EXISTS_QUERY: [],
+        repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "j1"}]})
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 1
+    query, params = [c for c in driver.session_run_calls if c[0] == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY][0]
+    assert params["state"] == "failed"
+    assert json.loads(params["payload"])["error"] == {"code": "interrupted", "message": repo._INTERRUPTED_ERROR_MESSAGE}
 
 
 def test_the_default_threshold_sits_above_the_default_parse_and_embed_budgets():

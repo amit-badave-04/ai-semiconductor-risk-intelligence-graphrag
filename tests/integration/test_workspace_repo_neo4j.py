@@ -465,6 +465,16 @@ def test_sweep_orphans_never_touches_a_live_workspaces_nodes(driver, two_workspa
     assert _count_user_nodes(driver, ws1)   # its own nodes are still there
 
 
+def test_sweep_orphans_select_query_raises_no_deprecation_notification_on_real_neo4j(driver, caplog):
+    """R4 (round-4 reliability review, docs/v2/M4_PLAN.md 15.4): the plain, unscoped ``CALL { ... }`` form is
+    deprecated on Neo4j 2026.07.1 and used to log a DEPRECATION notification on every sweep cycle (the sweeper
+    always runs this query, finding 26) — ``CALL () { ... }`` (explicit empty scope) must not."""
+    with caplog.at_level("WARNING", logger="neo4j.notifications"):
+        with driver.session() as session:
+            session.run(repo.SWEEP_ORPHANS_SELECT_QUERY).consume()
+    assert not any("deprecat" in r.getMessage().lower() for r in caplog.records), caplog.records
+
+
 # ---------------------------------------------------------------------- fail_interrupted_jobs (finding 27 seam)
 
 def test_fail_interrupted_jobs_marks_a_stale_job_failed_and_a_replay_shows_it(driver, two_workspaces):
@@ -515,6 +525,31 @@ def test_exclusion_aware_sweep_never_fails_a_registered_live_job_but_does_fail_a
     assert n >= 1
     assert repo.get_job(driver, ws, "j-live")["state"] == "embedding"     # excluded: never touched
     assert repo.get_job(driver, ws, "j-dead")["state"] == "failed"        # not registered here: marked interrupted
+
+
+def test_fail_interrupted_jobs_recovers_a_job_to_ready_when_its_version_already_committed(driver, two_workspaces):
+    """Round-4 review, finding 27 residual 1, against the REAL database: a job's terminal write can keep failing
+    even though ``put_version`` already committed the version — ``fail_interrupted_jobs`` must recover it to
+    ``ready``, never mark it ``failed``/``interrupted`` over a version that actually succeeded."""
+    ws = two_workspaces["ws1"]
+    now = datetime.now(UTC)
+    repo.put_version(driver, ws, document_id="ffffffffffff", title="T", version=1, content_hash="hf",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="hi", units=[_unit(char_end=2)],
+                     chunks=[_chunk("doc:ffffffffffff:v1:0000", "hi", "hf", _vec(77))],
+                     change_report=_no_report(), suspicious=False, now=now)
+    # The terminal "ready" write itself never landed (simulated directly): the persisted job is stuck non-terminal.
+    repo.put_job(driver, ws, {"job_id": "j-stuck", "state": "indexing", "document_id": "ffffffffffff", "version": 1})
+    stale = datetime.now(UTC) - timedelta(seconds=repo.FAIL_INTERRUPTED_AFTER_S + 60)
+    with driver.session() as session:
+        session.run("MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id}) SET j.updated_at = $stale",
+                   ws=ws, job_id="j-stuck", stale=stale).consume()
+
+    fixed = repo.fail_interrupted_jobs(driver, datetime.now(UTC))
+    assert fixed >= 1
+    replayed = repo.get_job(driver, ws, "j-stuck")
+    assert replayed["state"] == "ready"
+    assert replayed["chunks"] == 1 and replayed["units"] == 1
+    assert "error" not in replayed
 
 
 # ---------------------------------------------------------------------- leak proofs against the public graph
@@ -580,6 +615,29 @@ def test_acquire_lease_admits_a_new_holder_once_the_old_one_expires(driver, clea
         session.run("MATCH (l:SvcLease {key: 'freshness'}) SET l.until = $past",
                    past=datetime.now(UTC) - timedelta(minutes=1)).consume()
     assert monitor_mod._acquire_lease(driver, "holder-2") is True
+
+
+def test_release_lease_lets_a_different_holder_acquire_immediately_without_waiting_out_the_lease(
+        driver, clean_lease_and_freshness):
+    """C1/R1 (M4 review round 2): a machine that finishes (or is killed and restarts) must not leave the next
+    holder's due boot check waiting out the full LEASE_MINUTES for a lease nobody needs any more."""
+    assert monitor_mod._acquire_lease(driver, "holder-1") is True
+    monitor_mod._release_lease(driver, "holder-1")
+    assert monitor_mod._acquire_lease(driver, "holder-2") is True   # no wait for `until` to lapse
+
+
+def test_release_lease_from_a_stale_holder_never_clobbers_the_new_holders_live_lease(driver, clean_lease_and_freshness):
+    """The release query's `WHERE l.holder = $me` guard: a release that arrives late — this holder's OWN lease
+    already expired and a different machine has since taken it over — must never clear the NEW holder's lease."""
+    assert monitor_mod._acquire_lease(driver, "holder-1") is True
+    with driver.session() as session:
+        session.run("MATCH (l:SvcLease {key: 'freshness'}) SET l.until = $past",
+                   past=datetime.now(UTC) - timedelta(minutes=1)).consume()
+    assert monitor_mod._acquire_lease(driver, "holder-2") is True   # holder-2 now legitimately owns the lease
+
+    monitor_mod._release_lease(driver, "holder-1")   # a late, stale release from the OLD holder
+
+    assert monitor_mod._acquire_lease(driver, "holder-3") is False   # holder-2's lease must still be live
 
 
 def test_persist_and_load_freshness_state_round_trips_live(driver, clean_lease_and_freshness):

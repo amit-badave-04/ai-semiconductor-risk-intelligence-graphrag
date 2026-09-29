@@ -41,8 +41,17 @@ REGISTRY_GRACE_PERIOD_S = 60
 
 # A progress write (``put_job``) is retried this many times only when the event is TERMINAL (ready/failed): a
 # non-terminal write is best-effort (logged, never retried) so one flaky write can never kill a job (finding 27).
-PUT_JOB_RETRY_ATTEMPTS = 3
-PUT_JOB_RETRY_BACKOFF_S = 0.2
+# The backoff DOUBLES on every attempt (round-4 review, finding 27 residual 1): ``put_version``'s own
+# ``session.execute_write`` already retries a transient Neo4j error for up to the driver's own budget (~30s); the
+# previous fixed 3 x 0.2s = 0.4s terminal retry could exhaust itself while put_version was still quietly
+# succeeding underneath it, leaving a client stuck replaying a stale non-terminal state. 6 attempts at a doubling
+# 0.5s base sleep 0.5s between attempts (0.5+1+2+4+8 = 15.5s worst case) meaningfully closes that gap without
+# blocking the worker thread for long. This still does not GUARANTEE the terminal write lands — the backstop is
+# ``repo.fail_interrupted_jobs``, which now checks whether the job's version already committed before ever marking
+# it "failed" (see ``repo.py``), so a truly-successful upload is never mislabelled even if every one of these
+# attempts fails.
+PUT_JOB_RETRY_ATTEMPTS = 6
+PUT_JOB_RETRY_BACKOFF_S = 0.5
 
 TERMINAL_STATES = ("ready", "failed")
 
@@ -176,6 +185,16 @@ class JobRegistry:
         with self._lock:
             return frozenset(self._logs.keys())
 
+    def prune(self) -> None:
+        """EAGER pruning (docs/v2/M4_PLAN.md 15.4, finding 27 residual, round-4 review): every other method here
+        only prunes LAZILY, as a side effect of a watcher calling :meth:`try_watch`/:meth:`events_from` again — a
+        finished job nobody ever reconnects to would otherwise sit in this registry (and in :meth:`keys`, which
+        ``fail_interrupted_jobs``' own ``exclude`` is built from) forever. The upload sweeper calls this once every
+        cycle so a job past its grace period always eventually leaves — and, critically, becomes eligible again for
+        ``repo.fail_interrupted_jobs``' own version-exists recovery check — even if nothing ever watches it again."""
+        with self._lock:
+            self._prune_locked()
+
     def _prune_locked(self) -> None:
         now = self._clock()
         stale = [key for key, log in self._logs.items()
@@ -221,6 +240,7 @@ def _persist_job(driver, workspace_id: str, job: dict) -> None:
     workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
     is_terminal = job.get("state") in TERMINAL_STATES
     attempts = PUT_JOB_RETRY_ATTEMPTS if is_terminal else 1
+    backoff = PUT_JOB_RETRY_BACKOFF_S
     last_exc: Exception | None = None
     for attempt in range(attempts):
         try:
@@ -231,7 +251,8 @@ def _persist_job(driver, workspace_id: str, job: dict) -> None:
         except Exception as exc:  # noqa: BLE001 — a progress write must never crash the job (finding 27)
             last_exc = exc
             if attempt + 1 < attempts:
-                time.sleep(PUT_JOB_RETRY_BACKOFF_S)
+                time.sleep(backoff)
+                backoff *= 2                              # doubling backoff (round-4 review, finding 27 residual 1)
     level = logger.error if is_terminal else logger.warning
     level("upload job progress write failed ws_hash=%s job_id=%s state=%s terminal=%s attempts=%d: %s",
          _ws_hash(workspace_id), job.get("job_id"), job.get("state"), is_terminal, attempts,
@@ -354,13 +375,25 @@ def _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_r
 
     if latest is None:
         # Same shape as changes.compare_versions' own "not compared" result (docs/v2/M4_PLAN.md 15.6/15): every key
-        # compare_versions ever returns must be present here too, including minor_rewordings — a consumer (the
-        # page's changesHtml) must never need a special case for "first version" versus "not compared".
+        # compare_versions ever returns must be present here too, including minor_rewordings and
+        # negation_check_skipped (round-4 review, finding S3) — a consumer (the page's changesHtml) must never need
+        # a special case for "first version" versus "not compared".
         return {"items_compared": False, "not_compared_reason": "first_version",
-               "added": [], "removed": [], "changed": [], "minor_rewordings": [], "unchanged_count": 0}
+               "added": [], "removed": [], "changed": [], "minor_rewordings": [], "unchanged_count": 0,
+               "negation_check_skipped": 0}
     from . import repo
 
     older_row = repo.version_view(driver, ws, document_id, latest["version"])
+    if older_row is None:
+        # R6 (round-4 reliability review, docs/v2/M4_PLAN.md 15.4, C3 item 1): version_view is a plain read — it
+        # never takes put_version/put_job's workspace lock — so it can start returning None for a version a
+        # concurrent delete_workspace (or the TTL sweep) just removed. Before this fix, letting `_version_view(None)`
+        # unpack it crashed with an unrelated TypeError, which `_worker`'s generic `except Exception` then logged at
+        # ERROR ("upload job crashed") with a full traceback for what is really a benign user action. Raising
+        # WorkspaceGone here instead means this ends the SAME way every other mid-job deletion does: a local-only
+        # `workspace_deleted` event, logged once at INFO by `_fail` — never an ERROR traceback.
+        workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
+        raise workspace_gone("the workspace no longer exists")
     older_view = _version_view(older_row)
     newer_view = _version_view({"text": text, "units": [
         {"unit_id": u.unit_id, "kind": u.kind, "headline": u.headline, "char_start": u.char_start,
@@ -500,13 +533,17 @@ def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data
     local-only ``workspace_deleted`` event, never a second, doomed write attempt against a workspace that is
     already gone.
 
-    A SECOND, subtler window (C3 item 1, docs/v2/M4_PLAN.md 15.4): a workspace deletion can first surface as some
-    OTHER exception (e.g. ``repo.version_view`` starts returning ``None`` for a deleted document mid-``comparing``,
-    which ``_version_view`` then fails to unpack) — caught below by ``except Exception``, which tries to report
-    ``internal_error``. Reporting THAT failure is itself a ``put_job`` write, so it can ALSO raise
-    ``WorkspaceGone`` (nothing was persisted); without the nested ``try`` below, that second exception would
-    escape this function entirely — an unhandled exception silently killing the thread, exactly the bug this item
-    fixes. Either window ends the same way: a local-only ``workspace_deleted`` event, never a crash."""
+    A SECOND, subtler window (C3 item 1, docs/v2/M4_PLAN.md 15.4) is a workspace deletion that first surfaces as
+    some OTHER exception rather than ``WorkspaceGone`` itself — caught below by ``except Exception``, which tries
+    to report ``internal_error``. Reporting THAT failure is itself a ``put_job`` write, so it can ALSO raise
+    ``WorkspaceGone`` (nothing was persisted); without the nested ``try`` below, that second exception would escape
+    this function entirely — an unhandled exception silently killing the thread. The ONE known trigger for this
+    window (``repo.version_view`` returning ``None`` for a deleted document mid-``comparing``) is now caught
+    directly by ``_compare_with_previous`` instead (R6, round-4 reliability review): it raises ``WorkspaceGone``
+    there, so it takes the FIRST branch below, never this one, and is logged once at INFO — never as an ERROR
+    "upload job crashed" traceback for a benign user delete. This nested ``try`` remains as defence-in-depth for any
+    OTHER, not-yet-seen exception that a workspace deletion might still surface as. Either window ends the same
+    way: a local-only ``workspace_deleted`` event, never a crash."""
     from . import repo
 
     st = app.state
@@ -569,6 +606,12 @@ def _fail_interrupted_older_than_s(settings) -> int:
     return settings.upload_parse_timeout_s + settings.upload_embed_timeout_s + FAIL_INTERRUPTED_STAGE_MARGIN_S
 
 
+# The age threshold used ONLY for the sweeper's very first pass, right after this process starts (docs/v2/M4_PLAN.md
+# 15.4, finding 27 residual / round-4 review C5) — see _Sweeper._run's docstring for the single-machine reasoning
+# this depends on, and never remove that assumption without reading it first.
+SWEEPER_START_OLDER_THAN_S = 0
+
+
 class _Sweeper:
     """Deletes expired workspaces and orphaned ``User*`` nodes every :data:`SWEEP_INTERVAL_S`
     (``uploads.repo.sweep_expired`` / ``uploads.repo.sweep_orphans``, both idempotent), and marks any job left
@@ -581,7 +624,24 @@ class _Sweeper:
 
     ``registry`` and ``settings`` (both optional; production always passes both, via :func:`start_if_enabled`) feed
     ``repo.fail_interrupted_jobs``: a job still open in THIS process's :class:`JobRegistry` is excluded (never marked
-    interrupted by age alone) and the age threshold derives from the job budgets; without them repo's defaults apply."""
+    interrupted by age alone) and the age threshold derives from the job budgets; without them repo's defaults apply.
+
+    START PASS (round-4 review, finding C5): the very first call, before this thread's first wait, uses
+    :data:`SWEEPER_START_OLDER_THAN_S` (0) instead of the settings-derived threshold. This process's own
+    :class:`JobRegistry` is EMPTY the moment this thread starts (:func:`start_if_enabled` creates the sweeper before
+    any upload request can create a job), so every ``UserJob`` a start-pass ``SELECT`` finds is a job THIS process
+    never started — however recently its ``updated_at`` looks. Under the CURRENT single-API-machine deployment
+    (``docs/v2/M4_PLAN.md``: one Fly machine, rolling redeploys), that job can only belong to the process this one
+    replaced, which is no longer running: there is nothing else it could still be. Without this, a job the previous
+    process left non-terminal would replay its stale state for a further :data:`SWEEP_INTERVAL_S` plus the age
+    threshold (31-46 minutes) before the first PERIODIC pass finally caught it.
+
+    MULTI-MACHINE WARNING: this reasoning breaks the moment more than one API machine can run this sweeper at once
+    (or a rolling deploy overlaps the old machine still finishing a job with the new machine's sweeper already
+    starting) — ``older_than_s=0`` at start would then fail a job that IS still running, just on a machine this
+    process's registry can never know about. Do not remove the single-machine assumption without first adding a
+    real cross-machine lease (a heartbeat row per job, or a lease token like ``serve.monitor``'s ``SvcLease``) that
+    a start pass can check before failing a job it did not itself create."""
 
     def __init__(self, driver, registry: JobRegistry | None = None, settings=None) -> None:
         self.driver = driver
@@ -600,18 +660,37 @@ class _Sweeper:
             self._thread.join(timeout)
 
     def _run(self) -> None:
-        self._safe_fail_interrupted()
+        self._safe_fail_interrupted(older_than_s=SWEEPER_START_OLDER_THAN_S)      # see the class docstring
         while not self._stop_event.wait(SWEEP_INTERVAL_S):
+            # Pruning BEFORE fail_interrupted (round-4 review, finding 27 residual): a finished job whose grace
+            # period has elapsed must actually leave the registry EAGERLY, on this cycle, rather than only when some
+            # watcher happens to reconnect — otherwise it stays in `registry.keys()` (fail_interrupted_jobs' own
+            # `exclude`) forever, and a job whose terminal write kept failing (finding 27) would never even be
+            # CONSIDERED for the version-exists recovery `repo.fail_interrupted_jobs` now does.
+            self._safe_prune_registry()
             self._safe_fail_interrupted()
             self._safe_sweep()
             self._safe_sweep_orphans()
 
-    def _safe_fail_interrupted(self) -> None:
+    def _safe_prune_registry(self) -> None:
+        if self.registry is None:
+            return
+        try:
+            self.registry.prune()
+        except Exception:  # noqa: BLE001 - boot must never crash or block on this
+            logger.exception("upload sweeper: pruning the job registry failed")
+
+    def _safe_fail_interrupted(self, *, older_than_s: int | None = None) -> None:
+        """``older_than_s`` overrides the settings-derived threshold when given (the START pass only — see the
+        class docstring); the periodic passes always omit it, so they keep using the settings-derived value (or
+        ``repo``'s own default when this sweeper has no settings)."""
         from . import repo
 
         try:      # everything inside: nothing here may ever kill the sweeper thread
             kwargs = {}
-            if self.settings is not None:
+            if older_than_s is not None:
+                kwargs["older_than_s"] = older_than_s
+            elif self.settings is not None:
                 kwargs["older_than_s"] = _fail_interrupted_older_than_s(self.settings)
             if self.registry is not None:
                 kwargs["exclude"] = self.registry.keys()

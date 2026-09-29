@@ -257,8 +257,10 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
   agent, and are logged as counts only; the access log shows `<ws:hash>`.
 - **Turnstile** is mandatory for creating a workspace and for each upload (`X-Turnstile-Token` header, checked before the body
   is read). Without `TURNSTILE_SECRET_KEY` in production these routes answer 503.
-- **Parsing** runs in a separate process with a 1 GiB address-space limit, a 90 s timeout, no secrets in its environment and
-  no network use; only the parsed text comes back.
+- **Parsing** runs in a separate process with a 1 GiB address-space limit, a 90 s timeout and no secrets in its environment;
+  only the parsed text comes back. The API process marks itself non-dumpable at boot, so that child cannot read the API's
+  secrets through `/proc` either (the boot log says "process marked non-dumpable"). `flyctl ssh console` runs as root and
+  still reads `/proc/<pid>/status` for memory checks.
 - **Deletion:** `DELETE /api/workspace/{id}` removes everything at once; a sweeper deletes expired workspaces every 15 minutes
   (it runs even when `UPLOADS_ENABLED` is off). A dump swap of the database (see "Updating the graph") also deletes every live
   workspace.

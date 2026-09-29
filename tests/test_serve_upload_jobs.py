@@ -10,6 +10,7 @@ synchronously so tests never race a background thread; one test exercises the pu
 from __future__ import annotations
 
 import json
+import logging
 import threading
 
 import pytest
@@ -398,14 +399,15 @@ def test_a_known_failures_persist_that_discovers_the_workspace_gone_reports_work
     assert [j for j in fake_repo.jobs if j["state"] == "failed"] == []    # too_many_pages itself was never persisted
 
 
-def test_a_crash_that_then_finds_the_workspace_gone_while_reporting_it_never_leaves_an_unhandled_exception(
-        fake_repo, monkeypatch):
-    """C3 item 1, the subtle window (docs/v2/M4_PLAN.md 15.4): the workspace can vanish mid-job in a way that FIRST
-    surfaces as an unrelated crash — here, a stale read during ``comparing`` once ``repo.version_view`` starts
-    returning ``None`` for a deleted document. Reporting that crash as ``internal_error`` is itself a ``put_job``
-    write, and THAT is what actually discovers ``WorkspaceGone``. Before this fix, that second exception escaped
-    ``_worker`` entirely (an unhandled exception silently killing the thread) instead of being reported as
-    ``workspace_deleted``."""
+def test_a_stale_version_view_read_during_comparing_ends_as_workspace_deleted_not_a_crash(
+        fake_repo, monkeypatch, caplog):
+    """R6 (docs/v2/M4_PLAN.md 15.4, round-4 reliability review): a benign user delete mid-'comparing' must be
+    logged at INFO as workspace_deleted — never ERROR 'upload job crashed' with a traceback. ``version_view`` is a
+    plain read (it never takes ``put_version``/``put_job``'s workspace lock), so it can start returning ``None``
+    for a version a concurrent ``delete_workspace`` just removed; ``_compare_with_previous`` must treat that
+    exactly like ``WorkspaceGone``, not let ``_version_view(None)`` crash with an unrelated ``TypeError`` first
+    (which used to reach ``_worker``'s generic ``except Exception`` and log a full traceback for an ordinary user
+    action)."""
     v1 = _parsed([_block("Alpha bravo charlie delta echo foxtrot.")])
     monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: v1)
     app = FakeApp(fake_repo)
@@ -417,11 +419,13 @@ def test_a_crash_that_then_finds_the_workspace_gone_while_reporting_it_never_lea
     # SETUP time, so the module attribute itself must be repatched here — reassigning fake_repo.version_view alone
     # would not change what `repo.version_view` resolves to.
     monkeypatch.setattr(repo, "version_view", lambda driver, ws, document_id, version: None)   # deleted mid-flight
-    fake_repo.put_job_gone_when = lambda job: job.get("error", {}).get("code") == "internal_error"
-    reg = _run(app, job_id="job2", content_hash_hex="i" * 64)   # must not raise
+    with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
+        reg = _run(app, job_id="job2", content_hash_hex="i" * 64)   # must not raise
     live_events, _ = reg.events_from(WS, "job2", 0)
     terminal = [e for e in live_events if e["state"] == "failed"]
     assert len(terminal) == 1 and terminal[0]["error"]["code"] == "workspace_deleted"
+    assert not any(r.levelno >= logging.ERROR for r in caplog.records)
+    assert not any("crashed" in r.getMessage() for r in caplog.records)
     persisted_codes = [j["error"]["code"] for j in _events(fake_repo, "job2") if j["state"] == "failed"]
     assert "internal_error" not in persisted_codes        # the internal_error write itself never landed
     assert app.state.upload_slots.released == 2           # once per job run on this shared app (job1 then job2)
@@ -722,6 +726,77 @@ def test_a_broken_fail_interrupted_jobs_never_blocks_or_crashes_boot(monkeypatch
 
     monkeypatch.setattr(repo, "fail_interrupted_jobs", boom)
     jobs._Sweeper(object(), jobs.JobRegistry(), FakeSettings())._safe_fail_interrupted()      # must not raise
+
+
+def test_sweeper_start_pass_uses_older_than_s_zero_regardless_of_settings(monkeypatch):
+    """Finding C5 (round-4 reliability review, docs/v2/M4_PLAN.md 15.4, finding 27 residual): a job left
+    non-terminal by the process that died must be marked interrupted on the VERY FIRST pass — this process's own
+    JobRegistry is empty at start, and the deployment is single-machine, so there is nothing else it could be."""
+    calls = []
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), 0)[1])
+    monkeypatch.setattr(repo, "sweep_expired", lambda driver, now: 0)
+    monkeypatch.setattr(repo, "sweep_orphans", lambda driver, now: 0)
+    sweeper = jobs._Sweeper(object(), jobs.JobRegistry(), FakeSettings())
+    jobs.SWEEP_INTERVAL_S, saved = 10, jobs.SWEEP_INTERVAL_S     # long enough that only the start pass fires
+    try:
+        sweeper.start()
+        import time
+        time.sleep(0.05)
+    finally:
+        jobs.SWEEP_INTERVAL_S = saved
+        sweeper.stop(timeout=2)
+    assert calls[0] == {"older_than_s": 0, "exclude": frozenset()}
+
+
+def test_sweeper_prunes_the_registry_every_periodic_cycle(monkeypatch):
+    """Finding 27 residual (round-4 reliability review): eager pruning must run every cycle so a finished job past
+    its grace period actually leaves the registry (and fail_interrupted_jobs' own ``exclude``) even if nothing ever
+    reconnects to watch it again."""
+    reg = jobs.JobRegistry()
+    calls = []
+    monkeypatch.setattr(reg, "prune", lambda: calls.append(1))
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: 0)
+    monkeypatch.setattr(repo, "sweep_expired", lambda driver, now: 0)
+    monkeypatch.setattr(repo, "sweep_orphans", lambda driver, now: 0)
+    sweeper = jobs._Sweeper(object(), reg)
+    jobs.SWEEP_INTERVAL_S, saved = 0.01, jobs.SWEEP_INTERVAL_S
+    try:
+        sweeper.start()
+        import time
+        time.sleep(0.05)
+    finally:
+        jobs.SWEEP_INTERVAL_S = saved
+        sweeper.stop(timeout=2)
+    assert len(calls) >= 1
+
+
+def test_a_broken_registry_prune_never_blocks_or_crashes_the_sweeper(monkeypatch):
+    reg = jobs.JobRegistry()
+
+    def boom():
+        raise RuntimeError("prune exploded")
+
+    monkeypatch.setattr(reg, "prune", boom)
+    jobs._Sweeper(object(), reg)._safe_prune_registry()      # must not raise
+
+
+def test_registry_prune_removes_a_finished_jobs_log_once_its_grace_period_has_elapsed():
+    now = [1000.0]
+    reg = jobs.JobRegistry(clock=lambda: now[0])
+    reg.create("ws", "job1")
+    reg.append("ws", "job1", {"state": "ready"})
+    now[0] += jobs.REGISTRY_GRACE_PERIOD_S + 1
+    assert ("ws", "job1") in reg.keys()          # still present: nothing has pruned it yet
+    reg.prune()
+    assert ("ws", "job1") not in reg.keys()
+
+
+def test_registry_prune_leaves_a_fresh_or_unfinished_job_alone():
+    reg = jobs.JobRegistry()
+    reg.create("ws", "job1")
+    reg.append("ws", "job1", {"state": "embedding"})     # non-terminal: never pruned
+    reg.prune()
+    assert ("ws", "job1") in reg.keys()
 
 
 def test_sweeper_calls_fail_interrupted_jobs_on_every_cycle_not_only_at_start(monkeypatch):

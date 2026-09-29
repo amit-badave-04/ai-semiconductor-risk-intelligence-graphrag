@@ -180,9 +180,12 @@ async def stats(request: Request):
 
 def uploads_available(st) -> bool:
     """Uploads answer only when the deployment enables them AND the upload service started (``uploads.jobs`` sets
-    ``uploads_ready``; False when the embedder cannot count tokens). The page, ``/api/stats`` and every workspace route
-    use this one predicate, so they can never disagree."""
-    return bool(st.settings.uploads_enabled and getattr(st, "uploads_ready", False))
+    ``uploads_ready``; False when the embedder cannot count tokens) AND, in production, the Turnstile secret exists (the
+    upload routes fail closed without it). The page, ``/api/stats`` and every workspace route use this one predicate, so
+    they can never disagree."""
+    s = st.settings
+    bot_gate_ok = bool(getattr(s, "turnstile_secret_key", "")) or not getattr(s, "is_production", False)
+    return bool(s.uploads_enabled and getattr(st, "uploads_ready", False) and bot_gate_ok)
 
 
 def _freshness_summary(st) -> dict:

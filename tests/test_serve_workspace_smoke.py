@@ -186,3 +186,163 @@ def test_the_after_delete_probe_names_the_route_that_still_answered():
     ok, statuses = smoke._all_workspace_routes_404(client, "http://x", "a" * 32, "t", "0123456789ab",
                                                    "doc:0123456789ab:v1:0000", "job123")
     assert not ok and statuses["POST /api/ask"] == 400
+
+
+# ---------------------------------------------------------------- round-2 review finding C6: a step raising must
+# still delete the workspace and produce a report — never abort run()/main() with no artifact written at all.
+
+
+class _FakeResponse:
+    def __init__(self, status_code, json_body=None, text=""):
+        self.status_code = status_code
+        self._json = json_body if json_body is not None else {}
+        self.text = text
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"simulated HTTP {self.status_code}")
+
+    def json(self):
+        return self._json
+
+
+def test_ask_returns_an_error_marker_instead_of_raising_on_a_non_2xx_response():
+    """C6: the third (merely observational) ask of a second G1 run within 10 minutes gets a 429 from the real
+    per-address ask rate limit. Before the fix, `_ask` called `raise_for_status()` and this escaped `run()`."""
+    class _Client:
+        def post(self, url, **kw):
+            return _FakeResponse(429)
+
+    result = smoke._ask(_Client(), "http://x", "a" * 32, "t", "What does my document say about the market outlook?")
+    assert result == {"error": True, "status_code": 429}
+
+
+def test_ask_still_parses_a_successful_response_exactly_as_before():
+    class _Client:
+        def post(self, url, **kw):
+            return _FakeResponse(200, text='data: {"event": "done", "answer": "hi", "citations": []}\n\n')
+
+    result = smoke._ask(_Client(), "http://x", "a" * 32, "t", "What does my document say?")
+    assert result == {"event": "done", "answer": "hi", "citations": []}
+
+
+class _FailingUploadClient:
+    """POST /api/workspace succeeds; the first upload then raises — modelling a transient error escaping the route
+    before the normal flow ever reaches its own DELETE at the end of `_run_as_of_and_cleanup`."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, str]] = []
+
+    def post(self, url, **kw):
+        self.calls.append(("POST", url))
+        if url.endswith("/api/workspace"):
+            return _FakeResponse(201, {"workspace_id": "a" * 32, "token": "tok", "expires_at": "later"})
+        if url.endswith("/documents"):
+            raise RuntimeError("simulated transient upload failure")
+        raise AssertionError(f"unexpected POST {url}")
+
+    def get(self, url, **kw):
+        raise AssertionError(f"unexpected GET {url}")
+
+    def delete(self, url, **kw):
+        self.calls.append(("DELETE", url))
+        return _FakeResponse(204)
+
+
+def test_redact_exception_text_scrubs_the_raw_workspace_id_and_token_from_an_error_message():
+    """A real httpx.HTTPStatusError embeds the request URL (raw workspace id) in its message; the token never
+    appears in a URL, but is scrubbed too as defense in depth. Neither may reach the committed artifact."""
+    ws, token = "a" * 32, "super-secret-token"
+    exc = RuntimeError(f"Client error '429' for url 'http://x/api/workspace/{ws}/documents' token={token}")
+    text = smoke._redact_exception_text(exc, ws, token)
+    assert ws not in text and token not in text
+    assert text.startswith("RuntimeError: ") and f"<ws:{smoke._ws_hash(ws)}>" in text and "<secret>" in text
+
+
+def test_run_g1_deletes_the_workspace_and_records_an_error_when_a_step_raises_partway():
+    client = _FailingUploadClient()
+    report = smoke._run_g1(client, "http://x", 0.5)
+    assert "error" in report and "simulated transient upload failure" in report["error"]
+    deletes = [c for c in client.calls if c[0] == "DELETE"]
+    assert deletes == [("DELETE", f"http://x/api/workspace/{'a' * 32}")]
+    # every G1 check is reported as FAILED (none of the steps that would set them ever ran) — never an exception,
+    # and evaluate_g1/main() can still print a verdict and write an artifact from this.
+    assert smoke.evaluate_g1(report["results"]) == smoke.evaluate_g1({})
+
+
+def test_run_g1_never_raises_when_the_workspace_itself_cannot_even_be_created():
+    class _AlwaysFailsClient:
+        def post(self, url, **kw):
+            raise RuntimeError("simulated network error creating the workspace")
+
+        def delete(self, url, **kw):
+            raise AssertionError("nothing to delete: no workspace was ever created")
+
+    report = smoke._run_g1(_AlwaysFailsClient(), "http://x", 0.5)   # must not raise
+    assert "error" in report and report["results"] == {}
+    assert report["steps"]["created"] is None
+
+
+def test_run_g1_still_deletes_when_the_delete_call_itself_also_fails():
+    """The `finally` cleanup is itself best-effort: an unreachable service must not turn a reported step failure
+    into an unhandled exception from _run_g1 — the workspace is simply left to its own TTL."""
+    class _Client:
+        def post(self, url, **kw):
+            if url.endswith("/api/workspace"):
+                return _FakeResponse(201, {"workspace_id": "a" * 32, "token": "tok", "expires_at": "later"})
+            raise RuntimeError("boom")
+
+        def delete(self, url, **kw):
+            raise RuntimeError("the service is unreachable")
+
+    report = smoke._run_g1(_Client(), "http://x", 0.5)   # must not raise, despite delete() also raising
+    assert "error" in report and "boom" in report["error"]
+
+
+class _AsOfCleanupClient:
+    """Everything `_run_as_of_and_cleanup` touches. The observational as_of=yesterday ask answers 429 — the exact
+    scenario finding C6 named — and every route answers 404 once DELETE has actually been called."""
+
+    def __init__(self, document_id: str):
+        self.document_id = document_id
+        self.deleted = False
+        self.ask_calls = 0
+
+    def post(self, url, **kw):
+        if url.endswith("/api/ask"):
+            self.ask_calls += 1
+            return _FakeResponse(404 if self.deleted else 429)
+        if url.endswith("/documents"):
+            return _FakeResponse(404 if self.deleted else 202, {})
+        raise AssertionError(f"unexpected POST {url}")
+
+    def get(self, url, **kw):
+        if self.deleted:
+            return _FakeResponse(404)
+        if url.endswith("/changes"):
+            return _FakeResponse(200, {"items_compared": True,
+                                       "changed": [{"headline": "Market Outlook"}],
+                                       "added": [{"headline": "Cybersecurity Practices"}],
+                                       "removed": [{"headline": "Legal Proceedings"}], "unchanged_count": 1})
+        if "/evidence/" in url:
+            return _FakeResponse(200, {"document_id": self.document_id, "is_current": False,
+                                       "status": "superseded", "superseded_by_version": 2})
+        return _FakeResponse(404)
+
+    def delete(self, url, **kw):
+        was_deleted = self.deleted
+        self.deleted = True
+        return _FakeResponse(404 if was_deleted else 204)
+
+
+def test_run_as_of_and_cleanup_treats_a_failed_observational_ask_as_one_failed_check_not_a_crash():
+    """C6: `as_of_date_before_creation_empty` (fed by the failed ask) is reported False, but the change report,
+    evidence and delete-then-404 checks — none of which depend on that ask — still run and still pass. The
+    observational ask never aborts the checks after it."""
+    client = _AsOfCleanupClient(document_id="doc1")
+    result = smoke._run_as_of_and_cleanup(client, "http://x", "a" * 32, "t", "doc1", "doc:doc1:v1:0000", "job1")
+    assert result["results"]["as_of_date_before_creation_empty"] is False
+    assert result["results"]["changes_match_edit_set"] is True
+    assert result["results"]["evidence_ok"] is True
+    assert result["results"]["deleted_then_404"] is True
+    assert client.ask_calls == 2   # the observational ask itself, then its own post-delete 404 probe

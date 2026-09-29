@@ -579,6 +579,72 @@ NEGATION_DOUBLE_V2 = NEGATION_DOUBLE_V1.replace(
 
 
 # --------------------------------------------------------------------------
+# Negation polarity, round-4 review: a unit that ALSO carries a real compute_passages passage on a DIFFERENT
+# sentence (finding C2), and the "without limitation" boilerplate false positive (finding C4). Text for the first
+# two pairs is copied verbatim from the review's own repro (m4review2/negation_probe.py) so the fix is tested
+# against the EXACT scenario that was reported.
+# --------------------------------------------------------------------------
+
+# finding C2: the "Export Control Exposure" unit has BOTH an ordinary reworded revenue sentence AND a negation
+# flip on its other sentence. Before the fix, _apply_negation_flips skipped the whole unit once compute_passages
+# already gave it a (revenue-only) passage, silently dropping the export-control reversal.
+NEGATION_FLIP_PLUS_REWORD_V1 = (
+    "# Executive Summary Of Operations\n"
+    "The company performed well this quarter across all of its segments and regions.\n\n"
+    "# Company History And Background\n"
+    "The company was founded long ago and has grown steadily over many decades since.\n\n"
+    "# Export Control Exposure\n"
+    "Revenue from China was 12 percent of the total last year. We are not subject to the new export licensing "
+    "rules for advanced accelerators.\n"
+)
+NEGATION_FLIP_PLUS_REWORD_V2 = (
+    "# Executive Summary Of Operations\n"
+    "The company performed well this quarter across all of its segments and regions.\n\n"
+    "# Company History And Background\n"
+    "The company was founded long ago and has grown steadily over many decades since.\n\n"
+    "# Export Control Exposure\n"
+    "Revenue from China fell sharply to 3 percent of the total after several large customers left. We are subject "
+    "to the new export licensing rules for advanced accelerators.\n"
+)
+
+# finding C4: dropping the fixed legal phrase "including, without limitation," is a no-op edit, never a polarity
+# change -- it must NOT be reported as a negation flip (it would otherwise flip the "without" negator's parity).
+WITHOUT_LIMITATION_BOILERPLATE_V1 = (
+    "# Executive Summary Of Operations\n"
+    "The company performed well this quarter across all of its segments and regions.\n\n"
+    "# Company History And Background\n"
+    "The company was founded long ago and has grown steadily over many decades since.\n\n"
+    "# Export Control Exposure\n"
+    "These rules may restrict sales of products, including, without limitation, accelerators and networking "
+    "equipment to several countries.\n"
+)
+WITHOUT_LIMITATION_BOILERPLATE_V2 = (
+    "# Executive Summary Of Operations\n"
+    "The company performed well this quarter across all of its segments and regions.\n\n"
+    "# Company History And Background\n"
+    "The company was founded long ago and has grown steadily over many decades since.\n\n"
+    "# Export Control Exposure\n"
+    "These rules may restrict sales of products, including accelerators and networking equipment to several "
+    "countries.\n"
+)
+
+# finding C4's other half: "without" must stay a real negator for a genuine "without X" <-> "with X" polarity
+# change outside the fixed "without limitation" phrase.
+WITHOUT_REAL_NEGATION_V1 = (
+    "# Executive Summary Of Operations\n"
+    "The company performed well this quarter across all of its segments and regions.\n\n"
+    "# Company History And Background\n"
+    "The company was founded long ago and has grown steadily over many decades since.\n\n"
+    "# Supplier Agreement Terms\n"
+    "We renewed the supplier agreement without any change in terms this quarter.\n"
+)
+WITHOUT_REAL_NEGATION_V2 = WITHOUT_REAL_NEGATION_V1.replace(
+    "We renewed the supplier agreement without any change in terms this quarter.",
+    "We renewed the supplier agreement with a change in terms this quarter.",
+)
+
+
+# --------------------------------------------------------------------------
 # HTML
 # --------------------------------------------------------------------------
 

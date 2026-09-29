@@ -582,6 +582,8 @@ let stepsShown = 0;
 let currentWorkspace = null;               // { id, token, expires_at } — never persisted outside sessionStorage
 const WS_SESSION_KEY = "semigraph:workspace";
 const MAX_UPLOAD_TITLE_CHARS = 120;         // matches the server's own title-length cap exactly (finding 15)
+const TURNSTILE_REFRESH_TIMEOUT_MS = 15000; // R3/#15: how long a multi-file drop waits for a FRESH widget token
+const TURNSTILE_POLL_INTERVAL_MS = 100;     // before giving up on that file rather than sending an empty token
 // A per-document "ask as of vN" instant (section 15.1) takes priority over the manual date picker below it; empty
 // means "current" (no as_of at all).
 let wsAskAsOfInstant = null;
@@ -710,6 +712,26 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("drawer"
 $("ask").addEventListener("click", ask);
 
 function resetTurnstile() { if (window.turnstile && TURNSTILE_SITE_KEY) { turnstileToken = null; window.turnstile.reset(); } }
+
+// R3/#15 (round-2 review): a multi-file drop posts the NEXT file only after resetTurnstile() has nulled
+// `turnstileToken` for the PREVIOUS one. Sending that empty string straight through gets a silent 403 in
+// production. Resolves with: the fresh token once the widget's own `callback` sets one; `null` when Turnstile
+// isn't embedded on this page at all (`TURNSTILE_SITE_KEY` unset — the server accepts no token outside
+// production, same as a single upload today); or `undefined` if the widget never re-solved within the timeout,
+// which the caller must treat as a failure, never as "send empty".
+function waitForFreshTurnstileToken(timeoutMs) {
+  if (!TURNSTILE_SITE_KEY) return Promise.resolve(null);
+  if (turnstileToken) return Promise.resolve(turnstileToken);
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    (function poll() {
+      if (turnstileToken) { resolve(turnstileToken); return; }
+      if (Date.now() >= deadline) { resolve(undefined); return; }
+      setTimeout(poll, TURNSTILE_POLL_INTERVAL_MS);
+    })();
+  });
+}
+
 if (TURNSTILE_SITE_KEY) {
   const s = document.createElement("script"); s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstile"; s.async = true; document.head.appendChild(s);
   window.onTurnstile = () => window.turnstile.render("#turnstile-widget", { sitekey: TURNSTILE_SITE_KEY, callback: (t) => { turnstileToken = t; } });
@@ -736,6 +758,12 @@ function renderWorkspaceShell() {
 }
 
 async function setWorkspace(ws) {
+  // C3 (round-2 review): a per-document "ask as of vN" instant must never survive a workspace switch — delete,
+  // create and restore all funnel through here. Without this reset, an ask sent right after switching workspaces
+  // (or after delete-then-create-new in the same tab) silently reused the OLD workspace's instant, which the new
+  // workspace's chunks were never valid before, so the retrieval came back empty while the selector still read
+  // "current".
+  wsAskAsOfInstant = null;
   currentWorkspace = ws; writeStoredWorkspace(ws); evidenceCache.clear(); renderWorkspaceShell();
   if (ws) await loadWorkspaceData();
 }
@@ -770,6 +798,26 @@ function renderUploadTarget(docs) {
   if (list(docs).some((d) => d.document_id === selected)) sel.value = selected;    // keep the choice across reloads
 }
 
+// C3 (round-2 review): every select.askAsOf is rebuilt from scratch on each renderDocuments call (a fresh upload
+// job finishing, a version list changing, and so on), so the DOM default ("ask as of: current") wins unless the
+// page's own choice is re-applied here. At most ONE document's select is ever left non-"current": the first whose
+// option list still offers the stored instant wins, and every other select — including one whose matching option
+// disappeared (its version was superseded off the list, which cannot happen, or the document itself is gone) —
+// is forced back to "current". When NO select still offers the stored instant, the global is nulled so a later
+// ask falls back to the manual date picker instead of silently reusing a stale, now-unreachable instant.
+function reapplyAskAsOf() {
+  const selects = Array.from($("wsDocs").querySelectorAll("select.askAsOf"));
+  let applied = false;
+  for (const sel of selects) {
+    if (!applied && wsAskAsOfInstant && Array.from(sel.options).some((o) => o.value === wsAskAsOfInstant)) {
+      sel.value = wsAskAsOfInstant; applied = true;
+    } else {
+      sel.value = "";
+    }
+  }
+  if (!applied) wsAskAsOfInstant = null;
+}
+
 function renderDocuments(docs) {
   $("wsDocs").innerHTML = docs.length ? docs.map(docHtml).join("") : `<p class="hint">No documents uploaded yet.</p>`;
   $("wsDocs").querySelectorAll("button[data-doc]").forEach((btn) => btn.addEventListener("click", () => {
@@ -779,8 +827,14 @@ function renderDocuments(docs) {
     if (older) showChanges(btn.dataset.doc, older, newer); else $("wsChanges").innerHTML = `<p class="hint">v${newer} is the first version — nothing to compare.</p>`;
   }));
   $("wsDocs").querySelectorAll("select.askAsOf").forEach((sel) => sel.addEventListener("change", () => {
+    // Keep at most one document's as-of choice active (C3): picking a version on THIS select clears every other
+    // one, so the page never shows two documents each looking pinned while only one instant is actually sent.
     wsAskAsOfInstant = sel.value || null;
+    if (sel.value) {
+      $("wsDocs").querySelectorAll("select.askAsOf").forEach((other) => { if (other !== sel) other.value = ""; });
+    }
   }));
+  reapplyAskAsOf();
   renderUploadTarget(docs);
 }
 
@@ -806,19 +860,43 @@ function setJobRow(key, text, cls) {
   const state = row.querySelector(".state"); state.textContent = text; state.className = `state${cls ? " " + cls : ""}`;
 }
 
-async function watchJob(jobId, label) {
+// R3/#15: returns the job's TERMINAL state ("ready"/"failed") once reached, so a multi-file drop's caller can wait
+// for the single upload slot to actually free up before posting the next file. Resolves to `null` when the stream
+// ends (or never starts) WITHOUT one — a lost connection, a mid-job restart — so the caller never mistakes "the
+// watch gave up" for "the job finished"; this row is left showing that outcome instead of silently going quiet.
+// A progress stream can end without a final event (a network blip, a restart); the server replays the job's last known
+// state on reconnect, so the page reconnects a few times before saying the connection was lost.
+const WATCH_RECONNECTS = 3;
+const WATCH_RECONNECT_DELAY_MS = 3000;
+
+async function watchJob(jobId, label, delayMs = WATCH_RECONNECT_DELAY_MS) {
+  for (let attempt = 0; attempt <= WATCH_RECONNECTS; attempt++) {
+    if (attempt) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const outcome = await streamJobOnce(jobId, label);
+    if (outcome === "ready" || outcome === "failed") return outcome;
+    if (outcome === "gone") return null;
+  }
+  setJobRow(label, "connection lost while watching this upload — check its status later", "err");
+  return null;
+}
+
+// One pass over the job's progress stream: "ready"/"failed" (terminal), "retry" (ended early, network error or the
+// per-job watcher cap) or "gone" (the job or workspace no longer answers).
+async function streamJobOnce(jobId, label) {
   let resp;
   try { resp = await fetch(`/api/workspace/${currentWorkspace.id}/jobs/${jobId}`, { headers: wsHeaders() }); }
-  catch (e) { setJobRow(label, "network error watching this upload", "err"); return; }
-  if (!resp.ok || !resp.body) { setJobRow(label, "could not watch this upload", "err"); return; }
+  catch (e) { return "retry"; }
+  if (resp.status === 429) return "retry";
+  if (!resp.ok || !resp.body) { setJobRow(label, "could not watch this upload", "err"); return "gone"; }
   const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "";
+  let finalState = null;
   const handle = (chunk) => {
     let data = "";
     for (const l of chunk.split("\n")) if (l.startsWith("data:")) data += l.slice(5).trim();
     if (!data) return;
     let job; try { job = JSON.parse(data); } catch (_) { return; }
     setJobRow(label, jobStateText(job), job.state === "failed" ? "err" : (job.state === "ready" ? "ok" : ""));
-    if (job.state === "ready" || job.state === "failed") loadWorkspaceData();
+    if (job.state === "ready" || job.state === "failed") { finalState = job.state; loadWorkspaceData(); }
   };
   while (true) {
     let step; try { step = await reader.read(); } catch (e) { break; }
@@ -826,12 +904,21 @@ async function watchJob(jobId, label) {
     buf += dec.decode(step.value, { stream: true });
     let idx; while ((idx = buf.indexOf("\n\n")) >= 0) { handle(buf.slice(0, idx)); buf = buf.slice(idx + 2); }
   }
+  return finalState || "retry";
 }
 
 async function uploadFile(file) {
   if (!currentWorkspace) return;
   const documentId = ($("wsTarget") && $("wsTarget").value) || "";
   setJobRow(file.name, "uploading…");
+  // R3/#15: a PRIOR file in this same drop may have just reset the widget (below). Wait for a FRESH token rather
+  // than send the momentarily-empty one — that would get a silent 403 in production instead of this file's real
+  // outcome. `undefined` means the widget never re-solved in time; report that plainly and stop, never fall
+  // through to an empty header.
+  if (TURNSTILE_SITE_KEY && !turnstileToken) {
+    const t = await waitForFreshTurnstileToken(TURNSTILE_REFRESH_TIMEOUT_MS);
+    if (t === undefined) { setJobRow(file.name, "bot check did not complete in time — try again", "err"); return; }
+  }
   const fd = new FormData();
   fd.append("file", file);
   fd.append("title", uploadTitleFor(file.name, MAX_UPLOAD_TITLE_CHARS));
@@ -847,12 +934,16 @@ async function uploadFile(file) {
   if (!resp.ok) { setJobRow(file.name, body.detail || resp.statusText, "err"); return; }
   if (body.unchanged) { setJobRow(file.name, `unchanged (still v${body.version})`, "ok"); loadWorkspaceData(); return; }
   setJobRow(file.name, "queued");
-  watchJob(body.job_id, file.name);
+  // R3/#15: AWAIT the terminal state. The single `upload_slots` permit means the NEXT file in this same drop
+  // cannot even start its own job until this one lands on ready/failed — posting it earlier used to just trade a
+  // silent 403 (stale token) for a 429 busy (slot still held), with no queued file ever visibly succeeding.
+  await watchJob(body.job_id, file.name);
 }
 
-// Dropped/chosen files upload ONE AT A TIME (finding 15): each gets its OWN fresh Turnstile pass (resetTurnstile()
-// inside uploadFile), and the single upload_slots permit means a parallel batch would just answer 429 busy for
-// every file after the first anyway.
+// Dropped/chosen files upload ONE AT A TIME (finding 15), and EACH FULLY FINISHES — its job reaches ready/failed —
+// before the next one is even posted (R3/#15): the single upload_slots permit holds until then, and each file also
+// needs its OWN fresh Turnstile pass (resetTurnstile() inside uploadFile, awaited by waitForFreshTurnstileToken()
+// at the top of the next call). Every file's own outcome is left in its own row (setJobRow keyed by file name).
 async function handleFiles(fileList) {
   for (const file of Array.from(fileList || [])) {
     await uploadFile(file);

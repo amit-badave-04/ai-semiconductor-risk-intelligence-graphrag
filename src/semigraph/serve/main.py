@@ -9,6 +9,7 @@ import importlib
 import logging
 import re
 import threading
+from urllib.parse import unquote
 import time
 
 from fastapi import FastAPI
@@ -24,7 +25,7 @@ from ..retrieval.answerer import template_fingerprint
 from ..uploads import jobs
 from .guard import RateLimiter
 from .routes import router
-from . import dossier_routes, monitor, monitor_routes, store, tracing, workspace_routes
+from . import dossier_routes, hardening, monitor, monitor_routes, store, tracing, workspace_routes
 
 SECONDS_PER_DAY = 86_400
 SECONDS_PER_HOUR = 3_600
@@ -42,11 +43,16 @@ def ws_hash(workspace_id: str) -> str:
 
 
 def redact_access_path(path: str) -> str:
-    """An access-log path with no raw workspace id, no uploaded-document id and no workspace query string."""
-    match = _WORKSPACE_PATH_RE.match(path)
+    """An access-log path with no raw workspace id, no uploaded-document id and no workspace query string. uvicorn
+    logs the PERCENT-QUOTED path (``doc%3A...``), so the route is decoded before matching; a query that carries a
+    document id is dropped whole."""
+    route, _, query = path.partition("?")
+    route = unquote(route)
+    match = _WORKSPACE_PATH_RE.match(route)
     if match:
-        path = f"/api/workspace/<ws:{ws_hash(match.group(1))}>" + path[match.end():].split("?", 1)[0]
-    return _DOC_ID_IN_PATH_RE.sub("<doc>", path)
+        return _DOC_ID_IN_PATH_RE.sub("<doc>", f"/api/workspace/<ws:{ws_hash(match.group(1))}>" + route[match.end():])
+    route = _DOC_ID_IN_PATH_RE.sub("<doc>", route)
+    return route if not query or _DOC_ID_IN_PATH_RE.search(unquote(query)) else f"{route}?{query}"
 
 
 class WorkspaceAccessLogFilter(logging.Filter):
@@ -183,6 +189,10 @@ def shutdown_tracer_bounded(tracer) -> None:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
+    # FIRST, before any thread or the upload parse subprocess exists: a same-uid child must not be able to read this
+    # process's secrets through /proc (docs/v2/M4_PLAN.md 5; a no-op off Linux).
+    if hardening.make_process_non_dumpable():
+        logger.info("process marked non-dumpable (its /proc entries are root-only)")
     settings = get_settings()
     if settings.agent_enabled:
         require_agent_package()
@@ -191,6 +201,9 @@ async def lifespan(app: FastAPI):
     elif settings.is_production and not settings.turnstile_secret_key:
         logger.warning("production without Turnstile: cost is bounded only by the daily ceiling (%d) and the per-IP window",
                        settings.max_queries_per_day)
+    if settings.uploads_enabled and settings.is_production and not settings.turnstile_secret_key:
+        logger.error("UPLOADS_ENABLED in production without TURNSTILE_SECRET_KEY: uploads stay unavailable "
+                     "(the upload routes fail closed)")
     driver, embedder, stats, snapshot, example_ids = await run_in_threadpool(bootstrap, settings)
     # A no-op unless all three langfuse settings are set (only then is langfuse imported, hence off the event loop).
     app.state.tracer = await run_in_threadpool(tracing.get_tracer, settings)

@@ -224,3 +224,18 @@ def test_stats_says_whether_uploads_are_enabled_and_carries_the_freshness_summar
     client.app.state.freshness_monitor = type("M", (), {"summary": lambda self: {"status": "ok", "checked_at": "t",
                                                                                   "pending_count": 2}})()
     assert client.get("/api/stats").json()["freshness"] == {"status": "ok", "checked_at": "t", "pending_count": 2}
+
+
+def test_uploads_are_unavailable_in_production_without_the_turnstile_secret(ws_client):
+    """Second Opus review, finding 29 partial: the upload routes fail closed without the secret in production, so the
+    page, /api/stats and /api/ask must not advertise uploads either."""
+    class ProdNoSecret(UploadsOn):
+        is_production = True
+        turnstile_secret_key = ""
+    ws_client.app.state.settings = ProdNoSecret()
+    assert routes.uploads_available(ws_client.app.state) is False
+    assert ws_client.get("/api/stats").json()["uploads_enabled"] is False
+    class ProdWithSecret(ProdNoSecret):
+        turnstile_secret_key = "configured"
+    ws_client.app.state.settings = ProdWithSecret()
+    assert routes.uploads_available(ws_client.app.state) is True

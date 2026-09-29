@@ -5,8 +5,12 @@ upload service actually started, docs/v2/M4_PLAN.md 15.5); every route but creat
 and treats a malformed id, an unknown workspace and a wrong token identically (a Neo4j parameterised lookup
 naturally returns no row for any of the three, so no separate shape-validation step is needed to get the
 404-for-all-three behaviour the plan asks for). Every response — success or error — carries ``Cache-Control:
-no-store``. Every GET route additionally takes the free-endpoint read-rate window (``app.state.read_rate_limiter``,
-docs/v2/M4_PLAN.md 15.3): a workspace GET is a database read like ``/api/stats`` or ``/api/evidence``.
+no-store``. Every GET route, plus DELETE, additionally takes the free-endpoint read-rate window
+(``app.state.read_rate_limiter``, docs/v2/M4_PLAN.md 15.3) BEFORE authentication: a workspace GET is a database read
+like ``/api/stats`` or ``/api/evidence``, and the window must bound the Neo4j lookup itself, not just the requests
+that happen to pass it — otherwise an attacker who never has a valid token (cycling random workspace ids or wrong
+tokens) is never rate-limited at all (round-2 review, findings S4/R2). The window is per client address, so gating
+first never lets a legitimate owner lock out a different address, and the 404 stays indistinguishable either way.
 
 The multipart upload body is parsed by hand, directly off the ASGI byte stream, with ``python-multipart``'s
 low-level :func:`create_form_parser` (never FastAPI's ``UploadFile``/``Form`` — Starlette's own multipart parser
@@ -91,9 +95,13 @@ def _require_uploads_enabled(request: Request) -> None:
 
 
 def _require_read_rate(request: Request) -> None:
-    """The free-endpoint read-rate window on every workspace GET (docs/v2/M4_PLAN.md 15.3, finding 1/14/22): a
-    workspace GET is a database read exactly like ``/api/stats`` or the public ``/api/evidence``, and had no rate
-    limit of its own before this fix — the same gap that let an unbounded number of SSE watchers pile up."""
+    """The free-endpoint read-rate window on every workspace GET, and on DELETE (docs/v2/M4_PLAN.md 15.3, finding
+    1/14/22; ordering fixed for findings S4/R2 in the round-2 review): a workspace GET is a database read exactly
+    like ``/api/stats`` or the public ``/api/evidence``, and had no rate limit of its own before the first fix — the
+    same gap that let an unbounded number of SSE watchers pile up. Callers MUST run this BEFORE
+    :func:`_authenticate` — otherwise a caller who never has a valid token (an unknown workspace id or a wrong
+    token) skips the limiter entirely, since it never reaches the code after a successful auth, and still pays a
+    full Neo4j lookup on every attempt."""
     st, s = request.app.state, request.app.state.settings
     if not st.read_rate_limiter.allow(guard.ip_hash(guard.client_ip(request, s.client_ip_header))):
         raise HTTPException(status_code=429, detail=MSG_READ_RATE, headers=NO_STORE)
@@ -147,8 +155,8 @@ async def create_workspace(body: WorkspaceCreateRequest, request: Request):
 @router.get("/api/workspace/{ws}")
 async def get_workspace(ws: str, request: Request):
     _require_uploads_enabled(request)
-    await _authenticate(request, ws)
     _require_read_rate(request)
+    await _authenticate(request, ws)
     data = await run_in_threadpool(repo.get_workspace, request.app.state.driver, ws)
     if data is None:
         raise HTTPException(status_code=404, detail=routes.MSG_WORKSPACE_NOT_FOUND, headers=NO_STORE)
@@ -158,6 +166,7 @@ async def get_workspace(ws: str, request: Request):
 @router.delete("/api/workspace/{ws}", status_code=204)
 async def delete_workspace(ws: str, request: Request):
     _require_uploads_enabled(request)
+    _require_read_rate(request)
     await _authenticate(request, ws)
     await run_in_threadpool(repo.delete_workspace, request.app.state.driver, ws)
     return Response(status_code=204, headers=NO_STORE)
@@ -352,11 +361,13 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
 @router.post("/api/workspace/{ws}/documents", status_code=202)
 async def upload_document(ws: str, request: Request):
     """Gate order, now literal (docs/v2/M4_PLAN.md 14.6, 15.2 — the Turnstile token moved to the
-    ``X-Turnstile-Token`` header, so it no longer needs the body read first): uploads-available -> workspace token
+    ``X-Turnstile-Token`` header, so it no longer needs the body read first; 16: every workspace route takes the
+    in-memory read-rate window before its database lookup): uploads-available -> read-rate window -> workspace token
     (404) -> kill switch -> Turnstile -> per-address upload window -> streamed size cap (declared, then live) ->
     byte gate -> quota -> slot -> daily budget."""
     st, s = request.app.state, request.app.state.settings
     _require_uploads_enabled(request)
+    _require_read_rate(request)
     await _authenticate(request, ws)
     if await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch):
         raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
@@ -389,8 +400,9 @@ async def upload_document(ws: str, request: Request):
 # natively) over the append-only, fan-out event log in JobRegistry (every watcher reads its own cursor, so every
 # watcher sees every event, including the terminal one); it re-polls with `await asyncio.sleep`, so cancellation on
 # client disconnect is immediate. At most `MAX_LIVE_WATCHERS_PER_JOB` watchers may be live on one job at a time (a
-# 4th gets 429); the route now also takes the read-rate window, closing the "no rate limit at all" gap the review
-# exploited to reach dozens of watchers on one job in the first place.
+# 4th gets 429); the route now also takes the read-rate window BEFORE authentication, closing the "no rate limit at
+# all for a caller who never has a valid token" gap the round-2 review found in the first ordering (S4/R2) — the
+# same gap the review exploited to reach dozens of watchers on one job in the first place.
 
 
 def _job_sse(job: dict) -> ServerSentEvent:
@@ -425,8 +437,8 @@ async def _job_event_stream(app, reg: "jobs.JobRegistry", ws: str, job_id: str):
 @router.get("/api/workspace/{ws}/jobs/{job_id}")
 async def workspace_job_stream(ws: str, job_id: str, request: Request):
     _require_uploads_enabled(request)
-    await _authenticate(request, ws)
     _require_read_rate(request)
+    await _authenticate(request, ws)
     app = request.app
     reg = jobs.registry(app)
     watch = reg.try_watch(ws, job_id)
@@ -452,8 +464,8 @@ async def _replay_once(persisted: dict):
 async def workspace_changes(ws: str, request: Request, document_id: str,
                             older: int = Query(..., alias="from"), newer: int = Query(..., alias="to")):
     _require_uploads_enabled(request)
-    await _authenticate(request, ws)
     _require_read_rate(request)
+    await _authenticate(request, ws)
     result = await run_in_threadpool(repo.get_changes, request.app.state.driver, ws, document_id, older, newer)
     if result is None:
         raise HTTPException(status_code=404, detail=MSG_NO_CHANGES, headers=NO_STORE)
@@ -466,8 +478,8 @@ async def workspace_changes(ws: str, request: Request, document_id: str,
 @router.get("/api/workspace/{ws}/evidence/{doc_id}")
 async def workspace_evidence(ws: str, doc_id: str, request: Request):
     _require_uploads_enabled(request)
-    await _authenticate(request, ws)
     _require_read_rate(request)
+    await _authenticate(request, ws)
     if not DOC_ID_RE.match(doc_id):
         raise HTTPException(status_code=404, detail=MSG_NO_EVIDENCE, headers=NO_STORE)
     row = await run_in_threadpool(repo.evidence, request.app.state.driver, ws, doc_id)
