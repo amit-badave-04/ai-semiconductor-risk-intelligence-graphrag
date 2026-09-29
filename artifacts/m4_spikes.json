@@ -89,5 +89,17 @@
     "child_ru_maxrss_kb": 39668,
     "gate": "< 300 MB (Worker A acceptance): PASS",
     "note": "a first attempt (6ff499b) crashed the whole pytest run: the limits were applied at module import; fixed in 2edf015"
+  },
+  "G4_local_baseline": {
+    "machine": "local desktop core, shipped dependency venv, ONNX_THREADS=1, the real local graph (7699)",
+    "document": "30-page PDF, 15,826 tokens (embedder tokenizer), 60 chunks, largest chunk 420 tokens",
+    "embed": {
+      "tokens": 15849,
+      "wall_s": 180.548,
+      "tokens_per_s": 87.8
+    },
+    "job_wall_s": 181.8,
+    "note": "production measurement on shared-cpu-2x is gate G4 (<= 300 s), taken after the deploy",
+    "also": "the 30-page x ~2,700 chars/page fixture is 14,134 tokens: at this prose density the 16,000-token cap binds after the 30-page cap"
   }
 }

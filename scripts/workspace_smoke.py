@@ -10,7 +10,7 @@ the job reports ``ready``/v2 AND that v1's own row in ``GET /api/workspace`` fli
 instant (section 15.1) — which deterministically retrieves v1's now-superseded chunk, so the answer's
 ``stale_citations`` reliably names it (no longer a hope that a cooperating model happens to echo an id from the
 question text, and now a REQUIRED G1 check, not an observation); separately asks with ``as_of`` set to the day
-before v2 was created (observational: same-day date granularity); fetches the change report and checks it against
+before the workspace existed (the day before: it must retrieve NO uploaded passage); fetches the change report and checks it against
 the known edit set baked into :data:`MD_V1` / :data:`MD_V2`; fetches evidence for the v1 chunk and asserts it shows
 ``is_current=false``/``status=superseded``/``superseded_by_version=2``; deletes the workspace and asserts EVERY
 workspace route (GET/DELETE workspace, POST documents, GET jobs, GET changes, GET evidence, POST /api/ask) now
@@ -24,6 +24,7 @@ this worker (docs/v2/M4_PLAN.md: "the main session runs G1"); :func:`redact`, :f
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -49,13 +50,29 @@ KNOWN_EDIT_SET = {"removed_headlines": {"Legal Proceedings"}, "added_headlines":
 
 # Fields that could carry uploaded or model-generated text; scrubbed before anything is written to disk.
 _TEXT_FIELDS = frozenset({"text", "answer", "quote", "headline", "summary", "title"})
+_SECRET_FIELDS = frozenset({"token"})          # the workspace token: never in a committed artifact, even when dead
+
+
+def _ws_hash(workspace_id: str) -> str:
+    return hashlib.sha256(workspace_id.encode("utf-8")).hexdigest()[:12]
 
 
 def redact(value):
-    """``value`` with every :data:`_TEXT_FIELDS` key replaced by a fixed placeholder, recursively — the one place
-    this script's report can be trusted to carry no uploaded bytes or generated text (docs/v2/M4_PLAN.md 11)."""
+    """``value`` with every :data:`_TEXT_FIELDS` key replaced by a fixed placeholder, every :data:`_SECRET_FIELDS` key
+    by ``<secret>`` and every ``workspace_id`` by its hash, recursively — the one place this script's report can be
+    trusted to carry no uploaded bytes, generated text, token or raw workspace id (docs/v2/M4_PLAN.md 5, 11)."""
     if isinstance(value, dict):
-        return {k: ("<redacted>" if k in _TEXT_FIELDS else redact(v)) for k, v in value.items()}
+        out = {}
+        for k, v in value.items():
+            if k in _TEXT_FIELDS:
+                out[k] = "<redacted>"
+            elif k in _SECRET_FIELDS:
+                out[k] = "<secret>"
+            elif k == "workspace_id" and isinstance(v, str):
+                out[k] = f"<ws:{_ws_hash(v)}>"
+            else:
+                out[k] = redact(v)
+        return out
     if isinstance(value, list):
         return [redact(v) for v in value]
     return value
@@ -80,19 +97,15 @@ def evaluate_g1(results: dict) -> list[str]:
         ("changes_match_edit_set", "the change report did not match the known edit set"),
         ("evidence_ok", "the workspace evidence route did not return the expected, now-superseded chunk"),
         ("stale_citation_named", "the as-of-v1 ask did not produce a stale citation naming the v1 chunk"),
+        ("as_of_date_before_creation_empty", "an as_of date before the workspace existed still retrieved uploaded text"),
         ("deleted_then_404", "a workspace route still answered after DELETE"),
     ]
     return [msg for key, msg in checks if not results.get(key)]
 
 
 def _budget_notes(results: dict) -> list[str]:
-    """Non-fatal observations (docs/v2/M4_PLAN.md risk: the date-granularity hole in a DATE-only ``as_of``) —
-    recorded, never treated as a G1 failure."""
-    notes = []
-    if not results.get("as_of_before_v2_returns_v1"):
-        notes.append("as_of before v2 did not visibly return v1-only content (expected when v1 and v2 are "
-                     "created on the SAME calendar day: the as_of cutoff granularity is a day, not a moment)")
-    return notes
+    """Non-fatal observations for the report (none are defined today; every G1 check is required)."""
+    return []
 
 
 def _post_json(client, base_url: str, path: str, json_body: dict, headers: dict | None = None):
@@ -211,38 +224,47 @@ def _run_versions(client, base_url: str, ws: str, token: str) -> dict:
                      "ask2": done2}}
 
 
+AFTER_DELETE_QUESTION = "What does my document say about the market outlook?"   # passes question validation
+
+
 def _all_workspace_routes_404(client, base_url: str, ws: str, token: str, document_id: str,
-                              chunk_id_hint: str) -> bool:
+                              chunk_id_hint: str, job_id: str) -> tuple[bool, dict[str, int]]:
     """Every workspace route, after DELETE, must answer 404 — not just the one this smoke script happened to probe
-    before (finding 19 / docs/v2/M4_PLAN.md 15.13)."""
+    before (finding 19 / docs/v2/M4_PLAN.md 15.13). Each probe is a request that would SUCCEED on a live workspace (a
+    real job id, a valid question), so a 404 proves the deletion, not a validation error. Returns ``(all 404,
+    {route: status})`` so a failure names its route."""
     headers = {"X-Workspace-Token": token}
-    checks = [
-        client.get(f"{base_url}/api/workspace/{ws}", headers=headers, timeout=REQUEST_TIMEOUT_S),
-        client.post(f"{base_url}/api/workspace/{ws}/documents",
-                    files={"file": ("x.md", b"# a\nbody\n", "text/markdown")},
-                    headers={**headers, "X-Turnstile-Token": ""}, timeout=REQUEST_TIMEOUT_S),
-        client.get(f"{base_url}/api/workspace/{ws}/jobs/none", headers=headers, timeout=REQUEST_TIMEOUT_S),
-        client.get(f"{base_url}/api/workspace/{ws}/changes",
-                   params={"document_id": document_id, "from": 1, "to": 2}, headers=headers,
-                   timeout=REQUEST_TIMEOUT_S),
-        client.get(f"{base_url}/api/workspace/{ws}/evidence/{chunk_id_hint}", headers=headers,
-                   timeout=REQUEST_TIMEOUT_S),
-        client.post(f"{base_url}/api/ask", json={"question": "hi", "workspace_id": ws}, headers=headers,
-                    timeout=REQUEST_TIMEOUT_S),
-        client.delete(f"{base_url}/api/workspace/{ws}", headers=headers, timeout=REQUEST_TIMEOUT_S),
+    base = f"{base_url}/api/workspace/{ws}"
+    probes = [
+        ("GET /api/workspace/{ws}", lambda: client.get(base, headers=headers, timeout=REQUEST_TIMEOUT_S)),
+        ("POST documents", lambda: client.post(f"{base}/documents", files={"file": ("x.md", b"# a\nbody\n",
+                                                                                   "text/markdown")},
+                                               headers={**headers, "X-Turnstile-Token": ""}, timeout=REQUEST_TIMEOUT_S)),
+        ("GET jobs", lambda: client.get(f"{base}/jobs/{job_id}", headers=headers, timeout=REQUEST_TIMEOUT_S)),
+        ("GET changes", lambda: client.get(f"{base}/changes", params={"document_id": document_id, "from": 1, "to": 2},
+                                           headers=headers, timeout=REQUEST_TIMEOUT_S)),
+        ("GET evidence", lambda: client.get(f"{base}/evidence/{chunk_id_hint}", headers=headers,
+                                            timeout=REQUEST_TIMEOUT_S)),
+        ("POST /api/ask", lambda: client.post(f"{base_url}/api/ask", json={"question": AFTER_DELETE_QUESTION,
+                                                                           "workspace_id": ws},
+                                              headers=headers, timeout=REQUEST_TIMEOUT_S)),
+        ("DELETE /api/workspace/{ws}", lambda: client.delete(base, headers=headers, timeout=REQUEST_TIMEOUT_S)),
     ]
-    return all(r.status_code == 404 for r in checks)
+    statuses = {name: probe().status_code for name, probe in probes}
+    return all(s == 404 for s in statuses.values()), statuses
 
 
-def _run_as_of_and_cleanup(client, base_url: str, ws: str, token: str, document_id: str, v1_id_hint: str) -> dict:
-    """Steps 6-9 of G1: an ``as_of`` ask before v2 existed (observational: same-day granularity, see
-    :func:`_budget_notes`), the change report against the known edit set, SUPERSEDED evidence for the v1 chunk (not
+def _run_as_of_and_cleanup(client, base_url: str, ws: str, token: str, document_id: str, v1_id_hint: str,
+                           job_id: str) -> dict:
+    """Steps 6-9 of G1: an ``as_of`` DATE before the workspace existed (the day before: it must retrieve no uploaded
+    passage, the date form's end-of-day cutoff), the change report against the known edit set, SUPERSEDED evidence for the v1 chunk (not
     just its existence), then delete and confirm EVERY workspace route 404s (finding 19)."""
     results: dict = {}
     yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
     done3 = _ask(client, base_url, ws, token, "What does the market outlook say?", as_of=yesterday)
-    results["as_of_before_v2_returns_v1"] = any(
-        c.startswith(f"doc:{document_id}:v1:") for c in done3.get("citations", []))
+    results["as_of_date_before_creation_empty"] = (
+        (done3.get("workspace") or {}).get("doc_chunks") == 0
+        and not any(c.startswith("doc:") for c in done3.get("citations", [])))
 
     changes = client.get(f"{base_url}/api/workspace/{ws}/changes",
                          params={"document_id": document_id, "from": 1, "to": 2},
@@ -262,10 +284,11 @@ def _run_as_of_and_cleanup(client, base_url: str, ws: str, token: str, document_
                               ev_json.get("superseded_by_version") == 2)
 
     client.delete(f"{base_url}/api/workspace/{ws}", headers={"X-Workspace-Token": token}, timeout=REQUEST_TIMEOUT_S)
-    results["deleted_then_404"] = _all_workspace_routes_404(client, base_url, ws, token, document_id, v1_id_hint)
+    results["deleted_then_404"], after_delete = _all_workspace_routes_404(client, base_url, ws, token, document_id,
+                                                                         v1_id_hint, job_id)
 
     return {"results": results, "spend": done3.get("cost_usd") or 0.0,
-           "steps": {"ask3": done3, "changes": changes,
+           "steps": {"ask3": done3, "changes": changes, "after_delete_statuses": after_delete,
                      "evidence": ev.json() if ev.status_code == 200 else {"status_code": ev.status_code}}}
 
 
@@ -276,7 +299,8 @@ def run(base_url: str, max_usd: float) -> dict:
         created = _create_workspace(client, base_url)
         ws, token = created["workspace_id"], created["token"]
         first = _run_versions(client, base_url, ws, token)
-        second = _run_as_of_and_cleanup(client, base_url, ws, token, first["document_id"], first["v1_id_hint"])
+        second = _run_as_of_and_cleanup(client, base_url, ws, token, first["document_id"], first["v1_id_hint"],
+                                        first["steps"]["job1"].get("job_id") or first["steps"]["v1_upload"]["job_id"])
 
     results = {**first["results"], **second["results"]}
     spend = round(first["spend"] + second["spend"], 6)

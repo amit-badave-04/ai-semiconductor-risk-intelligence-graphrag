@@ -66,7 +66,7 @@ def test_within_budget_is_inclusive_of_the_exact_cap():
 
 ALL_PASS = {"v1_ask_cites_doc": True, "reupload_unchanged": True, "v2_supersedes_v1": True,
            "changes_match_edit_set": True, "evidence_ok": True, "stale_citation_named": True,
-           "deleted_then_404": True}
+           "deleted_then_404": True, "as_of_date_before_creation_empty": True}
 
 
 def test_evaluate_g1_passes_when_every_check_is_true():
@@ -81,6 +81,7 @@ def test_evaluate_g1_reports_every_missing_or_false_check():
         "the change report did not match the known edit set",
         "the workspace evidence route did not return the expected, now-superseded chunk",
         "the as-of-v1 ask did not produce a stale citation naming the v1 chunk",
+        "an as_of date before the workspace existed still retrieved uploaded text",
         "a workspace route still answered after DELETE",
     ]
 
@@ -102,15 +103,11 @@ def test_evaluate_g1_fails_when_the_stale_citation_check_fails():
 # ---------------------------------------------------------------- _budget_notes (observational, never a G1 failure)
 
 
-def test_budget_notes_flags_the_as_of_date_granularity_observation_without_failing_g1():
-    results = {**ALL_PASS, "as_of_before_v2_returns_v1": False}
-    notes = smoke._budget_notes(results)
-    assert len(notes) == 1
-    assert smoke.evaluate_g1(results) == []      # the observation is never a G1 failure
-
-
-def test_budget_notes_are_empty_when_the_observation_held():
-    results = {**ALL_PASS, "as_of_before_v2_returns_v1": True}
+def test_an_as_of_date_before_the_workspace_existed_must_retrieve_nothing_uploaded():
+    """The first live G1 run: asking as of the day BEFORE the workspace was created correctly retrieved no uploaded
+    passage; that is a required check of the date form's cutoff, not an observation."""
+    results = {**ALL_PASS, "as_of_date_before_creation_empty": False}
+    assert smoke.evaluate_g1(results) == ["an as_of date before the workspace existed still retrieved uploaded text"]
     assert smoke._budget_notes(results) == []
 
 
@@ -142,3 +139,50 @@ def test_the_md_fixture_pair_actually_differs_the_way_the_known_edit_set_claims(
         assert f"# {headline}" not in smoke.MD_V1 and f"# {headline}" in smoke.MD_V2
     for headline in smoke.KNOWN_EDIT_SET["changed_headlines"]:
         assert f"# {headline}" in smoke.MD_V1 and f"# {headline}" in smoke.MD_V2
+
+
+# ---------------------------------------------------------------- the first live G1 run (2026-09-29) exposed three smoke defects
+
+def test_redact_removes_the_workspace_token_and_hashes_the_workspace_id():
+    """The artifact is committed: a workspace token must never be in it (even a deleted workspace's), and a raw
+    workspace id is logged nowhere else either (docs/v2/M4_PLAN.md 5)."""
+    out = smoke.redact({"created": {"workspace_id": "a" * 32, "token": "secret-token-value", "expires_at": "x"}})
+    assert "secret-token-value" not in str(out) and "a" * 32 not in str(out)
+    assert out["created"]["token"] == "<secret>" and out["created"]["workspace_id"].startswith("<ws:")
+
+
+class _RecordingClient:
+    def __init__(self, statuses):
+        self.statuses, self.calls = list(statuses), []
+
+    def _answer(self, method, url, **kw):
+        self.calls.append((method, url, kw))
+        return type("R", (), {"status_code": self.statuses.pop(0)})()
+
+    def get(self, url, **kw):
+        return self._answer("GET", url, **kw)
+
+    def post(self, url, **kw):
+        return self._answer("POST", url, **kw)
+
+    def delete(self, url, **kw):
+        return self._answer("DELETE", url, **kw)
+
+
+def test_the_after_delete_probe_uses_a_valid_question_and_a_real_job_id():
+    """A 3-character question fails validation (400) before the workspace check it means to test, and a made-up job id
+    proves nothing about the job route: the probe must reach the workspace check on every route."""
+    client = _RecordingClient([404] * 7)
+    ok, statuses = smoke._all_workspace_routes_404(client, "http://x", "a" * 32, "t", "0123456789ab",
+                                                   "doc:0123456789ab:v1:0000", "job123")
+    assert ok and set(statuses.values()) == {404} and len(statuses) == 7
+    ask = [kw for method, url, kw in client.calls if url.endswith("/api/ask")][0]
+    assert len(ask["json"]["question"]) >= 8
+    assert any(url.endswith("/jobs/job123") for _, url, _ in client.calls)
+
+
+def test_the_after_delete_probe_names_the_route_that_still_answered():
+    client = _RecordingClient([404, 404, 404, 404, 404, 400, 404])
+    ok, statuses = smoke._all_workspace_routes_404(client, "http://x", "a" * 32, "t", "0123456789ab",
+                                                   "doc:0123456789ab:v1:0000", "job123")
+    assert not ok and statuses["POST /api/ask"] == 400

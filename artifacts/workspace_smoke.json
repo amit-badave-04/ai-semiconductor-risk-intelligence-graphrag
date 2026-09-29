@@ -1,0 +1,262 @@
+{
+  "base_url": "http://127.0.0.1:8089",
+  "max_usd": 0.5,
+  "spend_usd": 0.004,
+  "within_budget": true,
+  "results": {
+    "v1_ask_cites_doc": true,
+    "reupload_unchanged": true,
+    "v2_supersedes_v1": true,
+    "stale_citation_named": true,
+    "as_of_date_before_creation_empty": true,
+    "changes_match_edit_set": true,
+    "evidence_ok": true,
+    "deleted_then_404": true
+  },
+  "failures": [],
+  "notes": [],
+  "steps": {
+    "created": {
+      "workspace_id": "<ws:db9d3a10c6dd>",
+      "token": "<secret>",
+      "expires_at": "2026-09-30T18:09:34.185833+00:00",
+      "limits": {
+        "max_documents": 3,
+        "max_versions": 5,
+        "max_pages": 120,
+        "max_bytes": 15728640,
+        "max_pages_per_version": 30,
+        "max_tokens_per_version": 16000,
+        "max_workspace_tokens": 48000
+      }
+    },
+    "v1_upload": {
+      "job_id": "dca4c87e87f57a17",
+      "document_id": "407035ae5706",
+      "version": 1
+    },
+    "job1": {
+      "job_id": "dca4c87e87f57a17",
+      "state": "ready",
+      "document_id": "407035ae5706",
+      "version": 1,
+      "chunks": 1,
+      "units": 4,
+      "items_compared": false,
+      "not_compared_reason": "first_version",
+      "suspicious": false
+    },
+    "ask1": {
+      "event": "done",
+      "question": "What does my document say about the market outlook?",
+      "strategy": "hybrid",
+      "answer": "<redacted>",
+      "citations": [
+        "doc:407035ae5706:v1:0000"
+      ],
+      "hallucinated": [],
+      "checks": {
+        "citations_retrieved": true,
+        "numbers_grounded": true,
+        "numbers_checked": 0,
+        "unmatched_numbers": [],
+        "echoed_numbers": [],
+        "pseudo_citations": [],
+        "has_citation": true,
+        "is_refusal": false,
+        "unsupported_removal_claim": false,
+        "unsupported_removal_sentences": []
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 12061,
+        "completion_tokens": 30
+      },
+      "cost_usd": 0.001221,
+      "chunk_ids": [
+        "0001045810-26-000075:I.2:0000",
+        "0000050863-26-000011:I.1:0020",
+        "0001045810-26-000075:II.1A:0000",
+        "0000002488-25-000012:I.1A:0002"
+      ],
+      "context_chars": 35290,
+      "escalated": false,
+      "answered_by": "openai/gpt-6-luna",
+      "routed": "cheap",
+      "workspace": {
+        "id_hash": "db9d3a10c6dd",
+        "doc_chunks": 1,
+        "stale_citations": [],
+        "suspicious": false
+      }
+    },
+    "reupload": {
+      "unchanged": true,
+      "document_id": "407035ae5706",
+      "version": 1
+    },
+    "v2_upload": {
+      "job_id": "31fd05489c8583d8",
+      "document_id": "407035ae5706",
+      "version": 2
+    },
+    "job2": {
+      "job_id": "31fd05489c8583d8",
+      "state": "ready",
+      "document_id": "407035ae5706",
+      "version": 2,
+      "chunks": 1,
+      "units": 4,
+      "items_compared": true,
+      "not_compared_reason": null,
+      "suspicious": false
+    },
+    "ask2": {
+      "event": "done",
+      "question": "What does the market outlook say?",
+      "strategy": "hybrid",
+      "answer": "<redacted>",
+      "citations": [
+        "doc:407035ae5706:v1:0000"
+      ],
+      "hallucinated": [],
+      "checks": {
+        "citations_retrieved": true,
+        "numbers_grounded": true,
+        "numbers_checked": 0,
+        "unmatched_numbers": [],
+        "echoed_numbers": [],
+        "pseudo_citations": [],
+        "has_citation": true,
+        "is_refusal": false,
+        "unsupported_removal_claim": false,
+        "unsupported_removal_sentences": []
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 11539,
+        "completion_tokens": 95
+      },
+      "cost_usd": 0.001201,
+      "chunk_ids": [
+        "0001045810-26-000075:I.2:0000",
+        "0000002488-25-000012:I.1A:0002",
+        "0001045810-23-000017:I.1A:0036"
+      ],
+      "context_chars": 33596,
+      "escalated": false,
+      "answered_by": "openai/gpt-6-luna",
+      "routed": "cheap",
+      "workspace": {
+        "id_hash": "db9d3a10c6dd",
+        "doc_chunks": 1,
+        "stale_citations": [
+          "doc:407035ae5706:v1:0000"
+        ],
+        "suspicious": false
+      }
+    },
+    "ask3": {
+      "event": "done",
+      "question": "What does the market outlook say?",
+      "strategy": "hybrid",
+      "answer": "<redacted>",
+      "citations": [
+        "0001045810-26-000021:I.1A:0331",
+        "0001045810-26-000021:I.1A:0337",
+        "0001045810-26-000021:I.1A:0338",
+        "0001045810-26-000075:I.2:0000",
+        "xbrl:1045810:revenue:2026-01-25"
+      ],
+      "hallucinated": [],
+      "checks": {
+        "citations_retrieved": true,
+        "numbers_grounded": true,
+        "numbers_checked": 2,
+        "unmatched_numbers": [],
+        "echoed_numbers": [],
+        "pseudo_citations": [],
+        "has_citation": true,
+        "is_refusal": false,
+        "unsupported_removal_claim": false,
+        "unsupported_removal_sentences": []
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 11494,
+        "completion_tokens": 857
+      },
+      "cost_usd": 0.001578,
+      "chunk_ids": [
+        "0001045810-26-000075:I.2:0000",
+        "0000002488-25-000012:I.1A:0002",
+        "0001045810-23-000017:I.1A:0036"
+      ],
+      "context_chars": 33389,
+      "escalated": false,
+      "answered_by": "openai/gpt-6-luna",
+      "routed": "cheap",
+      "workspace": {
+        "id_hash": "db9d3a10c6dd",
+        "doc_chunks": 0,
+        "stale_citations": [],
+        "suspicious": false
+      }
+    },
+    "changes": {
+      "items_compared": true,
+      "not_compared_reason": null,
+      "added": [
+        {
+          "unit_id": "u0003b6194d232e",
+          "headline": "<redacted>",
+          "text": "<redacted>"
+        }
+      ],
+      "removed": [
+        {
+          "unit_id": "u0001c98543d35a",
+          "headline": "<redacted>",
+          "text": "<redacted>"
+        }
+      ],
+      "changed": [
+        {
+          "older_unit_id": "u00024450bf406d",
+          "newer_unit_id": "u00014450bf406d",
+          "headline": "<redacted>",
+          "passages": [
+            {
+              "quote": "<redacted>",
+              "chunk_id": "doc:407035ae5706:v1:0000",
+              "kind": "reworded"
+            }
+          ]
+        }
+      ],
+      "minor_rewordings": [],
+      "unchanged_count": 2
+    },
+    "after_delete_statuses": {
+      "GET /api/workspace/{ws}": 404,
+      "POST documents": 404,
+      "GET jobs": 404,
+      "GET changes": 404,
+      "GET evidence": 404,
+      "POST /api/ask": 404,
+      "DELETE /api/workspace/{ws}": 404
+    },
+    "evidence": {
+      "id": "doc:407035ae5706:v1:0000",
+      "text": "<redacted>",
+      "document_id": "407035ae5706",
+      "version": 1,
+      "is_current": false,
+      "status": "superseded",
+      "valid_to": "2026-09-29T18:09:42.634834Z",
+      "superseded_by_version": 2,
+      "title": "<redacted>"
+    }
+  },
+  "generated_at": "2026-09-29T18:09:59.252209+00:00"
+}
