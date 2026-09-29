@@ -78,6 +78,9 @@ Two axes kept apart: **document-version status** (this section, `versions.py`) v
 
 ## 5. Documents (upload) — design
 
+> Superseded by `docs/v2/M4_PLAN.md` (2026-09-29). The `U:{ws}` citation form, the Docling parse app and RQ/Valkey/R2 below are
+> obsolete; section 4's "promote on a hit" is replaced by detect-and-surface (M4_PLAN.md D1).
+
 Bring-your-own documents with **updated versions**, safe by construction:
 - Isolation (Community has one database): separate labels `UserDocument/UserVersion/UserChunk/UserRisk`, mandatory `workspace_id`, one `WorkspaceRepo`, own vector index `WITH [workspace_id, is_current]`; workspace token = 128-bit random (sha256 stored), TTL sweeper; uploads never create edges between canonical companies; public queries cannot see uploads by construction; separate citation grammar `U:{ws}:{doc}:v{n}:{seq}`; **CI leak-test harness** across retriever, cache and evidence routes. Answer-cache key includes workspace + data version.
 - Parse in a **separate on-demand app** (Docling, CPU torch, OCR off, baked models, `allowed_formats` = PDF/DOCX/HTML/MD, page/size caps; MarkItDown fallback; scanned PDFs rejected clearly) → normalized JSON blocks → trusted ingest stage. Job states `queued→parsing→chunking→embedding→[extracting]→indexing→ready` streamed by SSE; RQ + Valkey.

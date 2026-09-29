@@ -1,5 +1,7 @@
 # M4-A: thin document upload - implementation plan (2026-09-26, fable-architect review of branch v2)
 
+> Superseded by `docs/v2/M4_PLAN.md` (2026-09-29), which corrects this file's stale claims (its section 2). Kept for history.
+
 Status: design only. Goal: a buyer uploads a document (and later a new version), asks questions that cite it, sees old citations flagged stale, and gets a text-grounded "what changed v N -> N+1" report. The SEC path stays byte-identical.
 
 ## 0. Facts verified in the code that shape the design
