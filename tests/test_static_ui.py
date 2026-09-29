@@ -103,6 +103,7 @@ def test_turnstile_placeholder_is_substituted_exactly_once(page):
 
 @pytest.mark.parametrize("name,pattern", [
     ("CHUNK_ID", ids.CHUNK_ID_PATTERN), ("XBRL_ID", ids.XBRL_ID_PATTERN), ("FR_ID", ids.FR_ID_PATTERN),
+    ("DOC_ID", ids.DOC_ID_PATTERN),
 ])
 def test_page_citation_grammar_matches_retrieval_ids(page, name, pattern):
     """The page must recognise exactly the ids the answerer is allowed to cite (retrieval/ids.py is the source)."""

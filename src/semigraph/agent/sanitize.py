@@ -107,8 +107,11 @@ def safe_unit(value: Any) -> str | None:
     return value if isinstance(value, str) and _UNIT_RE.match(value) else None
 
 
+_PLANNER_ID_KINDS = frozenset({"chunk", "xbrl", "fr"})   # never "doc": uploaded documents are user-controlled (M4)
+
+
 def safe_id(value: Any) -> str | None:
-    return value if isinstance(value, str) and len(value) <= 120 and _ids.classify_id(value) else None
+    return value if isinstance(value, str) and len(value) <= 120 and _ids.classify_id(value) in _PLANNER_ID_KINDS else None
 
 
 def safe_number(value: Any) -> int | float | None:

@@ -34,6 +34,7 @@ import re
 import time
 from collections.abc import Iterable
 from datetime import date
+from functools import partial
 from typing import NamedTuple
 
 import litellm
@@ -246,7 +247,8 @@ def build_blocks(r: dict) -> tuple[ContextBlocks, str, set[str]]:
 
 
 _EXCERPTS_MARKER = "\n\nEXCERPTS:\n"        # the last header of the current AND the legacy template
-_EXCERPT_ID_LINE = re.compile(rf"^\[({_ids.CHUNK_ID_PATTERN})\]$")
+# A filing chunk or (M4) an uploaded-document chunk heads an excerpt; not part of the template fingerprint.
+_EXCERPT_ID_LINE = re.compile(rf"^\[({_ids.CHUNK_ID_PATTERN}|{_ids.DOC_ID_PATTERN})\]$")
 
 
 def sources_from_context(context: str) -> dict[str, str]:
@@ -490,26 +492,47 @@ def _live_events(stream, *, question, strategy, valid_ids, chunk_ids, context_ch
     (``extra`` keys such as ``escalated`` are merged into ``done``)."""
     carry = carry or {}
     parts = []
-
-    def totals():
-        usage = getattr(stream, "usage", None)
-        cost = usage_cost(usage, getattr(stream, "model", None))
-        prior = carry.get("cost_usd")
-        return _sum_usage(carry.get("usage"), usage), (cost if prior is None else round((cost or 0.0) + prior, 6))
-
     try:
         for delta in stream:
             parts.append(delta)
             yield {"event": "delta", "text": delta}
     except Exception as e:  # noqa: BLE001 — surface, with whatever spend is known
-        usage, cost = totals()
+        usage, cost = _totals(stream, carry)
         yield {"event": "error", "detail": f"{type(e).__name__}: {e}", "partial": "".join(parts),
                "usage": usage, "cost_usd": cost, "strategy": strategy}
         return
-    usage, cost = totals()
+    usage, cost = _totals(stream, carry)
     yield _done_event("".join(parts), stream, question=question, strategy=strategy, valid_ids=valid_ids,
                       chunk_ids=chunk_ids, context_chars=context_chars, usage=usage, cost_usd=cost,
                       extra=carry.get("extra"), context=context, sources=sources)
+
+
+def _totals(stream, carry: dict) -> tuple[dict | None, float | None]:
+    """(usage, cost) of ``stream`` with an earlier, rejected attempt carried in (see :func:`_live_events`)."""
+    usage = getattr(stream, "usage", None)
+    cost = usage_cost(usage, getattr(stream, "model", None))
+    prior = carry.get("cost_usd")
+    return _sum_usage(carry.get("usage"), usage), (cost if prior is None else round((cost or 0.0) + prior, 6))
+
+
+def _buffered_events(stream, *, postprocess, question, strategy, valid_ids, chunk_ids, context_chars, carry=None,
+                     context=None, sources=None):
+    """:func:`_live_events` for text that must be edited before anyone sees it: drain ``stream``, apply ``postprocess``, then
+    release ONE delta and the ``done`` event built on the edited text (or an ``error`` whose ``partial`` is edited too).
+
+    The M4 upload workspace answers through this: a link or an image in an answer driven by user-uploaded text must never
+    reach the client, even for the moment before it could be stripped from a live stream."""
+    carry = carry or {}
+    raw, error = _drain(stream)
+    text = postprocess(raw)
+    usage, cost = _totals(stream, carry)
+    if error:
+        yield {"event": "error", "detail": error, "partial": text, "usage": usage, "cost_usd": cost, "strategy": strategy}
+        return
+    yield {"event": "delta", "text": text}
+    yield _done_event(text, stream, question=question, strategy=strategy, valid_ids=valid_ids, chunk_ids=chunk_ids,
+                      context_chars=context_chars, usage=usage, cost_usd=cost, extra=carry.get("extra"), context=context,
+                      sources=sources)
 
 
 def _drain(stream) -> tuple[str, str | None]:
@@ -533,14 +556,18 @@ def _draft_kwargs(stream_kwargs: dict) -> dict:
     return {**stream_kwargs, "attempts": 1, "num_retries": 0, "timeout": timeout}
 
 
-def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_model, stream_kwargs, context, **ctx):
+def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_model, stream_kwargs, context,
+                         postprocess=None, release=None, **ctx):
     """Cheap draft -> deterministic verification -> release it, or escalate to the strong model.
 
     The draft is buffered, so a draft the verifier rejects is never shown. A clean draft is released in one
     delta; a rejected one is announced with an ``escalated`` event (reasons included) and the strong model
-    then streams live. Both attempts' tokens and cost land in the terminal event."""
+    then streams live (or through ``release``, e.g. :func:`_buffered_events`). ``postprocess`` edits the draft before it
+    is verified and released. Both attempts' tokens and cost land in the terminal event."""
     draft = llm_stream(prompt) if llm_stream else TextStream(prompt, **_draft_kwargs(stream_kwargs))
     text, error = _drain(draft)
+    if postprocess is not None:
+        text = postprocess(text)
     draft_model = getattr(draft, "model", None)
     if error:
         logger.warning("draft model %s failed (%s) - escalating to %s", draft_model, error[:300], escalation_model)
@@ -560,7 +587,7 @@ def _draft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_mo
     carry = {"usage": draft_usage, "cost_usd": usage_cost(draft_usage, draft_model) if draft_usage else None,
              "extra": {"escalated": True, "escalation_reasons": reasons, "routed": "cheap",
                        "answered_by": getattr(strong, "model", None) or escalation_model}}
-    yield from _live_events(strong, carry=carry, context=context, **ctx)
+    yield from (release or _live_events)(strong, carry=carry, context=context, **ctx)
 
 
 def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
@@ -609,22 +636,47 @@ def stream_answer_for_context(question: str, r: dict, strategy: str, *, llm_stre
     yield {"event": "retrieval", "anchors": r["anchors"],
            "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")},
            "anchor_defaulted": bool(r.get("anchor_defaulted", False))}
-    prompt = render_prompt(question, blocks)
-    ctx = {"question": question, "strategy": strategy, "valid_ids": valid_ids,
-           "chunk_ids": [c["chunk_id"] for c in r["chunks"]], "context_chars": len(full_context),
-           "sources": sources_from_context(full_context)}
+    yield from stream_answer_for_prompt(question, render_prompt(question, blocks), full_context, valid_ids,
+                                        [c["chunk_id"] for c in r["chunks"]], strategy,
+                                        sources=sources_from_context(full_context), llm_stream=llm_stream,
+                                        escalation_model=escalation_model, escalation_stream=escalation_stream,
+                                        **stream_kwargs)
+
+
+def _identity(text: str) -> str:
+    return text
+
+
+def stream_answer_for_prompt(question: str, prompt: str, full_context: str, valid_ids: set[str], chunk_ids: list[str],
+                             strategy: str, *, sources: dict[str, str] | None = None, llm_stream=None,
+                             escalation_model: str | None = None, escalation_stream=None, postprocess=None,
+                             force_buffered: bool = False, **stream_kwargs):
+    """The writer's tail for an ALREADY RENDERED prompt: route, draft / verify / escalate or stream, ending in ``done``.
+
+    :func:`stream_answer_for_context` renders the SEC template and calls this; the M4 upload workspace renders its own
+    template (``answer_workspace.txt``) and calls it with ``force_buffered=True`` and a ``postprocess`` that strips links and
+    images, so the verifier, the router, the escalation, the checks and the ``done`` grammar stay ONE implementation.
+    ``sources`` defaults to :func:`sources_from_context` of ``full_context``. No ``retrieval`` event is emitted here (the
+    caller owns retrieval). ``postprocess`` needs ``force_buffered``: a live stream cannot be edited after it is shown."""
+    if postprocess is not None and not force_buffered:
+        raise ValueError("postprocess needs force_buffered=True: a live stream cannot be edited after it is shown")
+    ctx = {"question": question, "strategy": strategy, "valid_ids": valid_ids, "chunk_ids": list(chunk_ids),
+           "context_chars": len(full_context),
+           "sources": sources if sources is not None else sources_from_context(full_context)}
+    release = partial(_buffered_events, postprocess=postprocess or _identity) if force_buffered else _live_events
     if escalation_model and escalation_model == (stream_kwargs.get("model") or get_settings().answer_model):
         escalation_model = None    # one model in both roles is plain live streaming (the documented rollback)
     if escalation_model and needs_strong_model(question):
         strong = (escalation_stream(prompt) if escalation_stream else
                   TextStream(prompt, model=escalation_model, **{k: v for k, v in stream_kwargs.items() if k != "model"}))
         extra = {"escalated": False, "routed": "strong", "answered_by": getattr(strong, "model", None) or escalation_model}
-        yield from _live_events(strong, carry={"extra": extra}, context=full_context, **ctx)
+        yield from release(strong, carry={"extra": extra}, context=full_context, **ctx)
         return
     if escalation_model:
         yield from _draft_then_escalate(prompt, llm_stream=llm_stream, escalation_stream=escalation_stream,
                                         escalation_model=escalation_model, stream_kwargs=stream_kwargs,
-                                        context=full_context, **ctx)
+                                        context=full_context, postprocess=postprocess,
+                                        release=release if force_buffered else None, **ctx)
         return
     stream = llm_stream(prompt) if llm_stream else TextStream(prompt, **stream_kwargs)
-    yield from _live_events(stream, context=full_context, **ctx)
+    yield from release(stream, context=full_context, **ctx)

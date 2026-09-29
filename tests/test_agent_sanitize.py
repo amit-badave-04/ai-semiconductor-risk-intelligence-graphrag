@@ -74,6 +74,13 @@ def test_the_allowlist_checks_accept_the_grammar_and_reject_everything_else(fn, 
     assert fn(bad) is None
 
 
+def test_an_uploaded_document_id_never_reaches_the_planner():
+    """M4 (docs/v2/M4_PLAN.md 4.2): ``doc:`` ids are well-formed citations for the workspace writer, but uploaded text is
+    user-controlled, so no ``doc:`` id is ever allowlisted into anything the agent planner sees (structural, on top of the 400
+    that ``strategy=agent`` + a workspace gets at the route)."""
+    assert S.safe_id("doc:0123456789ab:v1:0001") is None
+
+
 def test_numbers_and_years_are_numbers_only():
     assert S.safe_number(215938000000.0) == 215938000000 and S.safe_number(1.5) == 1.5 and S.safe_number(-3) == -3
     for bad in (True, None, "12", float("nan"), float("inf"), INJECTION):

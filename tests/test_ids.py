@@ -88,3 +88,62 @@ def test_an_id_followed_by_a_newline_or_anything_else_is_not_an_id(value, suffix
         ids.metric_id_of(XBRL + suffix)
     with pytest.raises(ValueError):
         ids.rule_id_of(FR + suffix)
+
+
+# --- M4: the fourth form, an uploaded-document chunk ``doc:<document id>:v<version>:<seq>`` (docs/v2/M4_PLAN.md 4.2) ---
+
+DOC = "doc:0123456789ab:v2:0007"
+
+
+def test_cite_re_finds_an_uploaded_document_id_next_to_the_filing_forms():
+    text = f"a [{CHUNK}] b [{DOC}] c [{FR}]"
+    assert ids.CITE_RE.findall(text) == [CHUNK, DOC, FR]
+    assert ids.classify_id(DOC) == "doc" and ids.DOC_ID_RE.match(DOC)
+
+
+@pytest.mark.parametrize("value", [
+    "doc:0123456789AB:v2:0007",       # the document id is lower-case hex
+    "doc:0123456789a:v2:0007",        # 11 hex digits
+    "doc:0123456789abc:v2:0007",      # 13 hex digits
+    "doc:0123456789ab:2:0007",        # no "v"
+    "doc:0123456789ab:v0002:0007",    # at most three version digits
+    "doc:0123456789ab:v2:007",        # the sequence has four digits
+    "doc:0123456789ab:v2:0007:x",
+    "U:ws:0123456789ab:0007",         # the obsolete PLAN.md section 5 form is not a citation
+])
+def test_malformed_document_ids_are_not_ids(value):
+    assert ids.classify_id(value) is None
+    assert ids.CITE_RE.findall(f"[{value}]") == []
+
+
+@pytest.mark.parametrize("suffix", ["\n", "\r\n", " ", "\n../../etc"])
+def test_a_document_id_followed_by_anything_is_not_an_id(suffix):
+    assert ids.classify_id(DOC + suffix) is None and ids.DOC_ID_RE.match(DOC + suffix) is None
+
+
+def test_doc_id_builds_and_parses_the_citation():
+    assert ids.doc_id("0123456789ab", 2, 7) == DOC
+    assert ids.parse_doc_id(DOC) == ("0123456789ab", 2, 7)
+    for bad in (("0123456789AB", 2, 7), ("0123456789ab", 0, 7), ("0123456789ab", 1000, 7), ("0123456789ab", 1, 10000)):
+        with pytest.raises(ValueError):
+            ids.doc_id(*bad)
+    with pytest.raises(ValueError):
+        ids.parse_doc_id(CHUNK)
+
+
+def test_the_grammar_change_leaves_every_shipped_example_citation_unchanged():
+    """examples_citations_pre_m4.json was recorded from the pre-M4 grammar (commit cff2415): adding ``doc:`` ids must not
+    change what any of the 53 shipped answers cites, nor how any cited id is classified."""
+    import json
+    from pathlib import Path
+
+    from semigraph.artifacts import load_examples
+
+    recorded = json.loads((Path(__file__).parent / "data" / "examples_citations_pre_m4.json").read_text(encoding="utf-8"))
+    examples = {e["id"]: e for e in load_examples()["examples"]}
+    assert set(examples) == set(recorded) and len(recorded) == 53
+    for example_id, rec in recorded.items():
+        cites = ids.CITE_RE.findall(examples[example_id]["answer"])
+        assert cites == rec["citations"], example_id
+        assert [ids.classify_id(c) for c in cites] == rec["kinds"], example_id
+        assert sorted(set(cites)) == sorted(examples[example_id]["citations"]), example_id

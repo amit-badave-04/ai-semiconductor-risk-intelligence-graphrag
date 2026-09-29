@@ -18,6 +18,14 @@ test("citation ids are classified with the three-form grammar", () => {
   assert.equal(api.classifyCitation(undefined), null);
 });
 
+test("an uploaded-document id is the fourth form and gets a readable chip", () => {
+  const DOC = "doc:0123456789ab:v2:0007";
+  assert.equal(api.classifyCitation(DOC), "doc");
+  assert.equal(api.classifyCitation("doc:0123456789AB:v2:0007"), null);
+  assert.equal(api.chipLabel(DOC), "your document v2 ¶0007");
+  assert.match(api.renderMarkdown(`It says so [${DOC}].`), new RegExp(`<span class="cite" data-id="${DOC}"[^>]*>your document v2 ¶0007</span>`));
+});
+
 test("a chunk chip shows the item and paragraph, not a bare number", () => {
   assert.equal(api.chipLabel(CHUNK), "Item 1A ¶0361");
   assert.equal(api.chipLabel("0000002488-26-000021:II.7:0012"), "Item 7 ¶0012");
