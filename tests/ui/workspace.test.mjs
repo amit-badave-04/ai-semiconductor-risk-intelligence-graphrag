@@ -126,6 +126,17 @@ test("freshnessLine says the check is unavailable when nothing has ever run", ()
   assert.equal(api.freshnessLine({ status: "unconfigured" }, Date.now()), "freshness check unavailable");
 });
 
+// ---------------------------------------------------------------- freshnessLine: disabled/never (C3 item 6)
+
+test("freshnessLine says unavailable for disabled and never, the same as unconfigured", () => {
+  // routes.status_without_a_monitor / summary_without_a_monitor always pair these statuses with checked_at: null
+  // (docs/v2/M4_PLAN.md 15.10) — none of the three needs its own copy here.
+  assert.equal(api.freshnessLine({ status: "disabled", checked_at: null, pending_count: 0 }, Date.now()),
+    "freshness check unavailable");
+  assert.equal(api.freshnessLine({ status: "never", checked_at: null, pending_count: 0 }, Date.now()),
+    "freshness check unavailable");
+});
+
 // ---------------------------------------------------------------- freshnessLine: finding 25 (M4 review)
 
 test("freshnessLine says the check failed and omits the pending count when status is error", () => {
@@ -137,6 +148,34 @@ test("freshnessLine says the check failed and omits the pending count when statu
 test("freshnessLine says the check failed for a stale status too", () => {
   const now = Date.parse("2026-09-29T12:00:00Z");
   const f = { status: "stale", checked_at: "2026-09-27T12:00:00Z", pending_count: 0 };
+  assert.equal(api.freshnessLine(f, now), "freshness check failed 2 d ago");
+});
+
+// ---------------------------------------------------------------- freshnessLine: ordering bug fix (C3 item 6)
+
+test("freshnessLine says the check failed using last_error_at when no good check has ever landed", () => {
+  // The very FIRST check a monitor ever makes can fail before any good check exists: checked_at stays null
+  // (monitor._error_result carries an all-empty shape forward), but last_error_at is set. Before the fix, the
+  // `!checked_at` branch ran first and this rendered the misleading "freshness check unavailable" instead.
+  const now = Date.parse("2026-09-29T12:00:00Z");
+  const f = { status: "error", checked_at: null, last_error_at: "2026-09-29T11:45:00Z", pending_count: 0 };
+  assert.equal(api.freshnessLine(f, now), "freshness check failed 15 min ago");
+});
+
+test("freshnessLine prefers last_error_at over an older checked_at when status is error", () => {
+  const now = Date.parse("2026-09-29T12:00:00Z");
+  const f = { status: "error", checked_at: "2026-09-20T00:00:00Z", last_error_at: "2026-09-29T11:45:00Z" };
+  assert.equal(api.freshnessLine(f, now), "freshness check failed 15 min ago");
+});
+
+test("freshnessLine falls back to a bare failed message when neither timestamp is known", () => {
+  const f = { status: "error", checked_at: null, last_error_at: null };
+  assert.equal(api.freshnessLine(f, Date.now()), "freshness check failed");
+});
+
+test("freshnessLine for a stale status ignores last_error_at (there is no failure instant, only an aging good check)", () => {
+  const now = Date.parse("2026-09-29T12:00:00Z");
+  const f = { status: "stale", checked_at: "2026-09-27T12:00:00Z", last_error_at: "2026-09-01T00:00:00Z" };
   assert.equal(api.freshnessLine(f, now), "freshness check failed 2 d ago");
 });
 

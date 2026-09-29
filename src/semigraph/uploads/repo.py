@@ -126,7 +126,7 @@ _JOB_TERMINAL_STATES = ("ready", "failed")
 _INTERRUPTED_ERROR_MESSAGE = "processing was interrupted and could not finish"
 # At least a ~90 s parse plus the 1,200 s embed budget, with generous slack: a job that has not moved in this long
 # was abandoned by a dead process, not merely slow.
-FAIL_INTERRUPTED_AFTER_S = 30 * 60
+FAIL_INTERRUPTED_AFTER_S = 35 * 60   # default only: above parse (90 s) + embed (1,200 s) + a 10 min margin
 
 
 def create_workspace(driver, ttl_hours: int) -> tuple[str, str, str]:
@@ -210,14 +210,20 @@ def _document_with_versions(driver, ws: str, document_row: dict) -> dict:
 
 
 def quota(driver, ws: str) -> dict:
+    """``pages_by_document`` (docs/v2/M4_PLAN.md 15.8, C3 item 5) lets a caller checking the workspace-wide page cap
+    subtract a document's OWN current pages before adding its new version's pages — so a same-size re-version of a
+    document already at the cap is accepted, while a brand-new document that would push the total over stays
+    refused. ``pages`` (the plain total) is kept for backward compatibility with any caller that only needs that."""
     rows = run_cypher(driver, QUOTA_QUERY, ws=ws)
     if not rows:
-        return {"documents": 0, "versions_by_document": {}, "pages": 0, "embedded_tokens": 0}
+        return {"documents": 0, "versions_by_document": {}, "pages": 0, "pages_by_document": {},
+                "embedded_tokens": 0}
     docs = [r for r in rows if r["document_id"] is not None]
     return {
         "documents": len(docs),
         "versions_by_document": {r["document_id"]: r["version_count"] for r in docs},
         "pages": sum(r["current_pages"] for r in docs),
+        "pages_by_document": {r["document_id"]: r["current_pages"] for r in docs},
         "embedded_tokens": rows[0]["embedded_tokens"] or 0,
     }
 
@@ -610,24 +616,30 @@ def put_job(driver, ws: str, job: dict) -> None:
         raise WorkspaceGone("the workspace no longer exists")
 
 
-def fail_interrupted_jobs(driver, now: datetime | None = None) -> int:
+def fail_interrupted_jobs(driver, now: datetime | None = None, *, older_than_s: int = FAIL_INTERRUPTED_AFTER_S,
+                          exclude: frozenset[tuple[str, str]] | set[tuple[str, str]] = frozenset()) -> int:
     """Marks ``failed`` (error code ``interrupted``) any ``UserJob`` left in a non-terminal state for longer than
-    :data:`FAIL_INTERRUPTED_AFTER_S` — a process that crashed, OOM'd or was redeployed mid-job (docs/v2/M4_PLAN.md
-    15.4, finding 27). Rewrites the STORED ``payload`` too, not just ``state``: :func:`get_job` replays ``payload``
-    verbatim, so leaving it alone would keep showing e.g. "embedding" forever to a client that reconnects after a
-    restart. The per-job UPDATE stays ``$ws``-bound and re-checks the state, so a job that raced to a real
-    ready/failed in the meantime is left untouched (0 rows, not double-counted). ``now`` defaults to the current
-    instant; idempotent; returns the number of jobs marked.
+    ``older_than_s`` — a process that crashed, OOM'd or was redeployed mid-job (docs/v2/M4_PLAN.md 15.4, finding 27) —
+    except the ``(workspace_id, job_id)`` pairs in ``exclude`` (the jobs the calling process still has open: a live job's
+    progress writes are best-effort, so its stored ``updated_at`` can look stale while it runs). The upload sweeper passes
+    a threshold derived from the job budgets (``uploads.jobs``); the default only serves a caller without settings.
+    Rewrites the STORED ``payload`` too, not just ``state``: :func:`get_job` replays ``payload`` verbatim, so leaving it
+    alone would keep showing e.g. "embedding" forever to a client that reconnects after a restart. The per-job UPDATE
+    stays ``$ws``-bound and re-checks the state, so a job that raced to a real ready/failed in the meantime is left
+    untouched (0 rows, not double-counted). ``now`` defaults to the current instant; idempotent; returns the number of
+    jobs marked.
     """
     now = now if now is not None else datetime.now(UTC)
     _require_aware_datetime(now, "now")
-    threshold = now - timedelta(seconds=FAIL_INTERRUPTED_AFTER_S)
+    threshold = now - timedelta(seconds=older_than_s)
     terminal = list(_JOB_TERMINAL_STATES)
     with driver.session() as session:
         candidates = session.run(FAIL_INTERRUPTED_JOBS_SELECT_QUERY, terminal_states=terminal,
                                  threshold=threshold).data()
         fixed = 0
         for row in candidates:
+            if (row["workspace_id"], row["job_id"]) in exclude:
+                continue
             payload = json.loads(row["payload"]) if row["payload"] else {}
             new_payload = {**payload, "state": "failed",
                           "error": {"code": "interrupted", "message": _INTERRUPTED_ERROR_MESSAGE}}

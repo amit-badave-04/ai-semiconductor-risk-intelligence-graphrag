@@ -17,34 +17,77 @@
     "passages": 40,
     "median_tokens": 270,
     "max_tokens": 1449,
-    "latency_s": {"median": 2.96, "p90": 9.7, "max": 15.4},
+    "latency_s": {
+      "median": 2.96,
+      "p90": 9.7,
+      "max": 15.4
+    },
     "tokens_per_s": 93
   },
   "S1b_latency_and_peak_vs_length": {
     "rows": [
-      {"tokens": 129, "latency_s": 1.95, "peak_over_loaded_mb": 616},
-      {"tokens": 257, "latency_s": 2.86, "peak_over_loaded_mb": 617},
-      {"tokens": 513, "latency_s": 4.87, "peak_over_loaded_mb": 616},
-      {"tokens": 1025, "latency_s": 10.13, "peak_over_loaded_mb": 617},
-      {"tokens": 1537, "latency_s": 17.23, "peak_over_loaded_mb": 950}
+      {
+        "tokens": 129,
+        "latency_s": 1.95,
+        "peak_over_loaded_mb": 616
+      },
+      {
+        "tokens": 257,
+        "latency_s": 2.86,
+        "peak_over_loaded_mb": 617
+      },
+      {
+        "tokens": 513,
+        "latency_s": 4.87,
+        "peak_over_loaded_mb": 616
+      },
+      {
+        "tokens": 1025,
+        "latency_s": 10.13,
+        "peak_over_loaded_mb": 617
+      },
+      {
+        "tokens": 1537,
+        "latency_s": 17.23,
+        "peak_over_loaded_mb": 950
+      }
     ],
     "model": "~100 tokens/s + ~0.7 s per call; memory flat to ~1k tokens",
     "decision": "embedding chunks capped at 512 tokens"
   },
   "S1c_concurrent_query_and_upload_embedding": {
     "setup": "one shared ONNX session (threads=1); a 500-token passage loop in a background thread; a query embed every 1.5 s",
-    "query_embed_s_alone": {"median": 1.231, "max": 1.257},
-    "query_embed_s_during_upload": {"median": 1.277, "max": 1.284, "n": 11},
+    "query_embed_s_alone": {
+      "median": 1.231,
+      "max": 1.257
+    },
+    "query_embed_s_during_upload": {
+      "median": 1.277,
+      "max": 1.284,
+      "n": 11
+    },
     "passage_500_tokens_s": 4.759,
     "peak_over_warm_mb": 390
   },
   "S2_filtered_workspace_vector_search": {
     "engine": "Neo4j Community 2026.07.1 (throwaway instance, bolt 7898)",
-    "schema_statements_applied_twice": [36, 36],
+    "schema_statements_applied_twice": [
+      36,
+      36
+    ],
     "index": "user_chunk_embedding ONLINE, filter properties workspace_id, is_current, document_id, version, valid_from, valid_to",
     "filters_exercised": "string =, boolean =, integer =, zoned datetime <= and >",
     "isolation": "workspace B never returned workspace A's chunk with an identical vector",
     "currency": "is_current=true excluded the superseded v1; valid_from <= as_of < valid_to 90 min back returned v1",
     "daily_upload_counter": "12 concurrent reserve_daily_upload(limit=5): 5 taken, 7 refused, one SvcUploadDay node, n=5"
+  },
+  "S3_linux_parse_sandbox": {
+    "source": "GitHub Actions serve-shipped job, run 36604683679 (commit 2edf015), ubuntu-latest, shipped dependency set",
+    "test": "tests/test_serve_upload_parse.py::test_max_size_pdf_parses_under_rlimit_as_and_reports_child_rss",
+    "fixture": "30 pages x ~2,700 chars/page (the max-size version)",
+    "limits_in_child": "RLIMIT_AS 1 GiB, RLIMIT_CPU 120 s, MALLOC_ARENA_MAX=2, allowlisted environment",
+    "child_ru_maxrss_kb": 39668,
+    "gate": "< 300 MB (Worker A acceptance): PASS",
+    "note": "a first attempt (6ff499b) crashed the whole pytest run: the limits were applied at module import; fixed in 2edf015"
   }
 }

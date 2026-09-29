@@ -364,6 +364,77 @@ def test_delete_workspace_and_put_version_serialize_instead_of_racing(driver, _d
     assert _count_user_nodes(driver, ws) == {}
 
 
+# ---------------------------------------------------------------------- uploads.jobs against the real repo (C3 item 1)
+
+
+class _FakeSlots:
+    def __init__(self):
+        self.released = 0
+
+    def release(self):
+        self.released += 1
+
+
+class _FakeEmbedder:
+    def count_tokens(self, text):
+        return max(1, len(text) // 4)
+
+    def encode_passages(self, texts):
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+
+class _FakeJobSettings:
+    upload_parse_timeout_s = 5
+    upload_max_pages = 30
+    upload_max_tokens = 16000
+    upload_max_chunk_tokens = 512
+    upload_max_chunks = 120
+    upload_max_workspace_tokens = 48000
+    upload_max_workspace_pages = 120
+    upload_embed_timeout_s = 1200
+
+
+class _FakeJobApp:
+    def __init__(self, driver):
+        self.state = type("State", (), {})()
+        self.state.driver = driver
+        self.state.embedder = _FakeEmbedder()
+        self.state.settings = _FakeJobSettings()
+        self.state.upload_slots = _FakeSlots()
+
+
+def test_a_job_whose_workspace_is_already_deleted_ends_cleanly_via_the_real_repo_never_an_unhandled_exception(
+        driver, _drop_ws, cleanup_ws, monkeypatch):
+    """C3 item 1 (docs/v2/M4_PLAN.md 15.4): reproduces the bug against the REAL ``repo.put_job`` / ``WorkspaceGone``
+    (not the unit tests' fake repo) — an EARLY, non-terminal put_job write (the job's very first "received" event)
+    that raises WorkspaceGone must end the job thread cleanly with a single, local-only ``workspace_deleted``
+    terminal event delivered through the JobRegistry, never an unhandled exception that kills the thread, and must
+    leave zero ``User*`` nodes behind."""
+    from semigraph.uploads import jobs
+    from semigraph.uploads.parse import Block, ParsedDoc
+
+    ws, _token, _exp = repo.create_workspace(driver, ttl_hours=1)
+    cleanup_ws.append(ws)
+    assert repo.delete_workspace(driver, ws) is True     # gone before the job even starts
+
+    parsed = ParsedDoc(method="text", pages=1,
+                       blocks=(Block(text="hello world", page=1, size=10.0, bold=False, kind_hint="paragraph"),),
+                       chars_per_page=1000.0, warnings=())
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
+
+    app = _FakeJobApp(driver)
+    reg = jobs.registry(app)
+    reg.create(ws, "job1")
+    jobs._worker(app, ws, "job1", "aaaaaaaaaaaa", "T", b"hello world", "txt", "h" * 64)   # must not raise
+
+    live_events, _ = reg.events_from(ws, "job1", 0)
+    terminal = [e for e in live_events if e["state"] == "failed"]
+    assert len(terminal) == 1
+    assert terminal[0]["error"]["code"] == "workspace_deleted"
+    assert app.state.upload_slots.released == 1
+    assert _count_user_nodes(driver, ws) == {}
+
+
 # ---------------------------------------------------------------------- sweep_orphans (findings 2/13/24)
 
 def test_sweep_orphans_removes_user_nodes_seeded_without_a_userworkspace(driver, _drop_ws, cleanup_ws):
@@ -418,6 +489,32 @@ def test_fail_interrupted_jobs_leaves_a_fresh_non_terminal_job_alone(driver, two
     repo.put_job(driver, ws, {"job_id": "j-fresh", "state": "embedding", "document_id": "d1", "version": 1})
     repo.fail_interrupted_jobs(driver, datetime.now(UTC))
     assert repo.get_job(driver, ws, "j-fresh")["state"] == "embedding"
+
+
+def test_exclusion_aware_sweep_never_fails_a_registered_live_job_but_does_fail_an_equally_stale_dead_one(
+        driver, two_workspaces):
+    """docs/v2/M4_PLAN.md 15.4: the upload sweeper's interrupted-job pass (``repo.fail_interrupted_jobs`` with the
+    registry's open jobs as ``exclude``), run against the REAL database — a job present in THIS process's JobRegistry
+    must survive even though its persisted ``updated_at`` looks exactly as stale as a job that is genuinely dead (not in
+    the registry), which IS marked ``interrupted``."""
+    from semigraph.uploads import jobs
+
+    ws = two_workspaces["ws1"]
+    older_than_s = 1800
+    stale = datetime.now(UTC) - timedelta(seconds=older_than_s + 60)
+    repo.put_job(driver, ws, {"job_id": "j-live", "state": "embedding", "document_id": "d1", "version": 1})
+    repo.put_job(driver, ws, {"job_id": "j-dead", "state": "embedding", "document_id": "d1", "version": 1})
+    with driver.session() as session:
+        session.run("MATCH (j:UserJob {workspace_id: $ws}) WHERE j.job_id IN $ids SET j.updated_at = $stale",
+                   ws=ws, ids=["j-live", "j-dead"], stale=stale).consume()
+
+    reg = jobs.JobRegistry()
+    reg.create(ws, "j-live")      # still "running" in THIS process, per the registry — j-dead is not tracked at all
+
+    n = repo.fail_interrupted_jobs(driver, older_than_s=older_than_s, exclude=reg.keys())
+    assert n >= 1
+    assert repo.get_job(driver, ws, "j-live")["state"] == "embedding"     # excluded: never touched
+    assert repo.get_job(driver, ws, "j-dead")["state"] == "failed"        # not registered here: marked interrupted
 
 
 # ---------------------------------------------------------------------- leak proofs against the public graph

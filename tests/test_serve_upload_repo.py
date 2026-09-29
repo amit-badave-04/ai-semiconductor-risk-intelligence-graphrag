@@ -505,6 +505,29 @@ def test_fail_interrupted_jobs_skips_a_job_the_update_no_longer_matches():
     assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 0
 
 
+def test_fail_interrupted_jobs_never_touches_an_excluded_job_and_honours_a_caller_threshold():
+    """The upload sweeper passes the jobs its own process still runs (``exclude``) and a threshold derived from the job
+    budgets (``older_than_s``): an excluded job is never updated however stale its stored age looks."""
+    now = datetime(2026, 9, 24, 12, 0, 0, tzinfo=UTC)
+    rows = [{"workspace_id": "ws1", "job_id": jid, "payload": json.dumps({"job_id": jid, "state": "embedding"})}
+            for jid in ("live", "dead")]
+    driver = FakeDriver(session_run_responses={repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: rows,
+                                               repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "dead"}]})
+    assert repo.fail_interrupted_jobs(driver, now, older_than_s=1890, exclude={("ws1", "live")}) == 1
+    select_params = driver.session_run_calls[0][1]
+    assert select_params["threshold"] == now - timedelta(seconds=1890)
+    updated = [params["job_id"] for query, params in driver.session_run_calls
+               if query == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY]
+    assert updated == ["dead"]
+
+
+def test_the_default_threshold_sits_above_the_default_parse_and_embed_budgets():
+    from semigraph.config import Settings
+
+    s = Settings(_env_file=None)
+    assert repo.FAIL_INTERRUPTED_AFTER_S > s.upload_parse_timeout_s + s.upload_embed_timeout_s
+
+
 def test_fail_interrupted_jobs_rejects_a_naive_now():
     with pytest.raises(TypeError):
         repo.fail_interrupted_jobs(FakeDriver(), datetime(2026, 1, 1))
@@ -548,7 +571,8 @@ def test_get_workspace_shapes_usage_from_current_versions_only(monkeypatch):
 
 def test_quota_shape_with_no_documents(monkeypatch):
     monkeypatch.setattr(repo, "run_cypher", lambda d, q, **p: [])
-    assert repo.quota(object(), "ws1") == {"documents": 0, "versions_by_document": {}, "pages": 0, "embedded_tokens": 0}
+    assert repo.quota(object(), "ws1") == {"documents": 0, "versions_by_document": {}, "pages": 0,
+                                           "pages_by_document": {}, "embedded_tokens": 0}
 
 
 def test_quota_shape_with_documents(monkeypatch):
@@ -557,7 +581,19 @@ def test_quota_shape_with_documents(monkeypatch):
     monkeypatch.setattr(repo, "run_cypher", lambda d, q, **p: rows)
     assert repo.quota(object(), "ws1") == {
         "documents": 2, "versions_by_document": {"aaaaaaaaaaaa": 3, "bbbbbbbbbbbb": 1},
-        "pages": 7, "embedded_tokens": 100}
+        "pages": 7, "pages_by_document": {"aaaaaaaaaaaa": 5, "bbbbbbbbbbbb": 2}, "embedded_tokens": 100}
+
+
+def test_quota_pages_by_document_lets_a_same_size_reversion_at_the_cap_be_distinguished_from_a_new_document(
+        monkeypatch):
+    """C3 item 5 (docs/v2/M4_PLAN.md 15.8): the workspace-page-cap check (``uploads.jobs``) needs the PER-DOCUMENT
+    current page count, not just the workspace total, to accept a same-size new version of a document already at
+    the cap while still refusing a brand-new document that would push the total over."""
+    rows = [{"embedded_tokens": 0, "document_id": "aaaaaaaaaaaa", "version_count": 1, "current_pages": 120}]
+    monkeypatch.setattr(repo, "run_cypher", lambda d, q, **p: rows)
+    quota = repo.quota(object(), "ws1")
+    assert quota["pages"] == 120
+    assert quota["pages_by_document"] == {"aaaaaaaaaaaa": 120}
 
 
 def test_search_chunks_dispatches_current_vs_asof(monkeypatch):

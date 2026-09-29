@@ -131,25 +131,6 @@ def test_compare_versions_meaning_reversal_yields_a_changed_passage_by_default()
     assert {c["headline"] for c in report["minor_rewordings"]} == set()
 
 
-def test_compare_versions_pure_negation_is_filtered_by_the_aligner_before_passages_run():
-    """Documents a real LIMITATION (changes.py module docstring), not a defect of this fix: a pure-negation edit
-    ("is expected to grow" -> "is not expected to grow") measures ``partial_ratio`` ~90 against the whole other
-    section — at or above the ITEM-level aligner's own (frozen, SEC-tuned) ``absence_min_ratio`` of 85 — so
-    ``graph.alignment.align`` calls the unit ``unchanged`` outright and it never reaches this module's passage
-    logic, let alone ``minor_rewordings``. Only an upload-specific ``AlignParams`` could change that, which
-    M4_PLAN.md 15.6 does not ask for; this test pins today's behaviour so a future change is a deliberate one."""
-    v1 = _build_view("# Executive Summary\nThe company performed well this quarter.\n\n"
-                     "# Market Outlook\nThe market is expected to grow next year.\n\n"
-                     "# Company History\nThe company was founded and has grown steadily.\n")
-    v2 = _build_view("# Executive Summary\nThe company performed well this quarter.\n\n"
-                     "# Market Outlook\nThe market is not expected to grow next year.\n\n"
-                     "# Company History\nThe company was founded and has grown steadily.\n")
-    report = C.compare_versions(v1, v2)
-    assert report["changed"] == []
-    assert report["minor_rewordings"] == []                  # not even visible as a minor rewording (the gap)
-    assert report["unchanged_count"] == len(v1.units)
-
-
 def test_compare_versions_tense_only_edit_yields_no_passage_by_default():
     """A tense-only edit ('will impact' -> 'impacted') at ~95.5 ``partial_ratio`` must stay a minor rewording, not
     a reported change, under the SAME upload-tuned params that catch the meaning reversal above."""
@@ -160,6 +141,118 @@ def test_compare_versions_tense_only_edit_yields_no_passage_by_default():
     assert "Regulatory Impact" not in changed_headlines
     minor_headlines = {m["headline"] for m in report["minor_rewordings"]}
     assert "Regulatory Impact" in minor_headlines
+
+
+# --------------------------------------------------------------------------
+# negation polarity (Worker A3, changes.py module docstring "(b)"; fixes the LIMITATION the docstring used to
+# describe): a pure-negation edit barely moves fuzz.partial_ratio, so it needs its own deterministic check rather
+# than a present_min_ratio / absence_min_ratio threshold.
+# --------------------------------------------------------------------------
+
+def _quotes_by_kind(entry: dict) -> dict[str, str]:
+    return {p["kind"]: p["quote"] for p in entry["passages"]}
+
+
+def test_compare_versions_negation_added_is_reported_as_changed():
+    """'is expected to grow' -> 'is not expected to grow': the removed (older) and added (newer) sentences must be
+    quoted verbatim, and nothing else in the fixture is disturbed."""
+    v1, v2 = _build_view(fx.NEGATION_GROWTH_V1), _build_view(fx.NEGATION_GROWTH_V2)
+    report = C.compare_versions(v1, v2)
+    changed_headlines = {c["headline"] for c in report["changed"]}
+    assert "Market Trends And Outlook Today" in changed_headlines
+    outlook = next(c for c in report["changed"] if c["headline"] == "Market Trends And Outlook Today")
+    quotes = _quotes_by_kind(outlook)
+    assert quotes["removed"] == ("The market is expected to grow next year across all of our served end markets "
+                                 "and major product categories worldwide.")
+    assert quotes["added"] == ("The market is not expected to grow next year across all of our served end markets "
+                               "and major product categories worldwide.")
+    assert {m["headline"] for m in report["minor_rewordings"]} == set()
+
+
+def test_compare_versions_negation_removed_is_reported_as_changed():
+    """The other direction: 'we will not renew' -> 'we will renew' must be caught exactly like the addition of a
+    negator above (the check is symmetric in both texts' sentences)."""
+    v1, v2 = _build_view(fx.NEGATION_RENEWAL_V1), _build_view(fx.NEGATION_RENEWAL_V2)
+    report = C.compare_versions(v1, v2)
+    changed_headlines = {c["headline"] for c in report["changed"]}
+    assert "Lease Commitments And Renewals" in changed_headlines
+    lease = next(c for c in report["changed"] if c["headline"] == "Lease Commitments And Renewals")
+    quotes = _quotes_by_kind(lease)
+    assert quotes["removed"].startswith("We will not renew the facility lease")
+    assert quotes["added"].startswith("We will renew the facility lease")
+
+
+def test_compare_versions_negation_short_unit_is_reported_as_changed_by_default():
+    """'no material impact' -> 'a material impact': a SHORT one-line item, only reachable via
+    :data:`C.UPLOAD_ALIGN_PARAMS` (module docstring "(a)") — see the ablation test right below for why."""
+    v1, v2 = _build_view(fx.NEGATION_SHORT_IMPACT_V1), _build_view(fx.NEGATION_SHORT_IMPACT_V2)
+    report = C.compare_versions(v1, v2)
+    changed_headlines = {c["headline"] for c in report["changed"]}
+    assert "Risk Note" in changed_headlines
+    note = next(c for c in report["changed"] if c["headline"] == "Risk Note")
+    assert _quotes_by_kind(note) == {"removed": "There is no material impact.", "added": "There is a material impact."}
+
+
+def test_compare_versions_negation_short_unit_needs_upload_align_params_to_reach_a_matched_partner():
+    """Ablates part (a) of the fix: under the plain SEC-tuned ``graph.alignment.AlignParams()`` (``min_body_tokens``
+    10), the short 'Risk Note' item never enters the body assignment at all and is left ``uncertain`` with NO
+    matched partner — the negation-polarity check (b) has nothing to pair it against, so it falls to
+    ``minor_rewordings`` with no ``newer_unit_id`` instead of being caught. This is exactly the gap
+    :data:`C.UPLOAD_ALIGN_PARAMS` closes (module docstring "(a)")."""
+    from semigraph.graph.alignment import AlignParams as SecDefaultAlignParams
+
+    v1, v2 = _build_view(fx.NEGATION_SHORT_IMPACT_V1), _build_view(fx.NEGATION_SHORT_IMPACT_V2)
+    report = C.compare_versions(v1, v2, align_params=SecDefaultAlignParams())
+    assert {c["headline"] for c in report["changed"]} == set()
+    minor = next(m for m in report["minor_rewordings"] if m["headline"] == "Risk Note")
+    assert minor["newer_unit_id"] is None
+
+
+def test_compare_versions_negation_multiple_sentences_only_flags_the_flipped_one():
+    """A unit with two sentences: only the first flips negation polarity, the second is an unrelated word swap
+    (regional -> worldwide) that must NOT itself produce a spurious quote pair."""
+    v1, v2 = _build_view(fx.NEGATION_MULTI_SENTENCE_V1), _build_view(fx.NEGATION_MULTI_SENTENCE_V2)
+    report = C.compare_versions(v1, v2)
+    matter = next(c for c in report["changed"] if c["headline"] == "Regulatory And Compliance Matters")
+    assert len(matter["passages"]) == 2                       # exactly one removed/added pair, not two
+    quotes = _quotes_by_kind(matter)
+    assert quotes["removed"] == "The company is not subject to any material pending regulatory investigations at this time."
+    assert quotes["added"] == "The company is subject to any material pending regulatory investigations at this time."
+    for passage in matter["passages"]:
+        assert "regional" not in passage["quote"] and "worldwide" not in passage["quote"]
+
+
+def test_compare_versions_double_negation_of_the_same_parity_is_not_a_flip():
+    """A double negation that keeps the SAME parity on both sides (two negators become two different negators: a
+    'restriction' that is 'never waived' becomes a 'clause' that is 'never waived') must NOT be reported as a
+    polarity flip — it still lands in ``minor_rewordings`` like any other sub-threshold rewording, never
+    ``changed``, and never silently folded into ``unchanged_count`` either."""
+    v1, v2 = _build_view(fx.NEGATION_DOUBLE_V1), _build_view(fx.NEGATION_DOUBLE_V2)
+    report = C.compare_versions(v1, v2)
+    assert C._negation_count("There is no restriction that is never waived under the terms of our standard "
+                             "distribution agreements today.") == 2
+    assert C._negation_count("There is no clause that is never waived under the terms of our standard "
+                             "distribution agreements today.") == 2
+    assert {c["headline"] for c in report["changed"]} == set()
+    assert {m["headline"] for m in report["minor_rewordings"]} == {"Contractual Restrictions Overview"}
+    assert report["unchanged_count"] == 2                     # Executive Summary + Company History only
+
+
+def test_compare_versions_byte_identical_units_are_never_flagged_as_a_negation_flip():
+    """A negation check that ran on every ``unchanged`` pair regardless of content would be pure waste (identical
+    text can never flip polarity); this pins that byte-identical units among a negation fixture still count as
+    plain ``unchanged``, never promoted."""
+    v1 = _build_view(fx.NEGATION_GROWTH_V1)
+    v2 = _build_view(fx.NEGATION_GROWTH_V1)
+    report = C.compare_versions(v1, v2)
+    assert report["not_compared_reason"] == "identical_content"
+
+
+def test_compare_versions_tense_only_edit_still_lands_in_minor_rewordings_with_negation_fix_active():
+    """The tense-only fixture above (no negator on either side) must be completely unaffected by the
+    negation-polarity check: 0 negators on both sides is the same parity, so it is never even a candidate flip."""
+    assert C._negation_count("New regulations will impact our supply chain operations significantly this year.") == 0
+    assert C._negation_count("New regulations impacted our supply chain operations significantly this year.") == 0
 
 
 # --------------------------------------------------------------------------

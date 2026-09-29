@@ -9,6 +9,7 @@ synchronously so tests never race a background thread; one test exercises the pu
 
 from __future__ import annotations
 
+import json
 import threading
 
 import pytest
@@ -56,11 +57,18 @@ class FakeRepo:
         self.embedded: dict[str, dict[str, list[float]]] = {}
         self.workspace_tokens = 0
         self.workspace_pages = 0
+        self.pages_by_document: dict[str, int] = {}     # C3 item 5 (docs/v2/M4_PLAN.md 15.8)
         self.jobs: list[dict] = []
         self.put_version_calls: list[dict] = []
         self.put_job_fail_times = 0       # the next N put_job calls raise a transient error
         self.put_job_calls = 0
         self.workspace_gone = False       # once true, put_version/put_job raise WorkspaceGone
+        # C3 item 1 (docs/v2/M4_PLAN.md 15.4): a predicate over the job dict a put_job call is about to persist —
+        # when it returns True, THAT call (and, being sticky, every later one) raises WorkspaceGone. Independent of
+        # `workspace_gone` above (which only fires for the already-known `workspace_deleted` persist attempt) so a
+        # test can simulate the workspace vanishing partway through an EARLIER, arbitrary stage.
+        self.put_job_gone_when = None
+        self._put_job_gone_triggered = False
 
     def latest_version(self, driver, ws, document_id):
         rows = self.versions.get(document_id)
@@ -76,12 +84,14 @@ class FakeRepo:
         return dict(self.embedded.get(document_id, {}))
 
     def quota(self, driver, ws):
-        return {"embedded_tokens": self.workspace_tokens, "pages": self.workspace_pages}
+        return {"embedded_tokens": self.workspace_tokens, "pages": self.workspace_pages,
+               "pages_by_document": dict(self.pages_by_document)}
 
     def put_version(self, driver, ws, **kw):
         if self.workspace_gone:
             raise WorkspaceGone(ws)
         self.put_version_calls.append(kw)
+        self.pages_by_document[kw["document_id"]] = kw["pages"]
         rows = self.versions.setdefault(kw["document_id"], [])
         view = {"text": kw["text"], "units": kw["units"],
                "chunk_spans": [(c["chunk_id"], c["char_start"], c["char_end"]) for c in kw["chunks"]],
@@ -95,6 +105,9 @@ class FakeRepo:
 
     def put_job(self, driver, ws, job):
         self.put_job_calls += 1
+        if self._put_job_gone_triggered or (self.put_job_gone_when is not None and self.put_job_gone_when(job)):
+            self._put_job_gone_triggered = True     # sticky: once the workspace is "gone" it stays gone
+            raise WorkspaceGone(ws)
         if self.workspace_gone and job.get("state") == "failed" and job["error"]["code"] == "workspace_deleted":
             # put_version already refused: a real repo.put_job guarded the same way would refuse too.
             raise WorkspaceGone(ws)
@@ -193,6 +206,26 @@ def test_a_plain_text_upload_reaches_ready_and_releases_the_slot(fake_repo, monk
     assert result is not None and result[0][-1]["state"] == "ready"
 
 
+def test_the_first_version_change_report_has_the_same_key_set_as_compare_versions_output(fake_repo, monkeypatch):
+    """C3 item 3 (docs/v2/M4_PLAN.md 15.6/15): there being no PREVIOUS version to diff against must not make the
+    first version's report a DIFFERENT shape from every other compare_versions output — including
+    ``minor_rewordings: []`` — so a consumer (the page's changesHtml) never needs a special case for it."""
+    from semigraph.uploads.changes import VersionView, compare_versions
+
+    parsed = _parsed([_block("Alpha bravo charlie delta echo.")])
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
+    app = FakeApp(fake_repo)
+    _run(app)
+    first_version_report = fake_repo.put_version_calls[-1]["change_report"]
+
+    # The real oracle: any compare_versions call (even one that hits a guard, like identical content here) always
+    # returns the SAME key set — that invariant is exactly what this test pins the first-version report against.
+    view = VersionView(text="same text", units=(), chunk_spans=(), method="text", chars_per_page=1000.0)
+    real_report = compare_versions(view, view)
+    assert set(first_version_report.keys()) == set(real_report.keys())
+    assert first_version_report["minor_rewordings"] == []
+
+
 def test_run_upload_job_starts_a_real_thread_and_reaches_a_terminal_state(fake_repo, monkeypatch):
     parsed = _parsed([_block("Alpha bravo charlie delta echo.")])
     monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
@@ -268,6 +301,34 @@ def test_the_120_page_workspace_cap_allows_a_document_that_fits(fake_repo, monke
     assert _events(fake_repo)[-1]["state"] == "ready"
 
 
+def test_a_same_size_reversion_of_a_document_already_at_the_workspace_cap_is_accepted(fake_repo, monkeypatch):
+    """C3 item 5 (docs/v2/M4_PLAN.md 15.8): ``repo.quota``'s ``pages_by_document`` lets the target document's OWN
+    current pages be subtracted from the workspace total before the new version's pages are added back — a
+    same-size new version of a document already sitting at the cap must be ACCEPTED, not refused."""
+    cap = FakeSettings.upload_max_workspace_pages
+    this_documents_pages = 20      # within upload_max_pages (30, the PER-VERSION cap) — only the workspace total is at its cap
+    parsed = _parsed([_block("short")], pages=this_documents_pages)
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
+    fake_repo.workspace_pages = cap                              # the workspace total is already AT the cap...
+    fake_repo.pages_by_document[DOC] = this_documents_pages       # ...entirely from THIS document's current pages
+    app = FakeApp(fake_repo)
+    _run(app)
+    assert _events(fake_repo)[-1]["state"] == "ready"
+
+
+def test_a_new_document_that_would_push_the_workspace_over_the_cap_is_still_refused(fake_repo, monkeypatch):
+    """The flip side of the fix above: a document with ZERO current pages (brand new, or simply a different
+    document than the one already occupying the cap) gets no subtraction, so it is refused exactly as before."""
+    cap = FakeSettings.upload_max_workspace_pages
+    parsed = _parsed([_block("short")], pages=5)
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
+    fake_repo.workspace_pages = cap                       # already at the cap, via a DIFFERENT document
+    fake_repo.pages_by_document["some-other-document"] = cap
+    app = FakeApp(fake_repo)                              # uploads for DOC, which has 0 current pages
+    _run(app)
+    assert _events(fake_repo)[-1]["error"]["code"] == "workspace_quota"
+
+
 def test_too_many_chunks_fails_before_any_embedding(fake_repo, monkeypatch):
     """Finding 8 (security, MEDIUM): ``upload_max_chunks`` (120) was defined in config.py but never enforced — a
     whitespace- or short-paragraph-heavy document under the token cap could still produce hundreds of chunks."""
@@ -304,6 +365,66 @@ def test_a_job_that_hits_workspacegone_at_put_version_fails_workspace_deleted_an
                                "error": {"code": "workspace_deleted",
                                          "message": jobs.JOB_ERROR_MESSAGES["workspace_deleted"]}}
     assert app.state.upload_slots.released == 1
+
+
+def test_an_early_progress_write_that_hits_workspacegone_ends_locally_as_workspace_deleted(fake_repo, monkeypatch):
+    """C3 item 1: WorkspaceGone from a put_job at ANY stage — not only the put_version call above — must end the
+    job the same way. Triggered here at the very first non-terminal write ("validating"), well before parsing."""
+    parsed = _parsed([_block("Alpha bravo charlie delta echo.")])
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
+    fake_repo.put_job_gone_when = lambda job: job.get("state") == "validating"
+    app = FakeApp(fake_repo)
+    reg = _run(app)                                     # must not raise
+    live_events, _ = reg.events_from(WS, "job1", 0)
+    terminal = [e for e in live_events if e["state"] == "failed"]
+    assert len(terminal) == 1 and terminal[0]["error"]["code"] == "workspace_deleted"
+    assert fake_repo.put_version_calls == []
+    assert app.state.upload_slots.released == 1
+
+
+def test_a_known_failures_persist_that_discovers_the_workspace_gone_reports_workspace_deleted_not_the_original_code(
+        fake_repo, monkeypatch):
+    """C3 item 1 (docs/v2/M4_PLAN.md 15.4): ``_emit`` persists BEFORE appending to the live log — if PERSISTING a
+    known failure (here ``too_many_pages``) is what discovers the workspace is gone, that misleading event must
+    never reach a live watcher; only the accurate, local-only ``workspace_deleted`` terminal event should."""
+    parsed = _parsed([_block("short")], pages=31)        # triggers too_many_pages
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
+    fake_repo.put_job_gone_when = lambda job: job.get("error", {}).get("code") == "too_many_pages"
+    app = FakeApp(fake_repo)
+    reg = _run(app)
+    live_events, _ = reg.events_from(WS, "job1", 0)
+    terminal = [e for e in live_events if e["state"] == "failed"]
+    assert len(terminal) == 1 and terminal[0]["error"]["code"] == "workspace_deleted"
+    assert [j for j in fake_repo.jobs if j["state"] == "failed"] == []    # too_many_pages itself was never persisted
+
+
+def test_a_crash_that_then_finds_the_workspace_gone_while_reporting_it_never_leaves_an_unhandled_exception(
+        fake_repo, monkeypatch):
+    """C3 item 1, the subtle window (docs/v2/M4_PLAN.md 15.4): the workspace can vanish mid-job in a way that FIRST
+    surfaces as an unrelated crash — here, a stale read during ``comparing`` once ``repo.version_view`` starts
+    returning ``None`` for a deleted document. Reporting that crash as ``internal_error`` is itself a ``put_job``
+    write, and THAT is what actually discovers ``WorkspaceGone``. Before this fix, that second exception escaped
+    ``_worker`` entirely (an unhandled exception silently killing the thread) instead of being reported as
+    ``workspace_deleted``."""
+    v1 = _parsed([_block("Alpha bravo charlie delta echo foxtrot.")])
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: v1)
+    app = FakeApp(fake_repo)
+    _run(app, job_id="job1")                             # first version lands fine
+
+    v2 = _parsed([_block("Golf hotel india juliet kilo lima mike november.")])
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: v2)
+    # repo.version_view was bound (via monkeypatch, in the fake_repo fixture) to fake_repo's method AT FIXTURE
+    # SETUP time, so the module attribute itself must be repatched here — reassigning fake_repo.version_view alone
+    # would not change what `repo.version_view` resolves to.
+    monkeypatch.setattr(repo, "version_view", lambda driver, ws, document_id, version: None)   # deleted mid-flight
+    fake_repo.put_job_gone_when = lambda job: job.get("error", {}).get("code") == "internal_error"
+    reg = _run(app, job_id="job2", content_hash_hex="i" * 64)   # must not raise
+    live_events, _ = reg.events_from(WS, "job2", 0)
+    terminal = [e for e in live_events if e["state"] == "failed"]
+    assert len(terminal) == 1 and terminal[0]["error"]["code"] == "workspace_deleted"
+    persisted_codes = [j["error"]["code"] for j in _events(fake_repo, "job2") if j["state"] == "failed"]
+    assert "internal_error" not in persisted_codes        # the internal_error write itself never landed
+    assert app.state.upload_slots.released == 2           # once per job run on this shared app (job1 then job2)
 
 
 # ---------------------------------------------------------------- persisted-progress retry (finding 27)
@@ -366,6 +487,40 @@ def test_a_parse_error_is_reported_with_its_own_code_never_the_raw_message(fake_
     assert error["code"] == "scanned"
     assert "internal detail" not in error["message"]
     assert app.state.upload_slots.released == 1
+
+
+def test_a_parse_error_is_logged_with_its_code_and_exc_type_never_the_message(fake_repo, monkeypatch, caplog):
+    """C3 item 4 (docs/v2/M4_PLAN.md 15.7): the log line's detail must be ParseError.exc_type (the sandboxed
+    child's own exception CLASS NAME, e.g. "PdfReadError") — never type(e).__name__ (always the constant string
+    "ParseError", which tells an operator nothing) and never ParseError's own message."""
+    def boom(*a, **kw):
+        raise ParseError("parse_failed", "some internal detail that must never reach the log",
+                         exc_type="PdfReadError")
+
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", boom)
+    app = FakeApp(fake_repo)
+    with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
+        _run(app)
+    assert _events(fake_repo)[-1]["error"]["code"] == "parse_failed"
+    logged = " ".join(r.getMessage() for r in caplog.records)
+    assert "(PdfReadError)" in logged
+    assert "(ParseError)" not in logged
+    assert "some internal detail" not in logged
+
+
+def test_a_parse_error_with_no_exc_type_is_logged_without_it_and_never_crashes(fake_repo, monkeypatch, caplog):
+    """``exc_type`` is ``None`` when the failure was not a sandboxed-child exception at all (e.g. a page-count
+    guard raised directly in the parent) — logging must tolerate that, never format ``None`` into the message."""
+    def boom(*a, **kw):
+        raise ParseError("scanned", "internal detail")   # exc_type left at its default of None
+
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", boom)
+    app = FakeApp(fake_repo)
+    with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
+        _run(app)      # must not raise
+    assert _events(fake_repo)[-1]["error"]["code"] == "scanned"
+    logged = " ".join(r.getMessage() for r in caplog.records)
+    assert "None" not in logged
 
 
 def test_an_unexpected_exception_still_releases_the_slot_and_reports_internal_error(fake_repo, monkeypatch):
@@ -518,6 +673,17 @@ def test_append_to_an_unknown_job_is_a_safe_no_op():
     reg.append("ws", "does-not-exist", {"state": "parsing"})     # must not raise
 
 
+def test_registry_keys_snapshots_every_tracked_job_including_ones_in_their_grace_period():
+    """C3 item 2 (docs/v2/M4_PLAN.md 15.4): the sweeper's exclusion set — a job just finished (grace period still
+    counting down) is harmless to include too, since its persisted state is already terminal."""
+    reg = jobs.JobRegistry()
+    reg.create("ws1", "job1")
+    reg.create("ws2", "job2")
+    reg.append("ws2", "job2", {"state": "ready"})     # terminal, but still within its grace period
+    assert reg.keys() == frozenset({("ws1", "job1"), ("ws2", "job2")})
+    assert jobs.JobRegistry().keys() == frozenset()
+
+
 def test_count_tokens_available_is_false_for_a_backend_that_cannot_count():
     class NoCount:
         def count_tokens(self, text):
@@ -540,41 +706,67 @@ def test_sweeper_stops_promptly_and_sweeps_on_its_own_thread(fake_repo):
     assert not sweeper._thread.is_alive()
 
 
-# ---------------------------------------------------------------- sweeper: finding 26 (docs/v2/M4_PLAN.md 15.4)
+# ---------------------------------------------------------------- sweeper: finding 26 / 27 (docs/v2/M4_PLAN.md 15.4)
 
 
 def test_sweeper_calls_fail_interrupted_jobs_once_before_its_first_wait(monkeypatch):
     calls = []
-    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver: (calls.append("fail_interrupted"), 2)[1],
-                        raising=False)
-    sweeper = jobs._Sweeper(object())
-    sweeper._safe_fail_interrupted()
-    assert calls == ["fail_interrupted"]
-
-
-def test_sweeper_skips_fail_interrupted_jobs_gracefully_when_repo_does_not_implement_it_yet(monkeypatch):
-    monkeypatch.delattr(repo, "fail_interrupted_jobs", raising=False)
-    jobs._Sweeper(object())._safe_fail_interrupted()      # must not raise — a reported seam, not a crash
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), 2)[1])
+    jobs._Sweeper(object())._safe_fail_interrupted()
+    assert calls == [{}]          # no registry/settings: repo's own defaults apply
 
 
 def test_a_broken_fail_interrupted_jobs_never_blocks_or_crashes_boot(monkeypatch):
-    def boom(driver):
+    def boom(driver, **kw):
         raise RuntimeError("fail_interrupted_jobs exploded")
 
-    monkeypatch.setattr(repo, "fail_interrupted_jobs", boom, raising=False)
-    jobs._Sweeper(object())._safe_fail_interrupted()      # must not raise
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", boom)
+    jobs._Sweeper(object(), jobs.JobRegistry(), FakeSettings())._safe_fail_interrupted()      # must not raise
+
+
+def test_sweeper_calls_fail_interrupted_jobs_on_every_cycle_not_only_at_start(monkeypatch):
+    """A job whose owning process died mid-embed must not wait for the NEXT restart: the check repeats every cycle."""
+    import time as time_mod
+
+    calls = []
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(1), 0)[1])
+    monkeypatch.setattr(repo, "sweep_expired", lambda driver, now: 0)
+    monkeypatch.setattr(repo, "sweep_orphans", lambda driver, now: 0)
+    sweeper = jobs._Sweeper(object())
+    jobs.SWEEP_INTERVAL_S, saved = 0.01, jobs.SWEEP_INTERVAL_S
+    try:
+        sweeper.start()
+        time_mod.sleep(0.1)
+    finally:
+        jobs.SWEEP_INTERVAL_S = saved
+        sweeper.stop(timeout=2)
+    assert len(calls) >= 2      # the initial call, plus at least one more full cycle
+
+
+def test_fail_interrupted_older_than_s_exceeds_the_parse_plus_embed_wall_budget_with_margin():
+    """Pins the arithmetic: a config change to either budget can never shrink the threshold below the two wall budgets."""
+    settings = FakeSettings()
+    threshold = jobs._fail_interrupted_older_than_s(settings)
+    assert threshold - (settings.upload_parse_timeout_s + settings.upload_embed_timeout_s) ==         jobs.FAIL_INTERRUPTED_STAGE_MARGIN_S > 0
+
+
+def test_the_sweeper_excludes_every_job_this_process_still_has_open_and_passes_the_settings_threshold(monkeypatch):
+    """The live-job guarantee: the jobs in THIS process's JobRegistry reach repo.fail_interrupted_jobs as ``exclude``
+    (repo skips them whatever their stored age), with the threshold derived from the job budgets."""
+    reg = jobs.JobRegistry()
+    reg.create(WS, "live-job")
+    calls = []
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), 0)[1])
+    jobs._Sweeper(object(), reg, FakeSettings())._safe_fail_interrupted()
+    assert calls == [{"older_than_s": jobs._fail_interrupted_older_than_s(FakeSettings()), "exclude": reg.keys()}]
+    assert (WS, "live-job") in calls[0]["exclude"]
 
 
 def test_sweeper_sweeps_orphans_every_cycle(monkeypatch):
     calls = []
-    monkeypatch.setattr(repo, "sweep_orphans", lambda driver, now: (calls.append("orphans"), 0)[1], raising=False)
+    monkeypatch.setattr(repo, "sweep_orphans", lambda driver, now: (calls.append("orphans"), 0)[1])
     jobs._Sweeper(object())._safe_sweep_orphans()
     assert calls == ["orphans"]
-
-
-def test_sweeper_skips_sweep_orphans_gracefully_when_repo_does_not_implement_it_yet(monkeypatch):
-    monkeypatch.delattr(repo, "sweep_orphans", raising=False)
-    jobs._Sweeper(object())._safe_sweep_orphans()          # must not raise — a reported seam, not a crash
 
 
 def test_a_broken_sweep_orphans_never_stops_the_expired_workspace_sweep_from_running(monkeypatch):

@@ -166,6 +166,16 @@ class JobRegistry:
         with self._lock:
             self._logs.pop((workspace_id, job_id), None)
 
+    def keys(self) -> frozenset[tuple[str, str]]:
+        """A snapshot of every ``(workspace_id, job_id)`` THIS process currently tracks — including a job whose
+        terminal event just landed and is only counting down its grace period, which is harmless to include here
+        too (its persisted state is already terminal, so the interrupted-job sweep's own state filter would skip
+        it anyway). Used by the sweeper (docs/v2/M4_PLAN.md 15.4, finding 27) so a job genuinely running (or just
+        finished) on THIS machine is never marked ``interrupted`` by the age-based Neo4j sweep, even when its
+        non-terminal progress writes have gone quiet for a while (best-effort by design — see :func:`_persist_job`)."""
+        with self._lock:
+            return frozenset(self._logs.keys())
+
     def _prune_locked(self) -> None:
         now = self._clock()
         stale = [key for key, log in self._logs.items()
@@ -229,10 +239,16 @@ def _persist_job(driver, workspace_id: str, job: dict) -> None:
 
 
 def _emit(driver, workspace_id: str, reg: JobRegistry, job: dict) -> None:
-    """Publish ``job`` to the live, in-memory log (every watcher sees it, fan-out — docs/v2/M4_PLAN.md 15.3) BEFORE
-    persisting it, so a live watcher still sees progress even when the Neo4j write itself fails."""
-    reg.append(workspace_id, job["job_id"], job)
+    """Persists ``job`` FIRST, then publishes it to the live, in-memory log (every watcher sees it, fan-out —
+    docs/v2/M4_PLAN.md 15.3). A non-terminal or terminal write that fails for an ORDINARY reason is still
+    best-effort/retried-then-logged inside :func:`_persist_job` and never raises, so a live watcher still sees
+    progress on a flaky-but-recoverable Neo4j write. Only ``repo.WorkspaceGone`` propagates out of
+    :func:`_persist_job` — and this order means THAT event is never appended here at all: the caller (``_worker``)
+    is left to emit the accurate ``workspace_deleted`` terminal event instead, so a live watcher's log can never
+    show a stale/misleading event (e.g. ``too_many_pages``) as its last word when the true final state is that the
+    workspace no longer exists (docs/v2/M4_PLAN.md 15.4, C3 item 1)."""
     _persist_job(driver, workspace_id, job)
+    reg.append(workspace_id, job["job_id"], job)
 
 
 def _emit_local_only(reg: JobRegistry, workspace_id: str, job: dict) -> None:
@@ -285,7 +301,10 @@ def _parse_or_fail(driver, ws, reg, job_id, document_id, version, data, kind, se
         return parse_document(data, kind, timeout_s=settings.upload_parse_timeout_s,
                               max_pages=settings.upload_max_pages)
     except ParseError as e:
-        _fail(driver, ws, reg, job_id, document_id, version, e.code, detail=type(e).__name__)
+        # Logs e.code and e.exc_type ONLY — never e.message (docs/v2/M4_PLAN.md 15.7): exc_type is the sandboxed
+        # child's own exception CLASS NAME (e.g. "PdfReadError"), useful for triage; type(e).__name__ would always
+        # be the constant string "ParseError" and tell an operator nothing.
+        _fail(driver, ws, reg, job_id, document_id, version, e.code, detail=e.exc_type or "")
         return None
 
 
@@ -334,8 +353,11 @@ def _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_r
     from .changes import compare_versions
 
     if latest is None:
+        # Same shape as changes.compare_versions' own "not compared" result (docs/v2/M4_PLAN.md 15.6/15): every key
+        # compare_versions ever returns must be present here too, including minor_rewordings — a consumer (the
+        # page's changesHtml) must never need a special case for "first version" versus "not compared".
         return {"items_compared": False, "not_compared_reason": "first_version",
-               "added": [], "removed": [], "changed": [], "unchanged_count": 0}
+               "added": [], "removed": [], "changed": [], "minor_rewordings": [], "unchanged_count": 0}
     from . import repo
 
     older_row = repo.version_view(driver, ws, document_id, latest["version"])
@@ -348,18 +370,19 @@ def _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_r
     return compare_versions(older_view, newer_view)
 
 
-def _workspace_page_quota_exceeded(driver, ws: str, new_pages: int, settings) -> bool:
+def _workspace_page_quota_exceeded(driver, ws: str, document_id: str, new_pages: int, settings) -> bool:
     """The 120-page WORKSPACE cap (docs/v2/M4_PLAN.md 15.8, ``upload_max_workspace_pages``), distinct from the
-    per-version page cap above. Conservative for a re-upload of an EXISTING document: ``repo.quota`` reports only
-    the workspace's total current pages, not a per-document breakdown, so a new version's own pages are added on
-    top of the total without first subtracting that document's own current page count — a same-size re-version
-    right at the cap could be rejected where a byte-exact replacement would actually fit. A precise fix needs
-    ``repo.quota`` to also return a ``pages_by_document`` map (reported as a seam: ``uploads/repo.py`` is out of
-    this worker's file ownership)."""
+    per-version page cap above. Precise for a re-upload of an EXISTING document (``repo.quota``'s
+    ``pages_by_document``, C3 item 5): the target document's OWN current pages are subtracted from the workspace
+    total before the new version's pages are added back in, so a same-size (or smaller) new version of a document
+    already sitting at the cap is accepted, while a brand-new document — or a bigger version — that would push the
+    total over the cap is still refused."""
     from . import repo
 
     quota = repo.quota(driver, ws)
-    return quota.get("pages", 0) + new_pages > settings.upload_max_workspace_pages
+    current_total = quota.get("pages", 0)
+    document_current_pages = quota.get("pages_by_document", {}).get(document_id, 0)
+    return current_total - document_current_pages + new_pages > settings.upload_max_workspace_pages
 
 
 def _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, settings, embedder):
@@ -373,7 +396,7 @@ def _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, sett
     if parsed.pages > settings.upload_max_pages:
         _fail(driver, ws, reg, job_id, document_id, version, "too_many_pages")
         return None
-    if _workspace_page_quota_exceeded(driver, ws, parsed.pages, settings):
+    if _workspace_page_quota_exceeded(driver, ws, document_id, parsed.pages, settings):
         _fail(driver, ws, reg, job_id, document_id, version, "workspace_quota")
         return None
     text = canonical_text(parsed.blocks)
@@ -475,8 +498,15 @@ def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data
     ``put_job`` (every progress write) now ALSO locks the workspace and raises it, a delete/sweep that lands during
     an earlier stage (parsing, chunking, comparing) surfaces the same way as one that lands right at indexing — a
     local-only ``workspace_deleted`` event, never a second, doomed write attempt against a workspace that is
-    already gone (which would otherwise raise again and fall through as an uninformative ``internal_error``, or an
-    unhandled exception that kills the thread silently)."""
+    already gone.
+
+    A SECOND, subtler window (C3 item 1, docs/v2/M4_PLAN.md 15.4): a workspace deletion can first surface as some
+    OTHER exception (e.g. ``repo.version_view`` starts returning ``None`` for a deleted document mid-``comparing``,
+    which ``_version_view`` then fails to unpack) — caught below by ``except Exception``, which tries to report
+    ``internal_error``. Reporting THAT failure is itself a ``put_job`` write, so it can ALSO raise
+    ``WorkspaceGone`` (nothing was persisted); without the nested ``try`` below, that second exception would
+    escape this function entirely — an unhandled exception silently killing the thread, exactly the bug this item
+    fixes. Either window ends the same way: a local-only ``workspace_deleted`` event, never a crash."""
     from . import repo
 
     st = app.state
@@ -489,7 +519,10 @@ def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data
         _fail(st.driver, ws, reg, job_id, document_id, None, "workspace_deleted", persist=False)
     except Exception:  # noqa: BLE001 — a job must always end in ready/failed, never a silently dead thread
         logger.exception("upload job crashed ws_hash=%s job_id=%s", _ws_hash(ws), job_id)
-        _fail(st.driver, ws, reg, job_id, document_id, None, "internal_error")
+        try:
+            _fail(st.driver, ws, reg, job_id, document_id, None, "internal_error")
+        except workspace_gone:
+            _fail(st.driver, ws, reg, job_id, document_id, None, "workspace_deleted", persist=False)
     finally:
         st.upload_slots.release()
 
@@ -518,22 +551,42 @@ def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | Non
     return job_id
 
 
+# Extra silent time (beyond the parse + embed wall budgets) a genuinely LIVE job's put_job writes may go quiet
+# for, on top of settings.upload_parse_timeout_s + settings.upload_embed_timeout_s, before the interrupted-job
+# sweep's age threshold (docs/v2/M4_PLAN.md 15.4, finding 27, C3 item 2). Arithmetic: `_embed_chunks` only checks
+# its wall budget BETWEEN chunks, so one slow chunk can carry the embed stage past upload_embed_timeout_s before
+# that check fires; then `comparing` (a pure-Python alignment) and `put_version`'s own transaction still have to
+# run before the NEXT progress write lands. None of those has its own settings-backed timeout today, so this
+# margin is a fixed, generous allowance for all three combined, not a per-stage figure.
+FAIL_INTERRUPTED_STAGE_MARGIN_S = 10 * 60
+
+
+def _fail_interrupted_older_than_s(settings) -> int:
+    """The age threshold below which a non-terminal job is presumed still running rather than abandoned by a dead
+    process — derived from the SAME settings the job stages themselves use, so it can never silently fall out of
+    sync with a future change to those budgets. Passed to ``repo.fail_interrupted_jobs`` together with the jobs this
+    process still has open (``exclude``), which are never failed whatever their stored age."""
+    return settings.upload_parse_timeout_s + settings.upload_embed_timeout_s + FAIL_INTERRUPTED_STAGE_MARGIN_S
+
+
 class _Sweeper:
     """Deletes expired workspaces and orphaned ``User*`` nodes every :data:`SWEEP_INTERVAL_S`
     (``uploads.repo.sweep_expired`` / ``uploads.repo.sweep_orphans``, both idempotent), and marks any job left
-    non-terminal by a dead process ``failed`` once at start (``uploads.repo.fail_interrupted_jobs`` — a crash or a
-    deploy mid-job must not leave a client watching ``embedding`` forever, finding 27). Runs whenever a Neo4j driver
-    exists, independent of ``UPLOADS_ENABLED`` (docs/v2/M4_PLAN.md 15.4, finding 26): the 24 h retention promise
-    covers workspaces created before an operator's soft rollback (``UPLOADS_ENABLED=false``) too, and sweeping an
-    empty label is a cheap indexed query. Same daemon-thread-plus-``Event`` shape as
-    :class:`semigraph.serve.monitor.FreshnessMonitor`.
+    non-terminal by a dead process ``failed`` — at start AND on every cycle (docs/v2/M4_PLAN.md 15.4, finding 27, C3
+    item 2: a process that died mid-embed must not wait a full :data:`SWEEP_INTERVAL_S` past this sweeper's own
+    restart before its orphaned job is marked interrupted). Runs whenever a Neo4j driver exists, independent of
+    ``UPLOADS_ENABLED`` (docs/v2/M4_PLAN.md 15.4, finding 26): the 24 h retention promise covers workspaces created
+    before an operator's soft rollback (``UPLOADS_ENABLED=false``) too, and sweeping an empty label is a cheap
+    indexed query. Same daemon-thread-plus-``Event`` shape as :class:`semigraph.serve.monitor.FreshnessMonitor`.
 
-    ``sweep_orphans`` and ``fail_interrupted_jobs`` are resolved with ``getattr(repo, name, None)`` and skipped
-    (logged once, never fatal) when absent: ``uploads/repo.py`` is out of this worker's file ownership, so these two
-    repo-side functions are a reported seam until another worker adds them."""
+    ``registry`` and ``settings`` (both optional; production always passes both, via :func:`start_if_enabled`) feed
+    ``repo.fail_interrupted_jobs``: a job still open in THIS process's :class:`JobRegistry` is excluded (never marked
+    interrupted by age alone) and the age threshold derives from the job budgets; without them repo's defaults apply."""
 
-    def __init__(self, driver) -> None:
+    def __init__(self, driver, registry: JobRegistry | None = None, settings=None) -> None:
         self.driver = driver
+        self.registry = registry
+        self.settings = settings
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -549,20 +602,22 @@ class _Sweeper:
     def _run(self) -> None:
         self._safe_fail_interrupted()
         while not self._stop_event.wait(SWEEP_INTERVAL_S):
+            self._safe_fail_interrupted()
             self._safe_sweep()
             self._safe_sweep_orphans()
 
     def _safe_fail_interrupted(self) -> None:
         from . import repo
 
-        fail_interrupted = getattr(repo, "fail_interrupted_jobs", None)
-        if fail_interrupted is None:
-            logger.warning("upload sweeper: repo.fail_interrupted_jobs is not implemented yet — skipping")
-            return
-        try:
-            n = fail_interrupted(self.driver)
+        try:      # everything inside: nothing here may ever kill the sweeper thread
+            kwargs = {}
+            if self.settings is not None:
+                kwargs["older_than_s"] = _fail_interrupted_older_than_s(self.settings)
+            if self.registry is not None:
+                kwargs["exclude"] = self.registry.keys()
+            n = repo.fail_interrupted_jobs(self.driver, **kwargs)
             if n:
-                logger.info("upload sweeper: marked %d interrupted job(s) failed at start", n)
+                logger.info("upload sweeper: marked %d interrupted job(s) failed", n)
         except Exception:  # noqa: BLE001 - boot must never crash or block on this
             logger.exception("upload sweeper: fail_interrupted_jobs failed")
 
@@ -581,11 +636,8 @@ class _Sweeper:
         the (already shipped, load-bearing) expired-workspace sweep from running every cycle."""
         from . import repo
 
-        sweep_orphans = getattr(repo, "sweep_orphans", None)
-        if sweep_orphans is None:
-            return
         try:
-            n = sweep_orphans(self.driver, datetime.now(UTC))
+            n = repo.sweep_orphans(self.driver, datetime.now(UTC))
             if n:
                 logger.info("upload sweeper: removed %d orphaned node(s)", n)
         except Exception:  # noqa: BLE001 - a failed sweep must not kill the sweeper thread
@@ -612,7 +664,7 @@ def start_if_enabled(app) -> None:
             logger.error("the configured embedding backend cannot count tokens — uploads will answer 503")
     else:
         app.state.uploads_ready = False
-    app.state.upload_sweeper = _Sweeper(app.state.driver)
+    app.state.upload_sweeper = _Sweeper(app.state.driver, registry(app), s)
     app.state.upload_sweeper.start()
 
 

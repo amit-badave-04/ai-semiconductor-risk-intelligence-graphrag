@@ -448,6 +448,137 @@ TENSE_ONLY_V2 = ("# Executive Summary\nThe company performed well this quarter w
 
 
 # --------------------------------------------------------------------------
+# Negation polarity (Worker A3, changes.py module docstring "(b)"): a pure-negation edit barely moves
+# fuzz.partial_ratio, so neither present_min_ratio nor absence_min_ratio alone can tell it from a tense-only edit.
+# --------------------------------------------------------------------------
+
+NEGATION_GROWTH_V1 = """\
+# Executive Summary Of Operations
+
+The company reported strong results across its principal business segments during the reporting period this year.
+
+# Item One Risk Factors Overview
+
+Supply chain disruptions could delay shipments to key customers in several regions during the current fiscal year.
+Competitive pressure in the memory market has intensified over the past twelve months across multiple product lines.
+
+# Market Trends And Outlook Today
+
+The market is expected to grow next year across all of our served end markets and major product categories worldwide.
+Currency fluctuations had a modest favorable effect on reported revenue during the most recent quarterly period.
+
+# Legal Proceedings Overview Statement
+
+The company is party to routine litigation arising in the ordinary course of business across several jurisdictions.
+None of the pending matters is expected to have a material adverse effect on the company's consolidated financial position.
+
+# Company History And Background
+
+The company was founded decades ago and has expanded its manufacturing footprint significantly since that time.
+"""
+NEGATION_GROWTH_V2 = NEGATION_GROWTH_V1.replace(
+    "The market is expected to grow next year across all of our served end markets and major product categories "
+    "worldwide.",
+    "The market is not expected to grow next year across all of our served end markets and major product "
+    "categories worldwide.",
+)
+
+NEGATION_RENEWAL_V1 = """\
+# Executive Summary Of Operations
+
+The company reported strong results across its principal business segments during the reporting period this year.
+
+# Lease Commitments And Renewals
+
+We will not renew the facility lease when it expires next year given ongoing consolidation efforts across sites.
+The company continues to evaluate alternative locations for its distribution operations in the region.
+
+# Company History And Background
+
+The company was founded decades ago and has expanded its manufacturing footprint significantly since that time.
+"""
+NEGATION_RENEWAL_V2 = NEGATION_RENEWAL_V1.replace(
+    "We will not renew the facility lease when it expires next year given ongoing consolidation efforts across "
+    "sites.",
+    "We will renew the facility lease when it expires next year given ongoing consolidation efforts across sites.",
+)
+
+# a SHORT one-line item ("no material impact", well under AlignParams.min_body_tokens' SEC default of 10 words
+# counting its own headline): needs UPLOAD_ALIGN_PARAMS (changes.py module docstring "(a)") to reach a matched
+# partner at all -- without it the item is merely "uncertain" with no matched_newer_id, which the negation-polarity
+# check (b) cannot run on (see test_negation_short_unit_needs_upload_align_params_to_reach_a_matched_partner).
+NEGATION_SHORT_IMPACT_V1 = """\
+# Executive Summary Of Operations
+
+The company reported strong results across its principal business segments during the reporting period this year.
+
+# Item One Risk Factors Overview
+
+Supply chain disruptions could delay shipments to key customers in several regions during the current fiscal year.
+Competitive pressure in the memory market has intensified over the past twelve months across multiple product lines.
+
+# Risk Note
+
+There is no material impact.
+
+# Legal Proceedings Overview Statement
+
+The company is party to routine litigation arising in the ordinary course of business across several jurisdictions.
+None of the pending matters is expected to have a material adverse effect on the company's consolidated financial position.
+
+# Company History And Background
+
+The company was founded decades ago and has expanded its manufacturing footprint significantly since that time.
+"""
+NEGATION_SHORT_IMPACT_V2 = NEGATION_SHORT_IMPACT_V1.replace(
+    "There is no material impact.", "There is a material impact.")
+
+# two sentences in one unit: only the first flips negation polarity, the second is an unrelated word swap that
+# must NOT itself be reported (the check must not flag every sentence of a unit it promotes).
+NEGATION_MULTI_SENTENCE_V1 = """\
+# Executive Summary Of Operations
+
+The company reported strong results across its principal business segments during the reporting period this year.
+
+# Regulatory And Compliance Matters
+
+The company is not subject to any material pending regulatory investigations at this time.
+The company continues to invest heavily in compliance infrastructure and staff training across its regional operations.
+
+# Company History And Background
+
+The company was founded decades ago and has expanded its manufacturing footprint significantly since that time.
+"""
+NEGATION_MULTI_SENTENCE_V2 = (
+    NEGATION_MULTI_SENTENCE_V1
+    .replace("The company is not subject to any material pending regulatory investigations at this time.",
+             "The company is subject to any material pending regulatory investigations at this time.")
+    .replace("staff training across its regional operations.", "staff training across its worldwide operations.")
+)
+
+# a double negation that keeps the SAME parity on both sides (two negators become two different negators): the
+# wording shifts (restriction -> clause) but negation polarity does not, so this must NOT be reported as a flip.
+NEGATION_DOUBLE_V1 = """\
+# Executive Summary Of Operations
+
+The company reported strong results across its principal business segments during the reporting period this year.
+
+# Contractual Restrictions Overview
+
+There is no restriction that is never waived under the terms of our standard distribution agreements today.
+The company continues to monitor counterparty compliance across its network of regional distribution partners.
+
+# Company History And Background
+
+The company was founded decades ago and has expanded its manufacturing footprint significantly since that time.
+"""
+NEGATION_DOUBLE_V2 = NEGATION_DOUBLE_V1.replace(
+    "There is no restriction that is never waived under the terms of our standard distribution agreements today.",
+    "There is no clause that is never waived under the terms of our standard distribution agreements today.",
+)
+
+
+# --------------------------------------------------------------------------
 # HTML
 # --------------------------------------------------------------------------
 

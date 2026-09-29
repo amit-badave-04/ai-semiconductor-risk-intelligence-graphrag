@@ -66,3 +66,5 @@ packages = ["src/semigraph"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# A background thread (freshness monitor, upload job, TTL sweeper) that dies with an exception is a bug, never a warning.
+filterwarnings = ["error::pytest.PytestUnhandledThreadExceptionWarning"]

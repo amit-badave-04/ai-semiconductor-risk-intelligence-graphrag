@@ -488,13 +488,20 @@ function relativeTime(iso, now) {
 }
 
 // The page's single freshness header line, from GET /api/freshness. `now` (ms) is a parameter so this stays pure.
-// A failed check keeps the last GOOD checked_at (docs/v2/M4_PLAN.md 15.10): status error/stale must say the check
-// failed instead of showing a (stale) pending count as if it were fresh; never/unconfigured naturally have no
-// checked_at yet, so they fall through to the same neutral "unavailable" line as a first-boot service.
+// error/stale is dispatched on FIRST, before the checked_at check (C3 item 6, docs/v2/M4_PLAN.md 15.10): the very
+// first check a monitor ever makes can fail before any good check has ever landed, in which case checked_at is
+// still null — that must still say the check failed, never fall through to "unavailable". "error" prefers
+// last_error_at (when THIS failure happened) over checked_at (the last GOOD check, possibly long ago, or absent);
+// "stale" has no separate failure instant — checked_at (the aging good check) is exactly the right time to show.
+// disabled/never/unconfigured all report checked_at: null (and no status this function special-cases), so they
+// fall through to the same neutral "unavailable" line as a first-boot service.
 function freshnessLine(freshness, now) {
   const f = freshness && typeof freshness === "object" ? freshness : {};
+  if (f.status === "error" || f.status === "stale") {
+    const at = (f.status === "error" && f.last_error_at) ? f.last_error_at : f.checked_at;
+    return at ? `freshness check failed ${relativeTime(at, now)}` : "freshness check failed";
+  }
   if (!f.checked_at) return "freshness check unavailable";
-  if (f.status === "error" || f.status === "stale") return `freshness check failed ${relativeTime(f.checked_at, now)}`;
   const parts = [f.snapshot_as_of ? `Data as of ${f.snapshot_as_of}` : "Data freshness unknown",
     `checked ${relativeTime(f.checked_at, now)}`];
   if (typeof f.pending_count === "number") parts.push(`${f.pending_count} filing${f.pending_count === 1 ? "" : "s"} pending`);
