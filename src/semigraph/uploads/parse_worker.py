@@ -3,12 +3,17 @@
 Invoked by :mod:`semigraph.uploads.parse` as ``python -m semigraph.uploads.parse_worker <kind> <max_pages>`` with
 the raw document bytes on stdin; it writes ONE JSON object to stdout and exits 0 on success, or writes
 ``{"error": code}`` (plus ``"exc_type"``, the exception's CLASS NAME only, never its message, for an unexpected
-failure — finding #28) and exits non-zero. The rlimits are set as this module's FIRST statements — before importing
-any parser (pypdfium2 / pdfplumber / python-docx) and before reading stdin — and NEVER via ``preexec_fn`` (unsafe
-in a multi-threaded parent: the child can deadlock before exec). ``-m`` itself imports ``semigraph`` and
-``semigraph.uploads`` first; both are import-light (stdlib only), so nothing heavy runs before the limits are set.
+failure — finding #28) and exits non-zero. The rlimits are applied by the ENTRY POINT (the ``__main__`` guard at the
+bottom of this file, :func:`apply_sandbox_limits`) as its first statement — before any parser (pypdfium2 / pdfplumber /
+pdfminer / python-docx, all imported lazily inside functions) is imported and before stdin is read — and NEVER via
+``preexec_fn`` (unsafe in a multi-threaded parent: the child can deadlock before exec). Importing this module never
+changes the importing process's limits (tests import it in-process; a module-level setrlimit capped a whole pytest
+run at 1 GiB on Linux and crashed it). Module-level imports are stdlib only.
 """
 
+import json
+import logging
+import re
 import sys
 
 _RLIMIT_AS_BYTES = 1 * 1024 * 1024 * 1024        # 1 GiB
@@ -21,15 +26,16 @@ def _lower_rlimit(kind: int, soft: int, resource_mod) -> None:
     resource_mod.setrlimit(kind, (cap, hard))
 
 
-if sys.platform.startswith("linux"):                # pragma: no cover (exercised by the Linux serve-shipped CI job)
-    import resource as _resource
-
-    _lower_rlimit(_resource.RLIMIT_AS, _RLIMIT_AS_BYTES, _resource)
-    _lower_rlimit(_resource.RLIMIT_CPU, _RLIMIT_CPU_SECONDS, _resource)
-
-import json          # noqa: E402  (imported only after the rlimit guard above, on purpose)
-import logging       # noqa: E402
-import re            # noqa: E402
+def apply_sandbox_limits(platform: str = sys.platform, resource_mod=None) -> bool:
+    """Lower RLIMIT_AS (1 GiB) and RLIMIT_CPU (120 s) for THIS process on Linux; False (nothing done) elsewhere.
+    Called only by the subprocess entry point below."""
+    if not platform.startswith("linux"):
+        return False
+    if resource_mod is None:
+        import resource as resource_mod
+    _lower_rlimit(resource_mod.RLIMIT_AS, _RLIMIT_AS_BYTES, resource_mod)
+    _lower_rlimit(resource_mod.RLIMIT_CPU, _RLIMIT_CPU_SECONDS, resource_mod)
+    return True
 
 logger = logging.getLogger("semigraph.uploads.parse_worker")
 
@@ -552,4 +558,5 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    apply_sandbox_limits()      # FIRST: before stdin is read and before any (lazily imported) parser loads
     sys.exit(main(sys.argv))

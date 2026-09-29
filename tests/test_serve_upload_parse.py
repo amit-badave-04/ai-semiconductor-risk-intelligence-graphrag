@@ -426,3 +426,55 @@ def test_max_size_pdf_parses_under_rlimit_as_and_reports_child_rss(tmp_path):
     assert payload["pages"] == 30
     print("parse-worker child ru_maxrss (KB):", payload["ru_maxrss_kb"])
     assert payload["ru_maxrss_kb"] < 300 * 1024, "the child exceeded the 300 MB acceptance bound under RLIMIT_AS 1 GiB"
+
+
+# ---------------------------------------------------------------- the sandbox limits bind ONLY the subprocess (CI segfault, 6ff499b)
+# Importing parse_worker used to lower RLIMIT_AS / RLIMIT_CPU of the IMPORTING process on Linux: pytest collection capped
+# the whole test run at 1 GiB and it crashed (exit 139). The limits are applied by the subprocess entry point only.
+
+class _FakeResource:
+    RLIMIT_AS, RLIMIT_CPU, RLIM_INFINITY = 9, 0, -1
+
+    def __init__(self):
+        self.calls = []
+
+    def getrlimit(self, kind):
+        return (self.RLIM_INFINITY, self.RLIM_INFINITY)
+
+    def setrlimit(self, kind, limits):
+        self.calls.append((kind, limits))
+
+
+def test_the_sandbox_limits_are_applied_on_linux_only_and_to_the_documented_values():
+    from semigraph.uploads import parse_worker
+
+    fake = _FakeResource()
+    assert parse_worker.apply_sandbox_limits("linux", fake) is True
+    assert fake.calls == [(9, (1024 ** 3, -1)), (0, (120, -1))]
+    other = _FakeResource()
+    assert parse_worker.apply_sandbox_limits("win32", other) is False and other.calls == []
+
+
+def test_the_entry_point_applies_the_limits_before_anything_else_runs():
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path(__file__).resolve().parents[1].joinpath("src/semigraph/uploads/parse_worker.py").read_text("utf-8"))
+    guard = [n for n in tree.body if isinstance(n, ast.If) and "__main__" in ast.unparse(n.test)]
+    assert len(guard) == 1
+    first = guard[0].body[0]
+    assert isinstance(first, ast.Expr) and ast.unparse(first) == "apply_sandbox_limits()"
+    module_calls = [ast.unparse(n) for n in tree.body if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)]
+    assert not any("setrlimit" in c or "_lower_rlimit" in c or "apply_sandbox_limits" in c for c in module_calls)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="RLIMIT_AS exists on Linux only")
+def test_importing_the_worker_never_changes_the_importing_process_limits():
+    import subprocess
+
+    code = ("import resource; before = resource.getrlimit(resource.RLIMIT_AS), resource.getrlimit(resource.RLIMIT_CPU); "
+            "import semigraph.uploads.parse_worker; "
+            "after = resource.getrlimit(resource.RLIMIT_AS), resource.getrlimit(resource.RLIMIT_CPU); "
+            "assert before == after, (before, after)")
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
