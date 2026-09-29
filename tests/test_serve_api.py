@@ -48,6 +48,8 @@ class FakeSettings:
     answer_model = "anthropic/claude-sonnet-5"
     escalation_model = ""
     agent_enabled = False
+    uploads_enabled = False     # M4: every workspace route and workspace ask answers 503 while off
+    freshness_enabled = False
 
 
 class Fakes:

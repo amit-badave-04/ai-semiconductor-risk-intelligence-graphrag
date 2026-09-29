@@ -9,10 +9,14 @@ survive a restart (daily ceiling, kill switch) is in Neo4j instead.
 
 import hashlib
 import logging
+import re
 import time
 from collections import defaultdict, deque
+from datetime import date
 
 from fastapi import HTTPException, Request
+
+from ..uploads import WORKSPACE_ID_RE
 
 logger = logging.getLogger("semigraph.serve.guard")
 
@@ -20,6 +24,8 @@ TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverif
 MAX_BUCKETS = 20_000
 STRATEGIES = ("hybrid", "vector")
 AGENT_STRATEGY = "agent"
+WORKSPACE_STRATEGIES = ("hybrid",)
+_AS_OF_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
 
 
 class RateLimiter:
@@ -71,13 +77,41 @@ def validate_question(question: str, max_chars: int) -> str:
     return q
 
 
-def validate_strategy(strategy: str, *, agent_enabled: bool = False) -> str:
-    """``agent`` is an opt-in strategy: neither accepted nor advertised while the deployment has it off."""
+def validate_strategy(strategy: str, *, agent_enabled: bool = False, workspace: bool = False) -> str:
+    """``agent`` is an opt-in strategy: neither accepted nor advertised while the deployment has it off.
+
+    With an upload workspace only ``hybrid`` answers (docs/v2/M4_PLAN.md D7): the agent planner must never be driven by
+    user-uploaded text, so ``agent`` + a workspace is refused here, before Turnstile and the slot."""
     s = (strategy or "hybrid").lower()
+    if workspace:
+        if s == AGENT_STRATEGY and agent_enabled:
+            raise HTTPException(status_code=400, detail="strategy=agent is not available with a workspace")
+        if s not in WORKSPACE_STRATEGIES:
+            raise HTTPException(status_code=400, detail=f"with a workspace, strategy must be one of {WORKSPACE_STRATEGIES}")
+        return s
     allowed = STRATEGIES + (AGENT_STRATEGY,) if agent_enabled else STRATEGIES
     if s not in allowed:
         raise HTTPException(status_code=400, detail=f"strategy must be one of {allowed}")
     return s
+
+
+def validate_workspace_id(value: str) -> str:
+    if not isinstance(value, str) or not WORKSPACE_ID_RE.match(value):
+        raise HTTPException(status_code=400, detail="malformed workspace id")
+    return value
+
+
+def validate_as_of(value: str | None) -> str | None:
+    """``YYYY-MM-DD`` (a real calendar date) or None."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _AS_OF_RE.match(value):
+        raise HTTPException(status_code=400, detail="as_of must be a date written YYYY-MM-DD")
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="as_of must be a date written YYYY-MM-DD") from None
+    return value
 
 
 async def verify_turnstile(token: str | None, ip: str, secret: str, is_production: bool,

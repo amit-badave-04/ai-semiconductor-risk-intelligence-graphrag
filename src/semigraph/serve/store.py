@@ -89,13 +89,16 @@ def paid_queries_today(driver: Driver) -> int:
 
 
 def log_query(driver: Driver, *, ip_hash: str, strategy: str, cached: bool,
-              usage: dict | None = None, cost_usd: float | None = None) -> None:
+              usage: dict | None = None, cost_usd: float | None = None, workspace: bool = False) -> None:
+    """One ledger row per answered question. ``workspace`` marks an ask over an upload workspace (M4): it counts against the
+    same daily ceiling; the row never names the workspace."""
     usage = usage or {}
     run_cypher(driver, """CREATE (q:SvcQuery {id: $id, day: $day, ip_hash: $ip, strategy: $strategy,
                cached: $cached, prompt_tokens: $pt, completion_tokens: $ct, cost_usd: $cost,
-               created_at: $ts})""",
+               workspace: $workspace, created_at: $ts})""",
                id=str(uuid.uuid4()), day=_today(), ip=ip_hash, strategy=strategy, cached=cached,
-               pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, ts=_now())
+               pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, workspace=workspace,
+               ts=_now())
 
 
 def reserve_daily_upload(driver: Driver, limit: int) -> bool:
