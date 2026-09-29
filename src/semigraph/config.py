@@ -92,6 +92,29 @@ class Settings(BaseSettings):
     langfuse_sample_rate: float = 0.1
     langfuse_hash_salt: str = Field("", repr=False)   # empty = a random salt per process (question hashes group within one process only)
 
+    # --- Freshness monitor (semigraph.serve.monitor, docs/v2/M4_PLAN.md 4.1): detects and surfaces, never ingests ---
+    freshness_enabled: bool = False
+    freshness_poll_hours: int = 6             # EDGAR submissions + Federal Register count, one machine at a time (lease)
+    freshness_boot_delay_s: int = 300         # first check after warm-up, and only when the last one is older than the poll
+
+    # --- Upload workspaces (M4_PLAN.md 3 + 4.2; caps re-registered for shared-cpu-2x / 4 GB, owner decision 2026-09-29) ---
+    uploads_enabled: bool = False             # false = every workspace route answers 503
+    workspace_ttl_hours: int = 24             # a workspace and everything in it is deleted after this
+    upload_max_bytes: int = 15 * 1024 * 1024
+    upload_max_pages: int = 30                # per version, checked after parsing
+    upload_max_tokens: int = 16000            # per version, whole text, the embedder's own tokenizer
+    upload_max_chunk_tokens: int = 512        # per embedded chunk (memory stays flat below ~1k tokens, S1b)
+    upload_max_chunks: int = 120              # per version
+    upload_max_documents: int = 3             # per workspace
+    upload_max_versions: int = 5              # per document
+    upload_max_workspace_pages: int = 120
+    upload_max_workspace_tokens: int = 48000  # tokens actually embedded (after hash-keyed reuse), per workspace
+    upload_parse_timeout_s: int = 90          # the parse subprocess is killed after this
+    upload_embed_timeout_s: int = 1200        # generous: a CPU-throttled job finishes slowly instead of failing (risk 13)
+    max_uploads_per_day: int = 40             # global; 40 x ~190 CPU-s stays under the shared-cpu-2x baseline
+    workspace_create_per_day: int = 3         # per client IP
+    uploads_per_hour: int = 10                # per client IP
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"

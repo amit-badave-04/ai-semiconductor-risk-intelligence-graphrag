@@ -42,6 +42,22 @@ def test_a_zero_or_negative_limit_takes_nothing_and_asks_nothing(monkeypatch):
     assert store.reserve_daily_upload(object(), 0) is False and fake.calls == []
 
 
+def test_m4_settings_default_off_with_the_pre_registered_caps():
+    """docs/v2/M4_PLAN.md section 3 revision 2 (owner-approved: ~2x the single-core option) and section 6 step 0.4."""
+    from semigraph.config import Settings
+
+    s = Settings(_env_file=None)
+    assert s.freshness_enabled is False and s.uploads_enabled is False
+    assert (s.freshness_poll_hours, s.freshness_boot_delay_s) == (6, 300)
+    assert s.workspace_ttl_hours == 24
+    assert s.upload_max_bytes == 15 * 1024 * 1024
+    assert (s.upload_max_pages, s.upload_max_tokens, s.upload_max_chunk_tokens, s.upload_max_chunks) == (30, 16000, 512, 120)
+    assert (s.upload_max_documents, s.upload_max_versions) == (3, 5)
+    assert (s.upload_max_workspace_pages, s.upload_max_workspace_tokens) == (120, 48000)
+    assert (s.upload_parse_timeout_s, s.upload_embed_timeout_s) == (90, 1200)
+    assert (s.max_uploads_per_day, s.workspace_create_per_day, s.uploads_per_hour) == (40, 3, 10)
+
+
 def test_the_counter_is_unique_per_day_so_merge_cannot_duplicate_it(monkeypatch):
     fake = FakeCypher([])
     monkeypatch.setattr(store, "run_cypher", fake)
