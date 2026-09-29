@@ -8,6 +8,7 @@ prefixed with ``Svc`` so they never collide with the knowledge-graph schema:
   completion_tokens, cost_usd, created_at})`` — one row per answered question
 - ``(:SvcAnswer {key, question, strategy, answer, citations, hallucinated,
   usage_prompt, usage_completion, cost_usd, source, created_at})`` — cache
+- ``(:SvcUploadDay {day, n, updated_at})`` — uploads accepted that UTC day, all workspaces (M4 ``MAX_UPLOADS_PER_DAY``)
 """
 
 import hashlib
@@ -95,6 +96,22 @@ def log_query(driver: Driver, *, ip_hash: str, strategy: str, cached: bool,
                created_at: $ts})""",
                id=str(uuid.uuid4()), day=_today(), ip=ip_hash, strategy=strategy, cached=cached,
                pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, ts=_now())
+
+
+def reserve_daily_upload(driver: Driver, limit: int) -> bool:
+    """Take one of today's ``limit`` upload slots (global, every workspace); False when the day is already full.
+
+    Atomic under concurrency: the first ``SET`` takes the counter node's write lock BEFORE ``c.n`` is read, so two uploads
+    racing for the last slot cannot both see ``n < limit`` (the lost-update pattern). ``SvcUploadDay.day`` is unique
+    (:func:`ensure_indexes`), so ``MERGE`` cannot create two counters for one day."""
+    if limit <= 0:
+        return False
+    rows = run_cypher(driver, """MERGE (c:SvcUploadDay {day: $day}) ON CREATE SET c.n = 0
+        SET c._lock = true
+        WITH c WHERE c.n < $limit
+        SET c.n = c.n + 1, c.updated_at = $ts
+        RETURN c.n AS n""", day=_today(), limit=limit, ts=_now())
+    return bool(rows)
 
 
 def ledger_summary(driver: Driver) -> dict:
@@ -187,7 +204,8 @@ def ensure_indexes(driver: Driver) -> None:
                  "DROP INDEX svc_answer_key IF EXISTS",
                  "CREATE CONSTRAINT svc_policy_key_unique IF NOT EXISTS FOR (p:SvcPolicy) REQUIRE p.key IS UNIQUE",
                  "CREATE CONSTRAINT svc_answer_key_unique IF NOT EXISTS FOR (a:SvcAnswer) REQUIRE a.key IS UNIQUE",
-                 "CREATE INDEX svc_query_day IF NOT EXISTS FOR (q:SvcQuery) ON (q.day)"):
+                 "CREATE INDEX svc_query_day IF NOT EXISTS FOR (q:SvcQuery) ON (q.day)",
+                 "CREATE CONSTRAINT svc_upload_day_unique IF NOT EXISTS FOR (u:SvcUploadDay) REQUIRE u.day IS UNIQUE"):
         run_cypher(driver, stmt)
 
 

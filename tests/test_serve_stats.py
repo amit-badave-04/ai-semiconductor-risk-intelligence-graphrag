@@ -42,6 +42,17 @@ def test_removed_and_total_risk_items_are_reported(monkeypatch):
     assert stats["relationships"] == 22792
 
 
+def test_service_state_and_upload_workspaces_are_left_out_of_the_public_counts(monkeypatch):
+    """M4: User* (upload workspaces) is private like Svc* (answer cache, ledger): neither the node counts nor the relationship
+    count may reveal that workspaces exist (docs/v2/M4_PLAN.md 4.4 and the leak harness (d))."""
+    fake = FakeGraph({"EvidenceSpan": 10})
+    stats_with(monkeypatch, fake)
+    (nodes,) = [q for q in fake.queries if "labels(n)[0]" in q]
+    (rels,) = [q for q in fake.queries if "count(r)" in q]
+    for query in (nodes, rels):
+        assert "STARTS WITH 'Svc'" in query and "STARTS WITH 'User'" in query
+
+
 def test_removed_paragraphs_are_counted_apart_from_removed_risk_factors(monkeypatch):
     stats = stats_with(monkeypatch, FakeGraph({"RiskItem": 900}, removed=41, removed_paragraphs=7))
     assert stats["removed_risk_items"] == 41 and stats["removed_paragraphs"] == 7
@@ -84,7 +95,7 @@ def test_service_nodes_stay_out_of_the_public_counts(monkeypatch):
     # The ledger, cache and policy nodes (Svc*) are filtered in the label query itself.
     fake = FakeGraph({"Company": 26})
     stats_with(monkeypatch, fake)
-    assert any("NOT label STARTS WITH 'Svc'" in q for q in fake.queries)
+    assert any("NOT (label STARTS WITH 'Svc' OR label STARTS WITH 'User')" in q for q in fake.queries)
 
 
 def test_the_stats_documentation_does_not_call_the_removed_count_verified():

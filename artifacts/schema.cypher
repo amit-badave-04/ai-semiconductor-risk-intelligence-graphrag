@@ -55,3 +55,25 @@ CREATE FULLTEXT INDEX evidence_text_ft IF NOT EXISTS FOR (e:EvidenceSpan) ON EAC
 
 CREATE FULLTEXT INDEX risk_summary_ft IF NOT EXISTS FOR (rf:RiskFactor) ON EACH [rf.summary]
     OPTIONS {indexConfig: {`fulltext.analyzer`: 'standard-no-stop-words'}};
+
+CREATE CONSTRAINT user_workspace_id IF NOT EXISTS FOR (w:UserWorkspace) REQUIRE w.workspace_id IS UNIQUE;
+
+CREATE CONSTRAINT user_document_id IF NOT EXISTS FOR (d:UserDocument) REQUIRE d.document_id IS UNIQUE;
+
+CREATE CONSTRAINT user_version_key IF NOT EXISTS FOR (v:UserVersion) REQUIRE v.version_key IS UNIQUE;
+
+CREATE CONSTRAINT user_chunk_id IF NOT EXISTS FOR (c:UserChunk) REQUIRE c.chunk_id IS UNIQUE;
+
+CREATE CONSTRAINT user_job_id IF NOT EXISTS FOR (j:UserJob) REQUIRE j.job_id IS UNIQUE;
+
+CREATE INDEX user_workspace_expires IF NOT EXISTS FOR (w:UserWorkspace) ON (w.expires_at);
+
+CREATE INDEX user_chunk_ws IF NOT EXISTS FOR (c:UserChunk) ON (c.workspace_id);
+
+CREATE INDEX user_unit_ws IF NOT EXISTS FOR (u:UserUnit) ON (u.workspace_id, u.document_id, u.version);
+
+CREATE INDEX user_passage_ws IF NOT EXISTS FOR (p:UserPassage) ON (p.workspace_id, p.document_id);
+
+CREATE VECTOR INDEX user_chunk_embedding IF NOT EXISTS FOR (c:UserChunk) ON (c.embedding)
+    WITH [c.workspace_id, c.is_current, c.document_id, c.version, c.valid_from, c.valid_to]
+    OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}};

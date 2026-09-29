@@ -178,6 +178,8 @@ class TestGetDriver:
 ROLE_FILTERS = {
     "evidence_embedding": ["is_current", "retrievable", "filer_cik", "form", "valid_from", "valid_to"],
     "risk_embedding": ["is_current", "filer_cik", "valid_from", "valid_to"],
+    # M4: uploaded-document chunks, searched ONLY inside one workspace (docs/v2/M4_PLAN.md 4.4)
+    "user_chunk_embedding": ["workspace_id", "is_current", "document_id", "version", "valid_from", "valid_to"],
 }
 
 
@@ -268,6 +270,13 @@ class TestResetGraph:
         assert "STARTS WITH 'Svc'" in delete
         assert re.search(r"IN TRANSACTIONS OF \d+ ROWS", delete)
 
+    def test_upload_workspaces_are_private_state_a_rebuild_keeps_too(self):
+        drv, _ = self.run_reset()
+        delete = next(s for s in drv.statements if "DETACH DELETE" in s)
+        count = next(s for s in drv.statements if "RETURN count(n)" in s)
+        assert "STARTS WITH 'User'" in delete and "STARTS WITH 'User'" in count
+        assert not any("user_chunk_embedding" in s for s in drv.statements)
+
     def test_keep_service_state_false_deletes_everything(self):
         drv, _ = self.run_reset(keep_service_state=False)
         delete = next(s for s in drv.statements if "DETACH DELETE" in s)
@@ -283,6 +292,31 @@ class TestResetGraph:
         assert {s.split()[2] for s in drv.statements if s.startswith("DROP INDEX")}.isdisjoint(
             {"company_ticker", "filing_date", "filing_status"})
 
+
+
+class TestUserWorkspaceSchema:
+    """M4: upload workspaces are User*-labelled private state (docs/v2/M4_PLAN.md 4.4)."""
+
+    def test_private_label_prefixes_cover_service_state_and_workspaces(self):
+        assert schema.PRIVATE_LABEL_PREFIXES == ("Svc", "User") and schema.SERVICE_LABEL_PREFIX == "Svc"
+        assert schema.is_private_label("SvcAnswer") and schema.is_private_label("UserChunk")
+        assert not schema.is_private_label("EvidenceSpan") and not schema.is_private_label("Company")
+        assert schema.private_label_predicate("n") == "any(l IN labels(n) WHERE l STARTS WITH 'Svc' OR l STARTS WITH 'User')"
+
+    def test_the_ddl_declares_the_workspace_identities_lookups_and_the_filtered_vector_index(self):
+        ddl = read_schema_cypher()
+        for label, var, prop, name in (("UserWorkspace", "w", "workspace_id", "user_workspace_id"),
+                                       ("UserDocument", "d", "document_id", "user_document_id"),
+                                       ("UserVersion", "v", "version_key", "user_version_key"),
+                                       ("UserChunk", "c", "chunk_id", "user_chunk_id"),
+                                       ("UserJob", "j", "job_id", "user_job_id")):
+            assert f"CREATE CONSTRAINT {name} IF NOT EXISTS FOR ({var}:{label}) REQUIRE {var}.{prop} IS UNIQUE" in ddl
+        assert "CREATE INDEX user_workspace_expires IF NOT EXISTS FOR (w:UserWorkspace) ON (w.expires_at)" in ddl
+        assert "CREATE INDEX user_chunk_ws IF NOT EXISTS FOR (c:UserChunk) ON (c.workspace_id)" in ddl
+        assert re.search(r"CREATE VECTOR INDEX user_chunk_embedding IF NOT EXISTS FOR \(c:UserChunk\) ON \(c\.embedding\)", ddl)
+
+    def test_the_workspace_index_is_not_one_a_graph_rebuild_drops(self):
+        assert "user_chunk_embedding" not in schema.REBUILD_INDEXES
 
 
 class TestRiskItemSchema:

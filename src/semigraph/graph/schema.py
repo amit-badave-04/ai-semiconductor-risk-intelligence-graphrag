@@ -34,6 +34,21 @@ REBUILD_INDEXES = ("evidence_embedding", "risk_embedding", "evidence_text_ft", "
 # kill switch) and survive a graph rebuild.
 SERVICE_LABEL_PREFIX = "Svc"
 
+# Private state: Svc* (service) and User* (M4 upload workspaces, docs/v2/M4_PLAN.md 4.4). Private nodes never appear in
+# public counts, survive a rebuild, and are never linked to a public node. Each private node carries exactly one label.
+PRIVATE_LABEL_PREFIXES = (SERVICE_LABEL_PREFIX, "User")
+
+
+def is_private_label(label: str) -> bool:
+    return label.startswith(PRIVATE_LABEL_PREFIXES)
+
+
+def private_label_predicate(var: str = "n") -> str:
+    """Cypher that is true when node ``var`` carries a private label (``var`` is a Cypher identifier chosen by the caller)."""
+    if not var.isidentifier():
+        raise ValueError(f"not a Cypher variable: {var!r}")
+    return f"any(l IN labels({var}) WHERE " + " OR ".join(f"l STARTS WITH '{p}'" for p in PRIVATE_LABEL_PREFIXES) + ")"
+
 DELETE_BATCH_ROWS = 1000
 
 _VECTOR_DDL = re.compile(
@@ -124,13 +139,14 @@ def reset_graph(driver: Driver, *, keep_service_state: bool = True) -> dict[str,
     Drops :data:`REBUILD_INDEXES` first (cheaper than maintaining the vector
     indexes through millions of deletes, and required for the rebuild to
     recreate them with fresh filter properties), then deletes every node in
-    batches of :data:`DELETE_BATCH_ROWS` — except ``Svc*`` service state when
-    ``keep_service_state``. Constraints and range indexes are untouched.
-    Uses auto-commit ``session.run`` because ``CALL {...} IN TRANSACTIONS``
-    cannot run inside an explicit transaction. Returns ``{"deleted_nodes": n}``.
+    batches of :data:`DELETE_BATCH_ROWS` — except private state (``Svc*`` service
+    state and ``User*`` upload workspaces, :data:`PRIVATE_LABEL_PREFIXES`) when
+    ``keep_service_state``. Constraints, range indexes and the workspace vector
+    index are untouched. Uses auto-commit ``session.run`` because
+    ``CALL {...} IN TRANSACTIONS`` cannot run inside an explicit transaction.
+    Returns ``{"deleted_nodes": n}``.
     """
-    node_filter = ("WHERE NOT any(l IN labels(n) WHERE l STARTS WITH 'Svc') "
-                   if keep_service_state else "")
+    node_filter = f"WHERE NOT {private_label_predicate('n')} " if keep_service_state else ""
     with driver.session() as session:
         for name in REBUILD_INDEXES:
             session.run(f"DROP INDEX {name} IF EXISTS")

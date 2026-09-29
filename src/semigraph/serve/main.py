@@ -17,7 +17,7 @@ from ..artifacts import load_examples
 from ..config import get_settings
 from ..embeddings import Embedder
 from ..graph.client import DatabaseDriver, run_cypher
-from ..graph.schema import apply_schema
+from ..graph.schema import PRIVATE_LABEL_PREFIXES, apply_schema, private_label_predicate
 from ..retrieval.answerer import template_fingerprint
 from .guard import RateLimiter
 from .routes import router
@@ -63,9 +63,12 @@ def graph_stats(driver) -> dict:
     some (2 of 4 checked) were merged into another risk factor rather than dropped: the counts are not "verified removals".
     The old ``deleted_risk_lineages`` (a count of ``DISCLOSES_RISK`` edges, not lineages) is deliberately gone.
     """
-    labels = run_cypher(driver, """MATCH (n) WITH labels(n)[0] AS label, count(*) AS n
-        WHERE NOT label STARTS WITH 'Svc' RETURN label, n ORDER BY n DESC""")
-    rels = run_cypher(driver, "MATCH ()-[r]->() RETURN count(r) AS n")[0]["n"]
+    # Private state (Svc* service state, User* upload workspaces) is never counted: the public numbers must not reveal that a
+    # workspace exists. A private node never links to a public one, so filtering on the start node is exact.
+    private_first = " OR ".join(f"label STARTS WITH '{p}'" for p in PRIVATE_LABEL_PREFIXES)
+    labels = run_cypher(driver, f"""MATCH (n) WITH labels(n)[0] AS label, count(*) AS n
+        WHERE NOT ({private_first}) RETURN label, n ORDER BY n DESC""")
+    rels = run_cypher(driver, f"MATCH (a)-[r]->() WHERE NOT {private_label_predicate('a')} RETURN count(r) AS n")[0]["n"]
     nodes = {r["label"]: r["n"] for r in labels}
     risk_items = nodes.get("RiskItem", 0)
     # Only query the label when it exists: an unknown label would log a warning on every start of an older graph.
