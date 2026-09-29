@@ -83,3 +83,10 @@ class OnnxBackend:
 
     def encode_query(self, question: str) -> list[float]:
         return self.embed_one(self._prompt + question).tolist()
+
+    def count_tokens(self, text: str) -> int:
+        """Exact token count, never capped by the tokenizer's truncation (counted in short pieces, see
+        :func:`semigraph.embeddings.split_for_counting`)."""
+        from .embeddings import count_tokens_with
+
+        return count_tokens_with(lambda piece: self.tokenizer.encode(piece).ids, text)

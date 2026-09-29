@@ -46,6 +46,30 @@ BACKENDS = ("local", "onnx", "remote")
 # ``Embedder.encode_passages`` is one, tests inject a fake.
 EncodeFn = Callable[..., np.ndarray]
 
+# Token counts for the M4 upload caps are taken over pieces this short: even at several tokens per character a piece stays
+# far below the ONNX tokenizer's 8,192-token truncation, which would otherwise cap a whole-document count silently.
+COUNT_PIECE_CHARS = 2000
+
+
+def split_for_counting(text: str, size: int = COUNT_PIECE_CHARS) -> list[str]:
+    """``text`` cut into consecutive pieces of at most ``size`` characters, each cut placed just before a space when one is
+    near (byte-level BPE attaches a leading space to the next word, so such a cut does not change the token count)."""
+    pieces, start = [], 0
+    while start < len(text):
+        end = min(start + size, len(text))
+        if end < len(text):
+            cut = text.rfind(" ", start + size // 2, end)
+            if cut > start:
+                end = cut
+        pieces.append(text[start:end])
+        start = end
+    return pieces
+
+
+def count_tokens_with(encode_ids: Callable[[str], list[int]], text: str) -> int:
+    """Token count of ``text`` through ``encode_ids`` (a tokenizer call returning ids), piece by piece."""
+    return sum(len(encode_ids(piece)) for piece in split_for_counting(text))
+
 
 class LocalBackend:
     """sentence-transformers backend (the original notebook implementation)."""
@@ -66,6 +90,9 @@ class LocalBackend:
             texts, batch_size=batch_size, show_progress_bar=show_progress,
             normalize_embeddings=True,
         )
+
+    def count_tokens(self, text: str) -> int:
+        return count_tokens_with(lambda piece: self.model.tokenizer.encode(piece, add_special_tokens=False), text)
 
     def encode_query(self, question: str) -> list[float]:
         if "query" in (self.model.prompts or {}):
@@ -111,6 +138,14 @@ class Embedder:
 
     def encode_query(self, question: str) -> list[float]:
         return self._impl.encode_query(question)
+
+    def count_tokens(self, text: str) -> int:
+        """Tokens of ``text`` for the model this embedder runs (the M4 upload caps). A backend without a local tokenizer (the
+        remote one) cannot count, and uploads refuse to start on it."""
+        count = getattr(self._impl, "count_tokens", None)
+        if count is None:
+            raise NotImplementedError(f"the {self.backend!r} embedding backend has no local tokenizer to count tokens")
+        return count(text)
 
     def encode_chunks_cached(self, chunks_df: "pd.DataFrame", cache_path: Path,
                              batch_size: int = 8) -> np.ndarray:
