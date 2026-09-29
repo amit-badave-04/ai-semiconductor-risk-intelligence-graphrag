@@ -5,7 +5,14 @@ plus freshness checks that say what is new at the source.
 Everything here is free, checkpointed to disk and incremental — re-running
 downloads only what the data lake does not hold yet (per accession for
 filings, on refresh for XBRL / Federal Register).
+
+``xbrl`` pulls in pandas (pipeline-only); its names resolve lazily (PEP 562,
+like ``semigraph.graph``) so the web service image — whose freshness monitor
+needs only ``edgar``, ``freshness`` and ``federal_register`` — does not have to
+ship pandas (docs/v2/M4_PLAN.md D3; tests/test_serve_monitor_isolation.py).
 """
+
+from importlib import import_module
 
 from .edgar import (
     ANNUAL_SINCE,
@@ -26,13 +33,9 @@ from .federal_register import (
     download_bis_rules,
 )
 from .freshness import federal_register_pending, fetch_submissions, pending_filings
-from .xbrl import (
-    KEY_CONCEPTS,
-    curate_metrics,
-    download_companyfacts,
-    extract_metrics,
-    supplement_metrics_from_filing_xbrl,
-)
+
+_XBRL_NAMES = frozenset({"KEY_CONCEPTS", "curate_metrics", "download_companyfacts", "extract_metrics",
+                         "supplement_metrics_from_filing_xbrl"})
 
 __all__ = [
     "ANNUAL_SINCE",
@@ -58,3 +61,9 @@ __all__ = [
     "select_targets",
     "supplement_metrics_from_filing_xbrl",
 ]
+
+
+def __getattr__(name):
+    if name in _XBRL_NAMES:
+        return getattr(import_module(".xbrl", __name__), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
