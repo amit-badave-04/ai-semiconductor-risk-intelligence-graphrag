@@ -58,8 +58,11 @@ def test_the_xbrl_names_resolve_lazily_where_pandas_is_installed():
 def test_the_api_process_never_imports_a_document_parser():
     """Uploaded bytes are parsed ONLY in the sandboxed parse subprocess (docs/v2/M4_PLAN.md 5): the API process must not load
     pypdfium2 / pdfplumber / pdfminer / python-docx at all, so a parser bug cannot take the serving process with it."""
+    # pandas / pyarrow are not asserted here: the neo4j driver imports them optionally when they are installed
+    # (neo4j/_optional_deps.py), which the dev environment does; the serve image has neither (the serve-shipped CI job).
     done = _imports_leave_out("import semigraph.serve.main, semigraph.serve.routes, semigraph.uploads",
-                              "pypdfium2", "pdfplumber", "pdfminer", "docx", "semigraph.uploads.parse_worker", *HEAVY)
+                              "pypdfium2", "pdfplumber", "pdfminer", "docx", "semigraph.uploads.parse_worker",
+                              "semigraph.ingestion.xbrl", "semigraph.graph.freshness")
     assert done.returncode == 0, done.stdout + done.stderr
 
 
