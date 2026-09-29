@@ -1,0 +1,46 @@
+{
+  "cik": "1046179",
+  "entityType": "operating",
+  "sic": "3674",
+  "sicDescription": "Semiconductors & Related Devices",
+  "name": "SYNTHETIC TEST FILER (20-F, foreign private issuer)",
+  "tickers": ["TSM"],
+  "exchanges": ["NYSE"],
+  "filings": {
+    "recent": {
+      "accessionNumber": [
+        "0001046179-26-000005",
+        "0001046179-26-000002",
+        "0001046179-26-000001",
+        "0001046179-22-000001"
+      ],
+      "filingDate": [
+        "2026-04-01",
+        "2026-04-15",
+        "2026-03-01",
+        "2022-03-01"
+      ],
+      "reportDate": [
+        "",
+        "2025-12-31",
+        "2025-12-31",
+        "2021-12-31"
+      ],
+      "form": [
+        "6-K",
+        "20-F/A",
+        "20-F",
+        "20-F"
+      ],
+      "primaryDocument": [
+        "test-6k.htm",
+        "test-20fa.htm",
+        "test-20f.htm",
+        "test-20f-2022.htm"
+      ]
+    },
+    "files": [
+      {"name": "CIK0001046179-submissions-001.json", "filingCount": 94, "filingFrom": "2019-01-01", "filingTo": "2021-12-31"}
+    ]
+  }
+}

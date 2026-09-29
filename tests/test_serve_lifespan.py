@@ -188,7 +188,19 @@ def test_a_failing_background_stop_never_keeps_the_driver_open(monkeypatch, boot
     assert boot.order[-1] == "driver.close"
 
 
+M4_PATHS = {
+    "/api/freshness": {"get"}, "/api/admin/freshness/check": {"post"},
+    "/api/company/{ticker}/dossier": {"get"}, "/api/company/{ticker}/risk-changes": {"get"},
+    "/api/workspace": {"post"}, "/api/workspace/{ws}": {"get", "delete"}, "/api/workspace/{ws}/documents": {"post"},
+    "/api/workspace/{ws}/jobs/{job_id}": {"get"}, "/api/workspace/{ws}/changes": {"get"},
+    "/api/workspace/{ws}/evidence/{doc_id}": {"get"},
+}
+
+
 def test_the_m4_routers_are_mounted():
-    app = main.create_app()
-    for router in (main.monitor_routes.router, main.dossier_routes.router, main.workspace_routes.router):
-        assert all(r in app.router.routes for r in router.routes)
+    """Checked through the app's own route table (OpenAPI paths): FastAPI 0.141 wraps an included router instead of
+    copying its routes into ``app.router.routes``, so an identity check on those objects would pass vacuously."""
+    paths = main.create_app().openapi()["paths"]
+    for path, methods in M4_PATHS.items():
+        assert path in paths, path
+        assert methods <= set(paths[path]), (path, set(paths[path]))

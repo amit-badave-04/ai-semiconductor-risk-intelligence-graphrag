@@ -15,6 +15,8 @@ const EXPORTS = [
   "renderMarkdown", "statsHtml", "limitsText", "costNote", "retrievalStatus", "safeUrl", "formatNumber",
   "evidenceView", "escalationStatus", "CITE", "checksPassed", "examplesHtml",
   "agentEnabled", "stepText", "tracingNote", "syncAgentUi", "addStep", "clearSteps",
+  // M4: the upload workspace panel's pure functions (tests/ui/workspace.test.mjs)
+  "docChipLabel", "staleClass", "jobStateText", "versionTimeline", "relativeTime", "freshnessLine",
 ];
 
 function stubElement() {

@@ -1,0 +1,61 @@
+{
+  "cik": "1045810",
+  "entityType": "operating",
+  "sic": "3674",
+  "sicDescription": "Semiconductors & Related Devices",
+  "name": "SYNTHETIC TEST FILER (10-K/10-Q)",
+  "tickers": ["NVDA"],
+  "exchanges": ["Nasdaq"],
+  "filings": {
+    "recent": {
+      "accessionNumber": [
+        "0001045810-26-000011",
+        "0001045810-26-000010",
+        "0001045810-26-000005",
+        "0001045810-26-000003",
+        "0001045810-26-000002",
+        "0001045810-26-000001",
+        "0001045810-22-000001"
+      ],
+      "filingDate": [
+        "2026-06-01",
+        "2026-05-20",
+        "2026-04-01",
+        "2026-01-10",
+        "2026-03-05",
+        "2026-02-20",
+        "2022-02-15"
+      ],
+      "reportDate": [
+        "2026-04-27",
+        "2026-04-27",
+        "",
+        "",
+        "2026-01-25",
+        "2026-01-25",
+        "2022-01-30"
+      ],
+      "form": [
+        "10-Q/A",
+        "10-Q",
+        "8-K",
+        "4",
+        "10-K/A",
+        "10-K",
+        "10-K"
+      ],
+      "primaryDocument": [
+        "test-10qa.htm",
+        "test-10q.htm",
+        "test-8k.htm",
+        "test-form4.xml",
+        "test-10ka.htm",
+        "test-10k.htm",
+        "test-10k-2022.htm"
+      ]
+    },
+    "files": [
+      {"name": "CIK0001045810-submissions-001.json", "filingCount": 187, "filingFrom": "2018-01-01", "filingTo": "2021-12-31"}
+    ]
+  }
+}

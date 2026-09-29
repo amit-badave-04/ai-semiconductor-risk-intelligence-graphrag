@@ -1,0 +1,23 @@
+# Freshness monitor heartbeat (M4, docs/v2/M4_PLAN.md 4.1, G5). A public, read-only GET — no ADMIN_TOKEN in GitHub,
+# no secret at all. The app being asleep (the owner's STOP scales the API machine to zero on purpose) is a
+# ::warning:: and a green run, never a failure; only a body whose status is error/stale/unconfigured fails the job.
+#
+# GitHub runs `schedule` and the first `workflow_dispatch` only from the DEFAULT branch, so this workflow is inert
+# on `v2` and activates once `v2` lands on `master` (M6) — expected, not a bug to chase here.
+name: freshness-heartbeat
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Check GET /api/freshness
+        run: python scripts/freshness_heartbeat.py https://semigraph.fly.dev/api/freshness

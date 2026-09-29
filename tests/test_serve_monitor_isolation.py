@@ -66,6 +66,16 @@ def test_the_api_process_never_imports_a_document_parser():
     assert done.returncode == 0, done.stdout + done.stderr
 
 
+def test_the_monitor_module_itself_leaves_out_xbrl_and_graph_freshness():
+    """``semigraph.serve.monitor`` (M4 Worker B) must never pull in the pandas-only half of the codebase: not
+    ``semigraph.ingestion.xbrl`` and not ``semigraph.graph.freshness`` (a different module with the same name that
+    also imports pandas). Bare ``pandas`` is deliberately NOT asserted here — the neo4j driver imports it optionally
+    when it is installed (``neo4j/_optional_deps.py``), which the dev ``.venv`` does and the serve-shipped venv does
+    not; the two modules above are the actual, unconditional proof."""
+    done = _imports_leave_out("import semigraph.serve.monitor", "semigraph.ingestion.xbrl", "semigraph.graph.freshness")
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
 def test_an_unknown_name_is_still_an_attribute_error():
     done = _run("import semigraph.ingestion as I\ntry:\n    I.no_such_name\nexcept AttributeError:\n    pass\n"
                 "else:\n    raise SystemExit('no AttributeError')")

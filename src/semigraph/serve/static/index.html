@@ -38,6 +38,15 @@
   .err { color:var(--bad) } footer { max-width:1100px; margin:0 auto; padding:0 20px 40px; color:var(--muted); font-size:12px } footer p { margin:10px 0 0 }
   a { color:var(--accent) }
   .steps ol { margin:8px 0 0; padding-left:22px; font-size:13px; color:var(--muted) } .steps li { margin:2px 0 }
+  .drop { border:2px dashed var(--line); border-radius:10px; padding:16px; text-align:center; color:var(--muted); font-size:13px; margin-top:10px; cursor:pointer; display:block }
+  .drop.drag { border-color:var(--accent); color:var(--ink) }
+  .jobrow { display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:5px 0; border-bottom:1px solid var(--line) }
+  .jobrow .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .jobrow .state.err { color:var(--bad) } .jobrow .state.ok { color:var(--ok) }
+  .doc { margin-top:12px; padding-top:10px; border-top:1px solid var(--line) }
+  .doc .versions { font-size:12px; color:var(--muted); margin-top:2px }
+  .doc .versions button { background:none; border:0; color:var(--accent); cursor:pointer; font:inherit; padding:0 4px }
+  .cite.stale { border-color:var(--warn); color:var(--warn) }
 </style>
 </head>
 <body>
@@ -45,6 +54,7 @@
   <h1><span>semigraph</span> — AI Semiconductor Risk Intelligence</h1>
   <p class="sub">Ask multi-hop supply-chain and export-control questions over the SEC filings of 14 keystone companies (Nvidia, AMD, TSMC, ASML, Micron, Meta …). Answers come from a <b>bitemporal knowledge graph</b>: company relationships and risk disclosures are each backed by a verbatim filing excerpt, while the links to export-control rules are <b>keyword matches to external Federal Register rules</b>: outside events, not statements the company made. Answers cite their sources; click a citation to read the text or data behind it.</p>
   <div class="stats" id="stats">loading graph statistics…</div>
+  <p class="hint" id="freshnessLine" hidden></p>
 </header>
 <main>
   <section class="card">
@@ -69,6 +79,37 @@
     <div class="steps" aria-live="polite" aria-relevant="additions"><ol id="agentSteps" aria-label="What the research agent did" hidden></ol></div>
     <div id="answer"></div>
     <div id="meta" hidden></div>
+  </section>
+  <section class="card" id="workspacePanel" hidden>
+    <h2>Your documents (private, 24h)</h2>
+    <div id="wsCreate">
+      <p class="hint">Upload your own documents and ask questions that cite them, with versions and what-changed
+        between them. Private to you, never shown to anyone else, and deleted automatically after 24 hours.</p>
+      <div class="row">
+        <button class="btn" id="wsCreateBtn">Create a workspace</button>
+        <span class="hint">have one already?</span>
+        <input id="wsRestoreId" placeholder="workspace id" style="width:150px">
+        <input id="wsRestoreToken" placeholder="token" style="width:150px">
+        <button class="btn" id="wsRestoreBtn">Restore</button>
+      </div>
+      <div id="wsCreateStatus" class="hint"></div>
+    </div>
+    <div id="wsActive" hidden>
+      <div class="row">
+        <span class="hint">Workspace <code id="wsIdLabel"></code> · expires <span id="wsExpires"></span></span>
+        <button class="btn" id="wsDeleteBtn">Delete workspace</button>
+      </div>
+      <div class="row">
+        <input id="wsAsOf" type="date" title="Ask as of this date instead of the current version">
+        <span class="hint">optional: ask as of an earlier date</span>
+      </div>
+      <label id="wsDrop" class="drop" for="wsFile">Drag a PDF, DOCX, Markdown, TXT or HTML file here, or click to
+        choose one (up to 30 pages).</label>
+      <input type="file" id="wsFile" style="display:none" accept=".pdf,.docx,.md,.markdown,.txt,.html,.htm">
+      <div id="wsJobs"></div>
+      <div id="wsDocs"></div>
+      <div id="wsChanges"></div>
+    </div>
   </section>
 </main>
 <aside id="drawer" aria-hidden="true">
@@ -357,7 +398,7 @@ function periodText(d, id) {
 // Everything the evidence drawer shows, as escaped HTML strings (plus the excerpt as raw text for textContent).
 function evidenceView(id, d) {
   d = d && typeof d === "object" ? d : {};
-  const kind = classifyCitation(id), label = chipLabel(id, d);
+  const kind = classifyCitation(id), label = kind === "doc" ? docChipLabel(id, d) : chipLabel(id, d);
   const view = { kind, label, title: "Evidence · " + label, metaHtml: "", freshHtml: "", factsHtml: "", text: "", linkHtml: "" };
   const idLine = `<div>id: ${esc(id)}</div>`;
   if (kind === "xbrl") {
@@ -377,6 +418,10 @@ function evidenceView(id, d) {
     ]);
     view.text = typeof d.abstract === "string" ? d.abstract : "";
     view.linkHtml = linkHtml(d.url, "Open the rule on federalregister.gov");
+  } else if (kind === "doc") {
+    view.metaHtml = esc((d.title ? d.title + " — " : "") + "uploaded by you, not a filing") + idLine;
+    view.freshHtml = freshnessHtml({ status: d.status, valid_to: d.valid_to, superseded_by: d.superseded_by_version });
+    view.text = typeof d.text === "string" ? d.text : "";
   } else {
     const mentions = list(d.mentions);
     view.metaHtml = esc([d.filer, d.form, d.filing_date, d.section_title].filter(Boolean).join(" · ") + (mentions.length ? ` · mentions: ${mentions.join(", ")}` : "")) + idLine;
@@ -388,12 +433,75 @@ function evidenceView(id, d) {
   return view;
 }
 
+// ---- M4: the upload workspace panel's own pure functions (tests/ui/workspace.test.mjs) ----
+
+// A richer label for a `doc:` citation once its evidence is known (falls back to the bare label meanwhile).
+// PLAIN text, like chipLabel — never pre-escaped: a caller building HTML (an uploaded title is user-controlled)
+// wraps it in esc() itself, exactly like every other label in this file; a .textContent assignment needs no escaping.
+function docChipLabel(id, evidence) {
+  const ev = evidence && typeof evidence === "object" ? evidence : {};
+  const p = String(id).split(":");
+  const base = `v${(p[2] || "").replace(/^v/, "") || "?"} ¶${p[3] || "?"}`;
+  return ev.title ? `${ev.title} · ${base}` : `your document · ${base}`;
+}
+
+// "" or "stale" for a citation id, given the `done` event's `workspace.stale_citations` list.
+const staleClass = (id, staleIds) => (list(staleIds).includes(id) ? "stale" : "");
+
+const JOB_STATE_TEXT = {
+  received: "queued", validating: "checking", parsing: "reading the document", chunking: "splitting into sections",
+  embedding: "embedding", comparing: "comparing with the previous version", indexing: "saving", ready: "ready",
+  failed: "failed",
+};
+
+// Human text for one job-progress event (the `event: job` SSE payload of GET .../jobs/{id}).
+function jobStateText(job) {
+  job = job && typeof job === "object" ? job : {};
+  const base = JOB_STATE_TEXT[job.state] || String(job.state || "unknown");
+  if (job.state === "embedding" && job.progress && typeof job.progress === "object") {
+    const { done, total, eta_s } = job.progress;
+    const count = typeof done === "number" && typeof total === "number" ? ` ${done}/${total}` : "";
+    const eta = typeof eta_s === "number" && eta_s > 0 ? ` (~${Math.ceil(eta_s)}s left)` : "";
+    return `${base}${count}${eta}`;
+  }
+  if (job.state === "failed") return `failed: ${(job.error && (job.error.message || job.error.code)) || "unknown error"}`;
+  return base;
+}
+
+// "v1 (superseded) -> v2 (current)" for one document's version rows (oldest first, as the API returns them).
+function versionTimeline(versions) {
+  return list(versions).map((v) => `v${v.version} (${v.is_current ? "current" : (v.status || "superseded")})`).join(" → ");
+}
+
+function relativeTime(iso, now) {
+  const then = iso ? new Date(iso).getTime() : NaN;
+  if (!Number.isFinite(then)) return "unknown";
+  const minutes = Math.round((now - then) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
+}
+
+// The page's single freshness header line, from GET /api/freshness. `now` (ms) is a parameter so this stays pure.
+function freshnessLine(freshness, now) {
+  const f = freshness && typeof freshness === "object" ? freshness : {};
+  if (!f.checked_at) return "freshness check unavailable";
+  const parts = [f.snapshot_as_of ? `Data as of ${f.snapshot_as_of}` : "Data freshness unknown",
+    `checked ${relativeTime(f.checked_at, now)}`];
+  if (typeof f.pending_count === "number") parts.push(`${f.pending_count} filing${f.pending_count === 1 ? "" : "s"} pending`);
+  return parts.join(" · ");
+}
+
 /* ===== Page behaviour ===== */
 const TURNSTILE_SITE_KEY = "__TURNSTILE_SITE_KEY__";
 const $ = (id) => document.getElementById(id);
 let turnstileToken = null, modelsInfo = null;
 const evidenceCache = new Map();
 let stepsShown = 0;
+let currentWorkspace = null;               // { id, token, expires_at } — never persisted outside sessionStorage
+const WS_SESSION_KEY = "semigraph:workspace";
+const wsAsOfValue = () => (($("wsAsOf") && $("wsAsOf").value) || null);
 
 function clearSteps() { const ol = $("agentSteps"); ol.textContent = ""; ol.hidden = true; stepsShown = 0; }
 function addStep(ev) {
@@ -419,7 +527,16 @@ async function loadStats() {
     $("limits").textContent = limitsText(s);
     $("costNote").textContent = costNote(s.models);
     syncAgentUi(s);
+    $("workspacePanel").hidden = !s.uploads_enabled;
   } catch (e) { $("stats").textContent = "statistics unavailable"; }
+}
+
+async function loadFreshness() {
+  try {
+    const f = await (await fetch("/api/freshness")).json();
+    $("freshnessLine").textContent = freshnessLine(f, Date.now());
+    $("freshnessLine").hidden = false;
+  } catch (e) { /* the header line is optional; the page works without it */ }
 }
 
 async function loadExamples() {
@@ -436,8 +553,14 @@ async function ask() {
   $("ask").disabled = true; $("answer").innerHTML = ""; $("meta").hidden = true; clearSteps();
   setStatus(strategy === "agent" ? "the research agent is choosing lookups…" : "retrieving from the graph…");
   const body = { question, strategy, turnstile_token: turnstileToken };
+  const headers = { "Content-Type": "application/json" };
+  if (currentWorkspace) {
+    body.workspace_id = currentWorkspace.id;
+    body.as_of = wsAsOfValue();
+    headers["X-Workspace-Token"] = currentWorkspace.token;
+  }
   let resp;
-  try { resp = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  try { resp = await fetch("/api/ask", { method: "POST", headers, body: JSON.stringify(body) }); }
   catch (e) { setStatus("network error — is the service online?", "err"); $("ask").disabled = false; return; }
   if (!resp.ok) { let detail = resp.statusText; try { detail = (await resp.json()).detail; } catch (_) {} if (resp.status === 403 && TURNSTILE_SITE_KEY) detail += (turnstileToken ? " (the check expired — please click Ask again)" : " (the bot check below has not completed yet — wait a moment and click Ask again)"); setStatus(detail, "err"); $("ask").disabled = false; resetTurnstile(); return; }
   const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "", text = "";
@@ -464,6 +587,10 @@ async function ask() {
 function finish(ev) {
   setStatus(ev.cached ? "served from cache — no model call" : "done");
   $("meta").innerHTML = metaHtml(ev, modelsInfo && modelsInfo.llm); $("meta").hidden = false;
+  const stale = (ev.workspace && list(ev.workspace.stale_citations)) || [];
+  $("answer").querySelectorAll(".cite").forEach((chip) => {
+    if (staleClass(chip.dataset.id, stale)) { chip.classList.add("stale"); chip.title += " — a newer version exists"; }
+  });
 }
 
 function showEvidence(id, d) {
@@ -481,8 +608,11 @@ $("answer").addEventListener("click", async (e) => {
   if (evidenceCache.has(id)) { showEvidence(id, evidenceCache.get(id)); return; }
   $("dTitle").textContent = "Evidence · " + chipLabel(id); $("dMeta").textContent = ""; $("dFresh").innerHTML = ""; $("dFacts").innerHTML = ""; $("dLink").innerHTML = "";
   $("dText").hidden = false; $("dText").textContent = "loading…";
+  const isWorkspaceDoc = classifyCitation(id) === "doc" && currentWorkspace;
   try {
-    const r = await fetch(`/api/evidence/${encodeURIComponent(id)}`);
+    const r = isWorkspaceDoc
+      ? await fetch(`/api/workspace/${currentWorkspace.id}/evidence/${encodeURIComponent(id)}`, { headers: wsHeaders() })
+      : await fetch(`/api/evidence/${encodeURIComponent(id)}`);
     if (!r.ok) { let detail = r.statusText; try { detail = (await r.json()).detail; } catch (_) {} throw new Error(detail); }
     const d = await r.json(); evidenceCache.set(id, d); showEvidence(id, d);
   } catch (err) { $("dText").hidden = false; $("dText").textContent = "could not load evidence: " + err.message; }
@@ -496,7 +626,174 @@ if (TURNSTILE_SITE_KEY) {
   const s = document.createElement("script"); s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstile"; s.async = true; document.head.appendChild(s);
   window.onTurnstile = () => window.turnstile.render("#turnstile-widget", { sitekey: TURNSTILE_SITE_KEY, callback: (t) => { turnstileToken = t; } });
 }
-loadStats(); loadExamples();
+// ---- M4: the upload workspace panel's DOM wiring (drag-drop upload, job progress, document list, what-changed) ----
+
+function readStoredWorkspace() {
+  try { const raw = sessionStorage.getItem(WS_SESSION_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function writeStoredWorkspace(ws) {
+  try { if (ws) sessionStorage.setItem(WS_SESSION_KEY, JSON.stringify(ws)); else sessionStorage.removeItem(WS_SESSION_KEY); }
+  catch (e) { /* sessionStorage unavailable (private mode, etc.): the workspace still works for this page load */ }
+}
+
+const wsHeaders = () => (currentWorkspace ? { "X-Workspace-Token": currentWorkspace.token } : {});
+
+function renderWorkspaceShell() {
+  const active = !!currentWorkspace;
+  $("wsCreate").hidden = active; $("wsActive").hidden = !active;
+  if (active) {
+    $("wsIdLabel").textContent = currentWorkspace.id;
+    $("wsExpires").textContent = currentWorkspace.expires_at || "unknown";
+  }
+}
+
+async function setWorkspace(ws) {
+  currentWorkspace = ws; writeStoredWorkspace(ws); evidenceCache.clear(); renderWorkspaceShell();
+  if (ws) await loadWorkspaceData();
+}
+
+async function loadWorkspaceData() {
+  if (!currentWorkspace) return;
+  try {
+    const r = await fetch(`/api/workspace/${currentWorkspace.id}`, { headers: wsHeaders() });
+    if (!r.ok) { if (r.status === 404) await setWorkspace(null); return; }
+    renderDocuments((await r.json()).documents || []);
+  } catch (e) { /* transient network error: the panel just keeps its last known state */ }
+}
+
+function docHtml(doc) {
+  const versionButtons = list(doc.versions).map((v) =>
+    `<button data-doc="${esc(doc.document_id)}" data-v="${v.version}">v${v.version}</button>`).join(" ");
+  return `<div class="doc"><b>${esc(doc.title || doc.document_id)}</b> (latest v${doc.latest_version})
+    <div class="versions">${esc(versionTimeline(doc.versions))} · ${versionButtons}</div></div>`;
+}
+
+function renderDocuments(docs) {
+  $("wsDocs").innerHTML = docs.length ? docs.map(docHtml).join("") : `<p class="hint">No documents uploaded yet.</p>`;
+  $("wsDocs").querySelectorAll("button[data-doc]").forEach((btn) => btn.addEventListener("click", () => {
+    const doc = docs.find((d) => d.document_id === btn.dataset.doc);
+    const versions = list(doc && doc.versions).map((v) => v.version);
+    const newer = Number(btn.dataset.v), older = versions.filter((v) => v < newer).pop();
+    if (older) showChanges(btn.dataset.doc, older, newer); else $("wsChanges").innerHTML = `<p class="hint">v${newer} is the first version — nothing to compare.</p>`;
+  }));
+}
+
+async function showChanges(documentId, older, newer) {
+  $("wsChanges").innerHTML = `<p class="hint">loading what changed between v${older} and v${newer}…</p>`;
+  try {
+    const r = await fetch(`/api/workspace/${currentWorkspace.id}/changes?document_id=${encodeURIComponent(documentId)}&from=${older}&to=${newer}`,
+      { headers: wsHeaders() });
+    const d = await r.json();
+    if (!r.ok) { $("wsChanges").innerHTML = `<p class="hint err">${esc(d.detail || "could not load the change report")}</p>`; return; }
+    $("wsChanges").innerHTML = changesHtml(d, older, newer);
+  } catch (e) { $("wsChanges").innerHTML = `<p class="hint err">network error loading the change report</p>`; }
+}
+
+function changesHtml(report, older, newer) {
+  if (!report.items_compared) return `<p class="hint">v${older} → v${newer}: comparison not available (${esc(report.not_compared_reason || "unknown reason")}).</p>`;
+  const section = (label, items) => (items.length
+    ? `<div class="t">${label} (${items.length})</div><ul>${items.map((i) => `<li>${esc(i.headline || i.older_unit_id || i.newer_unit_id || "(untitled)")}</li>`).join("")}</ul>` : "");
+  return `<div class="hint">v${older} → v${newer}, ${report.unchanged_count} section(s) unchanged:</div>` +
+    section("Added", report.added) + section("Removed", report.removed) + section("Changed", report.changed);
+}
+
+function setJobRow(key, text, cls) {
+  let row = document.getElementById(`wsJobRow-${key}`);
+  if (!row) {
+    row = document.createElement("div"); row.id = `wsJobRow-${key}`; row.className = "jobrow";
+    row.innerHTML = `<span class="name"></span><span class="state"></span>`;
+    $("wsJobs").appendChild(row);
+  }
+  row.querySelector(".name").textContent = key;
+  const state = row.querySelector(".state"); state.textContent = text; state.className = `state${cls ? " " + cls : ""}`;
+}
+
+async function watchJob(jobId, label) {
+  let resp;
+  try { resp = await fetch(`/api/workspace/${currentWorkspace.id}/jobs/${jobId}`, { headers: wsHeaders() }); }
+  catch (e) { setJobRow(label, "network error watching this upload", "err"); return; }
+  if (!resp.ok || !resp.body) { setJobRow(label, "could not watch this upload", "err"); return; }
+  const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "";
+  const handle = (chunk) => {
+    let data = "";
+    for (const l of chunk.split("\n")) if (l.startsWith("data:")) data += l.slice(5).trim();
+    if (!data) return;
+    let job; try { job = JSON.parse(data); } catch (_) { return; }
+    setJobRow(label, jobStateText(job), job.state === "failed" ? "err" : (job.state === "ready" ? "ok" : ""));
+    if (job.state === "ready" || job.state === "failed") loadWorkspaceData();
+  };
+  while (true) {
+    let step; try { step = await reader.read(); } catch (e) { break; }
+    if (step.done) break;
+    buf += dec.decode(step.value, { stream: true });
+    let idx; while ((idx = buf.indexOf("\n\n")) >= 0) { handle(buf.slice(0, idx)); buf = buf.slice(idx + 2); }
+  }
+}
+
+async function uploadFile(file) {
+  if (!currentWorkspace) return;
+  setJobRow(file.name, "uploading…");
+  const fd = new FormData();
+  fd.append("file", file); fd.append("turnstile_token", turnstileToken || "");
+  let resp;
+  try { resp = await fetch(`/api/workspace/${currentWorkspace.id}/documents`, { method: "POST", headers: wsHeaders(), body: fd }); }
+  catch (e) { setJobRow(file.name, "network error", "err"); return; }
+  resetTurnstile();
+  let body; try { body = await resp.json(); } catch (e) { body = {}; }
+  if (!resp.ok) { setJobRow(file.name, body.detail || resp.statusText, "err"); return; }
+  if (body.unchanged) { setJobRow(file.name, `unchanged (still v${body.version})`, "ok"); loadWorkspaceData(); return; }
+  setJobRow(file.name, "queued");
+  watchJob(body.job_id, file.name);
+}
+
+function handleFiles(fileList) { Array.from(fileList || []).forEach(uploadFile); }
+
+async function createWorkspace() {
+  $("wsCreateStatus").textContent = "creating…";
+  try {
+    const r = await fetch("/api/workspace", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ turnstile_token: turnstileToken }) });
+    const d = await r.json();
+    if (!r.ok) { $("wsCreateStatus").textContent = d.detail || "could not create a workspace"; return; }
+    $("wsCreateStatus").textContent = "";
+    await setWorkspace({ id: d.workspace_id, token: d.token, expires_at: d.expires_at });
+  } catch (e) { $("wsCreateStatus").textContent = "network error creating a workspace"; }
+  resetTurnstile();
+}
+
+async function restoreWorkspace() {
+  const id = ($("wsRestoreId").value || "").trim(), token = ($("wsRestoreToken").value || "").trim();
+  if (!id || !token) return;
+  $("wsCreateStatus").textContent = "restoring…";
+  const before = currentWorkspace;
+  currentWorkspace = { id, token, expires_at: null };
+  const r = await fetch(`/api/workspace/${id}`, { headers: wsHeaders() }).catch(() => null);
+  if (!r || !r.ok) { currentWorkspace = before; $("wsCreateStatus").textContent = "workspace not found"; return; }
+  $("wsCreateStatus").textContent = "";
+  await setWorkspace({ id, token, expires_at: null });
+}
+
+async function deleteWorkspace() {
+  if (!currentWorkspace) return;
+  await fetch(`/api/workspace/${currentWorkspace.id}`, { method: "DELETE", headers: wsHeaders() }).catch(() => null);
+  await setWorkspace(null);
+}
+
+function initWorkspace() {
+  $("wsCreateBtn").addEventListener("click", createWorkspace);
+  $("wsRestoreBtn").addEventListener("click", restoreWorkspace);
+  $("wsDeleteBtn").addEventListener("click", deleteWorkspace);
+  $("wsFile").addEventListener("change", (e) => handleFiles(e.target.files));
+  const drop = $("wsDrop");
+  ["dragover", "dragenter"].forEach((evt) => drop.addEventListener(evt, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((evt) => drop.addEventListener(evt, () => drop.classList.remove("drag")));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); handleFiles(e.dataTransfer && e.dataTransfer.files); });
+  const saved = readStoredWorkspace();
+  if (saved) setWorkspace(saved);
+  else renderWorkspaceShell();
+}
+
+loadStats(); loadExamples(); loadFreshness(); initWorkspace();
 </script>
 </body>
 </html>

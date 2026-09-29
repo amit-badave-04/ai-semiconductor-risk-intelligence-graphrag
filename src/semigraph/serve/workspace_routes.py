@@ -1,5 +1,364 @@
-"""STEP 0 STUB: the upload workspace routes (create, read, delete, upload, job SSE, changes, workspace evidence); docs/v2/M4_PLAN.md 4.4. M4 Worker C."""
+"""Upload workspace HTTP surface (M4, docs/v2/M4_PLAN.md 4.4, 5, 14.6, 14.7).
 
-from fastapi import APIRouter
+Every route here requires ``UPLOADS_ENABLED``; every route but creation requires ``X-Workspace-Token`` and treats a
+malformed id, an unknown workspace and a wrong token identically (a Neo4j parameterised lookup naturally returns no
+row for any of the three, so no separate shape-validation step is needed to get the 404-for-all-three behaviour the
+plan asks for). Every response — success or error — carries ``Cache-Control: no-store``.
 
+The multipart upload body is parsed by hand, directly off the ASGI byte stream, with ``python-multipart``'s
+low-level :func:`create_form_parser` (never FastAPI's ``UploadFile``/``Form`` — Starlette's own multipart parser
+spills a part larger than 1 MiB to a real temp file, which the plan's "bytes live only in memory, never on disk"
+rule (section 5) forbids at our 15 MiB cap): the byte-size cap is enforced WHILE reading, before python-multipart
+ever sees more than the cap, and ``MAX_MEMORY_FILE_SIZE`` is configured above the cap so a within-cap file never
+touches disk either.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import queue as queue_module
+
+import python_multipart.multipart as multipart
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
+from sse_starlette import EventSourceResponse, ServerSentEvent
+
+from ..retrieval.ids import DOC_ID_RE, DOCUMENT_ID_RE
+from ..uploads import jobs, new_document_id, repo
+from ..uploads.gate import GateError, check_bytes, sniff
+from ..uploads.versions import next_version
+from . import guard, routes, store
+
+logger = logging.getLogger("semigraph.serve.workspace_routes")
 router = APIRouter()
+
+NO_STORE = {"Cache-Control": "no-store"}
+UPLOAD_SIZE_SLACK = 8192          # multipart framing/header overhead allowed over the byte cap before the read aborts
+MAX_TITLE_CHARS = 120
+SSE_POLL_TIMEOUT_S = 10
+TERMINAL_STATES = ("ready", "failed")
+
+_GATE_STATUS = {"unsupported_type": 415, "active_content": 422, "encrypted": 422, "zip_bomb": 422, "empty": 422}
+
+MSG_BOT = "Bot check failed — reload the page and try again."
+MSG_UPLOAD_RATE = "Too many requests from your address — please wait a while and try again."
+MSG_BUSY = "The service is busy processing another upload — try again in a moment."
+MSG_FILE_REQUIRED = "a file is required"
+MSG_TITLE_TOO_LONG = f"title is limited to {MAX_TITLE_CHARS} characters"
+MSG_UNKNOWN_DOCUMENT = "unknown document_id in this workspace"
+MSG_NO_CHANGES = "no change report for that version pair"
+MSG_NO_EVIDENCE = "no evidence with that id"
+
+
+class WorkspaceCreateRequest(BaseModel):
+    turnstile_token: str | None = None
+
+
+def _limits(s) -> dict:
+    return {"max_documents": s.upload_max_documents, "max_versions": s.upload_max_versions,
+           "max_pages": s.upload_max_workspace_pages, "max_bytes": s.upload_max_bytes,
+           "max_pages_per_version": s.upload_max_pages, "max_tokens_per_version": s.upload_max_tokens,
+           "max_workspace_tokens": s.upload_max_workspace_tokens}
+
+
+def _require_uploads_enabled(request: Request) -> None:
+    st = request.app.state
+    if not st.settings.uploads_enabled or not getattr(st, "uploads_token_counter_ok", False):
+        raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
+
+
+async def _authenticate(request: Request, ws: str) -> None:
+    """404 (never a distinguishable status) for a malformed id, an unknown workspace or a wrong token alike."""
+    st = request.app.state
+    token = request.headers.get("x-workspace-token", "")
+    ok = await run_in_threadpool(routes._workspace_token_ok, st.driver, ws, token)
+    if not ok:
+        raise HTTPException(status_code=404, detail=routes.MSG_WORKSPACE_NOT_FOUND, headers=NO_STORE)
+    await run_in_threadpool(repo.touch, st.driver, ws)
+
+
+async def _check_upload_turnstile(request: Request, token: str | None) -> None:
+    """Stricter than ``guard.verify_turnstile``'s ``/api/ask`` posture (docs/v2/M4_PLAN.md 3.6, 14.7): unconfigured
+    fails CLOSED (503) in production, and is allowed-and-logged only outside it; configured, the ordinary
+    verify-or-403 path applies."""
+    s = request.app.state.settings
+    if not s.turnstile_secret_key:
+        if s.is_production:
+            raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
+        logger.warning("uploads: Turnstile is not configured outside production — allowing and logging")
+        return
+    ip = guard.client_ip(request, s.client_ip_header)
+    ok = await guard.verify_turnstile(token, ip, s.turnstile_secret_key, s.is_production, required=True)
+    if not ok:
+        raise HTTPException(status_code=403, detail=MSG_BOT, headers=NO_STORE)
+
+
+# ---------------------------------------------------------------- POST /api/workspace
+
+
+@router.post("/api/workspace")
+async def create_workspace(body: WorkspaceCreateRequest, request: Request):
+    st, s = request.app.state, request.app.state.settings
+    _require_uploads_enabled(request)
+    ip = guard.client_ip(request, s.client_ip_header)
+    if not st.workspace_create_limiter.allow(guard.ip_hash(ip)):
+        raise HTTPException(status_code=429, detail=MSG_UPLOAD_RATE, headers=NO_STORE)
+    await _check_upload_turnstile(request, body.turnstile_token)
+    ws, token, expires_at = await run_in_threadpool(repo.create_workspace, st.driver, s.workspace_ttl_hours)
+    return JSONResponse({"workspace_id": ws, "token": token, "expires_at": expires_at, "limits": _limits(s)},
+                        status_code=201, headers=NO_STORE)
+
+
+# ---------------------------------------------------------------- GET/DELETE /api/workspace/{ws}
+
+
+@router.get("/api/workspace/{ws}")
+async def get_workspace(ws: str, request: Request):
+    _require_uploads_enabled(request)
+    await _authenticate(request, ws)
+    data = await run_in_threadpool(repo.get_workspace, request.app.state.driver, ws)
+    if data is None:
+        raise HTTPException(status_code=404, detail=routes.MSG_WORKSPACE_NOT_FOUND, headers=NO_STORE)
+    return JSONResponse(data, headers=NO_STORE)
+
+
+@router.delete("/api/workspace/{ws}", status_code=204)
+async def delete_workspace(ws: str, request: Request):
+    _require_uploads_enabled(request)
+    await _authenticate(request, ws)
+    await run_in_threadpool(repo.delete_workspace, request.app.state.driver, ws)
+    return Response(status_code=204, headers=NO_STORE)
+
+
+# ---------------------------------------------------------------- POST /api/workspace/{ws}/documents
+
+
+class _TooLarge(Exception):
+    pass
+
+
+async def _read_multipart(request: Request, max_bytes: int):
+    """Reads and parses the multipart body straight off the ASGI stream, in memory only. Raises ``_TooLarge`` the
+    moment the body exceeds ``max_bytes`` — before python-multipart itself ever buffers more than that."""
+    fields: dict[str, bytes] = {}
+    files: dict[str, tuple[str, str | None, bytes]] = {}
+
+    def on_field(field) -> None:
+        fields[(field.field_name or b"").decode("utf-8", "replace")] = field.value or b""
+
+    def on_file(file) -> None:
+        name = (file.field_name or b"").decode("utf-8", "replace")
+        filename = (file.file_name or b"").decode("utf-8", "replace")
+        file.file_object.seek(0)
+        files[name] = (filename, file.content_type, file.file_object.read())
+
+    cap = max_bytes + UPLOAD_SIZE_SLACK
+    parser = multipart.create_form_parser({"Content-Type": request.headers.get("content-type", "")}, on_field,
+                                          on_file, config={"MAX_MEMORY_FILE_SIZE": cap, "MAX_BODY_SIZE": cap})
+    total = 0
+    try:
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > cap:
+                raise _TooLarge()
+            if chunk:
+                parser.write(chunk)
+        parser.finalize()
+    finally:
+        parser.close()
+    return fields, files
+
+
+def _content_length_too_large(request: Request, max_bytes: int) -> bool:
+    declared = request.headers.get("content-length")
+    if declared is None:
+        return False
+    try:
+        return int(declared) > max_bytes + UPLOAD_SIZE_SLACK
+    except ValueError:
+        return False
+
+
+def _gate_error_response(e: GateError):
+    return JSONResponse({"detail": e.message, "code": e.code}, status_code=_GATE_STATUS.get(e.code, 422),
+                        headers=NO_STORE)
+
+
+async def _resolve_document(driver, ws: str, document_id_field: bytes | None, quota: dict):
+    """``(document_id, is_new_document)``, or a ``JSONResponse`` (404) when a client-supplied id is malformed or
+    unknown in this workspace — a client never chooses the id of a brand-new document."""
+    if document_id_field is None:
+        return new_document_id(), True
+    document_id = document_id_field.decode("utf-8", "replace")
+    if not DOCUMENT_ID_RE.match(document_id) or document_id not in quota["versions_by_document"]:
+        return JSONResponse({"detail": MSG_UNKNOWN_DOCUMENT}, status_code=404, headers=NO_STORE)
+    return document_id, False
+
+
+def _quota_error(quota: dict, is_new_document: bool, document_id: str, settings):
+    if is_new_document and quota["documents"] >= settings.upload_max_documents:
+        return JSONResponse({"detail": "this workspace already has the maximum number of documents",
+                            "code": "max_documents"}, status_code=429, headers=NO_STORE)
+    if not is_new_document and quota["versions_by_document"].get(document_id, 0) >= settings.upload_max_versions:
+        return JSONResponse({"detail": "this document already has the maximum number of versions",
+                            "code": "max_versions"}, status_code=429, headers=NO_STORE)
+    return None
+
+
+async def _read_and_gate_body(request: Request, ws: str, s):
+    """Reads the multipart body (in memory only), checks Turnstile, validates the ``file``/``title`` fields and
+    runs the byte-level gate. Returns ``(data, kind, title, fields)``, or a ``JSONResponse`` for a size/gate
+    rejection (a missing file or an over-long title raise directly: they are plain 400s, not a ``{detail,code}``
+    shape).
+
+    Deviation from the literal gate order of docs/v2/M4_PLAN.md 14.6 ("Turnstile -> per-address upload window ->
+    streamed size cap"): ``turnstile_token`` is itself a multipart FIELD (the page appends it after ``file``), so
+    it cannot be read, let alone verified, before the body is read — the per-address window in ``upload_document``
+    therefore runs BEFORE this function, ahead of Turnstile, as the one check that needs no body at all; the
+    streamed byte cap is still enforced live, during the read, before Turnstile ever runs."""
+    try:
+        fields, files = await _read_multipart(request, s.upload_max_bytes)
+    except _TooLarge:
+        return JSONResponse({"detail": "the file is too large", "code": "too_large"}, status_code=413,
+                            headers=NO_STORE)
+    await _check_upload_turnstile(request, fields.get("turnstile_token", b"").decode("utf-8", "replace") or None)
+    if "file" not in files:
+        raise HTTPException(status_code=400, detail=MSG_FILE_REQUIRED, headers=NO_STORE)
+    filename, _content_type, data = files["file"]
+    title = fields.get("title")
+    title = title.decode("utf-8", "replace") if title is not None else None
+    if title is not None and len(title) > MAX_TITLE_CHARS:
+        raise HTTPException(status_code=400, detail=MSG_TITLE_TOO_LONG, headers=NO_STORE)
+    try:
+        kind = sniff(data[:4096], filename)
+        check_bytes(data, kind)
+    except GateError as e:
+        logger.info("upload rejected ws_hash=%s code=%s size=%d", jobs.ws_hash_for_log(ws), e.code, len(data))
+        return _gate_error_response(e)
+    return data, kind, title, fields
+
+
+async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data: bytes, kind: str,
+                           title: str | None):
+    """Resolves the target document, short-circuits an unchanged re-upload, checks quotas, then takes the upload
+    slot and the daily budget (in that order) and starts the job — releasing the slot immediately if the daily
+    budget is exhausted (docs/v2/M4_PLAN.md 14.6: junk files, and now duplicate-content files, never spend it)."""
+    quota = await run_in_threadpool(repo.quota, st.driver, ws)
+    resolved = await _resolve_document(st.driver, ws, fields.get("document_id"), quota)
+    if isinstance(resolved, JSONResponse):
+        return resolved
+    document_id, is_new_document = resolved
+
+    content_hash_hex = hashlib.sha256(data).hexdigest()
+    latest = None
+    if not is_new_document:
+        latest = await run_in_threadpool(repo.latest_version, st.driver, ws, document_id)
+        if latest is not None and latest["content_hash"] == content_hash_hex:
+            return JSONResponse({"unchanged": True, "document_id": document_id, "version": latest["version"]},
+                                status_code=200, headers=NO_STORE)
+
+    quota_error = _quota_error(quota, is_new_document, document_id, s)
+    if quota_error is not None:
+        return quota_error
+
+    if not st.upload_slots.acquire(blocking=False):
+        return JSONResponse({"detail": MSG_BUSY, "code": "busy"}, status_code=429, headers=NO_STORE)
+    reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day)
+    if not reserved:
+        st.upload_slots.release()
+        return JSONResponse({"detail": "the daily upload limit has been reached", "code": "daily_limit"},
+                            status_code=429, headers=NO_STORE)
+
+    version = next_version([latest["version"]] if latest else [])
+    job_id = jobs.run_upload_job(request.app, workspace_id=ws, document_id=document_id, title=title, data=data,
+                                 kind=kind, content_hash_hex=content_hash_hex)
+    logger.info("upload accepted ws_hash=%s document_id=%s kind=%s size=%d job_id=%s", jobs.ws_hash_for_log(ws),
+               document_id, kind, len(data), job_id)
+    return JSONResponse({"job_id": job_id, "document_id": document_id, "version": version}, status_code=202,
+                        headers=NO_STORE)
+
+
+@router.post("/api/workspace/{ws}/documents", status_code=202)
+async def upload_document(ws: str, request: Request):
+    st, s = request.app.state, request.app.state.settings
+    _require_uploads_enabled(request)
+    await _authenticate(request, ws)
+    if await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch):
+        raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
+    if _content_length_too_large(request, s.upload_max_bytes):
+        return JSONResponse({"detail": "the file is too large", "code": "too_large"}, status_code=413,
+                            headers=NO_STORE)
+    ip = guard.client_ip(request, s.client_ip_header)
+    if not st.upload_limiter.allow(guard.ip_hash(ip)):
+        raise HTTPException(status_code=429, detail=MSG_UPLOAD_RATE, headers=NO_STORE)
+
+    gated = await _read_and_gate_body(request, ws, s)
+    if isinstance(gated, JSONResponse):
+        return gated
+    data, kind, title, fields = gated
+    return await _finalize_upload(request, ws, st, s, fields, data, kind, title)
+
+
+# ---------------------------------------------------------------- GET /api/workspace/{ws}/jobs/{job_id} (SSE)
+
+
+def _job_sse(job: dict) -> ServerSentEvent:
+    return ServerSentEvent(data=json.dumps(job, default=str), event="job", sep="\n")
+
+
+def _job_event_stream(q: "queue_module.Queue"):
+    while True:
+        try:
+            job = q.get(timeout=SSE_POLL_TIMEOUT_S)
+        except queue_module.Empty:
+            continue     # sse_starlette's own `ping` covers the heartbeat while nothing new has happened
+        yield _job_sse(job)
+        if job.get("state") in TERMINAL_STATES:
+            return
+
+
+@router.get("/api/workspace/{ws}/jobs/{job_id}")
+async def workspace_job_stream(ws: str, job_id: str, request: Request):
+    _require_uploads_enabled(request)
+    await _authenticate(request, ws)
+    app = request.app
+    live = jobs.registry(app).get(ws, job_id)
+    if live is not None:
+        return EventSourceResponse(_job_event_stream(live), ping=SSE_POLL_TIMEOUT_S, sep="\n", headers=NO_STORE)
+    persisted = await run_in_threadpool(repo.get_job, app.state.driver, ws, job_id)
+    if persisted is None:
+        raise HTTPException(status_code=404, detail="job not found", headers=NO_STORE)
+    return EventSourceResponse(iter([_job_sse(persisted)]), sep="\n", headers=NO_STORE)
+
+
+# ---------------------------------------------------------------- GET /api/workspace/{ws}/changes
+
+
+@router.get("/api/workspace/{ws}/changes")
+async def workspace_changes(ws: str, request: Request, document_id: str,
+                            older: int = Query(..., alias="from"), newer: int = Query(..., alias="to")):
+    _require_uploads_enabled(request)
+    await _authenticate(request, ws)
+    result = await run_in_threadpool(repo.get_changes, request.app.state.driver, ws, document_id, older, newer)
+    if result is None:
+        raise HTTPException(status_code=404, detail=MSG_NO_CHANGES, headers=NO_STORE)
+    return JSONResponse(result, headers=NO_STORE)
+
+
+# ---------------------------------------------------------------- GET /api/workspace/{ws}/evidence/{doc_id}
+
+
+@router.get("/api/workspace/{ws}/evidence/{doc_id}")
+async def workspace_evidence(ws: str, doc_id: str, request: Request):
+    _require_uploads_enabled(request)
+    await _authenticate(request, ws)
+    if not DOC_ID_RE.match(doc_id):
+        raise HTTPException(status_code=404, detail=MSG_NO_EVIDENCE, headers=NO_STORE)
+    row = await run_in_threadpool(repo.evidence, request.app.state.driver, ws, doc_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=MSG_NO_EVIDENCE, headers=NO_STORE)
+    return JSONResponse(row, headers=NO_STORE)
