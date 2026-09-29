@@ -423,7 +423,8 @@ absorbed by `not_compared_reason`); DOCX heading precision; workspace answer lat
 ## 10. Deploy, live verification, rollback (API app only; the DB app is never redeployed for M4)
 
 1. Everything in section 9 except G4, G5, G9, G10 green locally and in CI; verifier (opus) report attached; branch pushed.
-2. `python -m scripts.push_fly_secrets --only SEC_USER_AGENT` (restarts the API machine once; verify `/healthz`).
+2. `python -m scripts.push_fly_secrets --only SEC_USER_AGENT --env .env` (the key is in `.env`, not `.env.fly`; the value goes
+   over stdin and is never printed; restarts the API machine once; verify `/healthz`).
 3. `fly.toml [env]`: `FRESHNESS_ENABLED = "true"`, `UPLOADS_ENABLED = "true"`; `[[vm]]`: `size = "shared-cpu-2x"`,
    `memory = "4gb"` (owner decision, section 13; committed with the deploy).
 4. S5 baseline: `flyctl ssh console -a semigraph -C "sh -c 'grep -E \"VmRSS|VmHWM\" /proc/<uvicorn pid>/status; head -1 /proc/stat; grep MemAvailable /proc/meminfo'"`.
@@ -564,6 +565,47 @@ lifespan wiring) plus `Embedder.count_tokens`. Where the text above differs, thi
 9. **Ownership:** workers never edit `config.py`, `routes.py`, `main.py`, `guard.py`, `store.py`, `ids.py`, `answerer.py`,
    `embeddings*.py`, the schema files, the requirements files, `pyproject.toml`/`uv.lock` or `tests/test_serve_api.py`; a
    needed setting or seam is reported back to the main session.
+
+## 15. Revision 4: contracts changed by the Opus review of the first build (2026-09-29)
+
+First build: commit 54f7d61 (Workers A, B, C; 5,419 + 2,972 tests green). Three independent Opus reviews (security,
+correctness/contracts, reliability; reports in the session record) found 1 CRITICAL, 12 HIGH, 10 MEDIUM, 6 LOW (29, 21 distinct);
+G3 (SEC path unchanged) was independently confirmed. G6 (parity) PASSED on 2026-09-29 with a negative control
+(`artifacts/freshness_parity.json`). Contract changes (they win over sections 4, 5 and 14):
+
+1. **`as_of`** is a date (`YYYY-MM-DD`: end of that UTC day) OR an instant with an explicit offset
+   (`YYYY-MM-DDTHH:MM:SS[.f](Z|+HH:MM)`, normalized to UTC by `guard.validate_as_of`; years 2000-2100 only). An instant `T`
+   shows every version created at or before `T` (cutoff = `T` + 1 microsecond, same `valid_from < cutoff AND valid_to >= cutoff`
+   filter). The page offers "ask as of vN" using that version's own `created_at`.
+2. **Turnstile on uploads** travels in the `X-Turnstile-Token` HEADER and is verified BEFORE the body is read.
+3. **Job progress stream:** an ASYNC SSE generator (never a threadpool thread) over a per-job append-only event log in
+   `JobRegistry` (fan-out: every watcher sees every event); ends on the terminal event or when the job is gone from the registry
+   (then replays the persisted final state); at most 3 live watchers per job; workspace GET routes take the read-rate window.
+4. **Workspace deletion is final:** `put_version`/`put_job` lock the `UserWorkspace` node first and refuse to write when it no
+   longer exists (the job fails `workspace_deleted`); `delete_workspace`/the sweep lock it too; the sweeper also removes
+   orphaned `User*` nodes, runs whenever a driver exists (independent of `UPLOADS_ENABLED`), and marks jobs left non-terminal by
+   a dead process `failed` (`interrupted`) at start.
+5. **Upload availability** = `UPLOADS_ENABLED` AND `app.state.uploads_ready` (set by `uploads.jobs` start;
+   `routes.uploads_available`), used by `/api/stats`, `/api/ask` and every workspace route.
+6. **What changed:** every unit the aligner marks reworded stays visible. Units with a sentence-level passage are `changed`;
+   units without one go to a new `minor_rewordings` list (never folded into `unchanged_count`). Uploads use their OWN
+   `PassageParams` (calibrated so a meaning reversal yields a passage and a tense-only edit does not); the SEC defaults and
+   `graph/passages.py` are untouched (G3).
+7. **Parse sandbox:** the child gets an ALLOWLISTED environment (no API keys, tokens or Neo4j credentials); PDFs additionally
+   get a structural active-content scan INSIDE the sandbox (pdfminer walks every object, including object streams and
+   `#xx`-escaped names) after the raw byte scan; the child reports the exception class of a parser failure (never its message).
+8. **Caps enforced:** `upload_max_chunks` (120, job code `too_many_chunks`), the 120-page workspace cap (`workspace_quota`).
+   Small units are packed into chunks up to the target size.
+9. **Logs:** workspace answers log check COUNTS only; the uvicorn access log carries `<ws:hash>` instead of a workspace id,
+   `<doc>` instead of a document citation and no workspace query string.
+10. **Freshness:** a failed check never overwrites the last good result (status/error/`last_error_at` kept separately), is
+    retried after 30 min, and the page line says the check failed instead of showing a count; `summary()` returns
+    `never`/`unconfigured` shapes instead of None; `next_check_at` is computed; `SvcLease`/`SvcFreshness` keys are unique.
+11. **Multipart:** at most 8 parts, parser work off the event loop, a malformed body is 400 (no-store), never 500.
+12. **ReDoS-safe** `suspicious` heuristic (linear-time patterns, proven on 2M whitespace characters); `strip_links_images`
+    also removes reference-style links, autolinks, HTML tags and data URIs.
+13. **G1 smoke** asserts the currency flip, superseded evidence, a stale citation (via `as_of` = v1's instant) and 404 on every
+    workspace route after DELETE.
 
 ## Audit trail
 

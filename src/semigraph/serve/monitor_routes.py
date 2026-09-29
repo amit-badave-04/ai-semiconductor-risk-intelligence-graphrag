@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from . import guard
 from . import routes
-from .monitor import MonitorBusy
+from .monitor import MonitorBusy, status_without_a_monitor
 
 logger = logging.getLogger("semigraph.serve.monitor_routes")
 router = APIRouter()
@@ -23,10 +23,13 @@ MSG_READ_RATE = "Too many requests from your address — please slow down."
 MSG_MONITOR_OFF = "The freshness monitor is not enabled."
 MSG_UNCONFIGURED = "SEC_USER_AGENT is not configured — the freshness monitor is idle."
 
-# What GET /api/freshness reports when no monitor instance exists at all (FRESHNESS_ENABLED is off): the same shape
-# status_payload() would produce, so callers never special-case a missing monitor.
-_DISABLED_PAYLOAD = {"checked_at": None, "snapshot_as_of": None, "next_check_at": None, "pending_count": 0,
-                     "pending_filings": [], "federal_register": None, "unresolved": [], "duration_s": None}
+# What GET /api/freshness reports when no monitor instance exists at all: the same shape status_payload() would
+# produce, so callers never special-case a missing monitor. next_check_at (and every other timing/data field) stays
+# null here unconditionally — with no FreshnessMonitor thread at all there is no next attempt to report
+# (docs/v2/M4_PLAN.md 15.10: next_check_at is null only when disabled/unconfigured).
+_DISABLED_PAYLOAD = {"checked_at": None, "snapshot_as_of": None, "last_error_at": None, "next_check_at": None,
+                     "pending_count": 0, "pending_filings": [], "federal_register": None, "unresolved": [],
+                     "duration_s": None}
 
 
 def _read_gate(request: Request) -> None:
@@ -35,14 +38,16 @@ def _read_gate(request: Request) -> None:
         raise HTTPException(status_code=429, detail=MSG_READ_RATE)
 
 
+_status_without_a_monitor = status_without_a_monitor   # one definition, shared with /api/stats (monitor.py)
+
+
 @router.get("/api/freshness")
 async def freshness(request: Request):
     _read_gate(request)
     monitor = getattr(request.app.state, "freshness_monitor", None)
     if monitor is None:
         settings = request.app.state.settings
-        configured = bool(getattr(settings, "sec_user_agent", "").strip())
-        status = "unconfigured" if not configured else "never"
+        status, configured = _status_without_a_monitor(settings)
         return {**_DISABLED_PAYLOAD, "configured": configured, "enabled": settings.freshness_enabled,
                 "status": status}
     return monitor.status_payload()

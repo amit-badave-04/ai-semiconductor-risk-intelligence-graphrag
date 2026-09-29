@@ -9,12 +9,27 @@ of the items that CHANGED between two consecutive filings" — i.e. only items t
 (``changed`` / reworded items) ever get a ``RiskPassage``. A wholly ``dropped`` or wholly ``new`` item never has one
 (there is no "before" or "after" text to diff against), so those kinds always carry ``passages: []`` here — not a
 join failure, the data genuinely has none. Within a changed item's pair, ``graph/item_loader.py`` says the OLDER
-item owns the ``removed`` / ``reworded``-kind sentence passages and the NEWER item owns the ``added``-kind ones,
-while :data:`semigraph.retrieval.retriever.TEMPORAL_QUERY`'s own ``reworded`` row reports only the NEWER item's id.
-So the join for ``added`` passages is exact (same newer item id on both sides); for ``removed`` / ``reworded``
-passages it falls back to matching the passage's ``item_headline`` against the temporal row's ``older_headline`` —
-the only field both sides carry for that same older item. ``older_item_id`` is left ``None`` for a changed item
-rather than invented (the older item's own id is not part of this query's output at all).
+item owns the ``removed`` / ``reworded``-kind sentence passages and the NEWER item owns the ``added``-kind ones.
+The join for ``added`` passages is exact: :data:`semigraph.retrieval.retriever.TEMPORAL_QUERY`'s ``reworded`` row
+reports the NEWER item's own id, and so does an ``added`` passage's ``item_id``.
+
+For ``removed`` / ``reworded`` passages there is no equally exact join available HERE: a passage's own ``item_id``
+IS the true older item's id (``graph/item_loader.py``), but the ``reworded`` temporal row never reports that id —
+only the newer item's (plus, separately, that older item's ``chunk_ids``, copied onto the row as
+``older_chunk_ids``). The precise fix is a :data:`semigraph.retrieval.retriever.TEMPORAL_QUERY` change (add
+``o.item_id AS older_item_id`` to the ``reworded`` UNION member) — out of this file's ownership, reported as a
+seam. Absent that, this module GROUPS removed/reworded passages by their own true ``item_id`` (each such group is
+one real older item, whatever id a temporal row does or doesn't report) and assigns each group to the reworded
+item whose ``older_chunk_ids`` has the best Jaccard overlap with that group's own chunk ids — a greedy one-to-one
+matching, never "any overlap claims it" (:func:`_assign_older_owners`). Plain "any overlap" would double-attach a
+group to every item sharing so much as one evidence chunk, which happens routinely: two ADJACENT paragraph items
+can share one evidence chunk when a fixed-size chunk window straddles their boundary (see retriever.py's
+``_LEAD_TEXT``, which exists precisely because one lead chunk can hold several paragraphs' worth of text). An item
+with no chunk-id match at all (no ``older_chunk_ids``, or no group overlaps it) falls back to the OLDER headline —
+the one join both sides still carry, and the only join possible before this file even existed. Scoping is always
+to ONE pair (same ``cik``, ``older_accession``, ``newer_accession``, :func:`_pair_key`), so identical chunk ids or
+headlines in two different pairs can never cross-attach either way. ``older_item_id`` is left ``None`` for a
+changed item rather than invented (the older item's own id is not part of ``TEMPORAL_QUERY``'s output at all).
 """
 
 from __future__ import annotations
@@ -89,44 +104,100 @@ def _passage_entry(row: dict) -> dict:
     return {"quote": row.get("text"), "chunk_id": chunk_ids[0] if chunk_ids else None, "side": side}
 
 
-def _item_passages(item: dict, by_item_id: dict, by_older_headline: dict) -> list[dict]:
+def _pair_key(row: dict) -> tuple:
+    """The (cik, older_accession, newer_accession) a passage or item belongs to — the scope every join below stays
+    inside, so identical chunk ids or headlines in two different pairs can never cross-attach."""
+    return row.get("cik"), row.get("older_accession"), row.get("newer_accession")
+
+
+def _index_passages(passages: list[dict]) -> dict:
+    """Every passage keyed by its own pair (see :func:`_pair_key`) — every join below stays scoped to one pair."""
+    by_pair: dict = {}
+    for p in passages:
+        by_pair.setdefault(_pair_key(p), []).append(p)
+    return by_pair
+
+
+def _group_passages_by_true_owner(pair_passages: list[dict]) -> dict:
+    """``removed`` / ``reworded``-kind passages of ONE pair, grouped by their own true owner id
+    (``passage.item_id`` — the older item's EXACT id; see the module docstring). A ``reworded`` temporal row never
+    reports this id itself, which is exactly why the grouping (rather than a direct lookup) is needed."""
+    owners: dict = {}
+    for p in pair_passages:
+        if p.get("kind") in ("removed", "reworded") and p.get("item_id"):
+            owners.setdefault(p["item_id"], []).append(p)
+    return owners
+
+
+def _jaccard(a: set, b: set) -> float:
+    return len(a & b) / len(a | b) if a and b else 0.0
+
+
+def _assign_older_owners(reworded_items: list[dict], owners: dict) -> dict[int, list[dict]]:
+    """Best-overlap, one-to-one assignment of each older-passage owner (see :func:`_group_passages_by_true_owner`)
+    to at most one of ``reworded_items`` (by position), and each item to at most one owner — a greedy
+    maximum-Jaccard matching over chunk ids, never "any overlap claims it" (see the module docstring: two adjacent
+    items can legitimately share one evidence chunk). Returns ``{item_index: passages}`` only for items an owner
+    was actually matched to; an unassigned reworded item falls back to the older headline (its caller's concern)."""
+    candidates = []
+    for idx, item in enumerate(reworded_items):
+        item_ids = set(item.get("older_chunk_ids") or [])
+        if not item_ids:
+            continue
+        for owner_id, owner_passages in owners.items():
+            owner_ids = {cid for p in owner_passages for cid in (p.get("chunk_ids") or [])}
+            score = _jaccard(item_ids, owner_ids)
+            if score > 0:
+                candidates.append((score, idx, owner_id))
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    assigned: dict[int, list[dict]] = {}
+    claimed_owners: set = set()
+    for _score, idx, owner_id in candidates:
+        if idx in assigned or owner_id in claimed_owners:
+            continue
+        assigned[idx] = owners[owner_id]
+        claimed_owners.add(owner_id)
+    return assigned
+
+
+def _headline_fallback_older(item: dict, pair_passages: list[dict]) -> list[dict]:
+    """Used only for a reworded item no chunk-id overlap ever assigned an owner to (no ``older_chunk_ids`` at all,
+    or none of the pair's owners overlap it) — the older headline, the one join both sides still carry."""
+    older_headline = item.get("older_headline")
+    if not older_headline:
+        return []
+    return [p for p in pair_passages
+            if p.get("kind") in ("removed", "reworded") and p.get("item_headline") == older_headline]
+
+
+def _item_passages(item: dict, assigned_older: list[dict] | None, pair_passages: list[dict]) -> list[dict]:
     """Only a ``reworded`` (dossier kind ``changed``) item ever has passages — a whole-item ``removed``, ``new`` or
     ``unsettled`` row has no "before" and "after" text to diff, so ``compute_passages`` never produces one for it
     (see the module docstring)."""
     if item.get("change") != "reworded":
         return []
-    older_side = by_older_headline.get(item.get("older_headline"), [])
-    newer_side = by_item_id.get(item.get("item_id"), [])
-    return [_passage_entry(p) for p in older_side if p.get("kind") in ("removed", "reworded")] + \
-        [_passage_entry(p) for p in newer_side if p.get("kind") == "added"]
+    older_side = assigned_older if assigned_older is not None else _headline_fallback_older(item, pair_passages)
+    newer_side = [p for p in pair_passages if p.get("kind") == "added" and p.get("item_id") == item.get("item_id")]
+    return [_passage_entry(p) for p in older_side] + [_passage_entry(p) for p in newer_side]
 
 
-def _index_passages(passages: list[dict]) -> tuple[dict, dict]:
-    """``by_item_id``: every passage keyed by its OWN item id (exact for ``added``, whose owner is the newer item —
-    the same id :data:`semigraph.retrieval.retriever.TEMPORAL_QUERY` reports for a reworded row). ``by_older_headline``:
-    ``removed`` / ``reworded``-kind passages keyed by the OLDER item's headline, the fallback join (see module
-    docstring)."""
-    by_item_id: dict = {}
-    by_older_headline: dict = {}
-    for p in passages:
-        by_item_id.setdefault(p.get("item_id"), []).append(p)
-        if p.get("kind") in ("removed", "reworded") and p.get("item_headline"):
-            by_older_headline.setdefault(p.get("item_headline"), []).append(p)
-    return by_item_id, by_older_headline
-
-
-def _shape_item(item: dict, by_item_id: dict, by_older_headline: dict) -> dict:
+def _shape_item(item: dict, assigned_older: list[dict] | None, pair_passages: list[dict]) -> dict:
     change = item.get("change")
     return {
         "kind": _KIND_MAP.get(change, change),
         "headline": item.get("headline") or item.get("older_headline"),
         "older_item_id": item.get("item_id") if change == "removed" else None,
         "newer_item_id": item.get("item_id") if change in ("new", "reworded") else None,
-        "passages": _item_passages(item, by_item_id, by_older_headline),
+        "passages": _item_passages(item, assigned_older, pair_passages),
     }
 
 
-def _shape_pair(pair: dict, pair_items: list[dict], by_item_id: dict, by_older_headline: dict) -> dict:
+def _shape_pair(pair: dict, pair_items: list[dict], by_pair: dict) -> dict:
+    pair_passages = by_pair.get(_pair_key(pair), [])
+    owners = _group_passages_by_true_owner(pair_passages)
+    reworded_indices = [i for i, it in enumerate(pair_items) if it.get("change") == "reworded"]
+    assigned = _assign_older_owners([pair_items[i] for i in reworded_indices], owners)
+    assigned_by_item_index = {reworded_indices[local]: passages for local, passages in assigned.items()}
     return {
         "older": {"accession_no": pair.get("older_accession"), "form": pair.get("older_form"),
                   "filing_date": pair.get("older_date")},
@@ -134,7 +205,8 @@ def _shape_pair(pair: dict, pair_items: list[dict], by_item_id: dict, by_older_h
                   "filing_date": pair.get("newer_date")},
         "compared": pair.get("compared"),
         "not_compared_reason": pair.get("not_compared_reason"),
-        "items": [_shape_item(it, by_item_id, by_older_headline) for it in pair_items],
+        "items": [_shape_item(it, assigned_by_item_index.get(i), pair_passages)
+                 for i, it in enumerate(pair_items)],
     }
 
 
@@ -158,12 +230,11 @@ def get_risk_changes(driver, ticker: str, *, limit: int = 20) -> dict | None:
                   for p in pairs if p.get("compared", True)]
     passage_rows = run_cypher(driver, PASSAGES_QUERY, pairs=comparable) if comparable else []
     passages, pairs_with_totals = select_passages(passage_rows, pairs, "", caps=passage_caps)
-    by_item_id, by_older_headline = _index_passages(passages)
+    by_pair = _index_passages(passages)
 
     items_by_pair: dict = {}
     for it in items:
         items_by_pair.setdefault((it.get("cik"), it.get("newer_accession")), []).append(it)
-    shaped_pairs = [_shape_pair(pair, items_by_pair.get((pair.get("cik"), pair.get("newer_accession")), []),
-                                by_item_id, by_older_headline)
+    shaped_pairs = [_shape_pair(pair, items_by_pair.get((pair.get("cik"), pair.get("newer_accession")), []), by_pair)
                     for pair in pairs_with_totals]
     return {"company": {"ticker": ticker, "name": company["name"], "cik": cik}, "pairs": shaped_pairs}

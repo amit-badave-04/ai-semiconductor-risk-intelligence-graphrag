@@ -101,7 +101,11 @@
       </div>
       <div class="row">
         <input id="wsAsOf" type="date" title="Ask as of this date instead of the current version">
-        <span class="hint">optional: ask as of an earlier date</span>
+        <span class="hint">optional: ask as of an earlier date (or pick "ask as of vN" under a document below)</span>
+      </div>
+      <div class="row">
+        <label class="hint" for="wsTarget">upload as:</label>
+        <select id="wsTarget"><option value="">Upload a new document</option></select>
       </div>
       <label id="wsDrop" class="drop" for="wsFile">Drag a PDF, DOCX, Markdown, TXT or HTML file here, or click to
         choose one (up to 30 pages).</label>
@@ -484,13 +488,82 @@ function relativeTime(iso, now) {
 }
 
 // The page's single freshness header line, from GET /api/freshness. `now` (ms) is a parameter so this stays pure.
+// A failed check keeps the last GOOD checked_at (docs/v2/M4_PLAN.md 15.10): status error/stale must say the check
+// failed instead of showing a (stale) pending count as if it were fresh; never/unconfigured naturally have no
+// checked_at yet, so they fall through to the same neutral "unavailable" line as a first-boot service.
 function freshnessLine(freshness, now) {
   const f = freshness && typeof freshness === "object" ? freshness : {};
   if (!f.checked_at) return "freshness check unavailable";
+  if (f.status === "error" || f.status === "stale") return `freshness check failed ${relativeTime(f.checked_at, now)}`;
   const parts = [f.snapshot_as_of ? `Data as of ${f.snapshot_as_of}` : "Data freshness unknown",
     `checked ${relativeTime(f.checked_at, now)}`];
   if (typeof f.pending_count === "number") parts.push(`${f.pending_count} filing${f.pending_count === 1 ? "" : "s"} pending`);
   return parts.join(" · ");
+}
+
+// ---- M4 review fixes (findings 15, 16, section 15.1): upload target, title, and "ask as of vN" ----
+
+// The upload target selector's options, from GET /api/workspace's documents (finding 15): "Upload a new document"
+// plus "New version of <title>" per existing document, so a version-2 upload actually reaches the SAME document
+// instead of silently minting a new one every time (which made stale chips and what-changed unreachable).
+function uploadTargetOptions(docs) {
+  const opts = [{ value: "", label: "Upload a new document" }];
+  for (const d of list(docs)) opts.push({ value: d.document_id, label: `New version of ${d.title || d.document_id}` });
+  return opts;
+}
+
+// The uploaded file's title field: the file name, truncated to MAX_TITLE_CHARS (finding 15) — matches the server's
+// own limit exactly, so a long file name is never rejected as "title is limited to 120 characters".
+function uploadTitleFor(fileName, maxChars) {
+  return String(fileName == null ? "" : fileName).slice(0, maxChars);
+}
+
+// "ask as of vN" options for one document's versions (section 15.1): value is that version's OWN `created_at`
+// instant (an `as_of` the guard accepts directly), never a hand-picked date — so a follow-up ask over v1 while v2
+// is current reliably retrieves v1's (superseded) content instead of depending on same-day date granularity.
+function versionAskAsOfOptions(versions) {
+  const opts = [{ value: "", label: "ask as of: current" }];
+  for (const v of list(versions)) opts.push({ value: v.created_at || "", label: `ask as of v${v.version}` });
+  return opts;
+}
+
+// One changed unit's quoted passages, each with a `doc:` citation chip the same shape as an answer's — never a
+// bare href, never innerHTML from uploaded or generated text without esc() (finding 16).
+function changeItemHtml(item) {
+  item = item && typeof item === "object" ? item : {};
+  const label = esc(item.headline || item.older_unit_id || item.newer_unit_id || "(untitled)");
+  const passages = list(item.passages);
+  if (!passages.length) return `<li>${label}</li>`;
+  const rows = passages.map((p) => {
+    p = p && typeof p === "object" ? p : {};
+    const quote = typeof p.quote === "string" && p.quote ? `&ldquo;${esc(p.quote)}&rdquo;` : "";
+    const chip = p.chunk_id
+      ? ` <span class="cite" data-id="${esc(p.chunk_id)}" title="open evidence ${esc(p.chunk_id)}">${esc(chipLabel(p.chunk_id))}</span>`
+      : "";
+    return `<div class="passage">${quote}${chip}</div>`;
+  }).join("");
+  return `<li>${label}${rows}</li>`;
+}
+
+// What-changed report as HTML (finding 16): every alignment `reworded`/`merged`/`uncertain` unit now stays visible
+// — units with a sentence-level passage are `changed` (shown with quotes + citation chips); units the aligner
+// touched but with no surviving passage go to a SEPARATE `minor_rewordings` list, never silently folded into
+// `unchanged_count`.
+function changesHtml(report, older, newer) {
+  report = report && typeof report === "object" ? report : {};
+  if (!report.items_compared) {
+    return `<p class="hint">v${older} → v${newer}: comparison not available (${esc(report.not_compared_reason || "unknown reason")}).</p>`;
+  }
+  const section = (label, items) => (list(items).length
+    ? `<div class="t">${esc(label)} (${items.length})</div><ul>${list(items).map(changeItemHtml).join("")}</ul>` : "");
+  const minor = list(report.minor_rewordings);
+  const minorHtml = minor.length
+    ? `<div class="t">Minor rewordings (${minor.length})</div><ul>${minor.map((i) =>
+        `<li>${esc((i && (i.headline || i.older_unit_id || i.newer_unit_id)) || "(untitled)")}</li>`).join("")}</ul>`
+    : "";
+  return `<div class="hint">v${older} → v${newer}, ${report.unchanged_count} section(s) unchanged:</div>` +
+    section("Added", report.added) + section("Removed", report.removed) + section("Changed", report.changed) +
+    minorHtml;
 }
 
 /* ===== Page behaviour ===== */
@@ -501,7 +574,11 @@ const evidenceCache = new Map();
 let stepsShown = 0;
 let currentWorkspace = null;               // { id, token, expires_at } — never persisted outside sessionStorage
 const WS_SESSION_KEY = "semigraph:workspace";
-const wsAsOfValue = () => (($("wsAsOf") && $("wsAsOf").value) || null);
+const MAX_UPLOAD_TITLE_CHARS = 120;         // matches the server's own title-length cap exactly (finding 15)
+// A per-document "ask as of vN" instant (section 15.1) takes priority over the manual date picker below it; empty
+// means "current" (no as_of at all).
+let wsAskAsOfInstant = null;
+const wsAsOfValue = () => (wsAskAsOfInstant || ($("wsAsOf") && $("wsAsOf").value) || null);
 
 function clearSteps() { const ol = $("agentSteps"); ol.textContent = ""; ol.hidden = true; stepsShown = 0; }
 function addStep(ev) {
@@ -598,13 +675,14 @@ function showEvidence(id, d) {
   $("dTitle").textContent = v.title; $("dMeta").innerHTML = v.metaHtml; $("dFresh").innerHTML = v.freshHtml;
   $("dFacts").innerHTML = v.factsHtml; $("dText").textContent = v.text; $("dText").hidden = !v.text; $("dLink").innerHTML = v.linkHtml;
   if (v.kind === "chunk") {   // the chip label gains the form and period once the evidence is known
-    $("answer").querySelectorAll(".cite").forEach((chip) => { if (chip.dataset.id === id) chip.textContent = v.label; });
+    document.querySelectorAll(".cite").forEach((chip) => { if (chip.dataset.id === id) chip.textContent = v.label; });
   }
 }
 
-$("answer").addEventListener("click", async (e) => {
-  const chip = e.target.closest(".cite"); if (!chip) return;
-  const id = chip.dataset.id; $("drawer").classList.add("open");
+// Shared by every citation chip on the page — the live answer (#answer) AND the what-changed view (#wsChanges,
+// finding 16): both render the same `.cite[data-id]` shape, so both open the same evidence drawer.
+async function openCitation(id) {
+  $("drawer").classList.add("open");
   if (evidenceCache.has(id)) { showEvidence(id, evidenceCache.get(id)); return; }
   $("dTitle").textContent = "Evidence · " + chipLabel(id); $("dMeta").textContent = ""; $("dFresh").innerHTML = ""; $("dFacts").innerHTML = ""; $("dLink").innerHTML = "";
   $("dText").hidden = false; $("dText").textContent = "loading…";
@@ -616,7 +694,10 @@ $("answer").addEventListener("click", async (e) => {
     if (!r.ok) { let detail = r.statusText; try { detail = (await r.json()).detail; } catch (_) {} throw new Error(detail); }
     const d = await r.json(); evidenceCache.set(id, d); showEvidence(id, d);
   } catch (err) { $("dText").hidden = false; $("dText").textContent = "could not load evidence: " + err.message; }
-});
+}
+
+$("answer").addEventListener("click", (e) => { const chip = e.target.closest(".cite"); if (chip) openCitation(chip.dataset.id); });
+$("wsChanges").addEventListener("click", (e) => { const chip = e.target.closest(".cite"); if (chip) openCitation(chip.dataset.id); });
 $("drawerClose").addEventListener("click", () => $("drawer").classList.remove("open"));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("drawer").classList.remove("open"); if ((e.ctrlKey || e.metaKey) && e.key === "Enter") ask(); });
 $("ask").addEventListener("click", ask);
@@ -664,8 +745,22 @@ async function loadWorkspaceData() {
 function docHtml(doc) {
   const versionButtons = list(doc.versions).map((v) =>
     `<button data-doc="${esc(doc.document_id)}" data-v="${v.version}">v${v.version}</button>`).join(" ");
+  const askOptions = versionAskAsOfOptions(doc.versions)
+    .map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("");
   return `<div class="doc"><b>${esc(doc.title || doc.document_id)}</b> (latest v${doc.latest_version})
-    <div class="versions">${esc(versionTimeline(doc.versions))} · ${versionButtons}</div></div>`;
+    <div class="versions">${esc(versionTimeline(doc.versions))} · ${versionButtons}</div>
+    <div class="hint">${esc(doc.title || doc.document_id)}: <select class="askAsOf" data-doc="${esc(doc.document_id)}">${askOptions}</select></div>
+    </div>`;
+}
+
+// GET /api/workspace's documents also drive the upload-target selector (finding 15): choosing "new version of X"
+// sends THAT document's id, so a v2 upload actually reaches the same document instead of minting a new one.
+function renderUploadTarget(docs) {
+  const sel = $("wsTarget");
+  if (!sel) return;
+  const selected = sel.value;
+  sel.innerHTML = uploadTargetOptions(docs).map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("");
+  if (list(docs).some((d) => d.document_id === selected)) sel.value = selected;    // keep the choice across reloads
 }
 
 function renderDocuments(docs) {
@@ -676,6 +771,10 @@ function renderDocuments(docs) {
     const newer = Number(btn.dataset.v), older = versions.filter((v) => v < newer).pop();
     if (older) showChanges(btn.dataset.doc, older, newer); else $("wsChanges").innerHTML = `<p class="hint">v${newer} is the first version — nothing to compare.</p>`;
   }));
+  $("wsDocs").querySelectorAll("select.askAsOf").forEach((sel) => sel.addEventListener("change", () => {
+    wsAskAsOfInstant = sel.value || null;
+  }));
+  renderUploadTarget(docs);
 }
 
 async function showChanges(documentId, older, newer) {
@@ -687,14 +786,6 @@ async function showChanges(documentId, older, newer) {
     if (!r.ok) { $("wsChanges").innerHTML = `<p class="hint err">${esc(d.detail || "could not load the change report")}</p>`; return; }
     $("wsChanges").innerHTML = changesHtml(d, older, newer);
   } catch (e) { $("wsChanges").innerHTML = `<p class="hint err">network error loading the change report</p>`; }
-}
-
-function changesHtml(report, older, newer) {
-  if (!report.items_compared) return `<p class="hint">v${older} → v${newer}: comparison not available (${esc(report.not_compared_reason || "unknown reason")}).</p>`;
-  const section = (label, items) => (items.length
-    ? `<div class="t">${label} (${items.length})</div><ul>${items.map((i) => `<li>${esc(i.headline || i.older_unit_id || i.newer_unit_id || "(untitled)")}</li>`).join("")}</ul>` : "");
-  return `<div class="hint">v${older} → v${newer}, ${report.unchanged_count} section(s) unchanged:</div>` +
-    section("Added", report.added) + section("Removed", report.removed) + section("Changed", report.changed);
 }
 
 function setJobRow(key, text, cls) {
@@ -732,11 +823,17 @@ async function watchJob(jobId, label) {
 
 async function uploadFile(file) {
   if (!currentWorkspace) return;
+  const documentId = ($("wsTarget") && $("wsTarget").value) || "";
   setJobRow(file.name, "uploading…");
   const fd = new FormData();
-  fd.append("file", file); fd.append("turnstile_token", turnstileToken || "");
+  fd.append("file", file);
+  fd.append("title", uploadTitleFor(file.name, MAX_UPLOAD_TITLE_CHARS));
+  if (documentId) fd.append("document_id", documentId);
+  // The bot-check token travels in a HEADER, not a form field (finding 15 / docs/v2/M4_PLAN.md 15.2): the server
+  // verifies it before reading the body at all.
+  const headers = { ...wsHeaders(), "X-Turnstile-Token": turnstileToken || "" };
   let resp;
-  try { resp = await fetch(`/api/workspace/${currentWorkspace.id}/documents`, { method: "POST", headers: wsHeaders(), body: fd }); }
+  try { resp = await fetch(`/api/workspace/${currentWorkspace.id}/documents`, { method: "POST", headers, body: fd }); }
   catch (e) { setJobRow(file.name, "network error", "err"); return; }
   resetTurnstile();
   let body; try { body = await resp.json(); } catch (e) { body = {}; }
@@ -746,7 +843,14 @@ async function uploadFile(file) {
   watchJob(body.job_id, file.name);
 }
 
-function handleFiles(fileList) { Array.from(fileList || []).forEach(uploadFile); }
+// Dropped/chosen files upload ONE AT A TIME (finding 15): each gets its OWN fresh Turnstile pass (resetTurnstile()
+// inside uploadFile), and the single upload_slots permit means a parallel batch would just answer 429 busy for
+// every file after the first anyway.
+async function handleFiles(fileList) {
+  for (const file of Array.from(fileList || [])) {
+    await uploadFile(file);
+  }
+}
 
 async function createWorkspace() {
   $("wsCreateStatus").textContent = "creating…";

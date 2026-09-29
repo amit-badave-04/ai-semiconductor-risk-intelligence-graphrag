@@ -384,6 +384,66 @@ def test_chunk_units_dense_numeric_table_never_exceeds_max_tokens():
         assert digit_heavy_count_tokens(piece) <= 512
 
 
+# --------------------------------------------------------------------------
+# section 15.8: adjacent small units are PACKED into one chunk up to target_chars, never one chunk per unit
+# --------------------------------------------------------------------------
+
+def test_chunk_units_packs_many_short_paragraphs_far_below_one_chunk_per_unit():
+    """A document of 500 one-line paragraphs must not yield 500 chunks (section 15.8): they pack together up to
+    the target size at production defaults."""
+    blocks = [_Block(f"Paragraph number {i} is a short standalone line of body text right here.") for i in range(500)]
+    text = U.canonical_text(blocks)
+    unit_list = U.detect_units(blocks, "txt")
+    assert len(unit_list) == 500                              # too few headings: one paragraph unit per block
+
+    chunks = U.chunk_units(text, unit_list, count_tokens=_fake_count_tokens)     # production defaults
+    assert len(chunks) < 50, f"expected heavy packing, got {len(chunks)} chunks for 500 short paragraphs"
+
+    pos = 0
+    for c in chunks:
+        assert c.char_start == pos
+        assert c.char_end > c.char_start
+        assert text[c.char_start:c.char_end]
+        assert c.tokens == _fake_count_tokens(text[c.char_start:c.char_end])
+        assert c.tokens <= U.DEFAULT_MAX_TOKENS
+        assert len(text[c.char_start:c.char_end]) <= U.DEFAULT_MAX_CHARS
+        pos = c.char_end
+    assert pos == len(text)                                   # exact, contiguous, offsets-contract coverage
+
+
+def test_pipeline_packs_a_real_500_line_markdown_document_far_below_one_chunk_per_line():
+    """End to end through the REAL parser (``parse.parse_document``, as ``jobs.py`` calls it): a Markdown document
+    of 500 one-line paragraphs (the ``.md`` parser makes one block per line) must pack down to far fewer than 500
+    chunks at production defaults (section 15.8), exactly like the pure-``units`` version above but through the
+    real pipeline this milestone actually ships."""
+    md = "\n\n".join(f"Paragraph number {i} is a short standalone line of body text right here." for i in range(500))
+    doc = parse.parse_document(md.encode("utf-8"), "md")
+    text = U.canonical_text(doc.blocks)
+    unit_list = U.detect_units(doc.blocks, "md")
+    assert len(unit_list) == 500
+
+    chunks = U.chunk_units(text, unit_list, count_tokens=_fake_count_tokens)      # production defaults
+    assert len(chunks) < 50, f"expected heavy packing, got {len(chunks)} chunks for 500 short lines"
+    pos = 0
+    for c in chunks:
+        assert c.char_start == pos
+        pos = c.char_end
+    assert pos == len(text)
+
+
+def test_chunk_units_packing_respects_a_small_target_chars():
+    """Packing stops filling a chunk once it would reach ``target_chars`` — proven with a small, easy-to-count
+    target rather than relying on the production default alone."""
+    blocks = [_Block(f"Short line {i} of body text.") for i in range(40)]
+    text = U.canonical_text(blocks)
+    unit_list = U.detect_units(blocks, "txt")
+    chunks = U.chunk_units(text, unit_list, count_tokens=_fake_count_tokens, max_tokens=1_000_000,
+                           target_chars=120, max_chars=200)
+    assert 1 < len(chunks) < 40                                # packed, but not into a single giant chunk either
+    for c in chunks[:-1]:
+        assert len(text[c.char_start:c.char_end]) <= 200
+
+
 _TOKENIZER_PATH = Path("models/qwen3-embedding-0.6b-q8/tokenizer.json")
 
 

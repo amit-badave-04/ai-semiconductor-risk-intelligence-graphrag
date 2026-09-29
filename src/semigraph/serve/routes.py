@@ -174,14 +174,24 @@ async def stats(request: Request):
             "agent_enabled": s.agent_enabled,
             # True only while a sample of agent questions is really traced: the page shows its privacy line on this flag.
             "tracing": bool(s.agent_enabled and getattr(getattr(st, "tracer", None), "enabled", False)),
-            "uploads_enabled": s.uploads_enabled,
+            "uploads_enabled": uploads_available(st),
             "freshness": _freshness_summary(st)}
 
 
-def _freshness_summary(st) -> dict | None:
-    """The freshness monitor's last result for the page header, or None when no monitor runs (M4, docs/v2/M4_PLAN.md 4.1)."""
+def uploads_available(st) -> bool:
+    """Uploads answer only when the deployment enables them AND the upload service started (``uploads.jobs`` sets
+    ``uploads_ready``; False when the embedder cannot count tokens). The page, ``/api/stats`` and every workspace route
+    use this one predicate, so they can never disagree."""
+    return bool(st.settings.uploads_enabled and getattr(st, "uploads_ready", False))
+
+
+def _freshness_summary(st) -> dict:
+    """The freshness monitor's last result for the page header, or the ``disabled``/``unconfigured``/``never`` shape when
+    no monitor runs (M4, docs/v2/M4_PLAN.md 4.1 and 15.10): always the same three keys, never None."""
+    from .monitor import summary_without_a_monitor
+
     monitor = getattr(st, "freshness_monitor", None)
-    return monitor.summary() if monitor is not None else None
+    return monitor.summary() if monitor is not None else summary_without_a_monitor(st.settings)
 
 
 @router.get("/api/evidence/{evidence_id}")
@@ -227,7 +237,7 @@ async def ask(body: AskRequest, request: Request):
     workspace = None
     if in_workspace:
         workspace = {"workspace_id": guard.validate_workspace_id(body.workspace_id), "as_of": as_of}
-        if not s.uploads_enabled:
+        if not uploads_available(st):
             raise HTTPException(status_code=503, detail=MSG_UPLOADS_OFF)
     elif as_of is not None:
         raise HTTPException(status_code=400, detail="as_of is available only with a workspace")
@@ -271,12 +281,20 @@ def _checks_failed(done: dict) -> bool:
     return checks_failed(done.get("checks"))
 
 
-def _warn_on_failed_checks(done: dict) -> None:
+def _loggable_checks(checks: dict | None, private: bool) -> dict | None:
+    """The ``checks`` block as it may be logged. For a workspace answer every list (answer sentences, bracketed text,
+    numbers) becomes its LENGTH: those strings paraphrase a private upload (docs/v2/M4_PLAN.md 5: no uploaded text in logs)."""
+    if not private or not isinstance(checks, dict):
+        return checks
+    return {k: (len(v) if isinstance(v, (list, tuple, set)) else v) for k, v in checks.items()}
+
+
+def _warn_on_failed_checks(done: dict, private: bool = False) -> None:
     """An answer that cannot escalate (routed straight to the strong model, or streamed live) is released whatever the
     deterministic checks find: say so in the log instead of letting it pass silently."""
     if _checks_failed(done):
         logger.warning("answer released with failed checks (routed=%s escalated=%s by=%s): %s", done.get("routed"),
-                       done.get("escalated"), done.get("answered_by"), done.get("checks"))
+                       done.get("escalated"), done.get("answered_by"), _loggable_checks(done.get("checks"), private))
 
 
 def _stream_fn(strategy: str, workspace: bool = False):
@@ -359,8 +377,9 @@ def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = 
                                      usage=ev["usage"], cost_usd=ev["cost_usd"], snapshot_id=snapshot_id)
                 logger.info("answered strategy=%s citations=%d hallucinated=%d cost=%s routed=%s escalated=%s by=%s checks=%s",
                             strategy, len(ev["citations"]), len(ev["hallucinated"]), ev["cost_usd"],
-                            ev.get("routed"), ev.get("escalated"), ev.get("answered_by"), ev.get("checks"))
-                _warn_on_failed_checks(ev)
+                            ev.get("routed"), ev.get("escalated"), ev.get("answered_by"),
+                            _loggable_checks(ev.get("checks"), in_workspace))
+                _warn_on_failed_checks(ev, in_workspace)
             elif ev["event"] == "error":
                 # The client-facing message below is already generic; ``ev["detail"]`` is not — it can be an f-string of a
                 # provider exception's type and text (retrieval/answerer.py), which can itself quote a secret-shaped

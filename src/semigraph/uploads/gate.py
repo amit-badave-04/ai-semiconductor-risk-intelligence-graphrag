@@ -159,11 +159,19 @@ def _docx_member_active(name: str) -> bool:
 
 
 def check_docx_zip(data: bytes) -> None:
-    """Reject a DOCX zip that is oversized, path-unsafe, carries active content, or is not a real DOCX."""
+    """Reject a DOCX zip that is oversized, path-unsafe, carries active content, or is not a real DOCX.
+
+    ``zipfile.ZipFile()`` / ``infolist()`` raise more than :class:`zipfile.BadZipFile` for a malformed container: a
+    corrupted "version needed to extract" field raises ``NotImplementedError``, and a UTF-8-flagged member name
+    that is not valid UTF-8 raises ``UnicodeDecodeError`` (finding #12; fuzzed on 20,000 random mutations of a
+    minimal DOCX). Every one of them means the same thing here — "not a valid document container" — and must
+    become a fixed, upload-safe :class:`GateError`, never escape as a bare 500 after the per-IP upload window has
+    already been spent.
+    """
     try:
         zf = zipfile.ZipFile(BytesIO(data))
         infos = zf.infolist()
-    except zipfile.BadZipFile:
+    except (zipfile.BadZipFile, NotImplementedError, UnicodeDecodeError, ValueError, OSError, EOFError):
         logger.info("rejected docx: not a valid zip container")
         raise GateError("unsupported_type", "not a valid document container") from None
     if len(infos) > DOCX_MAX_MEMBERS:

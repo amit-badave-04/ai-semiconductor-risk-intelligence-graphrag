@@ -37,8 +37,10 @@ TEMPORAL_ROWS = [
                        older_chunk_ids=["c1"]),
     _base_temporal_row(change="new", item_id="item-new-1", headline="New Risk", unit_kind="headline",
                        newer_chunk_ids=["c2"]),
+    # A RiskItem's own chunk ids can span several evidence chunks: this item's older wording is quoted from BOTH
+    # c1a (a fully dropped sentence) and c3 (a reworded one) — the join must pick up passages for either.
     _base_temporal_row(change="reworded", item_id="item-new-2", headline="Reworded New",
-                       older_headline="Reworded Old", unit_kind="headline", older_chunk_ids=["c3"],
+                       older_headline="Reworded Old", unit_kind="headline", older_chunk_ids=["c1a", "c3"],
                        newer_chunk_ids=["c4"]),
     _base_temporal_row(change="unsettled", item_id="item-old-2", headline="Unsettled Risk", unit_kind="headline"),
 ]
@@ -47,12 +49,15 @@ TEMPORAL_ROWS = [
 # wholly removed or wholly new item never has one (no "before"/"after" text to diff). All three passages below
 # therefore sit under the ONE reworded item pair: "removed"/"reworded" kind rows are owned by the OLDER item
 # ("item-old-3", headline "Reworded Old" — NOT the same id the temporal row reports for this item), "added" kind
-# rows are owned by the NEWER item ("item-new-2" — the SAME id the temporal row reports). See dossier.py's docstring.
+# rows are owned by the NEWER item ("item-new-2" — the SAME id the temporal row reports). The join is by CHUNK-ID
+# OVERLAP against the temporal row's own `older_chunk_ids` (see dossier.py's docstring) — headline is a fallback
+# only, so `item_headline` below is deliberately shared with the unrelated "item-old-1" (headline "Old Risk", NOT
+# "Reworded Old") to prove the join never uses headline when chunk ids are present.
 PASSAGE_ROWS = [
     {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "p1", "kind": "removed",
      "item_id": "item-old-3", "item_headline": "Reworded Old", "item_unit_kind": "headline", "section_id": None,
      "lead_text": None, "text": "a sentence dropped from the older wording", "counterpart_text": None,
-     "similarity": None, "chunk_ids": ["c1"], "counterpart_chunk_ids": []},
+     "similarity": None, "chunk_ids": ["c1a"], "counterpart_chunk_ids": []},
     {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "p2", "kind": "added",
      "item_id": "item-new-2", "item_headline": "Reworded New", "item_unit_kind": "headline", "section_id": None,
      "lead_text": None, "text": "a wholly new sentence in the newer wording", "counterpart_text": None,
@@ -169,10 +174,11 @@ def test_get_risk_changes_shapes_pairs_and_joins_passages_by_the_documented_rule
     # The temporal row's own item id (the newer item) — the older item id is unknowable from this query, so it is
     # left None rather than invented (see dossier.py's module docstring).
     assert changed["newer_item_id"] == "item-new-2" and changed["older_item_id"] is None
-    # removed/reworded-kind passages (owned by the older item, joined by headline) then the added-kind one (owned
-    # by the newer item, joined by the shared id) — see dossier._item_passages.
+    # removed/reworded-kind passages (owned by the older item, joined by chunk-id overlap against the item's own
+    # `older_chunk_ids`) then the added-kind one (owned by the newer item, joined by the shared id) — see
+    # dossier._item_passages.
     assert changed["passages"] == [
-        {"quote": "a sentence dropped from the older wording", "chunk_id": "c1", "side": "older"},
+        {"quote": "a sentence dropped from the older wording", "chunk_id": "c1a", "side": "older"},
         {"quote": "reworded old text", "chunk_id": "c3", "side": "older"},
         {"quote": "a wholly new sentence in the newer wording", "chunk_id": "c2", "side": "newer"},
     ]
@@ -234,6 +240,122 @@ def test_get_risk_changes_with_no_pairs_at_all_returns_an_empty_list(monkeypatch
     _stub_changes_driver(monkeypatch, [], [])
     result = dossier.get_risk_changes(object(), TICKER)
     assert result["pairs"] == []
+
+
+# ------------------------------------------------------------ finding 20: chunk-id join, not headline (regression)
+
+def test_get_risk_changes_joins_paragraph_units_with_no_headline_by_chunk_id(monkeypatch):
+    """A 20-F (paragraph-unit) filer's items carry no `headline` at all — the old headline-only join could never
+    reach them (docs/v2/M4_PLAN.md finding 20). Mirrors the reviewer's dossier_join.py repro exactly: two reworded
+    paragraph items in one pair, told apart only by chunk id."""
+    rows = [
+        _base_temporal_row(change="pair"),
+        _base_temporal_row(change="reworded", item_id="new-P1", headline=None, older_headline=None,
+                           unit_kind="paragraph", older_chunk_ids=["o1"], newer_chunk_ids=["n1"]),
+        _base_temporal_row(change="reworded", item_id="new-P2", headline=None, older_headline=None,
+                           unit_kind="paragraph", older_chunk_ids=["o2"], newer_chunk_ids=["n2"]),
+    ]
+    passages = [
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "p1", "kind": "removed",
+         "item_id": "old-P1", "item_headline": None, "item_unit_kind": "paragraph", "section_id": None,
+         "lead_text": None, "text": "text of p1", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["o1"], "counterpart_chunk_ids": []},
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "p2", "kind": "reworded",
+         "item_id": "old-P2", "item_headline": None, "item_unit_kind": "paragraph", "section_id": None,
+         "lead_text": None, "text": "text of p2", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["o2"], "counterpart_chunk_ids": []},
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "p3", "kind": "added",
+         "item_id": "new-P1", "item_headline": None, "item_unit_kind": "paragraph", "section_id": None,
+         "lead_text": None, "text": "text of p3", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["n1"], "counterpart_chunk_ids": []},
+    ]
+    _stub_changes_driver(monkeypatch, rows, passages)
+    result = dossier.get_risk_changes(object(), TICKER)
+    by_newer_id = {it["newer_item_id"]: it for it in result["pairs"][0]["items"]}
+    assert [p["quote"] for p in by_newer_id["new-P1"]["passages"]] == ["text of p1", "text of p3"]
+    assert [p["quote"] for p in by_newer_id["new-P2"]["passages"]] == ["text of p2"]
+
+
+def test_get_risk_changes_never_cross_attaches_two_items_that_share_an_older_headline(monkeypatch):
+    """Two reworded items with the SAME older_headline but distinct chunk ids must each keep only their own
+    passages — the exact "repeated headlines cross-attach" failure named in finding 20."""
+    rows = [
+        _base_temporal_row(change="pair"),
+        _base_temporal_row(change="reworded", item_id="item-A", headline="A new", older_headline="Same Heading",
+                           unit_kind="headline", older_chunk_ids=["cA"], newer_chunk_ids=["nA"]),
+        _base_temporal_row(change="reworded", item_id="item-B", headline="B new", older_headline="Same Heading",
+                           unit_kind="headline", older_chunk_ids=["cB"], newer_chunk_ids=["nB"]),
+    ]
+    passages = [
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "pA", "kind": "reworded",
+         "item_id": "old-A", "item_headline": "Same Heading", "item_unit_kind": "headline", "section_id": None,
+         "lead_text": None, "text": "text of pA", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["cA"], "counterpart_chunk_ids": []},
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "pB", "kind": "reworded",
+         "item_id": "old-B", "item_headline": "Same Heading", "item_unit_kind": "headline", "section_id": None,
+         "lead_text": None, "text": "text of pB", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["cB"], "counterpart_chunk_ids": []},
+    ]
+    _stub_changes_driver(monkeypatch, rows, passages)
+    result = dossier.get_risk_changes(object(), TICKER)
+    by_newer_id = {it["newer_item_id"]: it for it in result["pairs"][0]["items"]}
+    assert [p["quote"] for p in by_newer_id["item-A"]["passages"]] == ["text of pA"]
+    assert [p["quote"] for p in by_newer_id["item-B"]["passages"]] == ["text of pB"]
+
+
+def test_get_risk_changes_disambiguates_two_items_that_share_one_evidence_chunk(monkeypatch):
+    """The deeper gap plain chunk-overlap alone does not catch: two ADJACENT paragraph items can legitimately share
+    ONE evidence chunk (a chunker window straddling their boundary — see retriever.py's _LEAD_TEXT comment). Item A
+    and item B share chunk "shared" but each also has a chunk unique to itself; the best-Jaccard-overlap assignment
+    must send owner old-A's passages to item A only, and old-B's to item B only — never both to both."""
+    rows = [
+        _base_temporal_row(change="pair"),
+        _base_temporal_row(change="reworded", item_id="new-A", headline=None, older_headline=None,
+                           unit_kind="paragraph", older_chunk_ids=["shared", "a-only"], newer_chunk_ids=["nA"]),
+        _base_temporal_row(change="reworded", item_id="new-B", headline=None, older_headline=None,
+                           unit_kind="paragraph", older_chunk_ids=["shared", "b-only"], newer_chunk_ids=["nB"]),
+    ]
+    passages = [
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "pA1", "kind": "reworded",
+         "item_id": "old-A", "item_headline": None, "item_unit_kind": "paragraph", "section_id": None,
+         "lead_text": None, "text": "old-A shared sentence", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["shared"], "counterpart_chunk_ids": []},
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "pA2", "kind": "removed",
+         "item_id": "old-A", "item_headline": None, "item_unit_kind": "paragraph", "section_id": None,
+         "lead_text": None, "text": "old-A own sentence", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["a-only"], "counterpart_chunk_ids": []},
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "pB1", "kind": "reworded",
+         "item_id": "old-B", "item_headline": None, "item_unit_kind": "paragraph", "section_id": None,
+         "lead_text": None, "text": "old-B shared sentence", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["shared"], "counterpart_chunk_ids": []},
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "pB2", "kind": "removed",
+         "item_id": "old-B", "item_headline": None, "item_unit_kind": "paragraph", "section_id": None,
+         "lead_text": None, "text": "old-B own sentence", "counterpart_text": None, "similarity": None,
+         "chunk_ids": ["b-only"], "counterpart_chunk_ids": []},
+    ]
+    _stub_changes_driver(monkeypatch, rows, passages)
+    result = dossier.get_risk_changes(object(), TICKER)
+    by_newer_id = {it["newer_item_id"]: it for it in result["pairs"][0]["items"]}
+    assert {p["quote"] for p in by_newer_id["new-A"]["passages"]} == {"old-A shared sentence", "old-A own sentence"}
+    assert {p["quote"] for p in by_newer_id["new-B"]["passages"]} == {"old-B shared sentence", "old-B own sentence"}
+
+
+def test_get_risk_changes_falls_back_to_headline_only_when_chunk_ids_are_entirely_absent(monkeypatch):
+    rows = [
+        _base_temporal_row(change="pair"),
+        _base_temporal_row(change="reworded", item_id="item-new", headline="New", older_headline="Old Heading",
+                           unit_kind="headline", older_chunk_ids=[], newer_chunk_ids=[]),
+    ]
+    passages = [
+        {"cik": CIK, "older_accession": "acc1", "newer_accession": "acc2", "passage_id": "p1", "kind": "reworded",
+         "item_id": "old-item", "item_headline": "Old Heading", "item_unit_kind": "headline", "section_id": None,
+         "lead_text": None, "text": "headline-only fallback text", "counterpart_text": None, "similarity": None,
+         "chunk_ids": [], "counterpart_chunk_ids": []},
+    ]
+    _stub_changes_driver(monkeypatch, rows, passages)
+    result = dossier.get_risk_changes(object(), TICKER)
+    passages_out = result["pairs"][0]["items"][0]["passages"]
+    assert [p["quote"] for p in passages_out] == ["headline-only fallback text"]
 
 
 # ======================================================================== serve.dossier_routes (HTTP)

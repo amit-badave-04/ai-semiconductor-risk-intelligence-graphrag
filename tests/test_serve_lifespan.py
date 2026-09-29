@@ -155,11 +155,13 @@ def test_a_hung_tracer_does_not_delay_shutdown_past_the_bound_and_the_driver_sti
 
 # ---------------------------------------------------------------- M4: background services start only when their flag is on, stop first
 
-def test_with_both_m4_flags_off_nothing_background_starts_and_the_upload_gates_exist(monkeypatch, boot):
+def test_with_both_m4_flags_off_no_monitor_runs_uploads_are_not_ready_but_the_ttl_sweeper_still_runs(monkeypatch, boot):
+    """docs/v2/M4_PLAN.md 15.4: the TTL sweeper runs whenever a driver exists, so the soft rollback (UPLOADS_ENABLED=false)
+    still deletes existing workspaces on schedule; uploads themselves stay unavailable."""
     use_settings(monkeypatch)
     with TestClient(main.create_app()) as client:
         st = client.app.state
-        assert st.freshness_monitor is None and st.upload_sweeper is None
+        assert st.freshness_monitor is None and st.upload_sweeper is not None and st.uploads_ready is False
         assert isinstance(st.upload_slots, type(threading.BoundedSemaphore(1)))
         assert st.upload_slots.acquire(blocking=False) and not st.upload_slots.acquire(blocking=False)   # exactly one
         assert st.workspace_create_limiter.max_events == 3 and st.workspace_create_limiter.window == 86400
@@ -204,3 +206,29 @@ def test_the_m4_routers_are_mounted():
     for path, methods in M4_PATHS.items():
         assert path in paths, path
         assert methods <= set(paths[path]), (path, set(paths[path]))
+
+
+# ---------------------------------------------------------------- review of M4 build: no raw workspace id in the access log
+
+@pytest.mark.parametrize("path,expected", [
+    ("/api/workspace/0123456789abcdef0123456789abcdef/documents",
+     "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef") + ">/documents"),
+    ("/api/workspace/0123456789abcdef0123456789abcdef/changes?document_id=0123456789ab&from=1&to=2",
+     "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef") + ">/changes"),
+    ("/api/workspace/0123456789abcdef0123456789abcdef/evidence/doc:0123456789ab:v1:0001",
+     "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef") + ">/evidence/<doc>"),
+    ("/api/stats", "/api/stats"),
+    ("/api/evidence/doc:0123456789ab:v1:0001", "/api/evidence/<doc>"),
+])
+def test_the_access_log_redacts_workspace_ids_doc_ids_and_workspace_query_strings(path, expected):
+    assert main.redact_access_path(path) == expected
+
+
+def test_the_access_log_filter_rewrites_uvicorns_record_in_place():
+    import logging
+
+    record = logging.LogRecord("uvicorn.access", logging.INFO, __file__, 1, '%s - "%s %s HTTP/%s" %d',
+                               ("1.2.3.4:5", "GET", "/api/workspace/" + "a" * 32 + "/jobs/j1", "1.1", 200), None)
+    assert main.WorkspaceAccessLogFilter().filter(record) is True
+    assert "a" * 32 not in record.getMessage() and "<ws:" in record.getMessage()
+    assert any(isinstance(f, main.WorkspaceAccessLogFilter) for f in logging.getLogger("uvicorn.access").filters)

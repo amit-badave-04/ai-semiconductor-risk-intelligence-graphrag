@@ -56,9 +56,18 @@ def fetch_status(url: str, timeout: float = 20.0) -> dict:
 
 
 def evaluate(body: dict) -> int:
-    """The process exit code for an already-fetched ``/api/freshness`` body."""
+    """The process exit code for an already-fetched ``/api/freshness`` body.
+
+    ``status: "disabled"`` (``FRESHNESS_ENABLED=false``, docs/v2/M4_PLAN.md 15.10) is the SAME kind of intentional
+    operator choice as the scale-to-zero case above: a heartbeat failure would mean "someone should investigate",
+    and nobody needs to investigate a feature switched off on purpose. It is checked before, and independently of,
+    ``configured`` — an explicitly disabled monitor's ``SEC_USER_AGENT`` state is not a health signal either way.
+    """
     status = body.get("status")
     configured = bool(body.get("configured"))
+    if status == "disabled":
+        print("freshness ok: status=disabled (FRESHNESS_ENABLED=false, an intentional operator choice)")
+        return 0
     if status in HEALTHY_STATUSES and configured:
         print(f"freshness ok: status={status} configured={configured} pending_count={body.get('pending_count')}")
         return 0

@@ -133,6 +133,10 @@ def client(fake_repo, store_spy):
                                               FakeSettings.rate_limit_window_seconds)
     app.state.read_rate_limiter = RateLimiter(FakeSettings.read_rate_limit_per_minute, 60)
     app.state.answer_slots = threading.BoundedSemaphore(FakeSettings.max_concurrent_answers)
+    # routes.uploads_available(app.state) = settings.uploads_enabled AND app.state.uploads_ready (finding 29,
+    # docs/v2/M4_PLAN.md 15.5, set in production by uploads.jobs.start_if_enabled) — fixtures that exercise a
+    # working workspace ask must set this explicitly, the same way jobs.start_if_enabled would.
+    app.state.uploads_ready = True
     return TestClient(app)
 
 

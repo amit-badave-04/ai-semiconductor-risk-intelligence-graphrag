@@ -65,7 +65,8 @@ def test_within_budget_is_inclusive_of_the_exact_cap():
 
 
 ALL_PASS = {"v1_ask_cites_doc": True, "reupload_unchanged": True, "v2_supersedes_v1": True,
-           "changes_match_edit_set": True, "evidence_ok": True, "deleted_then_404": True}
+           "changes_match_edit_set": True, "evidence_ok": True, "stale_citation_named": True,
+           "deleted_then_404": True}
 
 
 def test_evaluate_g1_passes_when_every_check_is_true():
@@ -78,7 +79,8 @@ def test_evaluate_g1_reports_every_missing_or_false_check():
         "an identical re-upload was not reported unchanged",
         "v2 did not flip the v1 chunk(s) to is_current=false / status=superseded",
         "the change report did not match the known edit set",
-        "the workspace evidence route did not return the expected chunk",
+        "the workspace evidence route did not return the expected, now-superseded chunk",
+        "the as-of-v1 ask did not produce a stale citation naming the v1 chunk",
         "a workspace route still answered after DELETE",
     ]
 
@@ -86,23 +88,48 @@ def test_evaluate_g1_reports_every_missing_or_false_check():
 def test_evaluate_g1_reports_exactly_the_failed_checks():
     partial = {**ALL_PASS, "evidence_ok": False, "deleted_then_404": False}
     failures = smoke.evaluate_g1(partial)
-    assert failures == ["the workspace evidence route did not return the expected chunk",
+    assert failures == ["the workspace evidence route did not return the expected, now-superseded chunk",
                         "a workspace route still answered after DELETE"]
+
+
+def test_evaluate_g1_fails_when_the_stale_citation_check_fails():
+    """Finding 19: stale_citation_named is now REQUIRED (section 15.1's as_of=v1-instant makes it deterministic),
+    not merely an observational note — a regression in the currency flip or the stale-citation logic must fail G1."""
+    partial = {**ALL_PASS, "stale_citation_named": False}
+    assert smoke.evaluate_g1(partial) == ["the as-of-v1 ask did not produce a stale citation naming the v1 chunk"]
 
 
 # ---------------------------------------------------------------- _budget_notes (observational, never a G1 failure)
 
 
-def test_budget_notes_flag_the_stale_citation_and_as_of_observations_without_failing_g1():
-    results = {**ALL_PASS, "stale_citation_named": False, "as_of_before_v2_returns_v1": False}
+def test_budget_notes_flags_the_as_of_date_granularity_observation_without_failing_g1():
+    results = {**ALL_PASS, "as_of_before_v2_returns_v1": False}
     notes = smoke._budget_notes(results)
-    assert len(notes) == 2
-    assert smoke.evaluate_g1(results) == []      # neither observation is a G1 failure
+    assert len(notes) == 1
+    assert smoke.evaluate_g1(results) == []      # the observation is never a G1 failure
 
 
-def test_budget_notes_are_empty_when_both_observations_held():
-    results = {**ALL_PASS, "stale_citation_named": True, "as_of_before_v2_returns_v1": True}
+def test_budget_notes_are_empty_when_the_observation_held():
+    results = {**ALL_PASS, "as_of_before_v2_returns_v1": True}
     assert smoke._budget_notes(results) == []
+
+
+# ---------------------------------------------------------------- _version_row (finding 19)
+
+
+def test_version_row_finds_the_matching_document_and_version():
+    workspace = {"documents": [{"document_id": "abc123456789",
+                                "versions": [{"version": 1, "is_current": False, "status": "superseded"},
+                                            {"version": 2, "is_current": True, "status": "current"}]}]}
+    row = smoke._version_row(workspace, "abc123456789", 1)
+    assert row == {"version": 1, "is_current": False, "status": "superseded"}
+
+
+def test_version_row_returns_none_for_an_unknown_document_or_version():
+    workspace = {"documents": [{"document_id": "abc123456789", "versions": [{"version": 1}]}]}
+    assert smoke._version_row(workspace, "abc123456789", 9) is None
+    assert smoke._version_row(workspace, "does-not-exist", 1) is None
+    assert smoke._version_row({}, "abc123456789", 1) is None
 
 
 # ---------------------------------------------------------------- the fixture's own known edit set is self-consistent

@@ -2,7 +2,8 @@
 
 Invoked by :mod:`semigraph.uploads.parse` as ``python -m semigraph.uploads.parse_worker <kind> <max_pages>`` with
 the raw document bytes on stdin; it writes ONE JSON object to stdout and exits 0 on success, or writes
-``{"error": code}`` and exits non-zero. The rlimits are set as this module's FIRST statements — before importing
+``{"error": code}`` (plus ``"exc_type"``, the exception's CLASS NAME only, never its message, for an unexpected
+failure — finding #28) and exits non-zero. The rlimits are set as this module's FIRST statements — before importing
 any parser (pypdfium2 / pdfplumber / python-docx) and before reading stdin — and NEVER via ``preexec_fn`` (unsafe
 in a multi-threaded parent: the child can deadlock before exec). ``-m`` itself imports ``semigraph`` and
 ``semigraph.uploads`` first; both are import-light (stdlib only), so nothing heavy runs before the limits are set.
@@ -32,14 +33,17 @@ import re            # noqa: E402
 
 logger = logging.getLogger("semigraph.uploads.parse_worker")
 
-PARSE_ERROR_CODES = ("parse_failed", "timeout", "too_large", "scanned", "empty", "too_many_pages")
+PARSE_ERROR_CODES = ("parse_failed", "timeout", "too_large", "scanned", "empty", "too_many_pages", "active_content")
 _MIN_TEXT_CHARS_PER_PAGE = 200
+_MAX_STRUCTURAL_PDF_OBJECTS = 50_000
+_ACTIVE_PDF_NAMES = frozenset({"JS", "JavaScript", "Launch", "EmbeddedFile", "EmbeddedFiles", "RichMedia", "AA"})
 DEFAULT_BODY_PT = 12.0
 _DOCX_CHARS_PER_ESTIMATED_PAGE = 3000
 _HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
 _TABLE_CELL_TAGS = ("td", "th")
 _BLOCK_TAGS = _HEADING_TAGS + _TABLE_CELL_TAGS + ("p", "li", "div")
 _MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+_MD_FENCE_RE = re.compile(r"^(`{3,}|~{3,})")
 
 
 class _ParseWorkerError(Exception):
@@ -168,9 +172,119 @@ def _pdfplumber_extract(data: bytes, n_pages: int) -> tuple[list[dict], float]:
     return blocks, (total_chars / n_pages if n_pages else 0.0)
 
 
+def _pdf_object_ids(doc) -> set:
+    """Every object number listed by any of the document's cross-reference sections — including one stored inside
+    a compressed ``/ObjStm`` object stream (PDF 1.5+), which ``xref.get_objids()`` reports exactly like a normal
+    object (section 15.7): the caller does not need to know which is which."""
+    objids: set = set()
+    for xref in doc.xrefs:
+        try:
+            objids |= set(xref.get_objids())
+        except Exception:
+            continue
+    return objids
+
+
+_MAX_STRUCTURAL_WALK_NODES = 200_000   # per-object container budget: bounded work, independent of Python's own limits
+
+
+def _find_active_pdf_name(root) -> str | None:
+    """The first active-content name found anywhere in ``root`` — a dict key (``/JS``, ``/AA``, ...) or a Name value
+    (``/S /JavaScript``, which is how an action's OWN subtype is spelled, so an ``/OpenAction`` pointing at a
+    ``/JavaScript`` or ``/Launch`` action is caught here without special-casing ``/OpenAction`` itself — one
+    pointing at an ordinary ``/GoTo`` destination is not touched).
+
+    ITERATIVE, with an explicit stack: a crafted, deeply nested array/dict must never blow the interpreter's
+    recursion limit (an attacker-controlled object graph is exactly the case a recursive walk cannot be trusted
+    with — ``RecursionError`` from one pathological object must never abort scanning every OTHER object). Bounded
+    to :data:`_MAX_STRUCTURAL_WALK_NODES` container nodes; a document that needs more than that to prove itself
+    clean is rejected by the caller instead (defense in depth, same reasoning as the object-count cap)."""
+    from pdfminer.pdftypes import PDFStream
+    from pdfminer.psparser import PSLiteral, literal_name
+
+    stack, seen, visited = [root], set(), 0
+    while stack:
+        obj = stack.pop()
+        if isinstance(obj, PSLiteral):
+            name = literal_name(obj)
+            if name in _ACTIVE_PDF_NAMES:
+                return name
+            continue
+        if isinstance(obj, PDFStream):
+            stack.append(obj.attrs)
+            continue
+        if isinstance(obj, dict):
+            if id(obj) in seen:
+                continue
+            seen.add(id(obj))
+            visited += 1
+            if visited > _MAX_STRUCTURAL_WALK_NODES:
+                raise _ParseWorkerError("parse_failed")
+            for key, value in obj.items():
+                if key in _ACTIVE_PDF_NAMES:
+                    return key
+                stack.append(value)
+            continue
+        if isinstance(obj, (list, tuple)):
+            if id(obj) in seen:
+                continue
+            seen.add(id(obj))
+            visited += 1
+            if visited > _MAX_STRUCTURAL_WALK_NODES:
+                raise _ParseWorkerError("parse_failed")
+            stack.extend(obj)
+    return None
+
+
+def _scan_pdf_structural_active_content(data: bytes) -> None:
+    """A structural active-content scan run INSIDE the sandbox (section 15.7), on top of the raw byte scan
+    ``gate.check_pdf_bytes`` already ran before this subprocess started: it walks every object reachable through
+    the PDF's own cross-reference table, including objects compressed inside a ``/ObjStm`` object stream, which a
+    raw-byte regex is blind to (the stream's content is opaque DEFLATE-compressed binary, not the plaintext ``/Name``
+    tokens a regex matches). Names are compared after pdfminer decodes ``#xx`` name-escapes as part of ordinary
+    tokenization (``/J#61vaScript`` reads as ``JavaScript``), exactly like the byte-scan layer.
+
+    Bounded: a document listing more than :data:`_MAX_STRUCTURAL_PDF_OBJECTS` objects is rejected outright
+    (``parse_failed``) rather than walked — a huge object count is itself a resource-exhaustion vector, and RLIMIT_CPU
+    / RLIMIT_AS bound the worst case only after real work has already been spent.
+
+    FAILS CLOSED, not just defense in depth: a PDF pdfminer cannot even OPEN as a PDF at all is left to the byte
+    scan and the real content extractors (nonstandard but still readable by pypdfium2 / pdfplumber). But once the
+    document has opened and its object ids are listed, every one of them MUST be readable and walkable — a single
+    object that cannot be fetched or walked (a corrupted object stream, a pathological structure) rejects the whole
+    document as ``parse_failed`` rather than being silently skipped, which is exactly what would let a corrupted
+    neighbour hide the one object actually carrying the active content.
+    """
+    import io
+
+    from pdfminer.pdfdocument import PDFDocument
+    from pdfminer.pdfparser import PDFParser
+
+    try:
+        doc = PDFDocument(PDFParser(io.BytesIO(data)))
+        objids = _pdf_object_ids(doc)
+    except _ParseWorkerError:
+        raise
+    except Exception:
+        return
+
+    if len(objids) > _MAX_STRUCTURAL_PDF_OBJECTS:
+        raise _ParseWorkerError("parse_failed")
+    for objid in objids:
+        try:
+            found = _find_active_pdf_name(doc.getobj(objid))
+        except _ParseWorkerError:
+            raise
+        except Exception as exc:
+            raise _ParseWorkerError("parse_failed") from exc
+        if found is not None:
+            raise _ParseWorkerError("active_content")
+
+
 def _parse_pdf(data: bytes, max_pages: int) -> dict:
     import pypdfium2 as pdfium
 
+    _scan_pdf_structural_active_content(data)
     try:
         pdf = pdfium.PdfDocument(data)
         n_pages = len(pdf)
@@ -332,16 +446,28 @@ def _parse_html(data: bytes) -> dict:
 # --------------------------------------------------------------------------
 
 def _parse_md(data: bytes) -> dict:
+    """Markdown line by line: a ``#`` line is a heading UNLESS it is inside a fenced code block (a closing fence
+    needs the SAME character as the one that opened it, at least as many repeats — CommonMark; an unterminated
+    fence suppresses heading detection for the rest of the document, never crashes and never silently resumes)."""
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise _ParseWorkerError("parse_failed") from exc
     blocks = []
+    fence_char = fence_len = None
     for raw_line in text.splitlines():
         line = raw_line.strip()
+        fence_match = _MD_FENCE_RE.match(line)
+        if fence_match:
+            marker = fence_match.group(1)
+            if fence_char is None:
+                fence_char, fence_len = marker[0], len(marker)
+            elif marker[0] == fence_char and len(marker) >= fence_len:
+                fence_char = fence_len = None
+            continue                                       # the fence delimiter line itself is never a block
         if not line:
             continue
-        match = _MD_HEADING_RE.match(line)
+        match = None if fence_char is not None else _MD_HEADING_RE.match(line)
         if match:
             level = len(match.group(1))
             blocks.append({"text": match.group(2).strip(), "page": 1, "size": 24.0 - (level - 1) * 2.0,
@@ -413,11 +539,13 @@ def main(argv: list[str]) -> int:
     except _ParseWorkerError as exc:
         _write({"error": exc.code})
         return 1
-    except Exception:
+    except Exception as exc:
         # never logs the document text/bytes, only that parsing failed; the parent discards stderr in production
-        # (stderr=DEVNULL) — this is for local debugging only.
+        # (stderr=DEVNULL) — this is for local debugging only. The exception CLASS NAME (never its message, which
+        # can quote document text) is reported to the parent so a broken parser dependency is not indistinguishable
+        # from an ordinary bad upload (finding #28, M4_PLAN.md 15.7).
         logger.exception("unhandled error parsing kind=%s", kind)
-        _write({"error": "parse_failed"})
+        _write({"error": "parse_failed", "exc_type": type(exc).__name__})
         return 1
     _write(result)
     return 0

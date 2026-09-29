@@ -1,24 +1,34 @@
-"""Upload workspace HTTP surface (M4, docs/v2/M4_PLAN.md 4.4, 5, 14.6, 14.7).
+"""Upload workspace HTTP surface (M4, docs/v2/M4_PLAN.md 4.4, 5, 14.6, 14.7, 15).
 
-Every route here requires ``UPLOADS_ENABLED``; every route but creation requires ``X-Workspace-Token`` and treats a
-malformed id, an unknown workspace and a wrong token identically (a Neo4j parameterised lookup naturally returns no
-row for any of the three, so no separate shape-validation step is needed to get the 404-for-all-three behaviour the
-plan asks for). Every response — success or error — carries ``Cache-Control: no-store``.
+Every route here requires uploads to be available (``serve.routes.uploads_available`` — ``UPLOADS_ENABLED`` AND the
+upload service actually started, docs/v2/M4_PLAN.md 15.5); every route but creation requires ``X-Workspace-Token``
+and treats a malformed id, an unknown workspace and a wrong token identically (a Neo4j parameterised lookup
+naturally returns no row for any of the three, so no separate shape-validation step is needed to get the
+404-for-all-three behaviour the plan asks for). Every response — success or error — carries ``Cache-Control:
+no-store``. Every GET route additionally takes the free-endpoint read-rate window (``app.state.read_rate_limiter``,
+docs/v2/M4_PLAN.md 15.3): a workspace GET is a database read like ``/api/stats`` or ``/api/evidence``.
 
 The multipart upload body is parsed by hand, directly off the ASGI byte stream, with ``python-multipart``'s
 low-level :func:`create_form_parser` (never FastAPI's ``UploadFile``/``Form`` — Starlette's own multipart parser
 spills a part larger than 1 MiB to a real temp file, which the plan's "bytes live only in memory, never on disk"
 rule (section 5) forbids at our 15 MiB cap): the byte-size cap is enforced WHILE reading, before python-multipart
-ever sees more than the cap, and ``MAX_MEMORY_FILE_SIZE`` is configured above the cap so a within-cap file never
-touches disk either.
+ever sees more than the cap, ``MAX_MEMORY_FILE_SIZE`` is configured above the cap so a within-cap file never touches
+disk either, the body is handed to the parser OFF the event loop (``run_in_threadpool``, finding 3), and at most
+:data:`MAX_MULTIPART_PARTS` fields/files are accepted (the page sends ``file`` and an optional ``document_id``/
+``title`` — three, generously rounded up).
+
+The bot-check token travels in the ``X-Turnstile-Token`` HEADER, verified BEFORE the body is read (docs/v2/M4_PLAN.md
+15.2) — the literal 14.6 gate order (UPLOADS_ENABLED -> workspace token -> kill switch -> Turnstile -> per-address
+window -> streamed size cap -> byte gate -> quota -> slot -> daily budget) now holds exactly, since the token no
+longer has to be parsed out of the multipart body first.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
-import queue as queue_module
 
 import python_multipart.multipart as multipart
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -39,17 +49,25 @@ router = APIRouter()
 NO_STORE = {"Cache-Control": "no-store"}
 UPLOAD_SIZE_SLACK = 8192          # multipart framing/header overhead allowed over the byte cap before the read aborts
 MAX_TITLE_CHARS = 120
-SSE_POLL_TIMEOUT_S = 10
-TERMINAL_STATES = ("ready", "failed")
+MAX_MULTIPART_PARTS = 8           # finding 3: file + turnstile-adjacent fields (document_id, title) plus headroom
+SSE_POLL_INTERVAL_S = 0.5         # how often the async job-stream generator re-polls the in-memory event log
+SSE_POLL_TIMEOUT_S = 10           # sse_starlette's own ping cadence while nothing new has happened
+TERMINAL_STATES = jobs.TERMINAL_STATES
 
 _GATE_STATUS = {"unsupported_type": 415, "active_content": 422, "encrypted": 422, "zip_bomb": 422, "empty": 422}
+# python-multipart's own parse-failure classes (finding 3): a malformed body (missing boundary, missing
+# Content-Type, garbage bytes) must become a 400 with NO_STORE, never a bare 500.
+_MULTIPART_PARSE_ERRORS = (multipart.MultipartParseError, multipart.FormParserError, ValueError)
 
 MSG_BOT = "Bot check failed — reload the page and try again."
 MSG_UPLOAD_RATE = "Too many requests from your address — please wait a while and try again."
+MSG_READ_RATE = "Too many requests from your address — please wait a while and try again."
 MSG_BUSY = "The service is busy processing another upload — try again in a moment."
+MSG_TOO_MANY_WATCHERS = "Too many viewers are already watching this upload — try again in a moment."
 MSG_FILE_REQUIRED = "a file is required"
 MSG_TITLE_TOO_LONG = f"title is limited to {MAX_TITLE_CHARS} characters"
 MSG_UNKNOWN_DOCUMENT = "unknown document_id in this workspace"
+MSG_MALFORMED_UPLOAD = "the upload could not be read"
 MSG_NO_CHANGES = "no change report for that version pair"
 MSG_NO_EVIDENCE = "no evidence with that id"
 
@@ -66,9 +84,19 @@ def _limits(s) -> dict:
 
 
 def _require_uploads_enabled(request: Request) -> None:
-    st = request.app.state
-    if not st.settings.uploads_enabled or not getattr(st, "uploads_token_counter_ok", False):
+    """Finding 29 (docs/v2/M4_PLAN.md 15.5): the ONE predicate every surface uses, so this route, ``/api/stats`` and
+    ``/api/ask`` can never disagree about whether uploads actually work."""
+    if not routes.uploads_available(request.app.state):
         raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
+
+
+def _require_read_rate(request: Request) -> None:
+    """The free-endpoint read-rate window on every workspace GET (docs/v2/M4_PLAN.md 15.3, finding 1/14/22): a
+    workspace GET is a database read exactly like ``/api/stats`` or the public ``/api/evidence``, and had no rate
+    limit of its own before this fix — the same gap that let an unbounded number of SSE watchers pile up."""
+    st, s = request.app.state, request.app.state.settings
+    if not st.read_rate_limiter.allow(guard.ip_hash(guard.client_ip(request, s.client_ip_header))):
+        raise HTTPException(status_code=429, detail=MSG_READ_RATE, headers=NO_STORE)
 
 
 async def _authenticate(request: Request, ws: str) -> None:
@@ -120,6 +148,7 @@ async def create_workspace(body: WorkspaceCreateRequest, request: Request):
 async def get_workspace(ws: str, request: Request):
     _require_uploads_enabled(request)
     await _authenticate(request, ws)
+    _require_read_rate(request)
     data = await run_in_threadpool(repo.get_workspace, request.app.state.driver, ws)
     if data is None:
         raise HTTPException(status_code=404, detail=routes.MSG_WORKSPACE_NOT_FOUND, headers=NO_STORE)
@@ -141,16 +170,44 @@ class _TooLarge(Exception):
     pass
 
 
+class _TooManyParts(Exception):
+    """Finding 3: more than :data:`MAX_MULTIPART_PARTS` fields/files were presented — a body just under the byte cap
+    made of tens of thousands of tiny fields still runs python-multipart's Python state machine for many seconds;
+    counting parts in the callbacks bounds that work regardless of how small each individual part is."""
+
+
+def _parse_multipart_body(parser, body: bytes) -> None:
+    """Runs OFF the event loop, in a threadpool worker (finding 3): python-multipart's pure-Python state machine
+    walks every byte of ``body`` inside this call. Run on the loop thread instead, a body engineered as many tiny
+    same- or unique-named fields can pin it for tens of seconds — during which NOTHING else is served: not another
+    upload, not an ``/api/ask`` stream, not even ``/healthz`` (CVE-2023-30798 pattern)."""
+    parser.write(body)
+    parser.finalize()
+
+
 async def _read_multipart(request: Request, max_bytes: int):
-    """Reads and parses the multipart body straight off the ASGI stream, in memory only. Raises ``_TooLarge`` the
-    moment the body exceeds ``max_bytes`` — before python-multipart itself ever buffers more than that."""
+    """Reads the multipart body straight off the ASGI stream, in memory only, then parses the WHOLE buffered body in
+    one :func:`_parse_multipart_body` threadpool hop. Raises ``_TooLarge`` the moment the streamed body exceeds
+    ``max_bytes`` — before anything is parsed; raises ``_TooManyParts`` once more than :data:`MAX_MULTIPART_PARTS`
+    fields/files have been seen; lets ``create_form_parser``'s own ``ValueError`` (no ``Content-Type``) and
+    python-multipart's ``MultipartParseError``/``FormParserError`` (a missing boundary, a malformed body) propagate
+    to the caller, which maps all of these to a 400 with ``Cache-Control: no-store`` (finding 3) — never a bare 500."""
     fields: dict[str, bytes] = {}
     files: dict[str, tuple[str, str | None, bytes]] = {}
+    part_count = 0
+
+    def _count_part() -> None:
+        nonlocal part_count
+        part_count += 1
+        if part_count > MAX_MULTIPART_PARTS:
+            raise _TooManyParts()
 
     def on_field(field) -> None:
+        _count_part()
         fields[(field.field_name or b"").decode("utf-8", "replace")] = field.value or b""
 
     def on_file(file) -> None:
+        _count_part()
         name = (file.field_name or b"").decode("utf-8", "replace")
         filename = (file.file_name or b"").decode("utf-8", "replace")
         file.file_object.seek(0)
@@ -159,15 +216,13 @@ async def _read_multipart(request: Request, max_bytes: int):
     cap = max_bytes + UPLOAD_SIZE_SLACK
     parser = multipart.create_form_parser({"Content-Type": request.headers.get("content-type", "")}, on_field,
                                           on_file, config={"MAX_MEMORY_FILE_SIZE": cap, "MAX_BODY_SIZE": cap})
-    total = 0
+    body = bytearray()
     try:
         async for chunk in request.stream():
-            total += len(chunk)
-            if total > cap:
+            body += chunk
+            if len(body) > cap:
                 raise _TooLarge()
-            if chunk:
-                parser.write(chunk)
-        parser.finalize()
+        await run_in_threadpool(_parse_multipart_body, parser, bytes(body))
     finally:
         parser.close()
     return fields, files
@@ -210,22 +265,24 @@ def _quota_error(quota: dict, is_new_document: bool, document_id: str, settings)
 
 
 async def _read_and_gate_body(request: Request, ws: str, s):
-    """Reads the multipart body (in memory only), checks Turnstile, validates the ``file``/``title`` fields and
-    runs the byte-level gate. Returns ``(data, kind, title, fields)``, or a ``JSONResponse`` for a size/gate
+    """Reads the multipart body (in memory only), validates the ``file``/``title`` fields and runs the byte-level
+    gate. Returns ``(data, kind, title, fields)``, or a ``JSONResponse`` for a size/part-count/malformed-body/gate
     rejection (a missing file or an over-long title raise directly: they are plain 400s, not a ``{detail,code}``
-    shape).
-
-    Deviation from the literal gate order of docs/v2/M4_PLAN.md 14.6 ("Turnstile -> per-address upload window ->
-    streamed size cap"): ``turnstile_token`` is itself a multipart FIELD (the page appends it after ``file``), so
-    it cannot be read, let alone verified, before the body is read — the per-address window in ``upload_document``
-    therefore runs BEFORE this function, ahead of Turnstile, as the one check that needs no body at all; the
-    streamed byte cap is still enforced live, during the read, before Turnstile ever runs."""
+    shape). Turnstile is verified by the caller, from the ``X-Turnstile-Token`` HEADER, before this is ever called
+    (docs/v2/M4_PLAN.md 15.2) — the literal 14.6 gate order holds exactly now that the token is not itself a
+    multipart field."""
     try:
         fields, files = await _read_multipart(request, s.upload_max_bytes)
     except _TooLarge:
         return JSONResponse({"detail": "the file is too large", "code": "too_large"}, status_code=413,
                             headers=NO_STORE)
-    await _check_upload_turnstile(request, fields.get("turnstile_token", b"").decode("utf-8", "replace") or None)
+    except _TooManyParts:
+        return JSONResponse({"detail": MSG_MALFORMED_UPLOAD, "code": "malformed"}, status_code=400, headers=NO_STORE)
+    except _MULTIPART_PARSE_ERRORS as e:
+        # A missing boundary, a missing Content-Type, or outright garbage bytes: never a bare 500 (finding 3).
+        logger.info("upload rejected ws_hash=%s code=malformed_multipart (%s)", jobs.ws_hash_for_log(ws),
+                   type(e).__name__)
+        return JSONResponse({"detail": MSG_MALFORMED_UPLOAD, "code": "malformed"}, status_code=400, headers=NO_STORE)
     if "file" not in files:
         raise HTTPException(status_code=400, detail=MSG_FILE_REQUIRED, headers=NO_STORE)
     filename, _content_type, data = files["file"]
@@ -245,8 +302,14 @@ async def _read_and_gate_body(request: Request, ws: str, s):
 async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data: bytes, kind: str,
                            title: str | None):
     """Resolves the target document, short-circuits an unchanged re-upload, checks quotas, then takes the upload
-    slot and the daily budget (in that order) and starts the job — releasing the slot immediately if the daily
-    budget is exhausted (docs/v2/M4_PLAN.md 14.6: junk files, and now duplicate-content files, never spend it)."""
+    slot and the daily budget (in that order) and starts the job.
+
+    Findings 5/17/23: EVERY path from a successful ``upload_slots.acquire()`` up to a successfully STARTED job is
+    wrapped in try/except, so the slot is released on any exception in between (a transient Neo4j error from
+    ``reserve_daily_upload``, or ``run_upload_job`` itself raising before its thread starts) — not just the
+    documented ``daily_limit`` path. Once ``run_upload_job`` returns successfully, the WORKER THREAD owns the slot's
+    release (it releases exactly once, on every one of its own paths); this function must never release it again
+    after that point, or a later, unrelated release would double-release a ``BoundedSemaphore`` and raise."""
     quota = await run_in_threadpool(repo.quota, st.driver, ws)
     resolved = await _resolve_document(st.driver, ws, fields.get("document_id"), quota)
     if isinstance(resolved, JSONResponse):
@@ -267,15 +330,19 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
 
     if not st.upload_slots.acquire(blocking=False):
         return JSONResponse({"detail": MSG_BUSY, "code": "busy"}, status_code=429, headers=NO_STORE)
-    reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day)
-    if not reserved:
-        st.upload_slots.release()
-        return JSONResponse({"detail": "the daily upload limit has been reached", "code": "daily_limit"},
-                            status_code=429, headers=NO_STORE)
+    try:
+        reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day)
+        if not reserved:
+            st.upload_slots.release()
+            return JSONResponse({"detail": "the daily upload limit has been reached", "code": "daily_limit"},
+                                status_code=429, headers=NO_STORE)
 
-    version = next_version([latest["version"]] if latest else [])
-    job_id = jobs.run_upload_job(request.app, workspace_id=ws, document_id=document_id, title=title, data=data,
-                                 kind=kind, content_hash_hex=content_hash_hex)
+        version = next_version([latest["version"]] if latest else [])
+        job_id = jobs.run_upload_job(request.app, workspace_id=ws, document_id=document_id, title=title, data=data,
+                                     kind=kind, content_hash_hex=content_hash_hex)
+    except BaseException:
+        st.upload_slots.release()
+        raise
     logger.info("upload accepted ws_hash=%s document_id=%s kind=%s size=%d job_id=%s", jobs.ws_hash_for_log(ws),
                document_id, kind, len(data), job_id)
     return JSONResponse({"job_id": job_id, "document_id": document_id, "version": version}, status_code=202,
@@ -284,17 +351,22 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
 
 @router.post("/api/workspace/{ws}/documents", status_code=202)
 async def upload_document(ws: str, request: Request):
+    """Gate order, now literal (docs/v2/M4_PLAN.md 14.6, 15.2 — the Turnstile token moved to the
+    ``X-Turnstile-Token`` header, so it no longer needs the body read first): uploads-available -> workspace token
+    (404) -> kill switch -> Turnstile -> per-address upload window -> streamed size cap (declared, then live) ->
+    byte gate -> quota -> slot -> daily budget."""
     st, s = request.app.state, request.app.state.settings
     _require_uploads_enabled(request)
     await _authenticate(request, ws)
     if await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch):
         raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
-    if _content_length_too_large(request, s.upload_max_bytes):
-        return JSONResponse({"detail": "the file is too large", "code": "too_large"}, status_code=413,
-                            headers=NO_STORE)
+    await _check_upload_turnstile(request, request.headers.get("x-turnstile-token"))
     ip = guard.client_ip(request, s.client_ip_header)
     if not st.upload_limiter.allow(guard.ip_hash(ip)):
         raise HTTPException(status_code=429, detail=MSG_UPLOAD_RATE, headers=NO_STORE)
+    if _content_length_too_large(request, s.upload_max_bytes):
+        return JSONResponse({"detail": "the file is too large", "code": "too_large"}, status_code=413,
+                            headers=NO_STORE)
 
     gated = await _read_and_gate_body(request, ws, s)
     if isinstance(gated, JSONResponse):
@@ -304,35 +376,73 @@ async def upload_document(ws: str, request: Request):
 
 
 # ---------------------------------------------------------------- GET /api/workspace/{ws}/jobs/{job_id} (SSE)
+#
+# Findings 1/14/22 (docs/v2/M4_PLAN.md 15.3, CRITICAL): the OLD sync generator (`q.get(timeout=10)` on a
+# `queue.Queue` shared by every watcher) had no exit path except the ONE terminal event a `queue.Queue` delivers to
+# exactly one consumer — every other watcher looped forever. Because the generator was sync, sse_starlette ran it
+# through `starlette.concurrency.iterate_in_threadpool`, whose `anyio.to_thread.run_sync` is not cancellable: each
+# stuck watcher permanently pinned one thread and one of anyio's 40 default threadpool tokens, and a client
+# disconnect could never free it. Enough stuck watchers starve every OTHER `run_in_threadpool` call in the whole
+# process (auth, /api/ask, /healthz) — a full outage from a single job's worth of extra GETs.
+#
+# Fixed by making the generator ASYNC (never touches the threadpool: sse_starlette iterates an async generator
+# natively) over the append-only, fan-out event log in JobRegistry (every watcher reads its own cursor, so every
+# watcher sees every event, including the terminal one); it re-polls with `await asyncio.sleep`, so cancellation on
+# client disconnect is immediate. At most `MAX_LIVE_WATCHERS_PER_JOB` watchers may be live on one job at a time (a
+# 4th gets 429); the route now also takes the read-rate window, closing the "no rate limit at all" gap the review
+# exploited to reach dozens of watchers on one job in the first place.
 
 
 def _job_sse(job: dict) -> ServerSentEvent:
     return ServerSentEvent(data=json.dumps(job, default=str), event="job", sep="\n")
 
 
-def _job_event_stream(q: "queue_module.Queue"):
-    while True:
-        try:
-            job = q.get(timeout=SSE_POLL_TIMEOUT_S)
-        except queue_module.Empty:
-            continue     # sse_starlette's own `ping` covers the heartbeat while nothing new has happened
-        yield _job_sse(job)
-        if job.get("state") in TERMINAL_STATES:
-            return
+async def _job_event_stream(app, reg: "jobs.JobRegistry", ws: str, job_id: str):
+    """Never holds a threadpool thread: polls the in-memory log with ``await asyncio.sleep`` between checks, so a
+    client disconnect (which raises ``GeneratorExit`` here) is immediate, not blocked behind a synchronous call.
+    Ends on the terminal event, or — once the job is no longer in the registry (finished and its grace period
+    elapsed, or never on this process) — replays the persisted final state via ONE short ``run_in_threadpool`` call
+    and returns."""
+    cursor = 0
+    try:
+        while True:
+            result = reg.events_from(ws, job_id, cursor)
+            if result is None:
+                persisted = await run_in_threadpool(repo.get_job, app.state.driver, ws, job_id)
+                if persisted is not None:
+                    yield _job_sse(persisted)
+                return
+            events, cursor = result
+            for job in events:
+                yield _job_sse(job)
+                if job.get("state") in TERMINAL_STATES:
+                    return
+            await asyncio.sleep(SSE_POLL_INTERVAL_S)
+    finally:
+        reg.release_watch(ws, job_id)
 
 
 @router.get("/api/workspace/{ws}/jobs/{job_id}")
 async def workspace_job_stream(ws: str, job_id: str, request: Request):
     _require_uploads_enabled(request)
     await _authenticate(request, ws)
+    _require_read_rate(request)
     app = request.app
-    live = jobs.registry(app).get(ws, job_id)
-    if live is not None:
-        return EventSourceResponse(_job_event_stream(live), ping=SSE_POLL_TIMEOUT_S, sep="\n", headers=NO_STORE)
-    persisted = await run_in_threadpool(repo.get_job, app.state.driver, ws, job_id)
-    if persisted is None:
-        raise HTTPException(status_code=404, detail="job not found", headers=NO_STORE)
-    return EventSourceResponse(iter([_job_sse(persisted)]), sep="\n", headers=NO_STORE)
+    reg = jobs.registry(app)
+    watch = reg.try_watch(ws, job_id)
+    if watch is False:
+        raise HTTPException(status_code=429, detail=MSG_TOO_MANY_WATCHERS, headers=NO_STORE)
+    if watch is None:
+        persisted = await run_in_threadpool(repo.get_job, app.state.driver, ws, job_id)
+        if persisted is None:
+            raise HTTPException(status_code=404, detail="job not found", headers=NO_STORE)
+        return EventSourceResponse(_replay_once(persisted), sep="\n", headers=NO_STORE)
+    return EventSourceResponse(_job_event_stream(app, reg, ws, job_id), ping=SSE_POLL_TIMEOUT_S, sep="\n",
+                               headers=NO_STORE)
+
+
+async def _replay_once(persisted: dict):
+    yield _job_sse(persisted)
 
 
 # ---------------------------------------------------------------- GET /api/workspace/{ws}/changes
@@ -343,6 +453,7 @@ async def workspace_changes(ws: str, request: Request, document_id: str,
                             older: int = Query(..., alias="from"), newer: int = Query(..., alias="to")):
     _require_uploads_enabled(request)
     await _authenticate(request, ws)
+    _require_read_rate(request)
     result = await run_in_threadpool(repo.get_changes, request.app.state.driver, ws, document_id, older, newer)
     if result is None:
         raise HTTPException(status_code=404, detail=MSG_NO_CHANGES, headers=NO_STORE)
@@ -356,6 +467,7 @@ async def workspace_changes(ws: str, request: Request, document_id: str,
 async def workspace_evidence(ws: str, doc_id: str, request: Request):
     _require_uploads_enabled(request)
     await _authenticate(request, ws)
+    _require_read_rate(request)
     if not DOC_ID_RE.match(doc_id):
         raise HTTPException(status_code=404, detail=MSG_NO_EVIDENCE, headers=NO_STORE)
     row = await run_in_threadpool(repo.evidence, request.app.state.driver, ws, doc_id)

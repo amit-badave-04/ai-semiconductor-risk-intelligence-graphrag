@@ -205,6 +205,26 @@ def test_check_docx_zip_rejects_not_a_zip_at_all():
 
 
 # --------------------------------------------------------------------------
+# finding #12: malformed zip containers must never escape as NotImplementedError / UnicodeDecodeError (-> 500)
+# --------------------------------------------------------------------------
+
+def test_check_docx_zip_rejects_bad_extract_version_as_gate_error_not_not_implemented_error():
+    """``zipfile.ZipFile()`` raises ``NotImplementedError`` for a corrupted 'version needed to extract' field; the
+    gate must turn that into a ``GateError``, never let it escape as a bare 500 (finding #12)."""
+    with pytest.raises(gate.GateError) as exc:
+        gate.check_docx_zip(fx.zip_bad_extract_version())
+    assert exc.value.code == "unsupported_type"
+
+
+def test_check_docx_zip_rejects_bad_utf8_member_name_as_gate_error_not_unicode_decode_error():
+    """``zipfile.ZipFile()`` raises ``UnicodeDecodeError`` for a UTF-8-flagged member name that is not valid UTF-8;
+    the gate must turn that into a ``GateError`` too (finding #12)."""
+    with pytest.raises(gate.GateError) as exc:
+        gate.check_docx_zip(fx.zip_bad_utf8_member_name())
+    assert exc.value.code == "unsupported_type"
+
+
+# --------------------------------------------------------------------------
 # check_bytes dispatch (used by the route layer once a kind is known)
 # --------------------------------------------------------------------------
 

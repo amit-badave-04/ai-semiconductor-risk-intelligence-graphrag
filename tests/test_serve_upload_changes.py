@@ -64,9 +64,21 @@ def test_compare_versions_known_edit_set(md_v1, md_v2):
     assert "Executive Summary Of Operations" not in changed_headlines         # byte-identical
 
 
+def test_compare_versions_tense_only_edit_lands_in_minor_rewordings_not_unchanged(md_v1, md_v2):
+    """Finding #16 (M4_PLAN.md 15.6): a unit the aligner marks ``reworded`` with no surviving passage stays
+    VISIBLE in its own ``minor_rewordings`` list — it must never be silently folded into ``unchanged_count``."""
+    report = C.compare_versions(md_v1, md_v2)
+    minor_headlines = {m["headline"] for m in report["minor_rewordings"]}
+    assert minor_headlines == {"Company History And Background"}
+    for entry in report["minor_rewordings"]:
+        assert entry["older_unit_id"]
+        assert entry["newer_unit_id"]
+
+
 def test_compare_versions_invariant_accounts_for_every_older_unit(md_v1, md_v2):
     report = C.compare_versions(md_v1, md_v2)
-    total = len(report["removed"]) + len(report["changed"]) + report["unchanged_count"]
+    total = (len(report["removed"]) + len(report["changed"]) + len(report["minor_rewordings"])
+            + report["unchanged_count"])
     assert total == len(md_v1.units)
 
 
@@ -91,6 +103,66 @@ def test_compare_versions_changed_entries_carry_both_unit_ids(md_v1, md_v2):
 
 
 # --------------------------------------------------------------------------
+# finding #16 (M4_PLAN.md 15.6): the upload-specific PassageParams must tell a MEANING REVERSAL from a tense-only
+# edit — the reviewer's exact "Market Outlook" scenario, reproduced with the real pipeline end to end
+# --------------------------------------------------------------------------
+
+def test_compare_versions_uses_its_own_upload_passage_params_by_default():
+    """``compare_versions`` must not silently fall back to the SEC-tuned defaults (``graph.passages.PassageParams()``,
+    ``present_min_ratio=75``): uploads need their OWN calibration (M4_PLAN.md 15.6), defined in this module, not in
+    ``graph/passages.py`` (frozen, G3)."""
+    from semigraph.graph.passages import PassageParams as SecDefaultPassageParams
+
+    assert C.UPLOAD_PASSAGE_PARAMS.present_min_ratio != SecDefaultPassageParams().present_min_ratio
+
+
+def test_compare_versions_meaning_reversal_yields_a_changed_passage_by_default():
+    """The reviewer's exact repro: 'The market is expected to grow next year.' -> '...to shrink next year,
+    reversing the prior forecast.' must produce a real passage and land in ``changed`` — not be folded away as a
+    near-verbatim rewording (``fuzz.partial_ratio`` between the two is ~87.5, which the SEC-tuned default
+    ``present_min_ratio=75`` would treat as still PRESENT and thus report nothing for)."""
+    v1 = _build_view(fx.MARKET_REVERSAL_V1)
+    v2 = _build_view(fx.MARKET_REVERSAL_V2)
+    report = C.compare_versions(v1, v2)                                  # default (upload) passage_params
+    changed_headlines = {c["headline"] for c in report["changed"]}
+    assert "Market Outlook" in changed_headlines
+    outlook = next(c for c in report["changed"] if c["headline"] == "Market Outlook")
+    assert outlook["passages"]
+    assert {c["headline"] for c in report["minor_rewordings"]} == set()
+
+
+def test_compare_versions_pure_negation_is_filtered_by_the_aligner_before_passages_run():
+    """Documents a real LIMITATION (changes.py module docstring), not a defect of this fix: a pure-negation edit
+    ("is expected to grow" -> "is not expected to grow") measures ``partial_ratio`` ~90 against the whole other
+    section — at or above the ITEM-level aligner's own (frozen, SEC-tuned) ``absence_min_ratio`` of 85 — so
+    ``graph.alignment.align`` calls the unit ``unchanged`` outright and it never reaches this module's passage
+    logic, let alone ``minor_rewordings``. Only an upload-specific ``AlignParams`` could change that, which
+    M4_PLAN.md 15.6 does not ask for; this test pins today's behaviour so a future change is a deliberate one."""
+    v1 = _build_view("# Executive Summary\nThe company performed well this quarter.\n\n"
+                     "# Market Outlook\nThe market is expected to grow next year.\n\n"
+                     "# Company History\nThe company was founded and has grown steadily.\n")
+    v2 = _build_view("# Executive Summary\nThe company performed well this quarter.\n\n"
+                     "# Market Outlook\nThe market is not expected to grow next year.\n\n"
+                     "# Company History\nThe company was founded and has grown steadily.\n")
+    report = C.compare_versions(v1, v2)
+    assert report["changed"] == []
+    assert report["minor_rewordings"] == []                  # not even visible as a minor rewording (the gap)
+    assert report["unchanged_count"] == len(v1.units)
+
+
+def test_compare_versions_tense_only_edit_yields_no_passage_by_default():
+    """A tense-only edit ('will impact' -> 'impacted') at ~95.5 ``partial_ratio`` must stay a minor rewording, not
+    a reported change, under the SAME upload-tuned params that catch the meaning reversal above."""
+    v1 = _build_view(fx.TENSE_ONLY_V1)
+    v2 = _build_view(fx.TENSE_ONLY_V2)
+    report = C.compare_versions(v1, v2)
+    changed_headlines = {c["headline"] for c in report["changed"]}
+    assert "Regulatory Impact" not in changed_headlines
+    minor_headlines = {m["headline"] for m in report["minor_rewordings"]}
+    assert "Regulatory Impact" in minor_headlines
+
+
+# --------------------------------------------------------------------------
 # not_compared_reason guards
 # --------------------------------------------------------------------------
 
@@ -99,7 +171,7 @@ def test_compare_versions_identical_content(md_v1):
     report = C.compare_versions(md_v1, same)
     assert report == {
         "items_compared": False, "not_compared_reason": "identical_content",
-        "added": [], "removed": [], "changed": [], "unchanged_count": len(md_v1.units),
+        "added": [], "removed": [], "changed": [], "minor_rewordings": [], "unchanged_count": len(md_v1.units),
     }
 
 

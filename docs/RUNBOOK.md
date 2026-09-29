@@ -103,7 +103,8 @@ the daily ceiling, and the kill switch. The database is never exposed publicly (
 `.env.fly` (git-ignored) holds the production values; `.env` stays local (Neo4j Desktop,
 sentence-transformers). Push with `python -m scripts.push_fly_secrets` (API app) and
 `python -m scripts.push_fly_secrets --app semigraph-neo4j` (database). Values travel on stdin,
-only key names are printed. Rotate `ADMIN_TOKEN` by editing `.env.fly` and re-pushing. Rotating
+only key names are printed. `SEC_USER_AGENT` (the freshness monitor's SEC identity, "Name email") is a secret rather
+than a `fly.toml` entry because it names a real person. Rotate `ADMIN_TOKEN` by editing `.env.fly` and re-pushing. Rotating
 `NEO4J_PASSWORD` needs `ALTER USER neo4j SET PASSWORD` inside the database
 (`flyctl ssh console -a semigraph-neo4j -C "cypher-shell ..."`) because the container applies
 `NEO4J_AUTH` only to a fresh system database, then re-push `NEO4J_PASSWORD` to the API app.
@@ -137,8 +138,8 @@ flyctl ips allocate-v4 --shared -a semigraph; flyctl ips allocate-v6 -a semigrap
    `semigraph eval --runs-file eval_runs.<snap>.jsonl --report-suffix .<snap> --max-answer-usd 1.75`, then
    `PYTHONPATH=src python scripts/build_examples.py --runs data/processed/eval_runs.<snap>.jsonl --snapshot <snap id>`.
 3. `python -m scripts.kill_switch on`, then `cd deploy\neo4j; flyctl deploy --ha=false --remote-only --yes` — the
-   entrypoint detects the new dump hash and reloads it on boot (this replaces the service ledger/cache and resets the
-   kill switch to off). Then from the repo root `flyctl deploy --ha=false --remote-only --yes` (new examples.json),
+   entrypoint detects the new dump hash and reloads it on boot (this replaces the service ledger/cache, resets the
+   kill switch to off and deletes every live upload workspace: avoid it during a demo). Then from the repo root `flyctl deploy --ha=false --remote-only --yes` (new examples.json),
    verify (`/healthz`, `/api/stats` shows the new snapshot id, an example click is served cached), then `kill_switch off`.
 4. Rollback: `flyctl deploy --image registry.fly.io/<app>:<previous deployment tag>` for each app (find the tags in
    `flyctl releases -a <app>`); the older DB image carries the older seed and reloads it. Keep the previous dump outside git
@@ -213,6 +214,59 @@ set it to `false` in `fly.toml` and `flyctl deploy --ha=false --remote-only --ye
 above — verify with the `printenv` check after either path). No existing question can be mid-flight in a way this
 affects: `strategy` is chosen once per request.
 
+## Freshness monitor (M4)
+
+A background thread in the API process compares what EDGAR and the Federal Register have NOW with what the SERVED graph
+holds: in-scope filings (the same `select_targets` rule the pipeline uses) that are not a `Filing` node, and the live BIS rule
+count against the `ExportControl` nodes. It **detects and reports; it never ingests** (docs/v2/M4_PLAN.md D1): promotion stays
+the reviewed pipeline in "Updating the graph".
+
+| Setting | Role | Production |
+|---|---|---|
+| `FRESHNESS_ENABLED` | starts the thread | `true` (`fly.toml [env]`) |
+| `FRESHNESS_POLL_HOURS` / `FRESHNESS_BOOT_DELAY_S` | cadence; the first check runs 300 s after boot, and only when the last one is older than the poll | `6` / `300` |
+| `SEC_USER_AGENT` | SEC fair-access identity ("Name email"); a Fly **secret** because it names a real person | pushed with `python -m scripts.push_fly_secrets --only SEC_USER_AGENT` (add `--env .env` when `.env.fly` does not carry it) |
+
+- One machine checks at a time (a `SvcLease` node in Neo4j); the result is stored as `SvcFreshness` and survives restarts.
+- `GET /api/freshness` (public) returns the last result; `/api/stats` carries its short form for the page header.
+- `POST /api/admin/freshness/check` with `X-Admin-Token` runs a check now (409 while one runs, 503 without `SEC_USER_AGENT`).
+- A failed check keeps the last good result, records `last_error_at`, and retries after 30 minutes.
+- Without `SEC_USER_AGENT` the monitor reports `unconfigured` and idles; the service still starts.
+- `scripts/freshness_heartbeat.py <base url>` is the external check (exit 0 on ok/never, non-zero on error/stale/unconfigured,
+  a warning when the app is stopped on purpose). The GitHub workflow that runs it every 6 hours activates once `v2` is on the
+  default branch (GitHub runs scheduled workflows only from there).
+- Parity with the pipeline's own check: `scripts/freshness_parity.py --as-of <date>` against the local graph (record in
+  `artifacts/freshness_parity.json`).
+
+## Upload workspaces (M4)
+
+Visitors create a private workspace, upload PDF, DOCX, Markdown, HTML or text documents (and newer versions of them), ask
+questions that cite them as `doc:` ids next to the filing evidence, and see what changed between versions.
+
+| Setting | Role | Production |
+|---|---|---|
+| `UPLOADS_ENABLED` | every workspace route and workspace ask; off = 503 | `true` (`fly.toml [env]`) |
+| `WORKSPACE_TTL_HOURS` | a workspace and everything in it is deleted after this | `24` |
+| `UPLOAD_MAX_PAGES` / `UPLOAD_MAX_TOKENS` | per version (the embedding time sets them; see docs/v2/M4_PLAN.md section 3) | `30` / `16000` |
+| `UPLOAD_MAX_WORKSPACE_TOKENS` / `MAX_UPLOADS_PER_DAY` | embedding budget per workspace / uploads per day, all visitors | `48000` / `40` |
+
+- **Machine:** `shared-cpu-2x`, 4 GB (`fly.toml [[vm]]`): one upload embeds on one core while live questions use the other.
+  Uploads embed locally with the same ONNX model as queries; no document leaves the deployment.
+- **Isolation:** workspace data lives only in `User*` nodes keyed by `workspace_id`; the token is shown once and only its
+  sha256 is stored; an unknown workspace and a wrong token both answer 404. Workspace answers are never cached, never use the
+  agent, and are logged as counts only; the access log shows `<ws:hash>`.
+- **Turnstile** is mandatory for creating a workspace and for each upload (`X-Turnstile-Token` header, checked before the body
+  is read). Without `TURNSTILE_SECRET_KEY` in production these routes answer 503.
+- **Parsing** runs in a separate process with a 1 GiB address-space limit, a 90 s timeout, no secrets in its environment and
+  no network use; only the parsed text comes back.
+- **Deletion:** `DELETE /api/workspace/{id}` removes everything at once; a sweeper deletes expired workspaces every 15 minutes
+  (it runs even when `UPLOADS_ENABLED` is off). A dump swap of the database (see "Updating the graph") also deletes every live
+  workspace.
+- **Soft rollback:** `UPLOADS_ENABLED = "false"` in `fly.toml` and redeploy (existing workspaces still expire on schedule).
+  **Image rollback to a pre-M4 image:** first delete workspace data, because an older image has no sweeper:
+  `flyctl ssh console -a semigraph-neo4j -C "cypher-shell -u neo4j -p <password> \"MATCH (n) WHERE any(l IN labels(n) WHERE l STARTS WITH 'User') DETACH DELETE n\""`.
+  Moving the VM back to `shared-cpu-1x` / 2 GB requires `UPLOADS_ENABLED = "false"`.
+
 ## Troubleshooting
 
 - `/healthz` 503 → the API cannot reach Neo4j: `flyctl status -a semigraph-neo4j` (machine must be
@@ -220,7 +274,8 @@ affects: `strategy` is chosen once per request.
 - The API is always-warm while online (`min_machines_running = 1`); if it was ever auto-stopped, the first request pays ~10 s (machine boot + 1 GB embedder load).
 - `flyctl logs -a semigraph` — every answered question logs strategy, citation count, hallucinated
   count and cost.
-- Out-of-memory on the API machine → the embedder needs ~1.3 GB resident; keep `memory = "2gb"`.
+- Out-of-memory on the API machine → the embedder needs ~1.3 GB resident and an upload adds up to ~0.4 GB while it embeds;
+  keep `memory = "4gb"` while uploads are enabled.
 - Restoring a dump by hand: `flyctl ssh console -a semigraph-neo4j -C "mkdir -p /data/import"`, copy
   the dump to `/data/import/neo4j.dump` (an sftp client over `flyctl ssh sftp shell`), then
   `flyctl machine restart` — the entrypoint loads it before Neo4j starts.

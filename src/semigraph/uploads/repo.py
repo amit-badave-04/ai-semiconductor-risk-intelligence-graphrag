@@ -1,19 +1,24 @@
-"""ALL Cypher for the ``User*`` labels (M4, docs/v2/M4_PLAN.md 4.2 and 4.4).
+"""ALL Cypher for the ``User*`` labels (M4, docs/v2/M4_PLAN.md 4.2, 4.4 and 15.4).
 
 Invariants ``tests/test_serve_upload_repo.py`` checks statically on every module-level query string (named ``*_QUERY``,
 plus the ``_DELETE_LABEL_TEMPLATE`` formatted once per label in :data:`_USER_LABELS`):
 
 - every statement binds ``$ws``, and every ``User*`` node pattern that carries an inline property map spells
-  ``workspace_id: $ws`` in it — EXCEPT :data:`SWEEP_SELECT_QUERY`, which by design looks across every workspace at
-  once and filters on ``expires_at`` instead (the one documented exception; its actual deletion still runs the normal
-  per-workspace, ``$ws``-bound queries, one workspace at a time);
+  ``workspace_id: $ws`` in it — EXCEPT :data:`SWEEP_SELECT_QUERY`, :data:`SWEEP_ORPHANS_SELECT_QUERY` and
+  :data:`FAIL_INTERRUPTED_JOBS_SELECT_QUERY`, which by design look across every workspace at once (the documented
+  exceptions; the actual deletion/update each of them drives still runs the normal per-workspace, ``$ws``-bound
+  queries, one workspace/job at a time);
 - no relationship ever touches a public label, and each private node carries exactly one label;
 - tokens: only ``sha256(token)`` is stored; :func:`authenticate` compares with ``hmac.compare_digest`` against a
   dummy hash of the same shape for an unknown or expired workspace, so an unknown id and a wrong token look alike;
 - vector search uses the filtered ``SEARCH ... WHERE c.workspace_id = $ws ...`` form on ``user_chunk_embedding``
   (never an unfiltered ``db.index.vector.queryNodes``; verified live against the throwaway instance, S2);
 - :func:`put_version` writes the version, its units, chunks, embeddings, change passages and the currency flip in
-  ONE transaction (``session.execute_write``).
+  ONE transaction (``session.execute_write``), and that same transaction LOCKS the ``UserWorkspace`` node FIRST
+  (docs/v2/M4_PLAN.md 15.4): a workspace deleted (or TTL-swept) mid-job must leave nothing behind, so the write
+  refuses (raises :class:`WorkspaceGone`) rather than creating a document/version/chunk for a workspace that is
+  already gone. :func:`put_job`, :func:`delete_workspace` and the sweep all take the SAME lock first, so a writer
+  and a delete can never race each other into leaving an orphan.
 
 Every ``valid_from`` / ``valid_to`` / ``expires_at`` / ``created_at`` / ``now`` / ``cutoff`` that crosses into Neo4j is a
 timezone-aware ``datetime`` (never an ISO string — see :mod:`semigraph.uploads.versions`), and every value coming back
@@ -45,6 +50,14 @@ _DELETE_LABEL_TEMPLATE = "MATCH (n:{label} {{workspace_id: $ws}}) DETACH DELETE 
 SWEEP_SELECT_BATCH = 500
 
 
+class WorkspaceGone(Exception):
+    """Raised by :func:`put_version` and :func:`put_job` when the ``UserWorkspace`` node they lock first no longer
+    exists — deleted by :func:`delete_workspace` or the TTL sweep while a job was still writing
+    (docs/v2/M4_PLAN.md 15.4). Callers (``uploads.jobs``) map this to a fixed ``workspace_deleted`` job failure and
+    write nothing further for that workspace, not even the failure event itself. Carries no workspace id in its
+    message (never logged, but kept id-free on principle — docs/v2/M4_PLAN.md 5)."""
+
+
 def _require_aware_datetime(value: datetime, name: str) -> None:
     """The one contract every caller (Worker C's jobs.py and workspace_routes.py included) must honor for a
     caller-supplied timestamp: timezone-aware, never naive and never an ISO string. A naive ``datetime`` (e.g.
@@ -66,6 +79,54 @@ TOUCH_QUERY = "MATCH (w:UserWorkspace {workspace_id: $ws}) SET w.last_seen = $no
 
 SWEEP_SELECT_QUERY = f"""MATCH (w:UserWorkspace) WHERE w.expires_at < $now
 RETURN w.workspace_id AS workspace_id LIMIT {SWEEP_SELECT_BATCH}"""
+
+# The FIRST statement of every writer that must never leave an orphan behind a concurrent delete/sweep
+# (docs/v2/M4_PLAN.md 15.4): takes the node's write lock (the ``SET`` — a no-op value change, but Neo4j locks on
+# any ``SET`` to the matched node) BEFORE that writer's own reads/writes, so it serializes against delete_workspace
+# and the sweep instead of racing them. Zero rows back means the workspace no longer exists.
+LOCK_WORKSPACE_QUERY = """MATCH (w:UserWorkspace {workspace_id: $ws})
+SET w._lock = true
+RETURN w.workspace_id AS workspace_id"""
+
+# Cross-workspace by necessity (documented exception, see the module docstring): User* nodes (never UserWorkspace
+# itself) whose workspace_id has no matching UserWorkspace node at all — the defence-in-depth pass behind
+# put_version/put_job's own lock-and-refuse guard, for anything that guard did not anticipate (docs/v2/M4_PLAN.md
+# 15.4, findings 2/13/24). Batched like SWEEP_SELECT_QUERY; call again to keep sweeping a larger backlog.
+#
+# ONE UNION member per label, each with a LITERAL label in its MATCH — never a bound `$labels` list matched with
+# `label IN labels(n)` over a single unlabelled `MATCH (n)`, which EXPLAIN confirms forces an AllNodesScan (a full
+# scan of the ENTIRE graph, every public label included, once per label in the list) on the throwaway instance. A
+# literal label lets the planner use a NodeByLabelScan instead — the difference between touching a few hundred
+# User* nodes and touching the whole graph every 15 minutes, now that the sweeper always runs (finding 26).
+_SWEEP_ORPHANS_LABELS = tuple(label for label in _USER_LABELS if label != "UserWorkspace")
+_SWEEP_ORPHANS_UNION_MEMBER = """MATCH (n:{label}) WHERE n.workspace_id IS NOT NULL
+  AND NOT EXISTS {{ MATCH (w:UserWorkspace) WHERE w.workspace_id = n.workspace_id }}
+RETURN n.workspace_id AS workspace_id"""
+SWEEP_ORPHANS_SELECT_QUERY = "CALL {{\n{members}\n}}\nRETURN DISTINCT workspace_id LIMIT {batch}".format(
+    members="\nUNION\n".join(_SWEEP_ORPHANS_UNION_MEMBER.format(label=label) for label in _SWEEP_ORPHANS_LABELS),
+    batch=SWEEP_SELECT_BATCH)
+
+# Cross-workspace by necessity (documented exception): any UserJob left in a non-terminal state past
+# FAIL_INTERRUPTED_AFTER_S — a process that crashed, OOM'd or was redeployed mid-job (finding 27). The per-job
+# UPDATE below stays $ws-bound and re-checks the state, so a job that finished in the meantime is never clobbered.
+FAIL_INTERRUPTED_JOBS_SELECT_QUERY = f"""MATCH (j:UserJob) WHERE NOT j.state IN $terminal_states
+  AND j.updated_at < $threshold
+RETURN j.workspace_id AS workspace_id, j.job_id AS job_id, j.payload AS payload LIMIT {SWEEP_SELECT_BATCH}"""
+
+FAIL_INTERRUPTED_JOB_UPDATE_QUERY = """MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id})
+WHERE NOT j.state IN $terminal_states
+SET j.state = 'failed', j.payload = $payload, j.updated_at = $now
+RETURN j.job_id AS job_id"""
+
+# uploads.jobs.TERMINAL_STATES, duplicated here (a plain tuple, never an import of uploads.jobs — this module stays
+# strictly below the job layer, never above it) so fail_interrupted_jobs never needs jobs.py to be importable.
+_JOB_TERMINAL_STATES = ("ready", "failed")
+# uploads.jobs.JOB_ERROR_MESSAGES["interrupted"], duplicated for the same reason: an exact fixed string, never a
+# raw exception message (docs/v2/M4_PLAN.md 5) — kept in sync with jobs.py by tests/test_serve_upload_repo.py.
+_INTERRUPTED_ERROR_MESSAGE = "processing was interrupted and could not finish"
+# At least a ~90 s parse plus the 1,200 s embed budget, with generous slack: a job that has not moved in this long
+# was abandoned by a dead process, not merely slow.
+FAIL_INTERRUPTED_AFTER_S = 30 * 60
 
 
 def create_workspace(driver, ttl_hours: int) -> tuple[str, str, str]:
@@ -204,11 +265,10 @@ def embedded_chunks(driver, ws: str, document_id: str) -> dict:
 
 # ---------------------------------------------------------------- put_version (one transaction)
 
-MERGE_DOCUMENT_QUERY = """MERGE (d:UserDocument {workspace_id: $ws, document_id: $document_id})
+MERGE_DOCUMENT_QUERY = """MATCH (w:UserWorkspace {workspace_id: $ws})
+MERGE (d:UserDocument {workspace_id: $ws, document_id: $document_id})
 ON CREATE SET d.created_at = $now, d.title = $title
 SET d.latest_version = $version
-WITH d
-MATCH (w:UserWorkspace {workspace_id: $ws})
 MERGE (w)-[:OWNS]->(d)"""
 
 SET_DOCUMENT_TITLE_QUERY = """MATCH (d:UserDocument {workspace_id: $ws, document_id: $document_id})
@@ -328,11 +388,16 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
                  method: str, pages: int, chars: int, chars_per_page: float | None, text: str, units: list[dict],
                  chunks: list[dict], change_report: dict, suspicious: bool, now: datetime) -> None:
     """One transaction: new document (if any), the new version + its units + chunks, the currency flip of the
-    previous version (and its chunks), the SUPERSEDES edge carrying ``change_report``, the change passages
-    (``SUCCEEDED_BY`` / ``HAS_PASSAGE``), and the workspace's ``embedded_tokens`` counter.
+    previous version (and its chunks), the SUPERSEDES edge carrying ``change_report``, and the workspace's
+    ``embedded_tokens`` counter (the ``SUCCEEDED_BY`` / ``HAS_PASSAGE`` change passages are the change_report's own
+    concern).
 
     ``get_changes`` answers only an ADJACENT pair (the ``SUPERSEDES`` edge this call writes) — a deliberate scope
     limit, not the full n-choose-2 history (docs/v2/M4_PLAN.md leaves the exact scope to the implementer).
+
+    The FIRST statement of the transaction locks the ``UserWorkspace`` node (:data:`LOCK_WORKSPACE_QUERY`); if it no
+    longer exists (deleted or TTL-swept — docs/v2/M4_PLAN.md 15.4), this raises :class:`WorkspaceGone` and writes
+    NOTHING — no document, no version, no chunk — rather than creating an orphan.
 
     Raises ``TypeError`` if ``now`` is not a timezone-aware ``datetime`` (see :func:`_require_aware_datetime`).
     """
@@ -341,6 +406,8 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
     not_compared_reason = change_report.get("not_compared_reason")
 
     def _tx(tx):
+        if not tx.run(LOCK_WORKSPACE_QUERY, ws=ws).data():
+            raise WorkspaceGone("the workspace no longer exists")
         prev_rows = tx.run(FIND_CURRENT_VERSION_QUERY, ws=ws, document_id=document_id).data()
         prev_version = prev_rows[0]["version"] if prev_rows else None
         _merge_document(tx, ws, document_id, title, now, version)
@@ -434,12 +501,21 @@ def evidence(driver, ws: str, chunk_id: str) -> dict | None:
 WORKSPACE_EXISTS_QUERY = "MATCH (w:UserWorkspace {workspace_id: $ws}) RETURN count(w) AS n"
 
 
+def _delete_user_nodes(tx, ws: str) -> None:
+    for label in _USER_LABELS:
+        tx.run(_DELETE_LABEL_TEMPLATE.format(label=label), ws=ws)
+
+
 def delete_workspace(driver, ws: str) -> bool:
-    """Every ``User*`` node of the workspace, gone in one transaction. True when the workspace existed."""
+    """Every ``User*`` node of the workspace, gone in one transaction. True when the workspace existed.
+
+    Locks the ``UserWorkspace`` node FIRST (:data:`LOCK_WORKSPACE_QUERY`, the same lock :func:`put_version` and
+    :func:`put_job` take), so a job mid-write and a delete can never race each other into leaving an orphan
+    (docs/v2/M4_PLAN.md 15.4): whichever gets the lock first commits fully before the other one even starts.
+    """
     def _tx(tx):
-        existed = tx.run(WORKSPACE_EXISTS_QUERY, ws=ws).single()["n"] > 0
-        for label in _USER_LABELS:
-            tx.run(_DELETE_LABEL_TEMPLATE.format(label=label), ws=ws)
+        existed = bool(tx.run(LOCK_WORKSPACE_QUERY, ws=ws).data())
+        _delete_user_nodes(tx, ws)
         return existed
 
     with driver.session() as session:
@@ -450,35 +526,119 @@ def delete_workspace(driver, ws: str) -> bool:
 
 def sweep_expired(driver, now: datetime) -> int:
     """Delete every workspace whose ``expires_at < now`` (idempotent; up to :data:`SWEEP_SELECT_BATCH` per call —
-    call again to keep sweeping a larger backlog). Returns the number of workspaces deleted.
+    call again to keep sweeping a larger backlog). Returns the number of workspaces actually deleted.
+
+    Each per-workspace transaction locks the ``UserWorkspace`` node first, exactly like :func:`delete_workspace`
+    and :func:`put_version` (docs/v2/M4_PLAN.md 15.4); a workspace already deleted by the time its turn comes
+    (a concurrent explicit DELETE) is simply skipped, not double-counted or errored.
 
     Raises ``TypeError`` if ``now`` is not a timezone-aware ``datetime``: a naive value or an ISO string would
     silently match NOTHING (an empty ``expired`` list, no error) and break the 24 h retention promise forever.
     """
     _require_aware_datetime(now, "now")
+
+    def _delete_if_locked(tx, ws: str) -> bool:
+        if not tx.run(LOCK_WORKSPACE_QUERY, ws=ws).data():
+            return False
+        _delete_user_nodes(tx, ws)
+        return True
+
     with driver.session() as session:
         expired = [r["workspace_id"] for r in session.run(SWEEP_SELECT_QUERY, now=now).data()]
-        for ws in expired:
-            session.execute_write(lambda tx, ws=ws: [tx.run(_DELETE_LABEL_TEMPLATE.format(label=label), ws=ws)
-                                                      for label in _USER_LABELS])
-    if expired:
-        logger.info("swept %d expired workspace(s)", len(expired))
-    return len(expired)
+        deleted = sum(1 for ws in expired if session.execute_write(lambda tx, ws=ws: _delete_if_locked(tx, ws)))
+    if deleted:
+        logger.info("swept %d expired workspace(s)", deleted)
+    return deleted
+
+
+def sweep_orphans(driver, now: datetime) -> int:
+    """Deletes ``User*`` nodes (never ``UserWorkspace`` itself) whose ``workspace_id`` matches no ``UserWorkspace``
+    node at all — the defence-in-depth pass behind :func:`put_version` / :func:`put_job`'s own lock-and-refuse guard
+    (docs/v2/M4_PLAN.md 15.4, findings 2/13/24): anything written by a path that guard did not anticipate still gets
+    cleaned up. Idempotent and batched (:data:`SWEEP_SELECT_BATCH` per call; call again for a larger backlog).
+    ``now`` is accepted (and validated) for symmetry with :func:`sweep_expired` and :func:`fail_interrupted_jobs`,
+    which both need a caller-supplied instant; this sweep itself has no age-based filter, only "orphaned or not".
+    Returns the number of orphaned workspace ids cleaned up.
+    """
+    _require_aware_datetime(now, "now")
+
+    def _delete_if_still_orphaned(tx, ws: str) -> bool:
+        # Re-verify INSIDE the delete transaction: defends against the vanishingly unlikely race of a brand-new
+        # workspace reusing the same (128-bit random) id between the select above and this delete.
+        if tx.run(WORKSPACE_EXISTS_QUERY, ws=ws).single()["n"] > 0:
+            return False
+        for label in _SWEEP_ORPHANS_LABELS:
+            tx.run(_DELETE_LABEL_TEMPLATE.format(label=label), ws=ws)
+        return True
+
+    with driver.session() as session:
+        orphans = [r["workspace_id"] for r in session.run(SWEEP_ORPHANS_SELECT_QUERY).data()]
+        cleaned = sum(1 for ws in orphans
+                     if session.execute_write(lambda tx, ws=ws: _delete_if_still_orphaned(tx, ws)))
+    if cleaned:
+        logger.info("swept %d orphaned workspace id(s) with no UserWorkspace node", cleaned)
+    return cleaned
 
 
 # ---------------------------------------------------------------- jobs
 
-PUT_JOB_QUERY = """MERGE (j:UserJob {workspace_id: $ws, job_id: $job_id})
+# A plain MATCH does not take a write lock and does not wait on delete_workspace's/the sweep's in-flight
+# transaction (Neo4j reads see only committed data — they never block on it): a version without the SAME
+# ``SET w._lock = true`` :func:`put_version` and :func:`delete_workspace` take could still read the workspace as
+# "live" a moment before the delete commits, then MERGE a UserJob that the (already-past-its-UserJob-delete-
+# statement) transaction never touches — an orphan even though every individual step looks "guarded"
+# (docs/v2/M4_PLAN.md 15.4). Taking the SAME lock first forces this single-statement, auto-commit write to
+# serialize against every other lock-taker on this node.
+PUT_JOB_QUERY = """MATCH (w:UserWorkspace {workspace_id: $ws})
+SET w._lock = true
+MERGE (j:UserJob {workspace_id: $ws, job_id: $job_id})
 ON CREATE SET j.created_at = $now
-SET j.state = $state, j.document_id = $document_id, j.version = $version, j.payload = $payload, j.updated_at = $now"""
+SET j.state = $state, j.document_id = $document_id, j.version = $version, j.payload = $payload, j.updated_at = $now
+RETURN j.job_id AS job_id"""
 
 GET_JOB_QUERY = """MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id}) RETURN j.payload AS payload"""
 
 
 def put_job(driver, ws: str, job: dict) -> None:
-    run_cypher(driver, PUT_JOB_QUERY, ws=ws, job_id=job["job_id"], state=job.get("state"),
-               document_id=job.get("document_id"), version=job.get("version"),
-               payload=json.dumps(job, default=str), now=datetime.now(UTC))
+    """Raises :class:`WorkspaceGone` when the ``UserWorkspace`` node no longer exists (docs/v2/M4_PLAN.md 15.4):
+    the leading ``MATCH`` + lock means the ``MERGE`` never runs at all for a deleted/swept workspace — zero rows
+    back, zero writes, never a UserJob orphan."""
+    rows = run_cypher(driver, PUT_JOB_QUERY, ws=ws, job_id=job["job_id"], state=job.get("state"),
+                      document_id=job.get("document_id"), version=job.get("version"),
+                      payload=json.dumps(job, default=str), now=datetime.now(UTC))
+    if not rows:
+        raise WorkspaceGone("the workspace no longer exists")
+
+
+def fail_interrupted_jobs(driver, now: datetime | None = None) -> int:
+    """Marks ``failed`` (error code ``interrupted``) any ``UserJob`` left in a non-terminal state for longer than
+    :data:`FAIL_INTERRUPTED_AFTER_S` — a process that crashed, OOM'd or was redeployed mid-job (docs/v2/M4_PLAN.md
+    15.4, finding 27). Rewrites the STORED ``payload`` too, not just ``state``: :func:`get_job` replays ``payload``
+    verbatim, so leaving it alone would keep showing e.g. "embedding" forever to a client that reconnects after a
+    restart. The per-job UPDATE stays ``$ws``-bound and re-checks the state, so a job that raced to a real
+    ready/failed in the meantime is left untouched (0 rows, not double-counted). ``now`` defaults to the current
+    instant; idempotent; returns the number of jobs marked.
+    """
+    now = now if now is not None else datetime.now(UTC)
+    _require_aware_datetime(now, "now")
+    threshold = now - timedelta(seconds=FAIL_INTERRUPTED_AFTER_S)
+    terminal = list(_JOB_TERMINAL_STATES)
+    with driver.session() as session:
+        candidates = session.run(FAIL_INTERRUPTED_JOBS_SELECT_QUERY, terminal_states=terminal,
+                                 threshold=threshold).data()
+        fixed = 0
+        for row in candidates:
+            payload = json.loads(row["payload"]) if row["payload"] else {}
+            new_payload = {**payload, "state": "failed",
+                          "error": {"code": "interrupted", "message": _INTERRUPTED_ERROR_MESSAGE}}
+            updated = session.run(FAIL_INTERRUPTED_JOB_UPDATE_QUERY, ws=row["workspace_id"], job_id=row["job_id"],
+                                  terminal_states=terminal, payload=json.dumps(new_payload, default=str),
+                                  now=now).data()
+            if updated:
+                fixed += 1
+    if fixed:
+        logger.info("marked %d interrupted job(s) failed at start", fixed)
+    return fixed
 
 
 def get_job(driver, ws: str, job_id: str) -> dict | None:

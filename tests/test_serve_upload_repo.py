@@ -10,6 +10,7 @@ flip, the leak isolation across two workspaces, the as-of cutoff — is proven l
 
 import hashlib
 import hmac
+import json
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -35,14 +36,21 @@ def test_every_query_constant_is_actually_exercised_by_this_module():
     assert len(_query_constants()) >= 20
 
 
-def test_every_query_binds_ws_except_the_documented_sweep_exception():
+# The documented, cross-workspace-by-design exceptions to "every query binds $ws" (module docstring): each one's
+# own DELETE/UPDATE still runs the normal per-workspace, $ws-bound queries, one workspace/job at a time.
+_WS_UNSCOPED_QUERIES = {"SWEEP_SELECT_QUERY", "SWEEP_ORPHANS_SELECT_QUERY", "FAIL_INTERRUPTED_JOBS_SELECT_QUERY"}
+
+
+def test_every_query_binds_ws_except_the_documented_sweep_exceptions():
     for name, text in _query_constants().items():
-        if name == "SWEEP_SELECT_QUERY":
-            assert "expires_at" in text and "$ws" not in text, (
-                "SWEEP_SELECT_QUERY is the one documented exception (it looks across every workspace); "
-                "everything else must bind $ws")
+        if name in _WS_UNSCOPED_QUERIES:
+            assert "$ws" not in text, f"{name} is documented as workspace-unscoped but binds $ws anyway"
             continue
         assert "$ws" in text, f"{name} does not bind $ws"
+
+
+def test_sweep_select_query_still_filters_on_expires_at():
+    assert "expires_at" in repo.SWEEP_SELECT_QUERY
 
 
 def test_every_user_node_pattern_with_a_property_map_carries_workspace_id_ws():
@@ -139,11 +147,17 @@ class FakeSession:
         rows = self._driver.session_run_responses.get(query, [])
         return FakeResult(rows if not callable(rows) else rows(params))
 
-    def execute_write(self, fn):
+    def execute_write(self, fn, *args, **kwargs):
         tx = FakeTx(self._driver.tx_responses)
-        result = fn(tx)
-        self._driver.transactions.append(tx)
-        return result
+        self._driver.transactions.append(tx)   # recorded BEFORE calling fn, so a raised exception still leaves the
+                                                # attempted calls inspectable (a real transaction that aborts mid-way
+                                                # has still sent those statements to the server before rolling back)
+        return fn(tx, *args, **kwargs)
+
+
+#: The default response for LOCK_WORKSPACE_QUERY: a live workspace. Every test whose point is NOT the lock/exists
+#: check gets this for free (via FakeDriver's default below); a test that DOES care overrides just this one key.
+_LOCK_OK = [{"workspace_id": "ws-exists"}]
 
 
 class FakeDriver:
@@ -151,7 +165,7 @@ class FakeDriver:
         self.transactions: list[FakeTx] = []
         self.session_run_calls: list[tuple[str, dict]] = []
         self.session_run_responses = session_run_responses or {}
-        self.tx_responses = tx_responses or {}
+        self.tx_responses = {repo.LOCK_WORKSPACE_QUERY: _LOCK_OK, **(tx_responses or {})}
 
     def session(self, **kwargs):
         return FakeSession(self)
@@ -292,6 +306,28 @@ def test_put_version_supersedes_the_previous_current_version_in_the_same_transac
     assert "change_report_json" in supersede_params
 
 
+def test_put_version_locks_the_workspace_before_any_other_statement():
+    driver = FakeDriver()
+    repo.put_version(driver, "ws1", document_id="aaaaaaaaaaaa", title="T", version=1, content_hash="h",
+                     method="text", pages=1, chars=5, chars_per_page=5.0, text="hello", units=[_unit()],
+                     chunks=[_chunk()], change_report={"items_compared": True, "not_compared_reason": None},
+                     suspicious=False, now=datetime.now(UTC))
+    assert driver.transactions[0].calls[0][0] == repo.LOCK_WORKSPACE_QUERY
+
+
+def test_put_version_raises_workspace_gone_and_writes_nothing_when_the_workspace_no_longer_exists():
+    """findings 2/13/24: a job that reaches put_version after the workspace was deleted (or TTL-swept) must create
+    NOTHING — not the document, not the version, not a single chunk."""
+    driver = FakeDriver(tx_responses={repo.LOCK_WORKSPACE_QUERY: []})
+    with pytest.raises(repo.WorkspaceGone):
+        repo.put_version(driver, "ws-gone", document_id="aaaaaaaaaaaa", title="T", version=1, content_hash="h",
+                         method="text", pages=1, chars=5, chars_per_page=5.0, text="hello", units=[_unit()],
+                         chunks=[_chunk()], change_report={"items_compared": True, "not_compared_reason": None},
+                         suspicious=False, now=datetime.now(UTC))
+    calls = driver.transactions[0].calls
+    assert calls == [(repo.LOCK_WORKSPACE_QUERY, {"ws": "ws-gone"})], "no write beyond the lock check itself"
+
+
 def test_put_version_only_bumps_embedded_tokens_for_chunks_marked_embedded():
     driver = FakeDriver()
     repo.put_version(driver, "ws1", document_id="aaaaaaaaaaaa", title="T", version=1, content_hash="h",
@@ -321,17 +357,19 @@ def test_put_version_converts_embeddings_to_plain_floats():
 # ---------------------------------------------------------------------- delete_workspace / sweep_expired
 
 def test_delete_workspace_deletes_every_label_in_one_transaction_and_reports_existence():
-    driver = FakeDriver(tx_responses={repo.WORKSPACE_EXISTS_QUERY: [{"n": 1}]})
+    driver = FakeDriver()   # default tx_responses already answers LOCK_WORKSPACE_QUERY with a live workspace
     assert repo.delete_workspace(driver, "ws1") is True
     assert len(driver.transactions) == 1
     formatted = {q for q, _ in driver.transactions[0].calls}
+    assert driver.transactions[0].calls[0][0] == repo.LOCK_WORKSPACE_QUERY, "the lock must be taken FIRST"
     for label in repo._USER_LABELS:
         assert repo._DELETE_LABEL_TEMPLATE.format(label=label) in formatted
 
 
 def test_delete_workspace_reports_false_for_an_unknown_workspace():
-    driver = FakeDriver(tx_responses={repo.WORKSPACE_EXISTS_QUERY: [{"n": 0}]})
+    driver = FakeDriver(tx_responses={repo.LOCK_WORKSPACE_QUERY: []})
     assert repo.delete_workspace(driver, "ws-nope") is False
+    # The delete statements still run even when the lock finds nothing (idempotent: nothing to actually delete).
 
 
 def test_sweep_expired_is_idempotent_when_nothing_is_expired():
@@ -353,6 +391,136 @@ def test_sweep_expired_deletes_only_the_selected_expired_workspaces():
 def test_sweep_select_query_filters_only_on_expires_at_and_caps_the_batch():
     assert "expires_at < $now" in repo.SWEEP_SELECT_QUERY
     assert str(repo.SWEEP_SELECT_BATCH) in repo.SWEEP_SELECT_QUERY
+
+
+def test_sweep_expired_locks_each_workspace_before_deleting_it():
+    driver = FakeDriver(session_run_responses={repo.SWEEP_SELECT_QUERY: [{"workspace_id": "ws-old-1"}]})
+    assert repo.sweep_expired(driver, datetime.now(UTC)) == 1
+    assert driver.transactions[0].calls[0][0] == repo.LOCK_WORKSPACE_QUERY
+
+
+def test_sweep_expired_skips_a_workspace_already_deleted_by_a_concurrent_delete():
+    """findings 2/13/24: the lock is what makes sweep_expired and delete_workspace/put_version race-safe — a
+    workspace the lock no longer finds is skipped, never double-deleted or errored."""
+    driver = FakeDriver(session_run_responses={repo.SWEEP_SELECT_QUERY: [{"workspace_id": "ws-already-gone"}]},
+                        tx_responses={repo.LOCK_WORKSPACE_QUERY: []})
+    assert repo.sweep_expired(driver, datetime.now(UTC)) == 0
+    # The lock ran, but nothing else did (no DETACH DELETE against a workspace the lock didn't confirm).
+    assert driver.transactions[0].calls == [(repo.LOCK_WORKSPACE_QUERY, {"ws": "ws-already-gone"})]
+
+
+# ---------------------------------------------------------------------- sweep_orphans (findings 2/13/24)
+
+def test_sweep_orphans_query_uses_a_literal_label_per_union_member_never_an_allnodesscan_form():
+    """Each UNION member matches a LITERAL label (a NodeByLabelScan) rather than an unlabelled `MATCH (n)` filtered
+    with `label IN labels(n)` (an AllNodesScan over the WHOLE graph, every public label included — confirmed live
+    with EXPLAIN against the throwaway instance) — critical now that the sweeper always runs (finding 26)."""
+    query = repo.SWEEP_ORPHANS_SELECT_QUERY
+    assert "MATCH (n)" not in query and "labels(n)" not in query
+    for label in repo._USER_LABELS:
+        if label == "UserWorkspace":
+            assert f"MATCH (n:{label})" not in query
+        else:
+            assert f"MATCH (n:{label})" in query
+
+
+def test_sweep_orphans_selects_every_user_label_except_userworkspace_itself():
+    driver = FakeDriver(session_run_responses={repo.SWEEP_ORPHANS_SELECT_QUERY: []})
+    repo.sweep_orphans(driver, datetime.now(UTC))
+    assert driver.session_run_calls[0][0] == repo.SWEEP_ORPHANS_SELECT_QUERY
+
+
+def test_sweep_orphans_deletes_a_workspace_id_the_select_reports_as_orphaned():
+    driver = FakeDriver(session_run_responses={repo.SWEEP_ORPHANS_SELECT_QUERY: [{"workspace_id": "ws-orphan-1"}]},
+                        tx_responses={repo.WORKSPACE_EXISTS_QUERY: [{"n": 0}]})
+    assert repo.sweep_orphans(driver, datetime.now(UTC)) == 1
+    calls = driver.transactions[0].calls
+    assert calls[0][0] == repo.WORKSPACE_EXISTS_QUERY, "re-verified INSIDE the delete transaction"
+    deleted_labels = {q for q, _ in calls[1:]}
+    for label in repo._USER_LABELS:
+        formatted = repo._DELETE_LABEL_TEMPLATE.format(label=label)
+        if label == "UserWorkspace":
+            assert formatted not in deleted_labels, "sweep_orphans must never delete a UserWorkspace node"
+        else:
+            assert formatted in deleted_labels
+
+
+def test_sweep_orphans_skips_a_workspace_id_that_turns_out_not_to_be_orphaned_after_all():
+    driver = FakeDriver(session_run_responses={repo.SWEEP_ORPHANS_SELECT_QUERY: [{"workspace_id": "ws-live"}]},
+                        tx_responses={repo.WORKSPACE_EXISTS_QUERY: [{"n": 1}]})
+    assert repo.sweep_orphans(driver, datetime.now(UTC)) == 0
+    assert driver.transactions[0].calls == [(repo.WORKSPACE_EXISTS_QUERY, {"ws": "ws-live"})]
+
+
+def test_sweep_orphans_rejects_a_naive_now():
+    with pytest.raises(TypeError):
+        repo.sweep_orphans(FakeDriver(), datetime(2026, 1, 1))
+
+
+# ---------------------------------------------------------------------- fail_interrupted_jobs (finding 27 seam)
+
+def test_fail_interrupted_jobs_marks_a_stale_non_terminal_job_failed_with_a_rewritten_payload():
+    stale_payload = json.dumps({"job_id": "j1", "state": "embedding", "document_id": "d1", "version": 1,
+                                "progress": {"done": 3, "total": 10}})
+    driver = FakeDriver(session_run_responses={
+        repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1", "payload": stale_payload}],
+        repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "j1"}]})
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 1
+    query, params = [c for c in driver.session_run_calls if c[0] == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY][0]
+    assert params["ws"] == "ws1" and params["job_id"] == "j1"
+    rewritten = json.loads(params["payload"])
+    assert rewritten["state"] == "failed"
+    assert rewritten["error"] == {"code": "interrupted", "message": repo._INTERRUPTED_ERROR_MESSAGE}
+    # Every other field of the ORIGINAL payload survives the rewrite — a client replaying it still sees which
+    # document/version/progress the interrupted job had reached.
+    assert rewritten["document_id"] == "d1" and rewritten["version"] == 1
+    assert rewritten["progress"] == {"done": 3, "total": 10}
+
+
+def test_fail_interrupted_jobs_uses_a_threshold_derived_from_now_and_the_module_constant():
+    now = datetime(2026, 9, 24, 12, 0, 0, tzinfo=UTC)
+    driver = FakeDriver(session_run_responses={repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: []})
+    repo.fail_interrupted_jobs(driver, now)
+    _, params = driver.session_run_calls[0]
+    assert params["threshold"] == now - timedelta(seconds=repo.FAIL_INTERRUPTED_AFTER_S)
+    assert set(params["terminal_states"]) == {"ready", "failed"}
+
+
+def test_fail_interrupted_jobs_defaults_now_to_the_current_instant():
+    driver = FakeDriver(session_run_responses={repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: []})
+    before = datetime.now(UTC)
+    assert repo.fail_interrupted_jobs(driver) == 0
+    _, params = driver.session_run_calls[0]
+    implied_now = params["threshold"] + timedelta(seconds=repo.FAIL_INTERRUPTED_AFTER_S)
+    assert before <= implied_now <= datetime.now(UTC)
+
+
+def test_fail_interrupted_jobs_skips_a_job_the_update_no_longer_matches():
+    """The per-job UPDATE re-checks the state; a job that raced to ready/failed between the select and here must
+    not be double-counted (0 rows back from the UPDATE)."""
+    driver = FakeDriver(session_run_responses={
+        repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1",
+                                                    "payload": json.dumps({"job_id": "j1", "state": "embedding"})}],
+        repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: []})
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 0
+
+
+def test_fail_interrupted_jobs_rejects_a_naive_now():
+    with pytest.raises(TypeError):
+        repo.fail_interrupted_jobs(FakeDriver(), datetime(2026, 1, 1))
+
+
+def test_fail_interrupted_job_update_query_re_checks_the_state_before_overwriting():
+    assert "WHERE NOT j.state IN $terminal_states" in repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY
+
+
+def test_interrupted_error_message_stays_in_sync_with_uploads_jobs():
+    """repo.py deliberately never imports uploads.jobs (it must stay strictly below the job layer), so the fixed
+    "interrupted" message is duplicated by hand in both places; this test is what actually keeps them in sync."""
+    from semigraph.uploads import jobs
+
+    assert repo._INTERRUPTED_ERROR_MESSAGE == jobs.JOB_ERROR_MESSAGES["interrupted"]
+    assert set(repo._JOB_TERMINAL_STATES) == set(jobs.TERMINAL_STATES)
 
 
 # ---------------------------------------------------------------------- read shaping
@@ -438,7 +606,7 @@ def test_put_job_and_get_job_round_trip_through_the_stored_json(monkeypatch):
     def fake_run_cypher(driver, query, **params):
         if query == repo.PUT_JOB_QUERY:
             store[params["job_id"]] = params["payload"]
-            return []
+            return [{"job_id": params["job_id"]}]   # a live workspace: the leading MATCH found a row
         if query == repo.GET_JOB_QUERY:
             payload = store.get(params["job_id"])
             return [{"payload": payload}] if payload is not None else []
@@ -449,6 +617,21 @@ def test_put_job_and_get_job_round_trip_through_the_stored_json(monkeypatch):
     assert repo.get_job(object(), "ws1", "j1") == {"job_id": "j1", "state": "parsing", "document_id": "d1",
                                                     "version": 1}
     assert repo.get_job(object(), "ws1", "nope") is None
+
+
+def test_put_job_raises_workspace_gone_when_the_workspace_no_longer_exists(monkeypatch):
+    monkeypatch.setattr(repo, "run_cypher", lambda d, q, **p: [])   # the leading MATCH found no row
+    with pytest.raises(repo.WorkspaceGone):
+        repo.put_job(object(), "ws-gone", {"job_id": "j1", "state": "parsing", "document_id": "d1", "version": 1})
+
+
+def test_put_job_query_takes_the_workspace_lock_before_merging_the_job():
+    """A plain MATCH does not wait on delete_workspace's in-flight transaction (Neo4j reads see only committed
+    data): put_job must take the SAME write lock delete_workspace/put_version take, and it must come BEFORE the
+    MERGE, or a job finishing mid-delete can still commit an orphaned UserJob."""
+    lock_pos = repo.PUT_JOB_QUERY.index("SET w._lock = true")
+    merge_pos = repo.PUT_JOB_QUERY.index("MERGE (j:UserJob")
+    assert lock_pos < merge_pos
 
 
 @pytest.mark.parametrize("hours,expect_future", [(0, False), (24, True)], ids=["zero-ttl", "day-ttl"])

@@ -36,6 +36,7 @@ class UploadsOn(FakeSettings):
 @pytest.fixture
 def ws_client(client, monkeypatch):
     client.app.state.settings = UploadsOn()
+    client.app.state.uploads_ready = True
     monkeypatch.setattr(routes, "authenticate_workspace", lambda driver, ws, token: ws == WS and token == TOKEN)
     return client
 
@@ -104,6 +105,26 @@ def test_a_malformed_as_of_is_400(ws_client, fakes, as_of):
     assert r.status_code == 400 and fakes.queries == []
 
 
+@pytest.mark.parametrize("as_of,canonical", [
+    ("2026-09-01", "2026-09-01"),
+    ("2026-09-29T12:34:56Z", "2026-09-29T12:34:56+00:00"),
+    ("2026-09-29T12:34:56.123456789Z", "2026-09-29T12:34:56.123456+00:00"),    # Neo4j's toString of a zoned datetime
+    ("2026-09-29T18:04:56+05:30", "2026-09-29T12:34:56+00:00"),
+])
+def test_as_of_is_a_date_or_an_instant_with_an_offset_normalized_to_utc(as_of, canonical):
+    """Review of M4 build: a workspace lives 24 h, so a calendar date cannot tell v1 from v2 uploaded the same day; an ask
+    can name the instant (the page passes a version's own created_at). Naive instants are refused (ambiguous zone)."""
+    assert guard.validate_as_of(as_of) == canonical
+
+
+@pytest.mark.parametrize("as_of", ["2026-09-29T12:34:56", "9999-12-31", "1999-12-31", "2101-01-01T00:00:00Z",
+                                   "2026-09-29T25:00:00Z"])
+def test_as_of_without_an_offset_or_outside_2000_2100_is_refused(as_of):
+    with pytest.raises(guard.HTTPException) as e:
+        guard.validate_as_of(as_of)
+    assert e.value.status_code == 400
+
+
 def test_as_of_without_a_workspace_is_400(client, fakes):
     r = ask(client, as_of="2026-09-01")
     assert r.status_code == 400 and fakes.queries == []
@@ -112,6 +133,13 @@ def test_as_of_without_a_workspace_is_400(client, fakes):
 def test_workspace_asks_answer_503_while_uploads_are_off(client, fakes):
     r = ask(client, {"X-Workspace-Token": TOKEN}, workspace_id=WS)
     assert r.status_code == 503 and fakes.queries == []
+
+
+def test_workspace_asks_answer_503_when_uploads_are_on_but_not_ready(ws_client, fakes):
+    """UPLOADS_ENABLED with an embedder that cannot count tokens (or a failed start) leaves uploads_ready False."""
+    ws_client.app.state.uploads_ready = False
+    assert ask(ws_client, {"X-Workspace-Token": TOKEN}, workspace_id=WS).status_code == 503 and fakes.queries == []
+    assert ws_client.get("/api/stats").json()["uploads_enabled"] is False
 
 
 # ------------------------------------------------------------------------------------------------- the token gate
@@ -152,6 +180,26 @@ def test_an_accepted_workspace_ask_streams_the_workspace_writer_and_never_touche
     assert len(fakes.queries) == 1 and fakes.queries[0]["workspace"] is True and fakes.queries[0]["cached"] is False
 
 
+def test_a_workspace_answer_logs_counts_of_its_checks_never_their_sentences(ws_client, fakes, monkeypatch, caplog):
+    """Review of M4 build: ``checks`` carries answer sentences (unsupported_removal_sentences, pseudo_citations), which for
+    a workspace paraphrase a private upload; the log gets list LENGTHS only (plan section 5: no uploaded text in logs)."""
+    secret = "Our confidential margin plan was removed from the memo."
+
+    def stream(question, driver, embedder, strategy="hybrid", **kw):
+        yield {"event": "done", "answer": secret, "citations": [], "hallucinated": [], "finish_reason": "stop",
+               "usage": None, "cost_usd": 0.0, "chunk_ids": [], "context_chars": 1, "strategy": strategy,
+               "checks": {"has_citation": False, "unsupported_removal_sentences": [secret], "pseudo_citations": ["[x y]"]}}
+    stub = types.ModuleType("semigraph.retrieval.workspace")
+    stub.stream_workspace_answer = stream
+    monkeypatch.setitem(sys.modules, "semigraph.retrieval.workspace", stub)
+    with caplog.at_level("INFO", logger="semigraph.serve"):
+        r = ask(ws_client, {"X-Workspace-Token": TOKEN}, workspace_id=WS)
+    assert r.status_code == 200
+    logged = " ".join(rec.getMessage() for rec in caplog.records)
+    assert "answered strategy=hybrid" in logged and "unsupported_removal_sentences" in logged
+    assert "confidential" not in logged and "[x y]" not in logged
+
+
 def test_a_public_ask_never_reaches_the_workspace_writer(client, fakes, monkeypatch):
     calls = []
     install_workspace_stream(monkeypatch, calls)
@@ -171,7 +219,8 @@ def test_the_stream_function_is_chosen_by_workspace_first(monkeypatch):
 
 def test_stats_says_whether_uploads_are_enabled_and_carries_the_freshness_summary(client):
     body = client.get("/api/stats").json()
-    assert body["uploads_enabled"] is False and body["freshness"] is None
+    assert body["uploads_enabled"] is False
+    assert body["freshness"] == {"status": "disabled", "checked_at": None, "pending_count": 0}   # never None (15.10)
     client.app.state.freshness_monitor = type("M", (), {"summary": lambda self: {"status": "ok", "checked_at": "t",
                                                                                   "pending_count": 2}})()
     assert client.get("/api/stats").json()["freshness"] == {"status": "ok", "checked_at": "t", "pending_count": 2}

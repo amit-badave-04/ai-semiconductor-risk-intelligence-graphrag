@@ -63,3 +63,13 @@ def test_the_counter_is_unique_per_day_so_merge_cannot_duplicate_it(monkeypatch)
     monkeypatch.setattr(store, "run_cypher", fake)
     store.ensure_indexes(object())
     assert any("FOR (u:SvcUploadDay) REQUIRE u.day IS UNIQUE" in q for q, _ in fake.calls)
+
+
+def test_the_monitor_lease_and_result_nodes_are_unique_per_key(monkeypatch):
+    """Review of M4 build: two machines' first-ever MERGE on the same key must not create two lease/result nodes."""
+    fake = FakeCypher([])
+    monkeypatch.setattr(store, "run_cypher", fake)
+    store.ensure_indexes(object())
+    queries = [q for q, _ in fake.calls]
+    assert any("FOR (l:SvcLease) REQUIRE l.key IS UNIQUE" in q for q in queries)
+    assert any("FOR (f:SvcFreshness) REQUIRE f.key IS UNIQUE" in q for q in queries)

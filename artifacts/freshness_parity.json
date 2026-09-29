@@ -1,0 +1,58 @@
+{
+ "gate": "G6 (docs/v2/M4_PLAN.md section 9): monitor pending set == lake pending set, FR graph_count == stored_count",
+ "graph": "local Community 7699, snapshot snap-20260924-97c6597d58 (same as production)",
+ "registered_run": {
+  "as_of": "2026-09-24",
+  "monitor": {
+   "pending_filings": [],
+   "federal_register": {
+    "graph_count": 166,
+    "live_count": 166,
+    "new_since": 0
+   },
+   "unresolved": []
+  },
+  "lake": {
+   "pending_filings": [],
+   "federal_register": {
+    "stored_count": 166,
+    "stored_latest_date": "2026-09-24",
+    "live_count": 166,
+    "new_since_stored": 0
+   }
+  },
+  "diff": {
+   "monitor_count": 0,
+   "lake_count": 0,
+   "agree": true,
+   "only_in_monitor": [],
+   "only_in_lake": []
+  },
+  "federal_register_agrees": true
+ },
+ "additional_run_today": {
+  "as_of": "2026-09-29",
+  "diff": {
+   "monitor_count": 0,
+   "lake_count": 0,
+   "agree": true,
+   "only_in_monitor": [],
+   "only_in_lake": []
+  },
+  "federal_register_agrees": true
+ },
+ "negative_control": {
+  "method": "in-process only: NVDA's latest 10-Q hidden from the monitor's known-accession query AND from the lake manifest; live EDGAR",
+  "hidden": "0001045810-26-000075",
+  "monitor_count": 1,
+  "lake_count": 1,
+  "agree": true,
+  "row": {
+   "ticker": "NVDA",
+   "form": "10-Q",
+   "filing_date": "2026-08-26",
+   "period_of_report": "2026-07-26"
+  }
+ },
+ "result": "PASS"
+}

@@ -27,10 +27,19 @@ def next_version(existing: list[int]) -> int:
 
 
 def as_of_cutoff(as_of: str) -> datetime:
-    """The cutoff instant for ``as_of=D``: the end of day ``D``, UTC (``D + 1 day`` at ``00:00 UTC``).
+    """The cutoff instant for ``as_of`` (docs/v2/M4_PLAN.md 15.1): a ``YYYY-MM-DD`` date's cutoff is the end of that
+    UTC day (``D + 1 day`` at ``00:00 UTC``); an ISO instant's cutoff is that instant plus one microsecond, so a
+    version created AT EXACTLY ``as_of`` (the page's own "ask as of vN" using that version's ``created_at``) is
+    still visible under ``valid_from < cutoff``.
 
-    ``as_of`` is a ``YYYY-MM-DD`` string already validated for shape by :func:`semigraph.serve.guard.validate_as_of`.
+    ``as_of`` is already validated and normalized by :func:`semigraph.serve.guard.validate_as_of` — a date is never
+    ambiguous with an instant because only an instant contains ``T``.
     """
+    if "T" in as_of:
+        instant = datetime.fromisoformat(as_of)
+        if instant.tzinfo is None:
+            raise ValueError(f"as_of instant must carry a UTC offset, got {as_of!r}")
+        return instant.astimezone(UTC) + timedelta(microseconds=1)
     day = date.fromisoformat(as_of)
     return datetime(day.year, day.month, day.day, tzinfo=UTC) + timedelta(days=1)
 

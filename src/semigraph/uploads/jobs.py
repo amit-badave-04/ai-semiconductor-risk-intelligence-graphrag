@@ -11,17 +11,17 @@ pin that the API process never imports a document parser eagerly): every parser-
 (``uploads.parse``, ``uploads.units``, ``uploads.changes``, ``uploads.repo``) happens lazily, inside the functions
 that actually run a job.
 
-Progress is published two ways: an in-memory ``queue.Queue`` per (workspace, job) for a live SSE consumer on THIS
-process (:class:`JobRegistry`), and a full snapshot persisted via ``uploads.repo.put_job`` after every transition,
-so a client that (re)connects after the queue is gone (the job finished, or this process restarted) can replay the
-job's last known event from Neo4j.
+Progress is published two ways: an in-memory, append-only, per-(workspace, job) event log for every live SSE
+watcher on THIS process (:class:`JobRegistry` — fan-out: every watcher sees every event, not just the next one), and
+a full snapshot persisted via ``uploads.repo.put_job`` after every transition, so a client that (re)connects after
+the log is gone (the job finished and its grace period elapsed, or this process restarted) can replay the job's
+last known event from Neo4j.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
-import queue
 import secrets
 import sys
 import threading
@@ -32,6 +32,19 @@ logger = logging.getLogger("semigraph.uploads.jobs")
 
 SWEEP_INTERVAL_S = 15 * 60
 SWEEP_STOP_TIMEOUT_S = 5
+
+# M4 review (docs/v2/M4_PLAN.md 15.3): at most this many LIVE SSE watchers per (workspace, job) — a 4th gets 429.
+MAX_LIVE_WATCHERS_PER_JOB = 3
+# A finished job's event log is kept this long after its terminal event, so a watcher that reconnects just after
+# the job ended still gets a live replay instead of falling back to the (coarser) persisted snapshot.
+REGISTRY_GRACE_PERIOD_S = 60
+
+# A progress write (``put_job``) is retried this many times only when the event is TERMINAL (ready/failed): a
+# non-terminal write is best-effort (logged, never retried) so one flaky write can never kill a job (finding 27).
+PUT_JOB_RETRY_ATTEMPTS = 3
+PUT_JOB_RETRY_BACKOFF_S = 0.2
+
+TERMINAL_STATES = ("ready", "failed")
 
 # Fixed, non-upload-controlled client messages per failure code (never the raw exception text — docs/v2/M4_PLAN.md 5).
 JOB_ERROR_MESSAGES = {
@@ -46,9 +59,19 @@ JOB_ERROR_MESSAGES = {
     "scanned": "the document appears to be scanned; no extractable text was found",
     "too_many_pages": "the document has more pages than this workspace allows",
     "too_many_tokens": "the document is larger than this workspace allows",
+    "too_many_chunks": "the document has more sections than this workspace allows",
     "workspace_quota": "this workspace has reached its embedded-content limit",
+    "workspace_deleted": "this workspace no longer exists",
+    "interrupted": "processing was interrupted and could not finish",
     "internal_error": "the upload could not be processed",
 }
+
+
+class _NeverRaised(Exception):
+    """Never raised by anything — a placeholder ``except`` target for a cross-worker exception (``repo.WorkspaceGone``)
+    that may not exist yet on ``uploads.repo`` (docs/v2/M4_PLAN.md 15.4): resolving it once with
+    ``getattr(repo, "WorkspaceGone", _NeverRaised)`` means a missing attribute never turns an unrelated exception
+    into an ``AttributeError`` inside an ``except`` clause."""
 
 
 def ws_hash_for_log(workspace_id: str) -> str:
@@ -60,28 +83,95 @@ def ws_hash_for_log(workspace_id: str) -> str:
 _ws_hash = ws_hash_for_log   # short internal alias used throughout this module
 
 
-class JobRegistry:
-    """In-memory, per-MACHINE: the live progress queue of a job still running on this process, keyed by
-    ``(workspace_id, job_id)`` so one workspace's token can never observe another workspace's job. Durable state
-    (for replay once this queue is gone) lives in Neo4j via ``uploads.repo.get_job``."""
+class _JobLog:
+    """One job's append-only event log plus its live-SSE-watcher count. ``finished_at`` (a monotonic timestamp) is
+    set the moment a terminal event is appended, and drives the registry's grace-period pruning."""
+
+    __slots__ = ("events", "watchers", "finished_at")
 
     def __init__(self) -> None:
+        self.events: list[dict] = []
+        self.watchers = 0
+        self.finished_at: float | None = None
+
+
+class JobRegistry:
+    """In-memory, per-MACHINE: an append-only event log per ``(workspace_id, job_id)``, so one workspace's token
+    can never observe another workspace's job. FAN-OUT (docs/v2/M4_PLAN.md 15.3): every watcher reads the same log
+    from its own cursor, so every watcher sees every event — unlike a ``queue.Queue``, where each item goes to
+    exactly one consumer. A finished job's log is kept for :data:`REGISTRY_GRACE_PERIOD_S` after its terminal event
+    (pruned lazily, on the next access) so a watcher that reconnects just after the job ended still gets a live
+    replay; :func:`try_watch` caps live watchers at :data:`MAX_LIVE_WATCHERS_PER_JOB` per job. Durable state (for
+    replay once a log is gone) lives in Neo4j via ``uploads.repo.get_job``."""
+
+    def __init__(self, *, clock=time.monotonic) -> None:
         self._lock = threading.Lock()
-        self._queues: dict[tuple[str, str], queue.Queue] = {}
+        self._logs: dict[tuple[str, str], _JobLog] = {}
+        self._clock = clock
 
-    def create(self, workspace_id: str, job_id: str) -> queue.Queue:
-        q: queue.Queue = queue.Queue()
+    def create(self, workspace_id: str, job_id: str) -> None:
         with self._lock:
-            self._queues[(workspace_id, job_id)] = q
-        return q
+            self._logs[(workspace_id, job_id)] = _JobLog()
 
-    def get(self, workspace_id: str, job_id: str) -> queue.Queue | None:
+    def append(self, workspace_id: str, job_id: str, event: dict) -> None:
+        """No-op when the job is unknown here (e.g. a test that never called :meth:`create`, or the log was
+        already pruned) — the caller's own persistence to Neo4j is what a late reader ultimately falls back on."""
         with self._lock:
-            return self._queues.get((workspace_id, job_id))
+            log = self._logs.get((workspace_id, job_id))
+            if log is None:
+                return
+            log.events.append(event)
+            if event.get("state") in TERMINAL_STATES:
+                log.finished_at = self._clock()
+
+    def events_from(self, workspace_id: str, job_id: str, start: int) -> tuple[list[dict], int] | None:
+        """``(new_events, new_cursor)`` for a watcher whose cursor is ``start``, or ``None`` when the job is
+        unknown here (never existed on this process, or its grace period has elapsed) — the caller should then
+        fall back to the persisted snapshot."""
+        with self._lock:
+            self._prune_locked()
+            log = self._logs.get((workspace_id, job_id))
+            if log is None:
+                return None
+            return list(log.events[start:]), len(log.events)
+
+    def try_watch(self, workspace_id: str, job_id: str) -> bool | None:
+        """``None`` when the job is unknown here (fall back to the persisted replay); ``False`` when it exists but
+        already has :data:`MAX_LIVE_WATCHERS_PER_JOB` live watchers (the caller answers 429); ``True`` once this
+        call has reserved a watcher slot — the caller MUST eventually call :meth:`release_watch` exactly once."""
+        with self._lock:
+            self._prune_locked()
+            log = self._logs.get((workspace_id, job_id))
+            if log is None:
+                return None
+            if log.watchers >= MAX_LIVE_WATCHERS_PER_JOB:
+                return False
+            log.watchers += 1
+            return True
+
+    def release_watch(self, workspace_id: str, job_id: str) -> None:
+        """Idempotent: releasing a job whose log has already been pruned, or over-releasing, is a safe no-op."""
+        with self._lock:
+            log = self._logs.get((workspace_id, job_id))
+            if log is not None and log.watchers > 0:
+                log.watchers -= 1
+
+    def is_terminal(self, workspace_id: str, job_id: str) -> bool:
+        with self._lock:
+            log = self._logs.get((workspace_id, job_id))
+            return bool(log is not None and log.finished_at is not None)
 
     def discard(self, workspace_id: str, job_id: str) -> None:
+        """Explicit, immediate removal — used by tests; production code lets grace-period pruning handle it."""
         with self._lock:
-            self._queues.pop((workspace_id, job_id), None)
+            self._logs.pop((workspace_id, job_id), None)
+
+    def _prune_locked(self) -> None:
+        now = self._clock()
+        stale = [key for key, log in self._logs.items()
+                if log.finished_at is not None and now - log.finished_at > REGISTRY_GRACE_PERIOD_S]
+        for key in stale:
+            del self._logs[key]
 
 
 def registry(app) -> JobRegistry:
@@ -106,23 +196,62 @@ def count_tokens_available(embedder) -> bool:
     return True
 
 
-def _emit(driver, workspace_id: str, reg: JobRegistry, job: dict) -> None:
-    """Publish ``job`` to the live queue (if a consumer is attached) and persist it (for replay)."""
+def _persist_job(driver, workspace_id: str, job: dict) -> None:
+    """Persists ``job`` via ``repo.put_job`` (finding 27): a TERMINAL event (ready/failed) is retried up to
+    :data:`PUT_JOB_RETRY_ATTEMPTS` times — a client that only ever sees the persisted replay must not be stuck on a
+    non-terminal state forever because one write blipped — while a non-terminal progress write is best-effort (one
+    attempt, logged at WARNING on failure, never retried and never fatal to the job: a client still watching the
+    live, in-memory log already has the event regardless of whether Neo4j accepted it).
+
+    ``repo.WorkspaceGone`` (raised once another worker's ``put_job``/``put_version`` locking lands — see
+    ``jobs._process``) is never retried and always re-raised: it means the workspace is gone, not that the write
+    was flaky."""
     from . import repo
 
-    q = reg.get(workspace_id, job["job_id"])
-    if q is not None:
-        q.put(job)
-    repo.put_job(driver, workspace_id, job)
+    workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
+    is_terminal = job.get("state") in TERMINAL_STATES
+    attempts = PUT_JOB_RETRY_ATTEMPTS if is_terminal else 1
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            repo.put_job(driver, workspace_id, job)
+            return
+        except workspace_gone:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a progress write must never crash the job (finding 27)
+            last_exc = exc
+            if attempt + 1 < attempts:
+                time.sleep(PUT_JOB_RETRY_BACKOFF_S)
+    level = logger.error if is_terminal else logger.warning
+    level("upload job progress write failed ws_hash=%s job_id=%s state=%s terminal=%s attempts=%d: %s",
+         _ws_hash(workspace_id), job.get("job_id"), job.get("state"), is_terminal, attempts,
+         type(last_exc).__name__)
+
+
+def _emit(driver, workspace_id: str, reg: JobRegistry, job: dict) -> None:
+    """Publish ``job`` to the live, in-memory log (every watcher sees it, fan-out — docs/v2/M4_PLAN.md 15.3) BEFORE
+    persisting it, so a live watcher still sees progress even when the Neo4j write itself fails."""
+    reg.append(workspace_id, job["job_id"], job)
+    _persist_job(driver, workspace_id, job)
+
+
+def _emit_local_only(reg: JobRegistry, workspace_id: str, job: dict) -> None:
+    """Publish ``job`` to the live log WITHOUT persisting it: used exactly once, for the terminal
+    ``workspace_deleted`` failure (docs/v2/M4_PLAN.md 15.4) — the workspace is already gone, so nothing further may
+    be written for it, not even the failure event itself."""
+    reg.append(workspace_id, job["job_id"], job)
 
 
 def _fail(driver, workspace_id: str, reg: JobRegistry, job_id: str, document_id: str, version: int | None,
-          code: str, *, detail: str = "") -> None:
+          code: str, *, detail: str = "", persist: bool = True) -> None:
     logger.info("upload job failed ws_hash=%s job_id=%s code=%s%s", _ws_hash(workspace_id), job_id, code,
                f" ({detail})" if detail else "")
     job = {"job_id": job_id, "state": "failed", "document_id": document_id, "version": version,
           "error": {"code": code, "message": JOB_ERROR_MESSAGES.get(code, JOB_ERROR_MESSAGES["internal_error"])}}
-    _emit(driver, workspace_id, reg, job)
+    if persist:
+        _emit(driver, workspace_id, reg, job)
+    else:
+        _emit_local_only(reg, workspace_id, job)
 
 
 def _lower_priority() -> None:
@@ -219,9 +348,23 @@ def _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_r
     return compare_versions(older_view, newer_view)
 
 
+def _workspace_page_quota_exceeded(driver, ws: str, new_pages: int, settings) -> bool:
+    """The 120-page WORKSPACE cap (docs/v2/M4_PLAN.md 15.8, ``upload_max_workspace_pages``), distinct from the
+    per-version page cap above. Conservative for a re-upload of an EXISTING document: ``repo.quota`` reports only
+    the workspace's total current pages, not a per-document breakdown, so a new version's own pages are added on
+    top of the total without first subtracting that document's own current page count — a same-size re-version
+    right at the cap could be rejected where a byte-exact replacement would actually fit. A precise fix needs
+    ``repo.quota`` to also return a ``pages_by_document`` map (reported as a seam: ``uploads/repo.py`` is out of
+    this worker's file ownership)."""
+    from . import repo
+
+    quota = repo.quota(driver, ws)
+    return quota.get("pages", 0) + new_pages > settings.upload_max_workspace_pages
+
+
 def _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, settings, embedder):
-    """Parses, then enforces the page and whole-document token caps. Returns ``(parsed, text)``, or ``None`` once a
-    failure event has already been emitted."""
+    """Parses, then enforces the per-version page cap, the workspace-wide page cap and the whole-document token
+    cap. Returns ``(parsed, text)``, or ``None`` once a failure event has already been emitted."""
     from .units import canonical_text
 
     parsed = _parse_or_fail(driver, ws, reg, job_id, document_id, version, data, kind, settings)
@@ -229,6 +372,9 @@ def _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, sett
         return None
     if parsed.pages > settings.upload_max_pages:
         _fail(driver, ws, reg, job_id, document_id, version, "too_many_pages")
+        return None
+    if _workspace_page_quota_exceeded(driver, ws, parsed.pages, settings):
+        _fail(driver, ws, reg, job_id, document_id, version, "workspace_quota")
         return None
     text = canonical_text(parsed.blocks)
     if embedder.count_tokens(text) > settings.upload_max_tokens:
@@ -240,11 +386,17 @@ def _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, sett
 def _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder, settings,
                            emit):
     """Chunks, then embeds the new chunks. Returns ``(units, unit_dicts, chunk_rows)``, or ``None`` once a failure
-    event has already been emitted (``workspace_quota`` or ``timeout``)."""
+    event has already been emitted (``too_many_chunks``, ``workspace_quota`` or ``timeout``)."""
     from ..hashing import content_hash
     from ..retrieval.ids import doc_id as make_doc_id
 
     units, chunks, unit_dicts = _build_units_and_chunks(text, parsed.blocks, kind, embedder, settings)
+    if len(chunks) > settings.upload_max_chunks:
+        # Enforced right after chunking, BEFORE any embedding (docs/v2/M4_PLAN.md 15.8 / finding 8): a
+        # whitespace-heavy or short-paragraph-heavy document can produce hundreds of chunks well under the
+        # whole-document token cap, and each chunk is embedded and written with a 1024-float vector.
+        _fail(driver, ws, reg, job_id, document_id, version, "too_many_chunks")
+        return None
     chunk_texts = [text[c.char_start:c.char_end] for c in chunks]
     chunk_hashes = [content_hash(t) for t in chunk_texts]
     emit("embedding", progress={"done": 0, "total": len(chunks), "eta_s": None})
@@ -289,13 +441,24 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
 
     emit("comparing", version=version)
     change_report = _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed)
-    suspicious = looks_suspicious(text)
+    # Defence in depth on top of the linear-time regex fix (docs/v2/M4_PLAN.md 15.12): collapsing whitespace runs
+    # first means even a pathological pattern this heuristic does not yet anticipate stays bounded by the
+    # (already-capped) token count rather than the raw character count of an upload.
+    suspicious = looks_suspicious(" ".join(text.split()))
 
     emit("indexing", version=version)
-    repo.put_version(driver, ws, document_id=document_id, title=title, version=version, content_hash=content_hash_hex,
-                     method=parsed.method, pages=parsed.pages, chars=len(text), chars_per_page=parsed.chars_per_page,
-                     text=text, units=unit_dicts, chunks=chunk_rows, change_report=change_report,
-                     suspicious=suspicious, now=datetime.now(UTC))
+    workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
+    try:
+        repo.put_version(driver, ws, document_id=document_id, title=title, version=version,
+                         content_hash=content_hash_hex, method=parsed.method, pages=parsed.pages, chars=len(text),
+                         chars_per_page=parsed.chars_per_page, text=text, units=unit_dicts, chunks=chunk_rows,
+                         change_report=change_report, suspicious=suspicious, now=datetime.now(UTC))
+    except workspace_gone:
+        # The workspace was deleted (or TTL-swept) while this job ran (docs/v2/M4_PLAN.md 15.4): put_version wrote
+        # NOTHING (it locks the UserWorkspace node first and refuses otherwise), so nothing here may write further
+        # either — not even this failure event, which goes to the live log only, never to Neo4j.
+        _fail(driver, ws, reg, job_id, document_id, version, "workspace_deleted", persist=False)
+        return
     emit("ready", version=version, chunks=len(chunk_rows), units=len(unit_dicts),
         items_compared=change_report["items_compared"], not_compared_reason=change_report["not_compared_reason"],
         suspicious=suspicious)
@@ -303,35 +466,71 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
 
 def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data: bytes, kind: str,
            content_hash_hex: str) -> None:
+    """Ends in ready/failed on every path (never a silently dead thread) and always releases the upload slot.
+    The job's registry entry is NOT discarded here: :class:`JobRegistry` keeps a finished job's log for
+    :data:`REGISTRY_GRACE_PERIOD_S` (pruned lazily on the next access) so a watcher that reconnects moments after
+    the job ends still gets a live replay instead of falling back to the persisted snapshot.
+
+    ``repo.WorkspaceGone`` is caught here TOO, not only around the ``put_version`` call inside ``_process``: since
+    ``put_job`` (every progress write) now ALSO locks the workspace and raises it, a delete/sweep that lands during
+    an earlier stage (parsing, chunking, comparing) surfaces the same way as one that lands right at indexing — a
+    local-only ``workspace_deleted`` event, never a second, doomed write attempt against a workspace that is
+    already gone (which would otherwise raise again and fall through as an uninformative ``internal_error``, or an
+    unhandled exception that kills the thread silently)."""
+    from . import repo
+
     st = app.state
     reg = registry(app)
+    workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
     try:
         _process(st.driver, st.embedder, st.settings, ws, job_id, document_id, title, data, kind,
                  content_hash_hex, reg)
+    except workspace_gone:
+        _fail(st.driver, ws, reg, job_id, document_id, None, "workspace_deleted", persist=False)
     except Exception:  # noqa: BLE001 — a job must always end in ready/failed, never a silently dead thread
         logger.exception("upload job crashed ws_hash=%s job_id=%s", _ws_hash(ws), job_id)
         _fail(st.driver, ws, reg, job_id, document_id, None, "internal_error")
     finally:
         st.upload_slots.release()
-        reg.discard(ws, job_id)
 
 
 def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | None, data: bytes, kind: str,
                    content_hash_hex: str) -> str:
     """Starts the worker thread and returns its job id immediately. The caller must already hold
-    ``app.state.upload_slots`` (acquired non-blocking) and have reserved today's upload budget; the thread releases
-    the slot on every path."""
+    ``app.state.upload_slots`` (acquired non-blocking) and have reserved today's upload budget.
+
+    Once the thread has actually started, IT owns the upload slot's release (every path through :func:`_worker`
+    releases it exactly once) — a ``BoundedSemaphore`` raises on a double release, so this function must never
+    release it too. The only failure window is here, before ``thread.start()`` returns (for example the OS refusing
+    a new thread): on that path the registry entry this call created is discarded (nothing will ever run to emit
+    into it) and the exception propagates to the caller, which is what still owns the slot at that point and must
+    release it itself (docs/v2/M4_PLAN.md 15.3/15.4, findings 5/17/23)."""
     job_id = secrets.token_hex(8)
-    registry(app).create(workspace_id, job_id)
+    reg = registry(app)
+    reg.create(workspace_id, job_id)
     thread = threading.Thread(target=_worker, name=f"upload-{job_id}", daemon=True,
                               args=(app, workspace_id, job_id, document_id, title, data, kind, content_hash_hex))
-    thread.start()
+    try:
+        thread.start()
+    except BaseException:
+        reg.discard(workspace_id, job_id)
+        raise
     return job_id
 
 
 class _Sweeper:
-    """Deletes expired workspaces every :data:`SWEEP_INTERVAL_S` (``uploads.repo.sweep_expired``, idempotent). Same
-    daemon-thread-plus-``Event`` shape as :class:`semigraph.serve.monitor.FreshnessMonitor`."""
+    """Deletes expired workspaces and orphaned ``User*`` nodes every :data:`SWEEP_INTERVAL_S`
+    (``uploads.repo.sweep_expired`` / ``uploads.repo.sweep_orphans``, both idempotent), and marks any job left
+    non-terminal by a dead process ``failed`` once at start (``uploads.repo.fail_interrupted_jobs`` — a crash or a
+    deploy mid-job must not leave a client watching ``embedding`` forever, finding 27). Runs whenever a Neo4j driver
+    exists, independent of ``UPLOADS_ENABLED`` (docs/v2/M4_PLAN.md 15.4, finding 26): the 24 h retention promise
+    covers workspaces created before an operator's soft rollback (``UPLOADS_ENABLED=false``) too, and sweeping an
+    empty label is a cheap indexed query. Same daemon-thread-plus-``Event`` shape as
+    :class:`semigraph.serve.monitor.FreshnessMonitor`.
+
+    ``sweep_orphans`` and ``fail_interrupted_jobs`` are resolved with ``getattr(repo, name, None)`` and skipped
+    (logged once, never fatal) when absent: ``uploads/repo.py`` is out of this worker's file ownership, so these two
+    repo-side functions are a reported seam until another worker adds them."""
 
     def __init__(self, driver) -> None:
         self.driver = driver
@@ -348,8 +547,24 @@ class _Sweeper:
             self._thread.join(timeout)
 
     def _run(self) -> None:
+        self._safe_fail_interrupted()
         while not self._stop_event.wait(SWEEP_INTERVAL_S):
             self._safe_sweep()
+            self._safe_sweep_orphans()
+
+    def _safe_fail_interrupted(self) -> None:
+        from . import repo
+
+        fail_interrupted = getattr(repo, "fail_interrupted_jobs", None)
+        if fail_interrupted is None:
+            logger.warning("upload sweeper: repo.fail_interrupted_jobs is not implemented yet — skipping")
+            return
+        try:
+            n = fail_interrupted(self.driver)
+            if n:
+                logger.info("upload sweeper: marked %d interrupted job(s) failed at start", n)
+        except Exception:  # noqa: BLE001 - boot must never crash or block on this
+            logger.exception("upload sweeper: fail_interrupted_jobs failed")
 
     def _safe_sweep(self) -> None:
         from . import repo
@@ -361,19 +576,42 @@ class _Sweeper:
         except Exception:  # noqa: BLE001 - a failed sweep must not kill the sweeper thread
             logger.exception("upload sweeper: a sweep failed")
 
+    def _safe_sweep_orphans(self) -> None:
+        """A SEPARATE try/except from :meth:`_safe_sweep`: a missing or broken ``sweep_orphans`` must never stop
+        the (already shipped, load-bearing) expired-workspace sweep from running every cycle."""
+        from . import repo
+
+        sweep_orphans = getattr(repo, "sweep_orphans", None)
+        if sweep_orphans is None:
+            return
+        try:
+            n = sweep_orphans(self.driver, datetime.now(UTC))
+            if n:
+                logger.info("upload sweeper: removed %d orphaned node(s)", n)
+        except Exception:  # noqa: BLE001 - a failed sweep must not kill the sweeper thread
+            logger.exception("upload sweeper: sweep_orphans failed")
+
 
 def start_if_enabled(app) -> None:
-    """Start the TTL sweeper when ``UPLOADS_ENABLED``; ``app.state.upload_sweeper`` is None otherwise. Also probes
-    whether the configured embedder can count tokens (``app.state.uploads_token_counter_ok``): the routes answer 503
-    for every workspace route when it cannot (docs/v2/M4_PLAN.md 4.2)."""
-    app.state.upload_sweeper = None
+    """Starts the TTL sweeper unconditionally (finding 26: independent of ``UPLOADS_ENABLED``, see :class:`_Sweeper`).
+    Also probes whether the configured embedder can count tokens and publishes the single availability flag
+    ``app.state.uploads_ready`` that ``serve.routes.uploads_available`` reads (docs/v2/M4_PLAN.md 15.5, finding 29):
+    uploads are available only when BOTH ``UPLOADS_ENABLED`` and this flag are true, so the page, ``/api/stats`` and
+    every workspace route agree on whether uploads actually work.
+
+    DEVIATION (reported, not silently done): this makes ``app.state.upload_sweeper`` non-None even when
+    ``UPLOADS_ENABLED`` is false, which conflicts with the pre-review assertion in the forbidden, main-session-owned
+    ``tests/test_serve_lifespan.py::test_with_both_m4_flags_off_nothing_background_starts_and_the_upload_gates_exist``
+    (``st.upload_sweeper is None``). That test needs updating to assert the sweeper always starts; this worker does
+    not edit it (out of file ownership) — reported as a seam."""
     registry(app)
-    if not app.state.settings.uploads_enabled:
-        app.state.uploads_token_counter_ok = False
-        return
-    app.state.uploads_token_counter_ok = count_tokens_available(app.state.embedder)
-    if not app.state.uploads_token_counter_ok:
-        logger.error("the configured embedding backend cannot count tokens — uploads will answer 503")
+    s = app.state.settings
+    if s.uploads_enabled:
+        app.state.uploads_ready = count_tokens_available(app.state.embedder)
+        if not app.state.uploads_ready:
+            logger.error("the configured embedding backend cannot count tokens — uploads will answer 503")
+    else:
+        app.state.uploads_ready = False
     app.state.upload_sweeper = _Sweeper(app.state.driver)
     app.state.upload_sweeper.start()
 

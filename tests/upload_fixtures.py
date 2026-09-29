@@ -9,7 +9,9 @@ graph. DOCX fixtures use ``python-docx`` (already a project dependency) and raw 
 from __future__ import annotations
 
 import io
+import struct
 import zipfile
+import zlib
 
 # --------------------------------------------------------------------------
 # PDF: minimal hand-built syntax
@@ -118,6 +120,97 @@ def pdf_with_encryption() -> bytes:
     the raw ``/Encrypt`` key alone, exactly as it must for a document it will never be able to decrypt)."""
     base = build_pdf([[("Heading Placeholder Text", 16.0, True), ("Body text placeholder for this fixture.", 12.0, False)]])
     return base.replace(b"/Root 1 0 R >>", b"/Root 1 0 R /Encrypt 9 0 R >>")
+
+
+def _compress_objstm(hidden_obj_nums: list[int], hidden_bodies: list[bytes]) -> tuple[bytes, int]:
+    header_parts, body_parts, offset = [], [], 0
+    for num, body in zip(hidden_obj_nums, hidden_bodies):
+        header_parts.append(f"{num} {offset}")
+        body_parts.append(body)
+        offset += len(body) + 1
+    header = (" ".join(header_parts) + "\n").encode("ascii")
+    content = header + b"\n".join(body_parts) + b"\n"
+    return zlib.compress(content), len(header)
+
+
+def _xref_stream_rows(offsets: dict[int, int], xref_offset: int, content_obj_num: int,
+                      hidden_obj_nums: list[int]) -> bytes:
+    def row(entry_type: int, f2: int, f3: int) -> bytes:
+        return bytes([entry_type]) + f2.to_bytes(4, "big") + f3.to_bytes(2, "big")
+
+    rows = bytearray()
+    rows += row(0, 0, 65535)                                            # obj 0: free (mandatory first entry)
+    for num in range(1, 6):
+        rows += row(1, xref_offset if num == 5 else offsets[num], 0)    # obj 5 is the xref stream itself
+    for i in range(len(hidden_obj_nums)):
+        rows += row(2, 1, i)                                            # compressed in ObjStm 1, index i
+    rows += row(1, offsets[content_obj_num], 0)
+    return zlib.compress(bytes(rows))
+
+
+def pdf_with_objstm_objects(hidden_bodies: list[bytes]) -> bytes:
+    """A minimal, valid, one-page PDF (PDF 1.5 cross-reference STREAM, no classic xref table) whose ``hidden_bodies``
+    (raw ``<< ... >>`` object dictionaries) are stored ONLY inside a compressed ``/ObjStm`` (FlateDecode) — never as
+    plain top-level bytes — and are reachable ONLY by walking the xref table's own object list (they are not linked
+    from the Catalog/Pages tree at all). A raw byte/regex scan of the file (``gate.check_pdf_bytes``) never sees
+    their content; only a structural walk of every xref object, including compressed ones, does (section 15.7)."""
+    n_hidden = len(hidden_bodies)
+    hidden_obj_nums = list(range(6, 6 + n_hidden))
+    content_obj_num = 6 + n_hidden                                       # right after the hidden objects
+    size = content_obj_num + 1                                          # object numbers 0..content_obj_num
+    compressed_objstm, first = _compress_objstm(hidden_obj_nums, hidden_bodies)
+
+    buf = bytearray(b"%PDF-1.5\n%\xe2\xe3\xcf\xd3\n")
+    offsets: dict[int, int] = {}
+
+    def emit(num: int, body_bytes: bytes) -> None:
+        offsets[num] = len(buf)
+        buf.extend(f"{num} 0 obj\n".encode())
+        buf.extend(body_bytes)
+        buf.extend(b"\nendobj\n")
+
+    emit(1, (f"<< /Type /ObjStm /N {n_hidden} /First {first} /Length {len(compressed_objstm)} "
+             f"/Filter /FlateDecode >>\nstream\n").encode() + compressed_objstm + b"\nendstream")
+    emit(2, b"<< /Type /Catalog /Pages 3 0 R >>")                       # no reference to the hidden objects
+    emit(3, b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>")
+    emit(4, (f"<< /Type /Page /Parent 3 0 R /MediaBox [0 0 612 792] /Resources << >> "
+            f"/Contents {content_obj_num} 0 R >>").encode())
+    emit(content_obj_num, b"<< /Length 0 >>\nstream\n\nendstream")
+
+    xref_offset = len(buf)
+    compressed_rows = _xref_stream_rows(offsets, xref_offset, content_obj_num, hidden_obj_nums)
+    buf.extend(b"5 0 obj\n")
+    buf.extend((f"<< /Type /XRef /Size {size} /W [1 4 2] /Root 2 0 R /Index [0 {size}] "
+               f"/Length {len(compressed_rows)} /Filter /FlateDecode >>\nstream\n").encode())
+    buf.extend(compressed_rows)
+    buf.extend(b"\nendstream\nendobj\n")
+    buf.extend(f"startxref\n{xref_offset}\n%%EOF".encode())
+    return bytes(buf)
+
+
+def pdf_with_javascript_hidden_in_object_stream() -> bytes:
+    """``/JavaScript`` + ``/JS`` stored only inside a compressed object stream (section 15.7 fixture)."""
+    return pdf_with_objstm_objects([b"<< /S /JavaScript /JS (app.alert\\(1\\);) >>"])
+
+
+def pdf_with_a_corrupted_object_stream() -> bytes:
+    """A structurally valid PDF (same shape as :func:`pdf_with_javascript_hidden_in_object_stream`) whose ``/ObjStm``
+    compressed bytes are corrupted: pdfminer's cross-reference table still lists every object, but ``getobj()``
+    raises for the ones stored inside that stream. A structural scan that skips an object it cannot read, instead of
+    rejecting the whole document, can be defeated by corrupting exactly the object that would have been flagged."""
+    data = bytearray(pdf_with_javascript_hidden_in_object_stream())
+    filter_idx = data.find(b"/Filter /FlateDecode")
+    stream_idx = data.find(b"stream\n", filter_idx) + len(b"stream\n")
+    data[stream_idx + 5] ^= 0xFF
+    return bytes(data)
+
+
+def pdf_with_hash_escaped_name_hidden_in_object_stream() -> bytes:
+    """``#4A#61vaScript`` (decodes to ``/JavaScript`` per the PDF name-escape syntax) as a dict VALUE, and
+    ``#4A#53`` (decodes to ``/JS``) as a dict KEY — both stored only inside a compressed object stream, and with NO
+    plaintext active-content name anywhere in the object (unlike the plain ``/JS`` key form), so this fixture
+    actually exercises escape DECODING and not just the plain-name match (section 15.7)."""
+    return pdf_with_objstm_objects([b"<< /S /#4A#61vaScript /#4A#53 (app.alert\\(2\\);) >>"])
 
 
 def exe_bytes_renamed_pdf() -> bytes:
@@ -231,6 +324,45 @@ def docx_with_disallowed_member() -> bytes:
     return buf.getvalue()
 
 
+def _minimal_docx_zip() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", "<Types/>")
+        zf.writestr("word/document.xml", "<document/>")
+    return buf.getvalue()
+
+
+def zip_bad_extract_version() -> bytes:
+    """A docx-shaped zip whose central-directory ``version needed to extract`` field is set past
+    ``zipfile.MAX_EXTRACT_VERSION``: ``zipfile.ZipFile()`` raises ``NotImplementedError``, not ``BadZipFile``
+    (finding #12: a malformed zip container must never escape the gate as anything but ``GateError``)."""
+    data = bytearray(_minimal_docx_zip())
+    idx = data.find(b"PK\x01\x02")
+    while idx != -1:
+        version_needed_offset = idx + 6
+        data[version_needed_offset:version_needed_offset + 2] = struct.pack("<H", 0xFFFF)
+        idx = data.find(b"PK\x01\x02", idx + 4)
+    return bytes(data)
+
+
+def zip_bad_utf8_member_name() -> bytes:
+    """A docx-shaped zip whose UTF-8 filename flag is set but the member name is not valid UTF-8:
+    ``zipfile.ZipFile()`` raises ``UnicodeDecodeError`` while decoding the central directory
+    (finding #12)."""
+    data = bytearray(_minimal_docx_zip())
+    for sig, flag_delta, namelen_delta, name_delta in ((b"PK\x03\x04", 6, 26, 30), (b"PK\x01\x02", 8, 28, 46)):
+        idx = data.find(sig)
+        while idx != -1:
+            flag_off, namelen_off, name_off = idx + flag_delta, idx + namelen_delta, idx + name_delta
+            flag = struct.unpack("<H", data[flag_off:flag_off + 2])[0] | 0x0800
+            data[flag_off:flag_off + 2] = struct.pack("<H", flag)
+            namelen = struct.unpack("<H", data[namelen_off:namelen_off + 2])[0]
+            if namelen:
+                data[name_off] = 0xFF                # invalid UTF-8 leading byte
+            idx = data.find(sig, idx + 4)
+    return bytes(data)
+
+
 def plain_zip_not_docx() -> bytes:
     """An ordinary zip (no ``word/document.xml``): shares the PK magic with a docx but is not one."""
     buf = io.BytesIO()
@@ -291,6 +423,28 @@ The company was founded decades ago and has expanded its manufacturing footprint
 
 The company maintains a dedicated program to identify, assess and remediate cybersecurity risks across its global network.
 """
+
+
+# --------------------------------------------------------------------------
+# Markdown: the reviewer's exact "Market Outlook" meaning-reversal fixture (finding #16 / M4_PLAN.md 15.6), plus a
+# tense-only counterpart that must NOT be reported as changed
+# --------------------------------------------------------------------------
+
+MARKET_REVERSAL_V1 = ("# Executive Summary\nThe company performed well this quarter.\n\n"
+                     "# Legal Proceedings\nThere are no material legal proceedings.\n\n"
+                     "# Market Outlook\nThe market is expected to grow next year.\n\n"
+                     "# Company History\nThe company was founded and has grown steadily.\n")
+MARKET_REVERSAL_V2 = ("# Executive Summary\nThe company performed well this quarter.\n\n"
+                     "# Market Outlook\nThe market is expected to shrink next year, reversing the prior forecast.\n\n"
+                     "# Company History\nThe company was founded and has grown steadily.\n\n"
+                     "# Cybersecurity Practices\nThe company has adopted new cybersecurity controls.\n")
+
+TENSE_ONLY_V1 = ("# Executive Summary\nThe company performed well this quarter with strong results overall.\n\n"
+                "# Regulatory Impact\nNew regulations will impact our supply chain operations significantly this year.\n\n"
+                "# Company History\nThe company was founded and has grown steadily over the past decade.\n")
+TENSE_ONLY_V2 = ("# Executive Summary\nThe company performed well this quarter with strong results overall.\n\n"
+                "# Regulatory Impact\nNew regulations impacted our supply chain operations significantly this year.\n\n"
+                "# Company History\nThe company was founded and has grown steadily over the past decade.\n")
 
 
 # --------------------------------------------------------------------------

@@ -11,6 +11,7 @@ it becomes a :class:`Block`; malformed output is never trusted, it becomes ``Par
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -20,7 +21,7 @@ from pathlib import Path
 
 import semigraph
 
-PARSE_ERROR_CODES = ("parse_failed", "timeout", "too_large", "scanned", "empty", "too_many_pages")
+PARSE_ERROR_CODES = ("parse_failed", "timeout", "too_large", "scanned", "empty", "too_many_pages", "active_content")
 MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 DEFAULT_TIMEOUT_S = 90
 DEFAULT_MAX_PAGES = 30
@@ -28,17 +29,27 @@ _ALLOWED_KIND_HINTS = frozenset({"heading_style", "heading_md", "heading_html", 
 _READ_CHUNK = 65536
 _STDIN_WRITE_JOIN_S = 5
 _PROC_WAIT_JOIN_S = 5
+# exception classes serious enough (a broken native dependency, an exhausted resource) to log at ERROR rather than
+# WARNING: a parser RCE / broken build is otherwise indistinguishable from an ordinary bad upload (finding #28).
+_SEVERE_EXC_TYPES = frozenset({"ImportError", "ModuleNotFoundError", "OSError", "MemoryError"})
+
+logger = logging.getLogger("semigraph.uploads.parse")
 
 
 class ParseError(Exception):
-    """Raised by ``parse_document``; ``code`` is one of :data:`PARSE_ERROR_CODES`."""
+    """Raised by ``parse_document``; ``code`` is one of :data:`PARSE_ERROR_CODES`.
 
-    def __init__(self, code: str, message: str = "") -> None:
+    ``exc_type`` (finding #28): the CLASS NAME of the exception the sandboxed child hit, when the failure was an
+    unexpected one (``code == "parse_failed"`` from the child's catch-all handler) rather than one of its own
+    recognised codes — never the exception's message, which can quote document text (M4_PLAN.md 5)."""
+
+    def __init__(self, code: str, message: str = "", *, exc_type: str | None = None) -> None:
         if code not in PARSE_ERROR_CODES:
             raise ValueError(f"unknown parse error code {code!r}; expected one of {PARSE_ERROR_CODES}")
         super().__init__(message or code)
         self.code = code
         self.message = message or code
+        self.exc_type = exc_type
 
 
 @dataclass(frozen=True)
@@ -67,15 +78,30 @@ def _worker_command(kind: str, max_pages: int) -> list[str]:
     return [sys.executable, "-m", "semigraph.uploads.parse_worker", kind, str(max_pages)]
 
 
+_WINDOWS_CHILD_ENV_VARS = ("SYSTEMROOT", "TEMP", "TMP")      # only when the child needs them to start at all
+
+
 def _child_env() -> dict[str, str]:
-    """A COPY of the parent environment plus ``MALLOC_ARENA_MAX=2`` and a ``PYTHONPATH`` that puts the same
-    ``semigraph`` package the parent runs on the child's import path (derived from ``semigraph.__file__``, not
-    hard-coded, so it works whether that package is installed or run from a checkout)."""
-    env = dict(os.environ)
-    env["MALLOC_ARENA_MAX"] = "2"
+    """An ALLOWLISTED environment for the child, never a copy of the parent's (finding #6, M4_PLAN.md 15.7): a
+    parser RCE on untrusted bytes must not be able to read ``ANTHROPIC_API_KEY`` / ``ADMIN_TOKEN`` /
+    ``TURNSTILE_SECRET_KEY`` / the Neo4j password, or reach the Neo4j network with them. Only ``PATH`` (to find the
+    interpreter's own shared libraries), ``PYTHONPATH`` (the same ``semigraph`` package the parent runs, derived
+    from ``semigraph.__file__``, not hard-coded), ``MALLOC_ARENA_MAX=2``, ``PYTHONDONTWRITEBYTECODE=1`` and
+    ``LANG=C.UTF-8`` are passed, plus ``SYSTEMROOT`` / ``TEMP`` / ``TMP`` on Windows (the interpreter and its native
+    extensions need them to start at all there) — and even those only when actually set in the parent."""
     src_dir = str(Path(semigraph.__file__).resolve().parent.parent)
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = src_dir if not existing else f"{src_dir}{os.pathsep}{existing}"
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "PYTHONPATH": src_dir,
+        "MALLOC_ARENA_MAX": "2",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LANG": "C.UTF-8",
+    }
+    if sys.platform.startswith("win"):
+        for name in _WINDOWS_CHILD_ENV_VARS:
+            value = os.environ.get(name)
+            if value:
+                env[name] = value
     return env
 
 
@@ -149,8 +175,18 @@ def _decode_result(stdout_bytes: bytes) -> ParsedDoc:
         raise ParseError("parse_failed", f"worker produced no valid JSON: {exc}") from exc
     if isinstance(obj, dict) and "error" in obj:
         code = obj["error"] if obj["error"] in PARSE_ERROR_CODES else "parse_failed"
-        raise ParseError(code, f"parse worker reported {code!r}")
+        exc_type = obj.get("exc_type")
+        exc_type = exc_type if isinstance(exc_type, str) else None
+        raise ParseError(code, f"parse worker reported {code!r}", exc_type=exc_type)
     return _validate_parsed_doc(obj)
+
+
+def _log_parse_failure(exc: ParseError, returncode: int | None) -> None:
+    """Logs ``code`` and ``exc_type`` (the child's exception CLASS NAME) only — never :attr:`ParseError.message`,
+    which can quote parser output derived from the uploaded document's own bytes (finding #28, M4_PLAN.md 5)."""
+    severe = exc.exc_type in _SEVERE_EXC_TYPES or (returncode is not None and returncode < 0)
+    logger.log(logging.ERROR if severe else logging.WARNING,
+              "parse subprocess failed code=%s exc_type=%s returncode=%s", exc.code, exc.exc_type, returncode)
 
 
 def parse_document(data: bytes, kind: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
@@ -178,16 +214,27 @@ def parse_document(data: bytes, kind: str, *, timeout_s: int = DEFAULT_TIMEOUT_S
     if reader.is_alive():
         _kill(proc)
         reader.join(_PROC_WAIT_JOIN_S)
-        raise ParseError("timeout", f"parse subprocess exceeded {timeout_s}s")
+        # returncode is intentionally NOT passed here: we killed the process ourselves (Linux: SIGKILL, a negative
+        # returncode), so a negative code means nothing about severity for this path and would otherwise always
+        # escalate an ordinary slow parse to ERROR.
+        exc = ParseError("timeout", f"parse subprocess exceeded {timeout_s}s")
+        _log_parse_failure(exc, None)
+        raise exc
 
     stdout_bytes = outcome.get("stdout")
     if stdout_bytes is None:
-        _kill(proc)
-        raise ParseError("too_large", f"parse subprocess output exceeded {MAX_OUTPUT_BYTES} bytes")
+        _kill(proc)                                             # see the timeout branch above: returncode omitted
+        exc = ParseError("too_large", f"parse subprocess output exceeded {MAX_OUTPUT_BYTES} bytes")
+        _log_parse_failure(exc, None)
+        raise exc
 
     try:
         proc.wait(timeout=_PROC_WAIT_JOIN_S)
     except subprocess.TimeoutExpired:
         _kill(proc)
     writer.join(timeout=_STDIN_WRITE_JOIN_S)
-    return _decode_result(stdout_bytes)
+    try:
+        return _decode_result(stdout_bytes)
+    except ParseError as exc:
+        _log_parse_failure(exc, proc.returncode)
+        raise

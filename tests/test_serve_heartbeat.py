@@ -52,6 +52,15 @@ def test_evaluate_exits_nonzero_for_a_missing_or_unknown_status():
     assert heartbeat.evaluate(_body(status="something-new", configured=True)) != 0
 
 
+# ---------------------------------------------------------------------- "disabled" (docs/v2/M4_PLAN.md 15.10)
+
+def test_evaluate_exits_zero_when_disabled_regardless_of_configured():
+    """FRESHNESS_ENABLED=false is an intentional operator choice — the same kind of thing the scale-to-zero
+    Unreachable path already treats as healthy, never a heartbeat failure to page anyone about."""
+    assert heartbeat.evaluate(_body(status="disabled", configured=True)) == 0
+    assert heartbeat.evaluate(_body(status="disabled", configured=False)) == 0
+
+
 # ---------------------------------------------------------------------- main(): --body-file (no network)
 
 def test_main_with_a_body_file_exits_zero_for_ok(tmp_path):

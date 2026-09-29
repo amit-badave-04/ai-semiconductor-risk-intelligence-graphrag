@@ -33,21 +33,35 @@ NO_DOC_CHUNKS_TEXT = "(no matching passages were retrieved from your uploaded do
 
 # A heuristic that uploaded text carries a prompt-injection attempt: it FLAGS, it never blocks (docs/v2/M4_PLAN.md 5).
 # The workspace template already treats every uploaded byte as data, never as an instruction, regardless of this flag.
+#
+# LINEAR TIME ONLY (M4 review finding 4 / docs/v2/M4_PLAN.md 15.12): the two `...instructions?` alternatives below
+# used to have TWO adjacent, unbounded whitespace quantifiers (`\s+...?\s*`), and the role-marker line used a bare
+# `^\s*` under re.M — each is catastrophic-backtracking-shaped over a long whitespace run (`\s` also matches `\n`,
+# so `^\s*` under MULTILINE re-attempts the same scan at every line start across a run of blank lines). Fixed here
+# by folding the optional word into a single non-capturing, non-ambiguous group and by anchoring the role-marker
+# line to `[ \t]*` (never crosses a newline, so it cannot cascade across a run of blank lines). Proven at 2,000,000
+# characters in tests/test_retrieval_workspace.py.
 _SUSPICIOUS_RE = re.compile(
-    r"ignore\s+(?:all|the|any)?\s*(?:previous|prior|above)\s+instructions?|"
-    r"system\s+prompt|disregard\s+(?:all|the|any)?\s*(?:previous|prior|above)|"
+    r"ignore\s+(?:(?:all|the|any)\s+)?(?:previous|prior|above)\s+instructions?|"
+    r"system\s+prompt|disregard\s+(?:(?:all|the|any)\s+)?(?:previous|prior|above)|"
     r"you\s+are\s+(?:a|an|now)\b|"
-    r"^\s*(?:system|user|assistant)\s*:|"
+    r"^[ \t]*(?:system|user|assistant)[ \t]*:|"
     r"<<<|"
     r"[A-Za-z0-9+/]{100,}={0,2}",     # a long base64-looking run
     re.I | re.M,
 )
 
-# A markdown image, a markdown link, and a bare URL — stopped at a bracket, a paren or whitespace so a following
-# citation (``[doc:...]``) is never consumed by an unbounded match.
+# A markdown image, a markdown link, a reference-style image/link (``![x][ref]`` / ``[x][ref]``), a reference-style
+# link DEFINITION (``[ref]: url``, its own line), an HTML tag or autolink (``<img ...>``, ``<https://...>``), and a
+# bare URL (``https://``, any other ``scheme://``, protocol-relative ``//host/...``, or ``www.host/...``) — each
+# stopped at a bracket, a paren, an angle bracket or whitespace so a following citation (``[doc:...]``) is never
+# consumed by an unbounded match.
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _MD_LINK_RE = re.compile(r"\[([^\[\]]+)\]\(([^)]*)\)")
-_BARE_URL_RE = re.compile(r"https?://[^\s\[\]()]+")
+_REF_LINK_RE = re.compile(r"!?\[([^\[\]]+)\]\[([^\[\]]+)\]")
+_REF_LINK_DEF_RE = re.compile(r"^[ \t]*\[[^\]]+\]:[ \t]*\S.*$", re.M)
+_HTML_TAG_RE = re.compile(r"<\/?[a-zA-Z][^<>]*>")
+_BARE_URL_RE = re.compile(r"(?:[a-z][a-z0-9+.\-]*://|//)[^\s\[\]()<>]+|\bwww\.[^\s\[\]()<>]+", re.I)
 
 
 def looks_suspicious(text: str) -> bool:
@@ -63,12 +77,26 @@ def _link_replacement(match: re.Match) -> str:
     return f"[{label}]" if CITE_RE.fullmatch(f"[{label}]") else ""
 
 
+def _ref_link_replacement(match: re.Match) -> str:
+    """``![label][ref]`` / ``[label][ref]``: removed whole, UNLESS either bracket is itself a well-formed citation —
+    two adjacent real citations with no separator (``[doc:a][doc:b]``) look exactly like this reference-style link
+    grammar, and must never be eaten by it."""
+    first, second = f"[{match.group(1)}]", f"[{match.group(2)}]"
+    if CITE_RE.fullmatch(first) or CITE_RE.fullmatch(second):
+        return match.group(0)
+    return ""
+
+
 def strip_links_images(text: str) -> str:
-    """Removes markdown images, markdown links and bare URLs from ``text`` — but never a ``[doc:...]``, ``[fr:...]``
-    or chunk citation (docs/v2/M4_PLAN.md risk 5): an answer driven by untrusted uploaded text must never carry a
-    link or an image to the client."""
+    """Removes markdown images and links (inline and reference-style), reference-link definitions, HTML tags and
+    autolinks, and bare/protocol-relative/``www.`` URLs from ``text`` — but never a ``[doc:...]``, ``[fr:...]`` or
+    chunk citation (docs/v2/M4_PLAN.md risk 5): an answer driven by untrusted uploaded text must never carry a link
+    or an image to the client."""
     text = _MD_IMAGE_RE.sub("", text)
+    text = _REF_LINK_RE.sub(_ref_link_replacement, text)
     text = _MD_LINK_RE.sub(_link_replacement, text)
+    text = _REF_LINK_DEF_RE.sub("", text)
+    text = _HTML_TAG_RE.sub("", text)
     return _BARE_URL_RE.sub("", text)
 
 

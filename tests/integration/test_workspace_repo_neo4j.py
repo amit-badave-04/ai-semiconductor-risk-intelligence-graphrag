@@ -15,6 +15,7 @@ hand-written queries (``FILINGS_QUERY``, ``DOSSIER_ACTIVE_RISKS_QUERY``) for rea
 uses a fake ``run_cypher`` and had never actually been sent to a Neo4j server before.
 """
 
+import json
 import os
 import random
 from datetime import UTC, datetime, timedelta
@@ -27,9 +28,11 @@ from semigraph.config import Settings  # noqa: E402
 from semigraph.graph.client import get_driver, run_cypher  # noqa: E402
 from semigraph.graph.schema import apply_schema  # noqa: E402
 from semigraph.retrieval import dossier  # noqa: E402
+from semigraph.serve import guard  # noqa: E402
 from semigraph.serve import monitor as monitor_mod  # noqa: E402
 from semigraph.serve.main import graph_stats  # noqa: E402
 from semigraph.uploads import repo  # noqa: E402
+from semigraph.uploads.versions import as_of_cutoff  # noqa: E402
 
 THROWAWAY_URI = "bolt://localhost:7898"
 THROWAWAY_USER = "neo4j"
@@ -206,6 +209,36 @@ def test_search_chunks_as_of_cutoff_returns_the_version_visible_at_that_instant(
     assert all(r["chunk_id"] != "doc:cccccccccccc:v1:0000" for r in current_results)
 
 
+def test_search_chunks_as_of_an_instant_shows_the_version_created_at_that_exact_instant(driver, two_workspaces):
+    """finding 10, end to end: guard.validate_as_of's normalized instant -> versions.as_of_cutoff -> the real
+    Neo4j SEARCH range filter. The page's own "ask as of vN" flow uses a version's own toString(created_at)."""
+    ws = two_workspaces["ws1"]
+    v1_time = datetime.now(UTC)
+    v1_vec = _vec(51)
+    repo.put_version(driver, ws, document_id="eeeeeeeeeeee1", title="E1", version=1, content_hash="he1",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="v1", units=[_unit(char_end=2)],
+                     chunks=[_chunk("doc:eeeeeeeeeeee1:v1:0000", "v1", "he1", v1_vec)],
+                     change_report=_no_report(), suspicious=False, now=v1_time)
+    v2_time = v1_time + timedelta(seconds=2)
+    repo.put_version(driver, ws, document_id="eeeeeeeeeeee1", title=None, version=2, content_hash="he2",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="v2", units=[_unit(char_end=2)],
+                     chunks=[_chunk("doc:eeeeeeeeeeee1:v2:0000", "v2", "he2", _vec(52))],
+                     change_report=_no_report(), suspicious=False, now=v2_time)
+
+    v1_created_at = run_cypher(driver, "MATCH (v:UserVersion {workspace_id: $ws, document_id: $d, version: 1}) "
+                                       "RETURN toString(v.created_at) AS created_at",
+                               ws=ws, d="eeeeeeeeeeee1")[0]["created_at"]
+    as_of = guard.validate_as_of(v1_created_at)
+    cutoff = as_of_cutoff(as_of)
+    results = repo.search_chunks(driver, ws, v1_vec, k=5, cutoff=cutoff)
+    assert results and results[0]["chunk_id"] == "doc:eeeeeeeeeeee1:v1:0000"
+
+    # A cutoff one microsecond BEFORE v1's own created_at must not show it (valid_from < cutoff is strict).
+    before_v1 = as_of_cutoff(guard.validate_as_of(v1_created_at)) - timedelta(microseconds=2)
+    earlier_results = repo.search_chunks(driver, ws, v1_vec, k=5, cutoff=before_v1)
+    assert all(r["chunk_id"] != "doc:eeeeeeeeeeee1:v1:0000" for r in earlier_results)
+
+
 # ---------------------------------------------------------------------- embedded_chunks reuse
 
 def test_embedded_chunks_hands_back_the_stored_embedding_by_text_hash(driver, two_workspaces):
@@ -238,6 +271,153 @@ def test_sweep_expired_deletes_only_the_expired_workspace(driver, two_workspaces
     assert swept >= 1
     assert repo.get_workspace(driver, ws1) is None
     assert repo.get_workspace(driver, ws2) is not None
+
+
+# ---------------------------------------------------------------------- findings 2/13/24: no orphan survives DELETE
+
+def _count_user_nodes(driver, ws: str) -> dict[str, int]:
+    """Every User* node still present for `ws`, by label — the reviewer's own diagnostic shape (orphan.py)."""
+    counts = {}
+    with driver.session() as session:
+        for label in repo._USER_LABELS:
+            n = session.run(f"MATCH (n:{label} {{workspace_id: $ws}}) RETURN count(n) AS n", ws=ws).single()["n"]
+            if n:
+                counts[label] = n
+    return counts
+
+
+@pytest.fixture
+def cleanup_ws():
+    """Registers raw workspace ids for unconditional teardown across every label — used by the RED-path tests
+    below, whose whole point is that the normal repo functions (delete_workspace) refuse to touch them."""
+    created: list[str] = []
+    yield created
+
+
+@pytest.fixture(autouse=False)
+def _drop_ws(driver, cleanup_ws):
+    yield
+    with driver.session() as session:
+        for ws in cleanup_ws:
+            for label in repo._USER_LABELS:
+                session.run(f"MATCH (n:{label} {{workspace_id: $ws}}) DETACH DELETE n", ws=ws).consume()
+
+
+def test_put_version_after_delete_raises_workspace_gone_and_leaves_no_orphan(driver, _drop_ws, cleanup_ws):
+    """Reproduces the reviewer's orphan.py exactly: create -> delete -> a job that finishes afterwards tries to
+    write. Before the fix this left UserDocument/UserVersion/UserChunk/UserUnit orphans forever (findings 2/13/24);
+    now put_version must raise WorkspaceGone and write NOTHING."""
+    ws, _token, _exp = repo.create_workspace(driver, ttl_hours=1)
+    cleanup_ws.append(ws)
+    assert repo.delete_workspace(driver, ws) is True
+
+    with pytest.raises(repo.WorkspaceGone):
+        repo.put_version(driver, ws, document_id="aaaaaaaaaaaa", title="Confidential", version=1,
+                         content_hash="h1", method="text", pages=1, chars=len("CONFIDENTIAL uploaded text body"),
+                         chars_per_page=5.0, text="CONFIDENTIAL uploaded text body", units=[_unit()],
+                         chunks=[_chunk("doc:aaaaaaaaaaaa:v1:0000", "CONFIDENTIAL uploaded text body", "h1",
+                                        _vec(99))],
+                         change_report=_no_report(), suspicious=False, now=datetime.now(UTC))
+
+    assert _count_user_nodes(driver, ws) == {}, "put_version must leave zero User* nodes for a deleted workspace"
+
+
+def test_put_job_after_delete_raises_workspace_gone_and_writes_no_userjob(driver, _drop_ws, cleanup_ws):
+    ws, _token, _exp = repo.create_workspace(driver, ttl_hours=1)
+    cleanup_ws.append(ws)
+    assert repo.delete_workspace(driver, ws) is True
+
+    with pytest.raises(repo.WorkspaceGone):
+        repo.put_job(driver, ws, {"job_id": "j1", "state": "embedding", "document_id": "aaaaaaaaaaaa", "version": 1})
+
+    assert _count_user_nodes(driver, ws) == {}
+
+
+def test_sweep_expired_and_a_finishing_job_never_leave_an_orphan_either(driver, _drop_ws, cleanup_ws):
+    """The other half of the reviewer's scenario: the 15-minute TTL sweeper, not an explicit DELETE, removes the
+    workspace out from under a job still running."""
+    ws, _token, _exp = repo.create_workspace(driver, ttl_hours=1)
+    cleanup_ws.append(ws)
+    with driver.session() as session:
+        session.run("MATCH (w:UserWorkspace {workspace_id: $ws}) SET w.expires_at = $past",
+                   ws=ws, past=datetime.now(UTC) - timedelta(hours=1)).consume()
+    assert repo.sweep_expired(driver, datetime.now(UTC)) >= 1
+
+    with pytest.raises(repo.WorkspaceGone):
+        repo.put_version(driver, ws, document_id="bbbbbbbbbbbb", title="T", version=1, content_hash="h2",
+                         method="text", pages=1, chars=2, chars_per_page=2.0, text="hi", units=[_unit(char_end=2)],
+                         chunks=[_chunk("doc:bbbbbbbbbbbb:v1:0000", "hi", "h2", _vec(98))],
+                         change_report=_no_report(), suspicious=False, now=datetime.now(UTC))
+    assert _count_user_nodes(driver, ws) == {}
+
+
+def test_delete_workspace_and_put_version_serialize_instead_of_racing(driver, _drop_ws, cleanup_ws):
+    """put_version's lock is taken FIRST: once its transaction has committed, a concurrent delete_workspace must
+    still remove everything it wrote (no half-written state survives either order)."""
+    ws, _token, _exp = repo.create_workspace(driver, ttl_hours=1)
+    cleanup_ws.append(ws)
+    repo.put_version(driver, ws, document_id="cccccccccccc", title="T", version=1, content_hash="h3",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="hi", units=[_unit(char_end=2)],
+                     chunks=[_chunk("doc:cccccccccccc:v1:0000", "hi", "h3", _vec(97))],
+                     change_report=_no_report(), suspicious=False, now=datetime.now(UTC))
+    assert repo.delete_workspace(driver, ws) is True
+    assert _count_user_nodes(driver, ws) == {}
+
+
+# ---------------------------------------------------------------------- sweep_orphans (findings 2/13/24)
+
+def test_sweep_orphans_removes_user_nodes_seeded_without_a_userworkspace(driver, _drop_ws, cleanup_ws):
+    """Orphans can only be seeded by a raw CREATE now that put_version refuses — exactly the defence-in-depth
+    scenario sweep_orphans exists for (a write path the lock-and-refuse guard did not anticipate)."""
+    ws = "zztest-orphan-" + "0" * 18
+    cleanup_ws.append(ws)
+    with driver.session() as session:
+        session.run("""CREATE (:UserDocument {workspace_id: $ws, document_id: 'd1', created_at: $now,
+                title: 'orphan', latest_version: 1})
+            CREATE (:UserJob {workspace_id: $ws, job_id: 'j1', state: 'ready', created_at: $now, updated_at: $now,
+                payload: '{}'})""", ws=ws, now=datetime.now(UTC)).consume()
+    assert _count_user_nodes(driver, ws) == {"UserJob": 1, "UserDocument": 1}
+
+    cleaned = repo.sweep_orphans(driver, datetime.now(UTC))
+    assert cleaned >= 1
+    assert _count_user_nodes(driver, ws) == {}
+
+
+def test_sweep_orphans_never_touches_a_live_workspaces_nodes(driver, two_workspaces):
+    ws1 = two_workspaces["ws1"]
+    repo.put_version(driver, ws1, document_id="dddddddddddd", title="T", version=1, content_hash="h4",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="hi", units=[_unit(char_end=2)],
+                     chunks=[_chunk("doc:dddddddddddd:v1:0000", "hi", "h4", _vec(96))],
+                     change_report=_no_report(), suspicious=False, now=datetime.now(UTC))
+    repo.sweep_orphans(driver, datetime.now(UTC))
+    assert repo.get_workspace(driver, ws1) is not None
+    assert _count_user_nodes(driver, ws1)   # its own nodes are still there
+
+
+# ---------------------------------------------------------------------- fail_interrupted_jobs (finding 27 seam)
+
+def test_fail_interrupted_jobs_marks_a_stale_job_failed_and_a_replay_shows_it(driver, two_workspaces):
+    ws = two_workspaces["ws1"]
+    stale = datetime.now(UTC) - timedelta(seconds=repo.FAIL_INTERRUPTED_AFTER_S + 60)
+    repo.put_job(driver, ws, {"job_id": "j-stale", "state": "embedding", "document_id": "d1", "version": 1,
+                             "progress": {"done": 1, "total": 5}})
+    with driver.session() as session:
+        session.run("MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id}) SET j.updated_at = $stale",
+                   ws=ws, job_id="j-stale", stale=stale).consume()
+
+    fixed = repo.fail_interrupted_jobs(driver, datetime.now(UTC))
+    assert fixed >= 1
+    replayed = repo.get_job(driver, ws, "j-stale")
+    assert replayed["state"] == "failed"
+    assert replayed["error"] == {"code": "interrupted", "message": repo._INTERRUPTED_ERROR_MESSAGE}
+    assert replayed["document_id"] == "d1" and replayed["progress"] == {"done": 1, "total": 5}
+
+
+def test_fail_interrupted_jobs_leaves_a_fresh_non_terminal_job_alone(driver, two_workspaces):
+    ws = two_workspaces["ws1"]
+    repo.put_job(driver, ws, {"job_id": "j-fresh", "state": "embedding", "document_id": "d1", "version": 1})
+    repo.fail_interrupted_jobs(driver, datetime.now(UTC))
+    assert repo.get_job(driver, ws, "j-fresh")["state"] == "embedding"
 
 
 # ---------------------------------------------------------------------- leak proofs against the public graph

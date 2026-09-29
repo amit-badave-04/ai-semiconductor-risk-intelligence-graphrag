@@ -208,7 +208,10 @@ def ensure_indexes(driver: Driver) -> None:
                  "CREATE CONSTRAINT svc_policy_key_unique IF NOT EXISTS FOR (p:SvcPolicy) REQUIRE p.key IS UNIQUE",
                  "CREATE CONSTRAINT svc_answer_key_unique IF NOT EXISTS FOR (a:SvcAnswer) REQUIRE a.key IS UNIQUE",
                  "CREATE INDEX svc_query_day IF NOT EXISTS FOR (q:SvcQuery) ON (q.day)",
-                 "CREATE CONSTRAINT svc_upload_day_unique IF NOT EXISTS FOR (u:SvcUploadDay) REQUIRE u.day IS UNIQUE"):
+                 "CREATE CONSTRAINT svc_upload_day_unique IF NOT EXISTS FOR (u:SvcUploadDay) REQUIRE u.day IS UNIQUE",
+                 # M4 freshness monitor: one lease and one result node per key, even on two machines' first MERGE
+                 "CREATE CONSTRAINT svc_lease_key_unique IF NOT EXISTS FOR (l:SvcLease) REQUIRE l.key IS UNIQUE",
+                 "CREATE CONSTRAINT svc_freshness_key_unique IF NOT EXISTS FOR (f:SvcFreshness) REQUIRE f.key IS UNIQUE"):
         run_cypher(driver, stmt)
 
 

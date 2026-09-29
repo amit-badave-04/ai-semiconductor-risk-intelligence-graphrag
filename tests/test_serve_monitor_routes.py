@@ -81,6 +81,17 @@ def test_get_freshness_without_a_monitor_but_configured_reports_never(app_client
     assert body["status"] == "never" and body["configured"] is True
 
 
+def test_get_freshness_without_a_monitor_and_freshness_disabled_reports_disabled(app_client):
+    """FRESHNESS_ENABLED=false: start_if_enabled never even creates a monitor. That must read as "disabled", never
+    "unconfigured" (a different, misleading reason) or "never" (which implies the feature is live and idle)."""
+    client = app_client(monitor=None)
+    client.app.state.settings.freshness_enabled = False
+    resp = client.get("/api/freshness")
+    body = resp.json()
+    assert body["status"] == "disabled" and body["enabled"] is False
+    assert body["next_check_at"] is None and body["last_error_at"] is None
+
+
 def test_get_freshness_is_read_rate_limited(app_client):
     client = app_client(monitor=FakeMonitor(), read_limit=1)
     assert client.get("/api/freshness").status_code == 200

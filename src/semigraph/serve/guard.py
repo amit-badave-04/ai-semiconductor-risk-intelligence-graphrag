@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from collections import defaultdict, deque
-from datetime import date
+from datetime import UTC, date, datetime
 
 from fastapi import HTTPException, Request
 
@@ -26,6 +26,9 @@ STRATEGIES = ("hybrid", "vector")
 AGENT_STRATEGY = "agent"
 WORKSPACE_STRATEGIES = ("hybrid",)
 _AS_OF_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+_AS_OF_INSTANT_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})\Z")
+AS_OF_MIN_YEAR, AS_OF_MAX_YEAR = 2000, 2100
+MSG_AS_OF = "as_of must be a date (YYYY-MM-DD) or an instant with a UTC offset (YYYY-MM-DDTHH:MM:SSZ)"
 
 
 class RateLimiter:
@@ -102,16 +105,26 @@ def validate_workspace_id(value: str) -> str:
 
 
 def validate_as_of(value: str | None) -> str | None:
-    """``YYYY-MM-DD`` (a real calendar date) or None."""
+    """None, a calendar date ``YYYY-MM-DD`` (returned as is), or an instant with an explicit UTC offset
+    (``YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM)``, up to 9 fraction digits as Neo4j prints them) returned normalized to
+    UTC ISO 8601. A workspace lives 24 h, so versions uploaded the same day are told apart only by an instant. Years
+    outside 2000-2100 are refused (they would overflow the end-of-day cutoff and mean nothing here)."""
     if value is None:
         return None
-    if not isinstance(value, str) or not _AS_OF_RE.match(value):
-        raise HTTPException(status_code=400, detail="as_of must be a date written YYYY-MM-DD")
+    if not isinstance(value, str) or not (_AS_OF_RE.match(value) or _AS_OF_INSTANT_RE.match(value)):
+        raise HTTPException(status_code=400, detail=MSG_AS_OF)
     try:
-        date.fromisoformat(value)
+        if _AS_OF_RE.match(value):
+            day = date.fromisoformat(value)
+            canonical, year = value, day.year
+        else:
+            instant = datetime.fromisoformat(value).astimezone(UTC)
+            canonical, year = instant.isoformat(), instant.year
     except ValueError:
-        raise HTTPException(status_code=400, detail="as_of must be a date written YYYY-MM-DD") from None
-    return value
+        raise HTTPException(status_code=400, detail=MSG_AS_OF) from None
+    if not AS_OF_MIN_YEAR <= year <= AS_OF_MAX_YEAR:
+        raise HTTPException(status_code=400, detail=MSG_AS_OF)
+    return canonical
 
 
 async def verify_turnstile(token: str | None, ip: str, secret: str, is_production: bool,

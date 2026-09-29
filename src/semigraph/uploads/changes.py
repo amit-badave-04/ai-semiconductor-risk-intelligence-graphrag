@@ -6,11 +6,28 @@ that survived as ``reworded`` / ``merged`` / ``uncertain``. Read those two modul
 touching any threshold here; this module tunes them only through ``AlignParams`` / ``PassageParams``, never by
 editing them (docs/v2/M4_PLAN.md 14.9: those files are not ours to change).
 
-An older unit counts as CHANGED only when at least one passage survives for it: a ``reworded`` unit whose only
-edit is a near-verbatim rewording (a tense-only "impact" -> "impacted") produces zero passages (``passages.py``'s
-own PRESENT rule) and is folded into ``unchanged_count`` instead — the invariant
-``len(removed) + len(changed) + unchanged_count == len(older units)`` always holds (labels ``removed`` are counted
-separately; every other older unit lands in exactly one of ``changed`` or the unchanged tally).
+Every unit the aligner marks ``reworded`` / ``merged`` / ``uncertain`` stays VISIBLE (M4_PLAN.md 15.6, finding
+#16): one with at least one surviving passage is ``changed``; one with none goes to :data:`minor_rewordings`
+instead — it is NEVER folded into ``unchanged_count`` (an earlier revision did that, which silently hid a real
+meaning change whenever ``passages.py``'s own PRESENT rule happened to fire on the whole unit, not just a
+tense-only edit). The invariant ``len(removed) + len(changed) + len(minor_rewordings) + unchanged_count ==
+len(older units)`` always holds; ``unchanged_count`` now counts ONLY the aligner's own ``unchanged`` label.
+
+Uploads use :data:`UPLOAD_PASSAGE_PARAMS`, their OWN instance of ``graph.passages.PassageParams`` — calibrated
+(below) on the reviewer's exact repro ("the market is expected to grow" -> "...to shrink..., reversing the prior
+forecast") so it still produces a passage (and so counts as ``changed``) while a tense-only edit ("will impact" ->
+"impacted") does not (and lands in ``minor_rewordings``). ``graph/passages.py`` and its SEC-tuned defaults are
+untouched — this module only supplies a different instance as its OWN default, never edits the shared one.
+
+LIMITATION (not fixed here, out of this module's scope): ``present_min_ratio`` only governs the SENTENCE-level
+PRESENT rule inside ``passages.py``. A UNIT the item-level aligner already calls ``unchanged`` outright — using its
+own ``AlignParams.absence_min_ratio`` (default 85, SEC-tuned, untouched here per M4_PLAN.md 14.9) — never reaches
+this module's passage logic at all, so it never even reaches ``minor_rewordings``. A pure-negation edit ("is
+expected to grow" -> "is not expected to grow") measures ``partial_ratio`` ~90 against the WHOLE other section,
+which is at or above that aligner threshold, and is filtered out before ``compare_versions`` sees it. Only
+``AlignParams`` governs that boundary, and it is explicitly not upload-tunable here (M4_PLAN.md 15.6 asks only for
+an upload-specific ``PassageParams``); fixing the negation case would need its own decision about tuning (or adding
+an upload-specific) ``AlignParams``, reported as a separate seam rather than folded into this fix.
 """
 
 from __future__ import annotations
@@ -30,6 +47,13 @@ NOT_COMPARED_REASONS = (
 )
 LOW_TEXT_YIELD_CHARS_PER_PAGE = 200.0
 MAX_UNITS_FOR_COMPARISON = 400
+
+# present_min_ratio raised from the SEC default (75) so that a meaning-reversing rewording (measured
+# fuzz.partial_ratio ~87.5 on the "Market Outlook: grow -> shrink, reversing the prior forecast" fixture) is no
+# longer treated as merely "still present" and so gets a real passage, while a genuine tense-only edit (measured
+# ~95.5 on "will impact" -> "impacted") stays comfortably above the new floor and so still produces no passage.
+# Calibrated on tests/upload_fixtures.py MARKET_REVERSAL_V1/V2 and TENSE_ONLY_V1/V2 (see test_serve_upload_changes.py).
+UPLOAD_PASSAGE_PARAMS = PassageParams(present_min_ratio=90.0)
 
 
 @dataclass(frozen=True)
@@ -55,7 +79,7 @@ def _unit_dict(row: dict) -> dict:
 
 def _not_compared(reason: str, older: VersionView) -> dict:
     return {"items_compared": False, "not_compared_reason": reason, "added": [], "removed": [], "changed": [],
-           "unchanged_count": len(older.units)}
+           "minor_rewordings": [], "unchanged_count": len(older.units)}
 
 
 def _guard_reason(older: VersionView, newer: VersionView) -> str | None:
@@ -123,8 +147,13 @@ def _attach_passages(passages: tuple[Passage, ...], changed: dict[str, dict],
         changed[entry_key]["passages"].append({"quote": quote, "chunk_id": chunk_id, "kind": p.kind})
 
 
+def _minor_rewording_entry(entry: dict) -> dict:
+    return {"older_unit_id": entry["older_unit_id"], "newer_unit_id": entry["newer_unit_id"],
+           "headline": entry["headline"]}
+
+
 def compare_versions(older: VersionView, newer: VersionView, *, align_params: AlignParams = AlignParams(),
-                     passage_params: PassageParams = PassageParams()) -> dict:
+                     passage_params: PassageParams = UPLOAD_PASSAGE_PARAMS) -> dict:
     """The ``ChangeReport`` dict between two consecutive versions of the SAME document (module docstring)."""
     reason = _guard_reason(older, newer)
     if reason is not None:
@@ -144,8 +173,8 @@ def compare_versions(older: VersionView, newer: VersionView, *, align_params: Al
     removed = [_unit_dict(older_by_id[d.item_id]) for d in result.older if d.label == "removed"]
     added = [_unit_dict(newer_by_id[d.item_id]) for d in result.newer if d.label == "new"]
     changed_list = [entry for entry in changed.values() if entry["passages"]]
-    folded_unchanged = sum(1 for entry in changed.values() if not entry["passages"])
-    unchanged_count = sum(1 for d in result.older if d.label == "unchanged") + folded_unchanged
+    minor_rewordings = [_minor_rewording_entry(entry) for entry in changed.values() if not entry["passages"]]
+    unchanged_count = sum(1 for d in result.older if d.label == "unchanged")
 
     return {"items_compared": True, "not_compared_reason": None, "added": added, "removed": removed,
-           "changed": changed_list, "unchanged_count": unchanged_count}
+           "changed": changed_list, "minor_rewordings": minor_rewordings, "unchanged_count": unchanged_count}

@@ -237,6 +237,130 @@ def test_persist_never_raises_when_the_write_fails(monkeypatch):
     monitor_mod._persist(object(), {"checked_at": "x"})  # must not raise
 
 
+def test_load_persisted_keeps_an_error_only_row_with_no_good_check_yet(monkeypatch):
+    """docs/v2/M4_PLAN.md 15.10: a persisted error must not be discarded as "no history" just because there has
+    never been a good check — its own `last_error_at` says otherwise."""
+    row = {"checked_at": None, "as_of": None, "snapshot_id": None, "snapshot_as_of": None, "status": "error",
+          "error": "sec down", "last_error_at": "2026-09-24T00:00:00+00:00", "pending_json": None, "fr_json": None,
+          "unresolved_json": None, "duration_s": None, "pending_count": None}
+    monkeypatch.setattr(monitor_mod, "run_cypher", lambda d, q, **p: [row])
+    loaded = monitor_mod._load_persisted(object())
+    assert loaded is not None
+    assert loaded["status"] == "error" and loaded["last_error_at"] == "2026-09-24T00:00:00+00:00"
+    assert loaded["checked_at"] is None
+
+
+# ---------------------------------------------------------------------- _error_result (findings 21 + 25)
+
+def test_error_result_keeps_every_field_of_the_last_good_result():
+    previous = {"checked_at": "2026-01-01T00:00:00+00:00", "as_of": "2026-01-01", "snapshot_id": "s1",
+               "snapshot_as_of": "2025-12-31", "status": "ok", "error": None, "last_error_at": None,
+               "pending_count": 3, "pending_filings": [{"ticker": "NVDA"}],
+               "federal_register": {"graph_count": 1, "live_count": 2, "new_since": 1}, "unresolved": [],
+               "duration_s": 1.5}
+    result = monitor_mod._error_result(previous, RuntimeError("sec down"))
+    assert result["checked_at"] == previous["checked_at"]
+    assert result["pending_count"] == 3 and result["pending_filings"] == previous["pending_filings"]
+    assert result["federal_register"] == previous["federal_register"]
+    assert result["snapshot_as_of"] == previous["snapshot_as_of"] and result["as_of"] == previous["as_of"]
+    assert result["status"] == "error" and result["error"] == "sec down"
+    assert result["last_error_at"] is not None
+
+
+def test_error_result_with_no_previous_good_state_is_an_all_empty_shape_plus_the_error():
+    result = monitor_mod._error_result(None, RuntimeError("boom"))
+    assert result["checked_at"] is None and result["pending_count"] == 0 and result["pending_filings"] == []
+    assert result["federal_register"] is None
+    assert result["status"] == "error" and result["error"] == "boom" and result["last_error_at"] is not None
+
+
+def test_error_result_chains_through_a_second_failure_without_moving_checked_at():
+    first = monitor_mod._error_result(None, RuntimeError("first"))
+    time.sleep(0.01)
+    second = monitor_mod._error_result(first, RuntimeError("second"))
+    assert second["checked_at"] is None
+    assert second["last_error_at"] != first["last_error_at"]
+    assert second["error"] == "second"
+
+
+def test_run_check_keeps_the_last_good_result_when_a_later_check_fails(monkeypatch):
+    _driver_stub(monkeypatch)
+    good_result = {"checked_at": datetime.now(UTC).isoformat(), "as_of": "2026-09-24", "pending_count": 5,
+                  "pending_filings": [{"ticker": "NVDA"}],
+                  "federal_register": {"graph_count": 1, "live_count": 2, "new_since": 1}, "unresolved": [],
+                  "duration_s": 0.1}
+    _stub_check_once(monkeypatch, result=good_result)
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    m._busy.acquire()
+    m._run_check()
+    assert m._last["status"] == "ok" and m._last["pending_count"] == 5
+
+    def boom(*a, **kw):
+        raise RuntimeError("sec 403")
+
+    monkeypatch.setattr(monitor_mod, "check_once", boom)
+    m._busy.acquire()
+    m._run_check()
+    assert m._last["status"] == "error"
+    assert m._last["pending_count"] == 5   # the last good count — never zeroed by the failed attempt
+    assert m._last["pending_filings"] == [{"ticker": "NVDA"}]
+    assert m._last["checked_at"] == good_result["checked_at"]   # never overwritten by a failed attempt
+    assert m._last["last_error_at"] is not None
+    assert m.status_payload()["last_error_at"] == m._last["last_error_at"]
+
+
+# ---------------------------------------------------------------------- error retry backoff (findings 21 + 25)
+
+def test_is_stale_or_missing_false_soon_after_an_error_within_the_backoff_window():
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    m._last = {**_stub_result(), "status": "error",
+              "last_error_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat()}
+    assert m._is_stale_or_missing() is False
+
+
+def test_is_stale_or_missing_true_once_the_error_backoff_window_has_passed():
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    m._last = {**_stub_result(), "status": "error",
+              "last_error_at": (datetime.now(UTC) -
+                                timedelta(minutes=monitor_mod.ERROR_RETRY_MINUTES + 1)).isoformat()}
+    assert m._is_stale_or_missing() is True
+
+
+def test_next_wait_seconds_is_the_retry_backoff_after_an_error():
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    m._last = {**_stub_result(), "status": "error", "last_error_at": datetime.now(UTC).isoformat()}
+    assert m._next_wait_seconds() == pytest.approx(monitor_mod.ERROR_RETRY_MINUTES * 60, abs=2)
+
+
+def test_next_wait_seconds_is_the_poll_interval_after_an_ok_check():
+    settings = FakeSettings()
+    settings.freshness_poll_hours = 6
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._last = {**_stub_result(), "checked_at": datetime.now(UTC).isoformat(), "status": "ok"}
+    assert m._next_wait_seconds() == pytest.approx(6 * 3600, abs=2)
+
+
+def test_next_wait_seconds_anchors_on_checked_at_not_on_now_at_boot():
+    """The bug the loop used to have: a monitor that boots with a persisted OK check already 5 h into a 6 h poll
+    interval must wait only the REMAINING 1 h, never a fresh full 6 h from boot time (which would silently push the
+    real next check out to 11 h after the last one, and make next_check_at read as already-past for 5 h)."""
+    settings = FakeSettings()
+    settings.freshness_poll_hours = 6
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._last = {**_stub_result(), "checked_at": (datetime.now(UTC) - timedelta(hours=5)).isoformat(), "status": "ok"}
+    assert m._next_wait_seconds() == pytest.approx(3600, abs=2)
+    assert m._is_stale_or_missing() is False
+
+
+def test_next_wait_seconds_is_negative_once_a_check_is_overdue():
+    settings = FakeSettings()
+    settings.freshness_poll_hours = 1
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._last = {**_stub_result(), "checked_at": (datetime.now(UTC) - timedelta(hours=2)).isoformat(), "status": "ok"}
+    assert m._next_wait_seconds() < 0
+    assert m._is_stale_or_missing() is True
+
+
 # ---------------------------------------------------------------------- FreshnessMonitor lifecycle
 
 def test_stop_returns_promptly_even_mid_sleep(monkeypatch):
@@ -359,11 +483,15 @@ def test_safe_try_check_survives_an_unexpected_error_from_try_check_itself(monke
 
 def test_status_payload_reports_never_with_no_history(monkeypatch):
     _driver_stub(monkeypatch)
-    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
-    assert m.status_payload() == {"configured": True, "enabled": True, "status": "never", "checked_at": None,
-                                  "snapshot_as_of": None, "next_check_at": None, "pending_count": 0,
-                                  "pending_filings": [], "federal_register": None, "unresolved": [],
-                                  "duration_s": None}
+    settings = FakeSettings()
+    settings.freshness_boot_delay_s = 300
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    payload = m.status_payload()
+    expected_next_check = (m._started_at + timedelta(seconds=300)).isoformat()
+    assert payload == {"configured": True, "enabled": True, "status": "never", "checked_at": None,
+                       "snapshot_as_of": None, "last_error_at": None, "next_check_at": expected_next_check,
+                       "pending_count": 0, "pending_filings": [], "federal_register": None, "unresolved": [],
+                       "duration_s": None}
 
 
 def test_status_payload_snapshot_as_of_is_the_graphs_data_date_not_the_check_date():
@@ -403,9 +531,48 @@ def test_status_payload_reports_unconfigured_even_with_a_recent_ok_check():
     assert m.status_payload()["status"] == "unconfigured"
 
 
-def test_summary_is_none_before_any_state_is_loaded():
+# ---------------------------------------------------------------------- next_check_at (finding: known item)
+
+def test_status_payload_next_check_at_is_none_when_unconfigured():
+    settings = FakeSettings()
+    settings.sec_user_agent = ""
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._last = {**_stub_result(), "status": "ok"}
+    assert m.status_payload()["next_check_at"] is None
+
+
+def test_status_payload_next_check_at_after_an_ok_check_is_checked_at_plus_the_poll_interval():
+    settings = FakeSettings()
+    settings.freshness_poll_hours = 6
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    checked_at = datetime.now(UTC) - timedelta(hours=1)
+    m._last = {**_stub_result(), "checked_at": checked_at.isoformat(), "status": "ok"}
+    expected = (checked_at + timedelta(hours=6)).isoformat()
+    assert m.status_payload()["next_check_at"] == expected
+
+
+def test_status_payload_next_check_at_after_an_error_is_last_error_at_plus_the_retry_backoff():
     m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
-    assert m.summary() is None
+    last_error_at = datetime.now(UTC) - timedelta(minutes=5)
+    m._last = {**_stub_result(), "status": "error", "error": "boom", "last_error_at": last_error_at.isoformat()}
+    expected = (last_error_at + timedelta(minutes=monitor_mod.ERROR_RETRY_MINUTES)).isoformat()
+    payload = m.status_payload()
+    assert payload["next_check_at"] == expected
+    assert payload["last_error_at"] == last_error_at.isoformat()
+
+
+# ---------------------------------------------------------------------- summary (finding 18)
+
+def test_summary_reports_never_before_any_state_is_loaded():
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    assert m.summary() == {"status": "never", "checked_at": None, "pending_count": 0}
+
+
+def test_summary_reports_unconfigured_when_sec_user_agent_is_missing():
+    settings = FakeSettings()
+    settings.sec_user_agent = ""
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    assert m.summary() == {"status": "unconfigured", "checked_at": None, "pending_count": 0}
 
 
 def test_summary_never_touches_the_database(monkeypatch):

@@ -20,7 +20,7 @@ import threading
 import time
 import urllib.request
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from ..graph.client import run_cypher
 from ..ingestion import federal_register
@@ -33,6 +33,9 @@ logger = logging.getLogger("semigraph.serve.monitor")
 SEC_FETCH_TIMEOUT_S = 20
 SEC_FETCH_PAUSE_S = 0.15
 LEASE_MINUTES = 30
+# docs/v2/M4_PLAN.md 15.10: a failed check is retried sooner than a full `freshness_poll_hours` wait, so a transient
+# SEC/Federal-Register outage clears itself well inside one poll interval instead of sitting at `error` for hours.
+ERROR_RETRY_MINUTES = 30
 
 COMPANY_CIK_QUERY = "MATCH (c:Company) WHERE c.ticker IS NOT NULL RETURN c.ticker AS ticker, c.cik AS cik"
 KNOWN_ACCESSIONS_QUERY = "MATCH (:Company)-[:FILED]->(f:Filing) RETURN f.accession_no AS accession_no"
@@ -55,13 +58,13 @@ RETURN l.holder = $me AS ok"""
 
 GET_FRESHNESS_QUERY = """MATCH (f:SvcFreshness {key: 'latest'})
 RETURN f.checked_at AS checked_at, f.as_of AS as_of, f.snapshot_id AS snapshot_id,
-       f.snapshot_as_of AS snapshot_as_of, f.status AS status, f.error AS error,
+       f.snapshot_as_of AS snapshot_as_of, f.status AS status, f.error AS error, f.last_error_at AS last_error_at,
        f.pending_json AS pending_json, f.fr_json AS fr_json, f.unresolved_json AS unresolved_json,
        f.duration_s AS duration_s, f.pending_count AS pending_count"""
 
 PUT_FRESHNESS_QUERY = """MERGE (f:SvcFreshness {key: 'latest'})
 SET f.checked_at = $checked_at, f.as_of = $as_of, f.snapshot_id = $snapshot_id,
-    f.snapshot_as_of = $snapshot_as_of, f.status = $status, f.error = $error,
+    f.snapshot_as_of = $snapshot_as_of, f.status = $status, f.error = $error, f.last_error_at = $last_error_at,
     f.pending_json = $pending_json, f.fr_json = $fr_json, f.unresolved_json = $unresolved_json,
     f.duration_s = $duration_s, f.pending_count = $pending_count"""
 
@@ -159,12 +162,17 @@ def _load_persisted(driver) -> dict | None:
     except Exception:  # noqa: BLE001 - a bad read must never crash the monitor thread
         logger.exception("loading the persisted freshness state failed")
         return None
-    if not rows or rows[0]["checked_at"] is None:
+    if not rows:
         return None
     r = rows[0]
+    # No SvcFreshness row has EVER been written (never a good check, never a failed attempt) — distinct from a row
+    # that exists but has only ever recorded errors, whose ``checked_at`` is null too but ``last_error_at`` is not
+    # (docs/v2/M4_PLAN.md 15.10: that state must still be loaded, not discarded as "no history").
+    if r["checked_at"] is None and r.get("last_error_at") is None:
+        return None
     return {"checked_at": r["checked_at"], "as_of": r["as_of"], "snapshot_id": r["snapshot_id"],
             "snapshot_as_of": r["snapshot_as_of"], "status": r["status"], "error": r["error"],
-            "pending_count": r["pending_count"] or 0,
+            "last_error_at": r.get("last_error_at"), "pending_count": r["pending_count"] or 0,
             "pending_filings": json.loads(r["pending_json"]) if r["pending_json"] else [],
             "federal_register": json.loads(r["fr_json"]) if r["fr_json"] else None,
             "unresolved": json.loads(r["unresolved_json"]) if r["unresolved_json"] else [],
@@ -176,6 +184,7 @@ def _persist(driver, result: dict) -> None:
         run_cypher(driver, PUT_FRESHNESS_QUERY, checked_at=result.get("checked_at"), as_of=result.get("as_of"),
                    snapshot_id=result.get("snapshot_id"), snapshot_as_of=result.get("snapshot_as_of"),
                    status=result.get("status"), error=result.get("error"),
+                   last_error_at=result.get("last_error_at"),
                    pending_json=json.dumps(result.get("pending_filings", []), default=str),
                    fr_json=json.dumps(result["federal_register"]) if result.get("federal_register") else None,
                    unresolved_json=json.dumps(result.get("unresolved", [])),
@@ -184,10 +193,19 @@ def _persist(driver, result: dict) -> None:
         logger.exception("persisting the freshness result failed")
 
 
-def _error_result(exc: Exception) -> dict:
-    return {"checked_at": datetime.now(UTC).isoformat(), "as_of": None, "snapshot_id": None, "snapshot_as_of": None,
-            "pending_count": 0, "pending_filings": [], "federal_register": None, "unresolved": [],
-            "duration_s": 0.0, "status": "error", "error": str(exc)}
+_EMPTY_RESULT = {"checked_at": None, "as_of": None, "snapshot_id": None, "snapshot_as_of": None, "pending_count": 0,
+                 "pending_filings": [], "federal_register": None, "unresolved": [], "duration_s": None}
+
+
+def _error_result(previous: dict | None, exc: Exception) -> dict:
+    """A failed check must never look like "0 filings pending" (docs/v2/M4_PLAN.md 15.10): every field of the last
+    GOOD result is carried forward unchanged (or an all-empty shape when there has never been one), and only
+    ``status``, ``error`` and ``last_error_at`` are ever set here. Chaining holds across repeated failures too: a
+    second error's ``previous`` is the first error's OWN carried-forward good fields, so ``checked_at`` never
+    silently starts moving just because the checks keep failing."""
+    base = {k: v for k, v in (previous or {}).items() if k not in ("status", "error", "last_error_at")}
+    return {**_EMPTY_RESULT, **base, "status": "error", "error": str(exc),
+            "last_error_at": datetime.now(UTC).isoformat()}
 
 
 class FreshnessMonitor:
@@ -204,6 +222,7 @@ class FreshnessMonitor:
         self._busy = threading.Lock()
         self._last: dict | None = None
         self._machine_id = f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        self._started_at = datetime.now(UTC)   # for next_check_at before any attempt has ever been made
 
     @property
     def configured(self) -> bool:
@@ -229,9 +248,25 @@ class FreshnessMonitor:
             return
         if self._is_stale_or_missing():
             self._safe_try_check()
-        poll_seconds = max(1, self.settings.freshness_poll_hours) * 3600
-        while not self._stop_event.wait(poll_seconds):
+        # ANCHORED on the same due time status_payload()'s next_check_at reports (docs/v2/M4_PLAN.md 15.10),
+        # recomputed fresh on every wake — never a flat interval restarted from "now". A monitor that boots with an
+        # already-somewhat-stale good check (say 5 h into a 6 h poll interval) must wait only the REMAINING 1 h, not
+        # a further full 6 h; a check that just failed must wake again after ERROR_RETRY_MINUTES from the failure,
+        # not from whenever the loop happens to next look.
+        while not self._stop_event.wait(max(0.0, self._next_wait_seconds())):
             self._safe_try_check()
+
+    def _next_wait_seconds(self) -> float:
+        """Seconds from NOW until the next check is due — the single source of truth :meth:`_next_check_at` and
+        :meth:`_is_stale_or_missing` both defer to, so the loop's real behaviour, the boot decision and the
+        publicly reported ``next_check_at`` can never drift apart from one another. A negative return means a
+        check is already overdue."""
+        with self._state_lock:
+            last = dict(self._last) if self._last else {}
+        due_iso = self._next_check_at(last)
+        if due_iso is None:   # unconfigured: _try_check() no-ops anyway; just avoid a tight loop
+            return max(1, self.settings.freshness_poll_hours) * 3600
+        return (datetime.fromisoformat(due_iso) - datetime.now(UTC)).total_seconds()
 
     def _safe_try_check(self) -> None:
         """``_try_check`` should never raise (every I/O path below is already guarded), but the polling thread must
@@ -242,11 +277,9 @@ class FreshnessMonitor:
             logger.exception("the freshness poll loop hit an unexpected error")
 
     def _is_stale_or_missing(self) -> bool:
-        last = self._last
-        if not last or not last.get("checked_at"):
-            return True
-        age_hours = (datetime.now(UTC) - datetime.fromisoformat(last["checked_at"])).total_seconds() / 3600
-        return age_hours > self.settings.freshness_poll_hours
+        """True exactly when the schedule says a check is due NOW — derived from :meth:`_next_wait_seconds` so this
+        can never encode different age/backoff rules than the loop that actually acts on it."""
+        return self._next_wait_seconds() <= 0
 
     def _try_check(self) -> None:
         """Background-loop path: skip silently when a check is already running, another machine holds the lease, or
@@ -268,10 +301,13 @@ class FreshnessMonitor:
         """Assumes ``self._busy`` is already held; always releases it, whoever called this."""
         try:
             try:
-                result = {**check_once(self.driver, self.settings), "status": "ok"}
+                result = {**check_once(self.driver, self.settings), "status": "ok", "error": None,
+                          "last_error_at": None}
             except Exception as e:  # noqa: BLE001 - a check that fails must still release the lock and be reported
                 logger.exception("freshness check failed")
-                result = _error_result(e)
+                with self._state_lock:
+                    previous = self._last
+                result = _error_result(previous, e)
             _persist(self.driver, result)
             with self._state_lock:
                 self._last = result
@@ -296,7 +332,7 @@ class FreshnessMonitor:
         return self.status_payload()
 
     def status_payload(self) -> dict:
-        """The ``GET /api/freshness`` / admin-check response shape (docs/v2/M4_PLAN.md 4.1). In-memory only."""
+        """The ``GET /api/freshness`` / admin-check response shape (docs/v2/M4_PLAN.md 4.1, 15.10). In-memory only."""
         with self._state_lock:
             last = dict(self._last) if self._last else {}
         return {
@@ -305,7 +341,8 @@ class FreshnessMonitor:
             "status": self._status_for(last),
             "checked_at": last.get("checked_at"),
             "snapshot_as_of": last.get("snapshot_as_of"),   # the graph's OWN data date — never the check's `as_of`
-            "next_check_at": None,
+            "last_error_at": last.get("last_error_at"),
+            "next_check_at": self._next_check_at(last),
             "pending_count": last.get("pending_count", 0),
             "pending_filings": last.get("pending_filings", []),
             "federal_register": last.get("federal_register"),
@@ -327,14 +364,46 @@ class FreshnessMonitor:
                 return "stale"
         return "ok"
 
-    def summary(self) -> dict | None:
-        """``{"status", "checked_at", "pending_count"}`` for ``/api/stats``, or None with no monitor state yet.
-        Purely in-memory — never touches the database, so it is safe to call synchronously from the event loop."""
-        if self._last is None:
+    def _next_check_at(self, last: dict) -> str | None:
+        """When the next attempt is due — null only while the monitor is unconfigured (docs/v2/M4_PLAN.md 15.10);
+        a disabled monitor is never represented by a :class:`FreshnessMonitor` instance at all (see
+        ``monitor_routes._DISABLED_PAYLOAD``, which is null unconditionally there). Anchored on the last ATTEMPT
+        (an error retries sooner than a full poll interval), never recomputed from a fresh "now" on every call, so
+        two calls a second apart report the same instant rather than drifting."""
+        if not self.configured:
             return None
+        if last.get("status") == "error" and last.get("last_error_at"):
+            anchor, interval_s = last["last_error_at"], ERROR_RETRY_MINUTES * 60
+        elif last.get("checked_at"):
+            anchor, interval_s = last["checked_at"], max(1, self.settings.freshness_poll_hours) * 3600
+        else:
+            anchor, interval_s = self._started_at.isoformat(), self.settings.freshness_boot_delay_s
+        return (datetime.fromisoformat(anchor) + timedelta(seconds=interval_s)).isoformat()
+
+    def summary(self) -> dict:
+        """``{"status", "checked_at", "pending_count"}`` for ``/api/stats`` — a real shape (``status`` in
+        ``never``/``unconfigured``/``error``/``stale``/``ok``) whenever a :class:`FreshnessMonitor` instance exists,
+        never ``None`` (docs/v2/M4_PLAN.md 15.10; a monitor object only exists at all when the feature is enabled —
+        the "disabled" case with no instance is ``routes``'s own concern). Purely in-memory — never touches the
+        database, so it is safe to call synchronously from the event loop."""
         payload = self.status_payload()
         return {"status": payload["status"], "checked_at": payload["checked_at"],
                 "pending_count": payload["pending_count"]}
+
+
+def status_without_a_monitor(settings) -> tuple[str, bool]:
+    """The ``status``/``configured`` pair when no :class:`FreshnessMonitor` exists: ``FRESHNESS_ENABLED`` off ("disabled"),
+    on without ``SEC_USER_AGENT`` ("unconfigured"), or on and configured but no monitor attached (a hand-built test
+    ``app.state``: "never"). ``GET /api/freshness`` and ``/api/stats`` both use it, so they cannot disagree."""
+    configured = bool((getattr(settings, "sec_user_agent", "") or "").strip())
+    if not getattr(settings, "freshness_enabled", False):
+        return "disabled", configured
+    return ("unconfigured" if not configured else "never"), configured
+
+
+def summary_without_a_monitor(settings) -> dict:
+    """The ``/api/stats`` freshness block when no monitor exists (the same shape :meth:`FreshnessMonitor.summary` returns)."""
+    return {"status": status_without_a_monitor(settings)[0], "checked_at": None, "pending_count": 0}
 
 
 def start_if_enabled(app) -> None:

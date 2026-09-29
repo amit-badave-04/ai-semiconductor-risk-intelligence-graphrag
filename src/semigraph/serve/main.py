@@ -4,8 +4,10 @@
 """
 
 import contextlib
+import hashlib
 import importlib
 import logging
+import re
 import threading
 import time
 
@@ -29,6 +31,36 @@ SECONDS_PER_HOUR = 3_600
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("semigraph.serve.main")
+
+_WORKSPACE_PATH_RE = re.compile(r"^/api/workspace/([0-9a-f]{32})(?=/|$)")
+_DOC_ID_IN_PATH_RE = re.compile(r"doc:[0-9a-f]{12}:v[0-9]{1,3}:[0-9]{4}")
+
+
+def ws_hash(workspace_id: str) -> str:
+    """The first 12 hex of sha256(workspace_id): what logs may carry instead of the id (docs/v2/M4_PLAN.md 5)."""
+    return hashlib.sha256(workspace_id.encode("utf-8")).hexdigest()[:12]
+
+
+def redact_access_path(path: str) -> str:
+    """An access-log path with no raw workspace id, no uploaded-document id and no workspace query string."""
+    match = _WORKSPACE_PATH_RE.match(path)
+    if match:
+        path = f"/api/workspace/<ws:{ws_hash(match.group(1))}>" + path[match.end():].split("?", 1)[0]
+    return _DOC_ID_IN_PATH_RE.sub("<doc>", path)
+
+
+class WorkspaceAccessLogFilter(logging.Filter):
+    """Rewrites uvicorn's access-log record (args = client, method, path, http version, status) with
+    :func:`redact_access_path`; never drops a record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            record.args = (*args[:2], redact_access_path(args[2]), *args[3:])
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(WorkspaceAccessLogFilter())
 
 CONNECT_RETRY_S = 90  # the database machine may still be booting after START
 AGENT_MODULE = "semigraph.agent.stream"

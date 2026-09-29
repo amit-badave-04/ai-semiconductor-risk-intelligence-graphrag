@@ -137,14 +137,19 @@ def client(fake_repo, fake_store, fake_jobs):
     app.state.driver = object()
     app.state.workspace_create_limiter = guard.RateLimiter(3, 86400)
     app.state.upload_limiter = guard.RateLimiter(10, 3600)
+    app.state.read_rate_limiter = guard.RateLimiter(120, 60)
     app.state.upload_slots = threading.BoundedSemaphore(1)
-    app.state.uploads_token_counter_ok = True
+    app.state.uploads_ready = True     # routes.uploads_available(app.state) = uploads_enabled AND uploads_ready
     app.state.upload_jobs = jobs.JobRegistry()
     return TestClient(app)
 
 
 def _auth(token=TOKEN):
     return {"X-Workspace-Token": token}
+
+
+def _turnstile(token="tok"):
+    return {"X-Turnstile-Token": token}
 
 
 # ---------------------------------------------------------------- UPLOADS_ENABLED gate
@@ -234,8 +239,7 @@ def test_delete_workspace_returns_204_and_calls_repo(client, fake_repo):
 def _upload(client, *, filename="a.txt", content=b"hello world", content_type="text/plain",
            data=None, headers=None):
     data = {} if data is None else data
-    data.setdefault("turnstile_token", "tok")
-    return client.post(f"/api/workspace/{WS}/documents", headers={**_auth(), **(headers or {})},
+    return client.post(f"/api/workspace/{WS}/documents", headers={**_auth(), **_turnstile(), **(headers or {})},
                        files={"file": (filename, content, content_type)}, data=data)
 
 
@@ -255,8 +259,35 @@ def test_kill_switch_blocks_uploads_with_503(client, fake_store):
 
 
 def test_upload_without_a_file_field_is_400(client):
-    r = client.post(f"/api/workspace/{WS}/documents", headers=_auth(), data={"turnstile_token": "tok"})
+    r = client.post(f"/api/workspace/{WS}/documents", headers={**_auth(), **_turnstile()})
     assert r.status_code == 400
+
+
+def test_more_than_the_max_multipart_parts_is_a_400_not_a_hang(client):
+    """Finding 3: the page sends at most file + document_id + title. A body with many more parts must be rejected
+    cheaply, never let python-multipart's per-part Python state machine run unbounded on the event loop."""
+    data = {f"field{i}": "x" for i in range(wr.MAX_MULTIPART_PARTS + 5)}
+    r = _upload(client, data=data)
+    assert r.status_code == 400
+    assert r.headers["cache-control"] == "no-store"
+
+
+def test_a_multipart_body_with_no_boundary_is_400_never_500(client):
+    r = client.post(f"/api/workspace/{WS}/documents",
+                    headers={**_auth(), **_turnstile(), "content-type": "multipart/form-data"},
+                    content=b"garbage body with no boundary at all")
+    assert r.status_code == 400
+    assert r.json()["code"] == "malformed"
+    assert r.headers["cache-control"] == "no-store"
+
+
+def test_a_garbage_multipart_body_is_400_never_500(client):
+    r = client.post(f"/api/workspace/{WS}/documents",
+                    headers={**_auth(), **_turnstile(),
+                             "content-type": "multipart/form-data; boundary=----abc"},
+                    content=b"this is not a valid multipart body at all, no boundaries here")
+    assert r.status_code == 400
+    assert r.json()["code"] == "malformed"
 
 
 def test_content_length_over_the_cap_is_rejected_before_reading(client):
@@ -329,18 +360,108 @@ def test_junk_files_never_spend_the_daily_upload_budget(client, fake_store):
     assert fake_store["reserve_calls"] == 0
 
 
+# ---------------------------------------------------------------- slot-leak on the exception path (findings 5/17/23)
+
+
+def test_the_upload_slot_is_released_when_reserve_daily_upload_raises(client, monkeypatch):
+    def boom(driver, limit):
+        raise RuntimeError("simulated transient Neo4j error")
+
+    monkeypatch.setattr(store, "reserve_daily_upload", boom)
+    with pytest.raises(RuntimeError):
+        _upload(client)
+    # The slot must be free again for the NEXT upload — not leaked forever (the bug: only `not reserved` released it).
+    assert client.app.state.upload_slots.acquire(blocking=False) is True
+
+
+def test_the_upload_slot_is_released_when_run_upload_job_raises_before_the_thread_starts(client, monkeypatch):
+    def boom(app, **kw):
+        raise RuntimeError("simulated thread-start failure")
+
+    monkeypatch.setattr(jobs, "run_upload_job", boom)
+    with pytest.raises(RuntimeError):
+        _upload(client)
+    assert client.app.state.upload_slots.acquire(blocking=False) is True
+
+
+def test_a_second_upload_after_a_reserve_failure_is_not_permanently_busy(client, monkeypatch):
+    """End-to-end version of the slot-leak finding: the FIRST request's failure must not turn every LATER upload
+    into a permanent 429 busy until the process restarts."""
+    calls = {"n": 0}
+
+    def flaky(driver, limit):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("simulated transient Neo4j error")
+        return True
+
+    monkeypatch.setattr(store, "reserve_daily_upload", flaky)
+    with pytest.raises(RuntimeError):
+        _upload(client)
+    r2 = _upload(client)
+    assert r2.status_code == 202
+
+
 # ---------------------------------------------------------------- GET /api/workspace/{ws}/jobs/{job_id} (SSE)
+# Findings 1/14/22 (docs/v2/M4_PLAN.md 15.3): the SSE stream is now an ASYNC generator over JobRegistry's
+# append-only, fan-out event log — never a queue.Queue, never a threadpool thread.
 
 
 def test_a_live_job_streams_its_queued_events_then_closes(client):
     reg = client.app.state.upload_jobs
-    q = reg.create(WS, "job1")
-    q.put({"job_id": "job1", "state": "parsing"})
-    q.put({"job_id": "job1", "state": "ready", "version": 1})
+    reg.create(WS, "job1")
+    reg.append(WS, "job1", {"job_id": "job1", "state": "parsing"})
+    reg.append(WS, "job1", {"job_id": "job1", "state": "ready", "version": 1})
     r = client.get(f"/api/workspace/{WS}/jobs/job1", headers=_auth())
     assert r.status_code == 200
     compact = r.text.replace(" ", "")
     assert "event:job" in compact and '"state":"ready"' in compact
+
+
+def test_every_watcher_sees_every_event_not_just_one_of_them(client):
+    """The root of the SSE leak: a queue.Queue hands each item to exactly ONE consumer. Two SEPARATE requests on the
+    same job must each see the full event sequence, including the terminal one."""
+    reg = client.app.state.upload_jobs
+    reg.create(WS, "job1")
+    reg.append(WS, "job1", {"job_id": "job1", "state": "parsing"})
+    reg.append(WS, "job1", {"job_id": "job1", "state": "ready", "version": 1})
+    r1 = client.get(f"/api/workspace/{WS}/jobs/job1", headers=_auth())
+    r2 = client.get(f"/api/workspace/{WS}/jobs/job1", headers=_auth())
+    for r in (r1, r2):
+        compact = r.text.replace(" ", "")
+        assert '"state":"parsing"' in compact and '"state":"ready"' in compact
+
+
+def test_a_4th_live_watcher_on_the_same_job_gets_429(client):
+    """At most MAX_LIVE_WATCHERS_PER_JOB (3) live SSE connections per job (docs/v2/M4_PLAN.md 15.3)."""
+    reg = client.app.state.upload_jobs
+    reg.create(WS, "job1")
+    assert reg.try_watch(WS, "job1") is True   # simulates 3 already-open connections on this job
+    assert reg.try_watch(WS, "job1") is True
+    assert reg.try_watch(WS, "job1") is True
+    r = client.get(f"/api/workspace/{WS}/jobs/job1", headers=_auth())
+    assert r.status_code == 429
+    assert r.headers["cache-control"] == "no-store"
+
+
+def test_a_watcher_slot_frees_up_once_its_connection_finishes(client):
+    reg = client.app.state.upload_jobs
+    reg.create(WS, "job1")
+    reg.append(WS, "job1", {"job_id": "job1", "state": "ready", "version": 1})
+    r = client.get(f"/api/workspace/{WS}/jobs/job1", headers=_auth())
+    assert r.status_code == 200     # a terminal event: this watcher finishes and releases its slot immediately
+    assert reg.try_watch(WS, "job1") is True
+    assert reg.try_watch(WS, "job1") is True
+    assert reg.try_watch(WS, "job1") is True
+
+
+def test_the_job_event_stream_is_an_async_generator_never_a_threadpool_generator():
+    """Structural regression guard for findings 1/14/22: sse_starlette runs a SYNC generator through
+    ``starlette.concurrency.iterate_in_threadpool`` (the un-cancellable call that caused the leak) but iterates an
+    ASYNC generator natively. This pins the fix at the type level, not just by behaviour."""
+    import inspect
+
+    assert inspect.isasyncgenfunction(wr._job_event_stream)
 
 
 def test_a_finished_jobs_events_replay_from_the_persisted_snapshot(client, fake_repo):
@@ -348,6 +469,13 @@ def test_a_finished_jobs_events_replay_from_the_persisted_snapshot(client, fake_
     r = client.get(f"/api/workspace/{WS}/jobs/job2", headers=_auth())
     assert r.status_code == 200
     assert '"state":"ready"' in r.text.replace(" ", "")
+
+
+def test_workspace_get_routes_take_the_read_rate_window(client):
+    client.app.state.read_rate_limiter = guard.RateLimiter(1, 86400)
+    assert client.get(f"/api/workspace/{WS}", headers=_auth()).status_code == 200
+    r = client.get(f"/api/workspace/{WS}", headers=_auth())
+    assert r.status_code == 429
 
 
 def test_an_unknown_job_id_is_404(client):
@@ -368,6 +496,13 @@ def test_changes_404_for_an_unknown_version_pair(client):
     assert r.status_code == 404
 
 
+def test_changes_route_takes_the_read_rate_window(client):
+    client.app.state.read_rate_limiter = guard.RateLimiter(1, 86400)
+    assert client.get(f"/api/workspace/{WS}/changes?document_id={DOC}&from=1&to=2", headers=_auth()).status_code == 200
+    r = client.get(f"/api/workspace/{WS}/changes?document_id={DOC}&from=1&to=2", headers=_auth())
+    assert r.status_code == 429
+
+
 # ---------------------------------------------------------------- GET /api/workspace/{ws}/evidence/{doc_id}
 
 
@@ -384,3 +519,10 @@ def test_evidence_404_for_a_malformed_id(client):
 def test_evidence_404_for_an_unknown_id_of_the_right_shape(client):
     r = client.get(f"/api/workspace/{WS}/evidence/doc:ffffffffffff:v1:0001", headers=_auth())
     assert r.status_code == 404
+
+
+def test_evidence_route_takes_the_read_rate_window(client):
+    client.app.state.read_rate_limiter = guard.RateLimiter(1, 86400)
+    path = f"/api/workspace/{WS}/evidence/doc:0123456789ab:v1:0001"
+    assert client.get(path, headers=_auth()).status_code == 200
+    assert client.get(path, headers=_auth()).status_code == 429

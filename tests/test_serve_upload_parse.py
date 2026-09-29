@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import textwrap
@@ -69,6 +70,39 @@ def test_parse_document_html_end_to_end_scripts_dropped():
     assert any(b.kind_hint == "heading_html" for b in doc.blocks)
 
 
+def test_parse_document_md_hash_inside_backtick_fence_is_not_a_heading():
+    """A ``#`` line inside a fenced code block (a shell comment, a Python comment, ...) must never be read as a
+    Markdown heading (M4_PLAN.md 15.7)."""
+    md = ("# Real Heading One\n\n"
+         "```\n"
+         "# not a heading: a shell comment inside a fenced code block\n"
+         "echo hello\n"
+         "```\n\n"
+         "# Real Heading Two\n\n"
+         "Body paragraph after the fence.\n")
+    doc = parse.parse_document(md.encode("utf-8"), "md")
+    headings = {b.text for b in doc.blocks if b.kind_hint == "heading_md"}
+    assert headings == {"Real Heading One", "Real Heading Two"}
+    all_text = " ".join(b.text for b in doc.blocks)
+    assert "not a heading" in all_text                        # fence content preserved as body text, not dropped
+
+
+def test_parse_document_md_hash_inside_tilde_fence_is_not_a_heading():
+    md = "# Real Heading\n\n~~~\n# not a heading either\n~~~\n\nBody paragraph.\n"
+    doc = parse.parse_document(md.encode("utf-8"), "md")
+    headings = {b.text for b in doc.blocks if b.kind_hint == "heading_md"}
+    assert headings == {"Real Heading"}
+
+
+def test_parse_document_md_unterminated_fence_treats_rest_of_document_as_code():
+    """An unterminated fence still suppresses heading detection for every line after it (never crashes, never
+    silently resumes heading detection)."""
+    md = "# Real Heading\n\n```\n# still not a heading\n\n# also not a heading\n"
+    doc = parse.parse_document(md.encode("utf-8"), "md")
+    headings = {b.text for b in doc.blocks if b.kind_hint == "heading_md"}
+    assert headings == {"Real Heading"}
+
+
 def test_parse_document_txt_end_to_end():
     doc = parse.parse_document(b"Paragraph one here.\n\nParagraph two here.", "txt")
     assert [b.text for b in doc.blocks] == ["Paragraph one here.", "Paragraph two here."]
@@ -100,6 +134,86 @@ def test_parse_document_empty_bytes_is_empty():
     with pytest.raises(parse.ParseError) as exc:
         parse.parse_document(b"", "txt")
     assert exc.value.code == "empty"
+
+
+# --------------------------------------------------------------------------
+# section 15.7: a structural active-content scan INSIDE the sandbox catches what the raw byte scan
+# (gate.check_pdf_bytes, run before the sandbox) cannot: names hidden in a compressed object stream
+# --------------------------------------------------------------------------
+
+def test_gate_raw_scan_is_blind_to_javascript_hidden_in_an_object_stream():
+    """Precondition for the next two tests: the raw byte scan really cannot see this (it is a regex over raw
+    bytes; a compressed FlateDecode object stream's content is opaque to it)."""
+    from semigraph.uploads import gate
+
+    gate.check_pdf_bytes(fx.pdf_with_javascript_hidden_in_object_stream())          # must NOT raise
+    gate.check_pdf_bytes(fx.pdf_with_hash_escaped_name_hidden_in_object_stream())   # must NOT raise
+
+
+def test_parse_document_rejects_javascript_hidden_in_an_object_stream():
+    with pytest.raises(parse.ParseError) as exc:
+        parse.parse_document(fx.pdf_with_javascript_hidden_in_object_stream(), "pdf")
+    assert exc.value.code == "active_content"
+
+
+def test_parse_document_rejects_hash_escaped_name_hidden_in_an_object_stream():
+    """``#4A#61vaScript`` decodes to ``/JavaScript``; pdfminer decodes ``#xx`` escapes as part of normal
+    tokenization, so the structural scan sees the escaped name too."""
+    with pytest.raises(parse.ParseError) as exc:
+        parse.parse_document(fx.pdf_with_hash_escaped_name_hidden_in_object_stream(), "pdf")
+    assert exc.value.code == "active_content"
+
+
+def test_parse_document_accepts_a_clean_pdf_with_no_structural_active_content():
+    doc = parse.parse_document(fx.simple_pdf(), "pdf")           # must not raise active_content
+    assert doc.pages == 4
+
+
+def test_scan_pdf_structural_active_content_does_not_fail_open_on_a_pathological_object():
+    """A deeply nested array in one object must never let a LATER, genuinely malicious object escape the scan: a
+    recursive walk would hit ``RecursionError`` on the nested array, which an ``except Exception`` around the
+    whole scan would then swallow, silently skipping every object not yet visited (including the real
+    ``/JavaScript`` one). The walk must be bounded/iterative, and the whole document must still be rejected."""
+    from semigraph.uploads import parse_worker
+
+    data = fx.pdf_with_objstm_objects([b"[" * 5000 + b"]" * 5000, b"<< /S /JavaScript >>"])
+    with pytest.raises(parse_worker._ParseWorkerError) as exc:
+        parse_worker._scan_pdf_structural_active_content(data)
+    assert exc.value.code in ("active_content", "parse_failed")
+
+
+def test_scan_pdf_structural_active_content_getobj_failure_fails_closed():
+    """Once the document has been opened and its object ids listed successfully, a failure reading any ONE of them
+    must reject the whole document (``parse_failed``), never silently skip that object and keep going: a
+    structural active-content scan that can be defeated by corrupting the one object it would have flagged is not
+    a scan. (Corrupting the compressed ``/ObjStm`` bytes makes pdfminer's own ``getobj()`` raise for every object
+    stored in it, while the cross-reference table still lists them — a realistic single-object failure, not a
+    contrived mock.)"""
+    from semigraph.uploads import parse_worker
+
+    with pytest.raises(parse_worker._ParseWorkerError) as exc:
+        parse_worker._scan_pdf_structural_active_content(fx.pdf_with_a_corrupted_object_stream())
+    assert exc.value.code == "parse_failed"
+
+
+def test_scan_pdf_structural_active_content_rejects_over_the_object_count_bound(monkeypatch):
+    """Direct unit test of the bound itself (section 15.7): a document listing more objects than the cap is
+    rejected outright as ``parse_failed``, never walked — proven by lowering the cap rather than building a real
+    50,000-object PDF."""
+    from semigraph.uploads import parse_worker
+
+    monkeypatch.setattr(parse_worker, "_MAX_STRUCTURAL_PDF_OBJECTS", 2)
+    with pytest.raises(parse_worker._ParseWorkerError) as exc:
+        parse_worker._scan_pdf_structural_active_content(fx.simple_pdf())          # a clean PDF, > 2 objects
+    assert exc.value.code == "parse_failed"
+
+
+def test_scan_pdf_structural_active_content_is_a_noop_for_a_non_pdf_or_unparsable_input():
+    """Defense in depth only: something pdfminer cannot structurally parse at all must not itself become a
+    failure (that verdict is left to the byte scan and the real content extractors)."""
+    from semigraph.uploads import parse_worker
+
+    parse_worker._scan_pdf_structural_active_content(b"not a pdf at all")          # must not raise
 
 
 # --------------------------------------------------------------------------
@@ -151,6 +265,128 @@ def test_parse_document_rejects_unknown_block_kind_hint(monkeypatch):
     with pytest.raises(parse.ParseError) as exc:
         parse.parse_document(b"irrelevant", "pdf", timeout_s=30)
     assert exc.value.code == "parse_failed"
+
+
+# --------------------------------------------------------------------------
+# finding #6: the child gets an ALLOWLISTED environment, never a copy of the parent's (no API keys, tokens,
+# Neo4j credentials, ...)
+# --------------------------------------------------------------------------
+
+_SECRET_LEAK_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|^NEO4J_", re.IGNORECASE)
+
+
+def test_child_env_is_an_allowlist_not_a_copy_of_the_parent(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-never-leak")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-should-never-leak-either")
+    monkeypatch.setenv("ADMIN_TOKEN", "admin-should-never-leak")
+    monkeypatch.setenv("TURNSTILE_SECRET_KEY", "ts-should-never-leak")
+    monkeypatch.setenv("NEO4J_PASSWORD", "neo4j-should-never-leak")
+    monkeypatch.setenv("NEO4J_URI", "bolt://should-never-leak")
+    monkeypatch.setenv("SOME_UNRELATED_PARENT_VAR", "must not leak either: not on the allowlist")
+
+    env = parse._child_env()
+
+    assert not any(_SECRET_LEAK_RE.search(name) for name in env), env.keys()
+    assert "SOME_UNRELATED_PARENT_VAR" not in env
+    assert env["MALLOC_ARENA_MAX"] == "2"
+    assert env["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert env["LANG"] == "C.UTF-8"
+    assert "PYTHONPATH" in env
+    assert "PATH" in env
+
+
+def test_child_env_allowlist_is_exactly_the_documented_set(monkeypatch):
+    monkeypatch.setenv("SYSTEMROOT", r"C:\Windows")
+    env = parse._child_env()
+    allowed = {"PATH", "PYTHONPATH", "MALLOC_ARENA_MAX", "PYTHONDONTWRITEBYTECODE", "LANG"}
+    if sys.platform.startswith("win"):
+        allowed |= {"SYSTEMROOT", "TEMP", "TMP"} & set(env)          # only the ones actually needed to start
+    assert set(env) <= allowed
+
+
+def test_child_subprocess_never_actually_receives_secret_env_vars(monkeypatch, tmp_path):
+    """End-to-end: a REAL spawned child (through ``parse_document`` / ``_child_env`` / ``Popen``) never sees the
+    parent's secrets, not just the dict ``_child_env()`` builds in isolation."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-never-leak")
+    monkeypatch.setenv("NEO4J_PASSWORD", "neo4j-should-never-leak")
+    dump_path = tmp_path / "child_env_dump.json"
+    script = textwrap.dedent(f"""
+        import json, os
+        with open({str(dump_path)!r}, "w") as f:
+            json.dump(dict(os.environ), f)
+        print(json.dumps({{"error": "parse_failed"}}))
+    """)
+    monkeypatch.setattr(parse, "_worker_command", lambda kind, max_pages: [sys.executable, "-c", script])
+    with pytest.raises(parse.ParseError):
+        parse.parse_document(b"irrelevant", "pdf", timeout_s=30)
+    child_env = json.loads(dump_path.read_text())
+    assert "ANTHROPIC_API_KEY" not in child_env
+    assert "NEO4J_PASSWORD" not in child_env
+    assert not any(_SECRET_LEAK_RE.search(name) for name in child_env), child_env.keys()
+
+
+# --------------------------------------------------------------------------
+# finding #28: the child reports its exception CLASS NAME (never the message), and the parent logs code +
+# exc_type only
+# --------------------------------------------------------------------------
+
+def test_worker_main_reports_exc_type_never_the_exception_message(monkeypatch, tmp_path):
+    """A direct unit test of ``parse_worker.main``'s catch-all handler: an unexpected exception (a broken native
+    dependency, not one of the worker's own recognised codes) must surface its CLASS NAME to the parent, and its
+    message — which could quote document text — must never reach stdout."""
+    from semigraph.uploads import parse_worker
+
+    secret_marker = "SECRET_DOCUMENT_TEXT_MUST_NEVER_LEAK"
+    monkeypatch.setattr(parse_worker, "_parse",
+                        lambda kind, data, max_pages: (_ for _ in ()).throw(RuntimeError(secret_marker)))
+    monkeypatch.setattr(sys, "stdin", type("S", (), {"buffer": __import__("io").BytesIO(b"irrelevant bytes")})())
+    out = __import__("io").BytesIO()
+    monkeypatch.setattr(sys, "stdout", type("S", (), {"buffer": out})())
+
+    rc = parse_worker.main(["parse_worker", "pdf", "30"])
+
+    assert rc == 1
+    payload = json.loads(out.getvalue())
+    assert payload == {"error": "parse_failed", "exc_type": "RuntimeError"}
+    assert secret_marker not in out.getvalue().decode("utf-8")
+
+
+def test_parse_document_surfaces_exc_type_from_a_child_reported_unexpected_exception(monkeypatch):
+    script = ("import json, sys; "
+             "sys.stdout.write(json.dumps({'error': 'parse_failed', 'exc_type': 'ImportError'}))")
+    monkeypatch.setattr(parse, "_worker_command", lambda kind, max_pages: [sys.executable, "-c", script])
+    with pytest.raises(parse.ParseError) as exc:
+        parse.parse_document(b"irrelevant", "pdf", timeout_s=30)
+    assert exc.value.code == "parse_failed"
+    assert exc.value.exc_type == "ImportError"
+
+
+def test_parse_document_logs_code_and_exc_type_never_the_message(monkeypatch, caplog):
+    secret_marker = "SECRET_DOCUMENT_TEXT_MUST_NEVER_APPEAR_IN_LOGS"
+    script = ("import json, sys; "
+             f"sys.stdout.write(json.dumps({{'error': 'parse_failed', 'exc_type': 'ImportError', "
+             f"'message': {secret_marker!r}}}))")
+    monkeypatch.setattr(parse, "_worker_command", lambda kind, max_pages: [sys.executable, "-c", script])
+    with caplog.at_level("WARNING", logger="semigraph.uploads.parse"):
+        with pytest.raises(parse.ParseError):
+            parse.parse_document(b"irrelevant", "pdf", timeout_s=30)
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert "parse_failed" in logged
+    assert "ImportError" in logged
+    assert secret_marker not in logged                       # the child's own "message" field is never logged
+
+
+def test_parse_document_logs_severe_exc_types_at_error_level(monkeypatch, caplog):
+    script = "import json, sys; sys.stdout.write(json.dumps({'error': 'parse_failed', 'exc_type': 'ImportError'}))"
+    monkeypatch.setattr(parse, "_worker_command", lambda kind, max_pages: [sys.executable, "-c", script])
+    with caplog.at_level("WARNING", logger="semigraph.uploads.parse"):
+        with pytest.raises(parse.ParseError):
+            parse.parse_document(b"irrelevant", "pdf", timeout_s=30)
+    assert any(r.levelname == "ERROR" for r in caplog.records)
+
+
+def test_parse_error_carries_no_exc_type_by_default():
+    assert parse.ParseError("empty").exc_type is None
 
 
 def test_worker_command_invokes_the_real_module():

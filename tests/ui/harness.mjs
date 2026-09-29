@@ -17,6 +17,8 @@ const EXPORTS = [
   "agentEnabled", "stepText", "tracingNote", "syncAgentUi", "addStep", "clearSteps",
   // M4: the upload workspace panel's pure functions (tests/ui/workspace.test.mjs)
   "docChipLabel", "staleClass", "jobStateText", "versionTimeline", "relativeTime", "freshnessLine",
+  // M4 review fixes: upload target, title, "ask as of vN", and the richer what-changed view (findings 15, 16, 15.1)
+  "uploadTargetOptions", "uploadTitleFor", "versionAskAsOfOptions", "changeItemHtml", "changesHtml",
 ];
 
 function stubElement() {
