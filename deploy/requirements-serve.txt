@@ -35,8 +35,12 @@ certifi==2026.7.22
     #   httpcore
     #   httpx
     #   requests
+cffi==2.1.1
+    # via cryptography
 charset-normalizer==3.5.1
-    # via requests
+    # via
+    #   pdfminer-six
+    #   requests
 click==8.5.0
     # via
     #   huggingface-hub
@@ -44,6 +48,8 @@ click==8.5.0
     #   uvicorn
 colorama==0.4.6
     # via tqdm
+cryptography==50.0.1
+    # via pdfminer-six
 distro==1.9.0
     # via
     #   langsmith
@@ -136,6 +142,8 @@ langsmith==0.14.1
     # via langchain-core
 litellm==1.100.0
     # via -r deploy/requirements-serve.in
+lxml==6.1.3
+    # via python-docx
 markupsafe==3.0.3
     # via jinja2
 multidict==6.7.1
@@ -148,6 +156,7 @@ numpy==2.5.3
     # via
     #   -r deploy/requirements-serve.in
     #   onnxruntime
+    #   scipy
 onnxruntime==1.29.0
     # via -r deploy/requirements-serve.in
 openai==2.54.0
@@ -164,12 +173,22 @@ packaging==26.3
     #   langchain-core
     #   langsmith
     #   onnxruntime
+pdfminer-six==20260107
+    # via pdfplumber
+pdfplumber==0.11.10
+    # via -r deploy/requirements-serve.in
+pillow==12.3.0
+    # via pdfplumber
 propcache==0.5.2
     # via
     #   aiohttp
     #   yarl
 protobuf==7.36.1
     # via onnxruntime
+puremagic==2.2.0
+    # via -r deploy/requirements-serve.in
+pycparser==3.0
+    # via cffi
 pydantic==2.13.5
     # via
     #   -r deploy/requirements-serve.in
@@ -186,14 +205,22 @@ pydantic-settings==2.15.0
     # via
     #   -r deploy/requirements-serve.in
     #   litellm
+pypdfium2==5.13.0
+    # via
+    #   -r deploy/requirements-serve.in
+    #   pdfplumber
 python-dateutil==2.9.0.post0
     # via botocore
+python-docx==1.2.0
+    # via -r deploy/requirements-serve.in
 python-dotenv==1.2.3
     # via
     #   -r deploy/requirements-serve.in
     #   litellm
     #   pydantic-settings
     #   uvicorn
+python-multipart==0.0.32
+    # via -r deploy/requirements-serve.in
 pytz==2026.3.post1
     # via neo4j
 pyyaml==6.0.3
@@ -201,6 +228,8 @@ pyyaml==6.0.3
     #   huggingface-hub
     #   langchain-core
     #   uvicorn
+rapidfuzz==3.14.6
+    # via -r deploy/requirements-serve.in
 referencing==0.37.0
     # via
     #   jsonschema
@@ -220,6 +249,8 @@ rpds-py==2026.6.3
     #   referencing
 s3transfer==0.19.2
     # via boto3
+scipy==1.18.1
+    # via -r deploy/requirements-serve.in
 six==1.17.0
     # via python-dateutil
 sniffio==1.3.1
@@ -259,6 +290,7 @@ typing-extensions==4.16.0
     #   openai
     #   pydantic
     #   pydantic-core
+    #   python-docx
     #   typing-inspection
 typing-inspection==0.4.4
     # via

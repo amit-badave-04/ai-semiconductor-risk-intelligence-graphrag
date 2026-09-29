@@ -16,3 +16,13 @@ pydantic-settings>=2.14
 python-dotenv>=1.2
 # Opt-in agent (AGENT_ENABLED=true; docs/v2/M3_AGENT_PLAN.md): shipped in the image so the flag is a config change, imported only when the flag is on
 langgraph>=1.2.7
+# M4 upload workspace (UPLOADS_ENABLED; docs/v2/M4_PLAN.md section 3): multipart bodies, PDF text + font metrics (pypdfium2 primary,
+# pdfplumber cross-check), DOCX, magic-byte sniffing, and the text alignment graph/alignment.py + passages.py already use offline.
+# Licenses: Apache-2 / BSD-3 / MIT, zero copyleft in the resolved closure. NEVER pymupdf / PyMuPDF (AGPL; a test pins its absence).
+python-multipart>=0.0.32
+pypdfium2>=5.13
+pdfplumber>=0.11.10
+python-docx>=1.2
+puremagic>=2.2
+rapidfuzz>=3.14
+scipy>=1.18
