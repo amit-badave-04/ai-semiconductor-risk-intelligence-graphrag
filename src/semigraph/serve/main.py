@@ -19,9 +19,13 @@ from ..embeddings import Embedder
 from ..graph.client import DatabaseDriver, run_cypher
 from ..graph.schema import PRIVATE_LABEL_PREFIXES, apply_schema, private_label_predicate
 from ..retrieval.answerer import template_fingerprint
+from ..uploads import jobs
 from .guard import RateLimiter
 from .routes import router
-from . import store, tracing
+from . import dossier_routes, monitor, monitor_routes, store, tracing, workspace_routes
+
+SECONDS_PER_DAY = 86_400
+SECONDS_PER_HOUR = 3_600
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("semigraph.serve.main")
@@ -170,18 +174,39 @@ async def lifespan(app: FastAPI):
                                               settings.rate_limit_window_seconds)
     app.state.read_rate_limiter = RateLimiter(settings.read_rate_limit_per_minute, 60)
     app.state.answer_slots = threading.BoundedSemaphore(settings.max_concurrent_answers)
+    # M4 upload gates (docs/v2/M4_PLAN.md 4.4 and 5): per-address windows and ONE upload at a time on the machine
+    # (embedding never takes an answer slot).
+    app.state.workspace_create_limiter = RateLimiter(settings.workspace_create_per_day, SECONDS_PER_DAY)
+    app.state.upload_limiter = RateLimiter(settings.uploads_per_hour, SECONDS_PER_HOUR)
+    app.state.upload_slots = threading.BoundedSemaphore(1)
+    # Background services, each only when its flag is on (freshness monitor, workspace TTL sweeper).
+    monitor.start_if_enabled(app)
+    jobs.start_if_enabled(app)
     logger.info("semigraph %s serving — graph: %s", __version__, stats)
     yield
     try:
+        await run_in_threadpool(stop_background_services, app)
         await run_in_threadpool(shutdown_tracer_bounded, app.state.tracer)
     finally:
         driver.close()
+
+
+def stop_background_services(app) -> None:
+    """Stop the monitor and the sweeper before the driver closes (each bounded). Never raises: a failing stop must not keep
+    the database driver open."""
+    for name, stop in (("freshness monitor", monitor.stop), ("upload sweeper", jobs.stop)):
+        try:
+            stop(app)
+        except Exception:  # noqa: BLE001
+            logger.exception("stopping the %s failed", name)
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="semigraph", version=__version__, lifespan=lifespan,
                   docs_url=None, redoc_url=None)
     app.include_router(router)
+    for extra in (monitor_routes.router, dossier_routes.router, workspace_routes.router):   # M4
+        app.include_router(extra)
     return app
 
 

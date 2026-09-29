@@ -25,6 +25,9 @@ FLY_KEYS = {
         "ADMIN_TOKEN", "APP_BASE_URL", "MAX_QUERIES_PER_DAY",
         "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY",
         "EMBEDDING_API_BASE", "EMBEDDING_API_KEY", "EMBEDDING_API_MODEL",
+        # M4 freshness monitor: the SEC fair-access identity ("Name email") names a real person, so it is a secret, never
+        # a fly.toml [env] entry in the public repo (docs/v2/M4_PLAN.md D4).
+        "SEC_USER_AGENT",
     ],
     "semigraph-neo4j": ["NEO4J_AUTH"],
 }

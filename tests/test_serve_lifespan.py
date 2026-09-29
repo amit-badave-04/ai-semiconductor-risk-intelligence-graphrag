@@ -151,3 +151,44 @@ def test_a_hung_tracer_does_not_delay_shutdown_past_the_bound_and_the_driver_sti
     elapsed = time.monotonic() - started
     assert elapsed < 2.0                                    # bounded well under the hang, not the real (infinite) wait
     assert boot.order[-1] == "driver.close"                 # closed even though the tracer's shutdown thread never finished
+
+
+# ---------------------------------------------------------------- M4: background services start only when their flag is on, stop first
+
+def test_with_both_m4_flags_off_nothing_background_starts_and_the_upload_gates_exist(monkeypatch, boot):
+    use_settings(monkeypatch)
+    with TestClient(main.create_app()) as client:
+        st = client.app.state
+        assert st.freshness_monitor is None and st.upload_sweeper is None
+        assert isinstance(st.upload_slots, type(threading.BoundedSemaphore(1)))
+        assert st.upload_slots.acquire(blocking=False) and not st.upload_slots.acquire(blocking=False)   # exactly one
+        assert st.workspace_create_limiter.max_events == 3 and st.workspace_create_limiter.window == 86400
+        assert st.upload_limiter.max_events == 10 and st.upload_limiter.window == 3600
+    assert boot.order == ["bootstrap", "driver.close"]
+
+
+def test_the_background_services_stop_before_the_driver_closes_even_when_the_tracer_fails(monkeypatch, boot):
+    use_settings(monkeypatch)
+    monkeypatch.setattr(main.tracing, "get_tracer", lambda s: FakeTracer(boot.order, fail=True))
+    monkeypatch.setattr(main.monitor, "stop", lambda app: boot.order.append("monitor.stop"))
+    monkeypatch.setattr(main.jobs, "stop", lambda app: boot.order.append("jobs.stop"))
+    with TestClient(main.create_app()):
+        pass
+    assert boot.order == ["bootstrap", "monitor.stop", "jobs.stop", "tracer.shutdown", "driver.close"]
+
+
+def test_a_failing_background_stop_never_keeps_the_driver_open(monkeypatch, boot):
+    use_settings(monkeypatch)
+
+    def boom(app):
+        raise RuntimeError("stop failed")
+    monkeypatch.setattr(main.monitor, "stop", boom)
+    with TestClient(main.create_app()):
+        pass
+    assert boot.order[-1] == "driver.close"
+
+
+def test_the_m4_routers_are_mounted():
+    app = main.create_app()
+    for router in (main.monitor_routes.router, main.dossier_routes.router, main.workspace_routes.router):
+        assert all(r in app.router.routes for r in router.routes)
