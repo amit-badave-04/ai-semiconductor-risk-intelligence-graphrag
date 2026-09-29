@@ -1,0 +1,385 @@
+{
+ "draft_clean": {
+  "events": [
+   {
+    "anchor_defaulted": false,
+    "anchors": {
+     "NVDA": "0001045810"
+    },
+    "counts": {
+     "chunks": 2,
+     "edges": 1,
+     "metrics": 0,
+     "risks": 1,
+     "temporal": 0
+    },
+    "event": "retrieval"
+   },
+   {
+    "event": "delta",
+    "text": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003] and on foundry partners [0001045810-25-000023:I.1:0001]."
+   },
+   {
+    "answer": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003] and on foundry partners [0001045810-25-000023:I.1:0001].",
+    "answered_by": "openai/gpt-6-luna",
+    "checks": {
+     "citations_retrieved": true,
+     "echoed_numbers": [],
+     "has_citation": true,
+     "is_refusal": false,
+     "numbers_checked": 0,
+     "numbers_grounded": true,
+     "pseudo_citations": [],
+     "unmatched_numbers": [],
+     "unsupported_removal_claim": false,
+     "unsupported_removal_sentences": []
+    },
+    "chunk_ids": [
+     "0001045810-25-000023:I.1A:0003",
+     "0001045810-25-000023:I.1:0001"
+    ],
+    "citations": [
+     "0001045810-25-000023:I.1:0001",
+     "0001045810-25-000023:I.1A:0003"
+    ],
+    "context_chars": 601,
+    "cost_usd": 0.00014,
+    "escalated": false,
+    "event": "done",
+    "finish_reason": "stop",
+    "hallucinated": [],
+    "question": "Who makes Nvidia's GPUs?",
+    "routed": "cheap",
+    "strategy": "hybrid",
+    "usage": {
+     "completion_tokens": 40,
+     "prompt_tokens": 1200
+    }
+   }
+  ],
+  "prompts": [
+   "27043d21b7b6c9bc"
+  ]
+ },
+ "draft_error": {
+  "events": [
+   {
+    "anchor_defaulted": false,
+    "anchors": {
+     "NVDA": "0001045810"
+    },
+    "counts": {
+     "chunks": 2,
+     "edges": 1,
+     "metrics": 0,
+     "risks": 1,
+     "temporal": 0
+    },
+    "event": "retrieval"
+   },
+   {
+    "event": "escalated",
+    "from": "openai/gpt-6-luna",
+    "reasons": [
+     "draft_error"
+    ],
+    "to": "anthropic/claude-sonnet-5"
+   },
+   {
+    "event": "delta",
+    "text": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003]"
+   },
+   {
+    "event": "delta",
+    "text": " and on foundry partners [0001045810-25-000023:I.1:0001]."
+   },
+   {
+    "answer": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003] and on foundry partners [0001045810-25-000023:I.1:0001].",
+    "answered_by": "anthropic/claude-sonnet-5",
+    "checks": {
+     "citations_retrieved": true,
+     "echoed_numbers": [],
+     "has_citation": true,
+     "is_refusal": false,
+     "numbers_checked": 0,
+     "numbers_grounded": true,
+     "pseudo_citations": [],
+     "unmatched_numbers": [],
+     "unsupported_removal_claim": false,
+     "unsupported_removal_sentences": []
+    },
+    "chunk_ids": [
+     "0001045810-25-000023:I.1A:0003",
+     "0001045810-25-000023:I.1:0001"
+    ],
+    "citations": [
+     "0001045810-25-000023:I.1:0001",
+     "0001045810-25-000023:I.1A:0003"
+    ],
+    "context_chars": 601,
+    "cost_usd": 0.0028,
+    "escalated": true,
+    "escalation_reasons": [
+     "draft_error"
+    ],
+    "event": "done",
+    "finish_reason": "stop",
+    "hallucinated": [],
+    "question": "Who makes Nvidia's GPUs?",
+    "routed": "cheap",
+    "strategy": "hybrid",
+    "usage": {
+     "completion_tokens": 40,
+     "prompt_tokens": 1200
+    }
+   }
+  ],
+  "prompts": [
+   "27043d21b7b6c9bc",
+   "27043d21b7b6c9bc"
+  ]
+ },
+ "draft_rejected": {
+  "events": [
+   {
+    "anchor_defaulted": false,
+    "anchors": {
+     "NVDA": "0001045810"
+    },
+    "counts": {
+     "chunks": 2,
+     "edges": 1,
+     "metrics": 0,
+     "risks": 1,
+     "temporal": 0
+    },
+    "event": "retrieval"
+   },
+   {
+    "event": "escalated",
+    "from": "openai/gpt-6-luna",
+    "reasons": [
+     "invalid_citation"
+    ],
+    "to": "anthropic/claude-sonnet-5"
+   },
+   {
+    "event": "delta",
+    "text": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003]"
+   },
+   {
+    "event": "delta",
+    "text": " and on foundry partners [0001045810-25-000023:I.1:0001]."
+   },
+   {
+    "answer": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003] and on foundry partners [0001045810-25-000023:I.1:0001].",
+    "answered_by": "anthropic/claude-sonnet-5",
+    "checks": {
+     "citations_retrieved": true,
+     "echoed_numbers": [],
+     "has_citation": true,
+     "is_refusal": false,
+     "numbers_checked": 0,
+     "numbers_grounded": true,
+     "pseudo_citations": [],
+     "unmatched_numbers": [],
+     "unsupported_removal_claim": false,
+     "unsupported_removal_sentences": []
+    },
+    "chunk_ids": [
+     "0001045810-25-000023:I.1A:0003",
+     "0001045810-25-000023:I.1:0001"
+    ],
+    "citations": [
+     "0001045810-25-000023:I.1:0001",
+     "0001045810-25-000023:I.1A:0003"
+    ],
+    "context_chars": 601,
+    "cost_usd": 0.00294,
+    "escalated": true,
+    "escalation_reasons": [
+     "invalid_citation"
+    ],
+    "event": "done",
+    "finish_reason": "stop",
+    "hallucinated": [],
+    "question": "Who makes Nvidia's GPUs?",
+    "routed": "cheap",
+    "strategy": "hybrid",
+    "usage": {
+     "completion_tokens": 80,
+     "prompt_tokens": 2400
+    }
+   }
+  ],
+  "prompts": [
+   "27043d21b7b6c9bc",
+   "27043d21b7b6c9bc"
+  ]
+ },
+ "live": {
+  "events": [
+   {
+    "anchor_defaulted": false,
+    "anchors": {
+     "NVDA": "0001045810"
+    },
+    "counts": {
+     "chunks": 2,
+     "edges": 1,
+     "metrics": 0,
+     "risks": 1,
+     "temporal": 0
+    },
+    "event": "retrieval"
+   },
+   {
+    "event": "delta",
+    "text": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003]"
+   },
+   {
+    "event": "delta",
+    "text": " and on foundry partners [0001045810-25-000023:I.1:0001]."
+   },
+   {
+    "answer": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003] and on foundry partners [0001045810-25-000023:I.1:0001].",
+    "checks": {
+     "citations_retrieved": true,
+     "echoed_numbers": [],
+     "has_citation": true,
+     "is_refusal": false,
+     "numbers_checked": 0,
+     "numbers_grounded": true,
+     "pseudo_citations": [],
+     "unmatched_numbers": [],
+     "unsupported_removal_claim": false,
+     "unsupported_removal_sentences": []
+    },
+    "chunk_ids": [
+     "0001045810-25-000023:I.1A:0003",
+     "0001045810-25-000023:I.1:0001"
+    ],
+    "citations": [
+     "0001045810-25-000023:I.1:0001",
+     "0001045810-25-000023:I.1A:0003"
+    ],
+    "context_chars": 601,
+    "cost_usd": 0.00014,
+    "event": "done",
+    "finish_reason": "stop",
+    "hallucinated": [],
+    "question": "Who makes Nvidia's GPUs?",
+    "strategy": "hybrid",
+    "usage": {
+     "completion_tokens": 40,
+     "prompt_tokens": 1200
+    }
+   }
+  ],
+  "prompts": [
+   "27043d21b7b6c9bc"
+  ]
+ },
+ "live_error": {
+  "events": [
+   {
+    "anchor_defaulted": false,
+    "anchors": {
+     "NVDA": "0001045810"
+    },
+    "counts": {
+     "chunks": 2,
+     "edges": 1,
+     "metrics": 0,
+     "risks": 1,
+     "temporal": 0
+    },
+    "event": "retrieval"
+   },
+   {
+    "event": "delta",
+    "text": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003]"
+   },
+   {
+    "cost_usd": 0.00014,
+    "detail": "RuntimeError: provider reset",
+    "event": "error",
+    "partial": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003]",
+    "strategy": "hybrid",
+    "usage": {
+     "completion_tokens": 40,
+     "prompt_tokens": 1200
+    }
+   }
+  ],
+  "prompts": [
+   "27043d21b7b6c9bc"
+  ]
+ },
+ "routed_strong": {
+  "events": [
+   {
+    "anchor_defaulted": false,
+    "anchors": {
+     "NVDA": "0001045810"
+    },
+    "counts": {
+     "chunks": 2,
+     "edges": 1,
+     "metrics": 0,
+     "risks": 1,
+     "temporal": 0
+    },
+    "event": "retrieval"
+   },
+   {
+    "event": "delta",
+    "text": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003]"
+   },
+   {
+    "event": "delta",
+    "text": " and on foundry partners [0001045810-25-000023:I.1:0001]."
+   },
+   {
+    "answer": "Nvidia depends on TSMC [0001045810-25-000023:I.1A:0003] and on foundry partners [0001045810-25-000023:I.1:0001].",
+    "answered_by": "anthropic/claude-sonnet-5",
+    "checks": {
+     "citations_retrieved": true,
+     "echoed_numbers": [],
+     "has_citation": true,
+     "is_refusal": false,
+     "numbers_checked": 0,
+     "numbers_grounded": true,
+     "pseudo_citations": [],
+     "unmatched_numbers": [],
+     "unsupported_removal_claim": false,
+     "unsupported_removal_sentences": []
+    },
+    "chunk_ids": [
+     "0001045810-25-000023:I.1A:0003",
+     "0001045810-25-000023:I.1:0001"
+    ],
+    "citations": [
+     "0001045810-25-000023:I.1:0001",
+     "0001045810-25-000023:I.1A:0003"
+    ],
+    "context_chars": 601,
+    "cost_usd": 0.0028,
+    "escalated": false,
+    "event": "done",
+    "finish_reason": "stop",
+    "hallucinated": [],
+    "question": "How have Nvidia's supply-chain risk factors changed over time?",
+    "routed": "strong",
+    "strategy": "hybrid",
+    "usage": {
+     "completion_tokens": 40,
+     "prompt_tokens": 1200
+    }
+   }
+  ],
+  "prompts": [
+   "edd767b502de0ebb"
+  ]
+ }
+}
