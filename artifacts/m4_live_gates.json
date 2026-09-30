@@ -250,5 +250,137 @@
     "release": "v13",
     "commit": "43678ce",
     "image_rollback_target": "v12 registry.fly.io/semigraph:deployment-01M3H1X2FDKCSNV47R30EQA77W"
+  },
+  "release_v14": {
+    "deployed": {
+      "release": "v14",
+      "commit": "37be4f3",
+      "at": "2026-09-30T07:52Z",
+      "image_rollback_target": "v13 registry.fly.io/semigraph:deployment-01M3R6BM8NYY2ZG2R7BT7BCQKG",
+      "contains": "post-G10 fixes (evidence cache, per-version file name, agent hint) + b4c7098 (01N52 filter)"
+    },
+    "G9_http": {
+      "passed": true,
+      "checks": "13 of 13",
+      "observations": {
+        "healthz": 200,
+        "index": 200,
+        "index_site_key_filled": true,
+        "stats": {
+          "status": 200,
+          "snapshot_id": "snap-20260924-97c6597d58",
+          "uploads_enabled": true,
+          "node_labels": [
+            "Company",
+            "EvidenceSpan",
+            "ExportControl",
+            "Filing",
+            "FilingSection",
+            "Metric",
+            "Product",
+            "RiskFactor",
+            "RiskItem",
+            "RiskPassage",
+            "Snapshot"
+          ],
+          "freshness_status": "ok"
+        },
+        "freshness": {
+          "status": 200,
+          "enabled": true,
+          "configured": true,
+          "monitor_status": "ok",
+          "pending_count": 0
+        },
+        "examples_status": 200,
+        "example_ids": [
+          "D1",
+          "D2",
+          "D3",
+          "D4",
+          "M1",
+          "N1",
+          "N2",
+          "N3",
+          "N4",
+          "NG01",
+          "NG02",
+          "NG03",
+          "NG04",
+          "NG05",
+          "NG06",
+          "NG07",
+          "NG08",
+          "NG09",
+          "NG10",
+          "NG11",
+          "NG12",
+          "NG13",
+          "NG14",
+          "NG15",
+          "NG16",
+          "NG17",
+          "NG18",
+          "NG19",
+          "NG20",
+          "NG21",
+          "NG22",
+          "NG23",
+          "NG24",
+          "Q1",
+          "Q2",
+          "Q3",
+          "R1",
+          "R3",
+          "T1",
+          "T10",
+          "T11",
+          "T12",
+          "T13",
+          "T14",
+          "T5",
+          "T7",
+          "U1",
+          "U2",
+          "X2",
+          "X3",
+          "X4"
+        ],
+        "dossier": {
+          "status": 200,
+          "filings": 6,
+          "metrics": 8,
+          "active_risks": 25,
+          "edges": 21,
+          "rules": 8
+        },
+        "risk_changes": {
+          "status": 200,
+          "pairs": 1
+        },
+        "public_evidence_doc_id": 404,
+        "workspace_create_no_token": 403,
+        "agent_with_workspace": 400
+      },
+      "generated_at": "2026-09-30T07:53:33.916145+00:00"
+    },
+    "G9_machine": {
+      "passed": true,
+      "nproc": 2,
+      "mem_total_kb": 4010648
+    },
+    "boot": {
+      "non_dumpable": true,
+      "schema_applied": true,
+      "examples_seeded": "51 of 53 (same as v13)",
+      "neo4j_01N52_warnings": 0,
+      "v13_first_boot_01N52_warnings": 11
+    },
+    "served_page_has_fixes": [
+      "function askExample",
+      "let docEvidenceGen",
+      "let openSeq",
+      "hint only when strategy is agent"
+    ]
   }
 }
