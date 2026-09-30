@@ -50,8 +50,9 @@ ever tell a negation flip from a tense-only edit. Fixing it needed two changes, 
     unrelated sentences are never compared). A pair's negation POLARITY is the PARITY (odd/even) of how many
     negator words it contains — a fixed vocabulary (not/no/never/none/nor/cannot/without) plus any ``-n't``
     contraction, counted on lowercased word tokens, with the fixed boilerplate phrases "without limitation" and the
-    enumerating "[including | but [are|is]] not limited to" stripped first (:data:`_BOILERPLATE_NEGATOR_PHRASE_RE`;
-    round-4 review, finding C4, extended in rounds 5 and 6: dropping "including, without limitation," or swapping it for
+    enumerating "[including | but [are|is|was|were]] not limited to" stripped first
+    (:data:`_BOILERPLATE_NEGATOR_PHRASE_RE`; round-4 review, finding C4, extended in rounds 5 and 6: dropping
+    "including, without limitation," or swapping it for
     its equally common synonym "including but not limited to" is a routine legal no-op, never a polarity change, so
     neither must ever itself move the count) — so a double negation that keeps the same parity on both sides (two
     negators become two different ones) is deliberately NOT a flip, while a single negator present on only one
@@ -176,7 +177,8 @@ MIN_NEGATION_PAIR_SIMILARITY = 0.5
 # Round-5 review, finding corUi-MEDIUM (module docstring): the round-4 bound counted sentence PAIRS, so an ordinary
 # in-cap annual-refresh section (100-150 real sentences, none a byte-identical match across versions) tripped the
 # SAME cap as the reviewer's original pathological input (thousands of one-word "sentences") -- lex_exact's real
-# cost tracks the PRODUCT of the two sentences' own token lengths, not a flat "1" per pair. The budget is now
+# cost (the pairing's scorer until round 6; :func:`_pair_similarity` since) tracked the PRODUCT of the two
+# sentences' own token lengths, not a flat "1" per pair. The budget is now
 # charged as len(older_tokens) * len(newer_tokens) for every pair actually compared (after the shared-content-word
 # pre-filter, :func:`_content_tokens`): MAX_NEGATION_WORK_PER_UNIT bounds one unit pair's own total;
 # MAX_NEGATION_WORK_BUDGET bounds the SAME total summed across every unit pair in one compare_versions call, so a
@@ -190,10 +192,10 @@ MAX_NEGATION_WORK_PER_UNIT = 20_000_000
 MAX_NEGATION_WORK_BUDGET = 30_000_000
 
 # Round-5 review, finding secRel-LOW (S3 partial): a bound on PAIRS or on total token-work still never protects
-# against ONE pathologically long sentence -- lex_exact's SequenceMatcher degrades to roughly cubic time on a
-# sentence built of few distinct, highly repeated tokens (measured: a single ~1,600-word adversarial sentence pair,
-# a single "pair" under any cap above, took over 100s by itself). A sentence longer than this many word tokens is
-# therefore excluded from the negation check entirely -- on EITHER side, never handed to lex_exact at all -- while
+# against ONE pathologically long sentence -- lex_exact's SequenceMatcher (the pairing's scorer until round 6)
+# degraded to roughly cubic time on a sentence built of few distinct, highly repeated tokens (measured: a single
+# ~1,600-word adversarial sentence pair took over 100s by itself). A sentence longer than this many word tokens is
+# still excluded from the negation check entirely -- on EITHER side, never scored at all, kept as a bound -- while
 # the unit's other, ordinary-length sentences are still compared normally; the exclusion is counted in
 # ``negation_check_skipped`` exactly like any other skip, never silently.
 MAX_NEGATION_SENTENCE_TOKENS = 200
