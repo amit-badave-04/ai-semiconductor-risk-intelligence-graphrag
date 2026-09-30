@@ -55,14 +55,14 @@ it is not in use; if the page does not load, it is offline (see [Operations](#op
   (financial metrics, risk changes, company relationships) before the answer is written, shown live
   as they run; the answer still goes through the same citation and grounding checks as every other
   question, and a planner failure of any kind falls back to the direct retrieval with no visible error.
-- **Your own documents, versioned (M4)** — upload a PDF, Word (.docx), Markdown, HTML or text document into a private
-  workspace and ask questions whose answers cite it (`doc:` chips) alongside filing passages, XBRL facts and
-  BIS rules, through the same citation and number checks. Upload a newer version and the service compares the
-  two texts directly: added, removed and changed sections with the changed passages quoted and flipped negations
-  marked; an answer that cites a superseded version is flagged, and you can ask about the document as
-  it stood at any earlier version. Parsing runs in an isolated, resource-limited process; embedding runs on the
-  service's own model; a workspace is private to its token, never cached,
-  and deleted after 24 hours or on request.
+- **Your own documents, versioned (M4)** — upload a PDF, Word (.docx), Markdown, HTML or text document into a
+  private workspace and ask questions whose answers cite it (`doc:` chips) alongside filing passages, XBRL facts
+  and BIS rules, through the same citation and number checks. Upload a newer version and the service compares the
+  two texts directly: added, removed and changed sections with the changed passages quoted, and a sentence whose
+  negation flips reported as a change with both sentences quoted; an answer that cites a superseded version is
+  flagged, and you can ask about the document as it stood at any earlier version. Parsing runs in an isolated,
+  resource-limited process; embedding runs on the service's own model; a workspace is private to its token, never
+  cached, and deleted after 24 hours or on request.
 - **Live data freshness (M4)** — a background check compares EDGAR's filing index and the Federal Register with
   the served graph every few hours and shows on the page how current the data is and how many newer filings are pending.
 - **Company dossier and risk-change data (M4)** — read-only endpoints that return a company's filings, key
