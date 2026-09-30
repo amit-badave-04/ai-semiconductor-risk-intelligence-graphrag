@@ -172,6 +172,74 @@ def test_put_version_flips_currency_and_evidence_reports_superseded_by(driver, t
     assert repo.latest_version(driver, ws, "aaaaaaaaaaaa")["version"] == 2
 
 
+# ---------------------------------------------------------------------- put_version / per-version title (Post-G10 fix 2)
+
+def test_evidence_search_and_chunk_texts_show_each_versions_own_title_while_the_document_list_keeps_the_latest(
+        driver, two_workspaces):
+    """Owner's live G10 test: after uploading g10_v2.pdf as a new version of g10_v1.pdf, the evidence drawer for a
+    v1 chunk wrongly read "g10_v2.pdf" because UserDocument.title is always the LATEST upload's file name. Each
+    chunk-level read must instead show the title of the CHUNK'S OWN version — falling back to the document title
+    only for a version an older build wrote with no title of its own — while the document list (and "New version
+    of <title>") keeps showing the latest version's title, unchanged."""
+    ws = two_workspaces["ws1"]
+    v1_time = datetime.now(UTC)
+    v1_vec = _vec(61)
+    repo.put_version(driver, ws, document_id="gggggggggggg", title="a_v1.pdf", version=1, content_hash="hg1",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="v1", units=[_unit(char_end=2)],
+                     chunks=[_chunk("doc:gggggggggggg:v1:0000", "v1", "hg1", v1_vec)],
+                     change_report=_no_report(), suspicious=False, now=v1_time)
+    v2_time = v1_time + timedelta(seconds=2)
+    v2_vec = _vec(62)
+    repo.put_version(driver, ws, document_id="gggggggggggg", title="a_v2.pdf", version=2, content_hash="hg2",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="v2", units=[_unit(char_end=2)],
+                     chunks=[_chunk("doc:gggggggggggg:v2:0000", "v2", "hg2", v2_vec)],
+                     change_report=_no_report(), suspicious=False, now=v2_time)
+
+    ev1 = repo.evidence(driver, ws, "doc:gggggggggggg:v1:0000")
+    assert ev1["title"] == "a_v1.pdf"
+    assert ev1["superseded_by_version"] == 2
+    ev2 = repo.evidence(driver, ws, "doc:gggggggggggg:v2:0000")
+    assert ev2["title"] == "a_v2.pdf"
+
+    as_of_v1 = repo.search_chunks(driver, ws, v1_vec, k=5, cutoff=v2_time - timedelta(seconds=1))
+    v1_result = next(r for r in as_of_v1 if r["chunk_id"] == "doc:gggggggggggg:v1:0000")
+    assert v1_result["title"] == "a_v1.pdf"
+
+    texts = repo.chunk_texts(driver, ws, ["doc:gggggggggggg:v1:0000", "doc:gggggggggggg:v2:0000"])
+    assert texts["doc:gggggggggggg:v1:0000"]["title"] == "a_v1.pdf"
+    assert texts["doc:gggggggggggg:v2:0000"]["title"] == "a_v2.pdf"
+
+    workspace = repo.get_workspace(driver, ws)
+    doc = next(d for d in workspace["documents"] if d["document_id"] == "gggggggggggg")
+    assert doc["title"] == "a_v2.pdf", "the document list must still show the LATEST version's title, unchanged"
+
+    # Simulate a version written by an older build, before this fix, which never stored v.title.
+    with driver.session() as session:
+        session.run("MATCH (v:UserVersion {workspace_id: $ws, document_id: $d, version: 1}) SET v.title = null",
+                   ws=ws, d="gggggggggggg").consume()
+    ev1_fallback = repo.evidence(driver, ws, "doc:gggggggggggg:v1:0000")
+    assert ev1_fallback["title"] == "a_v2.pdf", "a version with no title of its own must fall back to the document's"
+    texts_fallback = repo.chunk_texts(driver, ws, ["doc:gggggggggggg:v1:0000"])
+    assert texts_fallback["doc:gggggggggggg:v1:0000"]["title"] == "a_v2.pdf"
+
+
+def test_a_version_written_without_a_title_keeps_the_document_title_it_had_at_upload_time(driver, two_workspaces):
+    """Round-7 verification: an API client that omits the title must not make that version show whatever file name a
+    LATER version brings; the version freezes the document's title as it was when the version was written."""
+    ws = two_workspaces["ws1"]
+    t1 = datetime.now(UTC)
+    for version, title, t in ((1, "b_v1.pdf", t1), (2, None, t1 + timedelta(seconds=2)),
+                              (3, "b_v3.pdf", t1 + timedelta(seconds=4))):
+        chunk_id = f"doc:hhhhhhhhhhhh:v{version}:0000"
+        repo.put_version(driver, ws, document_id="hhhhhhhhhhhh", title=title, version=version,
+                         content_hash=f"hh{version}", method="text", pages=1, chars=2, chars_per_page=2.0,
+                         text=f"v{version}", units=[_unit(char_end=2)],
+                         chunks=[_chunk(chunk_id, f"v{version}", f"hh{version}", _vec(70 + version))],
+                         change_report=_no_report(), suspicious=False, now=t)
+    assert repo.evidence(driver, ws, "doc:hhhhhhhhhhhh:v2:0000")["title"] == "b_v1.pdf"
+    assert repo.evidence(driver, ws, "doc:hhhhhhhhhhhh:v3:0000")["title"] == "b_v3.pdf"
+
+
 # ---------------------------------------------------------------------- search_chunks: isolation + as-of
 
 def test_search_chunks_never_returns_another_workspaces_chunk_even_with_an_identical_vector(driver, two_workspaces):

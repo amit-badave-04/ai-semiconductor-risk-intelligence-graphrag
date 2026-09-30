@@ -662,6 +662,19 @@ freshness loop busy-spun when a due check was not admitted, a regression of 15.1
     bound of `lex_exact`: 24 of 6,510 real 10-K sentence pairings newly cross the 0.5 floor, none drop below). Known,
     documented limits: a "but not limited to" that is itself a scope statement is stripped too; rare forms ("and not
     limited to", "such as, not limited to") still count as a negator (none occur in the local corpus).
+11. **Post-G10 follow-ups (2026-09-30):** fix 2 (owner's live G10 test) — every chunk-level read (evidence, search,
+    current and as-of, and chunk texts) showed the LATEST uploaded file name for every version, because `put_version`
+    always overwrote `UserDocument.title`, never a per-version one. Each `UserVersion` now stores its own title
+    (`put_version`'s existing `title` argument), and the four reads return `coalesce(v.title, d.title)`, scoped by
+    `workspace_id`, while `UserDocument.title` and the document list keep showing the latest version's title unchanged.
+    A version written with no title stores the document's title as it was at upload time (`coalesce($title, d.title)`).
+    Fix 1: the page's evidence cache dropped nothing when a new version arrived, so a chip opened before the upload
+    kept showing its old payload (no "superseded by N"); every `doc:` entry is now dropped when a job reaches ready or
+    failed, when the watcher gives up, and on a workspace switch, and a `doc:` fetch still in flight across any of
+    these is shown but never cached (a generation counter). Fix 3: the "Deep research" hint showed whenever the agent
+    was enabled, even for hybrid answers; it now shows only while "agent" is the selected strategy, re-synced on every
+    change of the select and when a benchmark example forces hybrid. Opus verification: A (fixes) PASS, B (b4c7098,
+    the scoped 01N52 notification filter) PASS; its LOWs were fixed before the deploy, with tests that fail first.
 
 ## Audit trail
 

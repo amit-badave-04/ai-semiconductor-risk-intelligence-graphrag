@@ -295,6 +295,11 @@ def embedded_chunks(driver, ws: str, document_id: str) -> dict:
 
 # ---------------------------------------------------------------- put_version (one transaction)
 
+# UserDocument.title tracks the LATEST version's file name (the document list and its "New version of <title>"
+# option both rely on this — unchanged by Post-G10 fix 2 below). CREATE_VERSION_QUERY additionally stamps that
+# SAME title onto the UserVersion node itself, so a chunk-level read (the "reads after write" section further
+# down) can show the file name a specific version was actually uploaded under, not whatever the document has since
+# been renamed to by a later version.
 MERGE_DOCUMENT_QUERY = """MATCH (w:UserWorkspace {workspace_id: $ws})
 MERGE (d:UserDocument {workspace_id: $ws, document_id: $document_id})
 ON CREATE SET d.created_at = $now, d.title = $title
@@ -313,7 +318,8 @@ CREATE (v:UserVersion {workspace_id: $ws, document_id: $document_id, version: $v
     version_key: $version_key, content_hash: $content_hash, method: $method, pages: $pages, chars: $chars,
     chars_per_page: $chars_per_page, text: $text, created_at: $now, is_current: true,
     valid_from: $now, valid_to: $current_valid_to, status: $status, items_compared: $items_compared,
-    not_compared_reason: $not_compared_reason, suspicious: $suspicious, job_id: $job_id})
+    not_compared_reason: $not_compared_reason, suspicious: $suspicious, job_id: $job_id,
+    title: coalesce($title, d.title)})
 CREATE (d)-[:HAS_VERSION]->(v)"""
 
 SUPERSEDE_VERSION_QUERY = """MATCH (newer:UserVersion {workspace_id: $ws, document_id: $document_id, version: $version})
@@ -363,12 +369,12 @@ def _merge_document(tx, ws: str, document_id: str, title: str | None, now: datet
 def _create_version(tx, ws: str, document_id: str, version: int, *, content_hash: str, method: str,
                      pages: int, chars: int, chars_per_page: float | None, text: str, now: datetime,
                      items_compared: bool, not_compared_reason: str | None, suspicious: bool,
-                     job_id: str | None) -> None:
+                     job_id: str | None, title: str | None) -> None:
     tx.run(CREATE_VERSION_QUERY, ws=ws, document_id=document_id, version=version,
            version_key=f"{document_id}:v{version}", content_hash=content_hash, method=method, pages=pages,
            chars=chars, chars_per_page=chars_per_page, text=text, now=now, current_valid_to=CURRENT_VALID_TO,
            status=CURRENT, items_compared=items_compared, not_compared_reason=not_compared_reason,
-           suspicious=suspicious, job_id=job_id)
+           suspicious=suspicious, job_id=job_id, title=title)
 
 
 def _supersede_previous(tx, ws: str, document_id: str, version: int, prev_version: int, now: datetime,
@@ -424,6 +430,11 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
     ``embedded_tokens`` counter (the ``SUCCEEDED_BY`` / ``HAS_PASSAGE`` change passages are the change_report's own
     concern).
 
+    ``title`` is stored TWICE (Post-G10 fix 2): merged onto ``UserDocument.title`` as before (always the LATEST
+    version's file name — the document list and "New version of <title>" rely on that), and separately stamped on
+    this new ``UserVersion`` node itself, so a chunk-level read can later show the file name THIS version was
+    actually uploaded under, not whatever the document has since been renamed to by a later version.
+
     ``get_changes`` answers only an ADJACENT pair (the ``SUPERSEDES`` edge this call writes) — a deliberate scope
     limit, not the full n-choose-2 history (docs/v2/M4_PLAN.md leaves the exact scope to the implementer).
 
@@ -455,7 +466,7 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
         _create_version(tx, ws, document_id, version, content_hash=content_hash, method=method, pages=pages,
                         chars=chars, chars_per_page=chars_per_page, text=text, now=now,
                         items_compared=items_compared, not_compared_reason=not_compared_reason,
-                        suspicious=suspicious, job_id=job_id)
+                        suspicious=suspicious, job_id=job_id, title=title)
         if prev_version is not None:
             _supersede_previous(tx, ws, document_id, version, prev_version, now, items_compared,
                                 not_compared_reason, change_report)
@@ -474,18 +485,27 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
 
 # ---------------------------------------------------------------- reads after write
 
+# Every chunk-level read below returns coalesce(v.title, d.title): the CHUNK'S OWN version's title when that
+# version stored one, else the document's (current) title — the fallback that keeps a version written before
+# Post-G10 fix 2 (no ``v.title`` at all) showing something, rather than ``null``. (Since round 7 a version written
+# with no title stores the document's title as it was at upload time, CREATE_VERSION_QUERY.) The version lookup is an
+# OPTIONAL MATCH (a chunk's version always exists, but the property may not, on an old version) scoped by
+# workspace_id: $ws like every other User* pattern here.
 CHUNK_TEXTS_QUERY = """MATCH (c:UserChunk {workspace_id: $ws})
 WHERE c.chunk_id IN $chunk_ids
 MATCH (d:UserDocument {workspace_id: $ws, document_id: c.document_id})
+OPTIONAL MATCH (v:UserVersion {workspace_id: $ws, document_id: c.document_id, version: c.version})
 RETURN c.chunk_id AS chunk_id, c.text AS text, c.is_current AS is_current, c.version AS version,
-       c.status AS status, toString(c.valid_to) AS valid_to, c.document_id AS document_id, d.title AS title"""
+       c.status AS status, toString(c.valid_to) AS valid_to, c.document_id AS document_id,
+       coalesce(v.title, d.title) AS title"""
 
 SEARCH_CURRENT_QUERY = """MATCH (c:UserChunk)
 SEARCH c IN (VECTOR INDEX user_chunk_embedding FOR $vec WHERE c.workspace_id = $ws AND c.is_current = true
              LIMIT $k) SCORE AS score
 MATCH (d:UserDocument {workspace_id: $ws, document_id: c.document_id})
+OPTIONAL MATCH (v:UserVersion {workspace_id: $ws, document_id: c.document_id, version: c.version})
 RETURN c.chunk_id AS chunk_id, c.text AS text, score, c.document_id AS document_id, c.version AS version,
-       c.is_current AS is_current, d.title AS title
+       c.is_current AS is_current, coalesce(v.title, d.title) AS title
 ORDER BY score DESC"""
 
 SEARCH_ASOF_QUERY = """MATCH (c:UserChunk)
@@ -493,8 +513,9 @@ SEARCH c IN (VECTOR INDEX user_chunk_embedding FOR $vec
              WHERE c.workspace_id = $ws AND c.valid_from < $cutoff AND c.valid_to >= $cutoff
              LIMIT $k) SCORE AS score
 MATCH (d:UserDocument {workspace_id: $ws, document_id: c.document_id})
+OPTIONAL MATCH (v:UserVersion {workspace_id: $ws, document_id: c.document_id, version: c.version})
 RETURN c.chunk_id AS chunk_id, c.text AS text, score, c.document_id AS document_id, c.version AS version,
-       c.is_current AS is_current, d.title AS title
+       c.is_current AS is_current, coalesce(v.title, d.title) AS title
 ORDER BY score DESC"""
 
 GET_CHANGES_QUERY = """MATCH (newer:UserVersion {workspace_id: $ws, document_id: $document_id, version: $newer})
@@ -503,11 +524,12 @@ RETURN s.change_report AS change_report"""
 
 EVIDENCE_QUERY = """MATCH (c:UserChunk {workspace_id: $ws, chunk_id: $chunk_id})
 MATCH (d:UserDocument {workspace_id: $ws, document_id: c.document_id})
+OPTIONAL MATCH (v:UserVersion {workspace_id: $ws, document_id: c.document_id, version: c.version})
 OPTIONAL MATCH (newer:UserVersion {workspace_id: $ws, document_id: c.document_id})
       -[:SUPERSEDES]->(:UserVersion {workspace_id: $ws, document_id: c.document_id, version: c.version})
 RETURN c.chunk_id AS id, c.text AS text, c.document_id AS document_id, c.version AS version,
        c.is_current AS is_current, c.status AS status, toString(c.valid_to) AS valid_to,
-       newer.version AS superseded_by_version, d.title AS title"""
+       newer.version AS superseded_by_version, coalesce(v.title, d.title) AS title"""
 
 
 def chunk_texts(driver, ws: str, chunk_ids: list[str]) -> dict:

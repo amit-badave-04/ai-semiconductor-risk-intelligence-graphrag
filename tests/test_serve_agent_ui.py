@@ -67,7 +67,11 @@ def test_the_stream_handler_routes_step_events_to_the_timeline_and_ask_sends_the
 
 
 def test_the_examples_still_reset_the_strategy_to_hybrid_so_a_saved_answer_is_never_asked_live_as_the_agent(page):
-    assert '$("q").value = b.dataset.q; $("strategy").value = "hybrid"; ask();' in script_of(page)
+    script = script_of(page)
+    # Round-7 verification: the click handler moved into askExample(), which also re-syncs the agent hint at once.
+    assert 'b.addEventListener("click", () => askExample(b.dataset.q))' in script
+    assert re.search(r'\$\("q"\)\.value = question; \$\("strategy"\)\.value = "hybrid"; syncAgentUi\(lastAgentStats\); ask\(\);',
+                     function_source(script, "askExample"))
 
 
 def test_nothing_in_the_new_ui_moves(page):

@@ -18,6 +18,10 @@ class Fake {
     return m ? this.children.find((c) => c.tag === "option" && c.value === m[1]) || null : null;
   }
   get options() { return this.children.filter((c) => c.tag === "option"); }
+  // FIX 3 (owner's live G10 test, 2026-09-30): the page listens for a "change" on #strategy; `fireChange` simulates
+  // the user picking an option, the same way tests/ui/upload_flow.test.mjs's selectStub does for askAsOf selects.
+  addEventListener(evt, fn) { if (evt === "change") this._onChange = fn; }
+  fireChange(value) { this.value = value; if (this._onChange) this._onChange(); }
 }
 
 function pageWithAgentElements() {
@@ -87,15 +91,61 @@ test("with the agent off nothing agent-related is shown", () => {
   assert.equal(elements.agentSteps.hidden, true);
 });
 
-test("with the agent on the option appears once, however often the stats are reloaded, with the hint but without a privacy line", () => {
+test("with the agent on the option appears once, however often the stats are reloaded, without a privacy line", () => {
   const { api, elements } = pageWithAgentElements();
   for (let i = 0; i < 3; i++) api.syncAgentUi({ agent_enabled: true, tracing: false });   // loadStats() runs after every answer
   const agent = elements.strategy.options.filter((o) => o.value === "agent");
   assert.equal(agent.length, 1);
   assert.match(agent[0].textContent, /^Deep research \(agent\)/);
+  assert.equal(elements.tracingNote.hidden, true);
+});
+
+// ---- the hint tracks the SELECTED strategy, not just whether the agent is enabled (owner's live G10 test, 2026-09-30):
+// it must not describe the agent while the user is looking at a hybrid answer.
+
+test("the hint stays hidden for the default hybrid strategy even while the agent is enabled", () => {
+  const { api, elements } = pageWithAgentElements();
+  api.syncAgentUi({ agent_enabled: true });
+  assert.equal(elements.strategy.value, "hybrid");
+  assert.equal(elements.agentHint.hidden, true); assert.equal(elements.agentHint.textContent, "");
+});
+
+test("picking the agent strategy shows the hint; switching back to hybrid hides it again", () => {
+  const { api, elements } = pageWithAgentElements();
+  api.syncAgentUi({ agent_enabled: true });
+  elements.strategy.fireChange("agent");
   assert.equal(elements.agentHint.hidden, false);
   assert.match(elements.agentHint.textContent, /planning model|planner/i);
-  assert.equal(elements.tracingNote.hidden, true);
+  elements.strategy.fireChange("hybrid");
+  assert.equal(elements.agentHint.hidden, true); assert.equal(elements.agentHint.textContent, "");
+});
+
+test("clicking a benchmark example (which forces hybrid) hides the hint at once, not only after the answer", () => {
+  const { api, elements } = pageWithAgentElements();
+  api.syncAgentUi({ agent_enabled: true });
+  elements.strategy.fireChange("agent");
+  assert.equal(elements.agentHint.hidden, false);
+  api.askExample("What was Nvidia's total revenue for the fiscal year ended January 25, 2026?");
+  assert.equal(elements.strategy.value, "hybrid");
+  assert.equal(elements.agentHint.hidden, true); assert.equal(elements.agentHint.textContent, "");
+});
+
+test("syncAgentUi stays idempotent when re-run (as loadStats does after every answer) with the agent strategy selected", () => {
+  const { api, elements } = pageWithAgentElements();
+  api.syncAgentUi({ agent_enabled: true });
+  elements.strategy.fireChange("agent");
+  for (let i = 0; i < 3; i++) api.syncAgentUi({ agent_enabled: true });
+  assert.equal(elements.agentHint.hidden, false);
+  assert.equal(elements.strategy.options.filter((o) => o.value === "agent").length, 1);
+});
+
+test("the hint is hidden the moment the service reports the agent off, even with agent selected", () => {
+  const { api, elements } = pageWithAgentElements();
+  api.syncAgentUi({ agent_enabled: true });
+  elements.strategy.fireChange("agent");
+  assert.equal(elements.agentHint.hidden, false);
+  api.syncAgentUi({ agent_enabled: false });
+  assert.equal(elements.agentHint.hidden, true); assert.equal(elements.agentHint.textContent, "");
 });
 
 test("the privacy line appears only when a sample of agent questions is really traced, and never claims the text is sent", () => {

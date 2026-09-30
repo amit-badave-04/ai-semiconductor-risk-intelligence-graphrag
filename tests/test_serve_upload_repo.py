@@ -93,6 +93,23 @@ def test_search_queries_use_only_the_filtered_search_form_never_an_unfiltered_ve
     assert "c.valid_from < $cutoff AND c.valid_to >= $cutoff" in repo.SEARCH_ASOF_QUERY
 
 
+# Post-G10 fix 2 (owner's live G10 test): put_version -> _merge_document runs SET_DOCUMENT_TITLE_QUERY on every
+# version, so UserDocument.title is always the LATEST upload's file name — every chunk-level read must instead
+# show the CHUNK'S OWN version's title, falling back to the document title only for a version an older build wrote
+# with no title of its own. Every added MATCH stays scoped by workspace_id: $ws (the G2 leak harness depends on
+# every User* read being workspace-scoped).
+_VERSION_TITLE_SCOPE = "UserVersion {workspace_id: $ws, document_id: c.document_id, version: c.version}"
+
+
+@pytest.mark.parametrize("query_name", ["CHUNK_TEXTS_QUERY", "SEARCH_CURRENT_QUERY", "SEARCH_ASOF_QUERY",
+                                        "EVIDENCE_QUERY"])
+def test_chunk_level_reads_return_the_chunks_own_version_title_falling_back_to_the_document_title(query_name):
+    text = getattr(repo, query_name)
+    assert "coalesce(v.title, d.title) AS title" in text, f"{query_name} does not coalesce the version's own title"
+    assert _VERSION_TITLE_SCOPE in text, f"{query_name}'s version lookup is not scoped by $ws and c.version"
+    assert "d.title AS title" not in text, f"{query_name} still returns the document title unconditionally"
+
+
 def test_put_version_writes_the_currency_flip_and_the_supersedes_edge_with_the_change_report():
     assert "SET prev.is_current = false" in repo.SUPERSEDE_VERSION_QUERY
     assert "SUPERSEDES" in repo.SUPERSEDE_VERSION_QUERY and "change_report: $change_report_json" in repo.SUPERSEDE_VERSION_QUERY
@@ -338,6 +355,15 @@ def test_create_version_query_carries_a_job_id_property():
     assert "job_id: $job_id" in repo.CREATE_VERSION_QUERY
 
 
+def test_create_version_query_stores_the_versions_own_title():
+    """Post-G10 fix 2 (owner's live G10 test): each UserVersion stores the file name IT was uploaded under, the
+    same ``title`` put_version already receives — separately from UserDocument.title, which stays the LATEST
+    version's file name (the document list and "New version of <title>" rely on that; unchanged by this fix)."""
+    # Round-7 verification: a caller that omits the title freezes the document's title as it was at upload time,
+    # rather than storing nothing and later showing whatever file name a newer version brings.
+    assert "title: coalesce($title, d.title)" in repo.CREATE_VERSION_QUERY
+
+
 def test_job_version_exists_query_requires_the_recovering_jobs_own_job_id():
     """The other half of the same fix: recovery must never match a version some OTHER job committed for the same
     (document_id, version) — only WHERE v.job_id = $job_id, the candidate job's own id."""
@@ -364,6 +390,30 @@ def test_put_version_stores_a_null_job_id_when_the_caller_does_not_pass_one():
                      suspicious=False, now=datetime.now(UTC))
     params = next(p for q, p in driver.transactions[0].calls if q == repo.CREATE_VERSION_QUERY)
     assert params["job_id"] is None
+
+
+def test_put_version_stores_the_given_title_on_the_new_version():
+    """Post-G10 fix 2: the version's OWN title (the file name it was uploaded under) is stamped on the UserVersion
+    node itself, not just merged onto UserDocument.title (which a LATER version would overwrite)."""
+    driver = FakeDriver()
+    repo.put_version(driver, "ws1", document_id="aaaaaaaaaaaa", title="g10_v2.pdf", version=2, content_hash="h",
+                     method="text", pages=1, chars=5, chars_per_page=5.0, text="hello", units=[_unit()],
+                     chunks=[_chunk()], change_report={"items_compared": True, "not_compared_reason": None},
+                     suspicious=False, now=datetime.now(UTC))
+    params = next(p for q, p in driver.transactions[0].calls if q == repo.CREATE_VERSION_QUERY)
+    assert params["title"] == "g10_v2.pdf"
+
+
+def test_put_version_stores_a_null_title_on_the_new_version_when_the_caller_passes_none():
+    """A caller that omits the title passes None through; CREATE_VERSION_QUERY then stores the document's title as it
+    was at upload time (coalesce($title, d.title), round-7 verification; exercised live in the integration suite)."""
+    driver = FakeDriver()
+    repo.put_version(driver, "ws1", document_id="aaaaaaaaaaaa", title=None, version=2, content_hash="h",
+                     method="text", pages=1, chars=5, chars_per_page=5.0, text="hello", units=[_unit()],
+                     chunks=[_chunk()], change_report={"items_compared": True, "not_compared_reason": None},
+                     suspicious=False, now=datetime.now(UTC))
+    params = next(p for q, p in driver.transactions[0].calls if q == repo.CREATE_VERSION_QUERY)
+    assert params["title"] is None
 
 
 def test_put_version_only_bumps_embedded_tokens_for_chunks_marked_embedded():

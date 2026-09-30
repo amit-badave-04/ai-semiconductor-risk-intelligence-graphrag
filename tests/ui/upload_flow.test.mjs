@@ -269,3 +269,87 @@ test("after the reconnects run out the row says the connection was lost, and a 4
   assert.equal(await deleted.run(`watchJob("j1", "a.pdf", 1)`), null);
   assert.equal(gone, 1);
 });
+
+// ---------------------------------------------------------------- FIX 1 (owner's live G10 test, 2026-09-30): the
+// job watcher must drop stale `doc:` evidence the moment a job reaches a terminal state — a new version changes the
+// status of the PREVIOUS version's chunks, so a chip opened before the upload must not keep showing that old payload.
+
+test("reaching 'ready' drops cached doc: evidence but keeps a cached non-doc entry", async () => {
+  const { run } = buildPage({ fetchImpl: jobsOnly(async () => streamOf([{ state: "ready", version: 2 }])) });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" }; setJobRow("a.pdf", "uploading");`);
+  run(`evidenceCache.set("doc:0123456789ab:v1:0007", { title: "old" });`);
+  run(`evidenceCache.set("xbrl:1045810:revenue:2026-01-25", { value: 1 });`);
+  assert.equal(await run(`watchJob("j1", "a.pdf", 1)`), "ready");
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), false);
+  assert.equal(run(`evidenceCache.has("xbrl:1045810:revenue:2026-01-25")`), true);
+});
+
+test("reaching 'failed' also drops cached doc: evidence", async () => {
+  const { run } = buildPage({ fetchImpl: jobsOnly(async () => streamOf([{ state: "failed", error: "bad file" }])) });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" }; setJobRow("a.pdf", "uploading");`);
+  run(`evidenceCache.set("doc:0123456789ab:v1:0007", { title: "old" });`);
+  assert.equal(await run(`watchJob("j1", "a.pdf", 1)`), "failed");
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), false);
+});
+
+test("a non-terminal progress event leaves the evidence cache untouched", async () => {
+  const { run } = buildPage({ fetchImpl: jobsOnly(async () => streamOf([{ state: "embedding", progress: { done: 1, total: 10 } }])) });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" }; setJobRow("a.pdf", "uploading");`);
+  run(`evidenceCache.set("doc:0123456789ab:v1:0007", { title: "old" });`);
+  await run(`streamJobOnce("j1", "a.pdf")`);
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), true);
+});
+
+// Round-7 verification LOWs: a watcher that gives up, and an evidence fetch still in flight when the job finishes.
+
+test("a watcher that gives up (connection lost) still drops cached doc: evidence: the job may finish anyway", async () => {
+  const { run } = buildPage({ fetchImpl: jobsOnly(async () => streamOf([])) });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" }; setJobRow("a.pdf", "uploading");`);
+  run(`evidenceCache.set("doc:0123456789ab:v1:0007", { title: "old" });`);
+  assert.equal(await run(`watchJob("j1", "a.pdf", 1)`), null);
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), false);
+});
+
+test("a doc: evidence fetch still in flight when the cache is dropped is shown but never cached", async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const fetchImpl = (url) => (String(url).includes("/evidence/") ? pending : new Promise(() => {}));
+  const { run } = buildPage({ fetchImpl });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" };`);
+  const opened = run(`openCitation("doc:0123456789ab:v1:0007")`);
+  run(`dropDocEvidence(evidenceCache);`);   // the upload job reached a terminal state meanwhile
+  release({ ok: true, status: 200, json: async () => ({ id: "doc:0123456789ab:v1:0007", status: "current" }) });
+  await opened;
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), false);
+});
+
+test("a doc: evidence fetch still in flight across a workspace switch is never cached into the new workspace", async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const fetchImpl = (url) => (String(url).includes("/evidence/") ? pending : new Promise(() => {}));
+  const { run } = buildPage({ fetchImpl });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" };`);
+  const opened = run(`openCitation("doc:0123456789ab:v1:0007")`);
+  run(`setWorkspace(null);`);
+  release({ ok: true, status: 200, json: async () => ({ id: "doc:0123456789ab:v1:0007", status: "current" }) });
+  await opened;
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), false);
+});
+
+test("an evidence fetch that finishes with no drop in between is cached as before", async () => {
+  const fetchImpl = (url) => (String(url).includes("/evidence/")
+    ? Promise.resolve({ ok: true, status: 200, json: async () => ({ id: "doc:0123456789ab:v1:0007" }) })
+    : new Promise(() => {}));
+  const { run } = buildPage({ fetchImpl });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" };`);
+  await run(`openCitation("doc:0123456789ab:v1:0007")`);
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), true);
+});
+
+test("deleting/switching the workspace (setWorkspace) still clears the WHOLE evidence cache, doc: and non-doc alike", async () => {
+  const { run } = buildPage({ fetchImpl: () => new Promise(() => {}) });   // loadWorkspaceData's fetch never resolves
+  run(`evidenceCache.set("doc:0123456789ab:v1:0007", { title: "old" });`);
+  run(`evidenceCache.set("xbrl:1045810:revenue:2026-01-25", { value: 1 });`);
+  await run(`setWorkspace(null);`);   // deleteWorkspace()/createWorkspace()/restoreWorkspace() all funnel through this
+  assert.equal(run(`evidenceCache.size`), 0);
+});

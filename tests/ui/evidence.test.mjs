@@ -154,3 +154,30 @@ test("formatNumber groups digits and leaves non-numbers alone", () => {
   assert.equal(api.formatNumber("abc"), "abc");
   assert.equal(api.formatNumber(null), "");
 });
+
+// ---------------------------------------------------------------- dropDocEvidence (owner's live G10 test, 2026-09-30)
+// A new upload version changes the STATUS of the previous version's chunks (current -> superseded), so a `doc:`
+// evidence chip cached before the upload must not keep showing the old payload. SEC/xbrl/fr entries never change
+// this way and must survive.
+
+const DOC_A = "doc:0123456789ab:v1:0007", DOC_B = "doc:aaaaaaaaaaaa:v3:0001";
+
+test("dropDocEvidence removes every cached doc: entry and keeps chunk/xbrl/fr entries", () => {
+  const cache = new Map([
+    [DOC_A, { title: "old" }], [DOC_B, { title: "also old" }],
+    [CHUNK, CHUNK_PAYLOAD], [XBRL, { value: 1 }], [FR, { title: "x" }],
+  ]);
+  api.dropDocEvidence(cache);
+  assert.equal(cache.has(DOC_A), false);
+  assert.equal(cache.has(DOC_B), false);
+  assert.equal(cache.has(CHUNK), true);
+  assert.equal(cache.has(XBRL), true);
+  assert.equal(cache.has(FR), true);
+  assert.equal(cache.size, 3);
+});
+
+test("dropDocEvidence is a no-op on a cache with no doc: entries", () => {
+  const cache = new Map([[CHUNK, CHUNK_PAYLOAD]]);
+  api.dropDocEvidence(cache);
+  assert.equal(cache.size, 1);
+});

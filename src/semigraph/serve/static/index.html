@@ -580,7 +580,8 @@ function changesHtml(report, older, newer) {
 /* ===== Page behaviour ===== */
 const TURNSTILE_SITE_KEY = "__TURNSTILE_SITE_KEY__";
 const $ = (id) => document.getElementById(id);
-let turnstileToken = null, modelsInfo = null;
+let turnstileToken = null, modelsInfo = null, lastAgentStats = null;   // lastAgentStats: FIX 3, so the #strategy
+                                                                        // change listener can re-run syncAgentUi
 const evidenceCache = new Map();
 let stepsShown = 0;
 let currentWorkspace = null;               // { id, token, expires_at } — never persisted outside sessionStorage
@@ -599,12 +600,17 @@ function addStep(ev) {
   const li = document.createElement("li"); li.textContent = stepText(ev);
   $("agentSteps").appendChild(li); $("agentSteps").hidden = false; stepsShown += 1;
 }
-// Idempotent: loadStats() runs after every answer. Nothing agent-related is visible while the service reports it off.
+// Idempotent: loadStats() runs after every answer, and the #strategy "change" listener below re-runs it with the
+// same stats so the hint stays in step with whatever the user just picked. Nothing agent-related is visible while
+// the service reports it off; the hint itself is also hidden whenever "agent" is not the selected strategy (FIX 3,
+// owner's live G10 test, 2026-09-30) — it must not describe the agent while the user is looking at a hybrid answer.
 function syncAgentUi(stats) {
+  lastAgentStats = stats;
   const on = agentEnabled(stats), select = $("strategy"), option = select.querySelector('option[value="agent"]'), note = tracingNote(stats);
   if (on && !option) { const o = document.createElement("option"); o.value = "agent"; o.textContent = AGENT_OPTION_LABEL; select.appendChild(o); }
   if (!on && option) { if (select.value === "agent") select.value = "hybrid"; option.remove(); }
-  $("agentHint").textContent = on ? AGENT_HINT : ""; $("agentHint").hidden = !on;
+  const showHint = on && select.value === "agent";
+  $("agentHint").textContent = showHint ? AGENT_HINT : ""; $("agentHint").hidden = !showHint;
   $("tracingNote").textContent = note; $("tracingNote").hidden = !note;
   if (!on) clearSteps();
 }
@@ -632,7 +638,13 @@ async function loadFreshness() {
 async function loadExamples() {
   const d = await (await fetch("/api/examples")).json();
   $("examples").innerHTML = examplesHtml(d);
-  $("examples").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.q; $("strategy").value = "hybrid"; ask(); }));
+  $("examples").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => askExample(b.dataset.q)));
+}
+
+// A benchmark example is always answered on the hybrid path; setting the select in code fires no "change" event,
+// so the agent hint is re-synced here at once (round-7 verification) instead of only after the answer's loadStats().
+function askExample(question) {
+  $("q").value = question; $("strategy").value = "hybrid"; syncAgentUi(lastAgentStats); ask();
 }
 
 function setStatus(text, cls) { $("status").innerHTML = cls ? `<span class="${cls}">${esc(text)}</span>` : esc(text); }
@@ -692,6 +704,18 @@ function showEvidence(id, d) {
   }
 }
 
+// FIX (owner's live G10 test, 2026-09-30): a new upload version changes the STATUS of the PREVIOUS version's
+// chunks (current -> superseded), which the cache has no way to know on its own. Called by the job watcher once a
+// job reaches a terminal state, so a chip opened before the upload never keeps showing the old payload. SEC/xbrl/fr
+// entries never change this way and are left alone. A small pure helper so the node tests can call it directly.
+// docEvidenceGen (round-7 verification): a `doc:` fetch still in flight when this runs must not put its now-outdated
+// payload back into the cache afterwards, so openCitation caches a `doc:` payload only if no drop happened meanwhile.
+let docEvidenceGen = 0;
+function dropDocEvidence(cache) {
+  docEvidenceGen += 1;
+  for (const id of Array.from(cache.keys())) if (classifyCitation(id) === "doc") cache.delete(id);
+}
+
 // Shared by every citation chip on the page — the live answer (#answer) AND the what-changed view (#wsChanges,
 // finding 16): both render the same `.cite[data-id]` shape, so both open the same evidence drawer.
 async function openCitation(id) {
@@ -700,12 +724,15 @@ async function openCitation(id) {
   $("dTitle").textContent = "Evidence · " + chipLabel(id); $("dMeta").textContent = ""; $("dFresh").innerHTML = ""; $("dFacts").innerHTML = ""; $("dLink").innerHTML = "";
   $("dText").hidden = false; $("dText").textContent = "loading…";
   const isWorkspaceDoc = classifyCitation(id) === "doc" && currentWorkspace;
+  const gen = docEvidenceGen;
   try {
     const r = isWorkspaceDoc
       ? await fetch(`/api/workspace/${currentWorkspace.id}/evidence/${encodeURIComponent(id)}`, { headers: wsHeaders() })
       : await fetch(`/api/evidence/${encodeURIComponent(id)}`);
     if (!r.ok) { let detail = r.statusText; try { detail = (await r.json()).detail; } catch (_) {} throw new Error(detail); }
-    const d = await r.json(); evidenceCache.set(id, d); showEvidence(id, d);
+    const d = await r.json();
+    if (classifyCitation(id) !== "doc" || gen === docEvidenceGen) evidenceCache.set(id, d);
+    showEvidence(id, d);
   } catch (err) { $("dText").hidden = false; $("dText").textContent = "could not load evidence: " + err.message; }
 }
 
@@ -714,6 +741,9 @@ $("wsChanges").addEventListener("click", (e) => { const chip = e.target.closest(
 $("drawerClose").addEventListener("click", () => $("drawer").classList.remove("open"));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("drawer").classList.remove("open"); if ((e.ctrlKey || e.metaKey) && e.key === "Enter") ask(); });
 $("ask").addEventListener("click", ask);
+// FIX 3: the hint describes the agent strategy specifically, so it must update the moment the user switches to or
+// away from it — not just on the next loadStats() poll.
+$("strategy").addEventListener("change", () => syncAgentUi(lastAgentStats));
 
 function resetTurnstile() { if (window.turnstile && TURNSTILE_SITE_KEY) { turnstileToken = null; window.turnstile.reset(); } }
 
@@ -768,7 +798,7 @@ async function setWorkspace(ws) {
   // workspace's chunks were never valid before, so the retrieval came back empty while the selector still read
   // "current".
   wsAskAsOfInstant = null;
-  currentWorkspace = ws; writeStoredWorkspace(ws); evidenceCache.clear(); renderWorkspaceShell();
+  currentWorkspace = ws; writeStoredWorkspace(ws); evidenceCache.clear(); docEvidenceGen += 1; renderWorkspaceShell();
   if (ws) await loadWorkspaceData();
 }
 
@@ -880,6 +910,7 @@ async function watchJob(jobId, label, delayMs = WATCH_RECONNECT_DELAY_MS) {
     if (outcome === "ready" || outcome === "failed") return outcome;
     if (outcome === "gone") return null;
   }
+  dropDocEvidence(evidenceCache);   // the job may still finish unseen: never keep evidence it could have outdated
   setJobRow(label, "connection lost while watching this upload — check its status later", "err");
   return null;
 }
@@ -900,7 +931,7 @@ async function streamJobOnce(jobId, label) {
     if (!data) return;
     let job; try { job = JSON.parse(data); } catch (_) { return; }
     setJobRow(label, jobStateText(job), job.state === "failed" ? "err" : (job.state === "ready" ? "ok" : ""));
-    if (job.state === "ready" || job.state === "failed") { finalState = job.state; loadWorkspaceData(); }
+    if (job.state === "ready" || job.state === "failed") { finalState = job.state; dropDocEvidence(evidenceCache); loadWorkspaceData(); }
   };
   while (true) {
     let step; try { step = await reader.read(); } catch (e) { break; }

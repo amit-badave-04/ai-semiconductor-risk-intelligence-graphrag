@@ -19,6 +19,10 @@ const EXPORTS = [
   "docChipLabel", "staleClass", "jobStateText", "versionTimeline", "relativeTime", "freshnessLine",
   // M4 review fixes: upload target, title, "ask as of vN", and the richer what-changed view (findings 15, 16, 15.1)
   "uploadTargetOptions", "uploadTitleFor", "versionAskAsOfOptions", "changeItemHtml", "changesHtml",
+  // Owner's live G10 test (2026-09-30), FIX 1: drop stale `doc:` evidence-cache entries on a new upload version.
+  "dropDocEvidence",
+  // Round-7 verification: a benchmark example click forces hybrid and must re-sync the agent hint at once.
+  "askExample",
 ];
 
 function stubElement() {
