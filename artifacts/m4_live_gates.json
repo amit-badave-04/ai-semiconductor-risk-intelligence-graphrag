@@ -175,16 +175,76 @@
     "workflow": "the scheduled GitHub workflow cannot fire from v2; it activates when v2 reaches master (M6)"
   },
   "G4": {
-    "status": "pending",
-    "why": "needs Turnstile-gated uploads and asks from the owner's browser"
+    "passed": true,
+    "run": "owner, 2026-09-30, live release v13, 30-page PDF (15,849 tokens by the production tokenizer)",
+    "job": {
+      "accepted": "05:56:01Z",
+      "embed_done": "05:59:46.5Z",
+      "ready_by": "05:59:49Z (page refetched the list on ready)",
+      "wall_s_upper_bound": 228,
+      "limit_s": 300,
+      "embed_wall_s": 222.704,
+      "tokens_per_s": 71.2,
+      "local_baseline_tokens_per_s": 87.8
+    },
+    "memory": {
+      "uvicorn_vmhwm_kb": 1125116,
+      "uvicorn_limit_kb": 2400000,
+      "parse_child_peak_rss_kb_sampled_1s": 41220,
+      "parse_child_hard_cap": "RLIMIT_AS 1 GiB (so worst case total <= ~2.1 GB)",
+      "total_limit": "2.8 GB",
+      "min_mem_available_kb": 3007356,
+      "oom": "none: uvicorn kept one pid for the whole run; machine events show no exit after the 03:49Z restart"
+    },
+    "cpu": {
+      "window": "05:55:41Z -> 06:00:12Z",
+      "busy_jiffies": 23561,
+      "steal_jiffies": 124,
+      "steal_share_of_busy": 0.005,
+      "idle_baseline_steal_per_10min": 7,
+      "reading": "no throttling; burst balance not exhausted"
+    },
+    "asks_during_upload": {
+      "count": 5,
+      "all_completed": true,
+      "cached": 0,
+      "strategy": "hybrid (fixed path, gpt-6-luna)",
+      "latency_s": [
+        8,
+        5,
+        9,
+        8,
+        5
+      ],
+      "max_s": 9,
+      "limit_p95_s": 16.9,
+      "method": "server-side, second resolution (+-1 s): access-log response start -> ledger row",
+      "note": "a 6th ask at 05:58:26Z was refused 429 by the 5-per-10-min limit, as designed"
+    },
+    "recorder": "scratchpad g4_recorder.py (read-only /proc sampling, 1 s; ~0.4% of one core)"
   },
   "G8": {
-    "status": "pending",
-    "why": "read from the live ledger after G4 and G10"
+    "passed": true,
+    "live_spend_usd_2026_09_30": 0.021469,
+    "live_answers": 15,
+    "limit_usd": 2.0,
+    "note": "plus local G1 smoke runs at about $0.004 each (artifacts/workspace_smoke.json)"
   },
   "G10": {
-    "status": "pending",
-    "why": "owner click-through"
+    "passed": true,
+    "run": "owner click-through 2026-09-30 (pasted page text as written confirmation)",
+    "checks": {
+      "create_workspace": "201 at 06:00:47Z",
+      "upload_v1_ready": "embed 1.9 s, ready",
+      "ask_cites_doc_chip": "'the market is expected to grow next year' [your document v1 \u00b60000]",
+      "upload_v2_new_version": "v1 (superseded) -> v2 (current)",
+      "stale_citation": "as-of-v1 answer cites v1 \u00b60000; evidence shows 'superseded by 2', valid until 06:10:04Z",
+      "current_answer": "'expected to shrink next year, reversing the prior forecast' [your document v2 \u00b60000]",
+      "what_changed": "v1 -> v2, 2 unchanged; Added Cybersecurity Practices; Removed Legal Proceedings; Changed Market Outlook (quote of the v1 wording)",
+      "delete": "both workspaces DELETE 204; 0 User* nodes left in the graph"
+    },
+    "extra_questions": "7 more workspace questions answered correctly with doc: chips, including 3 sections found for export control licensing and an honest 'no revenue figure in the document'",
+    "open_detail": "the amber colour of the stale chip is not visible in pasted text; the server marked it stale"
   },
   "deployed": {
     "release": "v13",
