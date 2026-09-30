@@ -1,0 +1,232 @@
+# M5: serving at scale, frontend rewrite, buyer features (pre-registered plan, 2026-09-30, revision 2 after adversarial review)
+
+Status: plan written by the fable-architect before any M5 code, from the four research reports of 2026-09-30 (serve code map, frontend inventory, web-frontend, web-serving), PLAN.md / M4_PLAN.md, and the adversarial review of the first draft (every CRITICAL/HIGH adopted; MEDIUM/LOW adopted except section 15). Template: M4_PLAN.md. Paths are repo-relative (root `C:\Users\amit1\OneDrive\Documents\Projects\ai-semiconductor-risk-intelligence-graphrag`, branch `v2`, code under `src/semigraph/`). Test runner: `.venv/Scripts/python -m pytest` (serve-shipped twin `.venv-serve`). Owner order: M4 (live, release v14) -> **M5** -> M2 -> M6. Models: Sonnet workers (<= 3, disjoint files), Opus verifier per phase, Fable planning only.
+
+Owner rules that bind this plan: demo-grade for a buyer, standard methods and proven packages, TDD, no shortcuts ("we have time, do it the right way"); API spend uncapped in principle but every paid run carries `--max-usd`; **new recurring hosting, new accounts/vendors/domains and anything newly public need the owner's explicit decision**; public copy = strengths of completed work only; a failed gate is reported, never re-labelled; **no feature is cut without the owner's approval**.
+
+## 0. Summary of what changes versus PLAN.md section 6
+
+1. M5 is split into three shippable sub-milestones with their own gates and deploys: **M5a serving/scale**, **M5b frontend parity + core pages**, **M5c buyer features**. Every phase ships behind a flag with a one-line rollback; the live site is never worse, and nothing new becomes public before the owner signs it off (section 9).
+2. Two recorded stack decisions are outdated and go to the owner (section 3): "Cloudflare **Pages**" (Cloudflare now says start new projects with Workers) and the implicit assumption that the frontend must live on Cloudflare in M5. Recommendation: serve the static Next.js build **from the FastAPI app (same origin)** in M5b; decide Cloudflare in M6 with domain/Access/cutover.
+3. The 1,000-user gate is pre-registered against **one traffic model, the one PLAN.md:33 recorded** (every VU cycle is one question, think time 120-300 s). Derived from it (section 6): ~2.6 live asks/s, ~40 concurrent live streams in steady state, and **~3.2 dedicated cores of query embedding when the embedding cache is cold**. A `shared-cpu-2x` (12.5 % of a core after its burst balance, per Fly's docs) cannot carry that; the fleet, the caps that go live, and a hosted-query-embedding option are decision 3.
+4. Admission is split into two limits: an **embedding/CPU limiter** (the scarce resource, per machine, 1-2 slots) and a **fleet-wide in-flight LLM stream limit** (I/O-bound, tens per machine). The global reserve runs **last** in the gate order, after Turnstile and the per-IP window, so an unauthenticated request can never consume the day's budget.
+5. The production rollback is a `neo4j` state backend wrapping today's `store.py` (same persistence as today), not the in-memory backend. Durable ledger rows (`SvcQuery`) keep being written; only hot counters, limits, leases and caches move to Valkey.
+
+## 1. Scope and phasing
+
+| Phase | Ships | Deferred (each an owner decision, section 3) |
+|---|---|---|
+| **M5a serving/scale** | Async answer stream end to end (no thread per stream, cancel on disconnect, shielded cleanup, lease renewal); `serve/state/` with three backends (`valkey`, `neo4j`, `memory`); per-IP limits in Valkey (`limits`), two-tier admission (embed slots + fleet in-flight), daily count + spend with atomic reserve/reconcile, kill switch with `retrieval_only` level; answer + query-embedding cache; edge mode `fly` / `cloudflare` with origin auth; cross-machine job SSE, job heartbeats, sweeper lock, drain on shutdown (`kill_timeout`), freshness read-through; `/openapi.json` closed; hash-locked serve requirements; staging environment (no provider keys); Locust + mock-LLM harness; **the 1,000-VU load test on the pre-registered model**; fleet per decision 3 | Cloudflare in front, dedicated embedding tier |
+| **M5b frontend parity + core pages** | `web/` Next.js static export (decision 6), AI SDK UI-message-stream encoder at `POST /api/chat`, pages Home/Ask, Company, Workspace (M4 parity), Freshness, Method & Limits; a11y fixes; Lighthouse >= 95; served same-origin from the API image, first at an **unlinked preview path**, promoted to `/` only after the owner's written sign-off; old page at `/legacy` until then | Cloudflare Workers hosting, Access gate |
+| **M5c buyer features** | Export (PDF/Markdown, footnoted citations), conversation history + one-turn follow-up with standalone-question rewrite, API keys (admin-issued) + curated OpenAPI, read-only MCP server (5 enumerated tools, stateless), supply-chain map ("as-disclosed", Cypher degree, table toggle), admin console; each flag's production enable is an owner decision | Access/roles/audit log (M6 unless decisions 5+10 say otherwise), GDS centrality, watchlist alerts, self-serve keys |
+
+Order justification: M5b's `/api/chat` must be async from birth and its workspace page needs cross-machine job SSE, so serving comes first; buyer features are pages inside the new frontend, so they come last; Cloudflare-dependent items are isolated so an owner "not yet" never blocks the rest. **There is no pre-authorized cut list**: if a step cannot be finished to standard, it is reported with options and the owner decides.
+
+## 2. Verified constraints (file:line, `src/semigraph/`, as of 2026-09-30) and stale claims corrected
+
+- Gate order today (`serve/routes.py:255-277`): workspace token or answer cache -> **read-only** kill switch (`:268`) -> **read-only** daily ceiling with `0 = unlimited` (`:270`) -> Turnstile (`:272`) -> per-IP paid window (`:275`) -> `_paid_stream`, which takes the per-machine `answer_slots` inside the generator (`:358`) and answers `MSG_BUSY` as an `error` event. Nothing before Turnstile writes.
+- `_paid_stream` (`routes.py:347`) is a sync generator; `sse_starlette==3.4.11` drives it through `iterate_in_threadpool`, one `run_sync` per delta on the default 40-token limiter that every `run_in_threadpool` Neo4j call also uses. `retrieval/answerer.py` chains sync generators (`yield from` at :590/:673/:682); `TextStream` (`answerer.py:349-426`) wraps sync `litellm.completion(stream=True)` with `time.sleep` backoff; the strong-model worst case is `attempts=2 x (num_retries=2+1) x 90 s` plus backoff, i.e. **well over the 180 s lease TTL the first draft proposed**; the agent path (`routes.py:303`, `agent/stream.py`) is sync too; `serve/tracing.py:22-25` keeps its own span stack because consecutive `next()` calls run on different threads. `encode_query` costs ~1.23 s of one desktop core (`M4_PLAN.md:513`) and is CPU-bound: it must never run on the event loop.
+- Process-local state: `serve/guard.py:34-54` `RateLimiter` (unsalted `sha256[:16]` of the full address at :57-71), `serve/main.py:232-241` limiters/`answer_slots`/`upload_slots`, `main.py:228-231` `snapshot_id`/`example_ids`/`graph_stats` fixed at boot, `uploads/jobs.py:111-190` `JobRegistry`, job worker on a daemon `threading.Thread` (`jobs.py:581`), sweeper start pass with `SWEEPER_START_OLDER_THAN_S=0` (`jobs.py:604-666`), `serve/monitor.py:242-251` `_last`, `monitor.py:368-382` `check_now` never acquires the lease. `config.py:93`: empty `langfuse_hash_salt` = random salt per process.
+- Neo4j service state: `SvcPolicy`, `SvcQuery` (one row per attempt; today's `all_time` source), `SvcAnswer` (`store.py:141` exempts `source='benchmark'` from the TTL; 53 examples seeded at boot, `main.py:145`), `SvcUploadDay` (atomic, `store.py:104-117`), `SvcLease`/`SvcFreshness`.
+- `main.py:266` sets only `docs_url=None, redoc_url=None`: **`/openapi.json` is live today** and lists `/api/admin/*`. Closed in M5a Step 0.
+- `deploy/requirements-serve.txt`: **no `--hash` lines** (PLAN.md:31 says hash-locked); `litellm==1.100.0`, `sse-starlette==3.4.11`, `fastapi==0.141.1`, `neo4j==6.3.0`; no `redis`/`limits`/`mcp` pinned. `limits` 5.8's `redis` extra requires `redis<8` (review, web): pin resolved in Step 0 by import + behaviour test.
+- `fly.toml`: one `shared-cpu-2x`/4 GB machine, `soft_limit 20 / hard_limit 40`, **no `kill_timeout`** (Fly default 5 s, max 300 s), `EMBEDDING_BACKEND=onnx`, uvicorn single process (RSS ~0.9 GB: scale by machines, never `--workers`). `embeddings.py:43` already supports `EMBEDDING_BACKEND=remote` (OpenAI-compatible `/embeddings`, same model; `embeddings.py:144`: uploads refuse to start on it).
+- No CORS in `src/`; CSP `connect-src 'self'` (`routes.py:34-39`). 19 routes and the SSE grammar (`retrieval`/`step`/`escalated`/`delta`/`done`/`error`; cached `done` is the narrower shape) are the contract; citation grammar `retrieval/ids.py:22-25`, mirrored in `index.html:140-146`, diffed by `tests/test_static_ui.py`.
+- Shared-CPU quota (12.5 % of a core after a 500 s burst balance) is **from Fly's documentation, not measured** (corrected label); S6 measures it.
+
+Stale claims corrected (unchanged from draft): "Cloudflare Pages" (Workers Static Assets is current); "AI Elements needs Next.js" (false); "three AI SDK majors in one day" (two per year; `ai@7` current, AI Elements pins the `ai@6`/`@ai-sdk/react@3` pair, which we adopt **as a choice**, since AI Elements is copied into the repo); Lighthouse CI stalled (use the `lighthouse` CLI); the greedy-clustering caveat describes the retired temporal pass; `[S1]` renumbering was never built; the 0.865-0.927 faithfulness figures are unverified and must not be printed.
+
+## 3. Decisions re-verified, and decisions needed from the owner
+
+Kept unchanged: Neo4j Community; 1,000 concurrent users provable by a load test; Vercel AI SDK stream protocol; cheap default + escalate; Next.js (R15) unless revisited. Planner decisions from evidence (no owner needed): redis-py `redis.asyncio` for the app, a sync redis-py client for timer threads, `limits` with `implementation="redispy"` moving window; hand-written Lua for reserve/reconcile; spend in integer micro-USD; official `mcp` SDK v2 (`MCPServer`, streamable HTTP, stateless); Valkey `volatile-lru` with TTL-less counters (section 4.1); AI SDK v6 pair; `lighthouse` CLI; React Flow for the map; answer bodies rendered by our own restricted React renderer (no markdown engine, section 4.7); per-machine `upload_slots` and embed slots stay per machine, global caps move to Valkey; `all_time` ledger stays in `SvcQuery`.
+
+**Decisions needed from the owner** (ordered by what blocks the first step; nothing below is started before its answer):
+
+1. **Valkey hosting and failure policy** (blocks M5a Step 0). Self-hosted Valkey on a private Fly machine + 1 GB volume (recommended, ~$9-14/30 days estimate) vs Fly's Upstash integration. When Valkey is unreachable: **fail closed for paid answers** (503, kill-switch copy; reads, evidence, workspaces unaffected; cached answers unavailable) (recommended) vs fail open.
+2. **Policy defaults and admission caps** (blocks Step 0 config). Proposed: `max_spend_usd_per_day=10`, `embed_slots` = 1 per shared machine / cores-1 per performance machine, `max_inflight_answers_per_machine=48` (fleet cap = N x that), three-level kill switch (`on|retrieval_only|off`), an expired lease is charged its **estimate**, per-IP hashing moves to HMAC with a new `IP_HASH_PEPPER` secret and IPv6 bucketed by /64, `LANGFUSE_HASH_SALT` becomes a shared secret. Yes/no or amended values.
+3. **Traffic model, fleet and hosted query embedding** (blocks S6/S11 and the load test; Step 0 may start). Model: PLAN.md:33 (every cycle one ask), section 6. Fleet options: (a) prove the gate on a temporary `performance-2x` staging fleet (3 API machines) and keep **2 x `shared-cpu-2x`** live for demo traffic with the runbook published (the live fleet is then **not** the proven one; stated in docs); (b) keep the proven fleet live (~$200-500/30 days, quotes needed); (c) dedicated embedding tier (M6+); **(d) hosted query embedding** for the public corpus only (`EMBEDDING_BACKEND=remote` for query encoding, local ONNX kept for uploads and token counting; new vendor account, per-token billing; gated on S11 parity: top-10 overlap >= 0.95 with the shipped q8 ONNX model on the benchmark set; removes ~3 cores of CPU from the sizing and improves TTFB). Recommendation: (d) if S11 passes, else (a); Neo4j machine class (`shared-cpu-1x` today) is sized in the same decision. Any departure from the PLAN.md:33 model is also this decision.
+4. **Staging environment** (blocks S2/S6/S7, A3, A5). Throwaway Fly apps `semigraph-stg`, `semigraph-neo4j-stg`, `semigraph-valkey-stg`, `semigraph-mockllm`, Locust machines; **no provider API keys as staging secrets** (boot validator), origin-auth header required, seeded from the release build's public-corpus dump with a pre-flight `User*`/`Svc*` node count of 0, destroyed after each test window (single-digit $ per day).
+5. **Cloudflare in front and UI hosting** (blocks `cloudflare` edge activation; M6 otherwise). (a) none in M5, same-origin from `semigraph.fly.dev` (recommended); (b) free `*.workers.dev` Worker proxy (new public hostname, 100k req/day cap); (c) a domain on a Cloudflare zone (~$10-15/year).
+6. **Frontend framework** (blocks M5b Step 0). Next.js static export (recommended; footguns: no middleware/Server Actions/cookies) vs Vite + React SPA.
+7. **Preview path and public flips** (blocks M5b deploy). B6 runs at an unlinked, `noindex` preview path (`/v2/`, same image, `UI_V2_PREVIEW=true`) and on staging; `/` flips only on the owner's written sign-off. Each M5c production flag enable (`API_KEYS_ENABLED`, `MCP_ENABLED`, `MAP_ENABLED`, OpenAPI publication) is its own owner decision at deploy time.
+8. **Follow-up turn scope** (blocks M5c worker B). (a) client-side history + one-turn follow-up with a cheap-model standalone-question rewrite (one extra LLM call, separate template so the `4d0a62f5a0` fingerprint holds, prior turns labelled untrusted, never cached) (recommended); (b) server-side conversations (rejected: privacy, lost on dump swap).
+9. **M5c scope** (blocks M5c A/C). Map without GDS (Cypher degree, "as disclosed") (recommended); MCP without auth for the 4 pure-read tools, `search_chunks` behind the embed limiter + 10/min/IP (recommended); API keys admin-issued only, stored hashed in Neo4j `SvcApiKey` and exported/imported by the dump-swap runbook, counting against the global ceilings plus a per-key quota (recommended); **admin console items PLAN.md:103 listed and the draft omitted**: eval scores + Langfuse link (recommended: include, read from `artifacts/`), and the Answer-screen "N risks dropped" badge (recommendation: **not** shown; the dropped-risk layer was found mostly false on Nvidia in the 2026-09-26 review; the `removed_risk_items` wording stays).
+10. **Invite gate (Cloudflare Access)** (needs 5(c); M6 recommended). Public access would end; not a control for 1,000 users.
+11. **Real `sin` quotes** for `performance-1x/2x`, `shared-cpu-1x`/1 GB, volumes, hosted-embedding per-token price (blocks the final cost table only).
+
+## 4. Architecture and contracts
+
+### 4.1 State backends (`serve/state/`, protocol `StateBackend`; Valkey prefix `sg:v1:`)
+
+Three implementations, one protocol, one parity test-suite: `valkey` (production), **`neo4j` (production rollback; wraps today's `store.py` read/write paths so a rollback keeps today's persistence)**, `memory` (tests and local runs only). Valkey keys:
+
+| Key | Type / expiry | Semantics |
+|---|---|---|
+| `kill` | STRING `on\|retrieval_only\|off`, no TTL | Admin route writes Valkey and mirrors to `SvcPolicy`; re-read from `SvcPolicy` at boot when the key is absent. |
+| `rl:<scope>:<hmac(ip/64)>` | `limits` moving window, TTL = window | Scopes `paid` 5/600 s, `free` 30/600 s, `read` 120/60 s, `wscreate` 3/86400 s, `upload` 10/3600 s, `mcp_search` 10/60 s. Evictable under memory pressure (fail-open per IP, bounded, alerted). |
+| `paid:<day>`, `spend:<day>` | INT / INT micro-USD, **no TTL** (sweeper deletes keys older than 2 days) | `paid:<today>` is **seeded from `SvcQuery` at boot when absent** (cutover day never doubles the ceiling). `0 = off` for both ceilings (test). |
+| `inflight` | ZSET `lease_id -> expiry_ms`, no TTL | Fleet-wide LLM streams in flight; cap = `max_inflight_answers_per_machine x fleet_size` (setting). |
+| `lease:<lease_id>` | HASH `{estimate, day, ip_hash, strategy, ws_hash, started}`, no TTL (deleted by reconcile or sweep) | Renewed (`ZADD XX`) every 15 s while streaming; initial expiry = `llm_request_timeout_s x 2`; a lease whose score is past is swept. |
+| `ans:<cache_key>` | STRING JSON; `EX answer_cache_ttl_hours` for live answers, **no expiry for `source=benchmark`** | Examples seeded at every boot with `SET NX`; process memory holds the 53 examples as a fallback so an example click is never a paid call. Writes best-effort. |
+| `qemb:<sha256(normalized q)>` | 4,096 B float32, EX 7 days | Query-embedding cache in front of the embedder. |
+| `ledger:day:<day>` | HASH, EXPIRE 90 days | `HINCRBY` rollup for `/api/stats` and admin; **durable per-attempt rows keep going to `SvcQuery`** (written after the response through the db limiter; `all_time` unchanged). |
+| `job:<ws_hash>:<job_id>` | STREAM `MAXLEN 200`, EXPIRE 3600 after terminal | Job transitions for cross-machine SSE (`XREAD BLOCK` from `0-0`). |
+| `jobhb:<job_id>` | STRING `machine_id`, PX 60000 | Refreshed every 15 s by an **independent timer thread with a sync client** (long parse/compare stages cannot starve it). |
+| `lock:sweeper` | `SET NX PX 840000` | Guards only `fail_interrupted_jobs`; TTL and orphan sweeps run unconditionally on every machine (idempotent), so the 24-h deletion promise never depends on Valkey. |
+
+Valkey machine: `deploy/valkey/` (`valkey/valkey:8` pinned by digest), private 6PN only, `requirepass`, `maxmemory 512mb`, **`maxmemory-policy volatile-lru`** (only caches and rate-limit windows carry TTLs and can be evicted; counters, leases, policy never), AOF `everysec`, 1 GB volume; `used_memory` >= 80 % raises a `/healthz` warning field and a log alert; `/healthz` stays 200 on a Valkey blip (`valkey: false`).
+
+Lua (`register_script`; keys as `KEYS`; **not** cluster-safe, single instance by design):
+- `reserve.lua` `KEYS[paid_day, spend_day, inflight, lease]`, `ARGV[now_ms, ttl_ms, estimate, ceiling, max_paid, max_inflight, lease_id, fields...]`: prune expired inflight; `ZCARD >= max_inflight` -> busy; `max_paid > 0 and paid >= max_paid` -> budget; `ceiling > 0 and spend + estimate > ceiling` -> budget; else `INCR`, `INCRBY`, `ZADD`, `HSET`, return 0. Kill state is checked read-only before (4.2), not inside.
+- `renew.lua`: `ZADD XX` the lease's expiry.
+- `reconcile.lua`: if the lease exists, `INCRBY spend (actual - estimate)` floored at 0 total, `ZREM`, `DEL`, return 1; else 0 (logged).
+- `sweep.lua`: expired leases removed; estimate stays charged; `abandoned` counted in the day hash and a `SvcQuery` row with `outcome=abandoned`.
+- Estimate prices the **whole chain**: draft model input+output max, plus escalation model at the configured escalation rate assumption of 100 % (conservative), plus the agent planner when `strategy=agent`; same price table as `retrieval/pricing`.
+
+Not moved: `SvcUploadDay`, `SvcLease`/`SvcFreshness`, all `User*` labels, `SvcQuery` rows.
+
+### 4.2 Admission and gate order (new)
+
+Order per ask, unchanged where it exists today: workspace token or answer cache -> read-only kill/ceiling pre-check (Valkey `GET`s; `neo4j` backend reads as today) -> Turnstile (`hostname` and `action` now checked too) -> per-IP paid window -> **inside the async generator**: per-machine `embed_slots` (CPU) and `answer_slots` (kept as a per-machine LLM cap of `max_inflight_answers_per_machine`) -> **`reserve.lua` last**; a busy answer before reserve touches no counter; a busy or failed reserve releases the local slots. Tests: 403, 429 (window), busy, budget each leave `paid`/`spend`/`inflight` unchanged; 100 concurrent reserves at ceiling-1 admit exactly one.
+
+`retrieval_only` mode: `/api/ask` (legacy grammar) returns 503 with the paused copy until the legacy page is retired; `/api/chat` streams `data-retrieval` then `data-answer {degraded:true, excerpts}` with a synthesized text part; the full gate chain including Turnstile and the embed limiter applies (it is never an unauthenticated CPU endpoint).
+
+### 4.3 Async answer path (M5a worker B)
+
+`_paid_stream` becomes `async def`; every await-point is genuinely non-blocking: query embedding via `anyio.to_thread.run_sync` under the `embed_slots` `CapacityLimiter`; `TextStream` gains an async twin over `litellm.acompletion(stream=True, stream_options={"include_usage": true})` with `anyio.sleep` backoff; `astream_answer_for_prompt` / `astream_workspace_answer` / LangGraph `astream` for the agent, same events, same `done` grammar, `template_fingerprint()` unchanged; Neo4j calls on the sync driver through `run_in_threadpool` bounded by a dedicated `CapacityLimiter(db_thread_limit=32)`. Lease renewal every 15 s from the generator loop. Client disconnect: `EventSourceResponse` cancels the generator; cleanup (reconcile, `SvcQuery` row, tracer close, slot release) runs inside `CancelScope(shield=True)`; when usage never arrived, the reconcile charges the estimate (documented). `sse-starlette` 3.5.0 with `send_timeout=30`; S5 verifies prompt generator closure on disconnect and upstream `aclose()`. `serve/tracing.py` re-verified under async. Tests: async-generator shape on both SSE routes; slow-callback test with a **CPU-bound fake embedder** (0.3 s spin) and 20 concurrent streams, zero warnings; disconnect test asserting reconcile ran; recorded fixtures `answer_events_pre_m4.json` **and a new agent-path recording** reproduced event-for-event.
+
+### 4.4 Edge mode, client IP, origin auth
+
+`EDGE_MODE=fly|cloudflare` (default `fly`), exclusive: `cloudflare` requires `X-Origin-Auth` matching one of up to two secrets (`ORIGIN_AUTH_SECRET`, `ORIGIN_AUTH_SECRET_PREV` for rotation; `compare_digest`; 403 before routing; `/healthz` exempt) and reads `CF-Connecting-IP` only. Validator: `cloudflare` without a secret refused; `ENVIRONMENT=production` refuses any `CLIENT_IP_HEADER` other than `fly-client-ip`/`CF-Connecting-IP`; `ENVIRONMENT=staging` requires `X-Origin-Auth` on every request and the LLM `api_base` to be the mock (no provider key may be present). No CORS (same origin by design).
+
+### 4.5 Multi-machine behaviour and drain
+
+| Item | M5a |
+|---|---|
+| Per-IP limiters | `limits` in Valkey, async interface; every `_read_gate` call site (`routes.py`, `workspace_routes.py`, `dossier_routes.py`, `monitor_routes.py`) converted in Step 0 |
+| `embed_slots` / `answer_slots` | per machine (CPU / per-machine LLM cap) + fleet `inflight` |
+| Daily count / spend / kill | Valkey (4.1), `neo4j` backend as rollback |
+| Answer cache, examples | Valkey + process-memory examples fallback |
+| Ledger | `SvcQuery` rows (durable) + Valkey day hash (fast reads) |
+| Job SSE fan-out (`workspace_routes.py:412-453`, worker C) | Valkey stream first, local registry, then persisted `UserJob`; two-process test against the CI Valkey service (or fakeredis TCP server) with the test app factory (fake driver + fake embedder) |
+| Sweeper | start pass removed; `fail_interrupted_jobs` only under `lock:sweeper`, only when `jobhb` is absent **and** `updated_at` > 120 s **and** Valkey is reachable; lands before the fleet goes to 2 machines |
+| **Drain** | `fly.toml kill_timeout = 300`; on SIGTERM the machine sets `draining` (new asks/uploads answer 503 with retry copy, `/healthz` still 200 for Fly), waits for running jobs up to 240 s, streams end via sse-starlette's shutdown grace; a job that cannot finish is marked `interrupted` with a user-visible reason before exit |
+| Freshness `_last` | read-through `SvcFreshness` with 30 s cache; `check_now` takes the lease, 409 otherwise |
+| Boot-fixed `snapshot_id`/`example_ids`/`graph_stats` | RUNBOOK: a dump swap restarts the whole fleet (`flyctl deploy` or `machine restart` all) |
+
+### 4.6 AI SDK stream contract (`POST /api/chat`, M5b)
+
+`/api/ask` and its grammar stay for the legacy page, smoke scripts and API-key clients (MCP does **not** use it). `/api/chat` encodes the same async generator: `text/event-stream`, `x-vercel-ai-ui-message-stream: v1`, `Cache-Control: no-store`, `data: [DONE]`. Request: AI SDK message shape + `body {strategy, workspace_id?, as_of?}`; headers `X-Turnstile-Token` (fresh per request), `X-Workspace-Token`. Server uses the last user text part (and, under decision 8, at most two prior pairs); other content is never logged. Mapping as in the draft (`start`, `start-step`/tool parts for agent steps, `data-retrieval`, `data-escalated`, `text-start`/`text-delta`/`text-end`, one `source-document` per citation, `data-answer`, `finish`; `error {errorText}` then `finish`). **TTFB is defined as time to the first `data-retrieval`/`start-step` part** (`retrieval`/`step` on `/api/ask`), never `start`. Cached and degraded replies synthesize text parts from `done.answer`. Fixtures in `tests/data/ai_stream/`: sec, agent, cached, degraded, escalated, workspace, error-before-delta, error-mid-stream; `tests/test_serve_ai_stream.py` (byte-level) and `web/tests/contract/ai-stream.test.ts` (the `ai` package's own reader) pin all eight. Server-side timing spans (Turnstile, admission, embed, each Cypher, TTFT) are recorded per request in the `SvcQuery` row and exposed to the load-test report.
+
+### 4.7 Frontend architecture (M5b)
+
+`web/`: Next.js 16 static export (`trailingSlash: true`), TypeScript, Tailwind, shadcn, AI Elements (layout components only) with `ai@6` + `@ai-sdk/react@3`, Node 22; all shadcn components and npm deps installed in Step 0 (workers never touch `package.json`). **Answer bodies are rendered by our own `AnswerText` component**: plain text nodes plus chip `<button>`s produced by the generated citation tokenizer, no markdown engine, no HTML, `safeUrl` https-only for the few link fields; Streamdown/`react-markdown` are not used for answers (the XSS invariants of the current page are ported as-is and the chips/badges XSS fuzz fixtures run against the rendered component in vitest + Testing Library). Pages `/`, `/company/[ticker]/` (`generateStaticParams` from `web/data/universe.json`, generated + tested), `/workspace/`, `/freshness/`, `/method/`; `/legacy` = old page. Runtime config `GET /api/config`. Citation regexes generated (`scripts/export_ids.py` -> `web/src/lib/ids.generated.ts`, tested current). Serving: multi-stage Dockerfile -> `/srv/web`; FastAPI mounts `StaticFiles(html=True)` **after** all API routers, `/api/*` excluded (JSON 404s), at `/v2/` while previewing (`UI_V2_PREVIEW`) and at `/` after sign-off (`UI_V2`); security headers via middleware on every HTML response (CSP unchanged); `/_next/static/*` immutable caching; test that `/company/NVDA/` resolves. Lighthouse/axe run against the FastAPI app with recorded API fixtures, not a bare `web/out`. Feature-parity list items 1-11 of the draft stand unchanged and each maps to a named test before `/legacy` is removed; the "benchmark panel disabled while a workspace is open" change is kept.
+
+### 4.8 MCP server and API keys (M5c)
+
+`serve/mcp_server.py` on `mcp` SDK v2: `MCPServer`, `streamable_http_app(stateless_http=True, json_response=True, transport_security=allowed hosts)` mounted at `/mcp`. Tools (read-only, **no LLM path reachable**): `list_companies`, `get_company_dossier`, `get_risk_changes`, `get_evidence(id)`, `search_chunks(query, k<=10)` (embed limiter + `mcp_search` window, `qemb` cache). Two-machine conformance test with the SDK client via `fly-force-instance-id`-style routing in the two-process harness. API keys: `SvcApiKey {prefix, sha256, created, revoked, daily_quota}`; `Authorization: Bearer` replaces Turnstile on `/api/ask` and `/api/chat` with a per-key window in Valkey; counted against global ceilings; `scripts/api_keys.py {issue,revoke,export,import}` and the dump-swap RUNBOOK step.
+
+## 5. Spikes (results to `artifacts/m5_spikes.json`)
+
+| Id | Question | Pass | Cost | Owner |
+|---|---|---|---|---|
+| S1 | Valkey RTT over 6PN (10k PING, 2k `reserve`) | p99 <= 5 / 8 ms | ~$0.05 | main |
+| S2 | Baseline of today's config under the harness (staging, mock LLM, 50 -> 300 VUs) | recorded; where `hard_limit 40` bites per class | ~$1-2 | worker C |
+| S3 | AI SDK probe (header, `[DONE]`, `source-document`, `data-*`, per-request headers, `stop()`) | reader accepts; `stop()` closes | $0 | M5b A |
+| S4 | Cloudflare-in-front (only after decision 5 b/c) | SSE unbuffered; origin header seen | $0 | main |
+| S5 | Async chain: `acompletion` usage on final chunk; disconnect -> generator closed promptly and upstream `aclose()`; shielded `finally` runs under cancellation; slow-callback log empty with CPU-bound fake | all true | `--max-usd 0.30` | worker B |
+| S6 | Query-embed cost per machine class (cold and burst-drained `shared-cpu-2x`; `performance-1x/2x`, threads 1/2); `cpu_balance` trend | numbers feed decision 3 | ~$0.30 | worker C |
+| S7 | Neo4j at 5/10/20 q/s replay | p95 <= 50 ms at 10 q/s, no GC > 500 ms | in S2 | worker C |
+| S8 | Lighthouse baseline of the current page | recorded | $0 | main |
+| S9 | Valkey at `maxmemory` under `volatile-lru`: fill caches, assert `reserve`, `renew`, heartbeat, `HINCRBY` all succeed and only cache keys evict | counters never lost | $0 | worker A |
+| S10 | `pdfmake` 0.3 under the exact CSP (no `unsafe-eval`); fallback `@react-pdf/renderer`, last resort print stylesheet | export works under today's CSP | $0 | M5c B |
+| S11 | Hosted query embedding parity (decision 3d): top-10 overlap and cosine drift vs shipped q8 ONNX on the benchmark set; latency p95 | overlap >= 0.95; p95 <= 400 ms | <= $1 | main |
+| S12 | Pre-M5a live latency smoke (10 questions, real models): TTFT, stream duration, escalation rate, to calibrate the mock | recorded | `--max-usd 0.50` | main |
+
+## 6. Load-test design (the 1,000-user gate)
+
+Environment (decision 4): staging apps as in 4.4 (`ENVIRONMENT=staging`, `CLIENT_IP_HEADER=X-Test-Client-IP`, Turnstile test keys, ceilings 0 = off, origin-auth required, real embedder or remote per decision 3), mock LLM (`semigraph-mockllm`, OpenAI-compatible; **calibrated to S12**: TTFT, tokens/s, length; it returns drafts citing ids parsed from the prompt context so verification passes at the observed rate, an injectable invalid-id rate drives escalation at S12's measured rate, the escalation model is configured as an OpenAI-format name on the same mock, agent tool calls are mocked), Locust master + 4 workers on `performance-1x` in `sin`, `FastHttpUser` + httpx SSE user, metrics `ask_ttfb` (first retrieval/step part), `ask_complete`, `ask_dropped`, `ask_shed`, `job_sse_events`. Never production.
+
+**Pre-registered traffic model (= PLAN.md:33):** 1,000 VUs, think time U(120, 300) s (mean 210 s, 4.76 iterations/s). Per iteration: shell + `/api/stats` + `/api/examples` + `/api/freshness` (static bundle on the first iteration per VU), then **exactly one ask**: 45 % cached example, 40 % live from a 300-question pool, 10 % live unique suffix, 5 % live agent; plus 20 % evidence lookup, 5 % dossier/risk-changes. A separate 5-VU upload population runs one upload each per 10 min with job SSE watched to `ready`. Derived load: **~2.6 live asks/s** steady (3.9/s in the 1,500-VU spike), ~2.1 cached/s; with ~15 s mean live stream (S12-calibrated) **~40 concurrent live streams steady, ~60 at spike**; **~3.2 core-s/s of embedding cold, ~1.1 warm** (pool repeats hit `qemb`). Fleet-wide in-flight cap must be >= 2x the spike figure (>= 120), embed slots = cores available. Phases: ramp 10 min, steady 20 min, spike +500 VUs 3 min, soak 60 min, fault 10 min (mock 429 5 %, slow TTFT 5 s 5 %); a no-think-time run is a separate stress figure.
+
+**Pre-registered pass criteria (steady + soak, all machines, with the exact caps that will go live):** live-ask TTFB p95 <= 1.5 s (headroom note: 1.23 s of local embedding leaves ~0.27 s; the `qemb` hit rate and decision 3d are what make this achievable); >= 40 concurrent live streams held with `ask_dropped = 0`; **errors < 0.5 % including admission 429/shed** (no carve-out; any carve-out is an owner decision); per-machine CPU <= 70 % of the class's `cpu_baseline` and `cpu_balance` not trending to zero over the soak; RSS <= 70 %; Neo4j p95 <= 50 ms; Valkey p99 <= 8 ms; uploads finish `ready` while asks stream; fault phase: no app 5xx, every injected 429 becomes one escalation/error event with a reconciled lease. Reported, not gated: cache hit rates, q/s ceiling per class, `hard_limit` per class (set from this run), cost projection. Artifacts `artifacts/loadtest/<date>/` via `scripts/loadtest_report.py` (tested). **Re-run pre-registered as an M2 gate** (reranking/BM25 change TTFB and CPU) and before M6 cutover.
+
+What it proves / cannot prove: as in the draft, plus: it proves the fleet named in the report, with the caps named in the report, and nothing about a different live fleet (decision 3a makes that gap explicit in docs).
+
+## 7. Pre-registered gates (never waived silently)
+
+**M5a** A1 parity across `memory`, `fakeredis[lua]`, real Valkey, **and `neo4j`**; Lua atomicity; gate-order tests (4.2). A2 async: no sync generator behind SSE; CPU-bound slow-callback test clean; disconnect cancels upstream, shielded cleanup reconciles (S5); fingerprint `4d0a62f5a0`; SEC **and agent** recordings reproduced. A3 multi-machine: two-process job-SSE and MCP-ready harness green; sweeper never fails a heartbeating job; `check_now` 409; **rolling deploy on staging: an upload on the surviving machine finishes `ready`; an upload on the replaced machine finishes within the drain or is `interrupted` within 300 s, never hanging; a stream on the replaced machine ends with an `error` event, not a cut socket.** A4 security: edge exclusivity; production refuses test IP header; staging refuses provider keys; origin-auth 403 before limiters; `/openapi.json` 404; hash-locked requirements install with `--require-hashes`; `security-reviewer` (opus) on `guard.py`, middleware, `state/`; pip-audit clean. A5 load test per section 6 on the decision-3 fleet with live caps. A6 live checks (`/healthz valkey:true`, ledger, example ids unchanged and **an example still cached 25 h after boot**, kill round trip, one paid ask `--max-usd 0.10`, cross-machine upload watch, post-M5a latency smoke equal or better than S12). A7 paid spend <= $5.
+
+**M5b** B1 contract (eight fixtures, Python + node). B2 parity list, `ids.generated.ts` current, `/company/NVDA/` resolves. B3 `lighthouse` a11y >= 95, best-practices >= 90 on five pages x mobile/desktop against the FastAPI app; axe zero serious/critical. B4 CSP identical on every HTML response; no `dangerouslySetInnerHTML`, no markdown/HTML renderer on answer paths (lint + test); XSS fuzz against rendered components; `npm audit` no high; Turnstile fail-closed on the new page. B5 CI green (node job + both venvs), reproducible image (`npm ci`, lockfile). **B6 owner click-through on the preview path/staging, confirmed in writing, before `/` flips**; `/legacy` removed only after a second confirmation. B7 <= $5.
+
+**M5c** C1 export footnotes (MD snapshot, PDF text layer) under today's CSP (S10). C2 API keys per 4.8, OpenAPI at `/api/openapi.json` lists no admin/workspace-internal route (test), publication itself an owner flag. C3 MCP: five tools, stateless, two-machine test, leak harness extended, no LLM path reachable (test). C4 map <= 600 edges with provenance, "as disclosed". C5 admin: cost/answer/day, cached ratio, escalation and routing rates, kill switch, freshness check, plus eval scores + Langfuse link if decision 9 says so. C6 follow-up (decision 8a): rewrite call present, separate template, `prior_turns` never cached, a 20-question paid eval shows single-turn answers unchanged (`--max-usd 2`). C7 <= $5; owner click-through.
+
+## 8. Ordered steps (owners, files)
+
+**M5a Step 0 (main, serial):** `config.py` (all new settings incl. `embed_slots`, `max_inflight_answers_per_machine`, `fleet_size`, `ip_hash_pepper`, `origin_auth_secret_prev`, staging validators); `deploy/requirements-serve.in` (+`redis` pinned compatible with `limits`, `limits`, `sse-starlette==3.5.0`, litellm reconciled) compiled **with `--generate-hashes`**, Dockerfile `--require-hashes`; `main.py` (`openapi_url=None`, lifespan backend init, dedicated limiters, drain hooks, `kill_timeout` in `fly.toml`); `serve/state/{backend,memory,neo4j,valkey}.py` + Lua stubs; `store.py` seam; async limiter interface **and every `_read_gate` call site**; `routes.py` gate-order seam; `guard.py` HMAC hashing + edge middleware; `deploy/valkey/`, `deploy/staging/`; secrets script; CI Valkey service; test skeletons. **Workers:** A = `serve/state/*`, Lua, `limits` wiring, tests (S1, S9). B = `answerer.py`/`workspace.py`/`agent/stream.py` async twins, `_paid_stream` body, tracing, degrade mode, `test_serve_api.py` (S5). C = `uploads/jobs.py`, **`workspace_routes.py` job SSE**, `monitor*.py`, `loadtest/`, `mockllm/`, `scripts/loadtest_report.py`, tests (S2, S6, S7). Workers never edit `config.py`, `main.py`, `guard.py`, `store.py`, requirements, `fly.toml`. Main: S11/S12, integration, verifier, deploy.
+
+**M5b Step 0 (main):** `web/` scaffold with all deps and shadcn components, generators + tests, `GET /api/config`, `serve/ai_stream.py` stub + route, Dockerfile, static mount with preview path, header middleware, `/legacy`, CI node job, fixture recordings. **Workers:** A = encoder + eight fixtures + contract tests (S3). B = ask page, `AnswerText`, badges/checks/chips/evidence/steps + vitest ports + component XSS fuzz + a11y. C = company/workspace/freshness/method pages + workspace/jobs/changes libs + Playwright flows. Main: lighthouse/axe, `test_serve_ui_v2.py`, verifier, preview deploy, B6.
+
+**M5c Step 0 (main):** flags, `AskRequest.prior_turns` + rewrite template, OpenAPI curation, `SvcApiKey` schema, admin summary seam. **Workers:** A = `api_keys.py`, `mcp_server.py`, `admin_routes.py`, `scripts/api_keys.py`, tests. B = export (S10), history + follow-up UI, admin page. C = `retrieval/graphmap.py`, `/api/graph/map`, map page.
+
+## 9. Deploy, live verification, rollback
+
+**M5a:** (1) Valkey app after decision 1; secrets. (2) `STATE_BACKEND=valkey`, `EDGE_MODE=fly`, `kill_timeout=300`, `hard_limit` from A5, rolling deploy with 1 machine; A6. (3) Scale to the decision-3 live fleet; cross-machine A6 items. (4) Staging destroyed after each window (recorded). Rollback: `STATE_BACKEND=neo4j` (today's persistence, single machine) + previous image; kill switch works on all backends.
+**M5b:** image with `UI_V2_PREVIEW=true` (old page at `/`, new at `/v2/`, `noindex`) -> B6 in writing -> `UI_V2=true` -> `/legacy` until the second confirmation. Rollback: flags off.
+**M5c:** flags off at deploy; each production enable is an owner decision (decision 7); rollback = flag off.
+
+## 10. Cost table (per 30 days, `sin`; VERIFIED only where marked)
+
+| Item | Cost | Status |
+|---|---|---|
+| Today: API `shared-cpu-2x`/4 GB + Neo4j | $35.09 (VERIFIED) + ~$9-14 = ~$44-49 | live |
+| M5a with decision 3(a) or 3(d): + 1 API machine + Valkey `shared-cpu-1x`/1 GB + volume | + $35.09 + ~$9-14 + $0.15 = **~$88-98** | decisions 1, 3 |
+| Decision 3(d) hosted query embedding | per-token, estimate < $2/month at demo traffic (quote, decision 11) | new vendor: owner |
+| Decision 3(b) performance fleet live | + ~$200-500 (quotes) | not recommended |
+| Cloudflare tiers / domain | $0 / ~$10-15 per year | decision 5 |
+| One-off staging (2-3 windows) | ~$5-20 | decision 4 |
+| API spend: M5a <= $5, M5b <= $5, M5c <= $5 (+ S11/S12 <= $2) | <= $17 | within policy |
+
+## 11. Risks and where the obvious implementation is wrong
+
+1. `async def` over a sync chain, or `encode_query` on the loop, blocks every request on the machine: full conversion, embed in a thread under its own limiter, CPU-bound slow-callback test.
+2. A write-through reserve placed at the read-only pre-check position lets tokenless requests drain the budget: reserve last, tests for every early exit.
+3. Cancellation without `shield=True` skips reconcile: S5 + test.
+4. A 180 s lease is shorter than the strong-model worst case: renewal, sweep charges the estimate.
+5. Layered IP trust (`fly-client-ip` + `CF-Connecting-IP`) re-opens the bypass: exclusive modes.
+6. `noeviction` fails counters and scripts together at `maxmemory`: `volatile-lru`, TTL-less counters, S9.
+7. Benchmark answers with a TTL become silent paid calls: no expiry + memory fallback + 25 h test.
+8. A memory rollback loses the ceiling and ledger on restart: `neo4j` backend is the rollback.
+9. A public staging with pass-through Turnstile and provider keys is an open proxy: validator, origin auth, no keys.
+10. A traffic model lighter than PLAN.md:33 paired with PLAN.md's criteria makes the gate unpassable and the fleet mis-sized: one model, derived criteria, live caps under test.
+11. TTFB measured at `start` is ~0: defined at the first retrieval/step part.
+12. Rolling deploys kill daemon job threads: drain + `kill_timeout`.
+13. Streamdown/`rehype-raw` widen the XSS surface without any `dangerouslySetInnerHTML`: no markdown/HTML renderer on answers; fuzz the rendered component.
+14. Session-ful MCP behind two machines: stateless transport; LLM paths excluded.
+15. `useChat` sends the full history; only the last user text (+ bounded, untrusted prior turns) is used or logged.
+16. Static export footguns; `StaticFiles` and `/company/NVDA`: `trailingSlash`, `/api` exclusion, test.
+17. Baking the Turnstile key forks the build: `/api/config`.
+18. `pdfmake` may need `unsafe-eval`: S10 before committing.
+19. Load-test proof goes stale after M2: pre-registered re-run.
+20. Valkey loss: caches and the day's hot counters; `paid:<today>` re-seeds from `SvcQuery`, kill state from `SvcPolicy` (documented limit: spend re-seeds from `SvcQuery` cost sums too).
+21. Shared `uploads` day counter and workspaces still reset on dump swap (M4 limit, RUNBOOK); a dump swap needs a fleet restart.
+
+## 12. Cleanup
+
+As in the draft, plus: staging apps/volumes destroyed and listed with dates after every window; `artifacts/m5_spikes.json`, `artifacts/loadtest/<date>/`, `tests/data/ai_stream/*.sse` committed; after the second B6 confirmation `serve/static/index.html`, `tests/ui/`, `tests/test_static_ui.py`, `test_serve_agent_ui.py` removed with their pins living in `web/tests` and `tests/test_serve_ui_v2.py`; `SvcAnswer` writer removed (rows readable), `SvcQuery` writer kept; PLAN.md section 6 pointer; README strengths-only paragraphs per phase; limits (fleet caveat if 3a, no Access, no GDS, estimate-billed disconnects) in docs/v2 + RUNBOOK; `.env.example` complete; `git status` clean.
+
+## 13. Verification (repo rules)
+
+TDD per step; pytest >= 80 % on both venvs with the LLM mocked; backend parity on four backends; two-process multi-machine tests (jobs, MCP); leak harness after every phase (Valkey keys carry `ws_hash` only and no workspace text; MCP tools included); eight-fixture AI-stream contract tests (Python + node); vitest + Testing Library XSS fuzz + Playwright + axe + `lighthouse` in CI; Locust report against section 6; `security-reviewer` (opus) on `guard.py`, middleware, `state/`, `api_keys.py`, `mcp_server.py`, drain code; `python-reviewer`, `code-reviewer`; Opus `verifier` on every phase diff before deploy and after every fix round; pip-audit, gitleaks, `npm audit`; live probes (S5, S11, S12) before any API call shape ships; every paid script `--max-usd`-capped with spend read from the ledger; every gate reported against the owner's original asks (1,000 users provable, demo-grade UI, buyer features) with fails named as fails.
+
+## 14. Audit trail
+
+- 2026-09-30: plan v1 written by the fable-architect from the four research reports (read-only), kept in [`research/m5-serve-codemap.md`](research/m5-serve-codemap.md), [`research/m5-frontend-inventory.md`](research/m5-frontend-inventory.md), [`research/m5-web-frontend.md`](research/m5-web-frontend.md) and [`research/m5-web-serving.md`](research/m5-web-serving.md); the review is [`research/m5-plan-review.md`](research/m5-plan-review.md).
+- 2026-09-30: adversarial review received (1 CRITICAL, 11 HIGH, 16 MEDIUM, 2 LOW). Plan v2 (this file): all CRITICAL/HIGH adopted; MEDIUM/LOW adopted except section 15. Code re-checked read-only for the load-bearing claims (gate order `routes.py:255-277`, `store.py:141`, `main.py:266`, no hashes in `requirements-serve.txt`, `embeddings.py:43/144`, `jobs.py:581`, `fly.toml` without `kill_timeout`): all confirmed. No code changed, no servers started, no paid calls. Owner decisions 1-11 open; spikes S1-S12 not run.
+
+## 15. Review findings not adopted (with reasons)
+
+1. **Finding 17, "or run a separate cache instance":** not adopted. One instance with `volatile-lru`, TTL-less counters and a `used_memory` alert gives the same guarantee without a second machine and its recurring cost; revisited only if S9 or the load test shows cache pressure evicting rate-limit windows at a rate that matters.
+2. **Finding 12, "pin Streamdown with `rehype-raw` removed":** not adopted as the remedy. Answer bodies are rendered by our own text-plus-chips component with no markdown or HTML engine at all, which is strictly narrower than a hardened Streamdown and matches the current page's invariants one for one; AI Elements is used for layout only.
+3. **Finding 4's alternative "serve examples from process memory only":** adopted as the fallback, not the primary. Valkey holds them without expiry so `/api/examples` and the cached-`done` path stay identical across machines; the process copy guarantees an example is never a paid call even when Valkey is empty.
+4. **Finding 23's alternative "define all-time as Neo4j history plus Valkey":** not adopted; the simpler option from the same finding (keep writing `SvcQuery`, under 1 write/s) is taken, so `all_time` keeps one source and the Valkey `ledger` stream from the draft is dropped entirely.
