@@ -22,23 +22,26 @@ def _load():
 
 live = _load()
 IDS = ["ex-01", "ex-02", "ex-03"]
+SNAP = "snap-20260924-97c6597d58"
 
 
 def _passing_obs() -> dict:
     return {"healthz": 200, "index": 200, "index_site_key_filled": True,
-            "stats": {"status": 200, "uploads_enabled": True, "node_labels": ["Company", "Filing"],
+            "stats": {"status": 200, "snapshot_id": SNAP, "uploads_enabled": True, "node_labels": ["Company", "Filing"],
                       "freshness_status": "ok"},
             "freshness": {"status": 200, "enabled": True, "configured": True},
-            "examples_status": 200, "example_ids": sorted(IDS), "dossier": 200, "risk_changes": 200,
+            "examples_status": 200, "example_ids": sorted(IDS),
+            "dossier": {"status": 200, "filings": 5, "metrics": 3, "active_risks": 6, "edges": 4, "rules": 2},
+            "risk_changes": {"status": 200, "pairs": 2},
             "public_evidence_doc_id": 404, "workspace_create_no_token": 403, "agent_with_workspace": 400}
 
 
 def test_a_fully_passing_observation_set_has_no_failures():
-    assert live.evaluate_g9(_passing_obs(), IDS) == []
+    assert live.evaluate_g9(_passing_obs(), IDS, SNAP) == []
 
 
 def test_an_empty_observation_set_fails_every_check():
-    assert len(live.evaluate_g9({}, IDS)) == len(live._g9_checks({}, IDS))
+    assert len(live.evaluate_g9({}, IDS, SNAP)) == len(live._g9_checks({}, IDS, SNAP))
 
 
 @pytest.mark.parametrize("mutate,expected_fragment", [
@@ -49,24 +52,27 @@ def test_an_empty_observation_set_fails_every_check():
     (lambda o: o["stats"].update(freshness_status="unconfigured"), "freshness block"),
     (lambda o: o["freshness"].update(configured=False), "/api/freshness"),
     (lambda o: o.update(example_ids=["ex-01", "ex-02"]), "/api/examples"),
-    (lambda o: o.update(dossier=500), "dossier"),
-    (lambda o: o.update(risk_changes=404), "risk-changes"),
+    (lambda o: o["stats"].update(snapshot_id="snap-other"), "snapshot id"),
+    (lambda o: o["dossier"].update(status=500), "dossier"),
+    (lambda o: o["dossier"].update(active_risks=0), "dossier"),
+    (lambda o: o["risk_changes"].update(status=404), "risk-changes"),
+    (lambda o: o["risk_changes"].update(pairs=0), "risk-changes"),
     (lambda o: o.update(public_evidence_doc_id=200), "public evidence"),
     (lambda o: o.update(workspace_create_no_token=200), "Turnstile token"),
     (lambda o: o.update(agent_with_workspace=403), "strategy=agent"),
 ], ids=["healthz", "site-key", "uploads", "user-labels", "freshness-summary", "freshness-route", "examples",
-        "dossier", "risk-changes", "public-doc-id", "workspace-403", "agent-400"])
+        "snapshot", "dossier-status", "dossier-empty", "risk-changes-status", "risk-changes-empty", "public-doc-id", "workspace-403", "agent-400"])
 def test_each_check_fails_alone_when_its_observation_is_wrong(mutate, expected_fragment):
     obs = _passing_obs()
     mutate(obs)
-    failures = live.evaluate_g9(obs, IDS)
+    failures = live.evaluate_g9(obs, IDS, SNAP)
     assert len(failures) == 1 and expected_fragment in failures[0]
 
 
 def test_no_expected_ids_is_a_failure_never_a_vacuous_pass():
     obs = _passing_obs()
     obs["example_ids"] = []
-    assert any("/api/examples" in f for f in live.evaluate_g9(obs, []))
+    assert any("/api/examples" in f for f in live.evaluate_g9(obs, [], SNAP))
 
 
 def _fake_service(request: httpx.Request) -> httpx.Response:
@@ -77,14 +83,18 @@ def _fake_service(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="<html>data-sitekey='0x4AAA'</html>")
     if method == "GET" and path == "/api/stats":
         return httpx.Response(200, json={"graph": {"nodes": {"Company": 26, "Filing": 74}}, "uploads_enabled": True,
+                                         "snapshot": {"id": SNAP, "as_of": "2026-09-24"},
                                          "freshness": {"status": "ok", "checked_at": None, "pending_count": 0}})
     if method == "GET" and path == "/api/freshness":
         return httpx.Response(200, json={"enabled": True, "configured": True, "status": "ok", "pending_count": 0})
     if method == "GET" and path == "/api/examples":
         return httpx.Response(200, json={"source": "x", "examples": [{"id": i, "question": "q", "type": "t"}
                                                                       for i in reversed(IDS)]})
-    if method == "GET" and path.startswith("/api/company/NVDA/"):
-        return httpx.Response(200, json={})
+    if method == "GET" and path == "/api/company/NVDA/dossier":
+        return httpx.Response(200, json={"company": {"ticker": "NVDA"}, "filings": [{}], "metrics": [], "active_risks": [{}],
+                                         "edges": [], "rules": []})
+    if method == "GET" and path == "/api/company/NVDA/risk-changes":
+        return httpx.Response(200, json={"company": {"ticker": "NVDA"}, "pairs": [{}]})
     if method == "GET" and path.startswith("/api/evidence/doc:"):
         return httpx.Response(404, json={"detail": "not a public evidence id"})
     if method == "POST" and path == "/api/workspace":
@@ -99,7 +109,7 @@ def _fake_service(request: httpx.Request) -> httpx.Response:
 def test_observe_against_a_fake_service_passes_g9():
     with httpx.Client(transport=httpx.MockTransport(_fake_service)) as client:
         obs = live.observe(client, "https://example.test")
-    assert live.evaluate_g9(obs, IDS) == []
+    assert live.evaluate_g9(obs, IDS, SNAP) == []
     assert obs["stats"]["node_labels"] == ["Company", "Filing"]
 
 
@@ -109,6 +119,7 @@ def test_main_writes_the_artifact_and_exits_0_on_a_pass(monkeypatch, tmp_path):
     real_client = httpx.Client
     monkeypatch.setattr(live.httpx, "Client", lambda: real_client(transport=httpx.MockTransport(_fake_service)))
     monkeypatch.setattr(live, "ARTIFACT_PATH", tmp_path / "m4_live_gates.json")
-    assert live.main(["--base-url", "https://example.test/", "--expect-examples", str(expected)]) == 0
+    assert live.main(["--base-url", "https://example.test/", "--expect-examples", str(expected),
+                      "--expect-snapshot", SNAP]) == 0
     written = json.loads((tmp_path / "m4_live_gates.json").read_text(encoding="utf-8"))
     assert written["passed"] is True and written["failures"] == [] and written["expected_example_count"] == 3
