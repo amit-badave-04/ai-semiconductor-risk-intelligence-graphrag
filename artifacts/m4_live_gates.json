@@ -1,0 +1,194 @@
+{
+  "G9_http": {
+    "passed": true,
+    "checks": "13 of 13",
+    "observations": {
+      "healthz": 200,
+      "index": 200,
+      "index_site_key_filled": true,
+      "stats": {
+        "status": 200,
+        "snapshot_id": "snap-20260924-97c6597d58",
+        "uploads_enabled": true,
+        "node_labels": [
+          "Company",
+          "EvidenceSpan",
+          "ExportControl",
+          "Filing",
+          "FilingSection",
+          "Metric",
+          "Product",
+          "RiskFactor",
+          "RiskItem",
+          "RiskPassage",
+          "Snapshot"
+        ],
+        "freshness_status": "never"
+      },
+      "freshness": {
+        "status": 200,
+        "enabled": true,
+        "configured": true,
+        "monitor_status": "never",
+        "pending_count": 0
+      },
+      "examples_status": 200,
+      "example_ids": [
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "M1",
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "NG01",
+        "NG02",
+        "NG03",
+        "NG04",
+        "NG05",
+        "NG06",
+        "NG07",
+        "NG08",
+        "NG09",
+        "NG10",
+        "NG11",
+        "NG12",
+        "NG13",
+        "NG14",
+        "NG15",
+        "NG16",
+        "NG17",
+        "NG18",
+        "NG19",
+        "NG20",
+        "NG21",
+        "NG22",
+        "NG23",
+        "NG24",
+        "Q1",
+        "Q2",
+        "Q3",
+        "R1",
+        "R3",
+        "T1",
+        "T10",
+        "T11",
+        "T12",
+        "T13",
+        "T14",
+        "T5",
+        "T7",
+        "U1",
+        "U2",
+        "X2",
+        "X3",
+        "X4"
+      ],
+      "dossier": {
+        "status": 200,
+        "filings": 6,
+        "metrics": 8,
+        "active_risks": 25,
+        "edges": 21,
+        "rules": 8
+      },
+      "risk_changes": {
+        "status": 200,
+        "pairs": 1
+      },
+      "public_evidence_doc_id": 404,
+      "workspace_create_no_token": 403,
+      "agent_with_workspace": 400
+    },
+    "expected_snapshot": "snap-20260924-97c6597d58",
+    "expected_example_count": 51,
+    "generated_at": "2026-09-30T03:44:57.372540+00:00"
+  },
+  "G9_machine": {
+    "passed": true,
+    "source": "flyctl ssh, /proc (read-only), machine 2862626a6e2d48, release v13",
+    "nproc": 2,
+    "mem_total_kb": 4010648,
+    "uvicorn_rss_kb_after_boot": 893844,
+    "before_deploy": {
+      "nproc": 1,
+      "mem_total_kb": 2015876,
+      "uvicorn_rss_kb": 915776
+    }
+  },
+  "risk13_fresh_machine_burn": {
+    "result": "no throttling: one core 100% busy for 30 s, steady throughput",
+    "slices_5s": [
+      {
+        "loops_per_s": 9542486,
+        "steal_jiffies": 2,
+        "busy_jiffies": 499
+      },
+      {
+        "loops_per_s": 9497862,
+        "steal_jiffies": 2,
+        "busy_jiffies": 502
+      },
+      {
+        "loops_per_s": 9676313,
+        "steal_jiffies": 2,
+        "busy_jiffies": 500
+      },
+      {
+        "loops_per_s": 9484305,
+        "steal_jiffies": 2,
+        "busy_jiffies": 501
+      },
+      {
+        "loops_per_s": 9861655,
+        "steal_jiffies": 1,
+        "busy_jiffies": 500
+      },
+      {
+        "loops_per_s": 9688168,
+        "steal_jiffies": 2,
+        "busy_jiffies": 500
+      }
+    ]
+  },
+  "G5": {
+    "passed": true,
+    "scheduled_first_check": "ran by itself 300 s after boot (2026-09-30T03:48:56Z): status ok",
+    "admin_check_now": {
+      "http_status": 200,
+      "status": "ok",
+      "configured": true,
+      "duration_s": 4.1,
+      "pending_count": 0,
+      "federal_register": {
+        "graph_count": 166,
+        "live_count": 166,
+        "new_since": 0
+      }
+    },
+    "heartbeat_live_exit": 0,
+    "heartbeat_recorded_stale_exit": 1,
+    "heartbeat_recorded_error_exit": 1,
+    "restart": "flyctl machine restart: SIGINT -> 'Application shutdown complete' in the same second, exit code 0, healthy again; no hung shutdown",
+    "workflow": "the scheduled GitHub workflow cannot fire from v2; it activates when v2 reaches master (M6)"
+  },
+  "G4": {
+    "status": "pending",
+    "why": "needs Turnstile-gated uploads and asks from the owner's browser"
+  },
+  "G8": {
+    "status": "pending",
+    "why": "read from the live ledger after G4 and G10"
+  },
+  "G10": {
+    "status": "pending",
+    "why": "owner click-through"
+  },
+  "deployed": {
+    "release": "v13",
+    "commit": "43678ce",
+    "image_rollback_target": "v12 registry.fly.io/semigraph:deployment-01M3H1X2FDKCSNV47R30EQA77W"
+  }
+}
