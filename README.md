@@ -18,11 +18,12 @@ check fails or the question is about change over time; bot-gated and capped per 
 chip opens the SEC excerpt, XBRL fact or Federal Register rule it points to. The owner parks the demo when
 it is not in use; if the page does not load, it is offline (see [Operations](#operations-start--stop)).
 
-> **Status (2026-09-27): v2, milestone M1b shipped.** Risk-factor changes between annual filings are now
-> found by comparing the filings' own text directly — no LLM summarization of what changed — for any
-> consecutive pair of a company's annual reports, or across its recent ones. Every change claim is worded to
-> match its measured precision, and every citation is checked against the retrieved text before an answer is
-> released. Read [docs/v2/M1B_PLAN.md](docs/v2/M1B_PLAN.md) for the design and the measurements.
+> **Status (2026-09-30): v2, milestone M4 shipped.** Visitors can now bring their own documents: upload a PDF,
+> Word (.docx), Markdown, HTML or text file into a private workspace, ask questions whose answers cite it next to the
+> SEC evidence, upload a newer version and see what changed, section by section, with answers that cite an outdated
+> version flagged. The service also checks EDGAR and the Federal Register on a schedule and shows how current
+> its data is. Read [docs/v2/M4_PLAN.md](docs/v2/M4_PLAN.md) for the design and the gates it passed; the
+> text-grounded risk-change layer (M1b) and the opt-in research agent (M3) are described below.
 
 > Data is public SEC EDGAR and Federal Register material. This is a research/portfolio system, not
 > investment advice.
@@ -54,6 +55,18 @@ it is not in use; if the page does not load, it is offline (see [Operations](#op
   (financial metrics, risk changes, company relationships) before the answer is written, shown live
   as they run; the answer still goes through the same citation and grounding checks as every other
   question, and a planner failure of any kind falls back to the direct retrieval with no visible error.
+- **Your own documents, versioned (M4)** — upload a PDF, Word (.docx), Markdown, HTML or text document into a private
+  workspace and ask questions whose answers cite it (`doc:` chips) alongside filing passages, XBRL facts and
+  BIS rules, through the same citation and number checks. Upload a newer version and the service compares the
+  two texts directly: added, removed and changed sections with the changed passages quoted and flipped negations
+  marked; an answer that cites a superseded version is flagged, and you can ask about the document as
+  it stood at any earlier version. Parsing runs in an isolated, resource-limited process; embedding runs on the
+  service's own model; a workspace is private to its token, never cached,
+  and deleted after 24 hours or on request.
+- **Live data freshness (M4)** — a background check compares EDGAR's filing index and the Federal Register with
+  the served graph every few hours and shows on the page how current the data is and how many newer filings are pending.
+- **Company dossier and risk-change data (M4)** — read-only endpoints that return a company's filings, key
+  metrics, active risks, relationships and risk-factor changes between filings as JSON.
 - **A reproducible evaluation harness** — a 60-question benchmark scored mechanically first (numbers,
   citations, refusals), then by an LLM judge accepted against 19 adversarial probes before being
   trusted, plus a dedicated agent benchmark (trajectory, spend, safety checks) gating the agent
@@ -96,7 +109,7 @@ Full measurement history, run-by-run: [docs/EVALUATION_HISTORY.md](docs/EVALUATI
 | Query embeddings | `Qwen/Qwen3-Embedding-0.6B` — sentence-transformers in the pipeline, an **8-bit weight-only ONNX** build in the service (no torch) | Open-source, 1024-dim, 32k context. The quantized build scores cosine 0.998 min / 0.999 mean against the original on the benchmark questions ([`artifacts/onnx_embedder_fidelity.json`](artifacts/onnx_embedder_fidelity.json)); the community int8 / q4 exports were rejected at 0.87 / 0.94. |
 | SEC ingestion | `edgartools`, `sec-parser`, the XBRL Company Facts API | Section-aware parsing with fallbacks for custom layouts (Intel has no item headings; ASML files 20-F). Financial numbers are XBRL-only. |
 | Extraction | Sonnet extractor → verbatim-quote gate → Haiku critic, checkpointed per chunk | A relationship only enters the graph if its evidence quote is found verbatim in the chunk. |
-| Web service | **FastAPI + Server-Sent Events** on Fly.io (always-warm while online, 2 GB) | Answers stream token by token. The machine stays warm while the demo is online (a cold start costs ~10 s and made every first visit slow); cost is controlled by the STOP script, not by idle auto-stop. |
+| Web service | **FastAPI + Server-Sent Events** on Fly.io (always-warm while online, 2 shared vCPUs / 4 GB) | Answers stream token by token. The machine stays warm while the demo is online (a cold start costs ~10 s and made every first visit slow); cost is controlled by the STOP script, not by idle auto-stop. |
 | Bot and abuse control | **Cloudflare Turnstile** (fail-closed), per-address windows, daily ceiling, kill switch | Every live question is a paid model call. |
 | Packaging and tests | `uv`, Python 3.13, the `semigraph` wheel with a typer CLI, **over 1,000 pytest tests with the LLM mocked** (zero spend) | Every battle scar from the notebooks is pinned by a test. |
 
@@ -205,7 +218,8 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     Visitor((Visitor)) -->|HTTPS| Edge["Fly edge proxy<br/>sets fly-client-ip"]
-    Edge --> API["App: semigraph<br/>shared-cpu-1x, 2 GB, always-warm<br/>FastAPI + ONNX embedder"]
+    Edge --> API["App: semigraph<br/>shared-cpu-2x, 4 GB, always-warm<br/>FastAPI + ONNX embedder<br/>sandboxed upload parser"]
+    API -->|"freshness check, every 6 h"| SRC["SEC EDGAR, Federal Register"]
     API -->|"private 6PN network<br/>bolt://semigraph-neo4j.internal:7687"| NEO["App: semigraph-neo4j<br/>Neo4j Community 2026.07<br/>1 GB + swap, 3 GB volume"]
     API -->|HTTPS| Claude["LLM providers<br/>OpenAI GPT-6 Luna, Anthropic Claude Sonnet 5"]
     API -->|verify token| TS["Cloudflare Turnstile"]
@@ -263,7 +277,8 @@ Measured on v1 (Sonnet-only): a live hybrid answer streams in 15–20 s and cost
 (12–21k prompt tokens); cached answers return in 0.2–0.3 s. Measured on the v1.2 answering path (benchmark,
 local): about $0.0067 per answer on average and 6 s, because a cheap draft is checked before it is shown (the
 first token appears after generation, not during it). The API machine stays warm while online
-(a cold start would cost about 10 s). Both machines online ≈ $17/month; parked ≈ $0.75/month.
+(a cold start would cost about 10 s). The API machine (2 shared vCPUs / 4 GB) costs about $35 per 30 days
+online, plus the small database machine; parked ≈ $0.75/month.
 
 **Answering models — which setting does what.** The production models are pinned in `fly.toml [env]`, so a
 fresh deploy reproduces them; the code defaults keep a local run on Sonnet.
@@ -393,6 +408,8 @@ data/                 git-ignored data lake (raw, interim, processed) — rebuil
 2. **M3 — shipped.** A thin, opt-in retrieval-planning agent that adds bounded, read-only lookups (financial
    metrics, risk changes, relationships) in front of the same cited, checked answer path, cleared for
    production on a live evaluation against the fixed retrieval path; see [docs/v2/M3_AGENT_PLAN.md](docs/v2/M3_AGENT_PLAN.md).
-3. **M2 — reranker, adaptive k and a BM25 / vector fusion channel** to sharpen retrieval further.
-4. **M4 — document upload** with freshness and staleness against the live corpus.
-5. **M5 — a new frontend and a scaled serving layer.**
+3. **M4 — shipped.** Private, versioned document workspaces with cited answers, what-changed reports and stale
+   citations flagged; a scheduled freshness check against EDGAR and the Federal Register; company dossier and
+   risk-change data endpoints; see [docs/v2/M4_PLAN.md](docs/v2/M4_PLAN.md).
+4. **M5 — a new frontend and a scaled serving layer.**
+5. **M2 — reranker, adaptive k and a BM25 / vector fusion channel** to sharpen retrieval further.
