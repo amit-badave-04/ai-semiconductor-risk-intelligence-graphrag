@@ -336,6 +336,34 @@ test("a doc: evidence fetch still in flight across a workspace switch is never c
   assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), false);
 });
 
+test("a job that is gone (404) also drops cached doc: evidence", async () => {
+  const { run } = buildPage({ fetchImpl: jobsOnly(async () => ({ ok: false, status: 404, body: null })) });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" }; setJobRow("a.pdf", "uploading");`);
+  run(`evidenceCache.set("doc:0123456789ab:v1:0007", { title: "old" });`);
+  assert.equal(await run(`watchJob("j1", "a.pdf", 1)`), null);
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0007")`), false);
+});
+
+test("two chips clicked quickly: the drawer shows the LAST one clicked, whichever fetch finishes last", async () => {
+  const releases = {};
+  const fetchImpl = (url) => {
+    const m = String(url).match(/evidence\/(.+)$/);
+    if (!m) return new Promise(() => {});
+    return new Promise((resolve) => { releases[decodeURIComponent(m[1])] = resolve; });
+  };
+  const { run, elements } = buildPage({ fetchImpl });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" };`);
+  const first = run(`openCitation("doc:0123456789ab:v1:0001")`);
+  const second = run(`openCitation("doc:0123456789ab:v1:0002")`);
+  const payload = (id) => ({ ok: true, status: 200, json: async () => ({ id, status: "current", text: id }) });
+  releases["doc:0123456789ab:v1:0002"](payload("doc:0123456789ab:v1:0002"));
+  await second;
+  releases["doc:0123456789ab:v1:0001"](payload("doc:0123456789ab:v1:0001"));   // the older click resolves last
+  await first;
+  assert.match(elements.get("dTitle").textContent, /0002/);
+  assert.equal(run(`evidenceCache.has("doc:0123456789ab:v1:0001")`), true);   // still cached for a later click
+});
+
 test("an evidence fetch that finishes with no drop in between is cached as before", async () => {
   const fetchImpl = (url) => (String(url).includes("/evidence/")
     ? Promise.resolve({ ok: true, status: 200, json: async () => ({ id: "doc:0123456789ab:v1:0007" }) })

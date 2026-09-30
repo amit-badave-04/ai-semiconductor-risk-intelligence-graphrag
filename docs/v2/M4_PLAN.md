@@ -667,14 +667,16 @@ freshness loop busy-spun when a due check was not admitted, a regression of 15.1
     always overwrote `UserDocument.title`, never a per-version one. Each `UserVersion` now stores its own title
     (`put_version`'s existing `title` argument), and the four reads return `coalesce(v.title, d.title)`, scoped by
     `workspace_id`, while `UserDocument.title` and the document list keep showing the latest version's title unchanged.
-    A version written with no title stores the document's title as it was at upload time (`coalesce($title, d.title)`).
+    A version written with no title stores the document's title as it was at upload time, if it had one (`coalesce($title, d.title)`; an untitled first version falls back to the current document title).
     Fix 1: the page's evidence cache dropped nothing when a new version arrived, so a chip opened before the upload
     kept showing its old payload (no "superseded by N"); every `doc:` entry is now dropped when a job reaches ready or
-    failed, when the watcher gives up, and on a workspace switch, and a `doc:` fetch still in flight across any of
+    failed, when the watcher gives up or the job is gone, and on a workspace switch, and a `doc:` fetch still in flight across any of
     these is shown but never cached (a generation counter). Fix 3: the "Deep research" hint showed whenever the agent
     was enabled, even for hybrid answers; it now shows only while "agent" is the selected strategy, re-synced on every
     change of the select and when a benchmark example forces hybrid. Opus verification: A (fixes) PASS, B (b4c7098,
-    the scoped 01N52 notification filter) PASS; its LOWs were fixed before the deploy, with tests that fail first.
+    the scoped 01N52 notification filter) PASS; its LOWs were fixed before the deploy, with tests that fail first. A second Opus pass over those fixes
+    (PASS WITH CONDITIONS) led to the README negation wording, the job-gone drop, and the drawer showing only the
+    most recently clicked chip when two evidence fetches overlap.
 
 ## Audit trail
 

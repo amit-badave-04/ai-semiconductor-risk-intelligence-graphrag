@@ -718,7 +718,11 @@ function dropDocEvidence(cache) {
 
 // Shared by every citation chip on the page — the live answer (#answer) AND the what-changed view (#wsChanges,
 // finding 16): both render the same `.cite[data-id]` shape, so both open the same evidence drawer.
+// openSeq (round-7 verification): with two chips clicked quickly, only the LAST click may fill the drawer, whichever
+// fetch finishes last; an earlier fetch that returns later is still cached, just never shown over the newer one.
+let openSeq = 0;
 async function openCitation(id) {
+  const seq = ++openSeq;
   $("drawer").classList.add("open");
   if (evidenceCache.has(id)) { showEvidence(id, evidenceCache.get(id)); return; }
   $("dTitle").textContent = "Evidence · " + chipLabel(id); $("dMeta").textContent = ""; $("dFresh").innerHTML = ""; $("dFacts").innerHTML = ""; $("dLink").innerHTML = "";
@@ -732,8 +736,10 @@ async function openCitation(id) {
     if (!r.ok) { let detail = r.statusText; try { detail = (await r.json()).detail; } catch (_) {} throw new Error(detail); }
     const d = await r.json();
     if (classifyCitation(id) !== "doc" || gen === docEvidenceGen) evidenceCache.set(id, d);
-    showEvidence(id, d);
-  } catch (err) { $("dText").hidden = false; $("dText").textContent = "could not load evidence: " + err.message; }
+    if (seq === openSeq) showEvidence(id, d);
+  } catch (err) {
+    if (seq === openSeq) { $("dText").hidden = false; $("dText").textContent = "could not load evidence: " + err.message; }
+  }
 }
 
 $("answer").addEventListener("click", (e) => { const chip = e.target.closest(".cite"); if (chip) openCitation(chip.dataset.id); });
@@ -908,7 +914,7 @@ async function watchJob(jobId, label, delayMs = WATCH_RECONNECT_DELAY_MS) {
     if (attempt) await new Promise((resolve) => setTimeout(resolve, delayMs));
     const outcome = await streamJobOnce(jobId, label);
     if (outcome === "ready" || outcome === "failed") return outcome;
-    if (outcome === "gone") return null;
+    if (outcome === "gone") { dropDocEvidence(evidenceCache); return null; }
   }
   dropDocEvidence(evidenceCache);   // the job may still finish unseen: never keep evidence it could have outdated
   setJobRow(label, "connection lost while watching this upload — check its status later", "err");

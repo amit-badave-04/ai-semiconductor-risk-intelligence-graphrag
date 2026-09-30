@@ -488,7 +488,8 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
 # Every chunk-level read below returns coalesce(v.title, d.title): the CHUNK'S OWN version's title when that
 # version stored one, else the document's (current) title — the fallback that keeps a version written before
 # Post-G10 fix 2 (no ``v.title`` at all) showing something, rather than ``null``. (Since round 7 a version written
-# with no title stores the document's title as it was at upload time, CREATE_VERSION_QUERY.) The version lookup is an
+# with no title stores the document's title as it was at upload time, if it had one; an untitled FIRST version
+# stores none and falls back to the current document title, CREATE_VERSION_QUERY.) The version lookup is an
 # OPTIONAL MATCH (a chunk's version always exists, but the property may not, on an old version) scoped by
 # workspace_id: $ws like every other User* pattern here.
 CHUNK_TEXTS_QUERY = """MATCH (c:UserChunk {workspace_id: $ws})
