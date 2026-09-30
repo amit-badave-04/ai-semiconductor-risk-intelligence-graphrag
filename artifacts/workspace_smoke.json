@@ -1,7 +1,7 @@
 {
   "base_url": "http://127.0.0.1:8089",
   "max_usd": 0.5,
-  "spend_usd": 0.004,
+  "spend_usd": 0.004034,
   "within_budget": true,
   "results": {
     "v1_ask_cites_doc": true,
@@ -15,11 +15,13 @@
   },
   "failures": [],
   "notes": [],
+  "error": null,
+  "inconclusive": [],
   "steps": {
     "created": {
-      "workspace_id": "<ws:db9d3a10c6dd>",
+      "workspace_id": "<ws:5f42ef7610b3>",
       "token": "<secret>",
-      "expires_at": "2026-09-30T18:09:34.185833+00:00",
+      "expires_at": "2026-10-01T00:53:19.973317+00:00",
       "limits": {
         "max_documents": 3,
         "max_versions": 5,
@@ -31,14 +33,14 @@
       }
     },
     "v1_upload": {
-      "job_id": "dca4c87e87f57a17",
-      "document_id": "407035ae5706",
+      "job_id": "f487554fb0383e09",
+      "document_id": "88fc8a7371cc",
       "version": 1
     },
     "job1": {
-      "job_id": "dca4c87e87f57a17",
+      "job_id": "f487554fb0383e09",
       "state": "ready",
-      "document_id": "407035ae5706",
+      "document_id": "88fc8a7371cc",
       "version": 1,
       "chunks": 1,
       "units": 4,
@@ -52,7 +54,7 @@
       "strategy": "hybrid",
       "answer": "<redacted>",
       "citations": [
-        "doc:407035ae5706:v1:0000"
+        "doc:88fc8a7371cc:v1:0000"
       ],
       "hallucinated": [],
       "checks": {
@@ -69,10 +71,10 @@
       },
       "finish_reason": "stop",
       "usage": {
-        "prompt_tokens": 12061,
-        "completion_tokens": 30
+        "prompt_tokens": 12063,
+        "completion_tokens": 32
       },
-      "cost_usd": 0.001221,
+      "cost_usd": 0.001222,
       "chunk_ids": [
         "0001045810-26-000075:I.2:0000",
         "0000050863-26-000011:I.1:0020",
@@ -84,7 +86,7 @@
       "answered_by": "openai/gpt-6-luna",
       "routed": "cheap",
       "workspace": {
-        "id_hash": "db9d3a10c6dd",
+        "id_hash": "5f42ef7610b3",
         "doc_chunks": 1,
         "stale_citations": [],
         "suspicious": false
@@ -92,18 +94,18 @@
     },
     "reupload": {
       "unchanged": true,
-      "document_id": "407035ae5706",
+      "document_id": "88fc8a7371cc",
       "version": 1
     },
     "v2_upload": {
-      "job_id": "31fd05489c8583d8",
-      "document_id": "407035ae5706",
+      "job_id": "c7bfb6bd80a7363f",
+      "document_id": "88fc8a7371cc",
       "version": 2
     },
     "job2": {
-      "job_id": "31fd05489c8583d8",
+      "job_id": "c7bfb6bd80a7363f",
       "state": "ready",
-      "document_id": "407035ae5706",
+      "document_id": "88fc8a7371cc",
       "version": 2,
       "chunks": 1,
       "units": 4,
@@ -117,7 +119,7 @@
       "strategy": "hybrid",
       "answer": "<redacted>",
       "citations": [
-        "doc:407035ae5706:v1:0000"
+        "doc:88fc8a7371cc:v1:0000"
       ],
       "hallucinated": [],
       "checks": {
@@ -134,10 +136,10 @@
       },
       "finish_reason": "stop",
       "usage": {
-        "prompt_tokens": 11539,
-        "completion_tokens": 95
+        "prompt_tokens": 11541,
+        "completion_tokens": 150
       },
-      "cost_usd": 0.001201,
+      "cost_usd": 0.001229,
       "chunk_ids": [
         "0001045810-26-000075:I.2:0000",
         "0000002488-25-000012:I.1A:0002",
@@ -148,10 +150,10 @@
       "answered_by": "openai/gpt-6-luna",
       "routed": "cheap",
       "workspace": {
-        "id_hash": "db9d3a10c6dd",
+        "id_hash": "5f42ef7610b3",
         "doc_chunks": 1,
         "stale_citations": [
-          "doc:407035ae5706:v1:0000"
+          "doc:88fc8a7371cc:v1:0000"
         ],
         "suspicious": false
       }
@@ -172,7 +174,7 @@
       "checks": {
         "citations_retrieved": true,
         "numbers_grounded": true,
-        "numbers_checked": 2,
+        "numbers_checked": 3,
         "unmatched_numbers": [],
         "echoed_numbers": [],
         "pseudo_citations": [],
@@ -183,10 +185,10 @@
       },
       "finish_reason": "stop",
       "usage": {
-        "prompt_tokens": 11494,
-        "completion_tokens": 857
+        "prompt_tokens": 11491,
+        "completion_tokens": 868
       },
-      "cost_usd": 0.001578,
+      "cost_usd": 0.001583,
       "chunk_ids": [
         "0001045810-26-000075:I.2:0000",
         "0000002488-25-000012:I.1A:0002",
@@ -197,7 +199,7 @@
       "answered_by": "openai/gpt-6-luna",
       "routed": "cheap",
       "workspace": {
-        "id_hash": "db9d3a10c6dd",
+        "id_hash": "5f42ef7610b3",
         "doc_chunks": 0,
         "stale_citations": [],
         "suspicious": false
@@ -228,14 +230,15 @@
           "passages": [
             {
               "quote": "<redacted>",
-              "chunk_id": "doc:407035ae5706:v1:0000",
+              "chunk_id": "doc:88fc8a7371cc:v1:0000",
               "kind": "reworded"
             }
           ]
         }
       ],
       "minor_rewordings": [],
-      "unchanged_count": 2
+      "unchanged_count": 2,
+      "negation_check_skipped": 0
     },
     "after_delete_statuses": {
       "GET /api/workspace/{ws}": 404,
@@ -247,16 +250,16 @@
       "DELETE /api/workspace/{ws}": 404
     },
     "evidence": {
-      "id": "doc:407035ae5706:v1:0000",
+      "id": "doc:88fc8a7371cc:v1:0000",
       "text": "<redacted>",
-      "document_id": "407035ae5706",
+      "document_id": "88fc8a7371cc",
       "version": 1,
       "is_current": false,
       "status": "superseded",
-      "valid_to": "2026-09-29T18:09:42.634834Z",
+      "valid_to": "2026-09-30T00:53:32.62108Z",
       "superseded_by_version": 2,
       "title": "<redacted>"
     }
   },
-  "generated_at": "2026-09-29T18:09:59.252209+00:00"
+  "generated_at": "2026-09-30T00:53:50.789066+00:00"
 }
