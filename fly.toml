@@ -27,6 +27,10 @@ swap_size_mb = 1024
   # Opt-in retrieval-planning agent (strategy=agent), docs/RUNBOOK.md "The M3 agent" / docs/v2/M3_AGENT_PLAN.md section 7.
   # Enabled 2026-09-27 after a live paid ship-gate evaluation showed no regression vs the fixed path. Revert: set "false".
   AGENT_ENABLED = "true"
+  # M4 (docs/RUNBOOK.md "Freshness monitor" / "Upload workspaces"). SEC_USER_AGENT is a Fly SECRET (it names a real person).
+  # Revert either feature: set it to "false" and redeploy (workspaces still expire on schedule: the sweeper always runs).
+  FRESHNESS_ENABLED = "true"
+  UPLOADS_ENABLED = "true"
 
 [http_service]
   internal_port = 8080
@@ -40,8 +44,10 @@ swap_size_mb = 1024
     hard_limit = 40
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "2gb"
+  # M4 (owner decision 2026-09-29, "Bigger machine"): 2 shared vCPUs / 4 GB so an upload embeds on one core while live
+  # questions use the other (docs/v2/M4_PLAN.md sections 3, 13). Back to shared-cpu-1x / 2gb only with UPLOADS_ENABLED=false.
+  size = "shared-cpu-2x"
+  memory = "4gb"
 
 [checks]
   [checks.health]
