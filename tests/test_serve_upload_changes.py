@@ -353,8 +353,47 @@ def test_compare_versions_without_limitation_swapped_for_but_not_limited_to_is_n
 def test_negation_count_ignores_not_limited_to_but_still_counts_a_real_not():
     assert C._negation_count("including but not limited to accelerators and networking equipment") == 0
     assert C._negation_count("including, without limitation, accelerators and networking equipment") == 0
-    assert C._negation_count("The clause states the list is not limited to these three items.") == 0
+    assert C._negation_count("such as, but not limited to, accelerators") == 0
     assert C._negation_count("We are not subject to the new rules.") == 1
+
+
+def test_a_scope_statement_not_limited_to_is_a_real_negator_not_boilerplate():
+    """Final verification (round 5 MEDIUM): stripping "not limited to" ANYWHERE hid a genuine reversal. Only the
+    enumerating boilerplate forms ("including [but] not limited to", "but not limited to") are stripped."""
+    assert C._negation_count("Our export exposure is not limited to China.") == 1
+    assert C._negation_count("The clause states the list is not limited to these three items.") == 1
+
+
+def test_compare_versions_reports_a_not_limited_to_scope_reversal_as_changed():
+    lines = ["# Executive Summary", "The company performed well this quarter.", "",
+             "# Export Exposure", "Our export exposure is {} limited to China. Sales elsewhere depend on licenses.", "",
+             "# Market Outlook", "Demand remained steady across segments.", ""]
+    v1 = _build_view("\n".join(lines).replace("{}", "not"))
+    v2 = _build_view("\n".join(lines).replace("{} ", ""))
+    report = C.compare_versions(v1, v2)
+    entry = next((c for c in report["changed"] if c["headline"] == "Export Exposure"), None)
+    assert entry is not None, report
+    quotes = _quotes_by_kind(entry)
+    assert "not limited to China" in quotes.get("removed", "") and "limited to China" in quotes.get("added", "")
+
+
+def test_the_negation_pairing_is_never_cubic_on_low_diversity_sentences():
+    """Final verification (round 5 LOW): 22 x 22 distinct ~200-token low-diversity sentences were charged under the
+    budget yet took ~46 s through difflib; the upload-only pairing now uses a bit-parallel LCS similarity."""
+    # The verifier's construction (m4review4/negation_l3.py): one repeated word vs an alternating two-word pattern,
+    # every difflib matching block of length 1 (its worst case), each sentence DISTINCT and exactly 200 tokens (not
+    # excluded by MAX_NEGATION_SENTENCE_TOKENS), 22 per side.
+    older = " ".join((" ".join(["risk"] * 199) + f" q{i}x").capitalize() + "." for i in range(22))
+    newer = " ".join((" ".join(["risk", "data"] * 99) + f" risk q{i}y").capitalize() + "." for i in range(22))
+    view = C.VersionView(text="", units=(), chunk_spans=(), method="text", chars_per_page=1000.0)
+    budget = {"remaining": C.MAX_NEGATION_WORK_BUDGET}
+    start = time.perf_counter()
+    out = C._negation_flip_passages({"text": older, "char_start": 0, "headline": "x"},
+                                    {"text": newer, "char_start": 0, "headline": "x"}, view, view, budget)
+    assert time.perf_counter() - start < 5.0
+    # the pairing really ran (a skip returns None, and the work budget would be untouched): fast, not bypassed
+    assert out is not None
+    assert budget["remaining"] < C.MAX_NEGATION_WORK_BUDGET
 
 
 # --------------------------------------------------------------------------

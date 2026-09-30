@@ -1,6 +1,6 @@
 """Pure parts of ``scripts/workspace_smoke.py`` (M4 gate G1, docs/v2/M4_PLAN.md 9): redaction, budget arithmetic and
-the G1 pass/fail evaluator. ``run``/``main`` (the parts that touch a real server) are NEVER called here or anywhere
-in this worker's tests — the main session runs the smoke script itself, against a real local service."""
+the G1 pass/fail evaluator. The real ``run`` (the part that touches a server) is NEVER called here; ``main`` is called
+only with ``run`` replaced by a fake report. The main session runs the smoke script itself, against a real service."""
 
 from __future__ import annotations
 
@@ -150,6 +150,21 @@ def test_a_refused_ask_makes_the_run_inconclusive_and_names_the_step():
              "ask3": {"error": True, "status_code": 503}}
     assert smoke.inconclusive_asks(steps) == ["ask2 answered 429", "ask3 answered 503"]
     assert smoke.inconclusive_asks({"ask1": {"citations": []}}) == []
+
+
+def test_an_inconclusive_run_still_prints_its_failed_checks_before_exiting_2(monkeypatch, tmp_path, capsys):
+    """Closing verification LOW: an INCONCLUSIVE run returned before printing the FAIL lines, hiding the other checks
+    that failed for reasons unrelated to the refused ask. ``run`` is replaced here, so no server is touched."""
+    results = {"v1_ask_cites_doc": True}                     # every other required check is missing, so it failed
+    fake = {"results": results, "steps": {"ask2": {"error": True, "status_code": 429}}, "spend_usd": 0.0,
+            "within_budget": True}
+    monkeypatch.setattr(smoke, "run", lambda base_url, max_usd: fake)
+    monkeypatch.setattr(smoke, "ARTIFACT_PATH", tmp_path / "workspace_smoke.json")
+    assert smoke.main([]) == 2
+    out = capsys.readouterr().out
+    assert "INCONCLUSIVE: ask2 answered 429" in out
+    for failure in smoke.evaluate_g1(results):
+        assert f"FAIL: {failure}" in out
 
 
 def test_redact_removes_the_workspace_token_and_hashes_the_workspace_id():

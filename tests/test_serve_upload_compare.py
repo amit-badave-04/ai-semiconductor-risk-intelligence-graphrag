@@ -218,6 +218,21 @@ def test_compare_in_subprocess_oversized_output_is_comparison_failed(monkeypatch
     assert report["not_compared_reason"] == "comparison_failed"
 
 
+def test_compare_in_subprocess_a_spawn_failure_is_comparison_failed_not_a_raised_oserror(monkeypatch, caplog):
+    """Popen itself can fail (EAGAIN on fork, ENOMEM, a missing interpreter): the module's contract is a well-formed
+    "not compared" report on every failure, never an exception escaping into the upload job."""
+    def cannot_spawn(module, args, stdin, *, timeout_s, max_output_bytes, env_extra=None):
+        raise BlockingIOError(11, "Resource temporarily unavailable")
+
+    monkeypatch.setattr(compare.sandbox, "run_sandboxed", cannot_spawn)
+    older = _view_dict(fx.MD_V1)
+    with caplog.at_level("WARNING", logger="semigraph.uploads.compare"):
+        report = compare.compare_in_subprocess(older, _view_dict(fx.MD_V2), timeout_s=30)
+    assert report["not_compared_reason"] == "comparison_failed"
+    assert report["items_compared"] is False
+    assert "BlockingIOError" in "\n".join(r.getMessage() for r in caplog.records)
+
+
 # --------------------------------------------------------------------------
 # child env: the allowlist, including the BLAS thread pins (so scipy fits under RLIMIT_AS)
 # --------------------------------------------------------------------------

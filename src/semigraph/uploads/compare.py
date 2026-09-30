@@ -9,11 +9,13 @@ builds for ``repo.put_version`` / ``repo.version_view``) to ``python -m semigrap
 stdin, through the SAME sandbox runner the parse subprocess uses (:mod:`semigraph.uploads.sandbox`), and parses its
 stdout as the ``ChangeReport`` dict.
 
-This module is stdlib-only at import — the aligner (``graph.alignment`` -> scipy, ``graph.passages`` -> rapidfuzz)
-is imported only inside the sandboxed CHILD, never here, so the API process never loads it and a pathological
-in-cap document's O(n^2) alignment work can never hold the API's own GIL.
+This module is stdlib-only at import — the aligner (``graph.alignment`` -> scipy, ``graph.passages``) and
+``uploads.changes`` are imported only inside the sandboxed CHILD, never here, so the API process never runs the
+alignment and a pathological in-cap document's O(n^2) comparison work can never hold the API's own GIL. (The API
+process can still have rapidfuzz itself loaded, through the chunking path ``uploads.units`` -> ``graph.align_text``;
+it never loads ``graph.alignment``, ``graph.passages`` or scipy.)
 
-On a timeout or a crash/malformed output, this returns a well-formed "not compared" report with the SAME key set
+On a timeout, a spawn failure, or a crash/malformed output, this returns a well-formed "not compared" report with the SAME key set
 ``changes.compare_versions`` always returns (``minor_rewordings: []``, ``negation_check_skipped: 0``, ...) — a
 caller (``uploads.jobs``) never needs a special case for "the comparison subprocess failed" versus any other
 ``not_compared_reason``. Only ``not_compared_reason`` and the child's exception CLASS NAME are ever logged, never
@@ -60,6 +62,11 @@ def compare_in_subprocess(older: dict, newer: dict, *, timeout_s: int) -> dict:
         return _not_compared("comparison_timeout", older)
     except sandbox.SandboxOutputTooLarge:
         _log_not_compared("comparison_failed", exc_type="SandboxOutputTooLarge", returncode=None)
+        return _not_compared("comparison_failed", older)
+    except OSError as exc:
+        # the child could not be spawned or talked to at all (EAGAIN on fork, ENOMEM, a missing interpreter):
+        # still a well-formed "not compared" report, never an exception escaping into the upload job.
+        _log_not_compared("comparison_failed", exc_type=type(exc).__name__, returncode=None)
         return _not_compared("comparison_failed", older)
 
     try:

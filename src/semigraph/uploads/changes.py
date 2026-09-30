@@ -103,7 +103,9 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..graph.align_text import lex_exact, split_sentences, word_tokens
+from rapidfuzz.distance import Indel
+
+from ..graph.align_text import split_sentences, word_tokens
 from ..graph.alignment import AlignParams, OlderDecision, align
 from ..graph.passages import Passage, PassageParams, compute_passages
 from ..hashing import content_hash
@@ -149,7 +151,11 @@ _CONTRACTION_RE = re.compile(r"n['’]t\b", re.IGNORECASE)
 # "but" is itself optional boilerplate wording. "without" and "not" themselves stay in _NEGATORS (a real
 # "without X" <-> "with X" edit, or any other genuine "not", must still be caught); only these exact fixed phrases
 # are excluded.
-_BOILERPLATE_NEGATOR_PHRASE_RE = re.compile(r"\b(?:without\s+limitation|not\s+limited\s+to)\b", re.IGNORECASE)
+# Final verification (round 5 MEDIUM): stripping "not limited to" ANYWHERE hid a genuine scope reversal ("exposure is
+# not limited to China" -> "is limited to China"), so only the ENUMERATING boilerplate forms are stripped: "but not
+# limited to" (which only ever introduces a list) and "including[,] not limited to".
+_BOILERPLATE_NEGATOR_PHRASE_RE = re.compile(
+    r"\b(?:without\s+limitation|but\s+not\s+limited\s+to|including,?\s+not\s+limited\s+to)\b", re.IGNORECASE)
 
 # A deliberately conservative floor on the aligner's own word-level lexical score (align_text.lex_exact): the
 # negation-polarity check (module docstring, "(b)") only ever compares two sentences this close to being "the same
@@ -291,12 +297,21 @@ def _content_tokens(tokens: tuple[str, ...]) -> frozenset[str]:
     return frozenset(t for t in tokens if t not in _NEGATORS)
 
 
+def _pair_similarity(a: tuple[str, ...], b: tuple[str, ...]) -> float:
+    """Word-level similarity for the negation pairing: the normalized LCS (Indel) similarity of the two token
+    sequences, computed bit-parallel by rapidfuzz — the same scale as the aligner's difflib ratio but never cubic
+    (final verification, round 5: 22 x 22 low-diversity 200-token sentences took ~46 s through difflib). Symmetric."""
+    if not a or not b:
+        return 0.0
+    return Indel.normalized_similarity(a, b)
+
+
 def _best_sentence_match(tokens: tuple[str, ...], candidates: list[tuple[str, ...]]) -> tuple[int | None, float]:
-    """The index of the candidate closest to ``tokens`` by the aligner's own word-level lexical score, and that
-    score; ``(None, -1.0)`` when there are no candidates. Ties keep the earliest index (strict ``>``)."""
+    """The index of the candidate closest to ``tokens`` by :func:`_pair_similarity`, and that score;
+    ``(None, -1.0)`` when there are no candidates. Ties keep the earliest index (strict ``>``)."""
     best_idx, best_score = None, -1.0
     for i, candidate in enumerate(candidates):
-        score = lex_exact(tokens, candidate)
+        score = _pair_similarity(tokens, candidate)
         if score > best_score:
             best_idx, best_score = i, score
     return best_idx, best_score

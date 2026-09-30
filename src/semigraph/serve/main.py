@@ -33,11 +33,16 @@ SECONDS_PER_HOUR = 3_600
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("semigraph.serve.main")
 
-_WORKSPACE_PATH_RE = re.compile(r"^/api/workspace/([0-9a-f]{32})(?=/|$)")
+# The whole path SEGMENT after /api/workspace/ is hashed, whatever its case or length: an uppercased or over-long id
+# still carries the real id, so only the segment position (never its shape) decides what is redacted.
+_WORKSPACE_PATH_RE = re.compile(r"^/api/workspace/([^/]+)")
 _DOC_ID_IN_PATH_RE = re.compile(r"doc:[0-9a-f]{12}:v[0-9]{1,3}:[0-9]{4}")
 # Characters a logged path may carry literally (RFC 3986 path characters plus the <ws:...>/<doc> placeholders); every
 # other character, including control characters and quotes, is percent-encoded.
 _LOG_SAFE = "/:@!$&()*+,;=-._~<>"
+# A kept query string additionally keeps "?" and "%" literal: its existing percent-escapes stay as uvicorn gave them
+# (never double-encoded, never decoded), while a raw control character or quote is still percent-encoded.
+_LOG_SAFE_QUERY = _LOG_SAFE + "?%"
 
 
 def ws_hash(workspace_id: str) -> str:
@@ -49,7 +54,8 @@ def redact_access_path(path: str) -> str:
     """An access-log path with no raw workspace id, no uploaded-document id and no workspace query string. uvicorn
     logs the PERCENT-QUOTED path (``doc%3A...``), so the route is decoded for MATCHING only; what is returned is
     re-escaped (:data:`_LOG_SAFE`), so a client can never write a newline, an escape sequence or a quote into the log.
-    A query that carries a document id is dropped whole; any other query is logged exactly as uvicorn gave it."""
+    A query that carries a document id is dropped whole; any other query is logged with its existing escapes kept and
+    every other unsafe character re-escaped (:data:`_LOG_SAFE_QUERY`)."""
     route, _, query = path.partition("?")
     route = unquote(route)
     match = _WORKSPACE_PATH_RE.match(route)
@@ -57,7 +63,9 @@ def redact_access_path(path: str) -> str:
         redacted = _DOC_ID_IN_PATH_RE.sub("<doc>", f"/api/workspace/<ws:{ws_hash(match.group(1))}>" + route[match.end():])
         return quote(redacted, safe=_LOG_SAFE)
     route = quote(_DOC_ID_IN_PATH_RE.sub("<doc>", route), safe=_LOG_SAFE)
-    return route if not query or _DOC_ID_IN_PATH_RE.search(unquote(query)) else f"{route}?{query}"
+    if not query or _DOC_ID_IN_PATH_RE.search(unquote(query)):
+        return route
+    return f"{route}?{quote(query, safe=_LOG_SAFE_QUERY)}"
 
 
 class WorkspaceAccessLogFilter(logging.Filter):

@@ -101,5 +101,13 @@
     "job_wall_s": 181.8,
     "note": "production measurement on shared-cpu-2x is gate G4 (<= 300 s), taken after the deploy",
     "also": "the 30-page x ~2,700 chars/page fixture is 14,134 tokens: at this prose density the 16,000-token cap binds after the 30-page cap"
+  },
+  "S3b_linux_compare_sandbox": {
+    "source": "GitHub Actions serve-shipped job, run 36652407873 (commit 46d6921), ubuntu-latest, shipped dependency set",
+    "test": "tests/test_serve_upload_compare.py::test_max_size_pair_compares_under_rlimit_as_and_reports_child_rss",
+    "limits_in_child": "RLIMIT_AS 1 GiB, RLIMIT_CPU 120 s, allowlisted env, OPENBLAS/OMP/MKL threads = 1",
+    "child_ru_maxrss_kb": 129212,
+    "parse_child_ru_maxrss_kb_same_run": 39884,
+    "result": "PASS (scipy + rapidfuzz load and the aligner runs under the address-space limit)"
   }
 }

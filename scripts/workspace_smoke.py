@@ -398,15 +398,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"spend: ${report['spend_usd']:.4f} (budget ${args.max_usd:.2f}) — within budget: {report['within_budget']}")
     if report.get("error"):
         print(f"ERROR: a step raised partway through the run: {report['error']}")
-    if refused:
-        print(f"INCONCLUSIVE: {', '.join(refused)} — rerun on a fresh server process or after 10 minutes")
-        print(f"wrote {ARTIFACT_PATH}")
-        return 2
+    # every failed check is printed even when the run is inconclusive: a refused ask explains only the checks that
+    # depended on it, never the others
     for f in failures:
         print(f"FAIL: {f}")
     for n in notes:
         print(f"note: {n}")
     print(f"wrote {ARTIFACT_PATH}")
+    if refused:
+        print(f"INCONCLUSIVE: {', '.join(refused)} — rerun on a fresh server process or after 10 minutes")
+        return 2
     return 0 if not failures and report["within_budget"] and not report.get("error") else 1
 
 

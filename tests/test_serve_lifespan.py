@@ -234,6 +234,16 @@ def test_the_m4_routers_are_mounted():
     ('/api/stats%22injected', "/api/stats%22injected"),
     ("/api/workspace/0123456789abcdef0123456789abcdef/x%0Ay",
      "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef") + ">/x%0Ay"),
+    # closing verification LOWs: the workspace-id SEGMENT is always hashed, whatever its case or length (an uppercased
+    # or over-long id still carries the real id), and a kept query string is re-escaped like the path
+    ("/api/workspace/0123456789ABCDEF0123456789ABCDEF/documents",
+     "/api/workspace/<ws:" + main.ws_hash("0123456789ABCDEF0123456789ABCDEF") + ">/documents"),
+    ("/api/workspace/0123456789abcdef0123456789abcdef0/jobs/j1",
+     "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef0") + ">/jobs/j1"),
+    ("/api/workspace", "/api/workspace"),
+    ("/api/company/NVDA/risk-changes?limit=20\nfake", "/api/company/NVDA/risk-changes?limit=20%0Afake"),
+    ("/api/company/NVDA/risk-changes?limit=20&q=%0A", "/api/company/NVDA/risk-changes?limit=20&q=%0A"),
+    ('/api/stats?x="\x1b[31m', "/api/stats?x=%22%1B%5B31m"),
 ])
 def test_the_access_log_redacts_workspace_ids_doc_ids_and_workspace_query_strings(path, expected):
     assert main.redact_access_path(path) == expected

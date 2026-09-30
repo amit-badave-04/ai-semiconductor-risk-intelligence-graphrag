@@ -643,6 +643,16 @@ freshness loop busy-spun when a due check was not admitted, a regression of 15.1
    Python comparison no longer competes for the GIL with request threads, and it is bounded by
    `UPLOAD_COMPARE_TIMEOUT_S` (120 s) plus the child's RLIMIT_CPU; on timeout or crash the report is
    `not_compared_reason = comparison_timeout | comparison_failed` and the version still becomes ready.
+9. **Closing verification of fix round 5 (Opus, 46d6921): PASS WITH CONDITIONS.** The one deploy condition and the LOWs are
+   closed in fix round 6: the "not limited to" boilerplate matcher is anchored to the three fixed phrases
+   (`without limitation`, `but not limited to`, `including[,] not limited to`), so a scope reversal such as "is not limited
+   to" / "is limited to" is a real negation change again (round 5's broader strip hid it); the sentence pairing inside the
+   negation check uses rapidfuzz `Indel.normalized_similarity` instead of the cubic `lex_exact` (the verifier's 22 x 200-token
+   low-diversity construction took 45.8 s before and about 0.01 s after, with the budget still charged; pinned by a test that
+   also asserts the pairing ran rather than being skipped); a spawn failure (`OSError`)
+   in the comparison subprocess returns `comparison_failed` like every other failure; the access log hashes the whole
+   workspace-id path segment whatever its case or length and re-escapes a kept query string; the smoke prints every failed
+   check before its INCONCLUSIVE exit.
 
 ## Audit trail
 
