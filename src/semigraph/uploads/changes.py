@@ -45,12 +45,13 @@ ever tell a negation flip from a tense-only edit. Fixing it needed two changes, 
     ``removed`` / ``new`` / ``merged`` / ``uncertain`` item has no single stable partner to run a sentence-by-
     sentence comparison against). Both units' text are split into sentences with the SAME splitter
     ``graph/passages.py`` uses (``graph.align_text.split_sentences`` — never re-implemented here); each older
-    sentence is paired with its best-matching newer sentence by the aligner's own word-level lexical score
-    (``align_text.lex_exact``, floored at :data:`MIN_NEGATION_PAIR_SIMILARITY` so two unrelated sentences are
-    never compared). A pair's negation POLARITY is the PARITY (odd/even) of how many negator words it contains —
-    a fixed vocabulary (not/no/never/none/nor/cannot/without) plus any ``-n't`` contraction, counted on lowercased
-    word tokens, with the fixed boilerplate phrases "without limitation" and "not limited to" stripped first
-    (round-4 review, finding C4, extended in round 5: dropping "including, without limitation," or swapping it for
+    sentence is paired with its best-matching newer sentence by a word-level similarity (:func:`_pair_similarity`,
+    the normalized LCS of the two token sequences, floored at :data:`MIN_NEGATION_PAIR_SIMILARITY` so two
+    unrelated sentences are never compared). A pair's negation POLARITY is the PARITY (odd/even) of how many
+    negator words it contains — a fixed vocabulary (not/no/never/none/nor/cannot/without) plus any ``-n't``
+    contraction, counted on lowercased word tokens, with the fixed boilerplate phrases "without limitation" and the
+    enumerating "[including | but [are|is]] not limited to" stripped first (:data:`_BOILERPLATE_NEGATOR_PHRASE_RE`;
+    round-4 review, finding C4, extended in rounds 5 and 6: dropping "including, without limitation," or swapping it for
     its equally common synonym "including but not limited to" is a routine legal no-op, never a polarity change, so
     neither must ever itself move the count) — so a double negation that keeps the same parity on both sides (two
     negators become two different ones) is deliberately NOT a flip, while a single negator present on only one
@@ -91,6 +92,12 @@ ever tell a negation flip from a tense-only edit. Fixing it needed two changes, 
     from the check entirely — never handed to ``lex_exact`` on either side, whatever its content — so this cost can
     never be reached at all; the exclusion is counted in ``negation_check_skipped`` exactly like a budget skip,
     never silently, while the unit's OTHER, ordinary-length sentences are still compared normally.
+
+    ROUND-6 (final verification of round 5): the pairing no longer calls ``lex_exact`` at all — it uses
+    :func:`_pair_similarity` (rapidfuzz's bit-parallel normalized LCS), because even under the token-work budget a
+    few dozen in-cap, low-diversity 200-token sentences still took ~46 s through ``SequenceMatcher``. The
+    ``lex_exact`` references above describe the cost model those bounds were calibrated against; the bounds and
+    their skip reporting are kept unchanged as a defence in depth.
 
 The invariant ``len(removed) + len(changed) + len(minor_rewordings) + unchanged_count == len(older units)`` still
 always holds; ``unchanged_count`` counts the aligner's own ``unchanged`` label MINUS any unit promoted by (b).
@@ -147,19 +154,23 @@ _CONTRACTION_RE = re.compile(r"n['’]t\b", re.IGNORECASE)
 # Round-4 review, finding C4 (extended round-5): "including, without limitation," and its equally common synonym
 # "including but not limited to" are fixed legal boilerplate, not a polarity change -- both stripped from a
 # sentence BEFORE counting negators (module docstring, "(b)") so dropping, adding, or swapping between them never
-# flips a unit's reported negation count. "not limited to" is matched generally (not only after "but"), since the
-# "but" is itself optional boilerplate wording. "without" and "not" themselves stay in _NEGATORS (a real
-# "without X" <-> "with X" edit, or any other genuine "not", must still be caught); only these exact fixed phrases
-# are excluded.
+# flips a unit's reported negation count. "without" and "not" themselves stay in _NEGATORS (a real "without X" <->
+# "with X" edit, or any other genuine "not", must still be caught); only these fixed phrases are excluded.
 # Final verification (round 5 MEDIUM): stripping "not limited to" ANYWHERE hid a genuine scope reversal ("exposure is
-# not limited to China" -> "is limited to China"), so only the ENUMERATING boilerplate forms are stripped: "but not
-# limited to" (which only ever introduces a list) and "including[,] not limited to".
+# not limited to China" -> "is limited to China"), so only the ENUMERATING boilerplate forms are stripped: "but
+# [are|is|was|were] not limited to" and "including[,] not limited to". Round-6 verification (MEDIUM): the verb form
+# "include, but are not limited to" is the most common SEC wording (51 of 242 occurrences in the local 10-K corpus).
+# Known limit: a "but not limited to" that is itself a scope statement ("concentrated but not limited to China") is
+# stripped too, so reversing it is reported as a minor rewording, not a negation change.
 _BOILERPLATE_NEGATOR_PHRASE_RE = re.compile(
-    r"\b(?:without\s+limitation|but\s+not\s+limited\s+to|including,?\s+not\s+limited\s+to)\b", re.IGNORECASE)
+    r"\b(?:without\s+limitation"
+    r"|but\s+(?:(?:are|is|was|were)\s+)?not\s+limited\s+to"
+    r"|including,?\s+not\s+limited\s+to)\b",
+    re.IGNORECASE)
 
-# A deliberately conservative floor on the aligner's own word-level lexical score (align_text.lex_exact): the
-# negation-polarity check (module docstring, "(b)") only ever compares two sentences this close to being "the same
-# sentence, edited" -- never an unrelated pair that happens to share a negator by coincidence.
+# A deliberately conservative floor on the pairing score (:func:`_pair_similarity`): the negation-polarity check
+# (module docstring, "(b)") only ever compares two sentences this close to being "the same sentence, edited" --
+# never an unrelated pair that happens to share a negator by coincidence.
 MIN_NEGATION_PAIR_SIMILARITY = 0.5
 
 # Round-5 review, finding corUi-MEDIUM (module docstring): the round-4 bound counted sentence PAIRS, so an ordinary
@@ -282,8 +293,9 @@ def _attach_passages(passages: tuple[Passage, ...], changed: dict[str, dict],
 def _negation_count(sentence: str) -> int:
     """How many negator occurrences ``sentence`` contains: fixed-vocabulary word tokens (case-insensitive) plus
     any ``-n't`` contraction. Negation POLARITY is this count's PARITY (module docstring, "(b)"). The fixed
-    boilerplate phrases "without limitation" and "not limited to" (finding C4, extended round 5) are stripped
-    FIRST so neither can ever itself move the count."""
+    boilerplate phrases of :data:`_BOILERPLATE_NEGATOR_PHRASE_RE` ("without limitation" and the enumerating
+    "not limited to" forms; finding C4, extended rounds 5 and 6) are stripped FIRST so none can ever itself move
+    the count; a plain scope statement ("is not limited to China") still counts."""
     sentence = _BOILERPLATE_NEGATOR_PHRASE_RE.sub(" ", sentence)
     tokens = word_tokens(sentence)
     return sum(1 for t in tokens if t in _NEGATORS) + len(_CONTRACTION_RE.findall(sentence))
@@ -299,8 +311,11 @@ def _content_tokens(tokens: tuple[str, ...]) -> frozenset[str]:
 
 def _pair_similarity(a: tuple[str, ...], b: tuple[str, ...]) -> float:
     """Word-level similarity for the negation pairing: the normalized LCS (Indel) similarity of the two token
-    sequences, computed bit-parallel by rapidfuzz — the same scale as the aligner's difflib ratio but never cubic
-    (final verification, round 5: 22 x 22 low-diversity 200-token sentences took ~46 s through difflib). Symmetric."""
+    sequences, 2*LCS/(len(a)+len(b)), computed bit-parallel by rapidfuzz. It is an UPPER BOUND of the aligner's
+    ``lex_exact`` (difflib's greedy matching-block total never exceeds the LCS), so the same 0.5 floor admits
+    slightly more pairs (round-6 verification: 24 of 6,510 real 10-K sentence pairings newly cross it, none drop
+    below), but it is never cubic (final verification, round 5: 22 x 22 low-diversity 200-token sentences took
+    ~46 s through difflib). Symmetric."""
     if not a or not b:
         return 0.0
     return Indel.normalized_similarity(a, b)
@@ -350,7 +365,7 @@ def _negation_flip_quotes(older_row: dict, newer_row: dict, older: VersionView, 
                           spans: tuple[list[tuple[int, int]], list[tuple[int, int]]],
                           older_keep: list[int], candidates_by_older: dict[int, list[int]]) -> list[dict]:
     """The removed/added quote pairs themselves, once the token-work budget check has already passed: every kept
-    older sentence's best-matching candidate (the aligner's own word-level lexical score, floored at
+    older sentence's best-matching candidate (:func:`_pair_similarity`, floored at
     :data:`MIN_NEGATION_PAIR_SIMILARITY`), reported only when its negation polarity (module docstring) differs."""
     older_tokens, newer_tokens = tokens
     older_spans, newer_spans = spans
@@ -389,10 +404,10 @@ def _negation_flip_passages(older_row: dict, newer_row: dict, older: VersionView
     splitter ``graph/passages.py`` uses (``graph.align_text.split_sentences``).
 
     Any sentence over :data:`MAX_NEGATION_SENTENCE_TOKENS` word tokens, on EITHER side, is excluded from
-    consideration entirely (round-5 review, finding secRel-LOW / S3 partial: ``lex_exact`` is roughly cubic in a
-    long, low-diversity sentence's own length, regardless of how few pairs the unit has). Every remaining older
-    sentence's candidates are pre-filtered by :func:`_negation_candidates` before either is charged against the
-    budget or handed to ``lex_exact`` (:func:`_negation_flip_quotes`).
+    consideration entirely (round-5 review, finding secRel-LOW / S3 partial; kept as a bound on the quoted
+    sentence size even though the pairing is no longer the cubic ``lex_exact``). Every remaining older sentence's
+    candidates are pre-filtered by :func:`_negation_candidates` before either is charged against the budget or
+    scored (:func:`_negation_flip_quotes`).
 
     Returns ``None`` — never a silently-empty list — when nothing is left to compare after the length exclusion,
     or when this unit pair's own token-work total exceeds :data:`MAX_NEGATION_WORK_PER_UNIT`, or once

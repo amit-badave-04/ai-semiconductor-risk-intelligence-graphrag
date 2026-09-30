@@ -653,6 +653,15 @@ freshness loop busy-spun when a due check was not admitted, a regression of 15.1
    in the comparison subprocess returns `comparison_failed` like every other failure; the access log hashes the whole
    workspace-id path segment whatever its case or length and re-escapes a kept query string; the smoke prints every failed
    check before its INCONCLUSIVE exit.
+10. **Verification of fix round 6 (Opus, 0b5d0f3): PASS WITH CONDITIONS.** Items 2-5 correct; one regression found and
+    fixed in round 6b: the anchored matcher missed the most common SEC form, "include, but are not limited to" (51 of the
+    242 "not limited to" occurrences in the local 10-K corpus were counted as negators, so dropping the phrase showed a
+    false negation change). The matcher now accepts `but [are|is|was|were] not limited to`; the verifier's corpus scan
+    strips 242 of 242 and its end-to-end repro is no longer reported. Also: malformed workspace paths (repeated slashes,
+    any letter case, `%2F`) never log the raw id; stale `lex_exact` comments corrected (`_pair_similarity` is an upper
+    bound of `lex_exact`: 24 of 6,510 real 10-K sentence pairings newly cross the 0.5 floor, none drop below). Known,
+    documented limits: a "but not limited to" that is itself a scope statement is stripped too; rare forms ("and not
+    limited to", "such as, not limited to") still count as a negator (none occur in the local corpus).
 
 ## Audit trail
 

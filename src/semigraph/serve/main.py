@@ -34,8 +34,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("semigraph.serve.main")
 
 # The whole path SEGMENT after /api/workspace/ is hashed, whatever its case or length: an uppercased or over-long id
-# still carries the real id, so only the segment position (never its shape) decides what is redacted.
-_WORKSPACE_PATH_RE = re.compile(r"^/api/workspace/([^/]+)")
+# still carries the real id, so only the segment position (never its shape) decides what is redacted. Repeated
+# slashes and any letter case are tolerated too (round-6 verification L4): a malformed spelling is a 404, but its
+# access-log line must not carry the raw id either.
+_WORKSPACE_PATH_RE = re.compile(r"^/+api/+workspace/+([^/]+)", re.IGNORECASE)
 _DOC_ID_IN_PATH_RE = re.compile(r"doc:[0-9a-f]{12}:v[0-9]{1,3}:[0-9]{4}")
 # Characters a logged path may carry literally (RFC 3986 path characters plus the <ws:...>/<doc> placeholders); every
 # other character, including control characters and quotes, is percent-encoded.

@@ -354,6 +354,10 @@ def test_negation_count_ignores_not_limited_to_but_still_counts_a_real_not():
     assert C._negation_count("including but not limited to accelerators and networking equipment") == 0
     assert C._negation_count("including, without limitation, accelerators and networking equipment") == 0
     assert C._negation_count("such as, but not limited to, accelerators") == 0
+    # round-6 verification (MEDIUM): the most common SEC form puts a verb between "but" and "not" (51 of the 242
+    # "not limited to" occurrences in the local 10-K corpus)
+    assert C._negation_count("products, which include, but are not limited to, accelerators") == 0
+    assert C._negation_count("Our offering includes, but is not limited to, networking equipment.") == 0
     assert C._negation_count("We are not subject to the new rules.") == 1
 
 
@@ -375,6 +379,24 @@ def test_compare_versions_reports_a_not_limited_to_scope_reversal_as_changed():
     assert entry is not None, report
     quotes = _quotes_by_kind(entry)
     assert "not limited to China" in quotes.get("removed", "") and "limited to China" in quotes.get("added", "")
+
+
+def test_compare_versions_dropping_include_but_are_not_limited_to_is_not_a_negation_flip():
+    """Round-6 verification (MEDIUM), the verifier's exact repro (m4review6/neg_e2e3.py) on the existing fixture:
+    "which include, but are not limited to, accelerators" -> "which include accelerators" is a routine legal no-op
+    and must never be reported as a negation change."""
+    anchor = "products, including, without limitation, accelerators"
+    assert anchor in fx.WITHOUT_LIMITATION_TO_BUT_NOT_LIMITED_TO_V1
+
+    def variant(phrase: str) -> str:
+        return fx.WITHOUT_LIMITATION_TO_BUT_NOT_LIMITED_TO_V1.replace(anchor, f"products, {phrase} accelerators")
+
+    v1 = _build_view(variant("which include, but are not limited to,"))
+    v2 = _build_view(variant("which include"))
+    report = C.compare_versions(v1, v2)
+    entry = next((c for c in report["changed"] if c["headline"] == "Export Control Exposure"), None)
+    kinds = {p["kind"] for p in entry["passages"]} if entry is not None else set()
+    assert "removed" not in kinds and "added" not in kinds, report
 
 
 def test_the_negation_pairing_is_never_cubic_on_low_diversity_sentences():
