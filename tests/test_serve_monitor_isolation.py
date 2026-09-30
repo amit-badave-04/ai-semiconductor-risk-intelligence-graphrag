@@ -76,6 +76,40 @@ def test_the_monitor_module_itself_leaves_out_xbrl_and_graph_freshness():
     assert done.returncode == 0, done.stdout + done.stderr
 
 
+def test_the_api_process_never_imports_the_aligner_or_its_scipy_rapidfuzz_dependencies():
+    """The upload job's "comparing" stage now runs in a SANDBOXED SUBPROCESS (docs/v2/M4_PLAN.md 4.2 extension,
+    ``uploads/sandbox.py`` + ``uploads/compare_worker.py``), never in-process: ``uploads.jobs`` must never import
+    ``semigraph.graph.alignment`` / ``semigraph.graph.passages`` (or their own ``scipy`` / ``rapidfuzz``
+    dependencies) at module level or lazily during import — only ``uploads.compare`` (stdlib-only), which launches
+    the child that actually imports them."""
+    done = _imports_leave_out("import semigraph.serve.main, semigraph.uploads.jobs",
+                              "semigraph.graph.alignment", "semigraph.graph.passages", "scipy", "rapidfuzz")
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_api_process_never_loads_the_aligner_even_after_every_lazy_import_a_job_can_trigger():
+    """Stronger than the import-time-only pin above: exercises every module ``uploads.jobs`` lazily imports across a
+    job's stages (``repo``, ``parse``, ``units``, ``compare``, ``versions``, ``hashing``, ``retrieval.ids``,
+    ``retrieval.workspace`` — never ``changes``, which this module does not import at all) and asserts
+    ``semigraph.graph.alignment`` / ``semigraph.graph.passages`` / ``scipy`` are STILL absent afterwards — the
+    literal goal ("the API process never loads the aligner"), not just what importing the bare modules shows.
+
+    NOTE (seam, reported — not this worker's to fix): ``semigraph.uploads.units`` itself imports
+    ``semigraph.graph.align_text`` for sentence-splitting (``chunk_units``'s boundary snapping), and
+    ``graph.align_text`` imports ``rapidfuzz`` at module level. So ``rapidfuzz`` — unlike ``scipy`` and the two
+    aligner modules — DOES land in ``sys.modules`` the moment any job reaches its chunking stage, independently of
+    whether a comparison ever runs. This is pre-existing (``units.py`` already needed sentence boundaries before
+    M4's comparison-sandboxing extension) and out of this file's ownership (``units.py`` / ``graph/align_text.py``
+    are not in the M4 "comparing"-stage sandboxing scope) — rapidfuzz is therefore deliberately NOT asserted absent
+    here, only the two aligner modules and scipy, which is the actual GIL/RLIMIT concern this sandboxing fixes."""
+    done = _imports_leave_out(
+        "import semigraph.uploads.repo, semigraph.uploads.parse, semigraph.uploads.units, "
+        "semigraph.uploads.compare, semigraph.uploads.versions, semigraph.hashing, semigraph.retrieval.ids, "
+        "semigraph.retrieval.workspace",
+        "semigraph.graph.alignment", "semigraph.graph.passages", "scipy")
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
 def test_an_unknown_name_is_still_an_attribute_error():
     done = _run("import semigraph.ingestion as I\ntry:\n    I.no_such_name\nexcept AttributeError:\n    pass\n"
                 "else:\n    raise SystemExit('no AttributeError')")

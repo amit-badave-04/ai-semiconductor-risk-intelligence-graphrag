@@ -49,11 +49,12 @@ ever tell a negation flip from a tense-only edit. Fixing it needed two changes, 
     (``align_text.lex_exact``, floored at :data:`MIN_NEGATION_PAIR_SIMILARITY` so two unrelated sentences are
     never compared). A pair's negation POLARITY is the PARITY (odd/even) of how many negator words it contains —
     a fixed vocabulary (not/no/never/none/nor/cannot/without) plus any ``-n't`` contraction, counted on lowercased
-    word tokens, with the fixed boilerplate phrase "without limitation" stripped first (round-4 review, finding
-    C4: dropping "including, without limitation," is a routine legal no-op, never a polarity change, so it must
-    never itself move the count) — so a double negation that keeps the same parity on both sides (two negators
-    become two different ones) is deliberately NOT a flip, while a single negator present on only one side always
-    is. A flipped pair promotes its unit to ``changed`` with two new passages quoting the older sentence
+    word tokens, with the fixed boilerplate phrases "without limitation" and "not limited to" stripped first
+    (round-4 review, finding C4, extended in round 5: dropping "including, without limitation," or swapping it for
+    its equally common synonym "including but not limited to" is a routine legal no-op, never a polarity change, so
+    neither must ever itself move the count) — so a double negation that keeps the same parity on both sides (two
+    negators become two different ones) is deliberately NOT a flip, while a single negator present on only one
+    side always is. A flipped pair promotes its unit to ``changed`` with two new passages quoting the older sentence
     (``removed``) and the newer one (``added``), each clipped to its own chunk by the SAME rule
     :func:`_clip_to_chunk` already applies to every other passage.
 
@@ -67,9 +68,29 @@ ever tell a negation flip from a tense-only edit. Fixing it needed two changes, 
     ROUND-4 REVIEW FIX (finding S3): each older/newer sentence pair costs one ``lex_exact`` call (a
     ``SequenceMatcher``); with no bound, a unit with thousands of short sentences on each side could spend minutes
     here while holding the machine-wide upload slot. :func:`_negation_flip_passages` now refuses to run — return-
-    ing ``None``, never a silent empty result — for a unit pair whose sentence-count product exceeds
-    :data:`MAX_NEGATION_PAIRS_PER_UNIT`, or once the whole call's :data:`MAX_NEGATION_WORK_BUDGET` is exhausted;
+    ing ``None``, never a silent empty result — once the whole call's :data:`MAX_NEGATION_WORK_BUDGET` is exhausted;
     every skip is counted in the report's ``negation_check_skipped`` field and logged, never dropped silently.
+
+    ROUND-5 REVIEW FIX (finding corUi-MEDIUM): a bound that only ever counted sentence PAIRS punished an ordinary
+    in-cap document — an annual refresh with a 100-150 sentence section, every sentence's fiscal year bumped so no
+    pair is a cheap byte-identical match — exactly as hard as the reviewer's pathological one (thousands of
+    one-word "sentences"), because ``lex_exact`` itself costs roughly the PRODUCT of the two sentences' own
+    lengths, not a flat "1" per pair. The budget is now charged in that same currency — ``len(older_tokens) *
+    len(newer_tokens)`` for every pair actually compared (:data:`MAX_NEGATION_WORK_PER_UNIT` per unit pair,
+    :data:`MAX_NEGATION_WORK_BUDGET` summed across the whole call) — so a document built of many ordinary, short
+    sentences comfortably fits while one built of very many, or very long, sentences still trips the same bound.
+    Every older sentence's newer candidates are also pre-filtered to the ones sharing at least one non-negator
+    content word (:func:`_content_tokens`) before either is charged against the budget or handed to ``lex_exact``:
+    a genuine edit almost always keeps something in common with its own older sentence; two unrelated sentences
+    essentially never do, so this is free work saved on every realistic document without ever hiding a real flip.
+
+    ROUND-5 REVIEW FIX (finding secRel-LOW, S3 partial): the pair-count bound alone never protected against ONE
+    pathologically long sentence — ``lex_exact``'s ``SequenceMatcher`` degrades to roughly cubic time on a sentence
+    built of few distinct, highly repeated tokens (the reviewer's ~1,600-word adversarial pair took over 100s by
+    itself, as a single "pair"). A sentence longer than :data:`MAX_NEGATION_SENTENCE_TOKENS` words is now excluded
+    from the check entirely — never handed to ``lex_exact`` on either side, whatever its content — so this cost can
+    never be reached at all; the exclusion is counted in ``negation_check_skipped`` exactly like a budget skip,
+    never silently, while the unit's OTHER, ordinary-length sentences are still compared normally.
 
 The invariant ``len(removed) + len(changed) + len(minor_rewordings) + unchanged_count == len(older units)`` still
 always holds; ``unchanged_count`` counts the aligner's own ``unchanged`` label MINUS any unit promoted by (b).
@@ -92,6 +113,10 @@ logger = logging.getLogger("semigraph.uploads.changes")
 
 NOT_COMPARED_REASONS = (
     "identical_content", "parse_method_mismatch", "low_text_yield", "heading_coverage_mismatch", "too_many_units",
+    # The two reasons `uploads.compare.compare_in_subprocess` reports when the sandboxed comparison subprocess
+    # (uploads/sandbox.py, uploads/compare_worker.py) times out or crashes/returns malformed output — this module's
+    # own `compare_versions` never returns either reason itself (M4_PLAN.md 4.2 "Do" step 3).
+    "comparison_timeout", "comparison_failed",
 )
 LOW_TEXT_YIELD_CHARS_PER_PAGE = 200.0
 MAX_UNITS_FOR_COMPARISON = 400
@@ -117,27 +142,44 @@ UPLOAD_ALIGN_PARAMS = AlignParams(min_body_tokens=4)
 _NEGATORS = frozenset({"not", "no", "never", "none", "nor", "cannot", "without"})
 _CONTRACTION_RE = re.compile(r"n['’]t\b", re.IGNORECASE)
 
-# Round-4 review, finding C4: "including, without limitation," is fixed legal boilerplate, not a polarity change --
-# stripped from a sentence BEFORE counting negators (module docstring, "(b)") so dropping/adding it never flips a
-# unit's reported negation count. "without" itself stays in _NEGATORS (a real "without X" <-> "with X" edit must
-# still be caught); only this exact fixed phrase is excluded.
-_BOILERPLATE_NEGATOR_PHRASE_RE = re.compile(r"\bwithout\s+limitation\b", re.IGNORECASE)
+# Round-4 review, finding C4 (extended round-5): "including, without limitation," and its equally common synonym
+# "including but not limited to" are fixed legal boilerplate, not a polarity change -- both stripped from a
+# sentence BEFORE counting negators (module docstring, "(b)") so dropping, adding, or swapping between them never
+# flips a unit's reported negation count. "not limited to" is matched generally (not only after "but"), since the
+# "but" is itself optional boilerplate wording. "without" and "not" themselves stay in _NEGATORS (a real
+# "without X" <-> "with X" edit, or any other genuine "not", must still be caught); only these exact fixed phrases
+# are excluded.
+_BOILERPLATE_NEGATOR_PHRASE_RE = re.compile(r"\b(?:without\s+limitation|not\s+limited\s+to)\b", re.IGNORECASE)
 
 # A deliberately conservative floor on the aligner's own word-level lexical score (align_text.lex_exact): the
 # negation-polarity check (module docstring, "(b)") only ever compares two sentences this close to being "the same
 # sentence, edited" -- never an unrelated pair that happens to share a negator by coincidence.
 MIN_NEGATION_PAIR_SIMILARITY = 0.5
 
-# Round-4 review, finding S3: bounds on the negation-polarity check's own cost (module docstring, "(b)"). Each
-# older/newer sentence pair costs one lex_exact (SequenceMatcher) call; the reviewer's repro (~5,700 one-word
-# "sentences" on each side of one unit, still under every other cap) took over 100s with no bound at all.
-# MAX_NEGATION_PAIRS_PER_UNIT bounds a single unit's own cost (len(older_sentences) * len(newer_sentences));
-# MAX_NEGATION_WORK_BUDGET bounds the SAME product summed across every unit pair in one compare_versions call, so a
-# document with several large-but-individually-in-cap units still cannot add up to an unbounded total. Either bound
-# being hit means the check is SKIPPED (never silently) for that unit pair -- counted in the report's
+# Round-5 review, finding corUi-MEDIUM (module docstring): the round-4 bound counted sentence PAIRS, so an ordinary
+# in-cap annual-refresh section (100-150 real sentences, none a byte-identical match across versions) tripped the
+# SAME cap as the reviewer's original pathological input (thousands of one-word "sentences") -- lex_exact's real
+# cost tracks the PRODUCT of the two sentences' own token lengths, not a flat "1" per pair. The budget is now
+# charged as len(older_tokens) * len(newer_tokens) for every pair actually compared (after the shared-content-word
+# pre-filter, :func:`_content_tokens`): MAX_NEGATION_WORK_PER_UNIT bounds one unit pair's own total;
+# MAX_NEGATION_WORK_BUDGET bounds the SAME total summed across every unit pair in one compare_versions call, so a
+# document with several large-but-individually-in-cap units still cannot add up to an unbounded total. Calibrated
+# (tests/test_serve_upload_changes.py) so a 150-sentence, ~17-token-average annual-refresh section (measured cost
+# ~6.5M) comfortably fits with room for a second such section in the same document, while a document built almost
+# entirely of such sections still trips the bound before it can cost real wall-clock time. Either bound being hit
+# means the check is SKIPPED (never silently) for that unit pair -- counted in the report's
 # ``negation_check_skipped`` field, never treated as "checked and found nothing".
-MAX_NEGATION_PAIRS_PER_UNIT = 20_000
-MAX_NEGATION_WORK_BUDGET = 20_000
+MAX_NEGATION_WORK_PER_UNIT = 20_000_000
+MAX_NEGATION_WORK_BUDGET = 30_000_000
+
+# Round-5 review, finding secRel-LOW (S3 partial): a bound on PAIRS or on total token-work still never protects
+# against ONE pathologically long sentence -- lex_exact's SequenceMatcher degrades to roughly cubic time on a
+# sentence built of few distinct, highly repeated tokens (measured: a single ~1,600-word adversarial sentence pair,
+# a single "pair" under any cap above, took over 100s by itself). A sentence longer than this many word tokens is
+# therefore excluded from the negation check entirely -- on EITHER side, never handed to lex_exact at all -- while
+# the unit's other, ordinary-length sentences are still compared normally; the exclusion is counted in
+# ``negation_check_skipped`` exactly like any other skip, never silently.
+MAX_NEGATION_SENTENCE_TOKENS = 200
 
 
 @dataclass(frozen=True)
@@ -234,10 +276,19 @@ def _attach_passages(passages: tuple[Passage, ...], changed: dict[str, dict],
 def _negation_count(sentence: str) -> int:
     """How many negator occurrences ``sentence`` contains: fixed-vocabulary word tokens (case-insensitive) plus
     any ``-n't`` contraction. Negation POLARITY is this count's PARITY (module docstring, "(b)"). The fixed
-    boilerplate phrase "without limitation" (finding C4) is stripped FIRST so it can never itself move the count."""
+    boilerplate phrases "without limitation" and "not limited to" (finding C4, extended round 5) are stripped
+    FIRST so neither can ever itself move the count."""
     sentence = _BOILERPLATE_NEGATOR_PHRASE_RE.sub(" ", sentence)
     tokens = word_tokens(sentence)
     return sum(1 for t in tokens if t in _NEGATORS) + len(_CONTRACTION_RE.findall(sentence))
+
+
+def _content_tokens(tokens: tuple[str, ...]) -> frozenset[str]:
+    """``tokens`` minus the negator vocabulary (round-5 review, finding corUi-MEDIUM): the shared-vocabulary
+    pre-filter in :func:`_negation_flip_passages` only ever compares two sentences that still have SOME ordinary
+    wording in common — negators are excluded here so that two sentences differing ONLY in negation ("is expected
+    to grow" / "is not expected to grow") still count as sharing every other word."""
+    return frozenset(t for t in tokens if t not in _NEGATORS)
 
 
 def _best_sentence_match(tokens: tuple[str, ...], candidates: list[tuple[str, ...]]) -> tuple[int | None, float]:
@@ -261,34 +312,47 @@ def _clip_sentence(sentence: str, char_start: int, char_end: int, view: VersionV
     return _clip_to_chunk(stub, view)
 
 
-def _negation_flip_passages(older_row: dict, newer_row: dict, older: VersionView, newer: VersionView,
-                            budget: dict) -> list[dict] | None:
-    """Removed/added quote pairs for every sentence of ``older_row`` whose negation polarity (module docstring)
-    differs from its best-matching sentence of ``newer_row``. Both sides are split with the SAME sentence
-    splitter ``graph/passages.py`` uses (``graph.align_text.split_sentences``).
+def _negation_candidates(older_tokens: list[tuple[str, ...]], newer_tokens: list[tuple[str, ...]],
+                         older_keep: list[int], newer_keep: list[int]) -> tuple[dict[int, list[int]], int]:
+    """For every kept older sentence index, the kept newer sentence indices sharing at least one non-negator
+    content token with it (round-5 review, finding corUi-MEDIUM; :func:`_content_tokens`), and the total
+    token-work cost (``len(older_tokens) * len(newer_tokens)`` summed over every candidate pair) of comparing
+    them all — the same currency :data:`MAX_NEGATION_WORK_PER_UNIT` / :data:`MAX_NEGATION_WORK_BUDGET` are
+    charged in."""
+    newer_content = {j: _content_tokens(newer_tokens[j]) for j in newer_keep}
+    candidates_by_older: dict[int, list[int]] = {}
+    total_cost = 0
+    for i in older_keep:
+        older_content = _content_tokens(older_tokens[i])
+        candidates = [j for j in newer_keep if newer_content[j] & older_content]
+        candidates_by_older[i] = candidates
+        total_cost += len(older_tokens[i]) * sum(len(newer_tokens[j]) for j in candidates)
+    return candidates_by_older, total_cost
 
-    Returns ``None`` — never a silently-empty list — when this unit pair's own sentence-count product exceeds
-    :data:`MAX_NEGATION_PAIRS_PER_UNIT`, or once ``budget["remaining"]`` (the whole ``compare_versions`` call's
-    shared :data:`MAX_NEGATION_WORK_BUDGET`) cannot cover it (finding S3): the caller must record the skip, never
-    treat ``None`` as "checked and found nothing". ``budget`` is decremented by the exact pair count actually spent
-    whenever the check DOES run."""
+
+def _negation_flip_quotes(older_row: dict, newer_row: dict, older: VersionView, newer: VersionView,
+                          tokens: tuple[list[tuple[str, ...]], list[tuple[str, ...]]],
+                          spans: tuple[list[tuple[int, int]], list[tuple[int, int]]],
+                          older_keep: list[int], candidates_by_older: dict[int, list[int]]) -> list[dict]:
+    """The removed/added quote pairs themselves, once the token-work budget check has already passed: every kept
+    older sentence's best-matching candidate (the aligner's own word-level lexical score, floored at
+    :data:`MIN_NEGATION_PAIR_SIMILARITY`), reported only when its negation polarity (module docstring) differs."""
+    older_tokens, newer_tokens = tokens
+    older_spans, newer_spans = spans
     older_text, older_base = older_row["text"], older_row["char_start"]
     newer_text, newer_base = newer_row["text"], newer_row["char_start"]
-    older_spans, newer_spans = split_sentences(older_text), split_sentences(newer_text)
-    if not newer_spans or not older_spans:
-        return []
-    cost = len(older_spans) * len(newer_spans)
-    if cost > MAX_NEGATION_PAIRS_PER_UNIT or cost > budget["remaining"]:
-        return None
-    budget["remaining"] -= cost
-    newer_tokens = [word_tokens(newer_text[a:b]) for a, b in newer_spans]
     out: list[dict] = []
-    for a, b in older_spans:
-        older_sentence = older_text[a:b]
-        idx, score = _best_sentence_match(word_tokens(older_sentence), newer_tokens)
-        if idx is None or score < MIN_NEGATION_PAIR_SIMILARITY:
+    for i in older_keep:
+        candidates = candidates_by_older[i]
+        if not candidates:
             continue
-        c, e = newer_spans[idx]
+        a, b = older_spans[i]
+        older_sentence = older_text[a:b]
+        local_idx, score = _best_sentence_match(older_tokens[i], [newer_tokens[j] for j in candidates])
+        if local_idx is None or score < MIN_NEGATION_PAIR_SIMILARITY:
+            continue
+        j = candidates[local_idx]
+        c, e = newer_spans[j]
         newer_sentence = newer_text[c:e]
         if _negation_count(older_sentence) % 2 == _negation_count(newer_sentence) % 2:
             continue                                          # same parity: no flip (a double negation cancels)
@@ -300,6 +364,50 @@ def _negation_flip_passages(older_row: dict, newer_row: dict, older: VersionView
             continue
         out.append({"quote": removed[0], "chunk_id": removed[1], "kind": "removed"})
         out.append({"quote": added[0], "chunk_id": added[1], "kind": "added"})
+    return out
+
+
+def _negation_flip_passages(older_row: dict, newer_row: dict, older: VersionView, newer: VersionView,
+                            budget: dict) -> list[dict] | None:
+    """Removed/added quote pairs for every sentence of ``older_row`` whose negation polarity (module docstring)
+    differs from its best-matching sentence of ``newer_row``. Both sides are split with the SAME sentence
+    splitter ``graph/passages.py`` uses (``graph.align_text.split_sentences``).
+
+    Any sentence over :data:`MAX_NEGATION_SENTENCE_TOKENS` word tokens, on EITHER side, is excluded from
+    consideration entirely (round-5 review, finding secRel-LOW / S3 partial: ``lex_exact`` is roughly cubic in a
+    long, low-diversity sentence's own length, regardless of how few pairs the unit has). Every remaining older
+    sentence's candidates are pre-filtered by :func:`_negation_candidates` before either is charged against the
+    budget or handed to ``lex_exact`` (:func:`_negation_flip_quotes`).
+
+    Returns ``None`` — never a silently-empty list — when nothing is left to compare after the length exclusion,
+    or when this unit pair's own token-work total exceeds :data:`MAX_NEGATION_WORK_PER_UNIT`, or once
+    ``budget["remaining"]`` (the whole ``compare_versions`` call's shared :data:`MAX_NEGATION_WORK_BUDGET`) cannot
+    cover it: the caller must record the skip, never treat ``None`` as "checked and found nothing".
+    ``budget["remaining"]`` is decremented by the exact token-work spent whenever the check DOES run;
+    ``budget["oversized_sentences"]`` is incremented whenever a length exclusion happened but the check still ran
+    on the unit's other sentences — the caller must fold both into the report's skip count, never only one."""
+    older_text, newer_text = older_row["text"], newer_row["text"]
+    older_spans, newer_spans = split_sentences(older_text), split_sentences(newer_text)
+    if not newer_spans or not older_spans:
+        return []
+
+    older_tokens = [word_tokens(older_text[a:b]) for a, b in older_spans]
+    newer_tokens = [word_tokens(newer_text[a:b]) for a, b in newer_spans]
+    oversized = any(len(toks) > MAX_NEGATION_SENTENCE_TOKENS for toks in older_tokens + newer_tokens)
+    older_keep = [i for i, toks in enumerate(older_tokens) if len(toks) <= MAX_NEGATION_SENTENCE_TOKENS]
+    newer_keep = [j for j, toks in enumerate(newer_tokens) if len(toks) <= MAX_NEGATION_SENTENCE_TOKENS]
+    if not older_keep or not newer_keep:
+        return None
+
+    candidates_by_older, total_cost = _negation_candidates(older_tokens, newer_tokens, older_keep, newer_keep)
+    if total_cost > MAX_NEGATION_WORK_PER_UNIT or total_cost > budget["remaining"]:
+        return None
+    budget["remaining"] -= total_cost
+
+    out = _negation_flip_quotes(older_row, newer_row, older, newer, (older_tokens, newer_tokens),
+                                (older_spans, newer_spans), older_keep, candidates_by_older)
+    if oversized:
+        budget["oversized_sentences"] = budget.get("oversized_sentences", 0) + 1
     return out
 
 
@@ -325,8 +433,9 @@ def _apply_negation_flips(older_decisions: Sequence[OlderDecision], older_by_id:
     appending to an existing entry's passages (finding C2: even one ``compute_passages`` already gave a real
     passage for a DIFFERENT sentence), or adding a fresh entry for a promoted ``unchanged`` unit — and returns
     ``(promoted, skipped)``: the ids of ``unchanged`` units promoted this way (the caller must subtract these from
-    ``unchanged_count`` to keep the module's invariant) and a COUNT of unit pairs the check skipped under its cost
-    bound (finding S3; never silently — the caller must surface this in the report)."""
+    ``unchanged_count`` to keep the module's invariant) and a COUNT of unit pairs the check did not fully examine —
+    a whole unit pair skipped under the token-work bound, or one where at least one oversized sentence was excluded
+    (findings S3 and secRel-LOW; never silently — the caller must surface this in the report)."""
     promoted: set[str] = set()
     skipped = 0
     budget = {"remaining": MAX_NEGATION_WORK_BUDGET}
@@ -351,9 +460,10 @@ def _apply_negation_flips(older_decisions: Sequence[OlderDecision], older_by_id:
             promoted.add(d.item_id)
         else:
             entry["passages"].extend(new_pairs)
+    skipped += budget.get("oversized_sentences", 0)
     if skipped:
-        logger.warning("negation-flip check skipped for %d unit pair(s): sentence-count cap or work budget "
-                       "exceeded", skipped)
+        logger.warning("negation-flip check skipped for %d unit pair(s): sentence-count cap, token-work budget or "
+                       "an oversized sentence", skipped)
     return promoted, skipped
 
 

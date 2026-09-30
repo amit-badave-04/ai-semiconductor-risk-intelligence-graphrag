@@ -177,10 +177,10 @@ def _wait_for_job(client, base_url: str, ws: str, token: str, job_id: str) -> di
 
 def _ask(client, base_url: str, ws: str, token: str, question: str, *, as_of: str | None = None) -> dict:
     """C6: never raises on a non-2xx response (a rate limit, a transient 5xx) — it returns an ``{"error":
-    True, "status_code": ...}`` marker instead. Every caller already treats a missing ``citations``/``workspace``
-    key as "this ask produced nothing to cite", so a failed ask degrades exactly the ONE G1 check it feeds instead
-    of raising out of :func:`_run_g1` and aborting every check that runs after it — most importantly the merely
-    OBSERVATIONAL ``as_of=yesterday`` ask, which must never abort the change-report/evidence/delete checks."""
+    True, "status_code": ...}`` marker instead, so a failed ask never aborts the change-report/evidence/delete checks
+    that follow it. :func:`inconclusive_asks` then marks the whole run INCONCLUSIVE (not failed): an ask the service
+    refused (for example a 429 from the per-address window on a second run within 10 minutes) says nothing about
+    whether the checks it feeds would pass."""
     body = {"question": question, "workspace_id": ws, "as_of": as_of}
     r = client.post(f"{base_url}/api/ask", json=body, headers={"X-Workspace-Token": token},
                     timeout=REQUEST_TIMEOUT_S)
@@ -370,6 +370,12 @@ def run(base_url: str, max_usd: float) -> dict:
         return _run_g1(client, base_url, max_usd)
 
 
+def inconclusive_asks(steps: dict) -> list[str]:
+    """``"<step> answered <status>"`` for every ask the service refused (an error marker from :func:`_ask`)."""
+    return [f"{name} answered {step.get('status_code')}" for name, step in sorted((steps or {}).items())
+            if name.startswith("ask") and isinstance(step, dict) and step.get("error")]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Local end-to-end smoke of the upload workspace (gate G1).")
     ap.add_argument("--base-url", default="http://127.0.0.1:8080")
@@ -382,15 +388,20 @@ def main(argv: list[str] | None = None) -> int:
     # C6: `report["error"]` is only present when a step raised partway (_run_g1's try/finally still ran the
     # workspace's DELETE and returned whatever partial results it had) — the artifact and the exit code both
     # reflect that instead of this process crashing with no artifact written at all.
+    refused = inconclusive_asks(report["steps"])
     out = {"base_url": args.base_url, "max_usd": args.max_usd, "spend_usd": report["spend_usd"],
           "within_budget": report["within_budget"], "results": report["results"], "failures": failures,
-          "notes": notes, "error": report.get("error"), "steps": report["steps"],
+          "notes": notes, "error": report.get("error"), "inconclusive": refused, "steps": report["steps"],
           "generated_at": datetime.now(UTC).isoformat()}
     ARTIFACT_PATH.parent.mkdir(parents=True, exist_ok=True)
     ARTIFACT_PATH.write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
     print(f"spend: ${report['spend_usd']:.4f} (budget ${args.max_usd:.2f}) — within budget: {report['within_budget']}")
     if report.get("error"):
         print(f"ERROR: a step raised partway through the run: {report['error']}")
+    if refused:
+        print(f"INCONCLUSIVE: {', '.join(refused)} — rerun on a fresh server process or after 10 minutes")
+        print(f"wrote {ARTIFACT_PATH}")
+        return 2
     for f in failures:
         print(f"FAIL: {f}")
     for n in notes:

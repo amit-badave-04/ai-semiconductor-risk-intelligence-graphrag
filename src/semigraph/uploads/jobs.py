@@ -8,8 +8,12 @@ and reserves the day's upload budget BEFORE calling :func:`run_upload_job`; the 
 
 This module stays import-light at MODULE level (``tests/test_serve_monitor_isolation.py`` / ``test_static_ui.py``
 pin that the API process never imports a document parser eagerly): every parser-adjacent import
-(``uploads.parse``, ``uploads.units``, ``uploads.changes``, ``uploads.repo``) happens lazily, inside the functions
-that actually run a job.
+(``uploads.parse``, ``uploads.units``, ``uploads.repo``) happens lazily, inside the functions that actually run a
+job. ``uploads.changes`` (the frozen SEC aligner: ``graph.alignment`` -> scipy, ``graph.passages`` -> rapidfuzz) is
+NEVER imported here, not even lazily — the "comparing" stage instead calls the stdlib-only
+``uploads.compare.compare_in_subprocess``, which runs the actual comparison in a sandboxed CHILD process
+(``uploads/sandbox.py``, ``uploads/compare_worker.py``) so the aligner never loads in the API process at all
+(``tests/test_serve_monitor_isolation.py`` pins this too).
 
 Progress is published two ways: an in-memory, append-only, per-(workspace, job) event log for every live SSE
 watcher on THIS process (:class:`JobRegistry` — fan-out: every watcher sees every event, not just the next one), and
@@ -304,17 +308,6 @@ def _lower_priority() -> None:
         logger.debug("setpriority(nice 10) failed; continuing at the default priority")
 
 
-def _version_view(row: dict):
-    from .changes import VersionView
-    from .units import Unit
-
-    units = tuple(Unit(unit_id=u["unit_id"], kind=u["kind"], headline=u["headline"] or "",
-                       char_start=u["char_start"], char_end=u["char_end"]) for u in row["units"])
-    spans = tuple((cid, start, end) for cid, start, end in row["chunk_spans"])
-    return VersionView(text=row["text"], units=units, chunk_spans=spans, method=row["method"],
-                      chars_per_page=row["chars_per_page"] or 0.0)
-
-
 def _parse_or_fail(driver, ws, reg, job_id, document_id, version, data, kind, settings):
     from .parse import ParseError, parse_document
 
@@ -370,9 +363,13 @@ def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, em
     return {"vectors": vectors, "already": already}
 
 
-def _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed):
-    from .changes import compare_versions
-
+def _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed, settings):
+    """Runs the comparison in a SANDBOXED SUBPROCESS (``uploads.compare.compare_in_subprocess`` ->
+    ``uploads/sandbox.py`` -> ``python -m semigraph.uploads.compare_worker``), never in-process (M4_PLAN.md 4.2,
+    section 1/16 extension): the frozen SEC aligner (``graph.alignment`` -> scipy, ``graph.passages`` -> rapidfuzz)
+    must never load in the API process, and a pathological in-cap document's alignment work must never hold the
+    API's own GIL. This module (``uploads.jobs``) therefore never imports ``uploads.changes`` at all — not even
+    lazily — only the stdlib-only ``uploads.compare`` wrapper, which is what actually launches the child."""
     if latest is None:
         # Same shape as changes.compare_versions' own "not compared" result (docs/v2/M4_PLAN.md 15.6/15): every key
         # compare_versions ever returns must be present here too, including minor_rewordings and
@@ -382,25 +379,27 @@ def _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_r
                "added": [], "removed": [], "changed": [], "minor_rewordings": [], "unchanged_count": 0,
                "negation_check_skipped": 0}
     from . import repo
+    from .compare import compare_in_subprocess
 
     older_row = repo.version_view(driver, ws, document_id, latest["version"])
     if older_row is None:
         # R6 (round-4 reliability review, docs/v2/M4_PLAN.md 15.4, C3 item 1): version_view is a plain read — it
         # never takes put_version/put_job's workspace lock — so it can start returning None for a version a
-        # concurrent delete_workspace (or the TTL sweep) just removed. Before this fix, letting `_version_view(None)`
+        # concurrent delete_workspace (or the TTL sweep) just removed. Before this fix, letting the older view
         # unpack it crashed with an unrelated TypeError, which `_worker`'s generic `except Exception` then logged at
         # ERROR ("upload job crashed") with a full traceback for what is really a benign user action. Raising
         # WorkspaceGone here instead means this ends the SAME way every other mid-job deletion does: a local-only
         # `workspace_deleted` event, logged once at INFO by `_fail` — never an ERROR traceback.
         workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
         raise workspace_gone("the workspace no longer exists")
-    older_view = _version_view(older_row)
-    newer_view = _version_view({"text": text, "units": [
+    older_view = {"text": older_row["text"], "units": older_row["units"], "chunk_spans": older_row["chunk_spans"],
+                 "method": older_row["method"], "chars_per_page": older_row["chars_per_page"] or 0.0}
+    newer_view = {"text": text, "units": [
         {"unit_id": u.unit_id, "kind": u.kind, "headline": u.headline, "char_start": u.char_start,
         "char_end": u.char_end} for u in units],
-        "chunk_spans": [(r["chunk_id"], r["char_start"], r["char_end"]) for r in chunk_rows],
-        "method": parsed.method, "chars_per_page": parsed.chars_per_page})
-    return compare_versions(older_view, newer_view)
+        "chunk_spans": [[r["chunk_id"], r["char_start"], r["char_end"]] for r in chunk_rows],
+        "method": parsed.method, "chars_per_page": parsed.chars_per_page}
+    return compare_in_subprocess(older_view, newer_view, timeout_s=settings.upload_compare_timeout_s)
 
 
 def _workspace_page_quota_exceeded(driver, ws: str, document_id: str, new_pages: int, settings) -> bool:
@@ -496,7 +495,8 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
     units, unit_dicts, chunk_rows = chunked
 
     emit("comparing", version=version)
-    change_report = _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed)
+    change_report = _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed,
+                                           settings)
     # Defence in depth on top of the linear-time regex fix (docs/v2/M4_PLAN.md 15.12): collapsing whitespace runs
     # first means even a pathological pattern this heuristic does not yet anticipate stays bounded by the
     # (already-capped) token count rather than the raw character count of an upload.
@@ -508,7 +508,7 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
         repo.put_version(driver, ws, document_id=document_id, title=title, version=version,
                          content_hash=content_hash_hex, method=parsed.method, pages=parsed.pages, chars=len(text),
                          chars_per_page=parsed.chars_per_page, text=text, units=unit_dicts, chunks=chunk_rows,
-                         change_report=change_report, suspicious=suspicious, now=datetime.now(UTC))
+                         change_report=change_report, suspicious=suspicious, now=datetime.now(UTC), job_id=job_id)
     except workspace_gone:
         # The workspace was deleted (or TTL-swept) while this job ran (docs/v2/M4_PLAN.md 15.4): put_version wrote
         # NOTHING (it locks the UserWorkspace node first and refuses otherwise), so nothing here may write further
@@ -592,9 +592,12 @@ def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | Non
 # for, on top of settings.upload_parse_timeout_s + settings.upload_embed_timeout_s, before the interrupted-job
 # sweep's age threshold (docs/v2/M4_PLAN.md 15.4, finding 27, C3 item 2). Arithmetic: `_embed_chunks` only checks
 # its wall budget BETWEEN chunks, so one slow chunk can carry the embed stage past upload_embed_timeout_s before
-# that check fires; then `comparing` (a pure-Python alignment) and `put_version`'s own transaction still have to
-# run before the NEXT progress write lands. None of those has its own settings-backed timeout today, so this
-# margin is a fixed, generous allowance for all three combined, not a per-stage figure.
+# that check fires; then `comparing` and `put_version`'s own transaction still have to run before the NEXT progress
+# write lands. `comparing` now HAS its own settings-backed timeout (`upload_compare_timeout_s`, default 120s —
+# M4_PLAN.md 4.2 section 1/16 extension: the alignment itself runs in a sandboxed subprocess, not in-process, so a
+# pathological document can no longer run unbounded), but `_fail_interrupted_older_than_s` deliberately does not
+# add it to the arithmetic below: this fixed 600s margin already comfortably covers it (120s < 600s) with headroom
+# left over for `put_version`'s own transaction, which still has no settings-backed bound of its own.
 FAIL_INTERRUPTED_STAGE_MARGIN_S = 10 * 60
 
 
@@ -694,9 +697,14 @@ class _Sweeper:
                 kwargs["older_than_s"] = _fail_interrupted_older_than_s(self.settings)
             if self.registry is not None:
                 kwargs["exclude"] = self.registry.keys()
-            n = repo.fail_interrupted_jobs(self.driver, **kwargs)
-            if n:
-                logger.info("upload sweeper: marked %d interrupted job(s) failed", n)
+            fixed, recovered = repo.fail_interrupted_jobs(self.driver, **kwargs)
+            # Logged as two separate counts (round-4 review 3, finding 27 residual 2): a job recovered to ready is a
+            # success, never a "failed" job — conflating them into one "marked N interrupted job(s) failed" figure
+            # (as this line used to) is itself misleading, independent of the job_id matching fix in repo.py.
+            if fixed:
+                logger.info("upload sweeper: marked %d interrupted job(s) failed", fixed)
+            if recovered:
+                logger.info("upload sweeper: recovered %d interrupted job(s) to ready", recovered)
         except Exception:  # noqa: BLE001 - boot must never crash or block on this
             logger.exception("upload sweeper: fail_interrupted_jobs failed")
 

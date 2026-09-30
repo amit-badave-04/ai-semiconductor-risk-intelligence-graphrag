@@ -7,6 +7,7 @@ Builds ``VersionView``s through the REAL pipeline (``parse.parse_document`` -> `
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,6 +16,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 import upload_fixtures as fx  # noqa: E402
 
+from semigraph.graph.align_text import word_tokens  # noqa: E402
 from semigraph.uploads import changes as C  # noqa: E402
 from semigraph.uploads import parse, units as U  # noqa: E402
 
@@ -322,7 +324,41 @@ def test_negation_count_ignores_without_limitation_but_still_counts_a_real_witho
 
 
 # --------------------------------------------------------------------------
-# round-4 review, finding S3: the negation-polarity check must be bounded (a per-unit sentence-count cap and an
+# round-5 review, finding corUi-LOW: "including but not limited to" is an equally common legal-boilerplate synonym
+# of "including, without limitation," -- it must not itself be read as a polarity change (extends C4 above).
+# --------------------------------------------------------------------------
+
+def test_compare_versions_but_not_limited_to_boilerplate_is_not_reported_as_a_negation_flip():
+    """Adding "including but not limited to" is itself a real textual edit, so ``compute_passages`` (frozen,
+    untouched by this fix) may still surface the unit via its own ORDINARY rewording detection — but it must never
+    ALSO carry a negation removed/added pair, which would mean the negation check mistook this boilerplate phrase
+    for a polarity flip."""
+    v1 = _build_view(fx.BUT_NOT_LIMITED_TO_BOILERPLATE_V1)
+    v2 = _build_view(fx.BUT_NOT_LIMITED_TO_BOILERPLATE_V2)
+    report = C.compare_versions(v1, v2)
+    entry = next((c for c in report["changed"] if c["headline"] == "Export Control Exposure"), None)
+    kinds = {p["kind"] for p in entry["passages"]} if entry is not None else set()
+    assert "removed" not in kinds and "added" not in kinds
+
+
+def test_compare_versions_without_limitation_swapped_for_but_not_limited_to_is_not_a_flip():
+    """The reviewer's exact repro: dropping "without limitation" and adding its synonym "but not limited to" in
+    the SAME edit must not be read as a polarity change either (neither phrase alone is one)."""
+    v1 = _build_view(fx.WITHOUT_LIMITATION_TO_BUT_NOT_LIMITED_TO_V1)
+    v2 = _build_view(fx.WITHOUT_LIMITATION_TO_BUT_NOT_LIMITED_TO_V2)
+    report = C.compare_versions(v1, v2)
+    assert "Export Control Exposure" not in {c["headline"] for c in report["changed"]}
+
+
+def test_negation_count_ignores_not_limited_to_but_still_counts_a_real_not():
+    assert C._negation_count("including but not limited to accelerators and networking equipment") == 0
+    assert C._negation_count("including, without limitation, accelerators and networking equipment") == 0
+    assert C._negation_count("The clause states the list is not limited to these three items.") == 0
+    assert C._negation_count("We are not subject to the new rules.") == 1
+
+
+# --------------------------------------------------------------------------
+# round-4/round-5 review, finding S3: the negation-polarity check must be bounded (a per-unit token-work cap and an
 # overall work budget), and every skip must be visible in the report, never silent
 # --------------------------------------------------------------------------
 
@@ -334,33 +370,53 @@ def _sentence_row(n_sentences: int, tag: str) -> dict:
     return {"text": text, "char_start": 0, "headline": f"{tag} Section"}
 
 
-def test_negation_flip_passages_skips_a_unit_pair_over_the_per_unit_sentence_cap():
-    older_row, newer_row = _sentence_row(150, "Alpha"), _sentence_row(150, "Beta")   # 150*150 = 22,500 > the cap
+def _padded_sentence_row(n_sentences: int, tag: str, pad_words: int) -> dict:
+    """Like :func:`_sentence_row`, but each sentence carries ``pad_words`` extra shared filler tokens so its own
+    token-work cost (``len(tokens)**2`` when every sentence matches every other, as here) can be pushed well past
+    :data:`C.MAX_NEGATION_WORK_PER_UNIT` with a SMALL ``n_sentences`` -- keeping these tests fast even though the
+    old pair-count model would have called this case cheap (round-5 review, finding corUi-MEDIUM)."""
+    filler = " ".join(["also"] * pad_words)
+    text = " ".join(f"{tag}{i} is fine {filler}." for i in range(n_sentences))
+    return {"text": text, "char_start": 0, "headline": f"{tag} Section"}
+
+
+def test_negation_flip_passages_skips_a_unit_pair_whose_token_work_exceeds_the_per_unit_cap():
+    """Every sentence on both sides shares "is"/"fine"/"also" (the pre-filter keeps every pair as a candidate), so
+    the total token-work is exactly ``n**2 * one_len**2`` -- calibrated here to exceed the per-unit cap."""
+    n, pad = 50, 87
+    older_row, newer_row = _padded_sentence_row(n, "Alpha", pad), _padded_sentence_row(n, "Beta", pad)
     view = C.VersionView(text="", units=(), chunk_spans=(), method="text", chars_per_page=1000.0)
     budget = {"remaining": C.MAX_NEGATION_WORK_BUDGET}
-    assert 150 * 150 > C.MAX_NEGATION_PAIRS_PER_UNIT
+    one_len = len(word_tokens(f"Alpha0 is fine {' '.join(['also'] * pad)}."))
+    assert n * n * one_len * one_len > C.MAX_NEGATION_WORK_PER_UNIT
     assert C._negation_flip_passages(older_row, newer_row, view, view, budget) is None
     assert budget["remaining"] == C.MAX_NEGATION_WORK_BUDGET      # nothing spent on a pair that was never run
 
 
-def test_negation_flip_passages_runs_a_pair_within_the_per_unit_cap_and_spends_the_budget():
-    older_row, newer_row = _sentence_row(10, "Alpha"), _sentence_row(10, "Beta")
+def test_negation_flip_passages_runs_a_pair_within_the_per_unit_cap_and_spends_the_token_work_budget():
+    n = 10
+    older_row, newer_row = _sentence_row(n, "Alpha"), _sentence_row(n, "Beta")
     view = C.VersionView(text="", units=(), chunk_spans=(), method="text", chars_per_page=1000.0)
     budget = {"remaining": C.MAX_NEGATION_WORK_BUDGET}
     result = C._negation_flip_passages(older_row, newer_row, view, view, budget)
     assert result == []                                            # ran fully; no negators anywhere, so no flips
-    assert budget["remaining"] == C.MAX_NEGATION_WORK_BUDGET - 100
+    one_len = len(word_tokens("Alpha0 is fine."))                  # every pair shares "is"/"fine", so all match
+    expected_cost = n * one_len * (n * one_len)
+    assert budget["remaining"] == C.MAX_NEGATION_WORK_BUDGET - expected_cost
 
 
 def test_apply_negation_flips_skips_a_unit_pair_once_the_overall_work_budget_is_exhausted():
-    """Two unit pairs each individually within MAX_NEGATION_PAIRS_PER_UNIT, whose COMBINED cost still exceeds
+    """Two unit pairs each individually within MAX_NEGATION_WORK_PER_UNIT, whose COMBINED token-work still exceeds
     MAX_NEGATION_WORK_BUDGET: the first is checked in full, the second is skipped and counted — never silently."""
     from semigraph.graph.alignment import Evidence, OlderDecision
 
-    n = 141    # 141*141 = 19,881 <= the per-unit cap (20,000); two of them together exceed the work budget
-    assert n * n <= C.MAX_NEGATION_PAIRS_PER_UNIT < 2 * n * n
-    older_by_id = {f"u{i}": _sentence_row(n, f"Older{i}") for i in range(2)}
-    newer_by_id = {f"v{i}": _sentence_row(n, f"Newer{i}") for i in range(2)}
+    n, pad = 40, 103
+    one_len = len(word_tokens(f"Older00 is fine {' '.join(['also'] * pad)}."))
+    per_unit_cost = n * one_len * (n * one_len)
+    assert per_unit_cost <= C.MAX_NEGATION_WORK_PER_UNIT
+    assert 2 * per_unit_cost > C.MAX_NEGATION_WORK_BUDGET
+    older_by_id = {f"u{i}": _padded_sentence_row(n, f"Older{i}", pad) for i in range(2)}
+    newer_by_id = {f"v{i}": _padded_sentence_row(n, f"Newer{i}", pad) for i in range(2)}
     decisions = [OlderDecision(item_id=f"u{i}", label="unchanged", matched_newer_id=f"v{i}", decided_by="test",
                                evidence=Evidence())
                 for i in range(2)]
@@ -369,6 +425,66 @@ def test_apply_negation_flips_skips_a_unit_pair_once_the_overall_work_budget_is_
     promoted, skipped = C._apply_negation_flips(decisions, older_by_id, newer_by_id, view, view, changed)
     assert promoted == set()
     assert skipped == 1
+
+
+# --------------------------------------------------------------------------
+# round-5 review, finding corUi-MEDIUM (changes.py:139): the negation budget must fully check an ordinary, IN-CAP
+# annual-refresh document (every sentence's fiscal year bumped, so no pair is a cheap byte-identical match), even
+# with a real flip planted deep inside a long section. Reproduces the verifier's own m4review3/budget_real.py.
+# --------------------------------------------------------------------------
+
+def test_compare_versions_annual_refresh_flip_deep_in_a_long_in_cap_unit_is_not_skipped():
+    v1 = _build_view(fx.annual_refresh_document(2025, flip=False))
+    v2 = _build_view(fx.annual_refresh_document(2026, flip=True))
+    report = C.compare_versions(v1, v2)
+    assert report["negation_check_skipped"] == 0
+    changed_headlines = {c["headline"] for c in report["changed"]}
+    assert "Export Control And Regional Risk Factors" in changed_headlines
+    entry = next(c for c in report["changed"] if c["headline"] == "Export Control And Regional Risk Factors")
+    quotes = _quotes_by_kind(entry)
+    assert quotes["removed"] == fx.ANNUAL_REFRESH_FLIP_SENTENCE_NOT_SUBJECT
+    assert quotes["added"] == fx.ANNUAL_REFRESH_FLIP_SENTENCE_SUBJECT
+
+
+# --------------------------------------------------------------------------
+# round-5 review, finding secRel-LOW (S3 partial): ONE pathologically long sentence pair must never reach
+# lex_exact's roughly-cubic cost, no matter how few PAIRS the unit has, and the exclusion must be counted — never
+# silent. Reproduces the verifier's own adversarial repro (m4review3/negation_cubic.py).
+# --------------------------------------------------------------------------
+
+def test_negation_flip_passages_excludes_a_1600_word_adversarial_sentence_pair_and_stays_fast():
+    """Reproduces the review's own adversarial pair (m4review3/negation_cubic.py) directly against
+    ``_negation_flip_passages`` (the negation step): a single ~1,600-word sentence of one repeated word on the
+    older side, an alternating two-word pattern on the newer side -- every SequenceMatcher matching block has
+    length 1, its worst case -- mixed in with 100 ordinary short sentences that must still be checked."""
+    n_ordinary, giant_words = 100, 1600
+    ordinary = " ".join(f"Item{i} is fine." for i in range(n_ordinary))
+    older_giant = " ".join(["Risk"] + ["risk"] * (giant_words - 1)) + "."
+    newer_giant = " ".join(["Risk", "data"] * (giant_words // 2)) + "."
+    older_row = {"text": f"{ordinary} {older_giant}", "char_start": 0, "headline": "Notes"}
+    newer_row = {"text": f"{ordinary} {newer_giant}", "char_start": 0, "headline": "Notes"}
+    view = C.VersionView(text="", units=(), chunk_spans=(), method="text", chars_per_page=1000.0)
+    budget = {"remaining": C.MAX_NEGATION_WORK_BUDGET}
+
+    start = time.perf_counter()
+    result = C._negation_flip_passages(older_row, newer_row, view, view, budget)
+    elapsed = time.perf_counter() - start
+
+    assert result == []                     # the 100 ordinary sentences ARE still checked; none has a negator
+    assert budget["oversized_sentences"] == 1                     # the giant pair is excluded and counted
+    assert elapsed < 5.0                                          # never reaches lex_exact's roughly-cubic cost
+
+
+def test_compare_versions_skips_an_oversized_sentence_pair_and_counts_it_in_the_report():
+    """The same exclusion, through the full ``compare_versions`` pipeline: an in-cap document whose one over-long
+    sentence must be counted in ``negation_check_skipped``, never silently."""
+    v1 = _build_view(fx.oversized_negation_sentence_document(flip=False))
+    v2 = _build_view(fx.oversized_negation_sentence_document(flip=True))
+    start = time.perf_counter()
+    report = C.compare_versions(v1, v2)
+    elapsed = time.perf_counter() - start
+    assert report["negation_check_skipped"] >= 1
+    assert elapsed < 5.0
 
 
 def test_compare_versions_surfaces_negation_check_skipped_from_the_report(monkeypatch, md_v1, md_v2):

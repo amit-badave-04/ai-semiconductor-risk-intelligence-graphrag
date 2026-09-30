@@ -631,6 +631,18 @@ freshness loop busy-spun when a due check was not admitted, a regression of 15.1
    negation check did not examine; never silent); `repo.fail_interrupted_jobs` restores a job whose version is already
    committed to `ready` instead of failing it; the job progress page reconnects up to 3 times before reporting a lost
    connection; every workspace route, uploads included, takes the in-memory read-rate window before its database lookup.
+7. **Closing verification (third Opus review, bffb40f): PASS WITH CONDITIONS** from both verifiers; the conditions are
+   closed in fix round 5: the access log re-escapes what it logs (decoding only for matching, so no client-supplied newline,
+   escape or quote reaches it); the negation check is charged by token work with a shared-token pre-filter, sentences over
+   200 tokens are excluded and counted, and the page shows the count; "not limited to" boilerplate is not a flip; a
+   graceful shutdown mid-check releases the freshness lease; interrupted-job recovery requires the committed version to
+   carry the SAME job id (`UserVersion.job_id`); the progress page retries a 5xx; the smoke marks a refused ask
+   INCONCLUSIVE (exit 2).
+8. **The what-changed comparison runs in a sandboxed subprocess** (`uploads/compare.py`, `compare_worker.py`, the shared
+   runner `uploads/sandbox.py` also used by parsing): the API process never loads the aligner or scipy (pinned), the pure-
+   Python comparison no longer competes for the GIL with request threads, and it is bounded by
+   `UPLOAD_COMPARE_TIMEOUT_S` (120 s) plus the child's RLIMIT_CPU; on timeout or crash the report is
+   `not_compared_reason = comparison_timeout | comparison_failed` and the version still becomes ready.
 
 ## Audit trail
 

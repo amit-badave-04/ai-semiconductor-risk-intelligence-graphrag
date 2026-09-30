@@ -568,9 +568,13 @@ function changesHtml(report, older, newer) {
     ? `<div class="t">Minor rewordings (${minor.length})</div><ul>${minor.map((i) =>
         `<li>${esc((i && (i.headline || i.older_unit_id || i.newer_unit_id)) || "(untitled)")}</li>`).join("")}</ul>`
     : "";
+  const skipped = Number(report.negation_check_skipped) || 0;
+  const skippedHtml = skipped > 0
+    ? `<p class="hint">${skipped} section(s) were compared as whole sections, not sentence by sentence for negation changes.</p>`
+    : "";
   return `<div class="hint">v${older} → v${newer}, ${report.unchanged_count} section(s) unchanged:</div>` +
     section("Added", report.added) + section("Removed", report.removed) + section("Changed", report.changed) +
-    minorHtml;
+    minorHtml + skippedHtml;
 }
 
 /* ===== Page behaviour ===== */
@@ -880,13 +884,13 @@ async function watchJob(jobId, label, delayMs = WATCH_RECONNECT_DELAY_MS) {
   return null;
 }
 
-// One pass over the job's progress stream: "ready"/"failed" (terminal), "retry" (ended early, network error or the
-// per-job watcher cap) or "gone" (the job or workspace no longer answers).
+// One pass over the job's progress stream: "ready"/"failed" (terminal), "retry" (ended early, a network error, the
+// per-job watcher cap or a 5xx while the service restarts) or "gone" (404: the job or workspace no longer exists).
 async function streamJobOnce(jobId, label) {
   let resp;
   try { resp = await fetch(`/api/workspace/${currentWorkspace.id}/jobs/${jobId}`, { headers: wsHeaders() }); }
   catch (e) { return "retry"; }
-  if (resp.status === 429) return "retry";
+  if (resp.status === 429 || resp.status >= 500) return "retry";
   if (!resp.ok || !resp.body) { setJobRow(label, "could not watch this upload", "err"); return "gone"; }
   const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "";
   let finalState = null;

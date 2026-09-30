@@ -4,11 +4,13 @@ Invoked by :mod:`semigraph.uploads.parse` as ``python -m semigraph.uploads.parse
 the raw document bytes on stdin; it writes ONE JSON object to stdout and exits 0 on success, or writes
 ``{"error": code}`` (plus ``"exc_type"``, the exception's CLASS NAME only, never its message, for an unexpected
 failure — finding #28) and exits non-zero. The rlimits are applied by the ENTRY POINT (the ``__main__`` guard at the
-bottom of this file, :func:`apply_sandbox_limits`) as its first statement — before any parser (pypdfium2 / pdfplumber /
-pdfminer / python-docx, all imported lazily inside functions) is imported and before stdin is read — and NEVER via
-``preexec_fn`` (unsafe in a multi-threaded parent: the child can deadlock before exec). Importing this module never
-changes the importing process's limits (tests import it in-process; a module-level setrlimit capped a whole pytest
-run at 1 GiB on Linux and crashed it). Module-level imports are stdlib only.
+bottom of this file, :func:`apply_sandbox_limits`, now defined in :mod:`semigraph.uploads.sandbox` and re-exported
+here since existing tests import it as ``parse_worker.apply_sandbox_limits``) as its first statement — before any
+parser (pypdfium2 / pdfplumber / pdfminer / python-docx, all imported lazily inside functions) is imported and
+before stdin is read — and NEVER via ``preexec_fn`` (unsafe in a multi-threaded parent: the child can deadlock
+before exec). Importing this module never changes the importing process's limits (tests import it in-process; a
+module-level setrlimit capped a whole pytest run at 1 GiB on Linux and crashed it). Module-level imports are
+stdlib only.
 """
 
 import json
@@ -16,26 +18,7 @@ import logging
 import re
 import sys
 
-_RLIMIT_AS_BYTES = 1 * 1024 * 1024 * 1024        # 1 GiB
-_RLIMIT_CPU_SECONDS = 120
-
-
-def _lower_rlimit(kind: int, soft: int, resource_mod) -> None:
-    _, hard = resource_mod.getrlimit(kind)
-    cap = soft if hard == resource_mod.RLIM_INFINITY else min(soft, hard)
-    resource_mod.setrlimit(kind, (cap, hard))
-
-
-def apply_sandbox_limits(platform: str = sys.platform, resource_mod=None) -> bool:
-    """Lower RLIMIT_AS (1 GiB) and RLIMIT_CPU (120 s) for THIS process on Linux; False (nothing done) elsewhere.
-    Called only by the subprocess entry point below."""
-    if not platform.startswith("linux"):
-        return False
-    if resource_mod is None:
-        import resource as resource_mod
-    _lower_rlimit(resource_mod.RLIMIT_AS, _RLIMIT_AS_BYTES, resource_mod)
-    _lower_rlimit(resource_mod.RLIMIT_CPU, _RLIMIT_CPU_SECONDS, resource_mod)
-    return True
+from .sandbox import apply_sandbox_limits          # noqa: F401  (re-exported: tests use parse_worker.apply_sandbox_limits)
 
 logger = logging.getLogger("semigraph.uploads.parse_worker")
 

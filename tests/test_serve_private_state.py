@@ -54,7 +54,7 @@ def test_m4_settings_default_off_with_the_pre_registered_caps():
     assert (s.upload_max_pages, s.upload_max_tokens, s.upload_max_chunk_tokens, s.upload_max_chunks) == (30, 16000, 512, 120)
     assert (s.upload_max_documents, s.upload_max_versions) == (3, 5)
     assert (s.upload_max_workspace_pages, s.upload_max_workspace_tokens) == (120, 48000)
-    assert (s.upload_parse_timeout_s, s.upload_embed_timeout_s) == (90, 1200)
+    assert (s.upload_parse_timeout_s, s.upload_embed_timeout_s, s.upload_compare_timeout_s) == (90, 1200, 120)
     assert (s.max_uploads_per_day, s.workspace_create_per_day, s.uploads_per_hour) == (40, 3, 10)
 
 

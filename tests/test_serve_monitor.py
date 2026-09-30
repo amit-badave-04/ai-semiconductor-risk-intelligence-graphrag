@@ -427,6 +427,24 @@ def test_stop_returns_promptly_even_mid_sleep(monkeypatch):
     assert time.monotonic() - started < 4.5
 
 
+def test_stop_releases_the_lease_when_a_check_is_still_running_at_shutdown(monkeypatch):
+    """Closing verification (monitor.py:358): a deploy during a check used to leave the lease held for up to
+    LEASE_MINUTES, because the check's own finally never runs once the process is gone."""
+    released = []
+    monkeypatch.setattr(monitor_mod, "_release_lease", lambda driver, holder: released.append(holder))
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    assert m._busy.acquire(blocking=False)          # a check (monitor thread or admin) is in flight
+    m.stop(timeout=0.1)
+    assert released == [m._machine_id]
+
+
+def test_stop_leaves_the_lease_alone_when_no_check_is_running(monkeypatch):
+    released = []
+    monkeypatch.setattr(monitor_mod, "_release_lease", lambda driver, holder: released.append(holder))
+    monitor_mod.FreshnessMonitor(object(), FakeSettings()).stop(timeout=0.1)
+    assert released == []
+
+
 def test_stop_is_a_no_op_when_no_monitor_was_started():
     class App:
         class state:

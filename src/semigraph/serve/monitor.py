@@ -261,9 +261,14 @@ class FreshnessMonitor:
         self._thread.start()
 
     def stop(self, timeout: float = 5) -> None:
+        """Stops the thread (bounded). A check still running at shutdown (the thread's, or an admin one) will not reach
+        its own ``finally`` once the process exits, so its lease is released here: the next machine's due check must
+        not wait out ``LEASE_MINUTES`` behind a process that no longer exists."""
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout)
+        if self._busy.locked():
+            _release_lease(self.driver, self._machine_id)
 
     def _run(self) -> None:
         with self._state_lock:
@@ -339,8 +344,8 @@ class FreshnessMonitor:
 
     def _run_check(self) -> dict:
         """Assumes ``self._busy`` is already held; always releases the lease THIS machine holds and then ``_busy``,
-        whoever called this — a killed process (deploy, OOM) must never leave the next process's due boot check
-        waiting out the full ``LEASE_MINUTES`` for a lease nobody is using any more."""
+        whoever called this, on success and on error. A graceful shutdown mid-check releases it in :meth:`stop`; only a
+        hard kill (OOM, SIGKILL) leaves it to expire after ``LEASE_MINUTES``."""
         try:
             try:
                 result = {**check_once(self.driver, self.settings), "status": "ok", "error": None,

@@ -127,7 +127,15 @@ RETURN j.job_id AS job_id"""
 # (document_id, version) already has a committed UserVersion — the terminal "ready" write can keep failing (its own
 # retry budget is independent of put_version's) even though put_version's transaction fully committed. $ws-bound,
 # like every other per-job follow-up query here.
+#
+# Round-4 review 3, finding 27 residual 2 (secRel LOW repo.py:635 / corUi LOW repo.py:130): matching only on
+# (document_id, version) recovers ANY job to "ready" off ANY job's committed version of that same document/version
+# pair — including a DIFFERENT job's (a job that legitimately failed, later "recovered" by a re-upload; or a job
+# whose own version never committed while a later job committed the same document/version). `v.job_id = $job_id`
+# requires the committed UserVersion to have been written BY THIS JOB (put_version now stores job_id inside its
+# single transaction) — a version some OTHER job committed never recovers this one; it falls through to interrupted.
 JOB_VERSION_EXISTS_QUERY = """MATCH (v:UserVersion {workspace_id: $ws, document_id: $document_id, version: $version})
+WHERE v.job_id = $job_id
 OPTIONAL MATCH (v)-[:HAS_CHUNK]->(c:UserChunk {workspace_id: $ws})
 WITH v, count(c) AS chunks
 OPTIONAL MATCH (v)-[:HAS_UNIT]->(u:UserUnit {workspace_id: $ws})
@@ -305,7 +313,7 @@ CREATE (v:UserVersion {workspace_id: $ws, document_id: $document_id, version: $v
     version_key: $version_key, content_hash: $content_hash, method: $method, pages: $pages, chars: $chars,
     chars_per_page: $chars_per_page, text: $text, created_at: $now, is_current: true,
     valid_from: $now, valid_to: $current_valid_to, status: $status, items_compared: $items_compared,
-    not_compared_reason: $not_compared_reason, suspicious: $suspicious})
+    not_compared_reason: $not_compared_reason, suspicious: $suspicious, job_id: $job_id})
 CREATE (d)-[:HAS_VERSION]->(v)"""
 
 SUPERSEDE_VERSION_QUERY = """MATCH (newer:UserVersion {workspace_id: $ws, document_id: $document_id, version: $version})
@@ -354,12 +362,13 @@ def _merge_document(tx, ws: str, document_id: str, title: str | None, now: datet
 
 def _create_version(tx, ws: str, document_id: str, version: int, *, content_hash: str, method: str,
                      pages: int, chars: int, chars_per_page: float | None, text: str, now: datetime,
-                     items_compared: bool, not_compared_reason: str | None, suspicious: bool) -> None:
+                     items_compared: bool, not_compared_reason: str | None, suspicious: bool,
+                     job_id: str | None) -> None:
     tx.run(CREATE_VERSION_QUERY, ws=ws, document_id=document_id, version=version,
            version_key=f"{document_id}:v{version}", content_hash=content_hash, method=method, pages=pages,
            chars=chars, chars_per_page=chars_per_page, text=text, now=now, current_valid_to=CURRENT_VALID_TO,
            status=CURRENT, items_compared=items_compared, not_compared_reason=not_compared_reason,
-           suspicious=suspicious)
+           suspicious=suspicious, job_id=job_id)
 
 
 def _supersede_previous(tx, ws: str, document_id: str, version: int, prev_version: int, now: datetime,
@@ -408,7 +417,8 @@ def _write_change_passages(tx, ws: str, document_id: str, older_version: int, ne
 
 def put_version(driver, ws: str, *, document_id: str, title: str | None, version: int, content_hash: str,
                  method: str, pages: int, chars: int, chars_per_page: float | None, text: str, units: list[dict],
-                 chunks: list[dict], change_report: dict, suspicious: bool, now: datetime) -> None:
+                 chunks: list[dict], change_report: dict, suspicious: bool, now: datetime,
+                 job_id: str | None = None) -> None:
     """One transaction: new document (if any), the new version + its units + chunks, the currency flip of the
     previous version (and its chunks), the SUPERSEDES edge carrying ``change_report``, and the workspace's
     ``embedded_tokens`` counter (the ``SUCCEEDED_BY`` / ``HAS_PASSAGE`` change passages are the change_report's own
@@ -420,6 +430,15 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
     The FIRST statement of the transaction locks the ``UserWorkspace`` node (:data:`LOCK_WORKSPACE_QUERY`); if it no
     longer exists (deleted or TTL-swept — docs/v2/M4_PLAN.md 15.4), this raises :class:`WorkspaceGone` and writes
     NOTHING — no document, no version, no chunk — rather than creating an orphan.
+
+    ``job_id`` (round-4 review 3, finding 27 residual 2) is stamped on the new ``UserVersion`` node inside this SAME
+    transaction — the caller's own job id, when this write is driven by an upload job (``uploads.jobs``). This is
+    what :func:`fail_interrupted_jobs` later checks (:data:`JOB_VERSION_EXISTS_QUERY`) before ever recovering a
+    stale job to ``ready``: recovery must find a version committed BY THAT JOB, never merely a version that happens
+    to share its ``(document_id, version)`` — which a DIFFERENT job could have committed (a job that legitimately
+    failed, later misreported as recovered by an unrelated re-upload of the same document). Optional and keyword-only
+    with a safe ``None`` default so every existing caller keeps working unchanged; a version written with no job_id
+    (or by an old build) simply never matches a later job_id-based recovery check.
 
     Raises ``TypeError`` if ``now`` is not a timezone-aware ``datetime`` (see :func:`_require_aware_datetime`).
     """
@@ -436,7 +455,7 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
         _create_version(tx, ws, document_id, version, content_hash=content_hash, method=method, pages=pages,
                         chars=chars, chars_per_page=chars_per_page, text=text, now=now,
                         items_compared=items_compared, not_compared_reason=not_compared_reason,
-                        suspicious=suspicious)
+                        suspicious=suspicious, job_id=job_id)
         if prev_version is not None:
             _supersede_previous(tx, ws, document_id, version, prev_version, now, items_compared,
                                 not_compared_reason, change_report)
@@ -632,17 +651,20 @@ def put_job(driver, ws: str, job: dict) -> None:
         raise WorkspaceGone("the workspace no longer exists")
 
 
-def _recovered_or_interrupted_payload(session, ws: str, payload: dict) -> tuple[dict, str]:
+def _recovered_or_interrupted_payload(session, ws: str, job_id: str, payload: dict) -> tuple[dict, str]:
     """The #27 residual (round-4 reliability review): a job's TERMINAL ``ready`` write can keep failing AFTER
     ``put_version`` already committed the version — the two have independent retry budgets, so one can exhaust its
     attempts while the other quietly succeeds. Marking such a job ``failed``/``interrupted`` would misreport a
     fully-succeeded upload; leaving its stale non-terminal state to replay forever would be just as wrong. When the
-    job's own ``(document_id, version)`` already has a committed ``UserVersion``, this reconstructs the SAME
-    ``ready`` payload ``uploads.jobs._process`` would have persisted — straight from that version's own data, never
-    from the job's stale payload — instead of the usual ``interrupted`` one. Returns ``(new_payload, new_state)``."""
+    job's own ``(document_id, version)`` already has a committed ``UserVersion`` written BY THIS SAME ``job_id``
+    (round-4 review 3, finding 27 residual 2 — never merely a version some OTHER job committed for the same
+    document/version pair), this reconstructs the SAME ``ready`` payload ``uploads.jobs._process`` would have
+    persisted — straight from that version's own data, never from the job's stale payload — instead of the usual
+    ``interrupted`` one. Returns ``(new_payload, new_state)``."""
     document_id, version = payload.get("document_id"), payload.get("version")
     if document_id is not None and version is not None:
-        rows = session.run(JOB_VERSION_EXISTS_QUERY, ws=ws, document_id=document_id, version=version).data()
+        rows = session.run(JOB_VERSION_EXISTS_QUERY, ws=ws, document_id=document_id, version=version,
+                           job_id=job_id).data()
         if rows:
             v = rows[0]
             ready_payload = {**payload, "state": "ready", "chunks": v["chunks"], "units": v["units"],
@@ -656,22 +678,29 @@ def _recovered_or_interrupted_payload(session, ws: str, payload: dict) -> tuple[
 
 
 def fail_interrupted_jobs(driver, now: datetime | None = None, *, older_than_s: int = FAIL_INTERRUPTED_AFTER_S,
-                          exclude: frozenset[tuple[str, str]] | set[tuple[str, str]] = frozenset()) -> int:
+                          exclude: frozenset[tuple[str, str]] | set[tuple[str, str]] = frozenset()
+                          ) -> tuple[int, int]:
     """Marks ``failed`` (error code ``interrupted``) any ``UserJob`` left in a non-terminal state for longer than
     ``older_than_s`` — a process that crashed, OOM'd or was redeployed mid-job (docs/v2/M4_PLAN.md 15.4, finding 27) —
     except the ``(workspace_id, job_id)`` pairs in ``exclude`` (the jobs the calling process still has open: a live job's
     progress writes are best-effort, so its stored ``updated_at`` can look stale while it runs). The upload sweeper passes
     a threshold derived from the job budgets (``uploads.jobs``); the default only serves a caller without settings.
 
-    BEFORE marking a candidate ``failed``, checks whether its own ``(document_id, version)`` already has a committed
-    ``UserVersion`` (:func:`_recovered_or_interrupted_payload`, finding 27 residual 1) — if so it is instead
-    recovered to ``ready``, never mislabelled ``interrupted`` over a version that actually succeeded.
+    BEFORE marking a candidate ``failed``, checks whether its OWN job id already has a committed ``UserVersion`` for
+    its ``(document_id, version)`` (:func:`_recovered_or_interrupted_payload`, finding 27 residual 1, tightened to
+    job_id matching by round-4 review 3's finding 27 residual 2) — if so it is instead recovered to ``ready``, never
+    mislabelled ``interrupted`` over a version that actually succeeded. A version committed by a DIFFERENT job for
+    the same ``(document_id, version)`` — a legitimately failed job later "recovered" off an unrelated re-upload, or
+    a job whose own version never committed while a later job committed the same document/version — never matches
+    and falls through to ``interrupted``, exactly like a candidate with no committed version at all.
 
     Rewrites the STORED ``payload`` too, not just ``state``: :func:`get_job` replays ``payload`` verbatim, so leaving it
     alone would keep showing e.g. "embedding" forever to a client that reconnects after a restart. The per-job UPDATE
     stays ``$ws``-bound and re-checks the state, so a job that raced to a real ready/failed in the meantime is left
-    untouched (0 rows, not double-counted). ``now`` defaults to the current instant; idempotent; returns the number of
-    jobs marked (failed OR recovered to ready).
+    untouched (0 rows, not double-counted). ``now`` defaults to the current instant; idempotent; returns
+    ``(failed_count, recovered_count)`` — kept as two separate numbers (round-4 review 3) so a caller (the upload
+    sweeper) can log a genuine failure and a recovered success as the different events they are, never one figure
+    mislabelled "failed".
     """
     now = now if now is not None else datetime.now(UTC)
     _require_aware_datetime(now, "now")
@@ -685,7 +714,8 @@ def fail_interrupted_jobs(driver, now: datetime | None = None, *, older_than_s: 
             if (row["workspace_id"], row["job_id"]) in exclude:
                 continue
             payload = json.loads(row["payload"]) if row["payload"] else {}
-            new_payload, new_state = _recovered_or_interrupted_payload(session, row["workspace_id"], payload)
+            new_payload, new_state = _recovered_or_interrupted_payload(session, row["workspace_id"], row["job_id"],
+                                                                       payload)
             updated = session.run(FAIL_INTERRUPTED_JOB_UPDATE_QUERY, ws=row["workspace_id"], job_id=row["job_id"],
                                   terminal_states=terminal, state=new_state,
                                   payload=json.dumps(new_payload, default=str), now=now).data()
@@ -697,7 +727,7 @@ def fail_interrupted_jobs(driver, now: datetime | None = None, *, older_than_s: 
     if recovered:
         logger.info("recovered %d job(s) to ready: a committed version was found after their terminal write "
                     "kept failing", recovered)
-    return fixed + recovered
+    return fixed, recovered
 
 
 def get_job(driver, ws: str, job_id: str) -> dict | None:

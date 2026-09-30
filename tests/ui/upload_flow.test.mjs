@@ -245,6 +245,17 @@ test("a progress stream that ends without a terminal event is reconnected, and t
   assert.equal(rows["wsJobRow-a.pdf"].querySelector(".state").textContent, "ready");
 });
 
+test("a 5xx while watching (what a restart or deploy returns) is retried, not treated as the job being gone", async () => {
+  const answers = [{ ok: false, status: 503, body: null }, { ok: false, status: 502, body: null },
+                   streamOf([{ state: "ready", version: 1 }])];
+  let calls = 0;
+  const { run, rows } = buildPage({ fetchImpl: jobsOnly(async () => answers[calls++]) });
+  run(`currentWorkspace = { id: "${"a".repeat(32)}", token: "t" }; setJobRow("a.pdf", "uploading");`);
+  assert.equal(await run(`watchJob("j1", "a.pdf", 1)`), "ready");
+  assert.equal(calls, 3);
+  assert.equal(rows["wsJobRow-a.pdf"].querySelector(".state").textContent, "ready");
+});
+
 test("after the reconnects run out the row says the connection was lost, and a 404 stops at once", async () => {
   let calls = 0;
   const lost = buildPage({ fetchImpl: jobsOnly(async () => { calls += 1; return streamOf([]); }) });

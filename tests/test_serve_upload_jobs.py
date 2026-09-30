@@ -32,6 +32,7 @@ class FakeSettings:
     upload_max_workspace_tokens = 48000
     upload_max_workspace_pages = 120
     upload_embed_timeout_s = 1200
+    upload_compare_timeout_s = 30     # the "comparing" stage now runs in a real sandboxed subprocess (uploads.compare)
     uploads_enabled = True
 
 
@@ -200,6 +201,9 @@ def test_a_plain_text_upload_reaches_ready_and_releases_the_slot(fake_repo, monk
     assert events[-1]["not_compared_reason"] == "first_version"
     assert events[-1]["items_compared"] is False
     assert app.state.upload_slots.released == 1
+    # Round-4 review 3, finding 27 residual 2: put_version must be told THIS job's own id, so a later interrupted-job
+    # recovery can verify the committed version was written by this same job, never merely by "some" job.
+    assert fake_repo.put_version_calls[-1]["job_id"] == "job1"
     # The registry entry is KEPT (not discarded) once the job ends — only marked terminal — so a watcher that
     # reconnects moments later still gets a live replay (finding 1/14/22, grace-period pruning).
     assert jobs.registry(app).is_terminal(WS, "job1") is True
@@ -611,6 +615,64 @@ def test_identical_content_between_versions_is_reported_by_compare_versions(fake
     assert ready["items_compared"] is False
 
 
+def test_the_comparing_stage_calls_compare_in_subprocess_with_json_serializable_views_and_the_configured_timeout(
+        fake_repo, monkeypatch):
+    """Pins the new call site (M4_PLAN.md 4.2, section 1/16 extension): the "comparing" stage must call
+    ``uploads.compare.compare_in_subprocess`` (never the in-process ``changes.compare_versions``) with plain,
+    JSON-serializable view dicts and the workspace's configured ``upload_compare_timeout_s`` — never a hard-coded
+    value."""
+    v1 = _parsed([_block("Alpha bravo charlie delta echo foxtrot.")])
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: v1)
+    app = FakeApp(fake_repo)
+    _run(app, job_id="job1")
+
+    calls = []
+
+    def spy(older, newer, *, timeout_s):
+        calls.append((older, newer, timeout_s))
+        return {"items_compared": True, "not_compared_reason": None, "added": [], "removed": [], "changed": [],
+               "minor_rewordings": [], "unchanged_count": 0, "negation_check_skipped": 0}
+
+    monkeypatch.setattr("semigraph.uploads.compare.compare_in_subprocess", spy)
+    v2 = _parsed([_block("Golf hotel india juliet kilo lima mike november.")])
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: v2)
+    _run(app, job_id="job2", content_hash_hex="i" * 64)
+
+    assert len(calls) == 1
+    older, newer, timeout_s = calls[0]
+    assert timeout_s == FakeSettings.upload_compare_timeout_s
+    json.dumps(older)      # must be a plain, JSON-serializable dict — never a VersionView dataclass
+    json.dumps(newer)
+    assert older["text"] and newer["text"]
+    assert set(older) >= {"text", "units", "chunk_spans", "method", "chars_per_page"}
+    assert set(newer) >= {"text", "units", "chunk_spans", "method", "chars_per_page"}
+    assert _events(fake_repo, "job2")[-1]["state"] == "ready"
+
+
+def test_a_comparison_timeout_report_is_a_valid_change_report_and_the_job_still_reaches_ready(fake_repo, monkeypatch):
+    """Keeps every existing job behavior for the NEW failure mode too: a ``comparison_timeout`` report from the
+    sandboxed comparison subprocess is a valid ``ChangeReport`` (the version still gets indexed), never a job
+    failure — the job still reaches ``ready`` and persists exactly that report via ``put_version``."""
+    v1 = _parsed([_block("Alpha bravo charlie delta echo foxtrot.")])
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: v1)
+    app = FakeApp(fake_repo)
+    _run(app, job_id="job1")
+
+    timeout_report = {"items_compared": False, "not_compared_reason": "comparison_timeout", "added": [],
+                      "removed": [], "changed": [], "minor_rewordings": [], "unchanged_count": 1,
+                      "negation_check_skipped": 0}
+    monkeypatch.setattr("semigraph.uploads.compare.compare_in_subprocess", lambda *a, **kw: timeout_report)
+    v2 = _parsed([_block("Golf hotel india juliet kilo lima mike november.")])
+    monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: v2)
+    _run(app, job_id="job2", content_hash_hex="i" * 64)
+
+    ready = _events(fake_repo, "job2")[-1]
+    assert ready["state"] == "ready"
+    assert ready["not_compared_reason"] == "comparison_timeout"
+    assert ready["items_compared"] is False
+    assert fake_repo.put_version_calls[-1]["change_report"] == timeout_report
+
+
 # ---------------------------------------------------------------- JobRegistry (findings 1/14/22, docs/v2/M4_PLAN.md 15.3)
 
 
@@ -715,9 +777,29 @@ def test_sweeper_stops_promptly_and_sweeps_on_its_own_thread(fake_repo):
 
 def test_sweeper_calls_fail_interrupted_jobs_once_before_its_first_wait(monkeypatch):
     calls = []
-    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), 2)[1])
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), (2, 0))[1])
     jobs._Sweeper(object())._safe_fail_interrupted()
     assert calls == [{}]          # no registry/settings: repo's own defaults apply
+
+
+def test_sweeper_logs_failed_and_recovered_counts_separately(monkeypatch, caplog):
+    """Round-4 review 3, finding 27 residual 2: a job recovered to ready is a success, never a 'failed' job — the
+    sweeper's own log line used to report `fixed + recovered` under one 'marked N interrupted job(s) failed'
+    message, which is exactly the conflation the reviewer flagged. Each count now gets its own line."""
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (3, 2))
+    with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
+        jobs._Sweeper(object())._safe_fail_interrupted()
+    messages = [r.getMessage() for r in caplog.records]
+    assert "upload sweeper: marked 3 interrupted job(s) failed" in messages
+    assert "upload sweeper: recovered 2 interrupted job(s) to ready" in messages
+    assert not any("marked 5" in m for m in messages), "fixed and recovered must never be summed into one message"
+
+
+def test_sweeper_logs_nothing_when_fail_interrupted_jobs_finds_nothing(monkeypatch, caplog):
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (0, 0))
+    with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
+        jobs._Sweeper(object())._safe_fail_interrupted()
+    assert not any("interrupted job" in r.getMessage() for r in caplog.records)
 
 
 def test_a_broken_fail_interrupted_jobs_never_blocks_or_crashes_boot(monkeypatch):
@@ -733,7 +815,7 @@ def test_sweeper_start_pass_uses_older_than_s_zero_regardless_of_settings(monkey
     non-terminal by the process that died must be marked interrupted on the VERY FIRST pass — this process's own
     JobRegistry is empty at start, and the deployment is single-machine, so there is nothing else it could be."""
     calls = []
-    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), 0)[1])
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), (0, 0))[1])
     monkeypatch.setattr(repo, "sweep_expired", lambda driver, now: 0)
     monkeypatch.setattr(repo, "sweep_orphans", lambda driver, now: 0)
     sweeper = jobs._Sweeper(object(), jobs.JobRegistry(), FakeSettings())
@@ -755,7 +837,7 @@ def test_sweeper_prunes_the_registry_every_periodic_cycle(monkeypatch):
     reg = jobs.JobRegistry()
     calls = []
     monkeypatch.setattr(reg, "prune", lambda: calls.append(1))
-    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: 0)
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (0, 0))
     monkeypatch.setattr(repo, "sweep_expired", lambda driver, now: 0)
     monkeypatch.setattr(repo, "sweep_orphans", lambda driver, now: 0)
     sweeper = jobs._Sweeper(object(), reg)
@@ -804,7 +886,7 @@ def test_sweeper_calls_fail_interrupted_jobs_on_every_cycle_not_only_at_start(mo
     import time as time_mod
 
     calls = []
-    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(1), 0)[1])
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(1), (0, 0))[1])
     monkeypatch.setattr(repo, "sweep_expired", lambda driver, now: 0)
     monkeypatch.setattr(repo, "sweep_orphans", lambda driver, now: 0)
     sweeper = jobs._Sweeper(object())
@@ -831,7 +913,7 @@ def test_the_sweeper_excludes_every_job_this_process_still_has_open_and_passes_t
     reg = jobs.JobRegistry()
     reg.create(WS, "live-job")
     calls = []
-    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), 0)[1])
+    monkeypatch.setattr(repo, "fail_interrupted_jobs", lambda driver, **kw: (calls.append(kw), (0, 0))[1])
     jobs._Sweeper(object(), reg, FakeSettings())._safe_fail_interrupted()
     assert calls == [{"older_than_s": jobs._fail_interrupted_older_than_s(FakeSettings()), "exclude": reg.keys()}]
     assert (WS, "live-job") in calls[0]["exclude"]

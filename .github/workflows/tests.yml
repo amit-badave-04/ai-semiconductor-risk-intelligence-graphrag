@@ -7,8 +7,9 @@
 #   serve-shipped exactly what the API image installs (deploy/requirements-serve.txt, e.g. litellm 1.100.0),
 #                 so a shipped dependency cannot drift from what CI exercised.
 #
-# serve-shipped has NO pandas, rapidfuzz or sentence-transformers. A test module its selection matches by name that needs one of
-# them starts with pytest.importorskip(...) and states why; eval and pipeline tests live in files the selection does not match.
+# serve-shipped has NO pandas or sentence-transformers (it does ship rapidfuzz and scipy since M4: the upload what-changed
+# comparison uses graph/alignment.py in a sandboxed subprocess). A test module its selection matches by name that needs a missing
+# package starts with pytest.importorskip(...) and states why; eval and pipeline tests live in files the selection does not match.
 # Reproduce it on a developer machine (a throwaway venv outside the repo, then the pytest command of the step below):
 #   uv venv <tmp>/sv --python 3.13
 #   uv pip install --python <tmp>/sv/Scripts/python.exe -r deploy/requirements-serve.txt pytest    (bin/python on Linux/macOS)
@@ -85,6 +86,14 @@ jobs:
           pytest -q -s -rs
           "tests/test_serve_upload_parse.py::test_max_size_pdf_parses_under_rlimit_as_and_reports_child_rss"
           | tee s3.log && grep -q "1 passed" s3.log
+      # M4 section 1/16 extension: the "comparing" stage now runs the frozen aligner (scipy/rapidfuzz) in its own
+      # sandboxed subprocess too (uploads/sandbox.py, uploads/compare_worker.py); same shape as the parse-sandbox
+      # step above, on the 30-page max-size fixture pair, with the child's peak RSS printed into this log.
+      - name: Upload compare sandbox under RLIMIT_AS (Linux-only measurement)
+        run: >
+          pytest -q -s -rs
+          "tests/test_serve_upload_compare.py::test_max_size_pair_compares_under_rlimit_as_and_reports_child_rss"
+          | tee s4.log && grep -q "1 passed" s4.log
 
   security-scan:
     runs-on: ubuntu-latest

@@ -143,6 +143,15 @@ def test_the_md_fixture_pair_actually_differs_the_way_the_known_edit_set_claims(
 
 # ---------------------------------------------------------------- the first live G1 run (2026-09-29) exposed three smoke defects
 
+def test_a_refused_ask_makes_the_run_inconclusive_and_names_the_step():
+    """Closing verification: a 429 from the per-address window on a second run scored a required check as FAIL with a
+    misleading message; a refused ask now marks the run inconclusive (exit code 2), naming the step and its status."""
+    steps = {"ask1": {"citations": ["doc:x"]}, "ask2": {"error": True, "status_code": 429}, "job1": {"state": "ready"},
+             "ask3": {"error": True, "status_code": 503}}
+    assert smoke.inconclusive_asks(steps) == ["ask2 answered 429", "ask3 answered 503"]
+    assert smoke.inconclusive_asks({"ask1": {"citations": []}}) == []
+
+
 def test_redact_removes_the_workspace_token_and_hashes_the_workspace_id():
     """The artifact is committed: a workspace token must never be in it (even a deleted workspace's), and a raw
     workspace id is logged nowhere else either (docs/v2/M4_PLAN.md 5)."""

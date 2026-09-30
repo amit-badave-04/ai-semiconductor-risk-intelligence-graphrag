@@ -486,8 +486,8 @@ def test_fail_interrupted_jobs_marks_a_stale_job_failed_and_a_replay_shows_it(dr
         session.run("MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id}) SET j.updated_at = $stale",
                    ws=ws, job_id="j-stale", stale=stale).consume()
 
-    fixed = repo.fail_interrupted_jobs(driver, datetime.now(UTC))
-    assert fixed >= 1
+    fixed, recovered = repo.fail_interrupted_jobs(driver, datetime.now(UTC))
+    assert fixed >= 1 and recovered == 0
     replayed = repo.get_job(driver, ws, "j-stale")
     assert replayed["state"] == "failed"
     assert replayed["error"] == {"code": "interrupted", "message": repo._INTERRUPTED_ERROR_MESSAGE}
@@ -521,22 +521,24 @@ def test_exclusion_aware_sweep_never_fails_a_registered_live_job_but_does_fail_a
     reg = jobs.JobRegistry()
     reg.create(ws, "j-live")      # still "running" in THIS process, per the registry — j-dead is not tracked at all
 
-    n = repo.fail_interrupted_jobs(driver, older_than_s=older_than_s, exclude=reg.keys())
-    assert n >= 1
+    fixed, recovered = repo.fail_interrupted_jobs(driver, older_than_s=older_than_s, exclude=reg.keys())
+    assert fixed >= 1 and recovered == 0
     assert repo.get_job(driver, ws, "j-live")["state"] == "embedding"     # excluded: never touched
     assert repo.get_job(driver, ws, "j-dead")["state"] == "failed"        # not registered here: marked interrupted
 
 
-def test_fail_interrupted_jobs_recovers_a_job_to_ready_when_its_version_already_committed(driver, two_workspaces):
+def test_fail_interrupted_jobs_recovers_a_job_to_ready_when_its_own_version_already_committed(driver, two_workspaces):
     """Round-4 review, finding 27 residual 1, against the REAL database: a job's terminal write can keep failing
     even though ``put_version`` already committed the version — ``fail_interrupted_jobs`` must recover it to
-    ``ready``, never mark it ``failed``/``interrupted`` over a version that actually succeeded."""
+    ``ready``, never mark it ``failed``/``interrupted`` over a version that actually succeeded. Round-4 review 3,
+    finding 27 residual 2: the committed ``UserVersion`` must carry THIS job's own ``job_id`` (``put_version``'s new
+    keyword) for the recovery to fire at all."""
     ws = two_workspaces["ws1"]
     now = datetime.now(UTC)
     repo.put_version(driver, ws, document_id="ffffffffffff", title="T", version=1, content_hash="hf",
                      method="text", pages=1, chars=2, chars_per_page=2.0, text="hi", units=[_unit(char_end=2)],
                      chunks=[_chunk("doc:ffffffffffff:v1:0000", "hi", "hf", _vec(77))],
-                     change_report=_no_report(), suspicious=False, now=now)
+                     change_report=_no_report(), suspicious=False, now=now, job_id="j-stuck")
     # The terminal "ready" write itself never landed (simulated directly): the persisted job is stuck non-terminal.
     repo.put_job(driver, ws, {"job_id": "j-stuck", "state": "indexing", "document_id": "ffffffffffff", "version": 1})
     stale = datetime.now(UTC) - timedelta(seconds=repo.FAIL_INTERRUPTED_AFTER_S + 60)
@@ -544,12 +546,63 @@ def test_fail_interrupted_jobs_recovers_a_job_to_ready_when_its_version_already_
         session.run("MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id}) SET j.updated_at = $stale",
                    ws=ws, job_id="j-stuck", stale=stale).consume()
 
-    fixed = repo.fail_interrupted_jobs(driver, datetime.now(UTC))
-    assert fixed >= 1
+    fixed, recovered = repo.fail_interrupted_jobs(driver, datetime.now(UTC))
+    assert recovered >= 1 and fixed == 0
     replayed = repo.get_job(driver, ws, "j-stuck")
     assert replayed["state"] == "ready"
     assert replayed["chunks"] == 1 and replayed["units"] == 1
     assert "error" not in replayed
+
+
+def test_fail_interrupted_jobs_never_recovers_a_failed_job_from_a_different_jobs_commit_live(driver, two_workspaces):
+    """Round-4 review 3, finding 27 residual 2 (secRel LOW repo.py:635 / corUi LOW repo.py:130), against the REAL
+    database — reviewer scenario 1: job A (doc D, v2) fails, and its own terminal 'failed' write also exhausts its
+    retries, so its persisted state stays non-terminal. The user re-uploads D; job B independently computes the SAME
+    next_version (2) and commits it. Before this fix, the periodic sweep would find UserVersion(D, v2) by
+    (document_id, version) alone and rewrite job A to 'ready' with job B's stats — job A's own replay would then
+    contradict what its live watchers actually saw (failed). It must instead stay interrupted."""
+    ws = two_workspaces["ws1"]
+    document_id = "aaaaaaaaaaab"
+    # Job A: a stale, non-terminal job for (document_id, version=2) whose OWN put_version never ran (it "failed" for
+    # real, but even that terminal write never landed) — job_id is never associated with any UserVersion.
+    repo.put_job(driver, ws, {"job_id": "job-a", "state": "embedding", "document_id": document_id, "version": 2})
+    # Job B: a later, independent upload that computes and commits the SAME (document_id, version) pair.
+    repo.put_version(driver, ws, document_id=document_id, title="T", version=2, content_hash="hb",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="hi", units=[_unit(char_end=2)],
+                     chunks=[_chunk(f"doc:{document_id}:v2:0000", "hi", "hb", _vec(78))],
+                     change_report=_no_report(), suspicious=False, now=datetime.now(UTC), job_id="job-b")
+    stale = datetime.now(UTC) - timedelta(seconds=repo.FAIL_INTERRUPTED_AFTER_S + 60)
+    with driver.session() as session:
+        session.run("MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id}) SET j.updated_at = $stale",
+                   ws=ws, job_id="job-a", stale=stale).consume()
+
+    fixed, recovered = repo.fail_interrupted_jobs(driver, datetime.now(UTC))
+    assert fixed >= 1 and recovered == 0, "job A must fall through to interrupted, never recover off job B's commit"
+    replayed = repo.get_job(driver, ws, "job-a")
+    assert replayed["state"] == "failed"
+    assert replayed["error"] == {"code": "interrupted", "message": repo._INTERRUPTED_ERROR_MESSAGE}
+
+
+def test_fail_interrupted_jobs_never_recovers_a_job_whose_own_version_never_committed_live(driver, two_workspaces):
+    """Reviewer scenario 2, against the REAL database: job A's own version NEVER committed at all (no UserVersion
+    ever carries job_id='job-a'), while a LATER job (job B) committed the same (document_id, version). Mechanically
+    the same guard as the test above, phrased the other way: mere existence of a version for that (document_id,
+    version) pair must never be conflated with THIS job having produced it."""
+    ws = two_workspaces["ws1"]
+    document_id = "aaaaaaaaaaac"
+    repo.put_job(driver, ws, {"job_id": "job-a2", "state": "indexing", "document_id": document_id, "version": 5})
+    repo.put_version(driver, ws, document_id=document_id, title="T", version=5, content_hash="hc",
+                     method="text", pages=1, chars=2, chars_per_page=2.0, text="hi", units=[_unit(char_end=2)],
+                     chunks=[_chunk(f"doc:{document_id}:v5:0000", "hi", "hc", _vec(79))],
+                     change_report=_no_report(), suspicious=False, now=datetime.now(UTC), job_id="job-b2")
+    stale = datetime.now(UTC) - timedelta(seconds=repo.FAIL_INTERRUPTED_AFTER_S + 60)
+    with driver.session() as session:
+        session.run("MATCH (j:UserJob {workspace_id: $ws, job_id: $job_id}) SET j.updated_at = $stale",
+                   ws=ws, job_id="job-a2", stale=stale).consume()
+
+    fixed, recovered = repo.fail_interrupted_jobs(driver, datetime.now(UTC))
+    assert fixed >= 1 and recovered == 0
+    assert repo.get_job(driver, ws, "job-a2")["state"] == "failed"
 
 
 # ---------------------------------------------------------------------- leak proofs against the public graph

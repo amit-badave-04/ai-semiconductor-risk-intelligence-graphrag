@@ -645,6 +645,124 @@ WITHOUT_REAL_NEGATION_V2 = WITHOUT_REAL_NEGATION_V1.replace(
 
 
 # --------------------------------------------------------------------------
+# Negation polarity, round-5 review (m4review3/m4_review3.json): "including but not limited to" is an equally
+# common legal-boilerplate synonym of "including, without limitation," -- neither swapping to it, nor introducing
+# it fresh, is itself a polarity change (finding corUi-LOW, extends C4 above).
+# --------------------------------------------------------------------------
+
+BUT_NOT_LIMITED_TO_BOILERPLATE_V1 = (
+    "# Executive Summary Of Operations\n"
+    "The company performed well this quarter across all of its segments and regions.\n\n"
+    "# Company History And Background\n"
+    "The company was founded long ago and has grown steadily over many decades since.\n\n"
+    "# Export Control Exposure\n"
+    "These rules may restrict sales of products, including accelerators and networking equipment to several "
+    "countries.\n"
+)
+BUT_NOT_LIMITED_TO_BOILERPLATE_V2 = BUT_NOT_LIMITED_TO_BOILERPLATE_V1.replace(
+    "including accelerators and networking equipment to several countries.",
+    "including but not limited to accelerators and networking equipment to several countries.",
+)
+
+# the reviewer's exact swap: "without limitation" replaced by its "but not limited to" synonym must also not be
+# read as a flip (dropping ONE boilerplate phrase and adding the OTHER cancels out, but a naive count would see
+# "without" leave and "not" arrive and call that a polarity change).
+WITHOUT_LIMITATION_TO_BUT_NOT_LIMITED_TO_V1 = (
+    "# Executive Summary Of Operations\n"
+    "The company performed well this quarter across all of its segments and regions.\n\n"
+    "# Company History And Background\n"
+    "The company was founded long ago and has grown steadily over many decades since.\n\n"
+    "# Export Control Exposure\n"
+    "These rules may restrict sales of products, including, without limitation, accelerators and networking "
+    "equipment to several countries.\n"
+)
+WITHOUT_LIMITATION_TO_BUT_NOT_LIMITED_TO_V2 = (
+    "# Executive Summary Of Operations\n"
+    "The company performed well this quarter across all of its segments and regions.\n\n"
+    "# Company History And Background\n"
+    "The company was founded long ago and has grown steadily over many decades since.\n\n"
+    "# Export Control Exposure\n"
+    "These rules may restrict sales of products, including but not limited to accelerators and networking "
+    "equipment to several countries.\n"
+)
+
+
+# --------------------------------------------------------------------------
+# Negation polarity, round-5 review, finding corUi-MEDIUM (changes.py:139): an ordinary, IN-CAP annual-refresh
+# document -- a real risk section of 100-150 sentences, the fiscal year bumped in every one so no pair is a cheap
+# byte-identical match -- with a genuine negation flip planted deep inside. The round-4 negation budget counted
+# sentence PAIRS and so skipped this document exactly as if it were the reviewer's original pathological input
+# (thousands of one-word "sentences"); reproduces m4review3/budget_real.py.
+# --------------------------------------------------------------------------
+
+_ANNUAL_REFRESH_RISK_WORDS = (
+    "supply demand customer export license revenue margin wafer foundry capacity inventory pricing tariff "
+    "regulation competitor product accelerator memory packaging lithography"
+).split()
+
+ANNUAL_REFRESH_FLIP_SENTENCE_NOT_SUBJECT = (
+    "We are not subject to the new export licensing rules for advanced accelerators shipped to China."
+)
+ANNUAL_REFRESH_FLIP_SENTENCE_SUBJECT = (
+    "We are subject to the new export licensing rules for advanced accelerators shipped to China."
+)
+
+
+def _annual_refresh_sentence(year: int, s: int) -> str:
+    w = [_ANNUAL_REFRESH_RISK_WORDS[(s * 7 + k * 3) % len(_ANNUAL_REFRESH_RISK_WORDS)] for k in range(6)]
+    return (f"In fiscal {year}, our {w[0]} and {w[1]} exposure to {w[2]} {w[3]} affected {w[4]} {w[5]} "
+           f"in region {s}.")
+
+
+def annual_refresh_document(year: int, *, flip: bool, n_sentences: int = 150, flip_index: int = 140) -> str:
+    """A three-heading document (``units.MIN_HEADINGS_FOR_SECTIONS`` needs at least that many before the parser
+    trusts heading structure at all): a short executive summary and company history, plus a risk-factors section
+    of ``n_sentences`` distinct sentences (the fiscal ``year`` bumped in every one) with one sentence at
+    ``flip_index`` replaced by a genuine negation flip -- ``flip=False`` for the older version, ``flip=True`` for
+    the newer one."""
+    sentences = [_annual_refresh_sentence(year, s) for s in range(n_sentences)]
+    sentences[flip_index] = (ANNUAL_REFRESH_FLIP_SENTENCE_SUBJECT if flip
+                             else ANNUAL_REFRESH_FLIP_SENTENCE_NOT_SUBJECT)
+    return (
+        "# Executive Summary Of Operations\n\n"
+        "The company performed well this quarter across all of its segments and regions.\n\n"
+        "# Company History And Background\n\n"
+        "The company was founded long ago and has grown steadily over many decades since.\n\n"
+        "# Export Control And Regional Risk Factors\n\n" + " ".join(sentences) + "\n"
+    )
+
+
+# --------------------------------------------------------------------------
+# Negation polarity, round-5 review, finding secRel-LOW (S3 partial): ONE pathologically long sentence pair is
+# itself roughly cubic in lex_exact (SequenceMatcher), regardless of how few PAIRS the unit has -- reproduces
+# m4review3/negation_cubic.py's adversarial construction (few distinct, highly repeated tokens: every matching
+# block has length 1, SequenceMatcher's worst case).
+# --------------------------------------------------------------------------
+
+def oversized_negation_sentence_document(*, flip: bool, n_ordinary: int = 200, giant_words: int = 300) -> str:
+    """A three-heading document (``units.MIN_HEADINGS_FOR_SECTIONS`` needs at least that many): two short preamble
+    sections, plus a "Notes And Observations" section with ``n_ordinary`` short, distinct, negator-free sentences
+    followed by ONE additional sentence of ``giant_words`` words -- well past ``changes.MAX_NEGATION_SENTENCE_TOKENS``
+    (200), so it still exercises the length exclusion, while ``n_ordinary`` stays large enough relative to it that
+    the aligner classifies the section as ``reworded`` rather than ``uncertain`` (a body-similarity band this
+    module has no say over) without the section growing large enough to make the (frozen) aligner itself slow. The
+    giant sentence is ``giant_words`` repetitions of "risk" when ``flip=False`` (the older version) and an
+    alternating "risk data" pattern when ``flip=True`` (the newer version) -- SequenceMatcher's worst case (every
+    matching block has length 1), same shape as the review's own repro (m4review3/negation_cubic.py), and
+    different enough between versions that the unit is not filtered out as byte-identical."""
+    ordinary = " ".join(f"Item{i} is fine." for i in range(n_ordinary))
+    words = ["risk", "data"] * (giant_words // 2) if flip else ["risk"] * giant_words
+    giant = " ".join(words).capitalize() + "."
+    return (
+        "# Executive Summary Of Operations\n\n"
+        "The company performed well this quarter across all of its segments and regions.\n\n"
+        "# Company History And Background\n\n"
+        "The company was founded long ago and has grown steadily over many decades since.\n\n"
+        f"# Notes And Observations\n\n{ordinary} {giant}\n"
+    )
+
+
+# --------------------------------------------------------------------------
 # HTML
 # --------------------------------------------------------------------------
 

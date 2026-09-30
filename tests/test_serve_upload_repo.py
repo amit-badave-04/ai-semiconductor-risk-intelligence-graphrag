@@ -328,6 +328,40 @@ def test_put_version_raises_workspace_gone_and_writes_nothing_when_the_workspace
     assert calls == [(repo.LOCK_WORKSPACE_QUERY, {"ws": "ws-gone"})], "no write beyond the lock check itself"
 
 
+def test_create_version_query_carries_a_job_id_property():
+    """Round-4 review 3, finding 27 residual 2: the committing job's id is stamped on the UserVersion node inside
+    put_version's OWN transaction, so a later recovery check can tell WHICH job actually committed a version."""
+    assert "job_id: $job_id" in repo.CREATE_VERSION_QUERY
+
+
+def test_job_version_exists_query_requires_the_recovering_jobs_own_job_id():
+    """The other half of the same fix: recovery must never match a version some OTHER job committed for the same
+    (document_id, version) — only WHERE v.job_id = $job_id, the candidate job's own id."""
+    assert "WHERE v.job_id = $job_id" in repo.JOB_VERSION_EXISTS_QUERY
+
+
+def test_put_version_stores_the_caller_supplied_job_id_on_the_new_version():
+    driver = FakeDriver()
+    repo.put_version(driver, "ws1", document_id="aaaaaaaaaaaa", title="T", version=1, content_hash="h",
+                     method="text", pages=1, chars=5, chars_per_page=5.0, text="hello", units=[_unit()],
+                     chunks=[_chunk()], change_report={"items_compared": True, "not_compared_reason": None},
+                     suspicious=False, now=datetime.now(UTC), job_id="job-abc")
+    params = next(p for q, p in driver.transactions[0].calls if q == repo.CREATE_VERSION_QUERY)
+    assert params["job_id"] == "job-abc"
+
+
+def test_put_version_stores_a_null_job_id_when_the_caller_does_not_pass_one():
+    """job_id is keyword-only with a safe None default (every existing caller keeps working unchanged) — a version
+    written with no job_id simply never matches a later job_id-based recovery check."""
+    driver = FakeDriver()
+    repo.put_version(driver, "ws1", document_id="aaaaaaaaaaaa", title="T", version=1, content_hash="h",
+                     method="text", pages=1, chars=5, chars_per_page=5.0, text="hello", units=[_unit()],
+                     chunks=[_chunk()], change_report={"items_compared": True, "not_compared_reason": None},
+                     suspicious=False, now=datetime.now(UTC))
+    params = next(p for q, p in driver.transactions[0].calls if q == repo.CREATE_VERSION_QUERY)
+    assert params["job_id"] is None
+
+
 def test_put_version_only_bumps_embedded_tokens_for_chunks_marked_embedded():
     driver = FakeDriver()
     repo.put_version(driver, "ws1", document_id="aaaaaaaaaaaa", title="T", version=1, content_hash="h",
@@ -478,7 +512,7 @@ def test_fail_interrupted_jobs_marks_a_stale_non_terminal_job_failed_with_a_rewr
     driver = FakeDriver(session_run_responses={
         repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1", "payload": stale_payload}],
         repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "j1"}]})
-    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 1
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == (1, 0)
     query, params = [c for c in driver.session_run_calls if c[0] == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY][0]
     assert params["ws"] == "ws1" and params["job_id"] == "j1"
     rewritten = json.loads(params["payload"])
@@ -502,7 +536,7 @@ def test_fail_interrupted_jobs_uses_a_threshold_derived_from_now_and_the_module_
 def test_fail_interrupted_jobs_defaults_now_to_the_current_instant():
     driver = FakeDriver(session_run_responses={repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: []})
     before = datetime.now(UTC)
-    assert repo.fail_interrupted_jobs(driver) == 0
+    assert repo.fail_interrupted_jobs(driver) == (0, 0)
     _, params = driver.session_run_calls[0]
     implied_now = params["threshold"] + timedelta(seconds=repo.FAIL_INTERRUPTED_AFTER_S)
     assert before <= implied_now <= datetime.now(UTC)
@@ -515,7 +549,7 @@ def test_fail_interrupted_jobs_skips_a_job_the_update_no_longer_matches():
         repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1",
                                                     "payload": json.dumps({"job_id": "j1", "state": "embedding"})}],
         repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: []})
-    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 0
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == (0, 0)
 
 
 def test_fail_interrupted_jobs_never_touches_an_excluded_job_and_honours_a_caller_threshold():
@@ -526,7 +560,7 @@ def test_fail_interrupted_jobs_never_touches_an_excluded_job_and_honours_a_calle
             for jid in ("live", "dead")]
     driver = FakeDriver(session_run_responses={repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: rows,
                                                repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "dead"}]})
-    assert repo.fail_interrupted_jobs(driver, now, older_than_s=1890, exclude={("ws1", "live")}) == 1
+    assert repo.fail_interrupted_jobs(driver, now, older_than_s=1890, exclude={("ws1", "live")}) == (1, 0)
     select_params = driver.session_run_calls[0][1]
     assert select_params["threshold"] == now - timedelta(seconds=1890)
     updated = [params["job_id"] for query, params in driver.session_run_calls
@@ -534,19 +568,26 @@ def test_fail_interrupted_jobs_never_touches_an_excluded_job_and_honours_a_calle
     assert updated == ["dead"]
 
 
-def test_fail_interrupted_jobs_recovers_a_job_to_ready_when_its_version_already_committed():
+def test_fail_interrupted_jobs_recovers_a_job_to_ready_when_its_own_version_already_committed():
     """Round-4 review, finding 27 residual 1: the job's terminal 'ready' write kept failing, but put_version had
     already committed the version underneath it — fail_interrupted_jobs must recover the job to 'ready', never
-    mark it 'failed'/'interrupted' over a version that actually succeeded."""
+    mark it 'failed'/'interrupted' over a version that actually succeeded. Round-4 review 3, finding 27 residual 2:
+    recovery must key off THIS job's own job_id, not merely (document_id, version) — the fake JOB_VERSION_EXISTS_QUERY
+    response here is a callable that only answers a row when the query is run with the candidate's OWN job_id, so
+    this test also pins that put_job_id is actually passed through, not merely accepted and ignored."""
     stale_payload = json.dumps({"job_id": "j1", "state": "indexing", "document_id": "d1", "version": 2,
                                 "progress": {"done": 40, "total": 40}})
     version_row = {"chunks": 40, "units": 12, "items_compared": True, "not_compared_reason": None,
                   "suspicious": False}
+
+    def version_exists_response(params):
+        return [version_row] if params.get("job_id") == "j1" else []
+
     driver = FakeDriver(session_run_responses={
         repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1", "payload": stale_payload}],
-        repo.JOB_VERSION_EXISTS_QUERY: [version_row],
+        repo.JOB_VERSION_EXISTS_QUERY: version_exists_response,
         repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "j1"}]})
-    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 1
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == (0, 1)
     query, params = [c for c in driver.session_run_calls if c[0] == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY][0]
     assert params["state"] == "ready"
     rewritten = json.loads(params["payload"])
@@ -555,7 +596,7 @@ def test_fail_interrupted_jobs_recovers_a_job_to_ready_when_its_version_already_
     assert "error" not in rewritten
     assert rewritten["document_id"] == "d1" and rewritten["version"] == 2
     version_exists_call = [c for c in driver.session_run_calls if c[0] == repo.JOB_VERSION_EXISTS_QUERY][0]
-    assert version_exists_call[1] == {"ws": "ws1", "document_id": "d1", "version": 2}
+    assert version_exists_call[1] == {"ws": "ws1", "document_id": "d1", "version": 2, "job_id": "j1"}
 
 
 def test_fail_interrupted_jobs_still_marks_failed_when_no_committed_version_exists():
@@ -566,10 +607,65 @@ def test_fail_interrupted_jobs_still_marks_failed_when_no_committed_version_exis
         repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1", "payload": stale_payload}],
         repo.JOB_VERSION_EXISTS_QUERY: [],
         repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "j1"}]})
-    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == 1
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == (1, 0)
     query, params = [c for c in driver.session_run_calls if c[0] == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY][0]
     assert params["state"] == "failed"
     assert json.loads(params["payload"])["error"] == {"code": "interrupted", "message": repo._INTERRUPTED_ERROR_MESSAGE}
+
+
+def test_fail_interrupted_jobs_never_recovers_a_failed_job_from_a_different_jobs_committed_version():
+    """Round-4 review 3, finding 27 residual 2 (secRel LOW repo.py:635 / corUi LOW repo.py:130): job A failed for
+    real, but its own terminal 'failed' write also exhausted its retries, so its persisted state stayed
+    non-terminal. The user re-uploaded, and job B independently computed and committed the SAME (document_id,
+    version) — before this fix, matching only on (document_id, version) would "recover" job A to ready using job
+    B's stats, contradicting what job A's own live watchers saw (failed). The fake JOB_VERSION_EXISTS_QUERY response
+    only answers a row for job B's id, proving job A's own recovery check (job_id='job-a') finds nothing and falls
+    through to interrupted."""
+    stale_payload = json.dumps({"job_id": "job-a", "state": "embedding", "document_id": "d1", "version": 2})
+    committed_by_job_b = {"chunks": 3, "units": 1, "items_compared": True, "not_compared_reason": None,
+                          "suspicious": False}
+
+    def version_exists_response(params):
+        return [committed_by_job_b] if params.get("job_id") == "job-b" else []
+
+    driver = FakeDriver(session_run_responses={
+        repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "job-a",
+                                                    "payload": stale_payload}],
+        repo.JOB_VERSION_EXISTS_QUERY: version_exists_response,
+        repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "job-a"}]})
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == (1, 0), \
+        "job A must fall through to interrupted, never be recovered off job B's committed version"
+    query, params = [c for c in driver.session_run_calls if c[0] == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY][0]
+    assert params["state"] == "failed"
+    rewritten = json.loads(params["payload"])
+    assert rewritten["error"] == {"code": "interrupted", "message": repo._INTERRUPTED_ERROR_MESSAGE}
+    version_exists_call = [c for c in driver.session_run_calls if c[0] == repo.JOB_VERSION_EXISTS_QUERY][0]
+    assert version_exists_call[1]["job_id"] == "job-a", "the recovery check must use the CANDIDATE's own job_id"
+
+
+def test_fail_interrupted_jobs_never_recovers_a_job_whose_own_version_never_committed_even_though_a_later_job_did():
+    """The second reviewer scenario, phrased the other way round: job A's own version NEVER committed (its
+    put_version never even ran, or aborted) — there is no UserVersion with job_id='job-a' at all — while a LATER
+    job (job B) independently committed the same (document_id, version). Job A must still fall through to
+    interrupted: a version existing at all for that (document_id, version) must never be conflated with THIS job
+    having produced it."""
+    stale_payload = json.dumps({"job_id": "job-a", "state": "indexing", "document_id": "d1", "version": 5})
+
+    def version_exists_response(params):
+        # Only job-b's own version is findable; job-a's put_version genuinely never committed anything.
+        if params.get("job_id") == "job-b":
+            return [{"chunks": 2, "units": 1, "items_compared": True, "not_compared_reason": None,
+                    "suspicious": False}]
+        return []
+
+    driver = FakeDriver(session_run_responses={
+        repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "job-a",
+                                                    "payload": stale_payload}],
+        repo.JOB_VERSION_EXISTS_QUERY: version_exists_response,
+        repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "job-a"}]})
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == (1, 0)
+    query, params = [c for c in driver.session_run_calls if c[0] == repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY][0]
+    assert params["state"] == "failed"
 
 
 def test_the_default_threshold_sits_above_the_default_parse_and_embed_budgets():

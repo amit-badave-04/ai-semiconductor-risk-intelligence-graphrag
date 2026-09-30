@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     upload_max_workspace_pages: int = 120
     upload_max_workspace_tokens: int = 48000  # tokens actually embedded (after hash-keyed reuse), per workspace
     upload_parse_timeout_s: int = 90          # the parse subprocess is killed after this
+    upload_compare_timeout_s: int = 120       # the what-changed comparison runs in a subprocess killed after this
     upload_embed_timeout_s: int = 1200        # generous: a CPU-throttled job finishes slowly instead of failing (risk 13)
     max_uploads_per_day: int = 40             # global; 40 x ~190 CPU-s stays under the shared-cpu-2x baseline
     workspace_create_per_day: int = 3         # per client IP

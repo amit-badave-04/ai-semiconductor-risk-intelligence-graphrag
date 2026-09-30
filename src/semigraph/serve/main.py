@@ -9,7 +9,7 @@ import importlib
 import logging
 import re
 import threading
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 import time
 
 from fastapi import FastAPI
@@ -35,6 +35,9 @@ logger = logging.getLogger("semigraph.serve.main")
 
 _WORKSPACE_PATH_RE = re.compile(r"^/api/workspace/([0-9a-f]{32})(?=/|$)")
 _DOC_ID_IN_PATH_RE = re.compile(r"doc:[0-9a-f]{12}:v[0-9]{1,3}:[0-9]{4}")
+# Characters a logged path may carry literally (RFC 3986 path characters plus the <ws:...>/<doc> placeholders); every
+# other character, including control characters and quotes, is percent-encoded.
+_LOG_SAFE = "/:@!$&()*+,;=-._~<>"
 
 
 def ws_hash(workspace_id: str) -> str:
@@ -44,14 +47,16 @@ def ws_hash(workspace_id: str) -> str:
 
 def redact_access_path(path: str) -> str:
     """An access-log path with no raw workspace id, no uploaded-document id and no workspace query string. uvicorn
-    logs the PERCENT-QUOTED path (``doc%3A...``), so the route is decoded before matching; a query that carries a
-    document id is dropped whole."""
+    logs the PERCENT-QUOTED path (``doc%3A...``), so the route is decoded for MATCHING only; what is returned is
+    re-escaped (:data:`_LOG_SAFE`), so a client can never write a newline, an escape sequence or a quote into the log.
+    A query that carries a document id is dropped whole; any other query is logged exactly as uvicorn gave it."""
     route, _, query = path.partition("?")
     route = unquote(route)
     match = _WORKSPACE_PATH_RE.match(route)
     if match:
-        return _DOC_ID_IN_PATH_RE.sub("<doc>", f"/api/workspace/<ws:{ws_hash(match.group(1))}>" + route[match.end():])
-    route = _DOC_ID_IN_PATH_RE.sub("<doc>", route)
+        redacted = _DOC_ID_IN_PATH_RE.sub("<doc>", f"/api/workspace/<ws:{ws_hash(match.group(1))}>" + route[match.end():])
+        return quote(redacted, safe=_LOG_SAFE)
+    route = quote(_DOC_ID_IN_PATH_RE.sub("<doc>", route), safe=_LOG_SAFE)
     return route if not query or _DOC_ID_IN_PATH_RE.search(unquote(query)) else f"{route}?{query}"
 
 

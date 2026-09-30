@@ -258,6 +258,15 @@ test("changesHtml with no minor_rewordings key renders exactly as before (backwa
   assert.doesNotMatch(html, /Minor rewordings/);
 });
 
+test("changesHtml says how many sections were compared at section level only when the negation check skipped some", () => {
+  // Closing verification: negation_check_skipped was in the API payload but never shown on the page.
+  const base = { items_compared: true, unchanged_count: 1, added: [], removed: [], changed: [] };
+  assert.match(api.changesHtml({ ...base, negation_check_skipped: 2 }, 1, 2),
+    /2 section\(s\) were compared as whole sections, not sentence by sentence for negation changes/);
+  assert.doesNotMatch(api.changesHtml({ ...base, negation_check_skipped: 0 }, 1, 2), /sentence by sentence/);
+  assert.doesNotMatch(api.changesHtml(base, 1, 2), /sentence by sentence/);
+});
+
 test("changesHtml reports the not-compared reason when items_compared is false", () => {
   const html = api.changesHtml({ items_compared: false, not_compared_reason: "identical_content" }, 1, 2);
   assert.match(html, /comparison not available \(identical_content\)/);

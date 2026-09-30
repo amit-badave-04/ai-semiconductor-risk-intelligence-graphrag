@@ -227,6 +227,13 @@ def test_the_m4_routers_are_mounted():
     ("/api/evidence/doc%3A0123456789ab%3Av1%3A0001", "/api/evidence/<doc>"),
     ("/api/company/NVDA/risk-changes?limit=20", "/api/company/NVDA/risk-changes?limit=20"),
     ("/api/x?id=doc%3A0123456789ab%3Av1%3A0001", "/api/x"),
+    # closing verification (log injection): decoding is for MATCHING only; the logged path is re-escaped, so a client
+    # can never write a newline, an escape sequence or a quote into the access log
+    ("/api/stats%0Afake%20log%20line", "/api/stats%0Afake%20log%20line"),
+    ("/api/stats%1B%5B31mred", "/api/stats%1B%5B31mred"),
+    ('/api/stats%22injected', "/api/stats%22injected"),
+    ("/api/workspace/0123456789abcdef0123456789abcdef/x%0Ay",
+     "/api/workspace/<ws:" + main.ws_hash("0123456789abcdef0123456789abcdef") + ">/x%0Ay"),
 ])
 def test_the_access_log_redacts_workspace_ids_doc_ids_and_workspace_query_strings(path, expected):
     assert main.redact_access_path(path) == expected
