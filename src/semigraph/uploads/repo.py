@@ -34,7 +34,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 
-from ..graph.client import run_cypher
+from ..graph.client import NO_UNRECOGNIZED_NOTIFICATIONS, run_cypher
 from ..versions import CURRENT, SUPERSEDED
 from . import new_workspace_id, new_workspace_token
 from .versions import CURRENT_VALID_TO
@@ -706,10 +706,13 @@ def fail_interrupted_jobs(driver, now: datetime | None = None, *, older_than_s: 
     _require_aware_datetime(now, "now")
     threshold = now - timedelta(seconds=older_than_s)
     terminal = list(_JOB_TERMINAL_STATES)
+    # Quiet on never-written keys, for this SELECT only: UserJob's `state` / `payload` exist only after the first
+    # upload, and the sweeper runs this at boot and every cycle. The per-job follow-ups below keep the default session.
+    with driver.session(**NO_UNRECOGNIZED_NOTIFICATIONS) as quiet:
+        candidates = quiet.run(FAIL_INTERRUPTED_JOBS_SELECT_QUERY, terminal_states=terminal,
+                               threshold=threshold).data()
+    fixed, recovered = 0, 0
     with driver.session() as session:
-        candidates = session.run(FAIL_INTERRUPTED_JOBS_SELECT_QUERY, terminal_states=terminal,
-                                 threshold=threshold).data()
-        fixed, recovered = 0, 0
         for row in candidates:
             if (row["workspace_id"], row["job_id"]) in exclude:
                 continue

@@ -12,12 +12,16 @@ which would destroy a concurrent worker's fixtures on the same shared throwaway 
 
 The last section runs ``serve.monitor``'s ``SvcLease`` / ``SvcFreshness`` Cypher and ``retrieval.dossier``'s two
 hand-written queries (``FILINGS_QUERY``, ``DOSSIER_ACTIVE_RISKS_QUERY``) for real — every other test of those modules
-uses a fake ``run_cypher`` and had never actually been sent to a Neo4j server before.
+uses a fake ``run_cypher`` and had never actually been sent to a Neo4j server before. It also proves that
+``graph.client.NO_UNRECOGNIZED_NOTIFICATIONS`` drops only the server's "does not exist" notifications.
 """
 
 import json
+import logging
 import os
 import random
+import re
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -25,7 +29,7 @@ import pytest
 pytest.importorskip("neo4j")
 
 from semigraph.config import Settings  # noqa: E402
-from semigraph.graph.client import get_driver, run_cypher  # noqa: E402
+from semigraph.graph.client import NO_UNRECOGNIZED_NOTIFICATIONS, get_driver, run_cypher  # noqa: E402
 from semigraph.graph.schema import apply_schema  # noqa: E402
 from semigraph.retrieval import dossier  # noqa: E402
 from semigraph.serve import guard  # noqa: E402
@@ -717,6 +721,34 @@ def test_check_once_runs_its_graph_queries_cleanly_against_a_real_empty_result(d
     assert result["as_of"] == "2026-09-24"
     assert isinstance(result["pending_filings"], list)
     assert result["federal_register"]["graph_count"] == 0
+
+
+# ---------------------------------------------------------------------- the UNRECOGNIZED notification opt-out (live)
+
+def _logged_gql_statuses(caplog) -> list[str]:
+    return [m.group(1) for r in caplog.records if r.name == "neo4j.notifications"
+            for m in [re.search(r"gql_status='(\w+)'", r.getMessage())] if m]
+
+
+def test_the_quiet_session_drops_only_unrecognized_notifications_live(driver, caplog):
+    """``NO_UNRECOGNIZED_NOTIFICATIONS`` against the real server: a read of a never-written property key logs 01N52 in
+    a default session and nothing in a quiet one, while a PERFORMANCE notification (03N90, a cartesian product) still
+    reaches the log from the quiet one. The key is new on every run because property-key tokens are permanent: a
+    fixed name would stop warning the first time anything WROTE it (a read never creates the token)."""
+    key = f"zz_never_written_{uuid.uuid4().hex}"
+    unknown_key = f"MATCH (c:Company) RETURN c.{key} AS x LIMIT 1"
+    with_cartesian = f"MATCH (c:Company), (f:Filing) RETURN c.{key} AS x LIMIT 1"
+    caplog.set_level(logging.DEBUG, logger="neo4j.notifications")
+
+    def statuses(query, session_config=None):
+        caplog.clear()
+        run_cypher(driver, query, session_config_=session_config)
+        return _logged_gql_statuses(caplog)
+
+    assert statuses(unknown_key) == ["01N52"]
+    assert statuses(unknown_key, NO_UNRECOGNIZED_NOTIFICATIONS) == []
+    assert "01N52" in statuses(with_cartesian)
+    assert statuses(with_cartesian, NO_UNRECOGNIZED_NOTIFICATIONS) == ["03N90"]
 
 
 # ---------------------------------------------------------------------- retrieval.dossier: hand-written queries (live)

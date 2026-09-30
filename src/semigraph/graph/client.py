@@ -11,8 +11,10 @@ a live graph.
 """
 
 import logging
+from collections.abc import Mapping
+from types import MappingProxyType
 
-from neo4j import Driver, GraphDatabase
+from neo4j import Driver, GraphDatabase, NotificationClassification
 
 from ..config import Settings, get_settings
 
@@ -21,6 +23,17 @@ logger = logging.getLogger("semigraph.graph.client")
 # neo4j's Driver.execute_query(query_, parameters_, routing_, database_, ...):
 # database_ is the third positional argument after the query.
 _EXECUTE_QUERY_DATABASE_POSITION = 2
+
+# Session options for a read that names a property key the database may never
+# have seen yet (one written only on failure, or a label's keys before its
+# first node): the server then sends no UNRECOGNIZED notification (01N50,
+# 01N51, 01N52: "... does not exist") for that session. No severity floor, so
+# every other notification (deprecation, performance, ...) still reaches the
+# ``neo4j.notifications`` logger. Scope it to one query at a time, never the
+# driver: ``run_cypher(..., session_config_=NO_UNRECOGNIZED_NOTIFICATIONS)``
+# or ``driver.session(**NO_UNRECOGNIZED_NOTIFICATIONS)``.
+NO_UNRECOGNIZED_NOTIFICATIONS = MappingProxyType(
+    {"notifications_disabled_classifications": (NotificationClassification.UNRECOGNIZED,)})
 
 
 class DatabaseDriver:
@@ -96,7 +109,14 @@ def get_driver(settings: Settings | None = None) -> DatabaseDriver:
     return DatabaseDriver(driver, settings.neo4j_database)
 
 
-def run_cypher(driver: Driver, query: str, **params) -> list[dict]:
-    """Run one Cypher query and return rows as dicts (ported from notebook 13)."""
-    with driver.session() as s:
+def run_cypher(driver: Driver, query: str, *,
+               session_config_: Mapping[str, object] | None = None,
+               **params) -> list[dict]:
+    """Run one Cypher query and return rows as dicts (ported from notebook 13).
+
+    ``session_config_`` (e.g. :data:`NO_UNRECOGNIZED_NOTIFICATIONS`) goes to
+    ``driver.session``; the trailing underscore is the driver's own
+    ``execute_query`` convention, so it never collides with a query parameter.
+    """
+    with driver.session(**(session_config_ or {})) as s:
         return [dict(r) for r in s.run(query, **params)]

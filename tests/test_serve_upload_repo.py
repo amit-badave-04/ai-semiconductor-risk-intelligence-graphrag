@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from semigraph.graph import client
 from semigraph.uploads import repo
 
 # ---------------------------------------------------------------------- static: every module-level query string
@@ -133,8 +134,9 @@ class FakeTx:
 
 
 class FakeSession:
-    def __init__(self, driver):
+    def __init__(self, driver, config):
         self._driver = driver
+        self._config = config
 
     def __enter__(self):
         return self
@@ -144,6 +146,7 @@ class FakeSession:
 
     def run(self, query, **params):
         self._driver.session_run_calls.append((query, params))
+        self._driver.session_run_configs.append(self._config)
         rows = self._driver.session_run_responses.get(query, [])
         return FakeResult(rows if not callable(rows) else rows(params))
 
@@ -164,11 +167,12 @@ class FakeDriver:
     def __init__(self, tx_responses=None, session_run_responses=None):
         self.transactions: list[FakeTx] = []
         self.session_run_calls: list[tuple[str, dict]] = []
+        self.session_run_configs: list[dict] = []   # the session config each session_run_calls entry ran under
         self.session_run_responses = session_run_responses or {}
         self.tx_responses = {repo.LOCK_WORKSPACE_QUERY: _LOCK_OK, **(tx_responses or {})}
 
     def session(self, **kwargs):
-        return FakeSession(self)
+        return FakeSession(self, kwargs)
 
 
 def _chunk(chunk_id="doc:aaaaaaaaaaaa:v1:0000", embedded=True, tokens=10):
@@ -522,6 +526,22 @@ def test_fail_interrupted_jobs_marks_a_stale_non_terminal_job_failed_with_a_rewr
     # document/version/progress the interrupted job had reached.
     assert rewritten["document_id"] == "d1" and rewritten["version"] == 1
     assert rewritten["progress"] == {"done": 3, "total": 10}
+
+
+def test_fail_interrupted_jobs_selects_in_a_quiet_session_and_follows_up_in_a_default_one():
+    """``UserJob``'s ``state`` / ``payload`` keys do not exist until the first upload, and the sweeper runs this SELECT
+    at boot and every cycle: only that cross-workspace read opts out of UNRECOGNIZED notifications (01N52). The
+    per-job recovery check and UPDATE keep the default session, so a typo in either is still reported."""
+    stale_payload = json.dumps({"job_id": "j1", "state": "embedding", "document_id": "d1", "version": 1})
+    driver = FakeDriver(session_run_responses={
+        repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: [{"workspace_id": "ws1", "job_id": "j1", "payload": stale_payload}],
+        repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: [{"job_id": "j1"}]})
+    assert repo.fail_interrupted_jobs(driver, datetime.now(UTC)) == (1, 0)
+    config_by_query = {query: config for (query, _), config in zip(driver.session_run_calls,
+                                                                    driver.session_run_configs)}
+    assert config_by_query == {repo.FAIL_INTERRUPTED_JOBS_SELECT_QUERY: dict(client.NO_UNRECOGNIZED_NOTIFICATIONS),
+                               repo.JOB_VERSION_EXISTS_QUERY: {},
+                               repo.FAIL_INTERRUPTED_JOB_UPDATE_QUERY: {}}
 
 
 def test_fail_interrupted_jobs_uses_a_threshold_derived_from_now_and_the_module_constant():

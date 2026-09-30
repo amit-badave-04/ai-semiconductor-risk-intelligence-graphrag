@@ -22,7 +22,7 @@ import urllib.request
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from ..graph.client import run_cypher
+from ..graph.client import NO_UNRECOGNIZED_NOTIFICATIONS, run_cypher
 from ..ingestion import federal_register
 from ..ingestion.edgar import FilingRecord, select_targets
 from ..ingestion.freshness import fetch_submissions, records_from_submissions
@@ -182,7 +182,9 @@ def _release_lease(driver, holder: str) -> None:
 
 def _load_persisted(driver) -> dict | None:
     try:
-        rows = run_cypher(driver, GET_FRESHNESS_QUERY)
+        # Quiet on never-written keys: these keys exist only once a check has written them (`error` / `last_error_at`
+        # only once one has FAILED), and a read of an unknown key would log a warning on every start until then.
+        rows = run_cypher(driver, GET_FRESHNESS_QUERY, session_config_=NO_UNRECOGNIZED_NOTIFICATIONS)
     except Exception:  # noqa: BLE001 - a bad read must never crash the monitor thread
         logger.exception("loading the persisted freshness state failed")
         return None

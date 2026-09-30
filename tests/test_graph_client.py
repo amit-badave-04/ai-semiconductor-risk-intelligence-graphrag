@@ -140,6 +140,26 @@ class TestDatabaseDriver:
         assert rows == [{"n": 1}]
         assert inner.runs == [("sgtest", "RETURN 1 AS n", {"x": 2})]
 
+    def test_run_cypher_hands_session_config_to_the_session_never_to_the_query(self):
+        inner = FakeDriver(responder=lambda q: [{"n": 1}])
+        client.run_cypher(client.DatabaseDriver(inner, "sgtest"), "RETURN 1 AS n",
+                          session_config_=client.NO_UNRECOGNIZED_NOTIFICATIONS, x=2)
+        assert inner.session_configs == [{**client.NO_UNRECOGNIZED_NOTIFICATIONS, "database": "sgtest"}]
+        assert inner.runs == [("sgtest", "RETURN 1 AS n", {"x": 2})]
+
+    def test_run_cypher_without_session_config_opens_a_default_session(self):
+        inner = FakeDriver()
+        client.run_cypher(inner, "RETURN 1")
+        assert inner.session_configs == [{}]
+
+    def test_the_quiet_session_config_disables_only_unrecognized_notifications(self):
+        # 01N50/01N51/01N52 (a label, relationship type or property key the database has never seen) only: no
+        # severity floor, so deprecation, performance and every other notification still reach the logs.
+        from neo4j import NotificationClassification
+
+        assert dict(client.NO_UNRECOGNIZED_NOTIFICATIONS) == {
+            "notifications_disabled_classifications": (NotificationClassification.UNRECOGNIZED,)}
+
 
 class TestGetDriver:
     def test_default_settings_target_the_neo4j_database(self, monkeypatch):

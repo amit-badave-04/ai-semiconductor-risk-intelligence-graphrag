@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from semigraph.graph import client
 from semigraph.serve import monitor as monitor_mod
 
 FIXTURES = Path(__file__).parent / "fixtures" / "freshness"
@@ -287,6 +288,46 @@ def test_persist_never_raises_when_the_write_fails(monkeypatch):
 
     monkeypatch.setattr(monitor_mod, "run_cypher", boom)
     monitor_mod._persist(object(), {"checked_at": "x"})  # must not raise
+
+
+def test_load_persisted_reads_in_a_session_that_tolerates_never_written_keys(monkeypatch):
+    """``error`` / ``last_error_at`` are only ever written by a FAILED check: until one happens the server has never
+    seen those keys and would log a 01N52 "property key does not exist" warning on every boot. Only this read opts
+    out of UNRECOGNIZED notifications."""
+    calls = []
+
+    def fake_run_cypher(driver, query, **params):
+        calls.append((query, params))
+        return []
+
+    monkeypatch.setattr(monitor_mod, "run_cypher", fake_run_cypher)
+    monitor_mod._load_persisted(object())
+    assert calls == [(monitor_mod.GET_FRESHNESS_QUERY, {"session_config_": client.NO_UNRECOGNIZED_NOTIFICATIONS})]
+
+
+def test_every_other_monitor_query_keeps_the_default_notifications(monkeypatch):
+    """The opt-out is per query, never module-wide: the graph reads, the lease and the persist still report every
+    notification (a typo in one of them must still reach the logs)."""
+    configs = {}
+
+    def fake_run_cypher(driver, query, **params):
+        configs[query] = params.get("session_config_")
+        if query == monitor_mod.LEASE_QUERY:
+            return [{"ok": True}]
+        if query == monitor_mod.EXPORT_CONTROL_COUNT_QUERY:
+            return [{"n": 0}]
+        return []
+
+    monkeypatch.setattr(monitor_mod, "run_cypher", fake_run_cypher)
+    monitor_mod.check_once(object(), FakeSettings(), fetch=lambda url: {"count": 0}, today="2026-09-24")
+    monitor_mod._acquire_lease(object(), "m1")
+    monitor_mod._release_lease(object(), "m1")
+    monitor_mod._persist(object(), {"checked_at": "2026-09-24T00:00:00+00:00"})
+    assert set(configs) == {monitor_mod.COMPANY_CIK_QUERY, monitor_mod.KNOWN_ACCESSIONS_QUERY,
+                            monitor_mod.EXPORT_CONTROL_COUNT_QUERY, monitor_mod.SNAPSHOT_QUERY,
+                            monitor_mod.LEASE_QUERY, monitor_mod.RELEASE_LEASE_QUERY,
+                            monitor_mod.PUT_FRESHNESS_QUERY}
+    assert all(config is None for config in configs.values())
 
 
 def test_load_persisted_keeps_an_error_only_row_with_no_good_check_yet(monkeypatch):
