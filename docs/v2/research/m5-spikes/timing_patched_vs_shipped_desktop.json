@@ -1,0 +1,25 @@
+{
+  "n": 50,
+  "baseline": {
+    "median_s": 1.2515018000003693,
+    "p90_s": 1.3841791999990165,
+    "mean_s": 1.2769223059998693,
+    "min_s": 1.2170719000005192,
+    "max_s": 1.4222570000001724
+  },
+  "candidate": {
+    "median_s": 0.3160151500005668,
+    "p90_s": 0.4126382599990393,
+    "mean_s": 0.34763431799987304,
+    "min_s": 0.28210439999929804,
+    "max_s": 0.5453383000003669
+  },
+  "speedup_median": 3.9602588673300145,
+  "candidate_faster": true,
+  "meets_gate_minimum_calls": true,
+  "baseline_model": "models/qwen3-embedding-0.6b-q8/model_q8.onnx",
+  "candidate_model": "<patched build>/model_q8.onnx",
+  "threads": 1,
+  "warmup": 2,
+  "onnxruntime": "1.29.0"
+}

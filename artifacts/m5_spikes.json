@@ -42,28 +42,49 @@
       "source_file": "docs/v2/research/m5-spikes/embed_profile_acc4_shipped_venv.json"
     },
     "retrieval_parity_vs_shipped_model": {
-      "questions": 53,
+      "CORRECTION": "2026-10-03: the first version of this block (53 questions, top-1 identical 0.962, top-8 identical 0.83, top-8 mean overlap 0.9788) was measured with the wrong query prompt ('Query: ' with a trailing space) on the 53 examples only, and is withdrawn. Production's QUERY_PROMPT ends '\\nQuery:' and the pre-registered check uses the 60 benchmark+example questions. Figures below are from scripts/verify_embedder_parity.py on the production prompt.",
+      "questions": 60,
       "corpus_vectors": 3152,
-      "method": "brute-force cosine top-k over data/processed/embeddings/*.parquet (the vectors the live site searches)",
+      "method": "brute-force cosine top-k over data/processed/embeddings/*.parquet (the vectors the live site searches); production QUERY_PROMPT; onnxruntime 1.29.0, 4 threads",
       "query_vector_cosine": {
-        "mean": 0.99877,
-        "min": 0.99829,
-        "p05": 0.99852
+        "mean": 0.99876,
+        "min": 0.99793,
+        "p05": 0.99845
       },
       "top8_overlap": {
-        "mean": 0.9788,
-        "min": 0.875,
-        "identical_set_fraction": 0.83
+        "mean": 0.9729,
+        "min": 0.75,
+        "identical_set_fraction": 0.8167
       },
       "top10_overlap": {
-        "mean": 0.9811,
-        "min": 0.9
+        "mean": 0.98,
+        "min": 0.9,
+        "identical_set_fraction": 0.8
       },
-      "top1_identical_fraction": 0.962,
-      "max_top10_score_gap": 0.00771,
-      "context": "the shipped q8 model versus an fp32 reference was cosine mean 0.9992 / min 0.998 on 20 questions (models/.../fidelity.json, the builder's own check)",
-      "top1_changed_questions": 2,
-      "note": "top-1 changed for 2 of 53 questions; at most one of the top 10 chunks differs per question (minimum overlap 0.9); where in the ranking the swaps fall was not recorded"
+      "top1_identical_fraction": 0.9333,
+      "top1_changed_questions": 4,
+      "max_top10_score_gap": 0.01157,
+      "gates": {
+        "cosine_mean_ge_0.998": "pass",
+        "cosine_min_ge_0.997": "pass",
+        "top1_identical_ge_0.95": "FAIL (0.9333)",
+        "top8_mean_overlap_ge_0.97": "pass (0.9729)"
+      },
+      "result": "FAIL: the pre-registered top-1 gate is not met. Held pending the owner's decision (docs/v2/M5_DECISIONS.md section 1.4 item 12, section 7 decision 14).",
+      "against_fp32_reference": {
+        "source_file": "docs/v2/research/m5-spikes/fp32_reference.json (same 60 questions and corpus; evidence only, not a redefinition of the gate)",
+        "shipped_q8": {"top1_agreement": 0.9833, "top1_disagreements": 1, "mean_top8_overlap": 0.9646, "cosine_mean": 0.99927, "cosine_min": 0.99904, "max_score_regret": 0.001737},
+        "patched_accuracy_level_4": {"top1_agreement": 0.95, "top1_disagreements": 3, "mean_top8_overlap": 0.9688, "cosine_mean": 0.99799, "cosine_min": 0.99701, "max_score_regret": 0.006465},
+        "reading": "unfavourable to the patched model on top-1, cosine and worst-case regret; marginally favourable on mean top-8 overlap"
+      },
+      "patched_model_provenance": "the shipped model_q8.onnx with accuracy_level=4 set on its 196 MatMulNBits nodes by docs/v2/research/m5-spikes/make_patched_copy.py (same weights, no re-quantization); its in-build gate output is docs/v2/research/m5-spikes/patch_gate_report.json (cosine mean 0.99877, min 0.99825: passed)",
+      "source_file": "docs/v2/research/m5-spikes/parity_prod_prompt.json"
+    },
+    "timing_interleaved_50_calls_1_thread_desktop": {
+      "shipped_median_s": 1.2515,
+      "patched_median_s": 0.316,
+      "speedup_median": 3.96,
+      "source_file": "docs/v2/research/m5-spikes/timing_patched_vs_shipped_desktop.json (scripts/embedder_timing.py); NOT yet measured on Fly"
     },
     "prefix_kv_reuse": "tested and rejected: the current ONNX export raises 'invalid expand shape' (attn_mask_reformat) for a non-empty past; would need a re-export; not pursued",
     "not_measured": [

@@ -1,0 +1,117 @@
+{
+  "baseline": "models/qwen3-embedding-0.6b-q8/model_q8.onnx",
+  "candidate": "<patched build>/model_q8.onnx",
+  "corpus_glob": "data/processed/embeddings/*.parquet",
+  "corpus_vectors": 3152,
+  "questions": 60,
+  "question_files": [
+    "src/semigraph/artifacts/benchmark.json",
+    "src/semigraph/artifacts/examples.json"
+  ],
+  "threads": 4,
+  "onnxruntime": "1.29.0",
+  "query_prompt": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:",
+  "metrics": {
+    "questions": 60,
+    "corpus_vectors": 3152,
+    "query_cosine": {
+      "mean": 0.9987552831367534,
+      "min": 0.9979314829537513,
+      "p05": 0.9984471005251373
+    },
+    "top8_overlap": {
+      "mean": 0.9729166666666667,
+      "min": 0.75,
+      "identical_set_fraction": 0.8166666666666667
+    },
+    "top10_overlap": {
+      "mean": 0.98,
+      "min": 0.9,
+      "identical_set_fraction": 0.8
+    },
+    "top1_identical_fraction": 0.9333333333333333,
+    "top1_changed_questions": 4,
+    "max_top10_score_gap": 0.011573245437616175
+  },
+  "gates": [
+    {
+      "name": "query cosine mean",
+      "value": 0.9987552831367534,
+      "threshold": 0.998,
+      "passed": true
+    },
+    {
+      "name": "query cosine min",
+      "value": 0.9979314829537513,
+      "threshold": 0.997,
+      "passed": true
+    },
+    {
+      "name": "top-1 identical fraction",
+      "value": 0.9333333333333333,
+      "threshold": 0.95,
+      "passed": false
+    },
+    {
+      "name": "mean top-8 overlap",
+      "value": 0.9729166666666667,
+      "threshold": 0.97,
+      "passed": true
+    }
+  ],
+  "passed": false,
+  "changed_top1_questions": [
+    "What did Nvidia's CEO say on the most recent earnings call?",
+    "By what percentage did Amazon's net income change from the fiscal year ended December 31, 2024 to th",
+    "What were AMD's total revenue and research and development expense for the fiscal year ended Decembe",
+    "Did TSMC remove any risk factors between its FY2024 and FY2025 annual reports?"
+  ],
+  "changed_top1_details": [
+    {
+      "q": "What did Nvidia's CEO say on the most recent earnings call?",
+      "baseline_top1": 2845,
+      "candidate_top1": 2744,
+      "baseline_score_gap": 0.00020681699949420818,
+      "candidate_score_gap": 0.00086617948465606
+    },
+    {
+      "q": "By what percentage did Amazon's net income change from the fiscal year ended December 31, 2024 to th",
+      "baseline_top1": 565,
+      "candidate_top1": 2949,
+      "baseline_score_gap": 0.0056956889030885804,
+      "candidate_score_gap": 0.0018525671658007337
+    },
+    {
+      "q": "What were AMD's total revenue and research and development expense for the fiscal year ended Decembe",
+      "baseline_top1": 264,
+      "candidate_top1": 222,
+      "baseline_score_gap": 0.001778610161926819,
+      "candidate_score_gap": 0.00036731338658035906
+    },
+    {
+      "q": "Did TSMC remove any risk factors between its FY2024 and FY2025 annual reports?",
+      "baseline_top1": 2612,
+      "candidate_top1": 2613,
+      "baseline_score_gap": 0.0001002304358774797,
+      "candidate_score_gap": 0.00038519695364447326
+    }
+  ],
+  "lowest_overlap_questions": [
+    {
+      "top10_overlap": 0.9,
+      "top8_overlap": 0.875,
+      "q": "By what percentage did Nvidia's total revenue change from the fiscal year ended January 26, 2025 to "
+    },
+    {
+      "top10_overlap": 0.9,
+      "top8_overlap": 0.875,
+      "q": "Did Nvidia stop disclosing its risk about \"We may not be able to realize the potential benefits of b"
+    },
+    {
+      "top10_overlap": 0.9,
+      "top8_overlap": 1.0,
+      "q": "What was Nvidia's total revenue for the fiscal year ended January 25, 2026?"
+    }
+  ],
+  "elapsed_s": 55.1
+}

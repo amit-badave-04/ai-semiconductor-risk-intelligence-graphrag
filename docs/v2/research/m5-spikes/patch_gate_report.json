@@ -1,0 +1,13 @@
+{
+  "_about": "Output of the builder's in-build gate (verify_patched, gate 1 of M5 decision 2.1) on the patched copy made by make_patched_copy.py, 2026-10-03, onnxruntime 1.29.0. It passed. The corpus-parity gate (verify_embedder_parity.py) is separate and FAILED: see parity_prod_prompt.json.",
+  "accuracy_level": 4,
+  "matmulnbits_nodes": 196,
+  "nodes_missing_accuracy_level": 0,
+  "questions": 53,
+  "cosine_mean": 0.9987715049295808,
+  "cosine_min": 0.9982521650282838,
+  "mean_threshold": 0.998,
+  "min_threshold": 0.997,
+  "passed": true,
+  "failure": null
+}

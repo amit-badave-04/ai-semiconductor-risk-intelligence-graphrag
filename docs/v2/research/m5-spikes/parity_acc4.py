@@ -1,4 +1,10 @@
-"""Retrieval parity of two query encoders over the REAL corpus vectors (data/processed/embeddings/*.parquet, the 3,152
+"""SUPERSEDED 2026-10-03 -- do not use these numbers. This spike encoded questions with the prompt "Query: " (a trailing
+space; production's QUERY_PROMPT ends "\\nQuery:") and read only the 53 examples (key `question`), not the 60
+benchmark+example questions of the pre-registered check. Use scripts/verify_embedder_parity.py; the corrected result is
+parity_prod_prompt.json (docs/v2/M5_DECISIONS.md section 1.4 item 12). parity_acc4.json (this script's output) is kept
+only as the record of the wrong measurement.
+
+Retrieval parity of two query encoders over the REAL corpus vectors (data/processed/embeddings/*.parquet, the 3,152
 chunks the live site searches). A = the shipped q8 model (what production uses today), B = the same model with
 accuracy_level=4. For every benchmark + example question: cosine(A, B), and brute-force top-k overlap against the corpus.
 Read-only; run from the repo root with the dev env. argv[1] = model A, argv[2] = model B."""

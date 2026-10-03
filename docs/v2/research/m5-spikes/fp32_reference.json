@@ -1,0 +1,35 @@
+{
+  "questions": 60,
+  "corpus_vectors": 3152,
+  "prompt": "sentence-transformers 'query' prompt = production QUERY_PROMPT",
+  "models": {
+    "shipped_q8": {
+      "cosine_to_fp32": {
+        "mean": 0.99927,
+        "min": 0.99904
+      },
+      "top1_agreement_with_fp32": 0.9833,
+      "top1_disagreements": 1,
+      "mean_top8_overlap_with_fp32": 0.9646,
+      "mean_regret_under_fp32_score": 2.9e-05,
+      "max_regret": 0.001737
+    },
+    "patched_acc4": {
+      "cosine_to_fp32": {
+        "mean": 0.99799,
+        "min": 0.99701
+      },
+      "top1_agreement_with_fp32": 0.95,
+      "top1_disagreements": 3,
+      "mean_top8_overlap_with_fp32": 0.9688,
+      "mean_regret_under_fp32_score": 0.000202,
+      "max_regret": 0.006465
+    }
+  },
+  "paired_top1": {
+    "both_agree_with_fp32": 56,
+    "only_patched_agrees": 1,
+    "only_shipped_agrees": 3,
+    "neither_agrees": 0
+  }
+}
