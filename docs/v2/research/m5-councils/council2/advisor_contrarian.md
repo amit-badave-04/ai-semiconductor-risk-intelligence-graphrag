@@ -1,0 +1,9 @@
+S1 solves a problem the brief says we no longer have. Live stays ONE machine, and the brief itself says process-local state "is CORRECT on one machine". A shared store matters only if S2 shows one performance-class staging machine fails. Building Valkey now puts a second single point of failure in series on the paid path. It has no HA and downtime on every volume-machine deploy, plus a reported DNS-resolver bug. Fail-closed means every Valkey blip kills paid AND cached answers. That lowers availability to defend against a load nobody has measured. "Neo4j cannot carry it" is, per the brief, an assumption. 12 reads/s and 9 writes/s looks modest (my assumption, unmeasured, which is exactly what S7 is for). On top of that come four hand-written Lua scripts on a Valkey path "documented-compatible but NOT tested by us", a Lua security-release pin, a new secret and recurring cost needing owner approval. One worker owns the whole package serially, so it blocks S2/S7, the measurements that decide whether any of this is needed. S3 adds a vendor with 2026 outages and an unverified `sin` region. S4 is untenable if S7 fails.
+
+S2 has its own trap: "drop-in later" is a promise. A protocol designed against two non-atomic backends will leak. Put atomic reserve/reconcile semantics and contract tests in the protocol now, with in-process as the reference. In-process counters must rebuild from the durable `SvcQuery` ledger at boot, or every rolling restart resets the $10/day cap.
+
+Policy: accept the $10 cap, the estimate charge on expired lease, and the three-level kill switch. Amend: do not make the Langfuse salt a shared secret in M5a without a rotation plan (assumption: it is correlation-sensitive).
+
+Order: async rewrite, then protocol plus in-process/neo4j, then S2/S7 immediately. Trigger Valkey only if Neo4j service ops degrade retrieval at 5 asks/s (about 2x the gate's ~2.6) or CPU, not state, caps one machine.
+
+Recommendation: S2.

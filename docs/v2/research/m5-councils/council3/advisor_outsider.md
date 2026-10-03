@@ -1,0 +1,9 @@
+The brief never says what a buyer cannot do on today's page. The page "works and is live", has 149 tests, and its known defects are three small items: a drawer in the tab order, a drop zone without a keyboard path, and a test pinning a field the API never returns. All three are fixes, not a rewrite. A newcomer reads the rewrite case as "the owner wrote it down on 2026-09-25", yet the same brief calls part of that decision outdated (Cloudflare). Nothing shows that Next.js or the AI SDK gives a user something visible.
+
+Hosting: H1 is the only option that adds no new hostname, vendor or cost. H3 ends open public access, which is a surprise, and H2 adds a 100k/day cap that can return 429 to visitors. Defer Cloudflare to M6, as planned.
+
+Framework: F1 is the weakest. It forces a new server encoder, an SDK pinned one major behind current (ai@6 while ai@7 is current), and a stream format that changes about twice a year. Our own restricted renderer then discards most of what the SDK would offer. The static-export footguns are listed too. F3 piles dossier, workspace, freshness and map views into one inline file that is already ~1,040 lines. F2 keeps the SSE grammar, the CSP and the tests' contracts, and needs no new encoder. Deviating is the owner's call; the brief's own evidence is the required encoder plus the version churn.
+
+Exposure: "unlinked noindex" hides the preview from search, not from people. Name a first consumer before building MCP and API keys; the brief names none (assumption: none exists). If built, gate both behind keys with quotas, never open. A follow-up question costs an extra LLM call against the 150/day cap. Omitting the badge is correct.
+
+Recommendation: H1, F2 (owner to confirm the deviation); expose nothing new to the public until a named consumer exists.

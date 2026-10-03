@@ -118,41 +118,6 @@
       "uvicorn_rss_kb": 915776
     }
   },
-  "risk13_fresh_machine_burn": {
-    "result": "no throttling: one core 100% busy for 30 s, steady throughput",
-    "slices_5s": [
-      {
-        "loops_per_s": 9542486,
-        "steal_jiffies": 2,
-        "busy_jiffies": 499
-      },
-      {
-        "loops_per_s": 9497862,
-        "steal_jiffies": 2,
-        "busy_jiffies": 502
-      },
-      {
-        "loops_per_s": 9676313,
-        "steal_jiffies": 2,
-        "busy_jiffies": 500
-      },
-      {
-        "loops_per_s": 9484305,
-        "steal_jiffies": 2,
-        "busy_jiffies": 501
-      },
-      {
-        "loops_per_s": 9861655,
-        "steal_jiffies": 1,
-        "busy_jiffies": 500
-      },
-      {
-        "loops_per_s": 9688168,
-        "steal_jiffies": 2,
-        "busy_jiffies": 500
-      }
-    ]
-  },
   "G5": {
     "passed": true,
     "scheduled_first_check": "ran by itself 300 s after boot (2026-09-30T03:48:56Z): status ok",
@@ -381,6 +346,42 @@
       "let docEvidenceGen",
       "let openSeq",
       "hint only when strategy is agent"
+    ]
+  },
+  "risk13_restarted_machine_burn": {
+    "result": "no throttling during a 30 s single-core burn on the RESTARTED machine",
+    "correction_2026_10_03": "This was labelled 'fresh machine' when written. The machine had been restarted by the deploy but was created on 2026-09-27, so its CPU burst balance was probably full (Fly docs: a newly created shared machine starts with a 5 s balance, capped at 500 s). The result therefore does NOT show how a brand-new shared machine behaves. The owner's G4 run (about 4 minutes of full-core embedding, steal 0.5%) is consistent with a balance of up to 500 s. docs/v2/M5_DECISIONS.md plans a direct measurement.",
+    "slices_5s": [
+      {
+        "loops_per_s": 9542486,
+        "steal_jiffies": 2,
+        "busy_jiffies": 499
+      },
+      {
+        "loops_per_s": 9497862,
+        "steal_jiffies": 2,
+        "busy_jiffies": 502
+      },
+      {
+        "loops_per_s": 9676313,
+        "steal_jiffies": 2,
+        "busy_jiffies": 500
+      },
+      {
+        "loops_per_s": 9484305,
+        "steal_jiffies": 2,
+        "busy_jiffies": 501
+      },
+      {
+        "loops_per_s": 9861655,
+        "steal_jiffies": 1,
+        "busy_jiffies": 500
+      },
+      {
+        "loops_per_s": 9688168,
+        "steal_jiffies": 2,
+        "busy_jiffies": 500
+      }
     ]
   }
 }

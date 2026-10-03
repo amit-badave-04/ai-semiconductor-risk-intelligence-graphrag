@@ -1,0 +1,9 @@
+The biggest upside in this brief is not the UI. It is that M5c turns a website into a queryable data surface. The read-only MCP server (5 tools, no LLM path reachable) and hashed per-key API quotas let other people's agents and tools use the dossier, evidence and risk-change data. That is a distribution channel the single HTML page can never be. Per-key quotas also give demand telemetry: which companies, which tools, who comes back. That evidence would make the M6 domain/gate decision far better informed. I'd protect the MCP and keys from any cut, and put them behind admin-issued keys first. This is also where cost is cheapest to bound, since only search_chunks touches the embedding limiter.
+
+Hosting: H1. Same origin keeps every Cloudflare footgun in the brief out of the path (third-party cookies, preflight 403s, the 100k/day Worker cap, SSE buffering), costs nothing new, and needs no new approval. It also leaves the H3 invite-gated lane open for M6. A gated design-partner tier is a real upside, but it ends open public access, so it is the owner's call.
+
+Framework: F1. The new `/api/chat` encoder, pinned by byte fixtures and the SDK's own reader, is a standard-protocol endpoint. Assumption: any AI SDK client could consume it, and AI Elements gets us a polished UI. The owner already chose this stack, and `/legacy` stays as a permanent fallback.
+
+Keep the dossier, "as disclosed" supply-chain map and PDF/Markdown export. They are shareable artifacts that carry the product outside the site. Omit the dropped-risk badge. The freshness line and versioned "ask as of vN" are stronger and honest differentiators.
+
+Recommendation: H1, F1 (pin ai@6/@ai-sdk/react@3), `/v2/` preview, promote only on written owner sign-off. Exposure: keys-gated MCP with quotas first, open access later by separate owner decision once demand data exists.
