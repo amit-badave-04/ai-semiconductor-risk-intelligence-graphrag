@@ -1,0 +1,1371 @@
+{
+ "_about": {
+  "what": "agent_answer_stream (src/semigraph/agent/stream.py) driven synchronously with scripted planner and writers over FakeDriver.world(): the events, the totals and the side channels, recorded before the async rewrite (M5a I2)",
+  "commit": "2ed0a40",
+  "recorded": "2026-10-03",
+  "regenerate": "uv run python tests/data/record_events_pre_m5.py",
+  "scenario": "name; inputs (plain data: every fake is rebuilt from it); events (every event yielded, in order); final (the totals the terminal event reports); observed (side channels of the sync code: sha256[:16] of every prompt a model received, WARNING logs, and per stream either the planner message hashes and tracer call kinds or the upload queries run). An async twin must reproduce events and final exactly.",
+  "normalised": {
+   "done.agent.elapsed_s": "wall-clock planning time; replaced by '<elapsed_s>' in the recorder and in every replay",
+   "workspace prompt": "the per-request random delimiter is replaced by '<<<DOC-XXXXXXXXXXXX>>>' before a prompt is hashed",
+   "everything else": "deterministic as recorded: no timestamps, uuids, durations or absolute paths are emitted"
+  }
+ },
+ "notes": {
+  "abandonment": "A consumer that closes the generator receives nothing further: no usage or cost event is yielded. The sync code reports an abandoned stream in two ways only: a WARNING of logger semigraph.agent naming the planner's accrued dollars (read from the run-local ledger; the writer's own tokens so far are NOT in it), and tracer.flush() as the last tracer call. Both are recorded under observed (and the dollars under final.abandoned_spend_usd). The ledger row of an abandoned answer is written by serve/routes._paid_stream, not by this stream, so it is outside this file.",
+  "early_close": "A scenario with inputs.close_after_events was closed by the consumer after that many events: it has no terminal event by design (final.terminal is null, final.abandoned is true)."
+ },
+ "scenarios": [
+  {
+   "name": "agent_multi_step_live",
+   "inputs": {
+    "question": "How exposed is Nvidia to TSMC?",
+    "strategy": "agent",
+    "settings": {
+     "agent_planner_model": "openai/gpt-6-luna",
+     "agent_max_tool_calls": 4,
+     "agent_max_model_calls": 3,
+     "agent_time_budget_s": 25
+    },
+    "planner": [
+     {
+      "calls": [
+       [
+        "financial_metrics",
+        {
+         "companies": [
+          "Nvidia"
+         ],
+         "fiscal_years": [
+          2023
+         ]
+        }
+       ],
+       [
+        "lookup_company",
+        {
+         "name": "AMD"
+        }
+       ]
+      ],
+      "usage": [
+       500,
+       40
+      ]
+     },
+     {
+      "calls": [
+       [
+        "compute_change",
+        {
+         "company": "Nvidia",
+         "metric": "revenue",
+         "from_period_end": "2023-01-29",
+         "to_period_end": "2024-01-28"
+        }
+       ]
+      ],
+      "usage": [
+       700,
+       30
+      ]
+     },
+     {
+      "calls": [],
+      "usage": [
+       500,
+       40
+      ]
+     }
+    ],
+    "writer": {
+     "model": "openai/gpt-6-luna",
+     "parts": [
+      "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. ",
+      "Its fiscal 2023 revenue was $27.0 billion [xbrl:1045810:revenue:2023-01-29]."
+     ],
+     "usage": [
+      12000,
+      300
+     ],
+     "finish": "stop",
+     "fail": null
+    },
+    "model": null,
+    "escalation": null,
+    "close_after_events": null
+   },
+   "events": [
+    {
+     "event": "step",
+     "n": 1,
+     "tool": "financial_metrics",
+     "args": {
+      "companies": [
+       "Nvidia"
+      ],
+      "fiscal_years": [
+       2023
+      ]
+     },
+     "summary": "financial_metrics: 0 new metric rows for Nvidia",
+     "ok": true
+    },
+    {
+     "event": "step",
+     "n": 2,
+     "tool": "lookup_company",
+     "args": {
+      "name": "AMD"
+     },
+     "summary": "lookup_company: AMD (SEC filer, 0 annual filing years)",
+     "ok": true
+    },
+    {
+     "event": "step",
+     "n": 3,
+     "tool": "compute_change",
+     "args": {
+      "company": "Nvidia",
+      "metric": "revenue",
+      "from_period_end": "2023-01-29",
+      "to_period_end": "2024-01-28"
+     },
+     "summary": "compute_change: +125.9% revenue for Nvidia",
+     "ok": true
+    },
+    {
+     "event": "retrieval",
+     "anchors": {
+      "Nvidia": 1045810,
+      "TSMC": 1046179
+     },
+     "counts": {
+      "edges": 3,
+      "metrics": 10,
+      "risks": 2,
+      "temporal": 2,
+      "chunks": 8
+     },
+     "anchor_defaulted": false
+    },
+    {
+     "event": "delta",
+     "text": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. "
+    },
+    {
+     "event": "delta",
+     "text": "Its fiscal 2023 revenue was $27.0 billion [xbrl:1045810:revenue:2023-01-29]."
+    },
+    {
+     "event": "done",
+     "question": "How exposed is Nvidia to TSMC?",
+     "strategy": "agent",
+     "answer": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. Its fiscal 2023 revenue was $27.0 billion [xbrl:1045810:revenue:2023-01-29].",
+     "citations": [
+      "0001045810-26-000021:I.1A:0001",
+      "xbrl:1045810:revenue:2023-01-29"
+     ],
+     "hallucinated": [],
+     "checks": {
+      "citations_retrieved": true,
+      "numbers_grounded": true,
+      "numbers_checked": 1,
+      "unmatched_numbers": [],
+      "echoed_numbers": [],
+      "pseudo_citations": [],
+      "has_citation": true,
+      "is_refusal": false,
+      "unsupported_removal_claim": false,
+      "unsupported_removal_sentences": []
+     },
+     "finish_reason": "stop",
+     "usage": {
+      "prompt_tokens": 12000,
+      "completion_tokens": 300
+     },
+     "cost_usd": 0.001575,
+     "chunk_ids": [
+      "0001045810-26-000021:I.1A:0001",
+      "0001045810-26-000021:I.1A:0002",
+      "0001045810-26-000021:I.1A:0003",
+      "0001045810-26-000021:I.1A:0004",
+      "0001045810-26-000021:I.1A:0005",
+      "0001045810-26-000021:I.1A:0006",
+      "0001045810-26-000021:I.1A:0007",
+      "0001045810-26-000021:I.1A:0008"
+     ],
+     "context_chars": 4299,
+     "agent": {
+      "tool_calls": [
+       {
+        "tool": "financial_metrics",
+        "args": {
+         "companies": [
+          "Nvidia"
+         ],
+         "fiscal_years": [
+          2023
+         ]
+        },
+        "ok": true
+       },
+       {
+        "tool": "lookup_company",
+        "args": {
+         "name": "AMD"
+        },
+        "ok": true
+       },
+       {
+        "tool": "compute_change",
+        "args": {
+         "company": "Nvidia",
+         "metric": "revenue",
+         "from_period_end": "2023-01-29",
+         "to_period_end": "2024-01-28"
+        },
+        "ok": true
+       }
+      ],
+      "model_calls": 3,
+      "elapsed_s": "<elapsed_s>",
+      "fallback_reason": null,
+      "planner_model": "openai/gpt-6-luna",
+      "planner_usage": {
+       "prompt_tokens": 1700,
+       "completion_tokens": 110
+      },
+      "planner_cost_usd": 0.000225,
+      "planner_prompt_version": "1",
+      "stop_reason": "planner_done"
+     }
+    }
+   ],
+   "final": {
+    "terminal": "done",
+    "usage": {
+     "prompt_tokens": 12000,
+     "completion_tokens": 300
+    },
+    "cost_usd": 0.001575,
+    "planner_usage": {
+     "prompt_tokens": 1700,
+     "completion_tokens": 110
+    },
+    "planner_cost_usd": 0.000225,
+    "abandoned": false,
+    "abandoned_spend_usd": null
+   },
+   "observed": {
+    "prompt_hashes": [
+     "88f7d2be524febcd"
+    ],
+    "planner_message_hashes": [
+     "479d03ee9faac376",
+     "5e7d52c121e714e1",
+     "ba735e8fabc6dacb"
+    ],
+    "warnings": [],
+    "tracer_calls": [
+     [
+      "span",
+      "agent"
+     ],
+     [
+      "span",
+      "prefetch"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "span",
+      "tool"
+     ],
+     [
+      "span",
+      "tool"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "span",
+      "tool"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "flush",
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "agent_draft_rejected_escalates",
+   "inputs": {
+    "question": "How exposed is Nvidia to TSMC?",
+    "strategy": "agent",
+    "settings": {
+     "agent_planner_model": "openai/gpt-6-luna",
+     "agent_max_tool_calls": 4,
+     "agent_max_model_calls": 3,
+     "agent_time_budget_s": 25
+    },
+    "planner": [
+     {
+      "calls": [
+       [
+        "financial_metrics",
+        {
+         "companies": [
+          "Nvidia"
+         ],
+         "fiscal_years": [
+          2026
+         ]
+        }
+       ]
+      ],
+      "usage": [
+       500,
+       40
+      ]
+     },
+     {
+      "calls": [],
+      "usage": [
+       500,
+       40
+      ]
+     }
+    ],
+    "writer": {
+     "model": "openai/gpt-6-luna",
+     "parts": [
+      "Nvidia depends on TSMC [0000000000-00-000000:I.1:9999]."
+     ],
+     "usage": [
+      9000,
+      200
+     ],
+     "finish": "stop",
+     "fail": null
+    },
+    "model": "openai/gpt-6-luna",
+    "escalation": {
+     "model": "anthropic/claude-sonnet-5",
+     "stream": {
+      "model": "anthropic/claude-sonnet-5",
+      "parts": [
+       "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. ",
+       "Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25]."
+      ],
+      "usage": [
+       12000,
+       300
+      ],
+      "finish": "stop",
+      "fail": null
+     }
+    },
+    "close_after_events": null
+   },
+   "events": [
+    {
+     "event": "step",
+     "n": 1,
+     "tool": "financial_metrics",
+     "args": {
+      "companies": [
+       "Nvidia"
+      ],
+      "fiscal_years": [
+       2026
+      ]
+     },
+     "summary": "financial_metrics: 0 new metric rows for Nvidia",
+     "ok": true
+    },
+    {
+     "event": "retrieval",
+     "anchors": {
+      "Nvidia": 1045810,
+      "TSMC": 1046179
+     },
+     "counts": {
+      "edges": 3,
+      "metrics": 10,
+      "risks": 2,
+      "temporal": 2,
+      "chunks": 8
+     },
+     "anchor_defaulted": false
+    },
+    {
+     "event": "escalated",
+     "reasons": [
+      "invalid_citation"
+     ],
+     "from": "openai/gpt-6-luna",
+     "to": "anthropic/claude-sonnet-5"
+    },
+    {
+     "event": "delta",
+     "text": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. "
+    },
+    {
+     "event": "delta",
+     "text": "Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25]."
+    },
+    {
+     "event": "done",
+     "question": "How exposed is Nvidia to TSMC?",
+     "strategy": "agent",
+     "answer": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25].",
+     "citations": [
+      "0001045810-26-000021:I.1A:0001",
+      "xbrl:1045810:revenue:2026-01-25"
+     ],
+     "hallucinated": [],
+     "checks": {
+      "citations_retrieved": true,
+      "numbers_grounded": true,
+      "numbers_checked": 1,
+      "unmatched_numbers": [],
+      "echoed_numbers": [],
+      "pseudo_citations": [],
+      "has_citation": true,
+      "is_refusal": false,
+      "unsupported_removal_claim": false,
+      "unsupported_removal_sentences": []
+     },
+     "finish_reason": "stop",
+     "usage": {
+      "prompt_tokens": 21000,
+      "completion_tokens": 500
+     },
+     "cost_usd": 0.02814,
+     "chunk_ids": [
+      "0001045810-26-000021:I.1A:0001",
+      "0001045810-26-000021:I.1A:0002",
+      "0001045810-26-000021:I.1A:0003",
+      "0001045810-26-000021:I.1A:0004",
+      "0001045810-26-000021:I.1A:0005",
+      "0001045810-26-000021:I.1A:0006",
+      "0001045810-26-000021:I.1A:0007",
+      "0001045810-26-000021:I.1A:0008"
+     ],
+     "context_chars": 3843,
+     "escalated": true,
+     "escalation_reasons": [
+      "invalid_citation"
+     ],
+     "routed": "cheap",
+     "answered_by": "anthropic/claude-sonnet-5",
+     "agent": {
+      "tool_calls": [
+       {
+        "tool": "financial_metrics",
+        "args": {
+         "companies": [
+          "Nvidia"
+         ],
+         "fiscal_years": [
+          2026
+         ]
+        },
+        "ok": true
+       }
+      ],
+      "model_calls": 2,
+      "elapsed_s": "<elapsed_s>",
+      "fallback_reason": null,
+      "planner_model": "openai/gpt-6-luna",
+      "planner_usage": {
+       "prompt_tokens": 1000,
+       "completion_tokens": 80
+      },
+      "planner_cost_usd": 0.00014,
+      "planner_prompt_version": "1",
+      "stop_reason": "planner_done"
+     }
+    }
+   ],
+   "final": {
+    "terminal": "done",
+    "usage": {
+     "prompt_tokens": 21000,
+     "completion_tokens": 500
+    },
+    "cost_usd": 0.02814,
+    "planner_usage": {
+     "prompt_tokens": 1000,
+     "completion_tokens": 80
+    },
+    "planner_cost_usd": 0.00014,
+    "abandoned": false,
+    "abandoned_spend_usd": null
+   },
+   "observed": {
+    "prompt_hashes": [
+     "7a932e77ff1d5951",
+     "7a932e77ff1d5951"
+    ],
+    "planner_message_hashes": [
+     "479d03ee9faac376",
+     "a49d6f765f4a946f"
+    ],
+    "warnings": [],
+    "tracer_calls": [
+     [
+      "span",
+      "agent"
+     ],
+     [
+      "span",
+      "prefetch"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "span",
+      "tool"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "flush",
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "agent_refused_tool_call",
+   "inputs": {
+    "question": "How exposed is Nvidia to TSMC?",
+    "strategy": "agent",
+    "settings": {
+     "agent_planner_model": "openai/gpt-6-luna",
+     "agent_max_tool_calls": 4,
+     "agent_max_model_calls": 3,
+     "agent_time_budget_s": 25
+    },
+    "planner": [
+     {
+      "calls": [
+       [
+        "run_cypher",
+        {
+         "query": "MATCH (n) RETURN n"
+        }
+       ]
+      ],
+      "usage": [
+       500,
+       40
+      ]
+     },
+     {
+      "calls": [],
+      "usage": [
+       500,
+       40
+      ]
+     }
+    ],
+    "writer": {
+     "model": "openai/gpt-6-luna",
+     "parts": [
+      "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. ",
+      "Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25]."
+     ],
+     "usage": [
+      1000,
+      100
+     ],
+     "finish": "stop",
+     "fail": null
+    },
+    "model": null,
+    "escalation": null,
+    "close_after_events": null
+   },
+   "events": [
+    {
+     "event": "step",
+     "n": 1,
+     "tool": "run_cypher",
+     "args": {},
+     "summary": "run_cypher: refused, unknown tool",
+     "ok": false
+    },
+    {
+     "event": "retrieval",
+     "anchors": {
+      "Nvidia": 1045810,
+      "TSMC": 1046179
+     },
+     "counts": {
+      "edges": 3,
+      "metrics": 10,
+      "risks": 2,
+      "temporal": 2,
+      "chunks": 8
+     },
+     "anchor_defaulted": false
+    },
+    {
+     "event": "delta",
+     "text": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. "
+    },
+    {
+     "event": "delta",
+     "text": "Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25]."
+    },
+    {
+     "event": "done",
+     "question": "How exposed is Nvidia to TSMC?",
+     "strategy": "agent",
+     "answer": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25].",
+     "citations": [
+      "0001045810-26-000021:I.1A:0001",
+      "xbrl:1045810:revenue:2026-01-25"
+     ],
+     "hallucinated": [],
+     "checks": {
+      "citations_retrieved": true,
+      "numbers_grounded": true,
+      "numbers_checked": 1,
+      "unmatched_numbers": [],
+      "echoed_numbers": [],
+      "pseudo_citations": [],
+      "has_citation": true,
+      "is_refusal": false,
+      "unsupported_removal_claim": false,
+      "unsupported_removal_sentences": []
+     },
+     "finish_reason": "stop",
+     "usage": {
+      "prompt_tokens": 1000,
+      "completion_tokens": 100
+     },
+     "cost_usd": 0.00029,
+     "chunk_ids": [
+      "0001045810-26-000021:I.1A:0001",
+      "0001045810-26-000021:I.1A:0002",
+      "0001045810-26-000021:I.1A:0003",
+      "0001045810-26-000021:I.1A:0004",
+      "0001045810-26-000021:I.1A:0005",
+      "0001045810-26-000021:I.1A:0006",
+      "0001045810-26-000021:I.1A:0007",
+      "0001045810-26-000021:I.1A:0008"
+     ],
+     "context_chars": 3843,
+     "agent": {
+      "tool_calls": [
+       {
+        "tool": "run_cypher",
+        "args": {},
+        "ok": false
+       }
+      ],
+      "model_calls": 2,
+      "elapsed_s": "<elapsed_s>",
+      "fallback_reason": null,
+      "planner_model": "openai/gpt-6-luna",
+      "planner_usage": {
+       "prompt_tokens": 1000,
+       "completion_tokens": 80
+      },
+      "planner_cost_usd": 0.00014,
+      "planner_prompt_version": "1",
+      "stop_reason": "planner_done"
+     }
+    }
+   ],
+   "final": {
+    "terminal": "done",
+    "usage": {
+     "prompt_tokens": 1000,
+     "completion_tokens": 100
+    },
+    "cost_usd": 0.00029,
+    "planner_usage": {
+     "prompt_tokens": 1000,
+     "completion_tokens": 80
+    },
+    "planner_cost_usd": 0.00014,
+    "abandoned": false,
+    "abandoned_spend_usd": null
+   },
+   "observed": {
+    "prompt_hashes": [
+     "7a932e77ff1d5951"
+    ],
+    "planner_message_hashes": [
+     "479d03ee9faac376",
+     "6c619eb5a0436bed"
+    ],
+    "warnings": [],
+    "tracer_calls": [
+     [
+      "span",
+      "agent"
+     ],
+     [
+      "span",
+      "prefetch"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "span",
+      "tool"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "flush",
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "agent_planner_error_fallback",
+   "inputs": {
+    "question": "How exposed is Nvidia to TSMC?",
+    "strategy": "agent",
+    "settings": {
+     "agent_planner_model": "openai/gpt-6-luna",
+     "agent_max_tool_calls": 4,
+     "agent_max_model_calls": 3,
+     "agent_time_budget_s": 25
+    },
+    "planner": [
+     {
+      "raise": {
+       "type": "RuntimeError",
+       "message": "400 tools unsupported"
+      }
+     }
+    ],
+    "writer": {
+     "model": "openai/gpt-6-luna",
+     "parts": [
+      "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. ",
+      "Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25]."
+     ],
+     "usage": [
+      1000,
+      100
+     ],
+     "finish": "stop",
+     "fail": null
+    },
+    "model": null,
+    "escalation": null,
+    "close_after_events": null
+   },
+   "events": [
+    {
+     "event": "retrieval",
+     "anchors": {
+      "Nvidia": 1045810,
+      "TSMC": 1046179
+     },
+     "counts": {
+      "edges": 3,
+      "metrics": 10,
+      "risks": 2,
+      "temporal": 2,
+      "chunks": 8
+     },
+     "anchor_defaulted": false
+    },
+    {
+     "event": "delta",
+     "text": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. "
+    },
+    {
+     "event": "delta",
+     "text": "Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25]."
+    },
+    {
+     "event": "done",
+     "question": "How exposed is Nvidia to TSMC?",
+     "strategy": "agent",
+     "answer": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25].",
+     "citations": [
+      "0001045810-26-000021:I.1A:0001",
+      "xbrl:1045810:revenue:2026-01-25"
+     ],
+     "hallucinated": [],
+     "checks": {
+      "citations_retrieved": true,
+      "numbers_grounded": true,
+      "numbers_checked": 1,
+      "unmatched_numbers": [],
+      "echoed_numbers": [],
+      "pseudo_citations": [],
+      "has_citation": true,
+      "is_refusal": false,
+      "unsupported_removal_claim": false,
+      "unsupported_removal_sentences": []
+     },
+     "finish_reason": "stop",
+     "usage": {
+      "prompt_tokens": 1000,
+      "completion_tokens": 100
+     },
+     "cost_usd": 0.00015,
+     "chunk_ids": [
+      "0001045810-26-000021:I.1A:0001",
+      "0001045810-26-000021:I.1A:0002",
+      "0001045810-26-000021:I.1A:0003",
+      "0001045810-26-000021:I.1A:0004",
+      "0001045810-26-000021:I.1A:0005",
+      "0001045810-26-000021:I.1A:0006",
+      "0001045810-26-000021:I.1A:0007",
+      "0001045810-26-000021:I.1A:0008"
+     ],
+     "context_chars": 3843,
+     "agent": {
+      "tool_calls": [],
+      "model_calls": 1,
+      "elapsed_s": "<elapsed_s>",
+      "fallback_reason": "planner_error:RuntimeError",
+      "planner_model": "openai/gpt-6-luna",
+      "planner_usage": {
+       "prompt_tokens": 0,
+       "completion_tokens": 0
+      },
+      "planner_cost_usd": 0.0,
+      "planner_prompt_version": "1",
+      "stop_reason": "fallback"
+     }
+    }
+   ],
+   "final": {
+    "terminal": "done",
+    "usage": {
+     "prompt_tokens": 1000,
+     "completion_tokens": 100
+    },
+    "cost_usd": 0.00015,
+    "planner_usage": {
+     "prompt_tokens": 0,
+     "completion_tokens": 0
+    },
+    "planner_cost_usd": 0.0,
+    "abandoned": false,
+    "abandoned_spend_usd": null
+   },
+   "observed": {
+    "prompt_hashes": [
+     "7a932e77ff1d5951"
+    ],
+    "planner_message_hashes": [
+     "479d03ee9faac376"
+    ],
+    "warnings": [
+     "semigraph.agent: the planner call failed (planner_error:RuntimeError): answering from the plain retrieval"
+    ],
+    "tracer_calls": [
+     [
+      "span",
+      "agent"
+     ],
+     [
+      "span",
+      "prefetch"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "event",
+      "fallback"
+     ],
+     [
+      "flush",
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "agent_writer_error",
+   "inputs": {
+    "question": "How exposed is Nvidia to TSMC?",
+    "strategy": "agent",
+    "settings": {
+     "agent_planner_model": "openai/gpt-6-luna",
+     "agent_max_tool_calls": 4,
+     "agent_max_model_calls": 3,
+     "agent_time_budget_s": 25
+    },
+    "planner": [
+     {
+      "calls": [
+       [
+        "financial_metrics",
+        {
+         "companies": [
+          "Nvidia"
+         ],
+         "fiscal_years": [
+          2026
+         ]
+        }
+       ]
+      ],
+      "usage": [
+       500,
+       40
+      ]
+     },
+     {
+      "calls": [],
+      "usage": [
+       500,
+       40
+      ]
+     }
+    ],
+    "writer": {
+     "model": "openai/gpt-6-luna",
+     "parts": [
+      "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. "
+     ],
+     "usage": [
+      12000,
+      300
+     ],
+     "finish": "stop",
+     "fail": {
+      "type": "RuntimeError",
+      "message": "stream interrupted"
+     }
+    },
+    "model": null,
+    "escalation": null,
+    "close_after_events": null
+   },
+   "events": [
+    {
+     "event": "step",
+     "n": 1,
+     "tool": "financial_metrics",
+     "args": {
+      "companies": [
+       "Nvidia"
+      ],
+      "fiscal_years": [
+       2026
+      ]
+     },
+     "summary": "financial_metrics: 0 new metric rows for Nvidia",
+     "ok": true
+    },
+    {
+     "event": "retrieval",
+     "anchors": {
+      "Nvidia": 1045810,
+      "TSMC": 1046179
+     },
+     "counts": {
+      "edges": 3,
+      "metrics": 10,
+      "risks": 2,
+      "temporal": 2,
+      "chunks": 8
+     },
+     "anchor_defaulted": false
+    },
+    {
+     "event": "delta",
+     "text": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. "
+    },
+    {
+     "event": "error",
+     "detail": "RuntimeError: stream interrupted",
+     "partial": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. ",
+     "usage": {
+      "prompt_tokens": 12000,
+      "completion_tokens": 300
+     },
+     "cost_usd": 0.00149,
+     "strategy": "agent"
+    }
+   ],
+   "final": {
+    "terminal": "error",
+    "usage": {
+     "prompt_tokens": 12000,
+     "completion_tokens": 300
+    },
+    "cost_usd": 0.00149,
+    "planner_usage": null,
+    "planner_cost_usd": null,
+    "abandoned": false,
+    "abandoned_spend_usd": null
+   },
+   "observed": {
+    "prompt_hashes": [
+     "7a932e77ff1d5951"
+    ],
+    "planner_message_hashes": [
+     "479d03ee9faac376",
+     "a49d6f765f4a946f"
+    ],
+    "warnings": [],
+    "tracer_calls": [
+     [
+      "span",
+      "agent"
+     ],
+     [
+      "span",
+      "prefetch"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "span",
+      "tool"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "flush",
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "agent_disconnect_mid_plan",
+   "inputs": {
+    "question": "How exposed is Nvidia to TSMC?",
+    "strategy": "agent",
+    "settings": {
+     "agent_planner_model": "openai/gpt-6-luna",
+     "agent_max_tool_calls": 4,
+     "agent_max_model_calls": 3,
+     "agent_time_budget_s": 25
+    },
+    "planner": [
+     {
+      "calls": [
+       [
+        "financial_metrics",
+        {
+         "companies": [
+          "Nvidia"
+         ],
+         "fiscal_years": [
+          2026
+         ]
+        }
+       ]
+      ],
+      "usage": [
+       500,
+       40
+      ]
+     },
+     {
+      "calls": [],
+      "usage": [
+       500,
+       40
+      ]
+     }
+    ],
+    "writer": {
+     "model": "openai/gpt-6-luna",
+     "parts": [
+      "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. ",
+      "Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25]."
+     ],
+     "usage": [
+      1000,
+      100
+     ],
+     "finish": "stop",
+     "fail": null
+    },
+    "model": null,
+    "escalation": null,
+    "close_after_events": 1
+   },
+   "events": [
+    {
+     "event": "step",
+     "n": 1,
+     "tool": "financial_metrics",
+     "args": {
+      "companies": [
+       "Nvidia"
+      ],
+      "fiscal_years": [
+       2026
+      ]
+     },
+     "summary": "financial_metrics: 0 new metric rows for Nvidia",
+     "ok": true
+    }
+   ],
+   "final": {
+    "terminal": null,
+    "usage": null,
+    "cost_usd": null,
+    "planner_usage": null,
+    "planner_cost_usd": null,
+    "abandoned": true,
+    "abandoned_spend_usd": 7e-05
+   },
+   "observed": {
+    "prompt_hashes": [],
+    "planner_message_hashes": [
+     "479d03ee9faac376"
+    ],
+    "warnings": [
+     "semigraph.agent: the agent stream was abandoned before a terminal event; the planner had already cost $0.000070"
+    ],
+    "tracer_calls": [
+     [
+      "span",
+      "agent"
+     ],
+     [
+      "span",
+      "prefetch"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "span",
+      "tool"
+     ],
+     [
+      "flush",
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "name": "agent_disconnect_mid_answer",
+   "inputs": {
+    "question": "How exposed is Nvidia to TSMC?",
+    "strategy": "agent",
+    "settings": {
+     "agent_planner_model": "openai/gpt-6-luna",
+     "agent_max_tool_calls": 4,
+     "agent_max_model_calls": 3,
+     "agent_time_budget_s": 25
+    },
+    "planner": [
+     {
+      "calls": [
+       [
+        "financial_metrics",
+        {
+         "companies": [
+          "Nvidia"
+         ],
+         "fiscal_years": [
+          2026
+         ]
+        }
+       ]
+      ],
+      "usage": [
+       500,
+       40
+      ]
+     },
+     {
+      "calls": [],
+      "usage": [
+       500,
+       40
+      ]
+     }
+    ],
+    "writer": {
+     "model": "openai/gpt-6-luna",
+     "parts": [
+      "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. ",
+      "Its fiscal 2026 revenue was $215.9 billion [xbrl:1045810:revenue:2026-01-25]."
+     ],
+     "usage": [
+      12000,
+      300
+     ],
+     "finish": "stop",
+     "fail": null
+    },
+    "model": null,
+    "escalation": null,
+    "close_after_events": 3
+   },
+   "events": [
+    {
+     "event": "step",
+     "n": 1,
+     "tool": "financial_metrics",
+     "args": {
+      "companies": [
+       "Nvidia"
+      ],
+      "fiscal_years": [
+       2026
+      ]
+     },
+     "summary": "financial_metrics: 0 new metric rows for Nvidia",
+     "ok": true
+    },
+    {
+     "event": "retrieval",
+     "anchors": {
+      "Nvidia": 1045810,
+      "TSMC": 1046179
+     },
+     "counts": {
+      "edges": 3,
+      "metrics": 10,
+      "risks": 2,
+      "temporal": 2,
+      "chunks": 8
+     },
+     "anchor_defaulted": false
+    },
+    {
+     "event": "delta",
+     "text": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. "
+    }
+   ],
+   "final": {
+    "terminal": null,
+    "usage": null,
+    "cost_usd": null,
+    "planner_usage": null,
+    "planner_cost_usd": null,
+    "abandoned": true,
+    "abandoned_spend_usd": 0.00014
+   },
+   "observed": {
+    "prompt_hashes": [
+     "7a932e77ff1d5951"
+    ],
+    "planner_message_hashes": [
+     "479d03ee9faac376",
+     "a49d6f765f4a946f"
+    ],
+    "warnings": [
+     "semigraph.agent: the agent stream was abandoned before a terminal event; the planner had already cost $0.000140"
+    ],
+    "tracer_calls": [
+     [
+      "span",
+      "agent"
+     ],
+     [
+      "span",
+      "prefetch"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "span",
+      "tool"
+     ],
+     [
+      "span",
+      "plan"
+     ],
+     [
+      "generation",
+      "planner"
+     ],
+     [
+      "flush",
+      null
+     ]
+    ]
+   }
+  }
+ ]
+}
