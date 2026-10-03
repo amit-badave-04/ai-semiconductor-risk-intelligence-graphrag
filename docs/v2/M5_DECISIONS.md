@@ -1,6 +1,6 @@
 # M5 decisions (2026-10-03): the outcome of three councils, and what it changes in M5_PLAN.md
 
-**Status: DRAFT FOR OWNER APPROVAL. Nothing is built, no code is changed, nothing is deployed.** Where this file and `M5_PLAN.md` disagree, this file wins once the owner approves it (section 7). Several items amend a pre-registered plan, so they are not final until approved.
+**Status: APPROVED by the owner on 2026-10-03** ("approve A, go with recommendations for 10-13"; record in section 9). Where this file and `M5_PLAN.md` disagree, this file wins. Implementation starts with M5a; nothing is deployed until each phase's gates pass.
 
 ## 0. How these decisions were made
 
@@ -142,3 +142,18 @@ Hosted Qwen3-Embedding-0.6B exists (Cloudflare Workers AI $0.012, DeepInfra $0.0
 ## 8. What none of this proves
 
 The embedder timing is a desktop measurement; the Fly speed, the per-ask CPU outside embedding and the paid benchmark are all still to be measured, and the gate's fleet size depends on them. The Fly burst-credit rules are documented but not observed. The staging proof says nothing about provider capacity (the LLM is mocked), real model latency under load, or a different live fleet, and it is explicitly not a claim about the live site. The Neo4j machine is a single unreplicated 1 GB instance and the largest remaining unknown. Council advice is reasoning over the facts supplied, not evidence; every number a council used is either measured, verified from a cited source, or labelled derived or assumed above.
+
+## 9. Owner approval record (2026-10-03)
+
+The owner replied: "approve A, go with recommendations for 10-13". Recorded as:
+
+| # | Decision | Outcome |
+|---|---|---|
+| 1-9 | Package A (state-store deferral, the scoped load-test sentence, staging spend, the embedder fix with one paid benchmark run, the $10/day cap beside 150/day, `IP_HASH_PEPPER`, same-origin hosting, the nine promotion gates and named preview buyers, the follow-up/M5c order) | **Approved as recommended** |
+| 10 | Framework | **F2: Vite + React with a thin typed client over the existing SSE grammar; no AI SDK and no `/api/chat` encoder.** This replaces the recorded "Next.js static + Vercel AI SDK" of 2026-09-25 (PLAN.md section 0). Fallback order if F2 fails a gate: Next.js static export with the same thin client, then the original choice. |
+| 11 | Per-IP daily paid cap | **Yes: 20 live questions per IP per day** (cached examples unaffected); adjustable by a setting |
+| 12 | Old unsalted IP hashes in the ledger | **Yes, null them at the cutover** (irreversible; only per-address history of rows written before the pepper is lost) |
+| 13 | MCP server and API keys | **Deferred until a first consumer is named**; enabling stays a separate owner decision |
+
+Still decided per event, not now: a temporary scale-up for a buyer demo; Valkey if T1 or T2 fires; the live-class fallback if S2 fails (1.4 item 5). Each staging window is quoted to the owner before it runs.
+
