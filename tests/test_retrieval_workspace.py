@@ -81,6 +81,19 @@ def test_workspace_retrieve_shapes_rows_and_flags_stale_ones(fake_repo):
     assert fake_repo["search_chunks"][0][0] == WORKSPACE_ID
 
 
+def test_workspace_retrieve_uses_a_supplied_query_vec_and_never_calls_the_embedder(monkeypatch):
+    seen = []
+    monkeypatch.setattr(repo, "search_chunks", lambda driver, workspace_id, vec, k, cutoff: seen.append(vec) or [])
+
+    class Forbidden:
+        def encode_query(self, question):
+            raise AssertionError("the caller passed query_vec: the embedder must not be called")
+
+    r = ws.workspace_retrieve("q", WORKSPACE_ID, object(), Forbidden(), query_vec=[0.5, 0.6])
+
+    assert seen == [[0.5, 0.6]] and r == {"doc_chunks": [], "stale_ids": []}
+
+
 def test_workspace_retrieve_passes_an_as_of_cutoff(fake_repo):
     ws.workspace_retrieve("q", WORKSPACE_ID, object(), FakeEmbedder(), as_of="2026-01-01")
     _, _, cutoff = fake_repo["search_chunks"][0]

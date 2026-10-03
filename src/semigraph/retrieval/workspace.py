@@ -101,15 +101,17 @@ def strip_links_images(text: str) -> str:
 
 
 def workspace_retrieve(question: str, workspace_id: str, driver, embedder, *, as_of: str | None = None,
-                       k: int = DEFAULT_K_DOC_CHUNKS) -> dict:
+                       k: int = DEFAULT_K_DOC_CHUNKS, query_vec: list[float] | None = None) -> dict:
     """Filtered vector search over this workspace's chunks (current only, or as of ``as_of``): ``{"doc_chunks":
     [...], "stale_ids": [...]}`` — ``stale_ids`` names any retrieved chunk that is not the document's current one
     (only possible with ``as_of``; a follow-up ask's stale citations are computed from the ANSWER's cited ids
-    instead, see :func:`_stale_citations`, since a plain current-only search never retrieves a superseded chunk)."""
+    instead, see :func:`_stale_citations`, since a plain current-only search never retrieves a superseded chunk).
+    ``query_vec`` is the question's embedding when the caller already has it (the async path embeds once and passes it to
+    both this and the SEC retrieval, where the sync path embeds twice)."""
     from ..uploads import repo
     from ..uploads.versions import as_of_cutoff
 
-    vec = embedder.encode_query(question)
+    vec = query_vec if query_vec is not None else embedder.encode_query(question)
     cutoff = as_of_cutoff(as_of) if as_of else None
     rows = repo.search_chunks(driver, workspace_id, vec, k, cutoff)
     doc_chunks = [{"chunk_id": r["chunk_id"], "text": r["text"], "document_id": r["document_id"],

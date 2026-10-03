@@ -88,6 +88,36 @@ def test_hybrid_asks_the_metrics_query_for_the_fetched_period_count():
     assert d.of("metrics") == [{"ids": [NVDA, TSMC], "periods": METRIC_PERIODS_FETCHED, "years": [], "dates": []}]
 
 
+class ForbiddenEmbedder:
+    def encode_query(self, question):
+        raise AssertionError("the caller passed query_vec: the embedder must not be called")
+
+
+def test_hybrid_uses_a_supplied_query_vec_and_never_calls_the_embedder():
+    d = Driver()
+    hybrid_retrieve("How does Nvidia depend on TSMC?", d, ForbiddenEmbedder(), query_vec=[0.7, 0.9])
+
+    vectors = [p["vec"] for _, p in d.calls if "vec" in p]
+    assert vectors and all(v == [0.7, 0.9] for v in vectors)       # the excerpt search and the risk search both got it
+
+
+def test_hybrid_without_query_vec_embeds_the_question_as_before():
+    d = Driver()
+    hybrid_retrieve("How does Nvidia depend on TSMC?", d, Embedder())
+
+    assert [p["vec"] for _, p in d.calls if "vec" in p] and all(
+        p["vec"] == [0.1, 0.2] for _, p in d.calls if "vec" in p)
+
+
+def test_vector_retrieve_uses_a_supplied_query_vec_and_never_calls_the_embedder():
+    d = Driver()
+    from semigraph.retrieval.retriever import vector_retrieve
+
+    vector_retrieve("q", d, ForbiddenEmbedder(), query_vec=[0.3, 0.4])
+
+    assert [p["vec"] for _, p in d.calls if "vec" in p] == [[0.3, 0.4]]
+
+
 # ---------------------------------------------------------------- external rules: id, date, provenance
 
 def test_rule_edges_carry_the_document_number_date_url_and_link_provenance_with_honest_defaults():

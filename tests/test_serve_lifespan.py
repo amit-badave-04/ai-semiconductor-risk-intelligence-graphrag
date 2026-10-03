@@ -123,6 +123,22 @@ def test_a_tracer_that_fails_at_shutdown_never_keeps_the_driver_open(monkeypatch
     assert boot.order[-2:] == ["tracer.shutdown", "driver.close"]
 
 
+def test_the_lifespan_builds_the_async_path_runtime_and_stops_the_lag_monitor(monkeypatch, boot):
+    """M5a I2: the embedder is wrapped (one bound + a vector cache), the named limiters exist, the loop monitor runs."""
+    from semigraph.serve.embed import LimitedEmbedder
+    from semigraph.serve.limiters import Limiters
+
+    use_settings(monkeypatch, embed_slots=2, db_thread_limit=9, loop_lag_warn_ms=50)
+    with TestClient(main.create_app()) as client:
+        st = client.app.state
+        assert isinstance(st.embedder, LimitedEmbedder) and st.embedder.name == "fake-embedder"   # attributes pass through
+        assert isinstance(st.limiters, Limiters)
+        assert st.limiters.embed.total_tokens == 2 and st.limiters.db.total_tokens == 9
+        assert st.loop_lag.warn_ms == 50
+    # shut down cleanly: the driver still closed and no monitor task is left running
+    assert boot.order[-1] == "driver.close"
+
+
 def test_without_langfuse_keys_the_app_gets_the_no_op_tracer(monkeypatch, boot):
     use_settings(monkeypatch)
     with TestClient(main.create_app()) as client:

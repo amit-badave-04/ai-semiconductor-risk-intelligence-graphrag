@@ -702,7 +702,7 @@ def _passages(driver, pairs: list[dict], question: str) -> tuple[list[dict], lis
 
 
 def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
-                    hops: int = 2) -> dict:
+                    hops: int = 2, *, query_vec: list[float] | None = None) -> dict:
     """Entity-first hybrid retrieval — ported from notebook 14 (v3), C2-hardened.
 
     anchors -> company relation subgraph + capped AFFECTED_BY rules ->
@@ -722,7 +722,9 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     v2 M2 replaces the fallback with a proper no-anchor mode.
 
     ``hops`` bounds the company-relation traversal; AFFECTED_BY rules of the anchors'
-    direct neighbours are included only when ``hops >= 2`` (as in v1).
+    direct neighbours are included only when ``hops >= 2`` (as in v1). ``query_vec`` is the question's embedding when the
+    caller already has it (the async serving path embeds once, on its own thread, and hands the vector in); without it
+    the embedder is called here, as before.
     """
     edges_query = company_edges_query(hops)      # rejects a bad ``hops`` before any work is done
     anchors = detect_anchors(question)
@@ -730,7 +732,7 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     anchor_ids = list(dict.fromkeys(anchors.values())) or [DEFAULT_ANCHOR_CIK]
     if anchor_defaulted:
         logger.info("no canonical entity detected — anchor defaulted to CIK %d", DEFAULT_ANCHOR_CIK)
-    vec = embedder.encode_query(question)
+    vec = query_vec if query_vec is not None else embedder.encode_query(question)
     periods = mentioned_periods(question)
     edges = _company_edges(driver, anchor_ids, edges_query) + _rule_edges(driver, anchor_ids, hops)
     metrics = run_cypher(driver, METRICS_QUERY, ids=anchor_ids, periods=METRIC_PERIODS_FETCHED,
@@ -757,9 +759,10 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
             "temporal_notices": temporal_notices, "chunks": chunks, "anchor_defaulted": anchor_defaulted}
 
 
-def vector_retrieve(question: str, driver, embedder, k: int = 8) -> dict:
+def vector_retrieve(question: str, driver, embedder, k: int = 8, *, query_vec: list[float] | None = None) -> dict:
     """Vector-only baseline — ported from notebook 14. Same context structure
-    as hybrid_retrieve with the graph layers empty (only retrievable chunks)."""
-    chunks = run_cypher(driver, VECTOR_QUERY, k=k, vec=embedder.encode_query(question))
+    as hybrid_retrieve with the graph layers empty (only retrievable chunks). ``query_vec``: see :func:`hybrid_retrieve`."""
+    vec = query_vec if query_vec is not None else embedder.encode_query(question)
+    chunks = run_cypher(driver, VECTOR_QUERY, k=k, vec=vec)
     return {"anchors": {}, "edges": [], "metrics": [], "metric_periods": {"years": [], "dates": []}, "risks": [],
             "temporal": [], "temporal_pairs": [], "temporal_passages": [], "temporal_notices": [], "chunks": chunks}

@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     turnstile_secret_key: str = Field("", repr=False)
     turnstile_required: bool = False          # true = fail CLOSED for live questions when unconfigured/invalid
     read_rate_limit_per_minute: int = 120     # per address, free read endpoints (stats/evidence/examples)
+    # Async answer path (M5a I2, docs/v2/M5A_BUILD_PLAN.md section 2): every blocking hop runs on a worker thread under a
+    # named limiter, so a stream holds no thread while it waits for the model.
+    embed_slots: int = 1                      # concurrent query embeddings (CPU-bound; the machine's cores bound it)
+    db_thread_limit: int = 32                 # threads for graph reads/writes made on behalf of answer streams
+    send_timeout_s: int = 30                  # a client that stops reading an SSE stream is dropped after this
+    loop_lag_warn_ms: int = 100               # the event-loop monitor logs a stall longer than this
 
     # --- Agent (semigraph.agent, docs/v2/M3_AGENT_PLAN.md): OPT-IN retrieval planner, strategy=agent; off = never imported by serve ---
     agent_enabled: bool = False

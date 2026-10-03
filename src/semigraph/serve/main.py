@@ -3,6 +3,7 @@
     uvicorn semigraph.serve.main:app --host 0.0.0.0 --port 8080
 """
 
+import asyncio
 import contextlib
 import hashlib
 import importlib
@@ -23,7 +24,9 @@ from ..graph.client import DatabaseDriver, run_cypher
 from ..graph.schema import PRIVATE_LABEL_PREFIXES, apply_schema, private_label_predicate
 from ..retrieval.answerer import template_fingerprint
 from ..uploads import jobs
+from .embed import LimitedEmbedder
 from .guard import RateLimiter
+from .limiters import LoopLagMonitor, make_limiters
 from .routes import router
 from . import dossier_routes, hardening, monitor, monitor_routes, store, tracing, workspace_routes
 
@@ -224,7 +227,9 @@ async def lifespan(app: FastAPI):
     app.state.tracer = await run_in_threadpool(tracing.get_tracer, settings)
     app.state.settings = settings
     app.state.driver = driver
-    app.state.embedder = embedder
+    # ONE bound on concurrent query embeddings for every caller, plus a bounded cache of query vectors (serve/embed.py).
+    app.state.embedder = LimitedEmbedder(embedder, settings.embed_slots)
+    app.state.limiters = make_limiters(settings)      # must be built inside the running loop (this lifespan)
     app.state.graph_stats = stats
     app.state.snapshot = snapshot
     app.state.example_ids = example_ids
@@ -242,8 +247,13 @@ async def lifespan(app: FastAPI):
     # Background services, each only when its flag is on (freshness monitor, workspace TTL sweeper).
     monitor.start_if_enabled(app)
     jobs.start_if_enabled(app)
+    app.state.loop_lag = LoopLagMonitor(settings.loop_lag_warn_ms)
+    lag_task = asyncio.create_task(app.state.loop_lag.run())
     logger.info("semigraph %s serving — graph: %s", __version__, stats)
     yield
+    lag_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await lag_task
     try:
         await run_in_threadpool(stop_background_services, app)
         await run_in_threadpool(shutdown_tracer_bounded, app.state.tracer)
