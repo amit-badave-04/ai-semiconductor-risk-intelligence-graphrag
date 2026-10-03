@@ -8,11 +8,14 @@ const CHUNK = "0001045810-26-000021:I.1A:0361";
 const XBRL = "xbrl:1045810:revenue:2026-01-25";
 const FR = "fr:2026-19537";
 
+// The shape GET /api/evidence/{chunk id} returns: {"type": "chunk", ...EVIDENCE_QUERY's columns} (serve/routes.py).
+// `item_headlines` (a list, empty until the loader has produced RiskItem nodes) is the only headline field there is.
 const CHUNK_PAYLOAD = {
-  chunk_id: CHUNK, text: "We are subject to laws on privacy <b>fines</b>.", source_url: "https://www.sec.gov/Archives/x.htm",
+  type: "chunk", chunk_id: CHUNK, text: "We are subject to laws on privacy <b>fines</b>.", source_url: "https://www.sec.gov/Archives/x.htm",
   section_key: "0001045810-26-000021:I.1A", section_title: "Risk Factors", accession_no: "0001045810-26-000021",
   form: "10-K", filing_date: "2026-02-25", filer: "NVIDIA Corp", mentions: ["TSMC", "Micron"],
   status: "current", is_current: true, retrievable: true, valid_to: null, superseded_by: null, corrected_by: null,
+  item_headlines: [],
 };
 
 test("a current filing excerpt shows a current badge, its provenance and a safe link", () => {
@@ -47,9 +50,20 @@ test("a corrected excerpt names the amending filing", () => {
   assert.match(v.freshHtml, /badge bad/);
 });
 
-test("a risk item headline, when present, is shown", () => {
-  const v = plain(api.evidenceView(CHUNK, { ...CHUNK_PAYLOAD, headline: "We may be subject to fines under privacy laws" }));
-  assert.match(v.factsHtml, /We may be subject to fines under privacy laws/);
+test("the risk items a chunk belongs to (item_headlines, the field /api/evidence returns) are shown", () => {
+  const v = plain(api.evidenceView(CHUNK, { ...CHUNK_PAYLOAD, item_headlines: ["We may be subject to fines under privacy laws", "Privacy rules differ by country"] }));
+  assert.match(v.factsHtml, /<dt>Risk item<\/dt><dd>We may be subject to fines under privacy laws; Privacy rules differ by country<\/dd>/);
+});
+
+test("a chunk that belongs to no risk item shows no risk-item row", () => {
+  assert.equal(plain(api.evidenceView(CHUNK, CHUNK_PAYLOAD)).factsHtml, "");
+});
+
+test("a field /api/evidence never returns (a singular `headline`) is not rendered", () => {
+  // routes.py EVIDENCE_QUERY returns item_headlines only; the page used to also read `headline`, which no response carries.
+  const v = plain(api.evidenceView(CHUNK, { ...CHUNK_PAYLOAD, headline: "NOT A FIELD OF THE API" }));
+  assert.equal(v.factsHtml, "");
+  assert.doesNotMatch(JSON.stringify(v), /NOT A FIELD OF THE API/);
 });
 
 test("an XBRL id shows the metric payload", () => {
@@ -126,7 +140,7 @@ test("every server-supplied field is escaped in the drawer markup", () => {
   const evil = '<img src=x onerror=alert(1)>"><script>alert(2)</script>';
   const chunk = plain(api.evidenceView(CHUNK, {
     ...CHUNK_PAYLOAD, filer: evil, section_title: evil, form: evil, mentions: [evil], status: evil,
-    superseded_by: evil, corrected_by: evil, valid_to: evil, headline: evil, source_url: 'https://x.test/"><script>1</script>',
+    superseded_by: evil, corrected_by: evil, valid_to: evil, item_headlines: [evil], source_url: 'https://x.test/"><script>1</script>',
   }));
   const xbrl = plain(api.evidenceView(XBRL, { value: evil, unit: evil, period: evil, concept: evil, accession: evil, company: evil }));
   const fr = plain(api.evidenceView(FR, { title: evil, publication_date: evil, document_number: evil, kind: evil, url: `https://x.test/${evil}` }));

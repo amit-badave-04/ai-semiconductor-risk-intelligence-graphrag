@@ -28,7 +28,8 @@ function stub() {
   return {
     style: {}, dataset: {}, innerHTML: "", textContent: "", value: "", hidden: false, disabled: false, className: "",
     classList: { add() {}, remove() {}, toggle() {} },
-    addEventListener() {}, appendChild(c) { return c; }, setAttribute() {}, remove() {},
+    addEventListener() {}, appendChild(c) { return c; }, setAttribute() {}, removeAttribute() {}, remove() {},
+    focus() {}, click() {}, contains() { return false; },   // the evidence drawer and the drop zone call these
     querySelectorAll() { return []; }, closest() { return null; },
     querySelector(sel) { return (kids[sel] ||= stub()); },
   };

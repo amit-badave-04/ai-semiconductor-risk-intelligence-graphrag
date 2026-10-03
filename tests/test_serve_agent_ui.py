@@ -97,6 +97,84 @@ def test_the_new_copy_makes_no_withdrawn_claim_and_says_what_a_trace_holds(page)
         assert part in note, part
 
 
+# ---- keyboard and assistive-technology structure of the evidence drawer and the upload drop zone (M5 decisions 2.3).
+# The behaviour is tested in Node (tests/ui/a11y.test.mjs, against a focus-aware fake DOM built from this markup); these pins
+# are the part a vm cannot see: the markup the browser parses before any script runs, and the CSS fallback.
+
+
+def open_tag(page: str, element_id: str) -> str:
+    """The opening tag of the element with this id, from the markup outside the script."""
+    markup = re.sub(r"<script>.*?</script>", "", page, flags=re.S)
+    match = re.search(rf'<[a-z0-9]+\s[^>]*\bid="{element_id}"[^>]*>', markup)
+    assert match, f"no element with id={element_id!r} in the page markup"
+    return match.group(0)
+
+
+def css_rule(page: str, selector: str) -> str:
+    """The declarations of the rule for exactly ``selector`` (rules may share a line)."""
+    match = re.search(rf"(?:^|\}})\s*{re.escape(selector)}\s*\{{([^}}]*)\}}", page, re.M)
+    assert match, f"no CSS rule for {selector}"
+    return match.group(1)
+
+
+def test_the_closed_evidence_drawer_is_inert_and_aria_hidden_in_the_markup_so_first_load_is_right_without_script(page):
+    tag = open_tag(page, "drawer")
+    assert re.search(r"\sinert[\s>]", tag), "inert removes a closed drawer's links and buttons from the tab order"
+    assert 'aria-hidden="true"' in tag
+    assert 'aria-label="Close evidence"' in open_tag(page, "drawerClose")      # the "×" alone is not a name
+
+
+def test_the_closed_drawer_is_also_visibility_hidden_in_css_as_a_fallback_for_browsers_without_inert(page):
+    closed, opened = css_rule(page, "#drawer"), css_rule(page, "#drawer.open")
+    assert "visibility:hidden" in closed.replace(" ", "")
+    assert "visibility:visible" in opened.replace(" ", "")
+    assert "visibility" in re.search(r"transition:([^;]*)", closed).group(1), "the slide-out finishes before it is hidden"
+
+
+def test_the_drawer_is_opened_and_closed_only_through_openDrawer_and_closeDrawer_so_inert_aria_and_focus_cannot_drift(page):
+    script = script_of(page)
+    assert script.count('classList.add("open")') == 1 and script.count('classList.remove("open")') == 1
+    opening, closing = function_source(script, "openDrawer"), function_source(script, "closeDrawer")
+    assert 'classList.add("open")' in opening and 'removeAttribute("inert")' in opening and 'removeAttribute("aria-hidden")' in opening
+    assert '$("drawerClose").focus()' in opening, "opening moves focus into the drawer"
+    assert 'classList.remove("open")' in closing and 'setAttribute("inert"' in closing and 'setAttribute("aria-hidden", "true")' in closing
+    assert ".focus()" in closing, "closing returns focus to the opener"
+    assert '$("drawerClose").addEventListener("click", closeDrawer)' in script
+    assert re.search(r'e\.key === "Escape"\) closeDrawer\(\)', script)
+    assert "openDrawer(opener)" in function_source(script.replace("async function openCitation", "function openCitation"), "openCitation")
+    assert "openCitation(chip.dataset.id, chip)" in script            # both delegated chip handlers pass the opener
+
+
+def test_the_upload_drop_zone_is_a_focusable_button_with_a_visible_focus_style_and_keeps_its_text(page):
+    tag = open_tag(page, "wsDrop")
+    assert tag.startswith("<div ") and 'role="button"' in tag and 'tabindex="0"' in tag
+    # a <label> may not carry role="button" (ARIA in HTML), so the zone is a div; the file input stays its SIBLING (a click on
+    # a descendant input would bubble back into the zone's own click handler)
+    zone = re.search(r'<div id="wsDrop".*?</div>', page, re.S).group(0)
+    assert "<input" not in zone and 'type="file"' in open_tag(page, "wsFile") and 'accept="' in open_tag(page, "wsFile")
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", zone)).strip()
+    assert text == "Drag a PDF, DOCX, Markdown, TXT or HTML file here, or click to choose one (up to 30 pages)."
+    assert "outline" in css_rule(page, ".drop:focus-visible")
+    script = script_of(page)
+    assert re.search(r'drop\.addEventListener\("keydown"', script) and '"Enter"' in script and '" "' in script
+    assert re.search(r'drop\.addEventListener\("click", \(\) => \$\("wsFile"\)\.click\(\)\)', script)
+
+
+def test_the_chunk_evidence_fields_the_page_reads_are_fields_the_api_returns(page):
+    """/api/evidence returns {"type": "chunk", **EVIDENCE_QUERY's columns}; a field the page reads that no response carries is
+    dead (the page used to read a singular ``headline``; only ``item_headlines`` exists)."""
+    clause = re.sub(r"\s+", " ", routes.EVIDENCE_QUERY.split("RETURN", 1)[1])
+    columns = {"type"}
+    for item in (part.strip() for part in clause.split(",")):
+        alias = re.search(r"\bAS (\w+)$", item)
+        columns.add(alias.group(1) if alias else item)
+    script = script_of(page)
+    chunk_branch = re.search(r"\} else \{\n\s+const mentions = .*?\n  \}\n  return view;", function_source(script, "evidenceView"), re.S)
+    assert chunk_branch, "the chunk branch of evidenceView moved: update this pin"
+    read = set(re.findall(r"\bd\.(\w+)", chunk_branch.group(0))) | set(re.findall(r"\bd\.(\w+)", function_source(script, "freshnessHtml")))
+    assert read and read <= columns, f"the page reads chunk-evidence fields the API does not return: {sorted(read - columns)}"
+
+
 def test_the_served_page_carries_the_agent_containers_and_the_turnstile_substitution(page):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
