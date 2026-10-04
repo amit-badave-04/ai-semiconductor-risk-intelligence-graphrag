@@ -56,12 +56,45 @@ _SUSPICIOUS_RE = re.compile(
 # bare URL (``https://``, any other ``scheme://``, protocol-relative ``//host/...``, or ``www.host/...``) — each
 # stopped at a bracket, a paren, an angle bracket or whitespace so a following citation (``[doc:...]``) is never
 # consumed by an unbounded match.
-_MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
-_MD_LINK_RE = re.compile(r"\[([^\[\]]+)\]\(([^)]*)\)")
-_REF_LINK_RE = re.compile(r"!?\[([^\[\]]+)\]\[([^\[\]]+)\]")
-_REF_LINK_DEF_RE = re.compile(r"^[ \t]*\[[^\]]+\]:[ \t]*\S.*$", re.M)
-_HTML_TAG_RE = re.compile(r"<\/?[a-zA-Z][^<>]*>")
-_BARE_URL_RE = re.compile(r"(?:[a-z][a-z0-9+.\-]*://|//)[^\s\[\]()<>]+|\bwww\.[^\s\[\]()<>]+", re.I)
+#
+# LINEAR TIME ONLY (M5a I2 decision D3; tests/test_retrieval_workspace_regex.py holds a verbatim copy of the old
+# patterns and proves the output is byte for byte the same). The old patterns were quadratic: 222 ms for 10,000
+# characters of letters, 886 ms for 20,000. An answer can be thousands of characters long and a prompt-injected
+# document can influence it, and `re` holds the GIL for a whole match, so no worker thread frees the event loop:
+# the patterns themselves had to become linear. Every quantifier is possessive where the character that follows it
+# is excluded from its class (so giving characters back could never help), which removes the backtracking; what
+# remained was RESTARTING, and each pattern below says how it no longer restarts over text it already scanned.
+#
+# The image, link and reference-definition patterns have an open-ended class that crosses the character that starts
+# a match (`[^\]]` crosses `[` and `!`; `[^)]` crosses `[`; `[^\]]` crosses a newline). Every start inside one such
+# span therefore ends at the same `]` or `)`, and fails for the same reason as the first start did. So each pattern
+# has a second alternative that matches exactly the span the first one failed on (a `![...` whose `]` or `)` never
+# arrives, or arrives in the wrong shape) and the substitution hands that span back unchanged: the next attempt
+# begins after it, and no character is scanned more than about twice. The second alternative ends before any
+# character that could start a match, and it only fires where the first alternative could not have matched.
+_MD_IMAGE_RE = re.compile(r"!\[[^\]]*+\]\([^)]*+\)|(!\[[^\]]*+(?:\](?:\([^)]*+)?)?)")
+# `[^)]` crosses `[`, but after `](` the first alternative can only fail when no `)` is left in the REST of the text,
+# so every later start fails too: the second alternative hands that rest back, once.
+_MD_LINK_RE = re.compile(r"\[([^\[\]]++)\]\(([^)]*+)\)|(\[[^\[\]]++\]\([^)]*+)")
+# Already linear (the classes exclude `[` and `]`, so an attempt stops at the next bracket and the next attempt
+# starts there); possessive only to skip the pointless give-back.
+_REF_LINK_RE = re.compile(r"!?\[([^\[\]]++)\]\[([^\[\]]++)\]")
+# The first alternative is the old pattern (`$` dropped: a possessive `.*` always stops where `$` holds). The second
+# hands back `[`...`]` (or `[`... to the end) when there is no `]:` + target; a `[` directly followed by `]` fails
+# both and costs nothing.
+_REF_LINK_DEF_RE = re.compile(r"^[ \t]*+\[[^\]]++\]:[ \t]*+\S.*+|^([ \t]*+\[[^\]]++\]?)", re.M)
+# Already linear (an attempt stops at the next `<` or `>`, and the next attempt starts there).
+_HTML_TAG_RE = re.compile(r"<\/?[a-zA-Z][^<>]*+>")
+# The scheme alternative restarted at EVERY letter of a run of `[a-z0-9+.\-]` (a long word, `a1a1...`, `http` * n):
+# each start rescanned the run to the end looking for `://`, and `:` is not in the class, so every start in a run
+# ends where the run ends and shares one answer. It now starts only where a run starts (the lookbehind), skips the
+# digits, `+`, `.` and `-` before the run's first letter (that letter is where the old match began, so they are given
+# back with `\1`) and scans the run once. A letters-only lookbehind would stay quadratic on `a1a1...`. The `//` and
+# `www.` alternatives fail in a few characters or consume the rest of their token, and `www.` may still start in the
+# middle of a run (`x.www.evil.test`): only the scheme alternative carries the lookbehind.
+_BARE_URL_RE = re.compile(
+    r"(?<![a-z0-9+.\-])([0-9+.\-]*+)[a-z][a-z0-9+.\-]*+://[^\s\[\]()<>]+|//[^\s\[\]()<>]+|\bwww\.[^\s\[\]()<>]+",
+    re.I)
 
 
 def looks_suspicious(text: str) -> bool:
@@ -72,7 +105,11 @@ def looks_suspicious(text: str) -> bool:
 
 def _link_replacement(match: re.Match) -> str:
     """``[id](url)`` keeps ``[id]`` when ``id`` is itself a well-formed citation (drops only the URL); any other
-    markdown link (real link text, a real URL) is removed whole."""
+    markdown link (real link text, a real URL) is removed whole. A `[x](` with no `)` left anywhere after it is not a
+    link: the second alternative of ``_MD_LINK_RE`` hands that unclosed rest back unchanged."""
+    unclosed = match.group(3)
+    if unclosed is not None:
+        return unclosed
     label = match.group(1)
     return f"[{label}]" if CITE_RE.fullmatch(f"[{label}]") else ""
 
@@ -91,13 +128,14 @@ def strip_links_images(text: str) -> str:
     """Removes markdown images and links (inline and reference-style), reference-link definitions, HTML tags and
     autolinks, and bare/protocol-relative/``www.`` URLs from ``text`` — but never a ``[doc:...]``, ``[fr:...]`` or
     chunk citation (docs/v2/M4_PLAN.md risk 5): an answer driven by untrusted uploaded text must never carry a link
-    or an image to the client."""
-    text = _MD_IMAGE_RE.sub("", text)
+    or an image to the client. Linear time in ``len(text)`` (see the patterns above): it runs on the event loop in the
+    async answer path, where it must never stall every other request."""
+    text = _MD_IMAGE_RE.sub(r"\1", text)
     text = _REF_LINK_RE.sub(_ref_link_replacement, text)
     text = _MD_LINK_RE.sub(_link_replacement, text)
-    text = _REF_LINK_DEF_RE.sub("", text)
+    text = _REF_LINK_DEF_RE.sub(r"\1", text)
     text = _HTML_TAG_RE.sub("", text)
-    return _BARE_URL_RE.sub("", text)
+    return _BARE_URL_RE.sub(r"\1", text)
 
 
 def workspace_retrieve(question: str, workspace_id: str, driver, embedder, *, as_of: str | None = None,

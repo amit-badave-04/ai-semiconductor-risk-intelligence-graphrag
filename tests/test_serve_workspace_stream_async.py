@@ -36,8 +36,10 @@ from pathlib import Path
 from typing import NamedTuple
 
 import anyio
+import anyio.to_thread
 import pytest
 from agent_fakes import LUNA, SONNET, FakeDriver, FakeEmbedder, FakeStream
+from test_answerer_async import gc_paused
 
 from semigraph.retrieval import answerer_async
 from semigraph.retrieval import workspace as ws
@@ -757,6 +759,56 @@ def test_a_cancel_during_the_stale_citation_read_is_raised_before_the_done_event
     assert scope.cancelled_caught, "the cancellation was lost, not raised"
 
 
+# --- ``answerer_async._hop`` is private, and the twin imports it on purpose ----------------------------------------
+# Every blocking hop of the twin goes through it, and the cancellation tests above hold only because it checkpoints
+# once the thread has returned. Renaming it, or swapping it for a bare ``run_sync``, has to break a test here, not
+# production.
+
+def _scope_cancelled_while_a_hop_runs(hop) -> tuple[bool, list[str]]:
+    """(did the cancellation surface in the scope, what the hop handed back) for a scope that is cancelled while
+    ``hop`` has a worker thread running."""
+    started, release, handed_back = threading.Event(), threading.Event(), []
+
+    def work() -> str:
+        started.set()
+        release.wait(HARD_TIMEOUT_S)
+        return "result"
+
+    async def main():
+        scope = anyio.CancelScope()
+
+        async def hop_in_scope():
+            with scope:
+                handed_back.append(await hop(work, limiter=None))
+
+        async def cancel_once_running():
+            while not started.is_set():
+                await asyncio.sleep(0.001)
+            scope.cancel()
+            release.set()
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(hop_in_scope)
+            tg.start_soon(cancel_once_running)
+        return scope.cancelled_caught
+
+    return run(main), handed_back
+
+
+def test_the_hop_the_twin_imports_exists_and_checkpoints_once_the_thread_has_returned():
+    assert workspace_async._hop is answerer_async._hop
+    # the cancellation lands while the thread runs; the hop raises it when the thread returns, handing back nothing
+    assert _scope_cancelled_while_a_hop_runs(workspace_async._hop) == (True, [])
+
+
+def test_the_hop_check_above_tells_a_checkpointing_hop_from_a_bare_one():
+    """The control: a hop that is only ``run_sync`` returns its result into a cancelled scope, which is the bug."""
+    async def bare_hop(fn, *args, limiter):
+        return await anyio.to_thread.run_sync(fn, *args, limiter=limiter)
+
+    assert _scope_cancelled_while_a_hop_runs(bare_hop) == (False, ["result"])
+
+
 LOOP_LAG_WARN_MS = 100
 
 
@@ -790,7 +842,8 @@ def test_twenty_concurrent_asks_never_block_the_event_loop(monkeypatch):
             outer.cancel_scope.cancel()
         return finished, monitor
 
-    finished, monitor = run(main)
+    with gc_paused():
+        finished, monitor = run(main)
     assert len(finished) == 20 and all(kinds(events) == ["retrieval", "delta", "done"] for events in finished)
     assert monitor.warnings == 0, _lag_report(monitor)
 
@@ -814,7 +867,7 @@ def test_the_lag_monitor_used_above_does_catch_a_blocked_loop():
 # --- the link stripper (the ``postprocess`` hook) is regex work over model output ---------------------------------
 # The SEC twin runs the hook on a worker thread under ``limiters.db`` whenever it is given ``limiters`` (the workspace
 # twin always is). That frees the loop for work that releases the GIL; it does not free it for ``re``, which holds the
-# GIL for a whole match (see the xfail below).
+# GIL for a whole match, so the stripper's own patterns have to be linear (see the 20,000-character test below).
 
 def _ask_under_lag_monitor(inputs: dict) -> tuple[list[dict], LoopLagMonitor]:
     """One full ask of the twin with a ``LoopLagMonitor(warn_ms=100)`` running beside it."""
@@ -831,7 +884,8 @@ def _ask_under_lag_monitor(inputs: dict) -> tuple[list[dict], LoopLagMonitor]:
             tg.cancel_scope.cancel()
         return collected, monitor
 
-    return run(main)
+    with gc_paused():
+        return run(main)
 
 
 def _strip_cases() -> list:
@@ -890,15 +944,12 @@ def test_a_10000_character_run_of_letters_is_stripped_and_released_like_any_othe
     assert "evil.test" not in _wire(events) and events[2]["citations"] == [DOC_A]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP in workspace.strip_links_images (workspace.py, unchanged by the twin): the unbounded scheme run of "
-    "_BARE_URL_RE, `[a-z][a-z0-9+.\\-]*://`, is quadratic on a long run of letters (10,000 characters ~220 ms, "
-    "20,000 ~890 ms) and `re` holds the GIL for a whole match, so moving the hook to a worker thread (which "
-    "answerer_async does) does NOT free the loop: measured on 2026-10-04, 10,000 characters lagged the loop 204 ms "
-    "with the strip inline and 217 ms on a thread. When the regex is linear this XPASSes (strict) and the marker "
-    "goes. 20,000 characters, not 10,000, so that a faster machine cannot XPASS it early: the stall is ~6 times the "
-    "100 ms threshold here."))
 def test_a_20000_character_run_of_letters_in_an_answer_does_not_stall_the_event_loop():
+    """What the worker thread could not fix: while ``_BARE_URL_RE`` was quadratic this input stalled the loop for ~890
+    ms (``re`` holds the GIL for a whole match; measured on 2026-10-04, 10,000 characters lagged the loop 204 ms with
+    the strip inline and 217 ms on a thread). ``strip_links_images`` is linear now (the output is proven unchanged by
+    ``test_retrieval_workspace_regex.py``), so the full ask stays under the 100 ms budget. 20,000 characters, not
+    10,000, so that a regression is ~6 times over the budget on any machine."""
     answer = _adversarial(20_000)
     inputs = _scenario(recorder.writer([answer], usage=(900, 30)), [MARGIN])
     _, monitor = _ask_under_lag_monitor(inputs)

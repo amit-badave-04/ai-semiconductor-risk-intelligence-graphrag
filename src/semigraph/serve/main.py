@@ -13,6 +13,7 @@ import threading
 from urllib.parse import quote, unquote
 import time
 
+import anyio
 from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 
@@ -87,7 +88,7 @@ class WorkspaceAccessLogFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(WorkspaceAccessLogFilter())
 
 CONNECT_RETRY_S = 90  # the database machine may still be booting after START
-AGENT_MODULE = "semigraph.agent.stream"
+AGENT_MODULE = "semigraph.agent.stream_async"   # the module the ask route imports when an agent question is served
 TRACER_SHUTDOWN_TIMEOUT_S = 3  # a hung Langfuse endpoint must not delay teardown (or the driver close after it) indefinitely
 
 
@@ -176,8 +177,10 @@ def seed_examples(driver, examples: dict, snapshot_id: str) -> frozenset[str]:
 
 
 def require_agent_package() -> None:
-    """Import the agent at boot when ``AGENT_ENABLED``: a missing langgraph must stop the service HERE, not on the first agent
-    question (and not after the Neo4j start-up retry either: this runs before ``bootstrap``)."""
+    """Import the agent's async stream at boot when ``AGENT_ENABLED`` (it imports the sync agent modules, hence
+    langgraph): a missing langgraph must stop the service HERE, not on the first agent question (and not after the Neo4j
+    start-up retry either: this runs before ``bootstrap``). It is the module ``routes`` imports when an agent question
+    is served."""
     try:
         importlib.import_module(AGENT_MODULE)
     except Exception:
@@ -230,6 +233,8 @@ async def lifespan(app: FastAPI):
     # ONE bound on concurrent query embeddings for every caller, plus a bounded cache of query vectors (serve/embed.py).
     app.state.embedder = LimitedEmbedder(embedder, settings.embed_slots)
     app.state.limiters = make_limiters(settings)      # must be built inside the running loop (this lifespan)
+    # The in-flight cap of paid answers: taken without waiting by ``PaidStream`` (a full cap is the busy event).
+    app.state.answer_limiter = anyio.CapacityLimiter(settings.max_concurrent_answers)
     app.state.graph_stats = stats
     app.state.snapshot = snapshot
     app.state.example_ids = example_ids
@@ -238,7 +243,6 @@ async def lifespan(app: FastAPI):
     app.state.free_rate_limiter = RateLimiter(settings.free_rate_limit_questions,
                                               settings.rate_limit_window_seconds)
     app.state.read_rate_limiter = RateLimiter(settings.read_rate_limit_per_minute, 60)
-    app.state.answer_slots = threading.BoundedSemaphore(settings.max_concurrent_answers)
     # M4 upload gates (docs/v2/M4_PLAN.md 4.4 and 5): per-address windows and ONE upload at a time on the machine
     # (embedding never takes an answer slot).
     app.state.workspace_create_limiter = RateLimiter(settings.workspace_create_per_day, SECONDS_PER_DAY)

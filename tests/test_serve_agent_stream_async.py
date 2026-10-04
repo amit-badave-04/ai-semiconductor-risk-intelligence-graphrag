@@ -9,7 +9,8 @@ text, so a reworded message fails here.
 
 The rest pins what only the async design can get wrong: the planning runs on ONE worker thread under ``limiters.db``
 and never on the loop; a consumer that goes away (close, anyio scope, native ``task.cancel()``) stops further paid
-planner calls, joins the thread and still reports the planner's dollars; nothing blocks the loop; the module never
+planner calls, joins the thread and still reports the planner's dollars (also one that goes away while the prefetch
+is still running: the planner is guarded, not only the thread's loop); nothing blocks the loop; the module never
 reaches uploaded documents.
 
 No network, no Neo4j, no model. Every async test runs under ``anyio.fail_after`` and a watchdog, so a handshake
@@ -30,8 +31,9 @@ import sys
 import threading
 import time
 import types
-from contextlib import aclosing
+from contextlib import aclosing, contextmanager
 from pathlib import Path
+from warnings import catch_warnings, simplefilter
 
 import anyio
 import pytest
@@ -132,12 +134,12 @@ def writer_kwargs(inputs: dict, prompts: list[str]) -> dict:
 
 
 def open_stream(limiters, planner, *, tracer=None, settings=None, spec=None, prompts=None, stall=False,
-                streams=None, **kw):
+                streams=None, embedder=None, **kw):
     """One ``aagent_answer_stream`` over the recorder's question, ``FakeDriver.world()`` and a scripted writer."""
     spec = spec or recorder.writer(recorder.GOOD_PARTS, usage=(12000, 300))
     factory = recorder._writer_factory(spec, prompts if prompts is not None else [])
     kw.setdefault("llm_stream", asyncified(factory, streams, stall=stall))
-    return aagent_answer_stream(recorder.QUESTION, FakeDriver.world(), FakeEmbedder(), limiters=limiters,
+    return aagent_answer_stream(recorder.QUESTION, FakeDriver.world(), embedder or FakeEmbedder(), limiters=limiters,
                                 planner=planner, settings=settings or make_settings(**recorder.AGENT_SETTINGS),
                                 tracer=tracer, **kw)
 
@@ -187,14 +189,16 @@ class ProbePlanner(ScriptedPlanner):
 
 
 class RunAgentSpy:
-    """Wraps ``run_agent``: the thread of every resumption, and a flag set when the generator is closed (or ended)."""
+    """Wraps ``run_agent``: the thread of every resumption, the planner it was handed, and a flag set when the
+    generator is closed (or ended)."""
 
     def __init__(self, monkeypatch):
-        self.resumed, self.finished = [], threading.Event()
+        self.resumed, self.planners, self.finished = [], [], threading.Event()
         real = stream_async.run_agent
         spy = self
 
         def wrapped(*args, **kwargs):
+            spy.planners.append(kwargs["planner"])
             inner = real(*args, **kwargs)
             try:
                 while True:
@@ -224,6 +228,51 @@ class LedgerSpy:
                 spy.made.append(self)
 
         monkeypatch.setattr(stream_async, "Ledger", Spied)
+
+
+class PlanningSpy:
+    """Keeps every ``_Planning`` the stream makes, so a test can see when its stop flag is set (the consumer left)."""
+
+    def __init__(self, monkeypatch):
+        self.made = []
+        spy, real = self, stream_async._Planning
+
+        class Spied(real):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                spy.made.append(self)
+
+        monkeypatch.setattr(stream_async, "_Planning", Spied)
+
+    def stopped(self) -> bool:
+        return bool(self.made) and self.made[0]._stop.is_set()
+
+
+class GatedEmbedder(FakeEmbedder):
+    """An embedder that waits inside ``encode_query`` until ``gate`` is set, which pins the prefetch of ``run_agent``
+    inside the planning thread (a wait for an embed slot would pin it the same way). The wait times out, so a bug
+    fails instead of hanging."""
+
+    def __init__(self):
+        super().__init__()
+        self.entered, self.gate = threading.Event(), threading.Event()
+
+    def encode_query(self, text):
+        self.entered.set()
+        assert self.gate.wait(timeout=10), "the gate was never opened"
+        return super().encode_query(text)
+
+
+@contextmanager
+def unclosed_resources():
+    """The messages of the ResourceWarnings raised while the block runs and what it dropped is collected (anyio reports
+    an unclosed stream when it is garbage collected). Read the yielded list AFTER the block."""
+    found = []
+    with catch_warnings(record=True) as caught:
+        simplefilter("always")
+        yield found
+        gc.collect()
+    found.extend(str(w.message) for w in caught if issubclass(w.category, ResourceWarning))
 
 
 class Halt(BaseException):
@@ -412,6 +461,46 @@ def test_a_stream_that_is_never_iterated_starts_no_planning():
 
     run(main)
     assert planner.calls == []
+
+
+PLANNER_PARAMETERS = [("messages", inspect.Parameter.POSITIONAL_OR_KEYWORD),
+                      ("tools", inspect.Parameter.POSITIONAL_OR_KEYWORD), ("timeout", inspect.Parameter.KEYWORD_ONLY)]
+
+
+def test_the_planner_guard_forwards_the_call_unchanged_until_the_stop_flag_is_set():
+    planner, stop = ScriptedPlanner(turn(FM_2026)), threading.Event()
+    reply, messages, tools = planner.turns[0], [{"role": "user", "content": "q"}], [{"type": "function"}]
+    guarded = stream_async._unless_stopped(planner, stop)
+    assert [(n, p.kind) for n, p in inspect.signature(guarded).parameters.items()] == PLANNER_PARAMETERS
+    assert guarded(messages, tools, timeout=1.5) is reply
+    assert planner.calls == [{"messages": messages, "tools": tools, "timeout": 1.5}]
+    stop.set()
+    with pytest.raises(stream_async._PlanningStopped):
+        guarded(messages, tools, timeout=1.5)
+    assert len(planner.calls) == 1                              # the refused call never reached the planner
+    # Not an Exception: run_agent turns a planner's Exception into a fallback and a WARNING, and this is neither.
+    assert not issubclass(stream_async._PlanningStopped, Exception)
+
+
+def test_run_agent_is_handed_the_injected_planner_behind_a_guard_with_the_planner_signature(monkeypatch):
+    spy, planner = RunAgentSpy(monkeypatch), ProbePlanner(turn())
+    assert run(lambda: collect(open_stream(make_limiters(), planner)))[-1]["event"] == "done"
+    (handed,) = spy.planners
+    assert handed is not planner and len(planner.calls) == 1 and planner.calls[0]["timeout"] > 0
+    assert [(n, p.kind) for n, p in inspect.signature(handed).parameters.items()] == PLANNER_PARAMETERS
+
+
+def test_the_default_planner_is_called_through_the_guard_with_the_model_of_the_settings(monkeypatch):
+    live, made = ProbePlanner(turn(FM_2026), turn()), []
+
+    def default_planner(model):
+        made.append(model)
+        return live
+
+    monkeypatch.setattr(stream_async, "LiteLLMPlanner", default_planner)     # the real one would call the network
+    spy = RunAgentSpy(monkeypatch)
+    assert run(lambda: collect(open_stream(make_limiters(), None)))[-1]["event"] == "done"
+    assert made == [LUNA] and len(live.calls) == 2 and spy.planners[0] is not live
 
 
 # --- 3. disconnect: the stop flag --------------------------------------------------------------------------------
@@ -880,12 +969,104 @@ def test_a_scope_that_is_already_cancelled_when_the_first_event_is_asked_for_sta
         seen["cancelled"] = scope.cancelled_caught
         await anyio.sleep(0.1)                             # a call that was going to start would have by now
 
-    with recorder.captured_warnings() as warnings:
+    with recorder.captured_warnings() as warnings, unclosed_resources() as unclosed:
         run(main)
     assert seen["cancelled"] and events == []
     assert planner.idents == [] and planner.calls == []    # no planner call, hence no spend and no abandonment report
     assert abandoned(warnings) == []
+    assert unclosed == []                                  # no host task ever ran, yet nothing was left unclosed
     wait_for_threads_to_end(before)
+
+
+def test_a_stream_cancelled_before_its_first_event_closes_both_ends_of_its_hand_over_stream(monkeypatch):
+    """No event was handed over and no host task ever ran, so only ``aclose`` can close the sending end. A closed
+    receiving end alone would make a later ``send`` fail as BROKEN rather than as closed, and leave the object to the
+    collector (a ResourceWarning, an error under ``python -X dev -W error::ResourceWarning``)."""
+    plannings = PlanningSpy(monkeypatch)
+
+    async def main():
+        agen = open_stream(make_limiters(), ProbePlanner(turn(FM_2026), turn()))
+        with anyio.CancelScope() as scope:
+            scope.cancel()
+            async for _ in agen:
+                pass
+
+    run(main)
+    (planning,) = plannings.made
+    with pytest.raises(anyio.ClosedResourceError):
+        planning._send.send_nowait({})
+
+
+def leave_during_the_prefetch(how: str, monkeypatch, planner, **open_kw) -> types.SimpleNamespace:
+    """Pin the prefetch of ``run_agent`` inside the planning thread (the embedder waits on a gate), make the consumer
+    leave in the way ``how`` says (an anyio scope, a native ``task.cancel()``, or two of them with the second landing
+    during the join), and open the gate only once the stream has been told to stop: the thread finds the consumer gone
+    at the first moment it could start a planner call. ``planner`` is whatever ``open_stream`` takes."""
+    spy, plannings, embedder = RunAgentSpy(monkeypatch), PlanningSpy(monkeypatch), GatedEmbedder()
+    prompts, streams, events, holder = [], [], [], {}
+    before = set(threading.enumerate())
+
+    async def consume(agen):
+        with anyio.CancelScope() as scope:
+            holder["scope"] = scope
+            async for event in agen:
+                events.append(event)
+
+    async def open_the_gate_once_the_stream_was_told_to_stop():
+        await wait_until(plannings.stopped)
+        await anyio.sleep(0.15)                            # a second cancellation can land while the join waits
+        embedder.gate.set()
+
+    async def main():
+        agen = open_stream(make_limiters(), planner, embedder=embedder, prompts=prompts, streams=streams, **open_kw)
+        gate = asyncio.create_task(open_the_gate_once_the_stream_was_told_to_stop())
+        task = asyncio.create_task(consume(agen))
+        await wait_until(embedder.entered.is_set)          # the prefetch is running on the planning thread
+        if how == "anyio_scope":
+            holder["scope"].cancel()
+        else:
+            task.cancel()
+            if how == "double_native_cancel":
+                await anyio.sleep(0.05)
+                task.cancel()
+        (outcome,) = await asyncio.gather(task, return_exceptions=True)
+        await gate
+        return outcome
+
+    with recorder.captured_warnings() as warnings:
+        outcome = run(main)
+    return types.SimpleNamespace(outcome=outcome, events=events, prompts=prompts, streams=streams, spy=spy,
+                                 embedder=embedder, warnings=warnings, before=before)
+
+
+@pytest.mark.parametrize("how", ["anyio_scope", "native_cancel", "double_native_cancel"])
+def test_a_disconnect_during_the_prefetch_starts_no_planner_call(how, monkeypatch):
+    """The prefetch and the first plan node run inside ONE resumption of ``run_agent`` (it yields only step events), so
+    the thread's own stop check never sees a client that left meanwhile: the planner has to be guarded, or a paid call
+    is made for a client that has gone. Nothing was spent, so nothing is reported as abandoned either, and the run's
+    own planner-error fallback (a WARNING) must not fire."""
+    planner = ProbePlanner(turn(FM_2026), turn())
+    left = leave_during_the_prefetch(how, monkeypatch, planner)
+    assert (left.outcome is None) == (how == "anyio_scope")        # a native cancel is re-raised once, after the join
+    assert planner.calls == [] and planner.idents == []            # the paid call was never started
+    assert left.events == [] and left.prompts == [] and left.streams == []
+    assert left.spy.finished.is_set() and len(left.embedder.queries) == 1      # the prefetch ended; the run was closed
+    assert left.warnings == []
+    wait_for_threads_to_end(left.before)
+
+
+def test_a_disconnect_during_the_prefetch_stops_the_default_planner_too(monkeypatch):
+    live, made = ProbePlanner(turn(FM_2026), turn()), []
+
+    def default_planner(model):
+        made.append(model)
+        return live
+
+    monkeypatch.setattr(stream_async, "LiteLLMPlanner", default_planner)     # the real one would call the network
+    left = leave_during_the_prefetch("anyio_scope", monkeypatch, None)
+    assert made == [LUNA] and live.calls == [] and live.idents == []
+    assert left.events == [] and left.warnings == []
+    wait_for_threads_to_end(left.before)
 
 
 # --- 6. nothing blocks the loop --------------------------------------------------------------------------------

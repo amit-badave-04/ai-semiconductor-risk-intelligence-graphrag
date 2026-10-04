@@ -6,27 +6,29 @@ Nothing is written to the database before the first (free-tier) gate.
 An ask over an upload workspace (M4, docs/v2/M4_PLAN.md 4.4) is ``hybrid`` only and never touches the answer cache; its token
 is checked right after the free-tier window (404 for a bad id or token alike), and nothing is written before that check."""
 
-import json
 import logging
 import re
 import secrets
 import time
-from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
+import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
-from sse_starlette import EventSourceResponse, ServerSentEvent
+from sse_starlette import EventSourceResponse
 
 from ..artifacts import load_examples
 from ..graph.client import run_cypher
-from ..retrieval.answerer import answer_stream
+from ..retrieval.answerer_async import aanswer_stream
 from ..retrieval.ids import CHUNK_ID_RE, classify_id, metric_id_of, rule_id_of  # noqa: F401 - CHUNK_ID_RE: re-exported (tests/test_ids.py)
-from ..retrieval.verify import checks_failed
+from ..retrieval.workspace_async import astream_workspace_answer
 from ..uploads import WORKSPACE_TOKEN_MAX_CHARS
-from . import guard, store, tracing
+from . import guard, store
+from .stream_runtime import (  # noqa: F401 - MSG_BUSY: re-exported (the message the busy event carries)
+    MSG_BUSY, PaidResponse, PaidStream, select_twin, sse_event)
 
 logger = logging.getLogger("semigraph.serve")
 router = APIRouter()
@@ -42,7 +44,6 @@ MSG_PAUSED = "Live questions are paused right now — the example questions stil
 MSG_BUDGET = "The daily budget of live questions is used up — try an example, or come back tomorrow."
 MSG_BOT = "Bot check failed — reload the page and try again."
 MSG_RATE = "Too many questions from your address — please wait a few minutes."
-MSG_BUSY = "The service is busy answering other questions — try again in a moment."
 MSG_UPLOADS_OFF = "Uploaded documents are not available right now."
 MSG_WORKSPACE_NOT_FOUND = "workspace not found"    # an unknown workspace and a wrong token must look the same
 MSG_NOT_PUBLIC_EVIDENCE = "not a public evidence id"
@@ -112,10 +113,6 @@ def _read_gate(request: Request) -> None:
         raise HTTPException(status_code=429, detail=MSG_READ_RATE)
 
 
-def _sse(event: dict) -> ServerSentEvent:
-    return ServerSentEvent(data=json.dumps(event, default=str), event=event["event"], sep="\n")
-
-
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     page = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
@@ -127,7 +124,8 @@ async def index(request: Request) -> HTMLResponse:
 async def healthz(request: Request):
     st = request.app.state
     try:
-        await run_in_threadpool(run_cypher, st.driver, "RETURN 1 AS ok")
+        # The probe's own one-thread pool: a database that hangs cannot take the threads the answer streams wait for.
+        await anyio.to_thread.run_sync(partial(run_cypher, st.driver, "RETURN 1 AS ok"), limiter=st.limiters.health)
         return {"status": "ok", "db": True, "embedder": st.embedder.name}
     except Exception as e:  # noqa: BLE001 — any failure means not ready
         logger.warning("healthz: neo4j unreachable: %s", e)
@@ -263,7 +261,7 @@ async def ask(body: AskRequest, request: Request):
         if cached:
             await run_in_threadpool(store.log_query, st.driver, ip_hash=iph, strategy=strategy, cached=True)
             event = {"event": "done", "cached": True, **cached}
-            return EventSourceResponse(iter([_sse(event)]), sep="\n")
+            return EventSourceResponse(iter([sse_event(event)]), sep="\n")
 
     if await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch):
         raise HTTPException(status_code=503, detail=MSG_PAUSED)
@@ -274,141 +272,16 @@ async def ask(body: AskRequest, request: Request):
         raise HTTPException(status_code=403, detail=MSG_BOT)
     if not st.rate_limiter.allow(iph):
         raise HTTPException(status_code=429, detail=MSG_RATE)
-    return EventSourceResponse(_paid_stream(st, question, strategy, iph, snapshot_id, workspace), ping=15, sep="\n")
-
-
-def _checks_failed(done: dict) -> bool:
-    """True when the answer's ``checks`` report a problem (an event without ``checks`` reports none). The predicate is
-    ``verify.checks_failed``: the one definition example seeding and the page share (ungrounded or question-echoed
-    figures, an unretrieved citation, a pseudo-citation, an unsupported removal claim, an uncited non-refusal)."""
-    return checks_failed(done.get("checks"))
-
-
-def _loggable_checks(checks: dict | None, private: bool) -> dict | None:
-    """The ``checks`` block as it may be logged. For a workspace answer every list (answer sentences, bracketed text,
-    numbers) becomes its LENGTH: those strings paraphrase a private upload (docs/v2/M4_PLAN.md 5: no uploaded text in logs)."""
-    if not private or not isinstance(checks, dict):
-        return checks
-    return {k: (len(v) if isinstance(v, (list, tuple, set)) else v) for k, v in checks.items()}
-
-
-def _warn_on_failed_checks(done: dict, private: bool = False) -> None:
-    """An answer that cannot escalate (routed straight to the strong model, or streamed live) is released whatever the
-    deterministic checks find: say so in the log instead of letting it pass silently."""
-    if _checks_failed(done):
-        logger.warning("answer released with failed checks (routed=%s escalated=%s by=%s): %s", done.get("routed"),
-                       done.get("escalated"), done.get("answered_by"), _loggable_checks(done.get("checks"), private))
+    stream = PaidStream(st, question, strategy, iph, snapshot_id, workspace,
+                        twin=_stream_fn(strategy, workspace is not None))
+    return PaidResponse(stream, send_timeout=s.send_timeout_s)
 
 
 def _stream_fn(strategy: str, workspace: bool = False):
-    """The event-stream function for a strategy. The agent package (langgraph) is imported only when an ``agent`` question
-    is actually served, so a deployment with ``AGENT_ENABLED`` off never needs it installed. A workspace ask always goes to
-    the workspace writer (``strategy`` is already restricted to ``hybrid`` for it), imported only when one is served."""
-    if workspace:
-        from ..retrieval.workspace import stream_workspace_answer
-        return stream_workspace_answer
-    if strategy != guard.AGENT_STRATEGY:
-        return answer_stream
-    from ..agent.stream import agent_answer_stream
-    return agent_answer_stream
-
-
-def _nothing() -> None:
-    return None
-
-
-def _stream_extras(st, question: str, strategy: str) -> tuple[dict, Callable[[], None]]:
-    """The extra keyword arguments of the agent stream and the cleanup to run when the request ends (nothing for the fixed path).
-
-    ``st.tracer`` is a FACTORY (``tracing.LangfuseTracer.for_request``): the per-request tracer draws the sampling decision once
-    and keeps its own span stack, which one shared object could not do for a sync generator that the SSE layer drives through
-    the threadpool. It is closed in the cleanup, on every path. A tracer without ``for_request`` is passed through as is and is
-    never closed here. A failing tracer never breaks an answer."""
-    if strategy != guard.AGENT_STRATEGY:
-        return {}, _nothing
-    tracer = getattr(st, "tracer", None)
-    factory = getattr(tracer, "for_request", None)
-    if not callable(factory):
-        return {"settings": st.settings, "tracer": tracer}, _nothing
-    try:
-        request_tracer = factory(question, strategy=strategy)
-    except Exception:  # noqa: BLE001 - tracing must never break an answer
-        logger.exception("creating the request tracer failed; answering untraced")
-        return {"settings": st.settings, "tracer": None}, _nothing
-
-    def close() -> None:
-        try:
-            request_tracer.close()
-        except Exception:  # noqa: BLE001
-            logger.exception("closing the request tracer failed")
-    return {"settings": st.settings, "tracer": request_tracer}, close
-
-
-def _paid_stream(st, question: str, strategy: str, iph: str, snapshot_id: str = "", workspace: dict | None = None):
-    """Sync generator (runs in the threadpool): slot -> retrieval -> LLM deltas -> done.
-
-    The concurrency slot is taken INSIDE the generator so it is released by the
-    same ``finally`` on every path (a slot taken in the handler would leak if the
-    client vanished before the stream started). Spend is written to the ledger
-    on ``done`` AND on ``error`` — a mid-stream failure still cost tokens.
-    ``workspace`` (``{"workspace_id", "as_of"}``) routes to the workspace writer and
-    disables the answer cache for this answer.
-    """
-    s = st.settings
-    if not st.answer_slots.acquire(blocking=False):
-        yield _sse({"event": "error", "detail": MSG_BUSY})
-        return
-    logged, close_tracer = False, _nothing
-    in_workspace = workspace is not None
-    try:
-        extra, close_tracer = (dict(workspace), _nothing) if in_workspace else _stream_extras(st, question, strategy)
-        for ev in _stream_fn(strategy, workspace=in_workspace)(
-                question, st.driver, st.embedder, strategy=strategy, timeout=s.llm_request_timeout_s,
-                max_tokens=s.llm_answer_max_tokens, escalation_model=s.escalation_model or None, **extra):
-            if ev["event"] in ("done", "error"):
-                store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False,
-                                usage=ev.get("usage"), cost_usd=ev.get("cost_usd"), workspace=in_workspace)
-                logged = True
-            if ev["event"] == "done":
-                # A cached replay carries no ``checks`` (the store does not persist them), so an answer that failed any
-                # (including one that cites nothing without being a refusal) is not cached: it would otherwise look
-                # clean for the whole TTL. A workspace answer is never cached (it is private).
-                if (not in_workspace and ev["answer"].strip() and ev["finish_reason"] != "length"
-                        and not _checks_failed(ev)):
-                    store.put_answer(st.driver, question=question, strategy=strategy, answer=ev["answer"],
-                                     citations=ev["citations"], hallucinated=ev["hallucinated"],
-                                     usage=ev["usage"], cost_usd=ev["cost_usd"], snapshot_id=snapshot_id)
-                logger.info("answered strategy=%s citations=%d hallucinated=%d cost=%s routed=%s escalated=%s by=%s checks=%s",
-                            strategy, len(ev["citations"]), len(ev["hallucinated"]), ev["cost_usd"],
-                            ev.get("routed"), ev.get("escalated"), ev.get("answered_by"),
-                            _loggable_checks(ev.get("checks"), in_workspace))
-                _warn_on_failed_checks(ev, in_workspace)
-            elif ev["event"] == "error":
-                # The client-facing message below is already generic; ``ev["detail"]`` is not — it can be an f-string of a
-                # provider exception's type and text (retrieval/answerer.py), which can itself quote a secret-shaped
-                # substring (a key embedded in a provider's own error message). Redact before it ever reaches the log.
-                logger.warning("answer failed mid-stream: %s (cost=%s)", tracing.redact_secret_shaped(ev["detail"]),
-                               ev.get("cost_usd"))
-                ev = {"event": "error", "detail": "The answer could not be completed — please try again."}
-            yield _sse(ev)
-    except Exception as e:  # noqa: BLE001 — report, never hang the stream
-        logger.exception("answer failed")
-        try:
-            store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False, workspace=in_workspace)
-            logged = True
-        except Exception:  # noqa: BLE001
-            logger.exception("ledger write failed after an answer failure")
-        yield _sse({"event": "error", "detail": f"The answer could not be completed ({type(e).__name__})."})
-    finally:
-        if not logged:
-            # The client went away before the terminal event (a buffered draft widens that window to the whole
-            # generation). The query still counts against the daily ceiling; its cost is unknown here.
-            try:
-                store.log_query(st.driver, ip_hash=iph, strategy=strategy, cached=False, workspace=in_workspace)
-            except Exception:  # noqa: BLE001
-                logger.exception("ledger write failed for an abandoned answer")
-        close_tracer()
-        st.answer_slots.release()
+    """The async event-stream function for this ask, looked up here at request time so a test can replace
+    ``aanswer_stream`` / ``astream_workspace_answer`` on this module. The selection (and the lazy import of the agent
+    package) is ``stream_runtime.select_twin``."""
+    return select_twin(strategy, workspace, sec=aanswer_stream, workspace_twin=astream_workspace_answer)
 
 
 def _check_admin(request: Request) -> None:

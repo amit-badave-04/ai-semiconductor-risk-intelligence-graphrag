@@ -11,9 +11,10 @@ parse subprocess (``sys.executable -m semigraph.uploads.parse_worker``), the rea
 ``hybrid_retrieve`` (proved to run cleanly on a tiny seeded graph — see ``_seed_public_fixture``). What is FAKED:
 the embedder (:class:`FakeEmbedder` — deterministic 1024-d unit vectors from a bag of sha256-seeded per-token
 vectors, never a real model) and the model itself (:class:`ScriptedTextStream` monkeypatched over
-``answerer.TextStream`` — the ONE place both the SEC and the workspace writer instantiate a stream when
-``llm_stream`` is not injected, so one patch covers both paths). ``answerer.completion`` is additionally
-monkeypatched to fail the test outright if anything ever tries a real LiteLLM call (defence in depth: this
+``answerer_async.AsyncTextStream`` — the ONE place both the async SEC and the async workspace writer instantiate a
+stream when ``llm_stream`` is not injected, so one patch covers both paths). ``answerer_async.acompletion`` (and the
+sync ``answerer.completion``) are additionally monkeypatched to fail the test outright if anything ever tries a real
+LiteLLM call (defence in depth: this
 repo's own ``.env`` carries a real ``ANTHROPIC_API_KEY``, and ``Settings`` here is built with explicit field
 values, never from that file, precisely so a real key can never slip into an upload posture or a real answer).
 
@@ -23,10 +24,13 @@ can tell an HTTP-request-driven statement from one issued by a background job-wo
 named ``upload-...``) — those legitimately touch ``User*`` labels for their OWN workspace and would otherwise
 read as a false leak.
 
-Every ``stream_answer_for_prompt`` call is ALSO captured (on both ``answerer`` and ``retrieval.workspace``, which
-imported its own name binding and is therefore a separate monkeypatch target) so a test can inspect the exact
-``prompt``, ``valid_ids`` and ``sources`` the SERVER computed for one ask — the ground truth for isolation,
-independent of whatever text the scripted model happens to produce.
+Every ``astream_answer_for_prompt`` call is ALSO captured (on both ``answerer_async`` and
+``retrieval.workspace_async``, which imported its own name binding and is therefore a separate monkeypatch target) so
+a test can inspect the exact ``prompt``, ``valid_ids`` and ``sources`` the SERVER computed for one ask — the ground
+truth for isolation, independent of whatever text the scripted model happens to produce.
+
+The app is built with a small lifespan of its own that makes the named limiters and ``answer_limiter`` (M5a I2: the
+answer path is async), inside the one event loop that ``with TestClient(app)`` keeps alive for the whole module.
 
 Isolation proof (a) uses a BAG-OF-HASHED-TOKENS embedding, not a hash of the whole text: two documents that share
 every topic word except a marker and a number get a genuinely high, non-trivial cosine similarity to each other
@@ -47,6 +51,7 @@ BEFORE making that call, precisely so nothing in this file needs a workspace aga
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -58,6 +63,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+import anyio
 import pytest
 
 pytest.importorskip("neo4j")
@@ -68,10 +74,10 @@ from fastapi.testclient import TestClient  # noqa: E402
 from semigraph.config import Settings  # noqa: E402
 from semigraph.graph.client import get_driver, run_cypher  # noqa: E402
 from semigraph.graph.schema import apply_schema  # noqa: E402
-from semigraph.retrieval import answerer  # noqa: E402
-from semigraph.retrieval import workspace as workspace_module  # noqa: E402
+from semigraph.retrieval import answerer, answerer_async, workspace_async  # noqa: E402
 from semigraph.retrieval.retriever import DEFAULT_ANCHOR_CIK  # noqa: E402
 from semigraph.serve import guard, routes, store, workspace_routes  # noqa: E402
+from semigraph.serve.limiters import make_limiters  # noqa: E402
 from semigraph.serve.main import graph_stats  # noqa: E402
 from semigraph.uploads import jobs, repo  # noqa: E402
 
@@ -235,8 +241,9 @@ class FakeEmbedder:
 
 
 class ScriptedTextStream:
-    """Stands in for ``answerer.TextStream`` — the one place both the SEC and the workspace writer instantiate a
-    model stream when ``llm_stream`` is not injected. ``next_text`` is set by the test right before each ask."""
+    """Stands in for ``answerer_async.AsyncTextStream`` — the one place both the async SEC and the async workspace
+    writer instantiate a model stream when ``llm_stream`` is not injected. ``next_text`` is set by the test right
+    before each ask."""
 
     next_text: str = "no comment."
 
@@ -246,17 +253,18 @@ class ScriptedTextStream:
         self.usage = {"prompt_tokens": 1, "completion_tokens": 1}
         self.finish_reason = "stop"
 
-    def __iter__(self):
+    async def __aiter__(self):
         yield type(self).next_text
 
 
 def _fail_if_llm_called(*args, **kwargs):
-    pytest.fail("a real LiteLLM completion() call was attempted — ScriptedTextStream must be the only writer path")
+    pytest.fail("a real LiteLLM completion()/acompletion() call was attempted: "
+                "ScriptedTextStream must be the only writer path")
 
 
 @dataclass(frozen=True)
 class Captured:
-    """One ``stream_answer_for_prompt`` call, captured before it runs — the SERVER's own truth about what an ask
+    """One ``astream_answer_for_prompt`` call, captured before it runs — the SERVER's own truth about what an ask
     was allowed to see, independent of whatever the scripted model chooses to say back."""
 
     question: str
@@ -267,13 +275,16 @@ class Captured:
 
 
 def _capturing(original, sink: list[Captured]):
-    """Wraps ``stream_answer_for_prompt`` (a generator function): records its inputs, then yields from the real
-    implementation unchanged."""
+    """Wraps ``astream_answer_for_prompt`` (an async generator function): records its inputs, then yields from the real
+    implementation unchanged (and closes it with the wrapper, as the twins' own ``aclosing`` expects of a delegate)."""
 
-    def wrapper(question, prompt, full_context, valid_ids, chunk_ids, strategy, **kw):
+    async def wrapper(question, prompt, full_context, valid_ids, chunk_ids, strategy, **kw):
         sink.append(Captured(question=question, prompt=prompt, valid_ids=frozenset(valid_ids),
                              chunk_ids=tuple(chunk_ids), sources=dict(kw.get("sources") or {})))
-        yield from original(question, prompt, full_context, valid_ids, chunk_ids, strategy, **kw)
+        events = original(question, prompt, full_context, valid_ids, chunk_ids, strategy, **kw)
+        async with contextlib.aclosing(events) as inner:
+            async for event in inner:
+                yield event
 
     return wrapper
 
@@ -304,8 +315,16 @@ def _test_settings(**overrides) -> Settings:
     return Settings(**fields)
 
 
+@contextlib.asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """What ``main.lifespan`` builds inside the running loop (the limiters are bound to it)."""
+    app.state.limiters = make_limiters(app.state.settings)
+    app.state.answer_limiter = anyio.CapacityLimiter(app.state.settings.max_concurrent_answers)
+    yield
+
+
 def _build_app(driver, embedder, settings: Settings) -> FastAPI:
-    app = FastAPI()
+    app = FastAPI(lifespan=_lifespan)
     app.include_router(routes.router)
     app.include_router(workspace_routes.router)
     app.state.settings = settings
@@ -315,7 +334,6 @@ def _build_app(driver, embedder, settings: Settings) -> FastAPI:
     app.state.rate_limiter = guard.RateLimiter(settings.rate_limit_questions, settings.rate_limit_window_seconds)
     app.state.free_rate_limiter = guard.RateLimiter(settings.free_rate_limit_questions, settings.rate_limit_window_seconds)
     app.state.read_rate_limiter = guard.RateLimiter(settings.read_rate_limit_per_minute, 60)
-    app.state.answer_slots = threading.BoundedSemaphore(settings.max_concurrent_answers)
     app.state.workspace_create_limiter = guard.RateLimiter(settings.workspace_create_per_day, SECONDS_PER_DAY)
     app.state.upload_limiter = guard.RateLimiter(settings.uploads_per_hour, SECONDS_PER_HOUR)
     app.state.upload_slots = threading.BoundedSemaphore(1)
@@ -571,15 +589,19 @@ def harness(driver):
     recording_driver = RecordingDriver(driver, sink)
     settings = _test_settings()
     app = _build_app(recording_driver, embedder, settings)
-    client = TestClient(app)
 
     captured: list[Captured] = []
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(answerer, "TextStream", ScriptedTextStream)
+    # ONE event loop for the whole module (the lifespan, which makes the limiters, runs in it).
+    with TestClient(app) as client, pytest.MonkeyPatch.context() as mp:
+        mp.setattr(answerer_async, "AsyncTextStream", ScriptedTextStream)
+        mp.setattr(answerer_async, "acompletion", _fail_if_llm_called)
         mp.setattr(answerer, "completion", _fail_if_llm_called)
-        mp.setattr(answerer, "stream_answer_for_prompt", _capturing(answerer.stream_answer_for_prompt, captured))
-        mp.setattr(workspace_module, "stream_answer_for_prompt",
-                  _capturing(workspace_module.stream_answer_for_prompt, captured))
+        # Each writer tail is wrapped around its own original: the SEC path reaches it through ``answerer_async``'s
+        # binding, the workspace path through the one ``workspace_async`` imported, so one ask is captured once.
+        mp.setattr(answerer_async, "astream_answer_for_prompt",
+                  _capturing(answerer_async.astream_answer_for_prompt, captured))
+        mp.setattr(workspace_async, "astream_answer_for_prompt",
+                  _capturing(workspace_async.astream_answer_for_prompt, captured))
 
         w1, w2 = _setup_two_workspaces(client, app, recording_driver, embedder)
         w3 = _setup_attacker_workspace(client, app, recording_driver, embedder, w2.doc_id)
@@ -627,7 +649,7 @@ def test_positive_control_public_ask_actually_runs_hybrid_retrieve_and_queries_t
     events = _ask_ok(harness.client, PUBLIC_QUESTION)
     entry, done = harness.captured[-1], events[-1]
     assert "cached" not in done or done["cached"] is not True, "the nonce question must never be served from cache"
-    assert entry.prompt, "stream_answer_for_prompt was never actually called for the public ask"
+    assert entry.prompt, "astream_answer_for_prompt was never actually called for the public ask"
     assert done["chunk_ids"] == [harness.public_fixture["chunk_id"]]
     assert any("evidence_embedding" in q for q in harness.sink.foreground_statements())
 

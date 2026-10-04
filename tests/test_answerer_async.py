@@ -16,11 +16,12 @@ scenario is an ordinary sync test around ``asyncio.run`` with a hard timeout so 
 
 import ast
 import asyncio
+import gc
 import subprocess
 import sys
 import threading
 import time
-from contextlib import aclosing
+from contextlib import aclosing, contextmanager
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
@@ -32,7 +33,14 @@ import pytest
 from agent_fakes import FakeDriver, FakeEmbedder
 
 from semigraph.retrieval import answerer, answerer_async
-from semigraph.retrieval.answerer import TextStream, answer_stream, stream_answer_for_prompt
+from semigraph.retrieval.answerer import (
+    CITE_RE,
+    TextStream,
+    answer_stream,
+    build_blocks,
+    sources_from_context,
+    stream_answer_for_prompt,
+)
 from semigraph.retrieval.answerer_async import AsyncTextStream
 from semigraph.retrieval.retriever import hybrid_retrieve, vector_retrieve
 from semigraph.serve.limiters import LoopLagMonitor, make_limiters
@@ -50,6 +58,22 @@ def run(scenario, timeout: float = HARD_TIMEOUT_S):
         with anyio.fail_after(timeout):
             return await scenario()
     return asyncio.run(guarded())
+
+
+@contextmanager
+def gc_paused():
+    """Collect now and keep the collector off inside the block. A full collection in a big pytest process pauses every
+    thread for ~110 ms (measured with ``gc.callbacks`` while this file ran next to ``test_retrieval_workspace_regex``:
+    118 ms inside ``test_twenty_concurrent_streams_never_lag_the_event_loop``), and a test that asks whether the code
+    under test blocks the loop must not be charged for the interpreter's own pauses."""
+    was_enabled = gc.isenabled()
+    gc.collect()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
 
 
 async def collect(agen) -> list[dict]:
@@ -1288,6 +1312,115 @@ def test_without_limiters_the_checks_run_inline_for_tests(monkeypatch):
     assert seen == {"verify_answer": [(False, 0)], "_done_event": [(False, 0)]}
 
 
+# --- what the thread buys for the checks, measured on 2026-10-04 (module docstring of ``answerer_async``) -----------
+# On the largest real input both checks take 15 to 18 ms. Inline they hold the loop that long; on a worker thread the
+# loop lags about 6 ms: the 5 ms switch interval plus the longest single regex call (1.1 ms). A thread cannot interrupt
+# a long ``re`` call, so this holds for these inputs, not for any input. The fixture below is synthetic (the real chunks
+# are not in CI) and a little heavier, about 23 ms inline, and the bound pinned here is generous: the ticker's timer is
+# only as fine as the system timer (an IDLE loop shows 15 ms of lag on the Windows development machine), so what the
+# test prints is that plus the stall.
+
+LAG_BOUND_MS, LAG_TICK_S, LAG_ROUNDS = 100, 0.005, 30
+LARGE_CONTEXT_CHARS, LARGE_ANSWER_CHARS = 80_000, 9_600            # 8 chunks of ~9,000 + a graph block; 2,400 tokens
+LARGE_IDS = [f"0001045810-25-000023:I.1A:{i:04d}" for i in range(8)]
+
+
+def _filing_prose(seed: int, chars: int) -> str:
+    """Text in the shape of a filing chunk: dollar amounts and percentages the checks must look up, among prose."""
+    sentences, size, i = [], 0, 0
+    while size < chars:
+        sentence = (f"In fiscal {2020 + (seed + i) % 6} revenue was ${50 + (seed * 7 + i) % 60}.{(seed + i * 3) % 10} "
+                    f"billion, up {10 + (i * 13) % 140}% from ${20 + i % 30}.{i % 10} billion, and gross margin was "
+                    f"{50 + (i * 7) % 30}.{i % 10}%; we depend on TSMC and other foundry partners for wafers. "
+                    "The risk factors describe customer concentration, export controls and the capacity of advanced "
+                    "packaging, and they warn that a supply interruption would harm results. ")
+        sentences.append(sentence)
+        size += len(sentence)
+        i += 1
+    return "".join(sentences)[:chars]
+
+
+def _large_answer() -> str:
+    sentences, size, i = [], 0, 0
+    while size < LARGE_ANSWER_CHARS:
+        sentence = (f"Revenue rose {10 + (i * 13) % 140}% to ${50 + i % 60}.{i % 10} billion while gross margin held "
+                    f"near {50 + (i * 7) % 30}.{i % 10}% [{LARGE_IDS[i % len(LARGE_IDS)]}]. Supply depends on TSMC and "
+                    "other foundry partners, which the filings flag as a concentration risk. ")
+        sentences.append(sentence)
+        size += len(sentence)
+        i += 1
+    return "".join(sentences)[:LARGE_ANSWER_CHARS]
+
+
+def _large_check_inputs() -> dict:
+    """The largest input of the checks: a context of eight 9,000-character chunks plus a graph block (edges, risks and
+    computed lines), and an answer at the 2,400-token cap that cites it."""
+    retrieval = {
+        "anchors": {"NVDA": "0001045810"}, "metrics": [], "temporal": [], "temporal_pairs": [], "temporal_passages": [],
+        "edges": [{"source": "Nvidia", "relation": "DEPENDS_ON", "target": f"Supplier {i}", "status": "Active",
+                   "chunk_ids": [LARGE_IDS[i % 8]]} for i in range(40)],
+        "risks": [{"company": "Nvidia", "category": "Supply chain", "chunk_id": LARGE_IDS[i % 8],
+                   "summary": _filing_prose(i, 300)} for i in range(12)],
+        "computed": [f"- computed: revenue growth +{100 + i}.5% from $26.97 billion to $60.92 billion "
+                     f"[xbrl:1045810:revenue:{i}]" for i in range(20)],
+        "chunks": [{"chunk_id": cid, "text": _filing_prose(i, 9_000)} for i, cid in enumerate(LARGE_IDS)],
+    }
+    _, context, valid_ids = build_blocks(retrieval)
+    return {"text": _large_answer(), "context": context, "valid_ids": valid_ids,
+            "sources": sources_from_context(context)}
+
+
+async def _both_checks(limiters, inputs: dict) -> None:
+    """What a released draft runs after it is drained: ``verify_answer``, then the ``done`` event with its checks."""
+    text, context, sources = inputs["text"], inputs["context"], inputs["sources"]
+    stream = SimpleNamespace(usage=USAGE, finish_reason="stop", model=CHEAP)
+    await answerer_async._acheck(limiters, answerer_async.verify_answer, text, set(CITE_RE.findall(text)),
+                                 inputs["valid_ids"], "stop", context=context, sources=sources, question=Q)
+    await answerer_async._acheck(limiters, answerer_async._done_event, text, stream, question=Q, strategy="hybrid",
+                                 valid_ids=inputs["valid_ids"], chunk_ids=LARGE_IDS, context_chars=len(context),
+                                 usage=USAGE, cost_usd=None, extra=None, context=context, sources=sources)
+
+
+def _max_loop_lag_ms(work, *, on_thread: bool, rounds: int = LAG_ROUNDS) -> float:
+    """The worst loop lag a ticker saw over ``rounds`` rounds of ``work(limiters)``, one round at a time, with the loop
+    free in between so that each stall is the ticker's own to see (``limiters`` is None for the inline variant)."""
+    async def go() -> float:
+        limiters = make_limiters_here() if on_thread else None
+        monitor = LoopLagMonitor(warn_ms=LAG_BOUND_MS, interval_s=LAG_TICK_S)
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(monitor.run)
+            for _ in range(rounds):
+                await tick(2 * LAG_TICK_S)
+                await work(limiters)
+            await tick(2 * LAG_TICK_S)
+            tg.cancel_scope.cancel()
+        return monitor.max_lag_ms
+    with gc_paused():
+        return run(go)
+
+
+def test_the_checks_on_the_largest_input_lag_the_loop_far_under_the_bound_inline_and_on_a_thread():
+    inputs = _large_check_inputs()
+    assert len(inputs["context"]) >= LARGE_CONTEXT_CHARS and len(inputs["text"]) == LARGE_ANSWER_CHARS, \
+        "the input no longer is the largest realistic one this test is named for"
+    inline = _max_loop_lag_ms(lambda limiters: _both_checks(limiters, inputs), on_thread=False)
+    thread = _max_loop_lag_ms(lambda limiters: _both_checks(limiters, inputs), on_thread=True)
+    assert max(inline, thread) < LAG_BOUND_MS, (
+        f"worst loop lag of both checks over a {len(inputs['context']):,}-character context and a "
+        f"{len(inputs['text']):,}-character answer, {LAG_ROUNDS} rounds: inline {inline:.1f} ms, on a thread "
+        f"{thread:.1f} ms; bound {LAG_BOUND_MS} ms")
+
+
+def test_the_lag_measurement_of_the_checks_would_have_caught_a_stall_of_150_ms():
+    """The control for the test above: without it a lag under the bound would prove nothing."""
+    async def stall(_limiters) -> None:
+        end = time.perf_counter() + 0.15
+        while time.perf_counter() < end:                # a synchronous call on the loop
+            pass
+
+    assert _max_loop_lag_ms(stall, on_thread=False, rounds=2) >= LAG_BOUND_MS
+
+
 # --- a cancellation that lands during a shielded wait is raised when the wait ends ----------------------------------
 # A hop (``anyio.to_thread.run_sync``, shielded by default) and the shielded close of a stream both end WITHOUT a
 # checkpoint, so the cancellation of the consuming scope is raised only at the next real suspension. What follows is
@@ -1818,7 +1951,8 @@ def _concurrent_streams(*, blocking: bool):
                     streams.start_soon(one, n, limiters)
             tg.cancel_scope.cancel()
 
-    run(go)
+    with gc_paused():
+        run(go)
     return monitor, results
 
 

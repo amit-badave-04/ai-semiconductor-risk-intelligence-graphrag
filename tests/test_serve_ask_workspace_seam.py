@@ -7,9 +7,6 @@ drawn from a private document must never be replayed to anyone else), and nothin
 evidence route refuses ``doc:`` ids outright: the workspace is not in the citation, so resolving one would leak existence.
 """
 
-import sys
-import types
-
 import pytest
 from test_serve_api import (  # noqa: F401 - pytest fixtures
     CID,
@@ -22,6 +19,7 @@ from test_serve_api import (  # noqa: F401 - pytest fixtures
 )
 
 import semigraph.serve.routes as routes
+from semigraph.retrieval import answerer_async, workspace_async
 from semigraph.serve import guard, store
 
 WS = "0123456789abcdef0123456789abcdef"
@@ -42,16 +40,17 @@ def ws_client(client, monkeypatch):
 
 
 def install_workspace_stream(monkeypatch, calls: list):
-    def stream(question, driver, embedder, strategy="hybrid", **kw):
+    """Replace the workspace writer the route serves a workspace ask with (``routes.astream_workspace_answer``, looked
+    up at request time) by an async stub that records its calls; returns the stub."""
+    async def stream(question, driver, embedder, strategy="hybrid", **kw):
         calls.append({"question": question, "strategy": strategy, **kw})
         yield {"event": "retrieval", "anchors": {}, "counts": {"chunks": 0}, "doc_chunks": 1}
         yield {"event": "delta", "text": f"From your document [{DOC}]."}
         yield {"event": "done", "answer": f"From your document [{DOC}].", "citations": [DOC], "hallucinated": [],
                "finish_reason": "stop", "usage": {"prompt_tokens": 10, "completion_tokens": 5}, "cost_usd": 0.0001,
                "chunk_ids": [DOC], "context_chars": 50, "strategy": strategy, "question": question}
-    stub = types.ModuleType("semigraph.retrieval.workspace")
-    stub.stream_workspace_answer = stream
-    monkeypatch.setitem(sys.modules, "semigraph.retrieval.workspace", stub)
+    monkeypatch.setattr(routes, "astream_workspace_answer", stream)
+    return stream
 
 
 def forbid_cache(monkeypatch):
@@ -178,6 +177,7 @@ def test_an_accepted_workspace_ask_streams_the_workspace_writer_and_never_touche
     assert r.status_code == 200 and DOC in r.text and "event: done" in r.text
     assert calls and calls[0]["workspace_id"] == WS and calls[0]["as_of"] == "2026-09-01" and calls[0]["strategy"] == "hybrid"
     assert len(fakes.queries) == 1 and fakes.queries[0]["workspace"] is True and fakes.queries[0]["cached"] is False
+    assert ws_client.app.state.answer_limiter.borrowed_tokens == 0          # the workspace ask gave its slot back
 
 
 def test_a_workspace_answer_logs_counts_of_its_checks_never_their_sentences(ws_client, fakes, monkeypatch, caplog):
@@ -185,13 +185,11 @@ def test_a_workspace_answer_logs_counts_of_its_checks_never_their_sentences(ws_c
     a workspace paraphrase a private upload; the log gets list LENGTHS only (plan section 5: no uploaded text in logs)."""
     secret = "Our confidential margin plan was removed from the memo."
 
-    def stream(question, driver, embedder, strategy="hybrid", **kw):
+    async def stream(question, driver, embedder, strategy="hybrid", **kw):
         yield {"event": "done", "answer": secret, "citations": [], "hallucinated": [], "finish_reason": "stop",
                "usage": None, "cost_usd": 0.0, "chunk_ids": [], "context_chars": 1, "strategy": strategy,
                "checks": {"has_citation": False, "unsupported_removal_sentences": [secret], "pseudo_citations": ["[x y]"]}}
-    stub = types.ModuleType("semigraph.retrieval.workspace")
-    stub.stream_workspace_answer = stream
-    monkeypatch.setitem(sys.modules, "semigraph.retrieval.workspace", stub)
+    monkeypatch.setattr(routes, "astream_workspace_answer", stream)
     with caplog.at_level("INFO", logger="semigraph.serve"):
         r = ask(ws_client, {"X-Workspace-Token": TOKEN}, workspace_id=WS)
     assert r.status_code == 200
@@ -209,10 +207,15 @@ def test_a_public_ask_never_reaches_the_workspace_writer(client, fakes, monkeypa
 
 
 def test_the_stream_function_is_chosen_by_workspace_first(monkeypatch):
+    # The route's own wiring: the async twins (never the sync writers), before anything is replaced ...
+    assert routes._stream_fn("hybrid", workspace=True) is workspace_async.astream_workspace_answer
+    assert routes._stream_fn("hybrid") is answerer_async.aanswer_stream
+    # ... and looked up at request time, so a test can replace the workspace writer on the route's module.
     calls = []
-    install_workspace_stream(monkeypatch, calls)
-    assert routes._stream_fn("hybrid", workspace=True) is sys.modules["semigraph.retrieval.workspace"].stream_workspace_answer
-    assert routes._stream_fn("hybrid") is routes.answer_stream
+    stream = install_workspace_stream(monkeypatch, calls)
+    assert routes._stream_fn("hybrid", workspace=True) is stream
+    assert routes._stream_fn("agent", workspace=True) is stream       # the workspace decides first, not the strategy
+    assert routes._stream_fn("hybrid") is routes.aanswer_stream
 
 
 # ------------------------------------------------------------------------------------------------- /api/stats

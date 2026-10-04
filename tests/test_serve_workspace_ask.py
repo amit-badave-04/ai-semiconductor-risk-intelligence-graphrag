@@ -1,26 +1,28 @@
 """``POST /api/ask`` with a ``workspace_id`` (M4 Worker C, docs/v2/M4_PLAN.md 4.2, 4.3, 4.4, 14.5).
 
-The route itself (``serve/routes.py``, its ``AskRequest.workspace_id``/``as_of`` fields, the gate order, the
-``_stream_fn`` lazy import of ``retrieval.workspace.stream_workspace_answer``) is Step 0 / forbidden to this worker;
-this file proves the SEAM end to end through the real, unmodified ``/api/ask`` route wired to this worker's own
-``retrieval/workspace.py``. Neo4j (``uploads.repo``, SEC ``hybrid_retrieve``) and the LLM (``answerer.TextStream``)
-are faked; the app is built WITHOUT its lifespan, in the style of ``tests/test_serve_api.py`` (not imported from —
-that file is forbidden to edit and its fixtures are scoped to the SEC-only ``client`` fixture there).
+This file proves the SEAM end to end through the real, unmodified ``/api/ask`` route (M5a I2: ``PaidStream`` over
+``routes._stream_fn``, which serves a workspace ask with ``retrieval.workspace_async.astream_workspace_answer``)
+wired to the real workspace writer. Neo4j (``uploads.repo``, SEC ``hybrid_retrieve``) and the LLM
+(``answerer_async.AsyncTextStream``) are faked, and a real model call is a hard failure. The app is built with a
+small lifespan of its own, as ``tests/test_serve_api.py`` builds it (the limiters are made inside the loop that
+``with TestClient(app)`` keeps alive); it is not imported from that file: its fixtures are scoped to the SEC-only
+``client`` fixture there.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
-import threading
 
+import anyio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import semigraph.retrieval.workspace as workspace_module
-from semigraph.retrieval import answerer
+from semigraph.retrieval import answerer, answerer_async, workspace_async
 from semigraph.serve import guard, routes, store
 from semigraph.serve.guard import RateLimiter
+from semigraph.serve.limiters import make_limiters
 from semigraph.uploads import repo
 
 WS = "c" * 32
@@ -52,6 +54,10 @@ class FakeSettings:
     agent_enabled = False
     uploads_enabled = True
     freshness_enabled = False
+    embed_slots = 1             # M5a: the limiters ``main.lifespan`` builds from these
+    db_thread_limit = 4
+    send_timeout_s = 30
+    loop_lag_warn_ms = 100
 
 
 class FakeEmbedder:
@@ -67,8 +73,8 @@ def _sec_retrieval():
 
 
 class FakeTextStream:
-    """Stands in for ``answerer.TextStream`` (the route never passes ``llm_stream=``, so the real class is what
-    ``stream_answer_for_prompt`` instantiates); class-level ``next_text`` is set fresh by each test."""
+    """Stands in for ``answerer_async.AsyncTextStream`` (the route never passes ``llm_stream=``, so the real class is
+    what ``astream_answer_for_prompt`` instantiates); class-level ``next_text`` is set fresh by each test."""
 
     next_text = "A plain answer with no citation."
 
@@ -78,19 +84,25 @@ class FakeTextStream:
         self.usage = {"prompt_tokens": 40, "completion_tokens": 8}
         self.finish_reason = "stop"
 
-    def __iter__(self):
+    async def __aiter__(self):
         yield FakeTextStream.next_text
+
+
+def _fail_if_llm_called(*args, **kwargs):
+    pytest.fail("a real LiteLLM acompletion() call was attempted: FakeTextStream must be the only writer path")
 
 
 @pytest.fixture(autouse=True)
 def fake_hybrid_retrieve(monkeypatch):
-    monkeypatch.setattr(workspace_module, "hybrid_retrieve", lambda *a, **kw: _sec_retrieval())
+    # The twin imports ``hybrid_retrieve`` into its own namespace, so that is the name to replace.
+    monkeypatch.setattr(workspace_async, "hybrid_retrieve", lambda *a, **kw: _sec_retrieval())
 
 
 @pytest.fixture(autouse=True)
 def fake_text_stream(monkeypatch):
     FakeTextStream.next_text = "A plain answer with no citation."
-    monkeypatch.setattr(answerer, "TextStream", FakeTextStream)
+    monkeypatch.setattr(answerer_async, "AsyncTextStream", FakeTextStream)
+    monkeypatch.setattr(answerer_async, "acompletion", _fail_if_llm_called)   # no paid call may slip past the fake
 
 
 @pytest.fixture
@@ -121,9 +133,17 @@ def store_spy(monkeypatch):
     return calls
 
 
+@contextlib.asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """What ``main.lifespan`` builds inside the running loop (the limiters are bound to it)."""
+    app.state.limiters = make_limiters(app.state.settings)
+    app.state.answer_limiter = anyio.CapacityLimiter(app.state.settings.max_concurrent_answers)
+    yield
+
+
 @pytest.fixture
 def client(fake_repo, store_spy):
-    app = FastAPI()
+    app = FastAPI(lifespan=_lifespan)
     app.include_router(routes.router)
     app.state.settings = FakeSettings()
     app.state.driver = object()
@@ -132,12 +152,12 @@ def client(fake_repo, store_spy):
     app.state.free_rate_limiter = RateLimiter(FakeSettings.free_rate_limit_questions,
                                               FakeSettings.rate_limit_window_seconds)
     app.state.read_rate_limiter = RateLimiter(FakeSettings.read_rate_limit_per_minute, 60)
-    app.state.answer_slots = threading.BoundedSemaphore(FakeSettings.max_concurrent_answers)
     # routes.uploads_available(app.state) = settings.uploads_enabled AND app.state.uploads_ready (finding 29,
     # docs/v2/M4_PLAN.md 15.5, set in production by uploads.jobs.start_if_enabled) — fixtures that exercise a
     # working workspace ask must set this explicitly, the same way jobs.start_if_enabled would.
     app.state.uploads_ready = True
-    return TestClient(app)
+    with TestClient(app) as test_client:         # ONE event loop for the whole test (the lifespan runs in it)
+        yield test_client
 
 
 def _ask(client, **overrides):
@@ -191,6 +211,7 @@ def test_workspace_ask_streams_retrieval_with_doc_chunks_then_done_with_a_worksp
     assert done["event"] == "done" and done["citations"] == [DOC1]
     assert set(done["workspace"]) == {"id_hash", "doc_chunks", "stale_citations", "suspicious"}
     assert done["checks"]["numbers_grounded"] is True
+    assert client.app.state.answer_limiter.borrowed_tokens == 0         # the answer gave its slot back
 
 
 def test_workspace_ask_never_touches_the_answer_cache(client, store_spy):

@@ -11,8 +11,10 @@ the writer tail is :func:`answerer_async.astream_answer_for_prompt`; only the bl
 * the SEC retrieval, the workspace search and the stale-citation read run on worker threads under ``limiters.db``, in
   the sync order (SEC, then workspace, then, once the answer is done, the stale-citation read);
 * every one of those hops, the embedding included, goes through ``answerer_async._hop``, which checkpoints once the
-  thread has returned (see the cancellation paragraph below); the link stripper is the writer's ``postprocess`` hook
-  and ``answerer_async`` runs it the same way, on a worker thread under ``limiters.db``.
+  thread has returned (see the cancellation paragraph below). ``_hop`` is private to ``answerer_async`` and imported
+  here on purpose: a test pins that this module's ``_hop`` is that function and that it checkpoints, so a rename or a
+  bare ``run_sync`` breaks a test, not production. The link stripper is the writer's ``postprocess`` hook and
+  ``answerer_async`` runs it the same way, on a worker thread under ``limiters.db``.
 
 The pure functions that stay on the loop were measured on 2026-10-03 (p95 over 60 repetitions, development machine;
 inputs: eight SEC chunks of 9,000 characters, document chunks of 1,300 characters, a 2,400-token answer of 9,600
@@ -26,17 +28,21 @@ function                                       6 doc chunks 120 doc chunks
 ``looks_suspicious`` (156k characters at 120)  0.49 ms      9.8 ms
 =============================================  ===========  ============
 
-and ``strip_links_images`` on a 2,400-token answer: 0.5 to 0.9 ms. The three functions of the table are under the 10 ms
-bar, so they run inline; the stripper is offloaded with the writer's other checks (above). The 120-chunk column is the
-cap of one document version, not what an ask retrieves (the route retrieves 6). A worker thread would not shorten any of
-it: ``looks_suspicious`` is ONE ``re`` call and ``re`` holds the GIL from start to end, so on a thread it stalls the
-loop just the same and only adds the hop. That is also why one input shape is a known gap that the offload does not
-close: ``strip_links_images`` is quadratic on a long unbroken run of letters (10,000 characters cost ~220 ms, 20,000
-~890 ms, 40,000 ~3.6 s), and because ``re`` holds the GIL for a whole match the loop lags as long as the strip takes
-wherever it runs (measured on 2026-10-04 for 10,000 characters: 204 ms inline, 217 ms on a worker thread). A full ask
-over such an answer under ``LoopLagMonitor`` is pinned by a strict expected-failure test (20,000 characters). The fix
-is a linear-time regex in ``workspace.py``; the offload still earns its keep for everything that waits or releases the
-GIL (pinned by a test with a slow stripper).
+and ``strip_links_images`` on a 2,400-token answer: 0.3 to 0.5 ms (p95 over 60 repetitions, 2026-10-04, after its
+rewrite to linear time). The three functions of the table are under the 10 ms bar, so they run inline; the stripper is
+offloaded with the writer's other checks (above). The 120-chunk column is the cap of one document version, not what an
+ask retrieves (the route retrieves 6). A worker thread would not shorten any of it: ``looks_suspicious`` is ONE ``re``
+call and ``re`` holds the GIL from start to end, so on a thread it stalls the loop just the same and only adds the hop.
+
+The same fact is why the stripper's patterns had to be fixed rather than moved: they were quadratic on a long unbroken
+run of letters (10,000 characters cost ~220 ms, 20,000 ~890 ms, 40,000 ~3.6 s) and the loop lagged as long as the strip
+took wherever it ran (measured on 2026-10-04 for 10,000 characters: 204 ms inline, 217 ms on a worker thread). They are
+linear time now (``workspace.py``; ``tests/test_retrieval_workspace_regex.py`` proves the output byte for byte
+unchanged): 20,000 letters cost 0.8 ms and 40,000 cost 1.6 ms. The stripper runs through the writer's ``postprocess``
+hook, which ``answerer_async`` runs through its ``_acheck``: on a worker thread under ``limiters.db``. A full ask over a
+20,000-letter answer under ``LoopLagMonitor`` keeps the loop under the 100 ms budget (a test; with the old patterns the
+same test lagged the loop 839 ms), and the offload still earns its keep for everything that waits or releases the GIL
+(pinned by a test with a slow stripper).
 
 Cancellation: a hop is shielded (``abandon_on_cancel=False``) and returns without a checkpoint, so a cancelled anyio
 scope (what sse-starlette does on a disconnect) would be noticed only at the next real suspension, and the next

@@ -1,18 +1,23 @@
-"""serve/main.py lifespan: the agent import at boot (fail fast) and the tracer's lifecycle.
+"""serve/main.py lifespan: the agent import at boot (fail fast), the async answer path's runtime and the tracer's
+lifecycle.
 
 Neo4j and the embedder are never touched: ``bootstrap`` is replaced by a stub that records that it ran. The agent package is a
-stub too: a temporary ``semigraph.agent`` whose ``stream`` module raises the way a missing langgraph would."""
+stub too: a temporary ``semigraph.agent`` whose ``stream_async`` module (the module the ask route serves agent questions
+with) raises the way a missing langgraph would."""
 
 import sys
 import threading
 import time
 import types
 
+import anyio
 import pytest
 from fastapi.testclient import TestClient
 
 from semigraph.config import Settings
-from semigraph.serve import main
+from semigraph.serve import main, routes
+
+AGENT_STREAM = "semigraph.agent.stream_async"
 
 
 class Boot:
@@ -40,23 +45,28 @@ def use_settings(monkeypatch, **over):
     return settings
 
 
-@pytest.fixture
-def raising_agent(monkeypatch, tmp_path):
-    """``semigraph.agent.stream`` exists on disk but fails to import, as when langgraph is not installed."""
-    (tmp_path / "stream.py").write_text("raise ImportError(\"No module named 'langgraph'\")\n", encoding="utf-8")
+def stub_agent_package(monkeypatch, tmp_path, source: str) -> None:
+    """A temporary ``semigraph.agent`` package whose ``stream_async`` module is ``source``. The module's entry in
+    ``sys.modules`` is set and then deleted: it is empty while the test runs, and whatever the boot check (or the route)
+    imports under that name is dropped again afterwards, with the real module put back if it was loaded (a bare
+    ``delitem`` of an absent key records nothing, so the stub would stay in ``sys.modules`` for every later test)."""
+    (tmp_path / "stream_async.py").write_text(source, encoding="utf-8")
     package = types.ModuleType("semigraph.agent")
     package.__path__ = [str(tmp_path)]
     monkeypatch.setitem(sys.modules, "semigraph.agent", package)
-    monkeypatch.delitem(sys.modules, "semigraph.agent.stream", raising=False)
+    monkeypatch.setitem(sys.modules, AGENT_STREAM, None)
+    monkeypatch.delitem(sys.modules, AGENT_STREAM)
+
+
+@pytest.fixture
+def raising_agent(monkeypatch, tmp_path):
+    """``semigraph.agent.stream_async`` exists on disk but fails to import, as when langgraph is not installed."""
+    stub_agent_package(monkeypatch, tmp_path, "raise ImportError(\"No module named 'langgraph'\")\n")
 
 
 @pytest.fixture
 def working_agent(monkeypatch, tmp_path):
-    (tmp_path / "stream.py").write_text("agent_answer_stream = object()\n", encoding="utf-8")
-    package = types.ModuleType("semigraph.agent")
-    package.__path__ = [str(tmp_path)]
-    monkeypatch.setitem(sys.modules, "semigraph.agent", package)
-    monkeypatch.delitem(sys.modules, "semigraph.agent.stream", raising=False)
+    stub_agent_package(monkeypatch, tmp_path, "aagent_answer_stream = object()\n")
 
 
 # ---------------------------------------------------------------- requirement 5: fail fast
@@ -75,15 +85,25 @@ def test_a_disabled_agent_is_never_imported(monkeypatch, boot, raising_agent):
     use_settings(monkeypatch, agent_enabled=False)
     with TestClient(main.create_app()) as client:
         assert client.app.state.settings.agent_enabled is False
-    assert "semigraph.agent.stream" not in sys.modules                        # the stub would have raised: it was never attempted
+    assert AGENT_STREAM not in sys.modules               # the stub would have raised: it was never attempted
     assert boot.order == ["bootstrap", "driver.close"]
 
 
 def test_an_enabled_agent_that_imports_cleanly_boots_and_stays_imported(monkeypatch, boot, working_agent):
     use_settings(monkeypatch, agent_enabled=True)
     with TestClient(main.create_app()):
-        assert "semigraph.agent.stream" in sys.modules
+        assert AGENT_STREAM in sys.modules
     assert boot.order == ["bootstrap", "driver.close"]
+
+
+def test_the_boot_check_imports_the_module_the_route_serves_agent_questions_with(monkeypatch, boot, working_agent):
+    """M5a I2: the boot check must exercise the very import a served agent question makes, or a missing langgraph would
+    still fail on the first question instead of at boot."""
+    use_settings(monkeypatch, agent_enabled=True)
+    assert main.AGENT_MODULE == AGENT_STREAM
+    with TestClient(main.create_app()):
+        booted = sys.modules[AGENT_STREAM]
+    assert routes._stream_fn("agent") is booted.aagent_answer_stream
 
 
 # ---------------------------------------------------------------- the tracer is created once, stored, and shut down before the driver
@@ -137,6 +157,24 @@ def test_the_lifespan_builds_the_async_path_runtime_and_stops_the_lag_monitor(mo
         assert st.loop_lag.warn_ms == 50
     # shut down cleanly: the driver still closed and no monitor task is left running
     assert boot.order[-1] == "driver.close"
+
+
+def test_the_lifespan_builds_the_in_flight_cap_of_paid_answers_as_a_limiter_on_the_app_loop(monkeypatch, boot):
+    """M5a I2: ``answer_limiter`` (an ``anyio.CapacityLimiter``, taken without waiting by ``PaidStream``) replaces the
+    ``answer_slots`` thread semaphore. It is built inside the lifespan's loop, so ``client.portal`` can use it."""
+    use_settings(monkeypatch, max_concurrent_answers=1)
+    with TestClient(main.create_app()) as client:
+        st = client.app.state
+        assert isinstance(st.answer_limiter, anyio.CapacityLimiter) and st.answer_limiter.total_tokens == 1
+        assert not hasattr(st, "answer_slots")
+        holder = object()
+        client.portal.call(st.answer_limiter.acquire_on_behalf_of_nowait, holder)
+        try:
+            with pytest.raises(anyio.WouldBlock):                          # exactly one answer in flight
+                client.portal.call(st.answer_limiter.acquire_on_behalf_of_nowait, object())
+        finally:
+            client.portal.call(st.answer_limiter.release_on_behalf_of, holder)
+        assert st.answer_limiter.borrowed_tokens == 0
 
 
 def test_without_langfuse_keys_the_app_gets_the_no_op_tracer(monkeypatch, boot):

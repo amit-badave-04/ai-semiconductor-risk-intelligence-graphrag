@@ -1,17 +1,20 @@
 """HTTP-layer tests for semigraph.serve — every gate, the SSE framing, the
 cache path and the admin surface, with Neo4j, the embedder and the LLM faked.
 
-The app is built WITHOUT its lifespan (that would connect to Neo4j); the
-state the routes read is installed by the ``client`` fixture, and the
-store/answer functions the routes call are monkeypatched at the module
-level, so what is exercised is exactly the routing + policy logic.
+The app is built with a small lifespan of its own (the production one connects to Neo4j): it builds the limiters INSIDE
+the running loop, which ``with TestClient(app)`` keeps alive for the whole test, so every request and every call made
+through ``client.portal`` shares the loop the limiters belong to. The rest of the state the routes read is installed by
+the ``client`` fixture, and the store/answer functions the routes call are monkeypatched at the module level (the answer
+writers are ASYNC generators, as the route requires), so what is exercised is exactly the routing + policy logic.
 """
 
+import asyncio
+import contextlib
 import json
 import sys
-import threading
 import types
 
+import anyio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -20,6 +23,8 @@ import semigraph.serve.routes as routes
 from semigraph.artifacts import load_examples
 from semigraph.serve import store
 from semigraph.serve.guard import RateLimiter
+from semigraph.serve.limiters import make_limiters
+from semigraph.serve.stream_runtime import PaidStream
 
 Q = "Which HBM suppliers does Nvidia depend on, and which export rules apply?"
 CID = "0001045810-26-000021:I.1:0320"
@@ -50,6 +55,10 @@ class FakeSettings:
     agent_enabled = False
     uploads_enabled = False     # M4: every workspace route and workspace ask answers 503 while off
     freshness_enabled = False
+    embed_slots = 1             # M5a: the limiters ``main.lifespan`` builds from these
+    db_thread_limit = 4
+    send_timeout_s = 30
+    loop_lag_warn_ms = 100
 
 
 class Fakes:
@@ -78,7 +87,7 @@ class Fakes:
         monkeypatch.setattr(store, "ledger_summary", lambda d: {"today": {"paid": len(self.queries)}})
 
 
-def fake_answer_stream(question, driver, embedder, strategy="hybrid", **kw):
+async def fake_answer_stream(question, driver, embedder, strategy="hybrid", **kw):
     yield {"event": "retrieval", "anchors": {"Nvidia": 1045810},
            "counts": {"edges": 2, "metrics": 1, "risks": 1, "temporal": 0, "chunks": 1}}
     yield {"event": "delta", "text": "Nvidia depends on "}
@@ -93,40 +102,53 @@ def fake_answer_stream(question, driver, embedder, strategy="hybrid", **kw):
 def fakes(monkeypatch):
     f = Fakes()
     f.install(monkeypatch)
-    monkeypatch.setattr(routes, "answer_stream", fake_answer_stream)
+    monkeypatch.setattr(routes, "aanswer_stream", fake_answer_stream)
     return f
 
 
 # ---------------------------------------------------------------- R2: strategy=agent must clear every gate too (never exempt)
 
 def install_agent_stream_that_must_not_run(monkeypatch):
-    """A ``semigraph.agent.stream`` stub for a gate that must refuse the request before a single byte of an answer, whichever
-    strategy: turns a regression that exempted ``strategy=agent`` from the gate into a hard test failure (0 planner calls)
-    instead of a quietly-passing green run."""
+    """A ``semigraph.agent.stream_async`` stub for a gate that must refuse the request before a single byte of an
+    answer, whichever strategy: turns a regression that exempted ``strategy=agent`` from the gate into a hard test
+    failure (0 planner calls) instead of a quietly-passing green run."""
     def never(*a, **kw):
         pytest.fail("a gate-refused /api/ask must never reach the agent stream")
-    stub = types.ModuleType("semigraph.agent.stream")
-    stub.agent_answer_stream = never
+    install_agent_module(monkeypatch, never)
+
+
+def install_agent_module(monkeypatch, stream):
+    """Register ``stream`` as ``semigraph.agent.stream_async.aagent_answer_stream`` (the route needs no langgraph)."""
+    stub = types.ModuleType("semigraph.agent.stream_async")
+    stub.aagent_answer_stream = stream
     monkeypatch.setitem(sys.modules, "semigraph.agent", types.ModuleType("semigraph.agent"))
-    monkeypatch.setitem(sys.modules, "semigraph.agent.stream", stub)
+    monkeypatch.setitem(sys.modules, "semigraph.agent.stream_async", stub)
 
 
 def install_counting_agent_stream(monkeypatch, calls: list):
-    """A WORKING ``semigraph.agent.stream`` stub that records every call it receives. For a gate whose quota must first be
-    exhausted by real (accepted) requests — the per-IP window, the free tier — what proves the gate is not exempting the
-    agent is that ``calls`` stops growing exactly when the gate starts refusing, not that it is never called at all."""
-    def counted(question, driver, embedder, strategy="agent", **kw):
+    """A WORKING ``semigraph.agent.stream_async`` stub that records every call it receives. For a gate whose quota must
+    first be exhausted by real (accepted) requests — the per-IP window, the free tier — what proves the gate is not
+    exempting the agent is that ``calls`` stops growing exactly when the gate starts refusing, not that it is never
+    called at all."""
+    async def counted(question, driver, embedder, strategy="agent", **kw):
         calls.append((question, strategy))
-        yield from fake_answer_stream(question, driver, embedder, strategy)
-    stub = types.ModuleType("semigraph.agent.stream")
-    stub.agent_answer_stream = counted
-    monkeypatch.setitem(sys.modules, "semigraph.agent", types.ModuleType("semigraph.agent"))
-    monkeypatch.setitem(sys.modules, "semigraph.agent.stream", stub)
+        async for event in fake_answer_stream(question, driver, embedder, strategy):
+            yield event
+    install_agent_module(monkeypatch, counted)
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """What ``main.lifespan`` builds inside the running loop (the limiters are bound to it)."""
+    app.state.limiters = make_limiters(app.state.settings)
+    app.state.answer_limiter = anyio.CapacityLimiter(app.state.settings.max_concurrent_answers)
+    app.state.loop = asyncio.get_running_loop()
+    yield
 
 
 @pytest.fixture
 def client(fakes):
-    app = FastAPI()
+    app = FastAPI(lifespan=_lifespan)
     app.include_router(routes.router)
     app.state.settings = FakeSettings()
     app.state.driver = object()
@@ -137,8 +159,20 @@ def client(fakes):
     app.state.free_rate_limiter = RateLimiter(FakeSettings.free_rate_limit_questions,
                                               FakeSettings.rate_limit_window_seconds)
     app.state.read_rate_limiter = RateLimiter(FakeSettings.read_rate_limit_per_minute, 60)
-    app.state.answer_slots = threading.BoundedSemaphore(FakeSettings.max_concurrent_answers)
-    return TestClient(app)
+    with TestClient(app) as test_client:         # ONE event loop for the whole test (the lifespan runs in it)
+        yield test_client
+
+
+def run_stream(client, question, strategy="hybrid", iph="iph"):
+    """Drive one ``PaidStream`` to its end on the test client's own loop, settle it the way the response does, and
+    return the decoded events."""
+    async def go():
+        stream = PaidStream(client.app.state, question, strategy, iph, twin=routes._stream_fn(strategy))
+        try:
+            return [json.loads(event.data) async for event in stream.events()]
+        finally:
+            await stream.finalize()
+    return client.portal.call(go)
 
 
 def parse_sse(text: str) -> list[dict]:
@@ -196,18 +230,14 @@ def test_the_agent_strategy_is_refused_and_unadvertised_while_the_agent_is_off(c
 
 
 def test_an_enabled_agent_streams_through_the_lazily_imported_agent_and_is_ledgered_as_agent(client, fakes, monkeypatch):
-    import sys
-    import types
     seen = {}
 
-    def agent_stream(question, driver, embedder, strategy="agent", **kw):
+    async def agent_stream(question, driver, embedder, strategy="agent", **kw):
         seen.update(kw)
-        yield from fake_answer_stream(question, driver, embedder, strategy)
+        async for event in fake_answer_stream(question, driver, embedder, strategy):
+            yield event
 
-    stub = types.ModuleType("semigraph.agent.stream")
-    stub.agent_answer_stream = agent_stream
-    monkeypatch.setitem(sys.modules, "semigraph.agent", types.ModuleType("semigraph.agent"))
-    monkeypatch.setitem(sys.modules, "semigraph.agent.stream", stub)
+    install_agent_module(monkeypatch, agent_stream)
     client.app.state.settings.agent_enabled = True
     try:
         assert client.get("/api/stats").json()["agent_enabled"] is True
@@ -273,15 +303,43 @@ def test_per_ip_rate_limit_after_window_quota(client, fakes, monkeypatch, strate
     assert len(calls) == calls_before and len(fakes.queries) == queries_before   # the refused call reaches neither
 
 
-def test_busy_slot_emits_error_event_and_keeps_slot_accounting(client):
-    client.app.state.answer_slots.acquire()
+def test_busy_slot_emits_error_event_and_keeps_slot_accounting(client, fakes):
+    limiter, holder = client.app.state.answer_limiter, object()
+    assert limiter.total_tokens == FakeSettings.max_concurrent_answers == 1
+    client.portal.call(limiter.acquire_on_behalf_of_nowait, holder)
     try:
         events = parse_sse(client.post("/api/ask", json={"question": Q}).text)
         assert events == [{"event": "error", "detail": routes.MSG_BUSY}]
+        assert fakes.queries == [] and limiter.borrowed_tokens == 1    # the refused ask wrote nothing and took nothing
     finally:
-        client.app.state.answer_slots.release()
-    assert client.app.state.answer_slots.acquire(blocking=False)  # still exactly one slot
-    client.app.state.answer_slots.release()
+        client.portal.call(limiter.release_on_behalf_of, holder)
+    assert limiter.borrowed_tokens == 0
+    client.portal.call(limiter.acquire_on_behalf_of_nowait, holder)    # the one slot is free again ...
+    try:
+        with pytest.raises(anyio.WouldBlock):                          # ... and still exactly one
+            client.portal.call(limiter.acquire_on_behalf_of_nowait, object())
+    finally:
+        client.portal.call(limiter.release_on_behalf_of, holder)
+
+
+def test_a_finished_ask_gives_its_slot_back_and_the_next_ask_is_served(client, fakes):
+    for question in (Q + " one", Q + " two"):
+        assert parse_sse(client.post("/api/ask", json={"question": question}).text)[-1]["event"] == "done"
+        assert client.app.state.answer_limiter.borrowed_tokens == 0
+
+
+def test_every_request_runs_on_the_loop_the_limiters_were_built_in(client, monkeypatch):
+    loops = []
+
+    async def noting(question, driver, embedder, strategy="hybrid", **kw):
+        loops.append(asyncio.get_running_loop())
+        async for event in fake_answer_stream(question, driver, embedder, strategy):
+            yield event
+
+    monkeypatch.setattr(routes, "aanswer_stream", noting)
+    for question in (Q + " first", Q + " second"):
+        assert parse_sse(client.post("/api/ask", json={"question": question}).text)[-1]["event"] == "done"
+    assert loops == [client.app.state.loop] * 2        # a limiter on another loop fails: "different event loop"
 
 
 def test_spoofed_forwarding_header_is_ignored_unless_configured(client, fakes):
@@ -305,13 +363,13 @@ def test_configured_header_keys_the_limiter(client, fakes):
 
 
 def test_mid_stream_error_event_still_logs_spend(client, fakes, monkeypatch):
-    def failing(*a, **kw):
+    async def failing(*a, **kw):
         yield {"event": "retrieval", "anchors": {}, "counts": {}}
         yield {"event": "delta", "text": "partial"}
         yield {"event": "error", "detail": "ServiceUnavailableError: overloaded", "partial": "partial",
                "usage": {"prompt_tokens": 500, "completion_tokens": 20}, "cost_usd": 0.0012,
                "strategy": "hybrid"}
-    monkeypatch.setattr(routes, "answer_stream", failing)
+    monkeypatch.setattr(routes, "aanswer_stream", failing)
     events = parse_sse(client.post("/api/ask", json={"question": Q}).text)
     assert events[-1]["event"] == "error" and "overloaded" not in events[-1]["detail"]
     last = fakes.queries[-1]
@@ -324,11 +382,11 @@ def test_the_mid_stream_error_log_line_redacts_a_secret_shaped_string_in_the_exc
     ``ev["detail"]`` (an f-string of the provider exception's type and text) verbatim."""
     secret = "sk-live-abcdef1234567890"    # a fake, deliberately secret-shaped canary for the redaction test below, never a real key — gitleaks:allow
 
-    def failing(*a, **kw):
+    async def failing(*a, **kw):
         yield {"event": "retrieval", "anchors": {}, "counts": {}}
         yield {"event": "error", "detail": f"BadRequestError: upstream rejected key {secret}",
                "usage": {"prompt_tokens": 5, "completion_tokens": 0}, "cost_usd": 0.002, "strategy": "hybrid"}
-    monkeypatch.setattr(routes, "answer_stream", failing)
+    monkeypatch.setattr(routes, "aanswer_stream", failing)
     caplog.set_level("WARNING", logger="semigraph.serve")
     events = parse_sse(client.post("/api/ask", json={"question": Q}).text)
     assert events[-1]["event"] == "error" and secret not in events[-1]["detail"]
@@ -356,23 +414,23 @@ def test_admin_non_ascii_header_is_404_not_500(client):
     assert client.get("/api/admin/policy", headers={b"x-admin-token": raw}).status_code == 404
 
 
-def test_stream_failure_emits_error_event_and_releases_slot(client, monkeypatch):
-    def boom(*a, **kw):
+def test_stream_failure_emits_error_event_and_releases_slot(client, fakes, monkeypatch):
+    async def boom(*a, **kw):
         yield {"event": "retrieval", "anchors": {}, "counts": {}}
         raise RuntimeError("provider down")
-    monkeypatch.setattr(routes, "answer_stream", boom)
+    monkeypatch.setattr(routes, "aanswer_stream", boom)
     events = parse_sse(client.post("/api/ask", json={"question": Q}).text)
     assert events[-1]["event"] == "error" and "RuntimeError" in events[-1]["detail"]
-    assert client.app.state.answer_slots.acquire(blocking=False)  # slot was released
-    client.app.state.answer_slots.release()
+    assert client.app.state.answer_limiter.borrowed_tokens == 0           # slot was released
+    assert len(fakes.queries) == 1 and "usage" not in fakes.queries[0]    # one ledger row, no spend known
 
 
 def test_truncated_answers_are_not_cached(client, fakes, monkeypatch):
-    def truncated(*a, **kw):
+    async def truncated(*a, **kw):
         yield {"event": "done", "answer": "partial", "citations": [], "hallucinated": [],
                "finish_reason": "length", "usage": None, "cost_usd": None, "chunk_ids": [],
                "context_chars": 0}
-    monkeypatch.setattr(routes, "answer_stream", truncated)
+    monkeypatch.setattr(routes, "aanswer_stream", truncated)
     client.post("/api/ask", json={"question": Q})
     assert fakes.answers == {} and fakes.queries[-1]["cached"] is False
 
@@ -473,24 +531,29 @@ def test_evidence_404_when_the_chunk_is_unknown(client, monkeypatch):
 def test_the_route_hands_the_configured_escalation_model_to_the_answerer(client, monkeypatch):
     seen = {}
 
-    def capture(question, driver, embedder, strategy="hybrid", **kw):
+    async def capture(question, driver, embedder, strategy="hybrid", **kw):
         seen.update(kw)
-        yield from fake_answer_stream(question, driver, embedder, strategy)
+        async for event in fake_answer_stream(question, driver, embedder, strategy):
+            yield event
 
-    monkeypatch.setattr(routes, "answer_stream", capture)
+    monkeypatch.setattr(routes, "aanswer_stream", capture)
     monkeypatch.setattr(FakeSettings, "escalation_model", "anthropic/claude-sonnet-5")
     client.post("/api/ask", json={"question": Q})
     assert seen["escalation_model"] == "anthropic/claude-sonnet-5"
+    assert seen["limiters"] is client.app.state.limiters          # the route hands the twin the app's named limiters
+    assert seen["timeout"] == FakeSettings.llm_request_timeout_s
+    assert seen["max_tokens"] == FakeSettings.llm_answer_max_tokens
 
 
 def test_no_escalation_model_means_the_answerer_is_told_none(client, monkeypatch):
     seen = {}
 
-    def capture(question, driver, embedder, strategy="hybrid", **kw):
+    async def capture(question, driver, embedder, strategy="hybrid", **kw):
         seen.update(kw)
-        yield from fake_answer_stream(question, driver, embedder, strategy)
+        async for event in fake_answer_stream(question, driver, embedder, strategy):
+            yield event
 
-    monkeypatch.setattr(routes, "answer_stream", capture)
+    monkeypatch.setattr(routes, "aanswer_stream", capture)
     client.post("/api/ask", json={"question": Q + " again"})
     assert seen["escalation_model"] is None
 
@@ -498,20 +561,26 @@ def test_no_escalation_model_means_the_answerer_is_told_none(client, monkeypatch
 # --- review finding S1 and the escalation events through the route ---
 
 def test_a_client_that_disconnects_during_the_answer_still_costs_a_ledger_row(client, fakes):
-    gen = routes._paid_stream(client.app.state, Q + " disconnect", "hybrid", "iph")
-    next(gen)          # retrieval
-    next(gen)          # first delta
-    gen.close()        # the browser went away before `done`
+    async def disconnect():
+        stream = PaidStream(client.app.state, Q + " disconnect", "hybrid", "iph", twin=routes._stream_fn("hybrid"))
+        gen = stream.events()
+        await gen.__anext__()          # retrieval
+        await gen.__anext__()          # first delta
+        await gen.aclose()             # the browser went away before `done`
+        await stream.finalize()        # what the response does after the disconnect
+
+    client.portal.call(disconnect)
     assert len(fakes.queries) == 1 and fakes.queries[0].get("cost_usd") is None
+    assert client.app.state.answer_limiter.borrowed_tokens == 0
 
 
 def test_a_completed_answer_writes_exactly_one_ledger_row(client, fakes):
-    events = list(routes._paid_stream(client.app.state, Q + " complete", "hybrid", "iph"))
+    events = run_stream(client, Q + " complete")
     assert events and len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.00007
 
 
 def test_an_escalated_answer_passes_through_with_one_ledger_row_carrying_the_summed_cost(client, fakes, monkeypatch):
-    def escalating(question, driver, embedder, strategy="hybrid", **kw):
+    async def escalating(question, driver, embedder, strategy="hybrid", **kw):
         yield {"event": "retrieval", "anchors": {}, "counts": {}}
         yield {"event": "escalated", "reasons": ["invalid_citation"], "from": "cheap/m", "to": "strong/m"}
         yield {"event": "delta", "text": "Strong answer."}
@@ -519,8 +588,8 @@ def test_an_escalated_answer_passes_through_with_one_ledger_row_carrying_the_sum
                "usage": {"prompt_tokens": 300, "completion_tokens": 30}, "cost_usd": 0.031, "escalated": True,
                "routed": "cheap", "answered_by": "strong/m", "escalation_reasons": ["invalid_citation"]}
 
-    monkeypatch.setattr(routes, "answer_stream", escalating)
-    events = [json.loads(e.data) for e in routes._paid_stream(client.app.state, Q + " esc", "hybrid", "iph")]
+    monkeypatch.setattr(routes, "aanswer_stream", escalating)
+    events = run_stream(client, Q + " esc")
     assert [e["event"] for e in events] == ["retrieval", "escalated", "delta", "done"]
     assert len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.031
     assert any(a["answer"] == "Strong answer." for a in fakes.answers.values())
@@ -639,7 +708,7 @@ CLEAN_CHECKS = {"citations_retrieved": True, "numbers_grounded": True, "unmatche
 
 
 def stream_with(checks, routed="strong"):
-    def stream(question, driver, embedder, strategy="hybrid", **kw):
+    async def stream(question, driver, embedder, strategy="hybrid", **kw):
         yield {"event": "retrieval", "anchors": {}, "counts": {}}
         yield {"event": "done", "answer": "A.", "citations": [], "hallucinated": [], "finish_reason": "stop",
                "usage": None, "cost_usd": 0.01, "routed": routed, "escalated": False, "answered_by": "strong/m",
@@ -648,9 +717,9 @@ def stream_with(checks, routed="strong"):
 
 
 def test_the_done_log_line_carries_the_checks(client, monkeypatch, caplog):
-    monkeypatch.setattr(routes, "answer_stream", stream_with(CLEAN_CHECKS))
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(CLEAN_CHECKS))
     caplog.set_level("INFO", logger="semigraph.serve")
-    list(routes._paid_stream(client.app.state, Q + " log", "hybrid", "iph"))
+    run_stream(client, Q + " log")
     line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("answered "))
     assert "checks=" in line and "'numbers_grounded': True" in line
 
@@ -658,17 +727,17 @@ def test_the_done_log_line_carries_the_checks(client, monkeypatch, caplog):
 def test_a_strong_routed_answer_that_fails_a_check_is_logged_as_a_warning_not_hidden(client, monkeypatch, caplog):
     failed = {"citations_retrieved": True, "numbers_grounded": False, "unmatched_numbers": ["$190 billion"],
               "pseudo_citations": ["Reported Metrics"]}
-    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(failed))
     caplog.set_level("INFO", logger="semigraph.serve")
-    events = [json.loads(e.data) for e in routes._paid_stream(client.app.state, Q + " warn", "hybrid", "iph")]
+    events = run_stream(client, Q + " warn")
     warning = next(r for r in caplog.records if r.levelname == "WARNING" and "failed checks" in r.getMessage())
     assert "$190 billion" in warning.getMessage() and "routed=strong" in warning.getMessage()
     assert events[-1]["checks"] == failed                     # and the client still receives them on the done event
 
 
 def test_an_event_without_checks_is_logged_without_error(client, monkeypatch):
-    monkeypatch.setattr(routes, "answer_stream", stream_with(None))
-    assert list(routes._paid_stream(client.app.state, Q + " nochecks", "hybrid", "iph"))
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(None))
+    assert run_stream(client, Q + " nochecks")
 
 
 def test_an_answer_whose_checks_failed_is_not_cached_so_the_failure_cannot_vanish_on_replay(client, fakes, monkeypatch):
@@ -676,8 +745,8 @@ def test_an_answer_whose_checks_failed_is_not_cached_so_the_failure_cannot_vanis
     them would show it as clean for the whole TTL."""
     failed = {"citations_retrieved": True, "numbers_grounded": False, "unmatched_numbers": ["$190 billion"],
               "pseudo_citations": []}
-    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
-    events = [json.loads(e.data) for e in routes._paid_stream(client.app.state, Q + " failed", "hybrid", "iph")]
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(failed))
+    events = run_stream(client, Q + " failed")
     assert events[-1]["checks"] == failed
     assert fakes.answers == {} and len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.01   # still on the ledger
 
@@ -687,17 +756,17 @@ def test_an_answer_whose_checks_failed_is_not_cached_so_the_failure_cannot_vanis
     {"citations_retrieved": True, "numbers_grounded": True, "unmatched_numbers": [], "pseudo_citations": ["Excerpts"]},
 ])
 def test_any_failed_check_keeps_the_answer_out_of_the_cache(client, fakes, monkeypatch, failed):
-    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
-    list(routes._paid_stream(client.app.state, Q + " failed too", "hybrid", "iph"))
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(failed))
+    run_stream(client, Q + " failed too")
     assert fakes.answers == {}
 
 
 def test_an_answer_with_clean_checks_or_no_checks_is_cached_as_before(client, fakes, monkeypatch):
-    monkeypatch.setattr(routes, "answer_stream", stream_with(CLEAN_CHECKS))
-    list(routes._paid_stream(client.app.state, Q + " clean", "hybrid", "iph"))
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(CLEAN_CHECKS))
+    run_stream(client, Q + " clean")
     assert len(fakes.answers) == 1
-    monkeypatch.setattr(routes, "answer_stream", stream_with(None))
-    list(routes._paid_stream(client.app.state, Q + " unchecked", "hybrid", "iph"))
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(None))
+    run_stream(client, Q + " unchecked")
     assert len(fakes.answers) == 2
 
 
@@ -722,22 +791,48 @@ FULL_CLEAN = {"citations_retrieved": True, "numbers_grounded": True, "numbers_ch
     {**FULL_CLEAN, "unsupported_removal_claim": True, "unsupported_removal_sentences": ["x was removed"]},
 ], ids=["uncited", "echoed", "removal"])
 def test_an_uncited_echoing_or_removal_claiming_answer_is_not_cached(client, fakes, monkeypatch, failed):
-    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
-    events = [json.loads(e.data) for e in routes._paid_stream(client.app.state, Q + " newchecks", "hybrid", "iph")]
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(failed))
+    events = run_stream(client, Q + " newchecks")
     assert fakes.answers == {} and events[-1]["checks"] == failed        # the client still receives them
 
 
 def test_a_zero_citation_refusal_with_full_checks_is_cached(client, fakes, monkeypatch):
     refusal = {**FULL_CLEAN, "numbers_checked": 0, "has_citation": False, "is_refusal": True}
-    monkeypatch.setattr(routes, "answer_stream", stream_with(refusal))
-    list(routes._paid_stream(client.app.state, Q + " refusal", "hybrid", "iph"))
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(refusal))
+    run_stream(client, Q + " refusal")
     assert len(fakes.answers) == 1
 
 
 def test_the_failed_check_warning_names_the_new_failures(client, monkeypatch, caplog):
     failed = {**FULL_CLEAN, "has_citation": False}
-    monkeypatch.setattr(routes, "answer_stream", stream_with(failed))
+    monkeypatch.setattr(routes, "aanswer_stream", stream_with(failed))
     caplog.set_level("INFO", logger="semigraph.serve")
-    list(routes._paid_stream(client.app.state, Q + " warnuncited", "hybrid", "iph"))
+    run_stream(client, Q + " warnuncited")
     assert any(r.levelname == "WARNING" and "failed checks" in r.getMessage() and "'has_citation': False" in r.getMessage()
                for r in caplog.records)
+
+
+# ---------------------------------------------------------------- /healthz runs under its own one-thread limiter
+
+def test_healthz_pings_the_database_on_a_worker_thread_under_the_health_limiter(client, monkeypatch):
+    seen = []
+
+    def ping(driver, query, **params):
+        seen.append((query, client.app.state.limiters.health.borrowed_tokens))
+        return [{"ok": 1}]
+
+    monkeypatch.setattr(routes, "run_cypher", ping)
+    body = client.get("/healthz").json()
+    assert body == {"status": "ok", "db": True, "embedder": "fake-embedder"}
+    assert seen == [("RETURN 1 AS ok", 1)]                     # one token of the health limiter was held while it ran
+    assert client.app.state.limiters.health.total_tokens == 1 and client.app.state.limiters.health.borrowed_tokens == 0
+
+
+def test_healthz_reports_degraded_with_a_503_when_the_database_is_unreachable(client, monkeypatch):
+    def down(driver, query, **params):
+        raise ConnectionError("neo4j is down")
+
+    monkeypatch.setattr(routes, "run_cypher", down)
+    r = client.get("/healthz")
+    assert r.status_code == 503 and r.json() == {"status": "degraded", "db": False}
+    assert client.app.state.limiters.health.borrowed_tokens == 0

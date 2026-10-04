@@ -1,15 +1,27 @@
 """Pure-logic tests for the service helpers and the streaming answerer —
-litellm fully mocked, no Neo4j, no network."""
+litellm fully mocked, no Neo4j, no network.
 
+The sync writer (``TextStream`` / ``answer_stream``) is still live code: the benchmark runner, the bake-off and the
+pre-M5 replay recorder use it, so its tests below stay as they are. The route streams through the async twin
+(``aanswer_stream``, M5a I2); the twin has its own parity suite (tests/test_answerer_async.py), and the two scenarios
+whose VALUES that suite does not pin (a hallucinated citation with the cost, a failure mid-answer with its usage)
+are repeated for it after the sync ones."""
+
+import asyncio
+from contextlib import aclosing
 from types import SimpleNamespace
 
+import anyio
 import litellm
 import pytest
 
 import semigraph.retrieval.answerer as answerer_mod
+import semigraph.retrieval.answerer_async as answerer_async_mod
 from semigraph.retrieval.answerer import TextStream, answer_stream, usage_cost
+from semigraph.retrieval.answerer_async import aanswer_stream
 from semigraph.serve import store
 from semigraph.serve.guard import RateLimiter, ip_hash, validate_question
+from semigraph.serve.limiters import make_limiters
 
 CID = "0001045810-26-000021:I.1:0320"
 
@@ -164,6 +176,66 @@ def test_answer_stream_mid_stream_failure_yields_error_with_usage(monkeypatch):
             raise RuntimeError("stream interrupted mid-answer: ServiceUnavailableError")
 
     events = list(answer_stream("q", None, None, llm_stream=lambda p: Broken()))
+    assert [e["event"] for e in events] == ["retrieval", "delta", "error"]
+    assert events[-1]["partial"] == "part" and events[-1]["usage"]["prompt_tokens"] == 40
+    assert events[-1]["cost_usd"] == pytest.approx(40 * 2 / 1e6 + 3 * 10 / 1e6)
+
+
+# --- aanswer_stream (retrieval mocked): the async twin the route streams through ---
+
+class _AsyncStreamWithAttrs:
+    """What the async writer reads from a model stream: text parts, ``usage``, ``finish_reason``; ``fail`` is raised
+    after the last part."""
+
+    def __init__(self, parts, usage, finish_reason, fail=None):
+        self._parts, self.usage, self.finish_reason, self._fail = parts, usage, finish_reason, fail
+
+    async def __aiter__(self):
+        for part in self._parts:
+            yield part
+        if self._fail:
+            raise self._fail
+
+
+def _aanswer_events(monkeypatch, retrieval, llm_stream) -> list[dict]:
+    """The events of ``aanswer_stream`` over a mocked retrieval, on a fresh loop (the limiters are built inside it)."""
+    monkeypatch.setattr(answerer_async_mod, "hybrid_retrieve", lambda *a, **kw: retrieval)
+    embedder = SimpleNamespace(encode_query=lambda text: [0.0])
+
+    async def go():
+        limiters = make_limiters(SimpleNamespace(embed_slots=1, db_thread_limit=2))
+        stream = aanswer_stream("q", None, embedder, llm_stream=llm_stream, limiters=limiters)
+        with anyio.fail_after(20):
+            async with aclosing(stream) as events:
+                return [event async for event in events]
+
+    return asyncio.run(go())
+
+
+def test_aanswer_stream_events_and_citation_verification(monkeypatch):
+    retrieval = {"anchors": {"Nvidia": 1045810}, "edges": [], "metrics": [], "risks": [],
+                 "temporal": [],
+                 "chunks": [{"chunk_id": CID, "score": 0.9, "text": "HBM text", "source_url": "u"}]}
+    bogus = "0000000000-00-000000:I.1:9999"
+
+    def llm_stream(prompt):
+        assert "HBM text" in prompt
+        return _AsyncStreamWithAttrs([f"Nvidia depends on SK hynix [{CID}] and [{bogus}]."],
+                                     {"prompt_tokens": 100, "completion_tokens": 10}, "stop")
+
+    events = _aanswer_events(monkeypatch, retrieval, llm_stream)
+    assert [e["event"] for e in events] == ["retrieval", "delta", "done"]
+    done = events[-1]
+    assert done["citations"] == sorted([CID, bogus])
+    assert done["hallucinated"] == [bogus]
+    assert done["usage"]["prompt_tokens"] == 100 and done["cost_usd"] == pytest.approx(0.0003)
+
+
+def test_aanswer_stream_mid_stream_failure_yields_error_with_usage(monkeypatch):
+    retrieval = {"anchors": {}, "edges": [], "metrics": [], "risks": [], "temporal": [], "chunks": []}
+    broken = _AsyncStreamWithAttrs(["part"], {"prompt_tokens": 40, "completion_tokens": 3}, None,
+                                   fail=RuntimeError("stream interrupted mid-answer: ServiceUnavailableError"))
+    events = _aanswer_events(monkeypatch, retrieval, lambda p: broken)
     assert [e["event"] for e in events] == ["retrieval", "delta", "error"]
     assert events[-1]["partial"] == "part" and events[-1]["usage"]["prompt_tokens"] == 40
     assert events[-1]["cost_usd"] == pytest.approx(40 * 2 / 1e6 + 3 * 10 / 1e6)

@@ -73,10 +73,12 @@ def test_stream_answer_for_context_is_what_answer_stream_delegates_to():
 
 def test_the_route_streams_through_the_agent_only_for_strategy_agent_and_imports_it_lazily(monkeypatch):
     sentinel = object()
-    stub = types.ModuleType("semigraph.agent.stream")
-    stub.agent_answer_stream = sentinel
+    stub = types.ModuleType("semigraph.agent.stream_async")
+    stub.aagent_answer_stream = sentinel
     pkg = types.ModuleType("semigraph.agent")
     monkeypatch.setitem(sys.modules, "semigraph.agent", pkg)
-    monkeypatch.setitem(sys.modules, "semigraph.agent.stream", stub)
+    monkeypatch.setitem(sys.modules, "semigraph.agent.stream_async", stub)
     assert routes._stream_fn("agent") is sentinel
-    assert routes._stream_fn("hybrid") is routes.answer_stream and routes._stream_fn("vector") is routes.answer_stream
+    assert routes._stream_fn("hybrid") is routes.aanswer_stream and routes._stream_fn("vector") is routes.aanswer_stream
+    assert routes._stream_fn("hybrid", True) is routes.astream_workspace_answer   # a workspace ask never gets the agent
+    assert routes._stream_fn("agent", True) is routes.astream_workspace_answer

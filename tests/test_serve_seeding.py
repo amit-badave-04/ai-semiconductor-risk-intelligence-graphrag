@@ -3,7 +3,6 @@ answer whose checks failed or were never computed. Pure: the store is faked at `
 
 import hashlib
 import logging
-import threading
 
 import pytest
 from fastapi import FastAPI
@@ -185,7 +184,6 @@ def make_client(example_ids=None):
     app.state.settings = Settings()
     app.state.driver = object()
     app.state.read_rate_limiter = RateLimiter(50, 60)
-    app.state.answer_slots = threading.BoundedSemaphore(1)
     if example_ids is not None:
         app.state.example_ids = example_ids
     return TestClient(app)

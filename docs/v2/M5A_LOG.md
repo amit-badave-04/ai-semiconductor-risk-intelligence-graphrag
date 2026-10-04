@@ -35,3 +35,29 @@ option b), W (workspace token read before Turnstile), P (how the S2 load test re
 pool becomes cache hits), the paired benchmark arm (default no).
 
 Spend so far in M5a: < $0.01 (the probe). Staging machines: none created.
+
+## 2026-10-03/04 - I2 async answer path: seams, twins, review findings
+
+**Committed:** shared seams (471aa92: LimitedEmbedder with a 2,000-vector cache, named limiters, loop-lag monitor,
+query_vec on the retrievers) and the three async twins (ec083e7: SEC, workspace, agent; local until the wiring lands).
+Each twin was built test-first by a Sonnet worker and reviewed adversarially by Opus (four passes in all); parity with the
+sync writers is tested event-for-event (parametrised sync-vs-async scenarios, the recorded answer fixture, the pre-M5
+agent and workspace fixtures).
+
+**Findings that changed the design (all fixed or tracked):**
+- A cancelled anyio scope is not delivered when a SHIELDED thread hop returns (no checkpoint), so a twin could start a paid
+  call for a client that had already left. Fix: a checkpoint after every thread hop and before every paid call (an AST pin
+  keeps bare run_sync out). A gated-thread probe over all three twins confirms no paid call starts after a cancel, except one
+  remaining case, below.
+- Open at the time of writing: a disconnect during the agent's PREFETCH still buys planner call 1 (the sync stream has the
+  same gap); being closed in the wiring workflow by a stop check before every planner call.
+- CPU-bound regex/Python work holds the GIL, so a worker thread does NOT protect the event loop from it. strip_links_images
+  (workspace.py) is quadratic: 222 ms per 10,000 characters, 886 ms per 20,000. The deterministic checks cost 7 to 21 ms per
+  ask on the dev machine. Consequence: the regex is being made linear (differentially tested against the old one, with
+  security property tests), and the twin docstrings are being corrected to say what a thread hop does and does not buy.
+- Native task.cancel() (server shutdown) is best effort for cleanup by design; the route cancels through an anyio scope on a
+  client disconnect, which is fully covered.
+
+**Wiring (in progress):** PaidStream (events + idempotent shielded finalize as the response's background task), the
+anyio.CapacityLimiter replacing answer_slots, ledger row written BEFORE the terminal event as in the sync code, conversion of
+the sync-path tests, then real-uvicorn concurrency and disconnect tests and a review panel. Nothing is deployed.

@@ -12,12 +12,26 @@ Planning (``run_agent``, a sync LangGraph run whose planner call and tools block
 ``limiters.db``. One thread, not one hop per step, because a sync generator must be driven from a single thread and
 context. The thread and the loop take turns (a lock-step handshake): the thread hands over one ``step`` event, then
 PARKS until the loop is asked for the next event, exactly as the sync generator is suspended at its ``yield``. So a
-consumer that goes away after event k never causes planner call k+1, whatever the timing; backpressure and the stop
-signal need nothing else.
+consumer that has taken event k (k >= 1) and then goes away never causes planner call k+1, whatever the timing;
+backpressure needs nothing else.
+
+The stretch BEFORE the first event is not covered by that: ``run_agent`` yields only step events, so the prefetch (the
+embed and the graph reads, including any wait for an embed slot) and the first plan node run inside ONE resumption,
+and the thread's own check of the stop flag happens only between resumptions. So the planner handed to ``run_agent``
+is wrapped (:func:`_unless_stopped`, for an injected planner and the default one alike): immediately before EVERY
+planner call it checks the stop flag and, if it is set, raises :class:`_PlanningStopped` in place of the call. That
+is a ``BaseException`` on purpose, so ``run_agent``'s own planner-error fallback (and its "planner call failed"
+WARNING) does not run; the planning thread catches it and ends like on any other stop. So once the stream has been
+told to stop (``aclose`` sets the flag, which happens when the loop has delivered the disconnect to the consumer),
+no planner call that has not begun is made, call 1 after a disconnect during the prefetch included. The sync
+stream has no such guard: a client that leaves during ITS prefetch still has planner call 1 paid. What cannot be
+stopped, here or there, is a planner call ALREADY IN FLIGHT: one that passed its check, or one that began between
+the disconnect and its delivery to the consumer (one or more loop iterations).
 
 A consumer that leaves for ANY reason before planning has finished (``aclose``, a cancelled task or scope, an
 exception) sets a stop flag, wakes the thread, closes the hand-over stream and joins the thread under a shield. The
-thread checks the flag before every resumption of ``run_agent`` and then calls ``gen.close()``. The join makes the
+thread checks the flag before every resumption of ``run_agent``, the planner wrapper checks it before every planner
+call, and the thread calls ``gen.close()`` on the way out. The join makes the
 :class:`~semigraph.agent.state.Ledger` final before the planner's dollars are reported.
 
 An anyio shield holds against a cancelled anyio scope but NOT against a native ``task.cancel()``, so the wait is
@@ -27,9 +41,10 @@ however the consumer leaves, a planner call in flight has finished and is in the
 
 A cancelled scope is delivered at the next checkpoint, and a shielded thread hop returns without one. So a checkpoint
 (``anyio.lowlevel.checkpoint``) sits immediately before everything that can start a paid call: before the loop starts
-the planning thread or wakes it for its next resumption (the thread starts the next planner call the moment it wakes,
-and checks the stop flag only after), and before the writer is made. A cancelled scope raises there, instead of buying a
-call for a client that has gone.
+the planning thread or wakes it for its next resumption (the stop flag is set only once the cancellation has been
+delivered, and the thread starts the next planner call the moment it wakes: without the checkpoint the wake-up wins
+that race), and before the writer is made. A cancelled scope raises there, instead of buying a call for a client that
+has gone.
 
 An error of ``run_agent`` of any kind, a ``BaseException`` that is not an ``Exception`` included (the sync generator
 raises it as it is), is raised on the consumer's side by the ``__anext__`` that follows the last event handed over. An
@@ -40,12 +55,17 @@ handled. The limits of this design:
 * a planner call already in flight cannot be interrupted, so up to one planner call (``planner_call_cap_s``, 12 s)
   can still be paid after a disconnect, and the abandoned stream is not finished (nor its ledger row written) until
   it returns: the same as the sync code today. The tools that follow it are read-only graph queries and run before
-  the thread notices the flag;
+  the thread notices the flag. A call that begins before the stream has been told to stop counts as in flight, the
+  first one included; once it has been told, the planner wrapper refuses every call that has not begun, so a
+  prefetch that outlasts the delivery of the disconnect leads to no planner call;
 * one thread is held from the first resumption to the end of planning, including while it is parked waiting for the
   consumer to take an event (up to ``agent_time_budget_s``, 25 s). Concurrent agent streams in planning are therefore
-  bounded by ``limiters.db``, and the in-flight answer cap bounds how many such threads a slow client can park;
+  bounded by ``limiters.db``, and the in-flight answer cap bounds how many such threads a slow client can park. A
+  thread takes blocking WAITS (the planner's network call, a graph query) off the loop; CPU-bound pure-Python work
+  on it still holds the GIL and can stall the loop;
 * the prefetch embeds the question inside that thread (``hybrid_retrieve`` takes no ``query_vec`` here), so it waits
-  for the embedder's own semaphore while holding a ``limiters.db`` token;
+  for the embedder's own semaphore while holding a ``limiters.db`` token. A disconnect does not interrupt it: it
+  runs to its end holding the thread and the token, and then leads to no planner call;
 * the looped join answers a cancellation of the CONSUMER. If the event loop itself is shut down, its tasks are all
   cancelled, the hosting task of the thread included, and the join then ends with that task, not with the thread (which
   cannot be interrupted and is left to finish on its own).
@@ -87,7 +107,7 @@ from ..retrieval.answerer import usage_cost
 from ..retrieval.answerer_async import astream_answer_for_context
 from .graph import AgentResult, run_agent
 from .planner import LiteLLMPlanner
-from .state import Ledger, Limits
+from .state import Ledger, Limits, PlannerTurn
 from .stream import _PREFETCH_ARGS, _agent_info, _fold_spend, _planner_cost
 from .trace import Tracer, as_safe
 
@@ -115,6 +135,24 @@ async def _wait_through_cancellation(wait: Callable[[], Awaitable], done: Callab
     return cancelled
 
 
+class _PlanningStopped(BaseException):
+    """Raised in place of a planner call once the consumer has gone. A ``BaseException`` on purpose: ``run_agent`` turns
+    an ``Exception`` of the planner into a fallback answer and a "planner call failed" WARNING, and this is neither."""
+
+
+def _unless_stopped(planner: Callable[..., PlannerTurn], stop: threading.Event) -> Callable[..., PlannerTurn]:
+    """``planner`` with the stop flag checked immediately before every call: once it is set, a call that has not begun
+    is not made. A call that has begun cannot be taken back. The wrapper has the signature of a planner, so an injected
+    ``callable(messages, tools, *, timeout)`` and the default one are guarded alike."""
+
+    def guarded(messages: list[dict], tools: list[dict], *, timeout: float) -> PlannerTurn:
+        if stop.is_set():
+            raise _PlanningStopped
+        return planner(messages, tools, timeout=timeout)
+
+    return guarded
+
+
 class _Planning:
     """Drive the sync ``run_agent`` generator on one worker thread and iterate its events from the loop, in lock-step.
 
@@ -122,13 +160,16 @@ class _Planning:
     end, an exception, ``aclose``, an anyio scope or a native ``task.cancel()``, once or repeatedly), stops the thread
     and waits until it has ended; a cancellation that lands during that wait is re-raised once, afterwards (see the
     module docstring). An exception of the run, a ``BaseException`` included, is raised by the ``__anext__`` that
-    follows the last event handed over, which is where the sync generator would have raised it: no event is lost."""
+    follows the last event handed over, which is where the sync generator would have raised it: no event is lost.
 
-    def __init__(self, events: Generator[dict, None, AgentResult], limiter: anyio.CapacityLimiter):
-        self._events, self._limiter = events, limiter
+    ``stop`` is the flag the planner guard of ``events`` was made with (:func:`_unless_stopped`), so that stopping the
+    planning also refuses the planner calls the thread's own check cannot reach."""
+
+    def __init__(self, events: Generator[dict, None, AgentResult], limiter: anyio.CapacityLimiter,
+                 stop: threading.Event):
+        self._events, self._limiter, self._stop = events, limiter, stop
         self._send, self._receive = anyio.create_memory_object_stream[dict](0)   # unbuffered: a hand-over, not a queue
         self._resume = threading.Semaphore(0)   # the loop's "next event, please" (and the wake-up of a parked thread)
-        self._stop = threading.Event()
         self._finished = anyio.Event()          # the host task is done: the thread has ended and the stream is closed
         self._task: asyncio.Task | None = None
         self._result: AgentResult | None = None
@@ -145,13 +186,16 @@ class _Planning:
 
     def _drive(self) -> AgentResult | None:
         """The worker thread: resume ``run_agent`` only while the consumer is asking for events. Returns its result,
-        or None when stopped; ``run_agent`` is closed (its own ``GeneratorExit`` handling runs) on every way out."""
+        or None when stopped (also when the planner guard refused a call: that is a stop like any other);
+        ``run_agent`` is closed (its own ``GeneratorExit`` handling runs) on every way out."""
         try:
             while not self._stop.is_set():
                 try:
                     event = next(self._events)
                 except StopIteration as end:
                     return end.value
+                except _PlanningStopped:
+                    return None
                 if self._stop.is_set() or not self._hand_over(event):
                     break
                 self._resume.acquire()
@@ -199,15 +243,19 @@ class _Planning:
         return self._result
 
     async def aclose(self) -> None:
-        """Stop the thread (it checks before resuming ``run_agent``), wake it, fail a hand-over in flight, and wait for
-        it under a shield that a native ``task.cancel()`` cannot cut short: the planner's ledger is final when this
-        returns. A cancellation that landed during the wait is re-raised once, after the failure of the run's own
-        close (if any) has been logged. Safe to call after a normal end."""
+        """Stop the thread (it checks before resuming ``run_agent``, and the planner guard before every planner call),
+        wake it, fail a hand-over in flight, and wait for it under a shield that a native ``task.cancel()`` cannot cut
+        short: the planner's ledger is final when this returns. A cancellation that landed during the wait is
+        re-raised once, after the failure of the run's own close (if any) has been logged. Safe to call after a normal
+        end. When the scope was cancelled before the first event was asked for, no host task exists to close the
+        sending end, so it is closed here."""
         self._stop.set()
         self._resume.release()
         self._receive.close()
         cancelled = None
-        if self._task is not None:
+        if self._task is None:
+            self._send.close()
+        else:
             cancelled = await _wait_through_cancellation(self._finished.wait, self._finished.is_set)
         if self._error is not None:             # a failure nobody asked for (the run was already being abandoned)
             logger.warning("closing the planning run failed: %s: %s", type(self._error).__name__, self._error)
@@ -280,14 +328,16 @@ async def aagent_answer_stream(question: str, driver, embedder, strategy: str = 
     prefetch, writer_kwargs = _split_kwargs(stream_kwargs, timeout)
     # Kept here, not inside ``run_agent``, so it survives an abandoned stream (the sync code's reason too).
     ledger, terminal_emitted = Ledger(), False
-    planning_events = run_agent(question, driver, embedder, planner=planner or LiteLLMPlanner(planner_model),
+    stop = threading.Event()                    # set when the consumer leaves; read by the thread and the planner guard
+    planning_events = run_agent(question, driver, embedder,
+                                planner=_unless_stopped(planner or LiteLLMPlanner(planner_model), stop),
                                 planner_model=planner_model, limits=Limits.from_settings(settings), tracer=safe,
                                 ledger=ledger, **prefetch)
     try:
         try:
             with safe.span("agent", strategy=strategy, planner_model=planner_model,
                            question_chars=len(question)) as span:
-                async with _Planning(planning_events, limiters.db) as planning:
+                async with _Planning(planning_events, limiters.db, stop) as planning:
                     async for event in planning:
                         yield event
                 plan = planning.result
