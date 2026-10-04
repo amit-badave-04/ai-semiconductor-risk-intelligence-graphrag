@@ -96,6 +96,37 @@ _BARE_URL_RE = re.compile(
     r"(?<![a-z0-9+.\-])([0-9+.\-]*+)[a-z][a-z0-9+.\-]*+://[^\s\[\]()<>]+|//[^\s\[\]()<>]+|\bwww\.[^\s\[\]()<>]+",
     re.I)
 
+# REPEAT UNTIL NOTHING CHANGES (M5a I2 decision E3). Each pass runs once per round, so when a later pass removes the
+# middle of a construct that an earlier pass had skipped, the two halves meet in the output and form a live one:
+# `<<b>img src=x onerror=alert(1)>` -> `<img src=x onerror=alert(1)>`, `[a [x](y) b](javascript:alert(1))` ->
+# `[a  b](javascript:alert(1))`, `//x[x]:t` -> `[x]:t`. A function whose contract is "no link or image reaches the
+# client" must not hand back text that one more call would still change. Every pass hands back a subsequence of its
+# input (it removes what it matched, or returns it unchanged), so a round never adds a character: the text shrinks
+# until a round leaves it alone, and that text is a fixed point of the function.
+#
+# Every round is linear, but a nest of k layers (`<` * k + `<b>` + `x>` * k) takes k + 1 of them, and k can be as large
+# as the answer is long: that would be quadratic in total, and `re` holds the GIL, so no worker thread would keep it
+# off the event loop. Hence a cap on the number of rounds. An answer that merely quotes a link takes 2 rounds (one
+# that changes the text, one that sees it unchanged), one reassembled construct takes 3, and a nest k layers deep
+# takes k + 2: 4 verifies a nest two layers deep exactly, deeper than anything an honest answer holds. The whole call
+# then costs at most 4 linear rounds plus the fallback below: measured at about 9 ms for 20,000 characters of the
+# most expensive filler that no round shrinks (one round of it is about 2 ms), tests/test_retrieval_workspace_regex.py.
+MAX_STRIP_ROUNDS = 4
+
+# The fallback for a text still changing after MAX_STRIP_ROUNDS rounds (only a deliberate nest gets there). It does not
+# peel layer by layer; it removes what any construct needs, in an order that leaves a text no round changes:
+#   1. every `<`, and every `[` or `]` that is not part of a citation (`CITE_RE`, kept whole through a named group so
+#      that the substitution needs no callback per bracket): no tag, image, link, reference link or definition can
+#      start or end without one of these. Two adjacent citations stay, the reference-link pass hands them back;
+#   2. every bare URL (step 1 can create one: `/[x]/y` -> `//y`);
+#   3. every run of `(` or `:` directly after a `]`, which is now always a citation's (step 2 can join `]` to a `(`:
+#      `[id]//u(y)` -> `[id](y)`): so `[id](...)` is not a link and `[id]: ...` is not a definition.
+# After these there is no `<`, no `](`, no `]:`, no URL, and every bracket belongs to a whole citation, so none of the
+# six passes has anything to change. Step 3 only deletes a `(` or `:` that follows a `]`, which cannot start a URL or
+# touch a citation. Citations are never removed.
+_CITE_OR_BRACKET_RE = re.compile(rf"(?P<cite>{CITE_RE.pattern})|[<\[\]]")
+_AFTER_CLOSE_RE = re.compile(r"(?<=\])[(:]++")
+
 
 def looks_suspicious(text: str) -> bool:
     """True when ``text`` carries a shape often used for prompt injection (role markers, "ignore previous
@@ -124,18 +155,36 @@ def _ref_link_replacement(match: re.Match) -> str:
     return ""
 
 
+def _defang(text: str) -> str:
+    """The fallback for a text that was still changing after ``MAX_STRIP_ROUNDS`` rounds (see the comment above
+    ``_CITE_OR_BRACKET_RE`` for why the result is a fixed point). Three linear passes, no loop."""
+    text = _CITE_OR_BRACKET_RE.sub(r"\g<cite>", text)
+    text = _BARE_URL_RE.sub(r"\1", text)
+    return _AFTER_CLOSE_RE.sub("", text)
+
+
 def strip_links_images(text: str) -> str:
     """Removes markdown images and links (inline and reference-style), reference-link definitions, HTML tags and
     autolinks, and bare/protocol-relative/``www.`` URLs from ``text`` — but never a ``[doc:...]``, ``[fr:...]`` or
     chunk citation (docs/v2/M4_PLAN.md risk 5): an answer driven by untrusted uploaded text must never carry a link
-    or an image to the client. Linear time in ``len(text)`` (see the patterns above): it runs on the event loop in the
-    async answer path, where it must never stall every other request."""
-    text = _MD_IMAGE_RE.sub(r"\1", text)
-    text = _REF_LINK_RE.sub(_ref_link_replacement, text)
-    text = _MD_LINK_RE.sub(_link_replacement, text)
-    text = _REF_LINK_DEF_RE.sub(r"\1", text)
-    text = _HTML_TAG_RE.sub("", text)
-    return _BARE_URL_RE.sub(r"\1", text)
+    or an image to the client. The six passes repeat until a round changes nothing, so the result is a fixed point
+    (``strip_links_images(strip_links_images(x))`` is the same text) and no later pass can reassemble a construct an
+    earlier one skipped; a text still changing after ``MAX_STRIP_ROUNDS`` rounds goes through ``_defang``. Linear time
+    in ``len(text)`` (at most ``MAX_STRIP_ROUNDS`` linear rounds plus one linear fallback, see the patterns above). The
+    async answer path calls it through the writer's postprocess hook on a worker thread; being linear (about a
+    millisecond for a typical answer) is what keeps it from stalling every other request, since ``re`` holds the GIL
+    for a whole match and a thread would not help against a long quadratic one."""
+    for _ in range(MAX_STRIP_ROUNDS):
+        stripped = _MD_IMAGE_RE.sub(r"\1", text)
+        stripped = _REF_LINK_RE.sub(_ref_link_replacement, stripped)
+        stripped = _MD_LINK_RE.sub(_link_replacement, stripped)
+        stripped = _REF_LINK_DEF_RE.sub(r"\1", stripped)
+        stripped = _HTML_TAG_RE.sub("", stripped)
+        stripped = _BARE_URL_RE.sub(r"\1", stripped)
+        if stripped == text:
+            return text
+        text = stripped
+    return _defang(text)
 
 
 def workspace_retrieve(question: str, workspace_id: str, driver, embedder, *, as_of: str | None = None,

@@ -1,0 +1,3 @@
+# Findings reviewed and accepted: a fake workspace-id canary in a test, committed in ec083e7 before it carried the
+# inline gitleaks:allow marker (the current file has it). Not a credential.
+ec083e73780c52e59e599c08eb098a2e1f1e68ab:tests/test_serve_workspace_stream_async.py:generic-api-key:910

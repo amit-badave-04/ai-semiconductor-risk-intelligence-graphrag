@@ -10,6 +10,7 @@ import logging
 import re
 import secrets
 import time
+from collections.abc import AsyncIterator
 from functools import partial
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
-from sse_starlette import EventSourceResponse
+from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from ..artifacts import load_examples
 from ..graph.client import run_cypher
@@ -261,7 +262,7 @@ async def ask(body: AskRequest, request: Request):
         if cached:
             await run_in_threadpool(store.log_query, st.driver, ip_hash=iph, strategy=strategy, cached=True)
             event = {"event": "done", "cached": True, **cached}
-            return EventSourceResponse(iter([sse_event(event)]), sep="\n")
+            return EventSourceResponse(_one_event(event), sep="\n")
 
     if await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch):
         raise HTTPException(status_code=503, detail=MSG_PAUSED)
@@ -275,6 +276,13 @@ async def ask(body: AskRequest, request: Request):
     stream = PaidStream(st, question, strategy, iph, snapshot_id, workspace,
                         twin=_stream_fn(strategy, workspace is not None))
     return PaidResponse(stream, send_timeout=s.send_timeout_s)
+
+
+async def _one_event(event: dict) -> AsyncIterator[ServerSentEvent]:
+    """A cached answer's single event as an async stream. A sync iterator would be wrapped by sse-starlette in
+    ``iterate_in_threadpool``: every cached answer would wait for one of the 40 default worker threads, the pool that is
+    full whenever Neo4j is slow."""
+    yield sse_event(event)
 
 
 def _stream_fn(strategy: str, workspace: bool = False):

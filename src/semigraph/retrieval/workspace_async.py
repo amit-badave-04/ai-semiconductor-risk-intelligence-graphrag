@@ -7,7 +7,10 @@ key order, same values) as an async generator, so a stream that waits for the mo
 the writer tail is :func:`answerer_async.astream_answer_for_prompt`; only the blocking hops differ:
 
 * the question is embedded ONCE, on a worker thread under ``limiters.embed`` (the sync path embeds it twice: once for
-  the SEC retrieval, once for the workspace search), and that vector goes to both retrievals as ``query_vec``;
+  the SEC retrieval, once for the workspace search), and that vector goes to both retrievals as ``query_vec``. The
+  embedding is ``encode_query_private`` when the embedder has it (``serve.embed.LimitedEmbedder``: the same slot, but no
+  read or write of its vector cache, where a hit would tell a timer that these exact words were asked and the question
+  would outlive its workspace in memory); any other embedder is used through ``encode_query``;
 * the SEC retrieval, the workspace search and the stale-citation read run on worker threads under ``limiters.db``, in
   the sync order (SEC, then workspace, then, once the answer is done, the stale-citation read);
 * every one of those hops, the embedding included, goes through ``answerer_async._hop``, which checkpoints once the
@@ -28,9 +31,12 @@ function                                       6 doc chunks 120 doc chunks
 ``looks_suspicious`` (156k characters at 120)  0.49 ms      9.8 ms
 =============================================  ===========  ============
 
-and ``strip_links_images`` on a 2,400-token answer: 0.3 to 0.5 ms (p95 over 60 repetitions, 2026-10-04, after its
-rewrite to linear time). The three functions of the table are under the 10 ms bar, so they run inline; the stripper is
-offloaded with the writer's other checks (above). The 120-chunk column is the cap of one document version, not what an
+and ``strip_links_images`` on a 9,600-character answer, after its rewrite to linear time: 0.5 to 0.6 ms (p95)
+when the answer has no link, image or URL in it, and 0.8 to 1.0 ms (p95; the slowest single run 1.2 ms) with links,
+images, HTML tags and bare URLs through a third of its sentences or every other one (measured on 2026-10-04: Python
+3.13.13, Windows 11, an Intel Core Ultra 9 275HX; 20 warm-up runs, then 200 repetitions, three times per input). The
+three functions of the table are under the 10 ms bar, so they run inline; the stripper is offloaded with the writer's
+other checks (above). The 120-chunk column is the cap of one document version, not what an
 ask retrieves (the route retrieves 6). A worker thread would not shorten any of it: ``looks_suspicious`` is ONE ``re``
 call and ``re`` holds the GIL from start to end, so on a thread it stalls the loop just the same and only adds the hop.
 
@@ -52,10 +58,11 @@ event is yielded, before the writer is built, and before the ``done`` event (the
 module has no cleanup of its own: the ``aclosing`` around the writer's events hands that to ``answerer_async``, whose
 docstring says what a cancellation guarantees there (including what a bare native ``task.cancel()`` does not).
 
-Security: this module never imports the agent and never touches the answer cache (an upload workspace is never cached
-and never planned over), logs nothing of its own (no question, no uploaded text, no answer) and names the workspace
-only by its hash. Links and images never reach the client: the stripper runs before the single delta is released and
-on the ``partial`` of an ``error`` event, exactly as in the sync path (``force_buffered=True``).
+Security: this module never imports the agent and never touches the answer cache or the query-vector cache (an upload
+workspace is never cached and never planned over), logs nothing of its own (no question, no uploaded text, no answer)
+and names the workspace only by its hash. Links and images never reach the client: the stripper runs before the
+single delta is released and on the ``partial`` of an ``error`` event, exactly as in the sync path
+(``force_buffered=True``).
 """
 
 from collections.abc import AsyncIterator
@@ -115,7 +122,10 @@ async def astream_workspace_answer(question: str, driver, embedder, *, limiters:
     injectable: ``callable(prompt) -> async iterable[str]``. A bad ``hops`` is the sync retrieval's ValueError on the
     first ``__anext__``, before anything is embedded. Never the agent, never the answer cache."""
     company_edges_query(hops)       # rejects a bad ``hops`` up front, as ``hybrid_retrieve`` does before any work
-    vec = await _hop(embedder.encode_query, question, limiter=limiters.embed)
+    # A workspace question is private: ``LimitedEmbedder.encode_query_private`` takes the same slot but never reads or
+    # writes the vector cache. A plain embedder (no such method) embeds through ``encode_query``, as before.
+    embed = getattr(embedder, "encode_query_private", embedder.encode_query)
+    vec = await _hop(embed, question, limiter=limiters.embed)
     r_sec = await _on_db_thread(limiters, hybrid_retrieve, question, driver, embedder, k_chunks=k_chunks, hops=hops,
                                 query_vec=vec)
     r_ws = await _on_db_thread(limiters, workspace_retrieve, question, workspace_id, driver, embedder, as_of=as_of,

@@ -329,3 +329,14 @@ def test_the_process_is_hardened_before_anything_else_boots(monkeypatch, boot):
     with TestClient(main.create_app()):
         pass
     assert boot.order[:2] == ["harden", "bootstrap"]
+
+
+# ---------------------------------------------------------------- sse-starlette logs every event at DEBUG: pinned off
+
+def test_importing_the_service_pins_the_sse_starlette_logger_at_info():
+    """sse-starlette logs each SSE event, which carries the question or a workspace answer, at DEBUG. Production logs at
+    INFO today, so nothing is written; the pin keeps it that way when someone turns the root logger to DEBUG."""
+    import logging
+
+    assert logging.getLogger("sse_starlette").level == logging.INFO
+    assert not logging.getLogger("sse_starlette.sse").isEnabledFor(logging.DEBUG)      # the child that actually logs

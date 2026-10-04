@@ -37,6 +37,10 @@ The question picks the behaviour (a leading ``[mode]``, which is not part of the
 ``DELTAS_NORMAL`` deltas then ``done``; ``[medium]`` = ``DELTAS_MEDIUM``; ``[long]`` = ``DELTAS_LONG``; ``[hang]`` =
 retrieval, one delta, then never finishes; ``[fat]`` = deltas of ``FAT_DELTA_CHARS`` characters with no pause (a
 client that stops reading blocks the server's send).
+
+A request that carries the ``PAUSE_HEADER`` header is stalled at the very end: ``PauseWritingAfterDone`` (the outermost
+ASGI layer, ``app``) pauses uvicorn's write flow control right after the ``done`` frame, as the transport does for a
+client that stopped reading in the last frame, so the response's closing empty chunk can never be written.
 """
 
 import asyncio
@@ -62,6 +66,7 @@ from semigraph.serve.embed import LimitedEmbedder
 from semigraph.serve.limiters import LoopLagMonitor, make_limiters
 
 ASK_HEADER = "x-test-ask"        # the per-ask client address: ``guard.ip_hash`` of it is the ledger row's key
+PAUSE_HEADER = "x-test-pause-after-done"     # ``1``: the transport stops draining once the ``done`` frame is out
 DELTA_PAUSE_S = 0.015            # the simulated model's time per delta
 RETRIEVAL_PAUSE_S = 0.005        # the simulated graph read
 DELTAS_NORMAL, DELTAS_MEDIUM, DELTAS_LONG = 8, 150, 1000
@@ -214,7 +219,7 @@ class ServerState:
                 "twins_started": self.counts["twin_started"], "model_steps": self.counts["model_steps"],
                 "embed_calls": self.counts["embed_calls"], "embed_concurrent_max": self.embed_concurrent_max,
                 "background_calls": self.counts["background_calls"], "twin_exits": dict(self.twin_exits),
-                "order": list(self.order), "pid": os.getpid()}
+                "write_pauses": self.counts["write_pauses"], "order": list(self.order), "pid": os.getpid()}
 
 
 STATE: ServerState | None = None   # set by the lifespan; the fakes below read it when called
@@ -380,7 +385,9 @@ test_router = APIRouter(prefix="/_test")
 
 @test_router.get("/ready")
 async def ready(request: Request) -> dict:
-    return {"ready": True, "pid": os.getpid()}
+    """``loop`` is the module of the running event loop's class: the test pins that the server runs production's loop
+    (``--loop asyncio``), not uvloop, whichever the machine has installed."""
+    return {"ready": True, "pid": os.getpid(), "loop": type(asyncio.get_running_loop()).__module__}
 
 
 @test_router.get("/state")
@@ -463,4 +470,39 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+def _flow_control_of(send):
+    """uvicorn's ``FlowControl`` of the connection ``send`` writes to. uvicorn hands the app the bound ``send`` method
+    of its ``RequestResponseCycle`` (httptools and h11 alike), which owns ``flow``. Raises, so that a test never passes
+    without having stalled anything, if a uvicorn release stops doing so."""
+    flow = getattr(getattr(send, "__self__", None), "flow", None)
+    if flow is None:
+        raise RuntimeError("cannot reach uvicorn's flow control from the ASGI send callable")
+    return flow
+
+
+class PauseWritingAfterDone:
+    """A pure-ASGI wrapper around the app, outermost, that for a request carrying ``PAUSE_HEADER`` makes the transport
+    look like a client that stopped reading just as the last frame went out: right after the chunk holding the ``done``
+    event is handed to uvicorn it calls ``flow.pause_writing()``, which is what the transport does when its buffer
+    passes the high-water mark (64 KiB unsent). Nothing ever resumes it, so uvicorn's ``send`` waits in
+    ``flow.drain()`` for the next message (the empty closing chunk) until the connection closes. Deterministic: it
+    needs no real backlog. Counted in ``write_pauses`` so a test can assert the stall was injected. Lifespan and other
+    requests pass through."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or (PAUSE_HEADER.encode(), b"1") not in scope["headers"]:
+            return await self.inner(scope, receive, send)
+        flow = _flow_control_of(send)
+
+        async def pausing_send(message) -> None:
+            await send(message)
+            if message["type"] == "http.response.body" and message.get("body", b"").startswith(b"event: done"):
+                flow.pause_writing()
+                STATE.count("write_pauses")
+        await self.inner(scope, receive, pausing_send)
+
+
+app = PauseWritingAfterDone(create_app())

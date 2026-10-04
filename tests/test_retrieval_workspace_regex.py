@@ -1,19 +1,26 @@
-"""``strip_links_images`` is linear time AND strips exactly what it always stripped (M5a I2, decision D3).
+"""``strip_links_images`` is linear time, idempotent, and strips exactly what it always stripped (M5a I2, D3 and E3).
 
 The old implementation chained six regexes and four of them were quadratic on adversarial input (222 ms for 10,000
 characters of letters, 886 ms for 20,000). It is a security control (an answer driven by untrusted uploaded text must
 never carry a link or an image) and, in the async path, it runs ON the event loop, where a thread does not help: ``re``
 holds the GIL for a whole match. An answer can be thousands of characters long and a prompt-injected document can
-influence it, so the cost was a latency attack surface. These tests pin three things:
+influence it, so the cost was a latency attack surface. It also ran each pass ONCE, so when a later pass removed the
+middle of a construct an earlier pass had skipped, the two halves met and formed a live link, image or tag. It now
+repeats the passes until the text stops changing, up to ``MAX_STRIP_ROUNDS`` rounds, and past that cap removes every
+character that could still start a construct (``_defang``). These tests pin:
 
-1. DIFFERENTIAL: ``strip_links_images`` returns, byte for byte, what the verbatim copy of the OLD implementation below
-   returns, on the existing unit cases, on explicit trap cases, on seeded random token strings, on seeded random
-   character strings and on every adversarial input at 3,000 characters (those are exactly the spans the linear
-   rewrite skips over). No length bound was introduced, so there is no "above the bound" behaviour to pin.
-2. SECURITY: on well-formed answers nothing a reader could follow survives and every citation does; and wherever the
-   output of a MALFORMED input still contains something link-shaped, the OLD function left it there too (those
-   residues are pre-existing, listed in ``KNOWN_RESIDUES`` and deliberately not changed by this rewrite).
-3. PERFORMANCE: a measured budget on adversarial inputs, and a linear-scaling check.
+1. DIFFERENTIAL: ``strip_links_images`` returns what the verbatim copy of the OLD implementation below returns,
+   iterated the way the new loop iterates it: the old output itself where that is already a fixed point, the fixed
+   point reached by iterating it within the cap, and ``_defang`` of where the cap stopped it beyond that. Checked on
+   the existing unit cases, explicit trap cases, seeded random token, character, noisy and nested strings and every
+   adversarial input at 3,000 characters.
+2. IDEMPOTENCE AND SECURITY: ``strip(strip(x)) == strip(x)`` on every corpus string; no URL, image, tag, link,
+   reference link or reference definition (in the shapes the old patterns match) survives in any output; a citation
+   set apart from the text always survives; ``_defang`` alone is a fixed point that keeps every citation.
+3. REASSEMBLY: the eight inputs a review found (a second pass removes what the first one left) and deeper nestings
+   of each shape, up to depth 5,000, now end as fixed points with no live construct.
+4. PERFORMANCE: a measured budget on adversarial inputs, on nests, and on the product of the cap and the most
+   expensive round that does not shrink; and a linear-scaling check.
 
 Plain pytest and no network: this file must stay importable in the CI ``serve-shipped`` job.
 """
@@ -26,6 +33,7 @@ import math
 import random
 import re
 import time
+from collections.abc import Callable
 
 import pytest
 
@@ -71,6 +79,19 @@ def _legacy_strip_links_images(text: str) -> str:
     text = _LEGACY_REF_LINK_DEF_RE.sub("", text)
     text = _LEGACY_HTML_TAG_RE.sub("", text)
     return _LEGACY_BARE_URL_RE.sub("", text)
+
+
+def _legacy_trace(text: str) -> tuple[str, bool]:
+    """The old function iterated the way the new loop iterates: ``(output, reached_the_cap)``. The output is the first
+    text a round leaves unchanged, when that happens within ``MAX_STRIP_ROUNDS`` rounds; otherwise it is ``_defang`` of
+    the text the last allowed round produced. Only the per-round work is independent of the new code (the old patterns
+    above); the loop shape and the fallback are the spec."""
+    for _ in range(ws.MAX_STRIP_ROUNDS):
+        stripped = _legacy_strip_links_images(text)
+        if stripped == text:
+            return text, False
+        text = stripped
+    return ws._defang(text), True
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -195,8 +216,21 @@ _TOKENS = (
 _SEPARATORS = ("", "", "", " ", "\n")
 _CHAR_ALPHABET = "![]():/<>.wWhHtp1a-+_ \n\t\r,\xa0\u212a"
 _NOISE = "[]()<>!:/\n "
-TOKEN_SEED, CHAR_SEED, NOISY_SEED, LONG_SEED = 20261004, 20261005, 20261006, 20261007
-TOKEN_COUNT, CHAR_COUNT, NOISY_COUNT, LONG_COUNT = 20_000, 20_000, 10_000, 300
+TOKEN_SEED, CHAR_SEED, NOISY_SEED, LONG_SEED, NESTED_SEED = 20261004, 20261005, 20261006, 20261007, 20261009
+TOKEN_COUNT, CHAR_COUNT, NOISY_COUNT, LONG_COUNT, NESTED_COUNT = 20_000, 20_000, 10_000, 300, 10_000
+
+# A frame is an (opener, closer) pair that forms a construct once whatever sits between them is removed: `<` + `<b>` +
+# `img ...>` is a tag only after `<b>` goes, which is exactly how a later pass reassembles what an earlier one skipped.
+_FRAMES = (
+    ("<", "img src=x onerror=alert(1)>"), ("<", "script>alert(1)</script>"), ("<a", ">"), ("</", "b>"),
+    ("[a ", " b](javascript:alert(1))"), ("[", "](http://evil.test)"), ("[", "x](y)"), ("![", "]()"), ("![", "](y)"),
+    ("[x]", "[r]"), ("![x]", "[r]"), ("\n[x]", ":t\n"), (f"[{DOC1}]", "(javascript:alert(1))"), (f"[{DOC1}]", "(x)"),
+    ("http:", "//evil.test/x"), ("ww", "w.evil.test"), ("//e", "x[r]"), ("[", "]: x"),
+)
+# Complete constructs that a pass removes whole: the innermost thing a frame wraps.
+_REMOVABLE = ("<b>", "</i>", "[x](y)", "![x](y)", "[x][y]", "http://evil.test/x", "www.evil.test/a",
+              "<https://evil.test>", "//evil.test/p", "\n[r]: u\n")
+_NESTED_PREFIXES = ("", "", "See ", f"[{DOC1}] ", "\n\n", "x < 5 and ")
 
 
 def _token_string(rng: random.Random, limit: int) -> str:
@@ -232,6 +266,25 @@ def noisy_corpus(seed: int, count: int) -> list[str]:
     return strings
 
 
+def nested_corpus(seed: int, count: int) -> list[str]:
+    """Frames wrapped around one another, 1 to 14 deep, with a prefix and a few structural characters spliced in. Most
+    layers repeat one base frame (the frames that peel one layer per round only chain when the same one repeats; the
+    cap is lower than 14, so a good share of these cannot converge within it) and some are of a random kind."""
+    rng = random.Random(seed)
+    strings = []
+    for _ in range(count):
+        text = rng.choice(_REMOVABLE)
+        base = rng.choice(_FRAMES)
+        for _ in range(rng.randint(1, 14)):
+            opener, closer = base if rng.random() < 0.75 else rng.choice(_FRAMES)
+            text = opener + text + closer
+        chars = list(rng.choice(_NESTED_PREFIXES) + text)
+        for _ in range(rng.randint(0, 3)):
+            chars.insert(rng.randint(0, len(chars)), rng.choice(_NOISE))
+        strings.append("".join(chars))
+    return strings
+
+
 @pytest.fixture(scope="module")
 def corpora() -> dict[str, list[str]]:
     return {
@@ -239,25 +292,31 @@ def corpora() -> dict[str, list[str]]:
         "char": char_corpus(CHAR_SEED, CHAR_COUNT),
         "noisy": noisy_corpus(NOISY_SEED, NOISY_COUNT),
         "long": token_corpus(LONG_SEED, LONG_COUNT, limit=6_000),
+        "nested": nested_corpus(NESTED_SEED, NESTED_COUNT),
     }
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# 1. Differential: new == old
+# 1. Differential: new == the old function iterated like the new loop (see _legacy_trace)
 
 def _differences(strings: list[str]) -> list[tuple[str, str, str]]:
     found = []
     for text in strings:
-        new, old = ws.strip_links_images(text), _legacy_strip_links_images(text)
-        if new != old:
-            found.append((text, new, old))
+        new, expected = ws.strip_links_images(text), _legacy_trace(text)[0]
+        if new != expected:
+            found.append((text, new, expected))
     return found
 
 
 def _assert_same_as_legacy(strings: list[str], what: str) -> None:
     differing = _differences(strings)
-    assert not differing, (f"{len(differing)} of {len(strings)} {what} differ from the legacy output; first: "
-                           f"input={differing[0][0]!r} new={differing[0][1]!r} old={differing[0][2]!r}")
+    assert not differing, (f"{len(differing)} of {len(strings)} {what} differ from the iterated legacy output; first: "
+                           f"input={differing[0][0]!r} new={differing[0][1]!r} legacy={differing[0][2]!r}")
+
+
+def _legacy_is_a_fixed_point(text: str) -> bool:
+    once = _legacy_strip_links_images(text)
+    return _legacy_strip_links_images(once) == once
 
 
 @pytest.mark.parametrize("text,expected", EXISTING_CASES)
@@ -288,6 +347,33 @@ def test_random_strings_match_the_legacy_output(corpora, kind):
     strings = corpora[kind]
     assert len(strings) >= 10_000 and all(0 < len(s) <= 300 for s in strings)
     _assert_same_as_legacy(strings, f"{kind} strings")
+
+
+def test_nested_strings_match_the_legacy_output(corpora):
+    strings = corpora["nested"]
+    assert len(strings) >= 10_000
+    _assert_same_as_legacy(strings, "nested strings")
+
+
+def test_where_one_legacy_pass_is_already_a_fixed_point_the_output_is_that_pass(corpora):
+    """The strict form of the differential: wherever the old function's own output is stable, the new function returns
+    exactly that output (not a stricter one). The corpora must also hold plenty of the other kind (reassembly), or the
+    other half of the differential would prove nothing."""
+    stable = reassembling = 0
+    for text in corpora["token"] + corpora["char"] + corpora["noisy"] + corpora["nested"]:
+        if _legacy_is_a_fixed_point(text):
+            stable += 1
+            assert ws.strip_links_images(text) == _legacy_strip_links_images(text), text
+        else:
+            reassembling += 1
+    assert stable > 20_000 and reassembling > 3_000, (stable, reassembling)
+
+
+def test_the_nested_corpus_reaches_the_fallback(corpora):
+    """A guard on the generator: strings that are still changing after ``MAX_STRIP_ROUNDS`` rounds, so the fallback
+    branch is exercised by the differential and idempotence checks and not only by the hand-built deep shapes."""
+    hits = sum(1 for text in corpora["nested"] if _legacy_trace(text)[1])
+    assert hits >= 500, f"only {hits} of {len(corpora['nested'])} nested strings reach the cap"
 
 
 def test_random_long_documents_match_the_legacy_output(corpora):
@@ -393,14 +479,19 @@ def test_the_well_formed_answers_cover_every_form_and_citation_kind():
         assert form.search(text)
 
 
-@pytest.mark.parametrize("kind", ["token", "char", "noisy", "long"])
-def test_no_url_with_a_host_survives_in_any_random_output(corpora, kind):
-    """The bare-URL pass runs last, so nothing a later pass does can reassemble a URL: this holds even for malformed
-    input (the other forms do not, see KNOWN_RESIDUES)."""
+CORPUS_KINDS = ["token", "char", "noisy", "long", "nested"]
+
+
+@pytest.mark.parametrize("kind", CORPUS_KINDS)
+def test_no_link_form_survives_in_any_random_output(corpora, kind):
+    """The strong form of the security predicate, on MALFORMED input too (the old function left residues here, see
+    REASSEMBLED): in no output is there a URL with a host, an image, an html tag, an inline link, a reference
+    definition or a reference link, in the shapes the old patterns match. A bare ``![`` or ``<a`` that never closes is
+    not one of those and is kept (see KNOWN_OPEN_GAPS)."""
     strings = corpora[kind]
     outputs = [ws.strip_links_images(s) for s in strings]
-    leaking = [(s, o) for s, o in zip(strings, outputs) if _url_forms_left(o)]
-    assert not leaking, f"{len(leaking)} outputs still hold a URL; first: {leaking[0]!r}"
+    leaking = [(s, o, _link_forms_left(o)) for s, o in zip(strings, outputs) if _link_forms_left(o)]
+    assert not leaking, f"{len(leaking)} outputs still hold a link form; first: {leaking[0]!r}"
     assert sum(1 for s, o in zip(strings, outputs) if s != o) > len(strings) // 10     # and it did strip things
 
 
@@ -413,35 +504,173 @@ def test_adversarial_inputs_keep_a_citation_and_leak_no_url(name):
     assert DOC1 in _citations(stripped)
 
 
-# Pre-existing gaps, found while writing this file and NOT changed by it (the rewrite must strip exactly what the old
-# code stripped; changing that is a security decision for the owner, not a side effect of a performance fix). Each
-# pass runs ONCE, so when a later pass removes the middle of a construct an earlier pass had already skipped, the two
-# halves meet and form a new link, image or tag. The fix would be to repeat the passes until the text stops changing
-# (each pass is linear, and a pass that removes nothing ends the loop). A second pass over the output removes all
-# of these. Each pair below is (input, what both the old and the new function return).
-KNOWN_RESIDUES = [
-    ("<a<b>>", "<a>"),                                                                  # html tag
-    ("<<b>img src=x onerror=alert(1)>", "<img src=x onerror=alert(1)>"),
-    ("<<b>script>alert(1)</script>", "<script>alert(1)"),
-    ("[a [x](y) b](javascript:alert(1))", "[a  b](javascript:alert(1))"),                # inline link
-    (f"[{DOC1}](http://e.test)(javascript:alert(1))", f"[{DOC1}](javascript:alert(1))"),  # citation + 2nd target
-    ("![[x][x]]()", "![]()"),                                                            # image
-    ("//x[x]:t", "[x]:t"),                                                               # reference definition
-    ("[x]www.e[r]", "[x][r]"),                                                           # reference link
-]
+SET_APART_PREFIX, SET_APART_SUFFIX = "doc:00000000beef:v9:0009", "fr:2099-00001"
 
 
-@pytest.mark.parametrize("text,residue", KNOWN_RESIDUES)
-def test_known_residues_are_the_same_before_and_after_the_rewrite(text, residue):
-    assert _legacy_strip_links_images(text) == residue
-    assert ws.strip_links_images(text) == residue
-    assert ws.strip_links_images(residue) != residue          # not a fixed point: a second pass would remove it
+@pytest.mark.parametrize("kind", CORPUS_KINDS)
+def test_a_citation_set_apart_from_the_text_always_survives(corpora, kind):
+    """The citation half of the security predicate. It cannot be 'every citation in the input survives' for malformed
+    input: ``[doc:...]: x`` IS a reference definition, and the old function removed that line, citation and all, as do
+    the tag, link and image forms around one. What must hold is that no round and no fallback eats a citation that
+    is not inside a construct: one on its own line before the text and one after it, never touched."""
+    lost = []
+    for text in corpora[kind]:
+        stripped = ws.strip_links_images(f"[{SET_APART_PREFIX}]\n\n{text}\n\nSee [{SET_APART_SUFFIX}] for the rule.")
+        found = _citations(stripped)
+        if SET_APART_PREFIX not in found or SET_APART_SUFFIX not in found:
+            lost.append((text, stripped))
+    assert not lost, f"{len(lost)} of {len(corpora[kind])} lost a set-apart citation; first: {lost[0]!r}"
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# 3. Performance (the loop-blocking time of the pure-Python regex work; it holds the GIL, a thread does not help)
+# 3. Reassembly and idempotence: the passes repeat until nothing changes, and past the cap `_defang` ends it
 
-BUDGET_MS = 20.0           # p95 over REPS runs at 20,000 characters (measured: about 0.2 to 4 ms; generous for CI)
+def _nest(frame: tuple[str, str], inner: str, depth: int) -> str:
+    opener, closer = frame
+    return opener * depth + inner + closer * depth
+
+
+def _repeat(unit: str, depth: int) -> str:
+    return "\n".join([unit] * depth)
+
+
+# name -> builder(depth). The first four nest for real (each round peels one layer, so depth d takes d + 1 changing
+# rounds); the image shape nests too but its outer image swallows the inner ones in one round; the last three repeat a
+# unit that reassembles only after a later pass has removed the middle of it.
+SHAPES: dict[str, Callable[[int], str]] = {
+    "tag-img": lambda depth: _nest(("<", "img src=x onerror=alert(1)>"), "<b>", depth),
+    "tag-script": lambda depth: _nest(("<", "script>alert(1)</script>"), "<b>", depth),
+    "tag-a": lambda depth: _nest(("<a", ">"), "<b>", depth),
+    "link": lambda depth: _nest(("[a ", " b](javascript:alert(1))"), "[x](y)", depth),
+    "image": lambda depth: _nest(("![", "]()"), "[x][x]", depth),
+    "citation-link": lambda depth: _nest(("", "(a)"), f"[{DOC1}](http://e.test)", depth),
+    "ref-definition": lambda depth: _repeat("//x[x]:t", depth),
+    "ref-link": lambda depth: _repeat("[x]www.e[r]", depth),
+}
+SHAPE_DEPTHS = (1, 2, 5, 50, 5_000)
+
+# The eight inputs a previous review found (all reproduced on the old function): (input, output now). Each used to come
+# out as something that a second pass removed.
+REASSEMBLED = [
+    ("<<b>img src=x onerror=alert(1)>", ""),
+    ("<<b>script>alert(1)</script>", "alert(1)"),
+    ("<a<b>>", ""),
+    ("[a [x](y) b](javascript:alert(1))", ")"),
+    (f"[{DOC1}](http://e.test)(javascript:alert(1))", f"[{DOC1}])"),
+    ("![[x][x]]()", ""),
+    ("//x[x]:t", ""),
+    ("[x]www.e[r]", ""),
+]
+
+
+@pytest.mark.parametrize("text,expected", REASSEMBLED)
+def test_a_reassembled_construct_is_removed_and_the_output_is_a_fixed_point(text, expected):
+    assert _legacy_strip_links_images(_legacy_strip_links_images(text)) != _legacy_strip_links_images(text)
+    stripped = ws.strip_links_images(text)
+    assert stripped == expected
+    assert ws.strip_links_images(stripped) == stripped
+    assert not _link_forms_left(stripped)
+
+
+@pytest.mark.parametrize("depth", SHAPE_DEPTHS)
+@pytest.mark.parametrize("name", sorted(SHAPES))
+def test_a_reassembly_shape_at_any_depth_ends_as_a_fixed_point_without_a_live_construct(name, depth):
+    text = SHAPES[name](depth)
+    stripped = ws.strip_links_images(text)
+    assert ws.strip_links_images(stripped) == stripped
+    assert not _link_forms_left(stripped), stripped[:200]
+    assert _citations(stripped) == ([DOC1] if name == "citation-link" else [])
+
+
+def _counting_defang(monkeypatch) -> list[str]:
+    """Replaces ``_defang`` with a recorder that still defangs; returns the list of texts it was called with."""
+    real, calls = ws._defang, []
+    monkeypatch.setattr(ws, "_defang", lambda text: calls.append(text) or real(text))
+    return calls
+
+
+def test_the_cap_is_the_number_of_rounds_and_the_fallback_runs_only_past_it(monkeypatch):
+    """Depth d of the tag shape takes d + 1 changing rounds and one more to see that nothing changes. The deepest one
+    the cap still verifies is exact (the empty string, everything removed, no fallback). One layer deeper uses every
+    round to strip its last layer and never gets the round that confirms it, so it goes to ``_defang`` (which finds
+    nothing left to do). Two layers deeper still has a layer left at the cap, which ``_defang`` cannot peel."""
+    calls = _counting_defang(monkeypatch)
+    assert ws.strip_links_images(SHAPES["tag-img"](ws.MAX_STRIP_ROUNDS - 2)) == "" and not calls
+    assert ws.strip_links_images(SHAPES["tag-img"](ws.MAX_STRIP_ROUNDS - 1)) == "" and calls == [""]
+    calls.clear()
+    assert ws.strip_links_images(SHAPES["tag-img"](ws.MAX_STRIP_ROUNDS)) != "" and len(calls) == 1
+
+
+def test_the_loop_never_runs_more_rounds_than_the_cap(monkeypatch):
+    rounds = []
+    real = ws._MD_IMAGE_RE
+
+    class CountingRegex:
+        def sub(self, repl, text, *args, **kwargs):
+            rounds.append(len(text))
+            return real.sub(repl, text, *args, **kwargs)
+
+    monkeypatch.setattr(ws, "_MD_IMAGE_RE", CountingRegex())
+    ws.strip_links_images(SHAPES["tag-img"](5_000))
+    assert len(rounds) == ws.MAX_STRIP_ROUNDS
+    assert rounds == sorted(rounds, reverse=True)      # a round never adds a character
+
+
+@pytest.mark.parametrize("kind", CORPUS_KINDS)
+def test_strip_is_idempotent_on_every_corpus(corpora, kind):
+    not_idempotent = []
+    for text in corpora[kind]:
+        once = ws.strip_links_images(text)
+        if ws.strip_links_images(once) != once:
+            not_idempotent.append((text, once))
+    assert not not_idempotent, (f"{len(not_idempotent)} of {len(corpora[kind])} changed on a second pass; "
+                                f"first: {not_idempotent[0]!r}")
+
+
+def test_the_idempotence_corpora_hold_at_least_50000_strings(corpora):
+    assert sum(len(strings) for strings in corpora.values()) >= 50_000
+
+
+@pytest.mark.parametrize("kind", CORPUS_KINDS)
+def test_defang_alone_is_a_fixed_point_keeps_every_citation_and_leaves_no_link_form(corpora, kind):
+    """What makes the function idempotent beyond the cap: on ANY text, not only one that reached the cap. A fixed point
+    of ``strip_links_images`` is a text no round changes, so it is exactly the property that a round finds nothing to
+    do. Every citation survives (``_defang`` only drops brackets that are not part of one, a URL, a tag opener, and the
+    ``(`` / ``:`` that would make a citation a link or a definition)."""
+    broken = []
+    for text in corpora[kind]:
+        defanged = ws._defang(text)
+        if (ws.strip_links_images(defanged) != defanged or _link_forms_left(defanged)
+                or _citations(defanged) != _citations(text)):
+            broken.append((text, defanged))
+    assert not broken, f"{len(broken)} of {len(corpora[kind])} broke a _defang property; first: {broken[0]!r}"
+
+
+# Fragments the old function leaves in place and the loop keeps, on purpose. They are NOT in the shapes the old patterns
+# match, so the form checks above pass, and removing them would change what the function strips for inputs that are
+# already stable (the differential above forbids it): an owner decision, not a side effect of idempotence. They stay
+# listed here so the gap stays visible: a change that closes one must change this table in the same commit.
+KNOWN_OPEN_GAPS = [
+    ("<img src=x onerror=alert(1) <1>", "a tag with a `<` in its attributes: the pattern stops there, a parser not"),
+    ("[a [b] c](javascript:alert(1))", "balanced brackets inside link text: the link pattern never matches it"),
+    ("[[x]](y)", "the same, with a non-URL target"),
+    ("<a", "an unclosed tag opener"),
+    ("![alt", "an unclosed image opener"),
+]
+
+
+@pytest.mark.parametrize("text,why", KNOWN_OPEN_GAPS)
+def test_known_open_gaps_are_kept_as_the_old_function_kept_them(text, why):
+    assert _legacy_strip_links_images(text) == text, why
+    assert ws.strip_links_images(text) == text, why
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# 4. Performance (the loop-blocking time of the pure-Python regex work; it holds the GIL, a thread does not help)
+
+# p95 over REPS runs at 20,000 characters. Measured: one round of anything is about 1 to 2 ms, a nest 3 to 5 ms, and
+# the worst input there is (a nest deeper than the cap before the most expensive filler no round shrinks) about 9 ms.
+BUDGET_MS = 20.0
 REPS = 10
 SCALING_LIMIT = 3.0        # t(40,000) / t(20,000): linear is 2, quadratic is 4
 SCALING_FLOOR_MS = 1.0     # below this a sub-millisecond ratio is timer noise, not a trend
@@ -485,18 +714,70 @@ def test_a_20000_character_input_costs_under_the_budget(name):
     assert p95 < BUDGET_MS, f"{name}: p95 over {REPS} runs was {p95:.2f} ms, budget {BUDGET_MS} ms"
 
 
-def _scaling_ratio(name: str) -> tuple[float, float, float]:
-    small, large = _adversarial(20_000)[name], _adversarial(40_000)[name]
-    t_small, t_large = min(_samples_ms(small, 5)), min(_samples_ms(large, 5))
+def _scaling_ratio(small: str, large: str, reps: int = 5) -> tuple[float, float, float]:
+    t_small, t_large = min(_samples_ms(small, reps)), min(_samples_ms(large, reps))
     return t_small, t_large, t_large / max(t_small, SCALING_FLOOR_MS)
+
+
+def _assert_scales(small: str, large: str, limit: float, what: str, reps: int = 5) -> None:
+    """One retry: one noisy sample must not flake it."""
+    t_small, t_large, ratio = _scaling_ratio(small, large, reps)
+    if ratio > limit:
+        t_small, t_large, ratio = _scaling_ratio(small, large, reps)
+    assert ratio <= limit, (f"{what}: {len(small):,} chars {t_small:.2f} ms, {len(large):,} chars {t_large:.2f} ms "
+                            f"(ratio {ratio:.2f} against the {SCALING_FLOOR_MS} ms floor, limit {limit})")
 
 
 @pytest.mark.parametrize("name", ADVERSARIAL_NAMES)
 def test_cost_grows_linearly_with_length(name):
-    """Doubling the input must not much more than double the time. One retry: one noisy sample must not flake it."""
-    t_small, t_large, ratio = _scaling_ratio(name)
-    if ratio > SCALING_LIMIT:
-        t_small, t_large, ratio = _scaling_ratio(name)
-    assert ratio <= SCALING_LIMIT, (f"{name}: 20,000 chars {t_small:.2f} ms, 40,000 chars {t_large:.2f} ms "
-                                    f"(ratio {ratio:.2f} against the {SCALING_FLOOR_MS} ms floor, "
-                                    f"limit {SCALING_LIMIT})")
+    """Doubling the input must not much more than double the time."""
+    _assert_scales(_adversarial(20_000)[name], _adversarial(40_000)[name], SCALING_LIMIT, name)
+
+
+# The loop multiplies the cost of one round by at most MAX_STRIP_ROUNDS, and it runs every round only when the text
+# keeps changing. A nest deeper than the cap is tiny, so an attacker pays almost nothing to make every round run, and
+# can fill the rest of the answer with the one thing a round does not shrink: the worst case is the cap times the most
+# expensive round, then the fallback. The nest goes FIRST so that nothing after it can swallow it.
+def _nest_then_flood(name: str, length: int) -> str:
+    nest = SHAPES["tag-img"](ws.MAX_STRIP_ROUNDS + 5)
+    return nest + _adversarial(length - len(nest))[name]
+
+
+@pytest.mark.parametrize("name", ADVERSARIAL_NAMES)
+def test_a_nest_deeper_than_the_cap_before_a_flood_costs_under_the_budget(name, monkeypatch):
+    text = _nest_then_flood(name, 20_000)
+    assert len(text) == 20_000
+    calls = _counting_defang(monkeypatch)
+    ws.strip_links_images(text)
+    assert len(calls) == 1, "the nest must push this input to the cap, or the budget below is not the worst case"
+    monkeypatch.undo()
+    p95 = _p95(_samples_ms(text, REPS))
+    assert p95 < BUDGET_MS, f"{name}: p95 over {REPS} runs was {p95:.2f} ms, budget {BUDGET_MS} ms"
+
+
+@pytest.mark.parametrize("name", ADVERSARIAL_NAMES)
+def test_a_nest_deeper_than_the_cap_before_a_flood_costs_linearly_with_length(name):
+    _assert_scales(_nest_then_flood(name, 20_000), _nest_then_flood(name, 40_000), SCALING_LIMIT, name)
+
+
+def _shape_of_length(name: str, length: int) -> str:
+    per_level = len(SHAPES[name](2)) - len(SHAPES[name](1))
+    return SHAPES[name](max(1, length // per_level))
+
+
+@pytest.mark.parametrize("name", sorted(SHAPES))
+def test_a_reassembly_shape_of_20000_characters_costs_under_the_budget(name):
+    text = _shape_of_length(name, 20_000)
+    assert 19_000 <= len(text) <= 21_000
+    p95 = _p95(_samples_ms(text, REPS))
+    assert p95 < BUDGET_MS, f"{name} ({len(text):,} chars): p95 over {REPS} runs was {p95:.2f} ms, budget {BUDGET_MS}"
+
+
+DEPTH_SCALING_LIMIT = 6.0    # t(depth 20,000) / t(depth 5,000): linear is 4, quadratic is 16
+
+
+@pytest.mark.parametrize("name", sorted(SHAPES))
+def test_cost_grows_linearly_with_nesting_depth(name):
+    """Depth 5,000 to 20,000 (the tag shapes are then 140,000 to 560,000 characters): four times the input must cost
+    about four times as much, not sixteen. The cap is what keeps a deeper nest from costing a round per layer."""
+    _assert_scales(SHAPES[name](5_000), SHAPES[name](20_000), DEPTH_SCALING_LIMIT, name, reps=3)

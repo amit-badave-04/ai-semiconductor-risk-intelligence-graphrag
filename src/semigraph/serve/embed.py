@@ -3,12 +3,17 @@
 Query embedding is CPU-bound (0.3 s to 1.2 s of a core), so two things matter under concurrent streams: how many run at
 once, and not doing the same one twice. :class:`LimitedEmbedder` wraps the real embedder with
 
-* ONE ``threading.BoundedSemaphore(slots)`` taken by every caller of ``encode_query``: the async answer path (which calls it
-  from a worker thread) and the agent's tools (which call it from the planner thread) share the same bound;
+* ONE ``threading.BoundedSemaphore(slots)`` taken by every caller of ``encode_query`` and ``encode_query_private``: the
+  async answer path (which calls them from a worker thread) and the agent's tools (which call ``encode_query`` from the
+  planner thread) share the same bound;
 * a bounded LRU of query vectors, stored as float32 bytes (the backends return float32 vectors, so this is lossless, and
   2,000 vectors of 1,024 dimensions are about 8 MB, where lists of Python floats would be about 65 MB). The cache is read
   again after the slot is taken, so concurrent copies of one question wait for the first one's vector instead of each
-  computing their own.
+  computing their own;
+* ``encode_query_private`` for a question that must leave no trace (an upload workspace's): the same slot, but it
+  neither reads nor writes that cache. A hit skips the 0.3 s to 1.2 s embedding, so it shows in the response time and
+  tells whoever measures it that those exact words were asked before, and a private question kept there would outlive
+  its workspace (24 h) in memory.
 
 Nothing else is changed: passages, token counts and every other attribute are the wrapped embedder's own and take no slot
 (uploads embed passages under their own one-at-a-time gate).
@@ -61,6 +66,13 @@ class LimitedEmbedder:
             vector = self._embedder.encode_query(question)
             self._store(question, vector)
             return vector
+
+    def encode_query_private(self, question: str) -> list[float]:
+        """Embed under the shared slot bound, leaving no copy of the question or its vector here: the cache is neither
+        read (no timing oracle) nor written (no copy that outlives the caller's data). Concurrent identical private
+        questions are therefore each embedded."""
+        with self._slots:
+            return self._embedder.encode_query(question)
 
     def __getattr__(self, name: str):
         # Only reached for names this class does not define: delegate, but never loop on the wrapped attribute itself.

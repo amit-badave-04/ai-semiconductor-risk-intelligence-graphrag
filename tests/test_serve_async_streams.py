@@ -26,10 +26,18 @@ ledger row's ``ip_hash`` is the ask's name.
 5. The busy path over HTTP (a second server, ``max_concurrent_answers=1``): the busy ``error`` event, the sync path's
    message, and no ledger row; five simultaneous asks leave exactly one holder.
 6. A client that stops reading (a raw socket with a tiny receive buffer: headers read, then silence past
-   ``send_timeout_s=2``): the server drops it on the send timeout, writes the ledger row once and frees the slot.
+   ``send_timeout_s=2``): the server drops it on the send timeout, writes the ledger row once and frees the slot. The
+   server log holds one warning line for it and no traceback; uvicorn's own one-line ``ASGI callable returned without
+   completing response.`` error (no traceback) remains, because the response was started and cannot be completed for a
+   client that is not reading.
 7. SIGTERM during a stream, with no drain logic yet: what happens today is pinned (below); increment I4 (drain)
    changes it.
 8. The sse-starlette behaviour ``PaidResponse`` relies on, asserted empirically (below).
+9. A client that stops reading in the LAST frame: after the ``done`` frame uvicorn's write flow control is paused (as
+   its transport does with 64 KiB unsent; ``serve_async_app.PauseWritingAfterDone``), so the closing empty chunk is
+   never accepted. The slot is free before the send timeout (``events()`` ends with ``finalize``), a second ask on the
+   one-slot server is served, and the response itself ends on the send timeout with one warning line (``PaidResponse``
+   bounds the closing send, which sse-starlette leaves unbounded). The servers run ``--loop asyncio``, production's.
 
 What SIGTERM does today (test 7). Windows has no SIGTERM for a subprocess, so the server is started in its own process
 group and sent CTRL_BREAK_EVENT, which uvicorn handles as SIGBREAK, as it handles SIGTERM; the test skips, saying so,
@@ -83,7 +91,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from serve_async_app import ASK_HEADER, expected_events, mode_of
+from serve_async_app import ASK_HEADER, PAUSE_HEADER, expected_events, mode_of
 
 from semigraph.serve import guard
 from semigraph.serve.stream_runtime import MSG_BUSY
@@ -93,6 +101,7 @@ SRC, TESTS = REPO / "src", REPO / "tests"
 IS_WINDOWS = sys.platform == "win32"
 SERVER_START_TIMEOUT_S = 90.0
 SERVER_STOP_GRACE_S = 5.0
+SEND_TIMEOUT_S = 2                # the send timeout of the shared and the one-slot server
 CLEANUP_BUDGET_S = 2.0            # a disconnected ask is fully cleaned up within this long
 QUIET_FOR_S = 0.3
 POLL_S = 0.01
@@ -108,6 +117,8 @@ BODY = "How does a long answer about Nvidia HBM suppliers reach a client"   # on
 HANG, LONG, MEDIUM, FAT, NORMAL = (f"[{mode}] {BODY}" for mode in ("hang", "long", "medium", "fat", "normal"))
 # What the runs below observed (see the module docstring); the tests pin them.
 TIMEOUT_EXIT = "GeneratorExit"
+SEND_TIMEOUT_LINE = "client dropped on the send timeout (SendTimeoutError)"      # PaidResponse's one warning line
+UVICORN_INCOMPLETE_LINE = "ASGI callable returned without completing response."  # uvicorn's own, one line, no trace
 SIGTERM_TWIN_EXIT = "CancelledError"
 AWAITING_ORDER = ["generator_start", "client_close_handler", "generator_raised_CancelledError", "generator_finally",
                   "background", "call_finally"]
@@ -152,6 +163,7 @@ class Server:
         self.log_path = workdir / f"server-{self.port}.log"
         self.journal_path = workdir / f"journal-{self.port}.jsonl"
         self.pid = 0                       # the interpreter that serves (a venv launcher may sit in front of it)
+        self.loop = ""                     # the module of its event loop's class (``/_test/ready`` says)
         self.workdir = workdir
         self.env = {k: os.environ[k] for k in ENV_WHITELIST if k in os.environ}
         self.env.update({"PYTHONPATH": str(SRC), "PYTHONUNBUFFERED": "1", "PYTHONUTF8": "1",
@@ -160,8 +172,10 @@ class Server:
         self.proc: subprocess.Popen | None = None
 
     def start(self) -> "Server":
+        # ``--loop asyncio``: production's loop (its requirements dropped uvloop). ``auto`` would pick uvloop wherever
+        # it is installed (the unit job has it, ``serve-shipped`` does not) and the two jobs would test different loops.
         command = [sys.executable, "-m", "uvicorn", "serve_async_app:app", "--app-dir", str(TESTS),
-                   "--host", "127.0.0.1", "--port", str(self.port), "--log-level", "warning"]
+                   "--host", "127.0.0.1", "--port", str(self.port), "--log-level", "warning", "--loop", "asyncio"]
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WINDOWS else 0
         with open(self.log_path, "wb") as log:
             self.proc = subprocess.Popen(command, cwd=self.workdir, env=self.env, stdout=log, stderr=subprocess.STDOUT,
@@ -172,6 +186,13 @@ class Server:
     def log_tail(self, chars: int = 3000) -> str:
         return self.log_path.read_text(encoding="utf-8", errors="replace")[-chars:] if self.log_path.exists() else ""
 
+    def log_size(self) -> int:
+        """Bytes in the server log so far: a mark for ``log_since`` (the log is shared by every test of a module)."""
+        return len(self.log_path.read_bytes()) if self.log_path.exists() else 0
+
+    def log_since(self, mark: int) -> str:
+        return self.log_path.read_bytes()[mark:].decode("utf-8", errors="replace") if self.log_path.exists() else ""
+
     def _wait_ready(self) -> None:
         deadline = time.monotonic() + SERVER_START_TIMEOUT_S
         while time.monotonic() < deadline:
@@ -180,7 +201,7 @@ class Server:
                                    f"{self.log_tail()}")
             try:
                 reply = httpx.get(f"{self.base}/_test/ready", timeout=1.0, trust_env=False)
-                self.pid = reply.json()["pid"]
+                self.pid, self.loop = reply.json()["pid"], reply.json()["loop"]
                 return
             except (httpx.TransportError, ValueError):
                 time.sleep(0.1)
@@ -218,8 +239,8 @@ class Server:
 def main_server(tmp_path_factory):
     """The shared server: room for 40 asks at once, a 2 s send timeout, one embedding at a time (the production
     ``embed_slots``), four database threads. Every test starts from a quiet server with zeroed counters."""
-    server = Server(tmp_path_factory.mktemp("serve_async"), max_answers=STREAMS, send_timeout_s=2, embed_slots=1,
-                    db_threads=4).start()
+    server = Server(tmp_path_factory.mktemp("serve_async"), max_answers=STREAMS, send_timeout_s=SEND_TIMEOUT_S,
+                    embed_slots=1, db_threads=4).start()
     yield server
     server.stop()
 
@@ -316,8 +337,11 @@ class Events:
             yield item
 
 
-def ask_request(client: httpx.AsyncClient, base: str, question: str, tag: str) -> AbstractAsyncContextManager:
-    return client.stream("POST", f"{base}/api/ask", json={"question": question}, headers={ASK_HEADER: tag})
+def ask_request(client: httpx.AsyncClient, base: str, question: str, tag: str,
+                extra_headers: dict[str, str] | None = None) -> AbstractAsyncContextManager:
+    """The streaming ask; ``extra_headers`` are sent beside the ask's own."""
+    return client.stream("POST", f"{base}/api/ask", json={"question": question},
+                         headers={ASK_HEADER: tag, **(extra_headers or {})})
 
 
 async def ask_all(client: httpx.AsyncClient, base: str, question: str, tag: str) -> list[tuple[str, dict]]:
@@ -590,8 +614,8 @@ async def _leave_before_the_first_byte(server: Server) -> None:
 
 @pytest.fixture(scope="module")
 def busy_server(tmp_path_factory):
-    server = Server(tmp_path_factory.mktemp("serve_async_busy"), max_answers=1, send_timeout_s=2, embed_slots=1,
-                    db_threads=4).start()
+    server = Server(tmp_path_factory.mktemp("serve_async_busy"), max_answers=1, send_timeout_s=SEND_TIMEOUT_S,
+                    embed_slots=1, db_threads=4).start()
     yield server
     server.stop()
 
@@ -673,12 +697,14 @@ async def _stalled_reader(server: Server) -> float:
         await ask_all(client, base, NORMAL, new_tag("warm"))    # embed the question text once
         await wait_for(client, base, is_quiet)
         await client.post(f"{base}/_test/reset")
+        log_mark = server.log_size()
         reader, writer = await open_stalled(server.port, FAT, tag)
         try:
             await reader.readuntil(b"\r\n\r\n")           # the headers; the body is never read
             stalled_at = time.perf_counter()
             state, _ = await wait_for(client, base, lambda s: s["finalized"] == 1 and is_quiet(s), timeout=15.0)
             dropped_after_s = time.perf_counter() - stalled_at
+            log = await log_after_drop(server, log_mark)   # while the client is still connected
         finally:
             writer.close()
             with contextlib.suppress(OSError):
@@ -692,7 +718,25 @@ async def _stalled_reader(server: Server) -> float:
     assert state["twins_started"] == state["upstream_closed"] == 1 and state["background_calls"] == 0
     assert state["twin_exits"] == {TIMEOUT_EXIT: 1}, state["twin_exits"]
     assert healthz.status_code == 200
+    # The drop is one warning line, not an ``Exception in ASGI application`` traceback per slow client. uvicorn still
+    # logs its own one-line error (no traceback) because the response was started and never completed: pinned.
+    assert "Traceback" not in log, log[-2000:]
+    assert log.count(SEND_TIMEOUT_LINE) == 1 and log.count(UVICORN_INCOMPLETE_LINE) == 1, log[-2000:]
     return dropped_after_s
+
+
+async def log_after_drop(server: Server, mark: int, timeout: float = 5.0) -> str:
+    """The server log written since ``mark``, once the drop has been logged: polls until ``PaidResponse``'s warning line
+    (or a traceback, which a server without that line writes) shows, then waits ``QUIET_FOR_S`` for what uvicorn logs
+    right after the app returns."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        log = server.log_since(mark)
+        if SEND_TIMEOUT_LINE in log or "Traceback" in log:
+            break
+        await asyncio.sleep(POLL_S)
+    await asyncio.sleep(QUIET_FOR_S)
+    return server.log_since(mark)
 
 
 async def open_stalled(port: int, question: str,
@@ -803,3 +847,59 @@ async def _disconnect_order(server: Server) -> None:
     # What follows ``call_finally`` for a generator dropped at its ``yield`` is up to the garbage collector: not pinned.
     assert suspended[:len(SUSPENDED_ORDER)] == SUSPENDED_ORDER, suspended
     assert real == PAID_ORDER, real
+
+
+# ---- 9: a client that stops reading in the last frame
+
+def test_the_servers_run_the_production_event_loop(main_server, busy_server):
+    """Production runs ``uvicorn --loop asyncio`` (uvloop is not in its requirements); a machine that has uvloop must
+    not silently run these tests on another loop. Observed on a Windows box only: there ``auto`` is asyncio as well."""
+    for server in (main_server, busy_server):
+        assert server.loop.startswith("asyncio") and "uvloop" not in server.loop, server.loop
+
+
+def test_a_stalled_closing_chunk_frees_the_slot_at_once_and_the_response_ends_on_the_send_timeout(
+        one_slot_server, record_property):
+    freed_after_s, dropped_after_s = asyncio.run(_stalled_closing_chunk(one_slot_server))
+    record_property("closing_stall_slot_freed_s", round(freed_after_s, 3))
+    record_property("closing_stall_response_ended_s", round(dropped_after_s, 2))
+
+
+async def _stalled_closing_chunk(server: Server) -> tuple[float, float]:
+    """The reviewer's scenario without 150 KiB of real backlog: ``done`` goes out, then the transport stops draining, so
+    sse-starlette's closing send (which holds its send lock and has no timeout of its own) never completes. The client
+    stays connected throughout. The slot must be back before the send timeout fires (the end of ``events()`` released
+    it), a second ask on the one-slot server must be served rather than answered busy, and the response must end on the
+    send timeout with the one warning line and no traceback."""
+    base, tag, next_tag = server.base, new_tag("closing"), new_tag("after")
+    async with new_client() as client, new_client() as other:
+        await ask_all(client, base, NORMAL, new_tag("warm"))    # embed the question text once
+        await wait_for(client, base, is_quiet)
+        await client.post(f"{base}/_test/reset")
+        log_mark = server.log_size()
+        async with ask_request(client, base, NORMAL, tag, {PAUSE_HEADER: "1"}) as response:
+            reader = Events(response)           # kept alive: a collected line iterator would close the connection
+            await reader.until("done")
+            done_at = time.perf_counter()
+            state, _ = await wait_for(client, base, lambda s: s["finalized"] == 1 and is_quiet(s),
+                                      timeout=SEND_TIMEOUT_S + 1)
+            freed_after_s = time.perf_counter() - done_at
+            again = await ask_all(other, base, NORMAL, next_tag)    # the one slot is free: served, not busy
+            deadline = done_at + SEND_TIMEOUT_S + 1
+            while SEND_TIMEOUT_LINE not in server.log_since(log_mark) and time.perf_counter() < deadline:
+                await asyncio.sleep(POLL_S)
+            dropped_after_s = time.perf_counter() - done_at
+            await asyncio.sleep(QUIET_FOR_S)                        # what uvicorn logs right after the app returns
+            log = server.log_since(log_mark)
+        final, _ = await wait_for(client, base, is_quiet)
+    assert state["write_pauses"] == 1, "the stall was not injected: nothing here tested the closing send"
+    assert freed_after_s < SEND_TIMEOUT_S, f"the slot came back after {freed_after_s:.2f} s: the send timeout freed it"
+    rows = rows_of(state, tag)
+    assert len(rows) == 1 and rows[0]["usage"] and rows[0]["cost_usd"] is not None, rows    # the answer's own row
+    assert [name for name, _ in again][-1] == "done", "the second ask was not served while the first response hung"
+    assert len(rows_of(final, next_tag)) == 1 and final["ledger_row_count"] == 2
+    assert final["answer_limiter_borrowed"] == 0 and final["twin_exits"] == {"completed": 2}, final["twin_exits"]
+    assert dropped_after_s <= SEND_TIMEOUT_S + 1, f"the response ended {dropped_after_s:.2f} s after its last frame"
+    assert "Traceback" not in log, log[-2000:]
+    assert log.count(SEND_TIMEOUT_LINE) == 1 and log.count(UVICORN_INCOMPLETE_LINE) == 1, log[-2000:]
+    return freed_after_s, dropped_after_s

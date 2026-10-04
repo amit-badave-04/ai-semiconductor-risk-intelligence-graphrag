@@ -148,3 +148,74 @@ def test_a_missing_attribute_raises_attribute_error():
 def test_invalid_limits_are_refused(slots, size):
     with pytest.raises(ValueError):
         LimitedEmbedder(FakeInner(), slots=slots, cache_size=size)
+
+
+# ---------------------------------------------------------------- private questions: the slot, never the cache
+
+def test_a_private_query_returns_the_embedders_vector():
+    inner = FakeInner()
+    emb = LimitedEmbedder(inner, slots=1)
+
+    assert emb.encode_query_private("q") == inner.encode_query("q")
+
+
+def test_a_private_query_never_reads_the_cache():
+    """A cache hit skips a 0.3 to 1.2 s embedding, so a hit would tell a timer that this exact question was asked."""
+    inner = FakeInner()
+    emb = LimitedEmbedder(inner, slots=1)
+    emb.encode_query("public question")
+
+    emb.encode_query_private("public question")
+
+    assert inner.calls == ["public question", "public question"]
+
+
+def test_a_private_query_never_writes_the_cache():
+    """A private (workspace) question must not outlive its workspace in memory, nor make the same words a hit for the
+    next public ask."""
+    inner = FakeInner()
+    emb = LimitedEmbedder(inner, slots=1)
+
+    emb.encode_query_private("private question")
+    emb.encode_query("private question")             # a miss: the private call stored nothing
+    emb.encode_query("private question")             # and now the public path caches as ever
+
+    assert inner.calls == ["private question", "private question"]
+
+
+def test_the_private_method_takes_the_same_slots_as_the_public_one():
+    inner = FakeInner(delay=0.05)
+    emb = LimitedEmbedder(inner, slots=2)
+    targets = [emb.encode_query_private if i % 2 else emb.encode_query for i in range(8)]
+    threads = [threading.Thread(target=target, args=(f"question {i}",)) for i, target in enumerate(targets)]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert inner.max_running == 2 and len(inner.calls) == 8
+
+
+def test_private_queries_alone_are_bounded_by_the_slots_and_none_is_merged():
+    """Nothing is cached, so twenty identical private questions are twenty embeddings, two at a time."""
+    inner = FakeInner(delay=0.02)
+    emb = LimitedEmbedder(inner, slots=2)
+    threads = [threading.Thread(target=emb.encode_query_private, args=("same",)) for _ in range(20)]
+
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert inner.max_running == 2 and inner.calls == ["same"] * 20
+
+
+def test_a_failing_private_embedding_releases_the_slot():
+    inner = FakeInner(fail_on={"boom"})
+    emb = LimitedEmbedder(inner, slots=1)
+
+    with pytest.raises(RuntimeError, match="embedder failed"):
+        emb.encode_query_private("boom")
+
+    assert emb.encode_query_private("fine") and inner.calls == ["boom", "fine"]       # the one slot is free again

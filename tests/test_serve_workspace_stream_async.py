@@ -10,8 +10,9 @@ proves it three ways:
 2. it runs extra scenarios (a rejected draft, both error paths, ``as_of`` with stale citations, suspicious chunks,
    links and images in every shape, a question routed straight to the strong model, an unknown strategy name) through
    the sync stream AND the twin and compares them;
-3. it pins what the twin is for: one embedding per ask, every blocking hop on a worker thread under the right limiter,
-   nothing blocking the loop, a clean cancellation, no uploaded text in any log, nothing imported from the agent.
+3. it pins what the twin is for: one embedding per ask (through ``encode_query_private``, so the question never enters
+   the vector cache), every blocking hop on a worker thread under the right limiter, nothing blocking the loop, a clean
+   cancellation, no uploaded text in any log, nothing imported from the agent.
 
 Plain pytest: every async scenario is driven with ``asyncio.run`` from an ordinary sync test. Nothing here touches the
 network, Neo4j or a paid model. (The recorder imports ``semigraph.uploads.repo``, which imports the ``neo4j`` driver as
@@ -46,6 +47,7 @@ from semigraph.retrieval import workspace as ws
 from semigraph.retrieval import workspace_async
 from semigraph.retrieval.retriever import detect_anchors, hybrid_retrieve
 from semigraph.retrieval.workspace_async import astream_workspace_answer
+from semigraph.serve.embed import LimitedEmbedder
 from semigraph.serve.limiters import LoopLagMonitor, make_limiters
 
 DATA = Path(__file__).parent / "data"
@@ -150,6 +152,17 @@ class ProbeEmbedder:
         if self.latency_s:
             threading.Event().wait(self.latency_s)
         return [float(number), 0.5]
+
+
+class PrivateOnlyEmbedder(ProbeEmbedder):
+    """An embedder that offers ``encode_query_private`` (as ``LimitedEmbedder`` does): a workspace question must go
+    through it and never through the cache-reading ``encode_query``."""
+
+    def encode_query(self, text: str) -> list[float]:
+        raise AssertionError("a workspace question was embedded through encode_query, the cache-reading method")
+
+    def encode_query_private(self, text: str) -> list[float]:
+        return super().encode_query(text)
 
 
 class ProbeDriver(recorder.UploadFakeDriver):
@@ -489,6 +502,75 @@ def test_the_embedding_runs_on_a_worker_thread_under_the_embed_limiter():
     ran = run_ask(CITED)
     (call,) = ran.embedder.calls
     assert call["thread"] != ran.loop_thread and call["borrowed"] >= 1
+
+
+def test_a_workspace_question_is_embedded_through_the_private_method_on_a_worker_thread_under_the_embed_limiter():
+    ran = run_ask(CITED, embedder=PrivateOnlyEmbedder())
+    (call,) = ran.embedder.calls
+    assert call["text"] == CITED["question"] and call["thread"] != ran.loop_thread and call["borrowed"] >= 1
+    with_vec = [t["vec"] for t in ran.driver.trace if t["vec"] is not None]
+    assert with_vec and with_vec == [[1.0, 0.5]] * len(with_vec), "the private vector reaches both retrievals"
+
+
+def test_an_embedder_without_the_private_method_is_used_through_encode_query_as_before():
+    assert not hasattr(ProbeEmbedder(), "encode_query_private") and not hasattr(FakeEmbedder(), "encode_query_private")
+    ran = run_ask(CITED)
+    assert [c["text"] for c in ran.embedder.calls] == [CITED["question"]]
+
+
+def test_a_workspace_ask_leaves_its_question_out_of_the_vector_cache_and_the_public_path_still_caches():
+    """The cache is a timing oracle for "was this exact question asked", and a private question kept in it would outlive
+    the workspace (24 h): the workspace ask embeds through ``encode_query_private``, so a public ask of the same words
+    that follows is a MISS (it embeds), and only that public ask is cached."""
+    inner = ProbeEmbedder()
+    embedder = LimitedEmbedder(inner, slots=2)
+    ran = run_ask(CITED, embedder=embedder)
+    assert kinds(ran.events) == ["retrieval", "delta", "done"]
+    assert [c["text"] for c in inner.calls] == [CITED["question"]]        # embedded once, for both retrievals
+    embedder.encode_query(CITED["question"])
+    assert len(inner.calls) == 2, "the workspace ask left its question in the cache: this public ask was a hit"
+    embedder.encode_query(CITED["question"])
+    assert len(inner.calls) == 2, "the public path no longer caches"
+
+
+def test_the_workspace_embedding_still_takes_a_slot_of_the_shared_bound():
+    """Two workspace asks at once on a one-slot embedder never embed together (``LimitedEmbedder`` slot, taken by the
+    private method too), where the cache cannot merge them."""
+    inner = ProbeEmbedder(latency_s=0.05)
+    embedder = LimitedEmbedder(inner, slots=1)
+    running, peak, lock = 0, 0, threading.Lock()
+    original = inner.encode_query
+
+    def tracked(text: str) -> list[float]:
+        nonlocal running, peak
+        with lock:
+            running += 1
+            peak = max(peak, running)
+        try:
+            return original(text)
+        finally:
+            with lock:
+                running -= 1
+
+    inner.encode_query = tracked
+
+    async def two_asks():
+        limiters = make_limiters(_Settings())
+        kwargs = {"strategy": "hybrid", "workspace_id": CITED["workspace_id"], "as_of": CITED["as_of"],
+                  "llm_stream": _asyncified(recorder._writer_factory(CITED["writer"], []))}
+
+        async def one():
+            stream = astream_workspace_answer(CITED["question"], ProbeDriver(CITED), embedder, limiters=limiters,
+                                              **kwargs)
+            async with aclosing(stream) as events:
+                return [event async for event in events]
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(one)
+            group.start_soon(one)
+
+    run(two_asks)
+    assert peak == 1 and len(inner.calls) == 2
 
 
 def test_retrieval_and_the_stale_citation_read_run_on_worker_threads_under_the_db_limiter_in_the_sync_order():
@@ -958,7 +1040,7 @@ def test_a_20000_character_run_of_letters_in_an_answer_does_not_stall_the_event_
 
 # --- privacy and security ----------------------------------------------------------------------------------------
 
-SECRET_WS = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"
+SECRET_WS = "9f8e7d6c5b4a39281706f5e4d3c2b1a0"  # a fake workspace id used as a canary that must never be logged, not a credential - gitleaks:allow
 SECRET_QUESTION = "What does the Zephyrine-X memo say about the gross margin of Quillfeather?"
 SECRET_QUESTION_ANCHORED = "What does the Zephyrine-X memo say about the gross margin of Nvidia at Quillfeather?"
 SECRET_DOC = "Zephyrine-X gross margin was 41.5% in Q2 at Quillfeather."

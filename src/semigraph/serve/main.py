@@ -35,6 +35,8 @@ SECONDS_PER_DAY = 86_400
 SECONDS_PER_HOUR = 3_600
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+# sse-starlette logs each event it sends (a question, a workspace answer) at DEBUG: keep its logger above that.
+logging.getLogger("sse_starlette").setLevel(logging.INFO)
 logger = logging.getLogger("semigraph.serve.main")
 
 # The whole path SEGMENT after /api/workspace/ is hashed, whatever its case or length: an uppercased or over-long id

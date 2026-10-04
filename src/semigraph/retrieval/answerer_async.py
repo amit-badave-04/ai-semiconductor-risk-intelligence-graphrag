@@ -37,53 +37,85 @@ on purpose:
 * a stream that is not async iterable is a ``TypeError`` (a wiring mistake), not a ``draft_error`` that would
   silently escalate.
 
-The deterministic checks (``_done_event`` -> ``answer_checks``, and ``verify_answer``) are CPU-bound regex work: 6,000
-to 8,500 ``re`` calls per answer over a context of up to about 85,000 characters (the eight largest real chunks plus a
-graph block). With ``limiters`` they run on a thread under ``limiters.db``; ``limiters=None`` runs them inline (the unit
-tests). What the thread buys was measured on 2026-10-04 (two runs of 60 repetitions each, a 1 ms system timer, and a
-ticker task that records how late a 2 ms timer fires: 2 ms when the loop is idle). A released draft runs both checks;
-the lag is the worst of one ask, as the median over the repetitions (range over the two runs) and the single worst:
+The deterministic checks (``_done_event`` -> ``answer_checks``, and ``verify_answer``) are CPU-bound regex work: about
+6,300 to 7,500 ``re`` calls for the two checks of one released draft, over a context of up to about 85,000 characters
+(the eight largest real chunks plus a graph block). With ``limiters`` they run on a thread under ``limiters.db``;
+``limiters=None`` runs them inline (the unit tests). Every figure below was measured on 2026-10-04 on the development
+machine (Intel Core Ultra 9 275HX, Windows 11, Python 3.13.13, the interpreter's default 5 ms switch interval, a 1 ms
+system timer, garbage collector off). "Loop lag" is the longest gap between two wake-ups of a ticker task that sleeps
+2 ms while one ask's checks run. With the loop idle that gap is 4.0 ms (median of 60 asks; range 3.0 to 4.5), so read
+every lag against that floor. A run is 60 asks; where there are two runs, both medians are given, and "worst" is the
+single worst ask of both.
 
-* the longest real benchmark answer, 6,109 characters: both checks take about 15 ms. The loop lags 14.4 to 15.0 ms
-  (worst 17.0) when they run inline and 5.8 to 5.9 ms (worst 7.5) on a thread;
-* an answer at the 2,400-token cap, 9,600 characters: about 18 ms. The loop lags 16.8 to 17.9 ms (worst 20.4) inline and
-  6.0 to 6.5 ms (worst 8.5) on a thread.
+What the thread buys, on realistic input. A released draft runs both checks, and the loop lags:
 
-Inline, the loop is held for as long as the checks run. On a thread it is held for about 6 ms, and that is all a thread
-can do here: the interpreter asks a running thread to hand over the GIL after 5 ms (``sys.getswitchinterval``), and the
-thread does so at its next bytecode or when the C call it is in returns. The checks are thousands of short calls with
-Python between them, so a hand-over is never more than one call away. A thread does NOT interrupt a long single ``re``
-call: ``re`` holds the GIL for a whole match, so the real bound on a loop stall with the hop is the 5 ms plus the cost
-of the longest single regex call of the checks. At the sizes above that call is the last scan of ``verify._SUFFIX_RE``
-over the whole context, 1.1 ms (median of the worst call of an ask 1.07 ms; worst of 200 asks, collector off, 1.14 ms).
-That the interval is what sets the lag was checked by changing it: at 1 ms the lag on a thread falls to 3.0 ms and at
-0.2 ms to 2.1 ms (2.0 idle); this module leaves the interpreter's default alone. The hop is kept because its lag is not
-worse than inline's at the largest realistic input: it is 9 to 12 ms lower, for about 1 ms of extra wall time. It pays
+* the longest real benchmark answer, 6,109 characters: both checks take 14.9 ms (median; range 14.7 to 15.3) and make
+  6,327 ``re`` calls. Inline the loop lags 15.6 and 16.4 ms (worst 19.1); on a thread, 7.7 ms in both runs (worst 8.8);
+* an answer at the 2,400-token cap, 9,600 characters (the generator of the test, with real chunk ids): 21.1 ms and
+  7,465 ``re`` calls. Inline the loop lags 23.0 and 22.1 ms (worst 25.7); on a thread, 8.9 and 10.6 ms (worst 12.0).
+
+Inline, the loop is held for as long as the checks run. On a thread it is held for 4 to 7 ms more than when idle,
+and that is all a thread can do here: the interpreter asks a running thread to hand over the GIL after 5 ms
+(``sys.getswitchinterval``), and the thread does so at its next bytecode or when the C call it is in returns. The
+checks are thousands of short calls with Python between them, so a hand-over is never more than one call away. A
+thread does NOT interrupt a long single ``re`` call: ``re`` holds the GIL for a whole match, so a loop stall with the
+hop is roughly the 5 ms plus the cost of the longest single regex call of the checks (measured above: 3.7 to 6.6 ms
+more than idle, in medians). At the sizes above that call is one step of ``verify._SUFFIX_RE.finditer`` over the whole
+context: 1.03 and 1.04 ms (median over 30 asks of the longest call of each ask; worst 1.12 ms). That the interval is
+what sets the lag was checked by changing it (the real answer, 60 asks each, idle 3.5 to 4.0 ms): 5 ms, the default,
+7.7 ms; 1 ms, 5.0 ms; 0.2 ms, 4.1 ms. This module leaves the interpreter's default alone. The hop is kept because it lowers the loop's lag by 8 to 14 ms at these sizes for under
+1 ms of wall time (0.04 ms for an empty call, 0.3 ms for the 7.5 ms check, on an otherwise idle loop). It pays
 only for checks that outlast the 5 ms interval, as these do; a check shorter than that gains nothing from a thread.
 ``tests/test_answerer_async.py`` pins a generous bound (under 100 ms, inline and on a thread) on a synthetic input of
-the same size, and prints the measured lags in its failure message.
+the same size (both checks 23.7 ms inline; lag 25.6 ms inline and 9.2 ms on a thread, one run), and prints the measured
+lags in its failure message.
 
-The bound does not hold for a regex that is itself slow on one long run, and a thread does not help there (measured on
-2026-10-04, not pinned by a test): ``verify._PERCENT_VALUE_RE`` and ``_PERCENT_RE`` are quadratic on a run of
-comma-separated digits (``1,1,1,...``, 5,000 characters: ``answer_checks`` takes 156 ms, and the loop lagged 150 ms on a
-thread against 154 ms inline), so a prompt-injected document that steers the model into such output stalls the loop
-either way. This module changes neither those patterns (``verify.py``) nor the quadratic pure-Python loop of
-``removal_claims._bullets_under`` (5,000 newlines: 450 ms; a thread cuts the loop lag to 15 ms, but holds a
-``limiters.db`` thread for the whole time). Text that reaches the checks from an uploaded document cannot do this: a
-chunk is at most 1,800 characters and the excerpt headers between chunks break every run, so a context of six hostile
-chunks (the route's default) costs both checks 4.4 ms and the 120-chunk cap of a document version 82 ms.
-Garbage-collector pauses are outside all of this: a full collection of a large heap pauses every thread (118 ms was
-measured in a pytest process), whichever thread runs the checks.
+A thread cannot shorten ONE long ``re`` call, so protection against a pattern that is slow on crafted text lies in the
+pattern, never in the thread. The old ``verify._PERCENT_VALUE_RE`` over ``1,1,1,...`` (5,000 characters, what a
+prompt-injected answer can be steered into) is one call of 156 ms: the loop lagged 154 ms inline (median of 30 asks;
+range 152 to 173) and 157 ms on a thread (151 to 187). The patterns are linear now, and ``answer_checks`` is too on
+each shape the 2026-10-04 audit found (``tests/test_verify_regex.py`` keeps every replaced pattern verbatim and
+compares it with its replacement; times are one ``answer_checks`` call, old -> new, median of 5):
+
+* a run of comma-separated digits (``1,1,1,...``, 5,000 characters), quadratic in ``verify._PERCENT_VALUE_RE`` and
+  ``_PERCENT_RE``: 155 ms -> 4.2 ms (8.5 ms for 10,000 characters, 16.5 ms for 20,000);
+* a run of digits (``111...``, 1,200 characters), cubic in ``_PERCENT_RE``: 2,004 ms -> 0.7 ms;
+* 5,000 line breaks, the quadratic walk of ``removal_claims._bullets_under`` over blank lines: 466 ms -> 17 ms
+  (32 ms for 10,000 characters, 65 ms for 20,000);
+* runs of blanks, long words and the list-label pattern that backtracked exponentially: the same file.
 
 The ``postprocess`` hook of a buffered answer (the workspace passes ``strip_links_images``) takes the same route, on the
 draft's text and on a buffered release's text, whichever the path runs: it is regex work over model output, which a
-prompt-injected document can make long. ``strip_links_images`` used to be quadratic on one long run of letters (222 ms
-for 10,000 characters, 886 ms for 20,000) and a thread did not shorten that stall: measured on 2026-10-03 (median of
-three) the loop lagged 916 ms for 20,000 characters on a thread and 886 ms inline. The cure was in the patterns, not
-the thread: they are linear now (``workspace.py``; ``tests/test_retrieval_workspace_regex.py`` pins the output as
-unchanged and the cost as linear), 0.75 ms for 20,000 letters, and a whole workspace ask over such an answer keeps the
-loop lag under 100 ms (``tests/test_serve_workspace_stream_async.py``). The hook goes through ``_acheck`` so that the
-thread, the limiter and the checkpoint after it are decided in one place for everything that is not model I/O.
+prompt-injected document can make long. Its patterns are linear (``workspace.py``;
+``tests/test_retrieval_workspace_regex.py`` pins the output as unchanged and the cost as linear): 20,000 letters take
+0.77 ms, 20,000 characters made of forty groups of images, links, HTML tags, bare URLs and reference links 1.6 ms, and
+15,000 characters of unclosed brackets (``[`` then ``](`` repeated) 0.77 ms (median of 60 calls); the loop lag during
+them is the idle floor, inline or on a thread. The hook goes through ``_acheck`` so that the thread, the limiter and
+the checkpoint after it are decided in one place for everything that is not model I/O.
+
+Plain Python is not like one long ``re`` call: the interpreter takes the GIL back from a thread that runs it every
+5 ms, so a thread DOES keep the loop turning. That case is left, KNOWN, TRACKED and not fixed:
+``removal_claims._survives`` re-reads the whole sentence before each removal verb and ``_clause_claims`` joins and
+re-scans the other clauses of a line for each one, both quadratic pure-Python loops. A crafted answer of a single
+sentence, "no risk factor was removed " repeated, costs one ``answer_checks`` call 568 ms at 5,000 characters and
+2,186 ms at 10,000 (twice the text, 3.9 times the time). The two checks of one ask take 1,135 ms at 5,000 characters
+and 3,995 ms at the 9,600-character cap. The loop lag of an ask (both checks, 30 asks each):
+
+* 5,000 characters: inline 1,129 ms (worst 1,345); on a thread 14.5 ms (worst 15.2);
+* 9,600 characters: inline 3,973 ms (worst 4,173); on a thread 15.0 ms (worst 15.5).
+
+(One check call alone, 5,000 characters, 30 asks: 558 ms inline, 14.2 ms on a thread; 10,000 characters, 5 asks: 2,140
+ms inline, 15.1 ms on a thread.) So the offload is worth keeping: it is what keeps the loop turning. It protects the
+loop only: each such call still costs CPU and holds one ``limiters.db`` thread to its end. An ask makes at most two
+check calls, one ``verify_answer`` (the draft) and one ``_done_event`` (the answer that is released, the draft or the
+escalation); a released draft, an escalated ask and a workspace ask each make two (counted with a spy on
+``answer_checks``), an ask routed straight to the strong model or without an escalation model makes one. The cost is
+bounded, not removed, by the per-IP window (``rate_limit_questions``: 5 paid asks per 600 s per address), the daily cap
+(``max_queries_per_day``: 150) and ``max_concurrent_answers`` (2 on the live service, so at most two such threads at
+a time).
+
+Garbage-collector pauses are outside all of this: a full collection of a large heap pauses every thread (118 ms was
+measured with ``gc.callbacks`` in a pytest process), whichever thread runs the checks.
 """
 
 import logging
@@ -204,7 +236,8 @@ class AsyncTextStream:
         self._chunks = chunks
 
     async def _estimate_usage(self, messages: list[dict]) -> None:
-        # The chunk builder tokenises the whole prompt: 5 to 16 ms measured, so it runs on a thread, not on the loop.
+        # The chunk builder tokenises the whole prompt: 3 to 15 ms measured on 2026-10-04 (600 to 2,400 chunks, a prompt
+        # of 3,000 to 85,000 characters), so it runs on a thread, not on the loop.
         # It takes anyio's default thread limiter (40 tokens, shared with Starlette's sync endpoints), not a named one
         # of ``Limiters``: it runs once per answer, only when the provider reported no usage, and for a few ms, so
         # the worst a busy limiter does is delay this stream's ``done``; it can never block the loop.
@@ -270,12 +303,20 @@ async def _closing_iter(stream: AsyncIterable[str]) -> AsyncIterator[AsyncIterat
 
 async def _acheck(limiters: "Limiters | None", fn, *args, **kwargs):
     """Run a deterministic, CPU-bound call (the checks, the ``postprocess`` hook): inline when ``limiters`` is None
-    (unit tests), else on a worker thread under the graph pool (the hop costs about 1 ms and cuts the loop lag of
-    the 15 to 18 ms checks to about 6 ms; what it cannot do is in the module docstring), with a checkpoint once it has
+    (unit tests), else on a worker thread under the graph pool (the hop costs under 1 ms and takes 8 to 14 ms off the
+    loop lag of the 15 to 21 ms checks; what it cannot do is in the module docstring), with a checkpoint once it has
     returned (see :func:`_hop`)."""
     if limiters is None:
         return fn(*args, **kwargs)
     return await _hop(partial(fn, *args, **kwargs), limiter=limiters.db)
+
+
+def _loggable_failure(error: str, *, over_uploaded_text: bool) -> str:
+    """``error`` (``"ClassName: message"``, as :func:`_adrain` describes it) as it may appear in a log line. A
+    provider's error can quote what it rejected, and over uploaded text that is a chunk of the visitor's document: the
+    workspace writer (the one with a ``postprocess``) logs the class name only. A public ask keeps the sync writer's
+    wording."""
+    return error.partition(":")[0] if over_uploaded_text else error[:300]
 
 
 async def _adrain(stream: AsyncIterable[str]) -> tuple[str, str | None]:
@@ -345,7 +386,8 @@ async def _adraft_then_escalate(prompt, *, llm_stream, escalation_stream, escala
         text = await _acheck(limiters, postprocess, text)
     draft_model = getattr(draft, "model", None)
     if error:
-        logger.warning("draft model %s failed (%s) - escalating to %s", draft_model, error[:300], escalation_model)
+        logger.warning("draft model %s failed (%s) - escalating to %s", draft_model,
+                       _loggable_failure(error, over_uploaded_text=postprocess is not None), escalation_model)
     reasons = ["draft_error"] if error else await _acheck(
         limiters, verify_answer, text, set(CITE_RE.findall(text)), ctx["valid_ids"],
         getattr(draft, "finish_reason", None), context=context, sources=ctx.get("sources"), question=ctx["question"])

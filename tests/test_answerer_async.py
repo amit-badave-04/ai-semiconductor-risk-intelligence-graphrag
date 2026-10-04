@@ -803,6 +803,53 @@ def test_a_failed_draft_is_logged_with_its_error_so_a_revoked_key_is_not_silent(
     assert any(CHEAP in r.message and "401 invalid api key" in r.message for r in caplog.records)
 
 
+# What a provider's error can quote of the prompt: the chunk of an uploaded document. The workspace test quotes a fake
+# that is secret-shaped on purpose, so it also shows the line is not left to a secret-shape filter; the public test
+# quotes plain text, so it pins the wording and not the absence of a filter.
+QUOTED_BY_PROVIDER = "sk-live-abcdef1234567890"    # not a real key - gitleaks:allow
+PLAIN_QUOTE = "the filing says gross margin was 41.5 percent"
+
+
+def _failed_draft_records(caplog, quote: str, **writer_kwargs) -> tuple[list[dict], list]:
+    """The events and every log record of a writer whose draft fails with an error that quotes ``quote``."""
+    caplog.set_level("DEBUG")
+    draft = Script((), fail=RuntimeError(f"400 bad request, the text sent was: {quote} and more"))
+
+    async def go():
+        return await collect(answerer_async.astream_answer_for_prompt(
+            Q, PROMPT, CONTEXT, {DOC}, [DOC], "hybrid", sources=SOURCES, llm_stream=lambda p: AsyncFake(draft),
+            escalation_stream=lambda p: AsyncFake(Script(GOOD_PARTS, model=STRONG)), escalation_model=STRONG,
+            model=CHEAP, **writer_kwargs))
+
+    return run(go), list(caplog.records)
+
+
+def _draft_failure_warnings(records) -> list[str]:
+    return [r.getMessage() for r in records if r.name == "semigraph.answerer" and "draft model" in r.getMessage()]
+
+
+def test_a_failed_workspace_draft_logs_the_exception_class_and_never_the_text_it_quotes(caplog):
+    """The error of a draft over uploaded text can quote a chunk of it. The workspace writer (``postprocess`` is set)
+    still logs the failure and the escalation, but names only the exception class, and no record carries the quote."""
+    events, records = _failed_draft_records(caplog, QUOTED_BY_PROVIDER, postprocess=strip_links, force_buffered=True)
+
+    assert [e["event"] for e in events] == ["escalated", "delta", "done"] and events[0]["reasons"] == ["draft_error"]
+    assert _draft_failure_warnings(records) == [f"draft model {CHEAP} failed (RuntimeError) - escalating to {STRONG}"]
+    assert [r for r in records if QUOTED_BY_PROVIDER in repr(vars(r))] == []
+
+
+def test_a_failed_public_draft_still_logs_the_error_text(caplog):
+    """The public ask keeps the sync writer's wording (operators read it to see why a draft was rejected), with or
+    without a buffered release: only a ``postprocess`` marks a workspace ask."""
+    for kwargs in ({}, {"force_buffered": True}):
+        caplog.clear()
+        events, records = _failed_draft_records(caplog, PLAIN_QUOTE, **kwargs)
+        assert events[0]["event"] == "escalated"
+        assert _draft_failure_warnings(records) == [
+            f"draft model {CHEAP} failed (RuntimeError: 400 bad request, the text sent was: {PLAIN_QUOTE} and "
+            f"more) - escalating to {STRONG}"]
+
+
 def test_the_transient_retry_warning_uses_the_sync_writers_logger(monkeypatch, caplog):
     caplog.set_level("INFO", logger="semigraph.answerer")
     observe_async(monkeypatch, [conn_error(), plain()], {"backoff": (7,)})
@@ -1313,12 +1360,14 @@ def test_without_limiters_the_checks_run_inline_for_tests(monkeypatch):
 
 
 # --- what the thread buys for the checks, measured on 2026-10-04 (module docstring of ``answerer_async``) -----------
-# On the largest real input both checks take 15 to 18 ms. Inline they hold the loop that long; on a worker thread the
-# loop lags about 6 ms: the 5 ms switch interval plus the longest single regex call (1.1 ms). A thread cannot interrupt
-# a long ``re`` call, so this holds for these inputs, not for any input. The fixture below is synthetic (the real chunks
-# are not in CI) and a little heavier, about 23 ms inline, and the bound pinned here is generous: the ticker's timer is
-# only as fine as the system timer (an IDLE loop shows 15 ms of lag on the Windows development machine), so what the
-# test prints is that plus the stall.
+# On the largest real input both checks take 15 to 21 ms. Inline they hold the loop that long; on a worker thread the
+# loop lags 4 to 7 ms more than when idle: the 5 ms switch interval plus the longest single regex call (1.0 ms). A
+# thread cannot interrupt a long ``re`` call, so this holds for these inputs, not for any input (the module docstring of
+# ``answerer_async`` has the measurements, and the crafted inputs where the checks themselves are the cost). The fixture
+# below is synthetic (the real chunks are not in CI) and a little heavier, 23.7 ms inline (median of 60), and the bound
+# pinned here is generous: the ticker's timer is only as fine as the system timer (an IDLE loop showed 3.6, 7.5 and
+# 7.6 ms of lag on the Windows development machine, the worst of 30 rounds in three runs), so what the test prints is
+# that plus the stall.
 
 LAG_BOUND_MS, LAG_TICK_S, LAG_ROUNDS = 100, 0.005, 30
 LARGE_CONTEXT_CHARS, LARGE_ANSWER_CHARS = 80_000, 9_600            # 8 chunks of ~9,000 + a graph block; 2,400 tokens
@@ -1639,8 +1688,10 @@ def test_every_thread_hop_of_the_module_goes_through_the_checkpointing_helper():
 
 
 # --- the ``postprocess`` hook of a buffered answer is regex work over model output: it runs where the checks do ------
-# ``strip_links_images`` is quadratic on one long unbroken run of letters (222 ms for 10,000 characters, 886 ms for
-# 20,000), and an uploaded document that injects a prompt can make the model's output that long.
+# ``strip_links_images`` is regex work over model output, and an uploaded document that injects a prompt can make that
+# output long. Its patterns are linear (20,000 letters: 0.77 ms, ``tests/test_retrieval_workspace_regex.py`` pins the
+# cost); the hook goes through ``_acheck`` so that the thread, the limiter and the checkpoint are decided in one place,
+# not because a thread would shorten a stall in a pattern.
 
 def _postprocess_case(name: str, calls: int):
     return pytest.param(next(s for s in PROMPT_SCENARIOS if s.name == name), calls, id=name)

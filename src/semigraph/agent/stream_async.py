@@ -61,8 +61,10 @@ handled. The limits of this design:
 * one thread is held from the first resumption to the end of planning, including while it is parked waiting for the
   consumer to take an event (up to ``agent_time_budget_s``, 25 s). Concurrent agent streams in planning are therefore
   bounded by ``limiters.db``, and the in-flight answer cap bounds how many such threads a slow client can park. A
-  thread takes blocking WAITS (the planner's network call, a graph query) off the loop; CPU-bound pure-Python work
-  on it still holds the GIL and can stall the loop;
+  thread takes blocking WAITS (the planner's network call, a graph query) off the loop. CPU-bound pure-Python work on
+  it shares the GIL with the loop, which the interpreter takes back every 5 ms: the loop keeps turning, with a lag of
+  about 15 ms (measured with the answer checks on a crafted answer, ``answerer_async`` module docstring). One long C
+  call, a single regex match, holds the GIL for its whole length, whichever thread makes it;
 * the prefetch embeds the question inside that thread (``hybrid_retrieve`` takes no ``query_vec`` here), so it waits
   for the embedder's own semaphore while holding a ``limiters.db`` token. A disconnect does not interrupt it: it
   runs to its end holding the thread and the token, and then leads to no planner call;
@@ -105,6 +107,7 @@ import anyio.to_thread
 from ..config import get_settings
 from ..retrieval.answerer import usage_cost
 from ..retrieval.answerer_async import astream_answer_for_context
+from ..serve.tracing import redact_secret_shaped
 from .graph import AgentResult, run_agent
 from .planner import LiteLLMPlanner
 from .state import Ledger, Limits, PlannerTurn
@@ -258,7 +261,8 @@ class _Planning:
         else:
             cancelled = await _wait_through_cancellation(self._finished.wait, self._finished.is_set)
         if self._error is not None:             # a failure nobody asked for (the run was already being abandoned)
-            logger.warning("closing the planning run failed: %s: %s", type(self._error).__name__, self._error)
+            logger.warning("closing the planning run failed: %s: %s", type(self._error).__name__,
+                           redact_secret_shaped(str(self._error)))
         if cancelled is not None:
             raise cancelled
 

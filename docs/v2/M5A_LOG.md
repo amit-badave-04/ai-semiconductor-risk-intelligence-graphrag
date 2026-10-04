@@ -61,3 +61,49 @@ agent and workspace fixtures).
 **Wiring (in progress):** PaidStream (events + idempotent shielded finalize as the response's background task), the
 anyio.CapacityLimiter replacing answer_slots, ledger row written BEFORE the terminal event as in the sync code, conversion of
 the sync-path tests, then real-uvicorn concurrency and disconnect tests and a review panel. Nothing is deployed.
+
+## 2026-10-04 - I2 hardening round and the Opus panel
+
+**Hardening (three workers) and panel (verifier, security reviewer, FastAPI reviewer), then fixes and a re-verification.**
+- A quadratic regex family in the deterministic answer checks (verify.py percent patterns, 156 ms at 5,000 characters of
+  comma-digits) and, worse, an EXPONENTIAL one in removal_claims (_ECHO_RE: about 150 characters of repeated "none" took
+  16 s; every further repeat doubled it) were replaced by linear code. The _echo rewrite is a hand-written matcher; it was
+  checked equal to the old regex by the worker (about 550,000 strings) and again independently by the re-verifier (300,000
+  fresh-seed strings, 44,312 matches, 0 differences, a planted change was caught). strip_links_images is linear and
+  idempotent (a fixed point reached in at most MAX_STRIP_ROUNDS rounds, then a defang fallback).
+- HIGH (security review): a client that stops reading could hold an answer slot indefinitely, because sse-starlette's
+  closing empty-body send has no timeout. Fixed in two parts: finalize runs at the end of events(), and PaidResponse bounds
+  the closing send by send_timeout_s. Reproduced on a real uvicorn before the fix (slot held at 25 s, a second ask got the
+  busy event) and confirmed fixed after (slot free at 1 s, closing send cut at 2.0 s).
+- Ledger edge cases: no second row once the terminal row exists (a failing cache write, a twin raising after done); when
+  the client never received its terminal event it still gets the generic error (the page waits for done or error);
+  _started is set before the twin is called; the abandoned row is written before the twin/agent join (up to 12 s).
+- Privacy: a workspace ask logs only exception class names; the sse_starlette logger is pinned to INFO (its DEBUG chunk
+  lines carry the question and the workspace answer); workspace questions bypass the embedding cache (a cache hit is a
+  timing oracle and would outlive the 24 h workspace); the agent twin's exception log is redacted.
+- Config: send_timeout_s, embed_slots, db_thread_limit and loop_lag_warn_ms have a minimum of 1 (send_timeout_s=0 would drop
+  every paid stream after retrieval); .env.example lists them. Cached answers no longer take a thread-pool hop.
+- The real-uvicorn tests run with --loop asyncio (production's loop: deploy/requirements-serve.txt was compiled on Windows
+  without uvloop, so the image uses asyncio's default loop; the unit CI job has uvloop). Whether production should get
+  uvloop is a separate deploy decision.
+- Gate order has a test now: a failed Turnstile leaves the paid per-IP window untouched.
+- CI on e918563: unit and serve-shipped (Linux, including the real-uvicorn tests) passed; gitleaks flagged a fake workspace
+  id in a test (marked gitleaks:allow, plus a .gitleaksignore fingerprint for the history finding).
+
+**Known and accepted, tracked:**
+- Crafted removal sentences ('no risk factor was removed ' repeated) still cost about 1.1 s of pure-Python CPU per check call
+  at 5,000 characters and about 4 s at the 9,600-character cap (removal_claims._survives and _clause_claims). On a worker
+  thread this does not stall the event loop (measured lag 23-27 ms; pure Python hands the GIL back every 5 ms; inline it
+  would stall for the whole 1.2-4.3 s), but it holds one limiters.db thread per call (an escalated ask makes up to three).
+  Bounded by the per-IP window, the daily cap and max_concurrent_answers; a restructure of _survives belongs after I2.
+- litellm 1.100.0 runs stream_chunk_builder on the event loop at the end of every async stream (about 5-16 ms measured on
+  1.90.2); not changeable without patching litellm.
+- uvicorn logs one ERROR line ('ASGI callable returned without completing response', no traceback) for each client dropped
+  by the send timeout; accepted, no log filter (a filter would also hide real bugs).
+- Two send timeouts in the same loop iteration arrive as an exception group and still log a traceback (rare).
+- A pure-Python (GIL-holding) embedder makes the plan's 'loop-lag monitor logs nothing' criterion unreachable at 40
+  concurrent streams; the real ONNX embedder releases the GIL (measured 16 ms, 0 warnings). The live I2 check reads the
+  monitor.
+- For I4: uvicorn's --timeout-graceful-shutdown cancels request tasks and runs lifespan shutdown without waiting for them,
+  so a finalize ledger write could race driver.close(); the drain work must wait for in-flight streams.
+- Nothing has run with the h11 implementation or with uvloop.

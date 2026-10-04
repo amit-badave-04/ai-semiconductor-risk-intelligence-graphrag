@@ -16,12 +16,13 @@ import types
 
 import anyio
 import pytest
+import sse_starlette.sse as sse_sse
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import semigraph.serve.routes as routes
 from semigraph.artifacts import load_examples
-from semigraph.serve import store
+from semigraph.serve import guard, store
 from semigraph.serve.guard import RateLimiter
 from semigraph.serve.limiters import make_limiters
 from semigraph.serve.stream_runtime import PaidStream
@@ -270,6 +271,34 @@ def test_cached_answers_bypass_kill_switch_and_ceiling(client, fakes):
     assert parse_sse(client.post("/api/ask", json={"question": Q}).text)[0]["cached"] is True
 
 
+# The bytes of a cached answer as the page has always received them, captured from the route before the event moved
+# from a sync iterator to an async generator (sep "\n", one ``done`` event, no trailing ping).
+CACHED_DONE_BYTES = (b'event: done\ndata: {"event": "done", "cached": true, "answer": "Nvidia depends on HBM suppliers '
+                     b'[0001045810-26-000021:I.1:0320].", "source": "live", '
+                     b'"citations": ["0001045810-26-000021:I.1:0320"], "hallucinated": []}\n\n')
+
+
+def test_a_cached_answer_is_one_done_event_with_the_same_bytes_and_headers_as_ever(client, fakes):
+    client.post("/api/ask", json={"question": Q})                      # paid, populates the cache
+    r = client.post("/api/ask", json={"question": Q})
+    assert r.content == CACHED_DONE_BYTES
+    assert r.headers["content-type"] == "text/event-stream; charset=utf-8"
+    assert (r.headers["cache-control"], r.headers["x-accel-buffering"]) == ("no-store", "no")
+
+
+def test_a_cached_answer_never_waits_for_a_slot_of_the_default_thread_pool(client, fakes, monkeypatch):
+    """sse-starlette wraps a SYNC iterator in ``iterate_in_threadpool``: every cached answer would queue for one of
+    starlette's 40 default threads, the pool that is full while Neo4j is slow. The event comes from an async
+    generator."""
+    threaded: list = []
+    real = sse_sse.iterate_in_threadpool
+    monkeypatch.setattr(sse_sse, "iterate_in_threadpool", lambda it: threaded.append(it) or real(it))
+    client.post("/api/ask", json={"question": Q})
+    r = client.post("/api/ask", json={"question": Q})
+    assert parse_sse(r.text)[0]["cached"] is True
+    assert threaded == []
+
+
 @pytest.mark.parametrize("strategy", ["hybrid", "agent"])
 def test_kill_switch_blocks_paid_answers_with_503(client, fakes, monkeypatch, strategy):
     client.app.state.settings.agent_enabled = True
@@ -460,6 +489,48 @@ def test_turnstile_required_fails_closed_without_keys(client, fakes, monkeypatch
     r = client.post("/api/ask", json={"question": Q, "strategy": strategy})
     assert r.status_code == 403 and "Bot check" in r.json()["detail"]
     assert fakes.queries == []
+
+
+@pytest.mark.parametrize("failing", [{"turnstile_required": True},
+                                     {"turnstile_secret_key": "turnstile-test-secret"}],    # gitleaks:allow
+                         ids=["required-without-a-secret", "secret-set-token-missing"])
+def test_a_failed_bot_check_never_touches_the_paid_window_which_only_a_passed_one_consumes(client, fakes, monkeypatch,
+                                                                                           failing):
+    """The paid per-address window is consumed AFTER Turnstile passes. Were it taken first, a script that fails the bot
+    check ``rate_limit_questions`` times would lock the real users sharing its address out of paid answers for the whole
+    window, with every one of its own requests still a 403. The free window is the first gate whatever the outcome, so
+    the total here stays within it and the paid window's own calls are what is recorded."""
+    st, n = client.app.state, FakeSettings.rate_limit_questions
+    events: list[str] = []
+    real_allow, real_verify = st.rate_limiter.allow, guard.verify_turnstile
+
+    def allow(key):
+        events.append("paid window")
+        return real_allow(key)
+
+    async def verify(*args, **kwargs):
+        events.append("bot check")
+        return await real_verify(*args, **kwargs)
+
+    monkeypatch.setattr(st.rate_limiter, "allow", allow)
+    monkeypatch.setattr(guard, "verify_turnstile", verify)
+    defaults = {name: getattr(st.settings, name) for name in failing}
+    for name, value in failing.items():
+        setattr(st.settings, name, value)
+    for i in range(n + 1):                      # one more refusal than the window holds: were it consumed, it would 429
+        r = client.post("/api/ask", json={"question": f"{Q} bot {i}"})
+        assert r.status_code == 403 and r.json()["detail"] == routes.MSG_BOT
+    assert events == ["bot check"] * (n + 1)    # every refusal stopped at the bot check: no window event at all
+
+    events.clear()
+    for name, value in defaults.items():
+        setattr(st.settings, name, value)
+    for i in range(n):                          # the window still holds exactly its quota ...
+        assert client.post("/api/ask", json={"question": f"{Q} human {i}"}).status_code == 200
+    r = client.post("/api/ask", json={"question": f"{Q} human last"})
+    assert r.status_code == 429                 # ... and the next one is the window's own refusal
+    assert events == ["bot check", "paid window"] * (n + 1)    # the order of the two gates, for every passed request
+    assert fakes.queries[-1]["cached"] is False and len(fakes.queries) == n
 
 
 def test_read_endpoints_are_rate_limited(client):

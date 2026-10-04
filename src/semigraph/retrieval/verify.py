@@ -42,7 +42,8 @@ seeding and the page all read it, so they cannot disagree.
 """
 
 import re
-from collections.abc import Mapping
+from bisect import bisect_left
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
 from .ids import CITE_RE
@@ -112,6 +113,14 @@ def _value(number: str, scale: str | None) -> float:
     return float(number.replace(",", "")) * _SCALE.get((scale or "").lower(), 1.0)
 
 
+def _overlaps(spans: list[tuple[int, int]], start: int, end: int) -> bool:
+    """Whether [start, end) overlaps one of ``spans`` (sorted by start, pairwise disjoint, so their ends ascend too).
+    The last span that starts before ``end`` is the only one that can reach back to ``start``: O(log n), not a scan of
+    every span per match (one scan per match is quadratic on a text of many amounts)."""
+    i = bisect_left(spans, end, key=lambda span: span[0])
+    return i > 0 and spans[i - 1][1] > start
+
+
 def _amounts(text: str) -> list[_Amount]:
     """Every currency-tagged amount in ``text``, in order of appearance."""
     text = _plain_spaces(text)
@@ -119,7 +128,7 @@ def _amounts(text: str) -> list[_Amount]:
              for m in _PREFIX_RE.finditer(text)]
     taken = [(a.start, a.end) for a in found]
     for m in _SUFFIX_RE.finditer(text):
-        if not any(m.start() < e and s < m.end() for s, e in taken):
+        if not _overlaps(taken, m.start(), m.end()):
             found.append(_Amount(_value(m["num"], m["scale"]), _currency(m["cur"]), m.start(), m.end(),
                                  m.group(0).strip()))
     return sorted(found, key=lambda a: a.start)
@@ -139,10 +148,10 @@ def _known_amounts(text: str) -> list[tuple[float, str | None]]:
     known: list[tuple[float, str | None]] = [(a.value, a.currency) for a in tagged]
     text = _plain_spaces(text)
     for m in _GROUPED_RE.finditer(text):
-        if not any(m.start() < e and s < m.end() for s, e in spans):
+        if not _overlaps(spans, m.start(), m.end()):
             known.append((float(m.group(1).replace(",", "")), None))
     for m in _SCALED_RE.finditer(text):
-        if not any(m.start() < e and s < m.end() for s, e in spans):
+        if not _overlaps(spans, m.start(), m.end()):
             known.append((float(m.group(1).replace(",", "")) * _SCALE[m.group(2).lower()], None))
     return known
 
@@ -153,9 +162,20 @@ def _amount_known(amount: _Amount, known: list[tuple[float, str | None]]) -> boo
 
 
 # --- percentages: magnitude, and direction when the answer states one -------------------------------------------------
-_PERCENT_RE = re.compile(r"\d(?:[\d,]*\.?\d*)\s?%")
-# A percentage as a number: "65.5%", "12 percent" ("percentage points" is not one).
-_PERCENT_VALUE_RE = re.compile(r"(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s?(?:%|percent\b)", re.I)
+# Is there a percentage in this text (a yes/no test, :func:`refusal_shaped`). Linear. The first version,
+# ``\d(?:[\d,]*\.?\d*)\s?%``, tried every digit as a start and scanned the run of digits and commas behind it, and
+# ``[\d,]*`` next to ``\d*`` split that run in every possible way before giving up: cubic on "111...1" (1,000 digits
+# took 1.2 s). Now a run is entered once, at its first character (``(?<![\d,])``), must hold a digit (``(?=,*\d)``), is
+# taken whole and never given back (``++``: a character of the run is never what ``.``, a blank or ``%`` needs) and
+# may go on as ``.digits``. The same texts match, but a match may now start at the leading commas of the run: only
+# whether one exists is read.
+_PERCENT_RE = re.compile(r"(?<![\d,])(?=,*\d)[\d,]++(?:\.\d*+)?\s?%")
+# A percentage as a number: "65.5%", "12 percent" ("percentage points" is not one). Read through _percent_matches.
+# Linear. A start (a digit that no word character or point precedes) takes the run of digits and commas behind it,
+# and every digit after a comma inside that run is a start of its own that sees the same end of the run: when the
+# first start fails they all fail, and each used to rescan the run (quadratic on "1,1,1,..."). The second branch takes
+# a failed run whole (``++``), so the scan resumes after it. Its matches have no group 1 and are never returned.
+_PERCENT_VALUE_RE = re.compile(r"(?<![\w.])(?:(\d[\d,]*(?:\.\d+)?)\s?(?:%|percent\b)|\d[\d,]*+)", re.I)
 # The year-over-year lines the context computes in code, WITH their sign: "computed: +65.5% vs fiscal year ended ...".
 _COMPUTED_PERCENT_RE = re.compile(r"computed:\s*([+-]?\d[\d,]*(?:\.\d+)?)%")
 _PERCENT_TOLERANCE_DECIMAL = 0.05   # "65.5%" must be 65.5 (a computed line prints one decimal)
@@ -184,8 +204,12 @@ _REFUSAL_MAX_CHARS = 1200
 # --- clauses: the unit a refusal, a metric answer and a removal claim are judged in ------------------------------------
 # A sentence end (followed by a capital, digit or bullet: "U.S. revenue" does not split), a semicolon, a line break, or a
 # comma that opens a new statement ("..., and Nvidia plans ..."). A citation after the full stop stays with its sentence.
+# Linear: the semicolon branch was ``\s*;\s*``, and every blank of a long run of blanks was a start that scanned the
+# rest of the run for a ';' (quadratic). It now starts at the first blank of a run (``(?<!\s)``), or at a ';' that
+# follows blanks an earlier match already took (``;\s*``, as in "a; ;b"): a run of blanks is scanned once.
 _CLAUSE_SPLIT_RE = re.compile(
-    r"(?<=[.!?])\s+(?=[A-Z0-9\-*(\"“])|\s*;\s*|\n+|,\s+(?=(?:and|but|while|whereas|which|although|though|yet|however|so)\b)")
+    r"(?<=[.!?])\s+(?=[A-Z0-9\-*(\"“])|(?<!\s)\s*;\s*|;\s*|\n+|"
+    r",\s+(?=(?:and|but|while|whereas|which|although|though|yet|however|so)\b)")
 # A statement that negates: the shapes a limitation takes ("the context does not ...", "no reported metrics ...", "nor ...").
 _LIMITATION_RE = re.compile(rf"\b(?:no|not|cannot|unable|nothing|none|neither|nor|without|absent|lacks?)\b|n{_A}t\b", re.I)
 # ... and a limitation is about the SOURCE ("the context does not ...", "the knowledge graph contains no ...") or continues
@@ -231,11 +255,17 @@ def _percent_tolerance(token: str) -> float:
     return (_PERCENT_TOLERANCE_DECIMAL if "." in token else _PERCENT_TOLERANCE_WHOLE) + 1e-9
 
 
+def _percent_matches(text: str) -> Iterator[re.Match[str]]:
+    """The percentages of ``text`` in order, as matches of :data:`_PERCENT_VALUE_RE` (group 1 is the number); the
+    matches of its second branch, a run of digits that is no percentage, are skipped."""
+    return (m for m in _PERCENT_VALUE_RE.finditer(text) if m.group(1) is not None)
+
+
 def _plain_percentages(text: str) -> list[float]:
     """Percentages a text states, magnitudes only. The computed year-over-year values are NOT among them: they carry a
     sign, and a metric line cited as a source is where they would otherwise slip in unsigned."""
     stripped = _COMPUTED_PERCENT_RE.sub(" ", text)
-    return [float(v.replace(",", "")) for v in (m.group(1) for m in _PERCENT_VALUE_RE.finditer(stripped))]
+    return [float(v.replace(",", "")) for v in (m.group(1) for m in _percent_matches(stripped))]
 
 
 def _direction(text: str, match: re.Match) -> int | None:
@@ -287,14 +317,14 @@ def _check_figures(text: str, cited: set[str], context: str, sources: Mapping[st
     found: list[tuple[int, str, str]] = []
     for a in _amounts(text):
         found.append((a.start, a.shown, _amount_status(a, known, asked_amounts)))
-    for m in _PERCENT_VALUE_RE.finditer(text):
+    for m in _percent_matches(text):
         found.append((m.start(), m.group(0).strip(), _percent_status(text, m, computed, cited_percent, asked_percent)))
-    unmatched: list[str] = []
-    echoed: list[str] = []
+    unmatched: dict[str, None] = {}   # ordered sets: a membership test in a list is a scan per figure
+    echoed: dict[str, None] = {}
     for _, shown, status in sorted(found):
         bucket = {"unmatched": unmatched, "echoed": echoed}.get(status)
-        if bucket is not None and shown not in bucket:
-            bucket.append(shown)
+        if bucket is not None:
+            bucket.setdefault(shown)
     return _Figures(tuple(unmatched), tuple(echoed), len(found))
 
 
@@ -310,14 +340,13 @@ def _pseudo_citations(text: str, cited: set[str], valid_ids: set[str]) -> tuple[
     """Bracketed text that resolves to nothing: prose labels (``[Reported Metrics]``) and composites (``[a; b]``).
 
     A well-formed id is never one (a fabricated one is ``invalid_citation``); neither is a known id."""
-    found: list[str] = []
+    found: dict[str, None] = {}      # an ordered set: a membership test in a list is a scan per bracket
     for m in _BRACKET_RE.finditer(text):
         content = m.group(1).strip()
         if (len(content) < _PSEUDO_MIN_CHARS or not re.search(r"[A-Za-z0-9]", content)
                 or content in cited or content in valid_ids or CITE_RE.fullmatch(f"[{content}]")):
             continue
-        if content not in found:
-            found.append(content)
+        found.setdefault(content)
     return tuple(found)
 
 

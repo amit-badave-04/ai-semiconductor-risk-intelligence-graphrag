@@ -675,6 +675,44 @@ def test_a_failure_while_closing_the_planning_run_is_logged_and_does_not_mask_th
     assert warnings == ["semigraph.agent: closing the planning run failed: ValueError: the cleanup failed"]
 
 
+def _warnings_of_a_failing_close(monkeypatch, error: Exception) -> list[str]:
+    """The WARNINGs logged when a client leaves after the first step and the closing planning run raises ``error``."""
+    step = {"event": "step", "n": 1, "tool": "lookup_company", "args": {}, "summary": "x", "ok": True}
+
+    def failing_to_close(*args, **kwargs):
+        try:
+            yield step
+            yield {**step, "n": 2}
+        finally:
+            raise error
+
+    monkeypatch.setattr(stream_async, "run_agent", failing_to_close)
+
+    async def main():
+        agen = open_stream(make_limiters(), ScriptedPlanner(turn()))
+        assert (await anext(agen))["n"] == 1
+        await agen.aclose()
+
+    with recorder.captured_warnings() as warnings:
+        run(main)
+    return warnings
+
+
+def test_the_log_line_of_a_failed_close_of_the_planning_run_redacts_secret_shaped_text(monkeypatch):
+    """The error of the closing run is provider- or tool-made text: it goes through the serve-side redaction before
+    it is logged, whatever it quotes, and the exception class stays so the line is still useful."""
+    canary = "sk-live-abcdef1234567890"    # a fake, deliberately secret-shaped canary, not a real key - gitleaks:allow
+    warnings = _warnings_of_a_failing_close(monkeypatch, ValueError(f"the provider rejected the call, key {canary}"))
+    assert warnings == ["semigraph.agent: closing the planning run failed: "
+                        "ValueError: the provider rejected the call, key ***"]
+
+
+def test_the_log_line_of_a_failed_close_of_the_planning_run_is_bounded_in_length(monkeypatch):
+    """An exception message is unbounded; the log line keeps a bounded part of it (the redaction truncates)."""
+    warnings = _warnings_of_a_failing_close(monkeypatch, ValueError("x" * 50_000))
+    assert len(warnings) == 1 and len(warnings[0]) < 500
+
+
 def test_a_failing_answer_phase_without_planner_spend_is_re_raised(monkeypatch):
     async def boom(*args, **kwargs):
         raise ValueError("a bug in the answer phase")

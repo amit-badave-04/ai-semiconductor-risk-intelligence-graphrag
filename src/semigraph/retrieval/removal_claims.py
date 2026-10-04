@@ -13,9 +13,11 @@ removal; the items written UNDER a removed-list label are judged by their ids ex
 distance ahead of the verb and is ended by contrast words, a comma that opens a new statement, an "and" before the verb (so "did
 not add new risks and removed X" is still a claim) and the exceptions listed at ``_NEGATORS``.
 
-Size: about 1,050 lines, over the 800-line soft ceiling on purpose: the language half (what counts as a removal claim and what
+Size: about 1,200 lines, over the 800-line soft ceiling on purpose: the language half (what counts as a removal claim and what
 negates it) and the structure half (headings, bullets, copied labels, the sentence loop) share seventeen private patterns, so
-splitting them would trade one cohesive module for a wall of cross-imports.
+splitting them would trade one cohesive module for a wall of cross-imports. About 130 of the lines are the 2026-10-04 linear-time
+audit (comments that say why each pattern is shaped as it is, and the list-label matcher, ``_echo_match``, in place of a regex that
+backtracked exponentially): tests/test_verify_regex.py compares every one of them with the pattern it replaced.
 
 Known limits (a heuristic, not a parser; 2026-09-27 adversarial review, about 1,100 crafted sentences over three rounds): a POSITIVE claim built around
 an earlier unrelated negation ("Without warning Nvidia removed X", "None of this changes the fact that Nvidia removed X") can slip
@@ -26,6 +28,8 @@ context labels and the judge are the other layers.
 """
 
 import re
+from collections.abc import Generator, Iterator
+from typing import NamedTuple
 
 from .context_layout import (
     PASSAGES_PREFIX,
@@ -177,9 +181,13 @@ _REMOVAL_WORD = r"(?:removed|dropped|deleted|eliminated|omitted|discontinued)"
 _ANAPHORIC_REMOVAL_RE = re.compile(
     rf"\b(?:it|they|both|these|those)\s+(?:was|were|is|are|has\s+been|have\s+been|had\s+been)\s+{_REMOVAL_WORD}\b|"
     rf"\b{_REMOVAL_WORD}\s+(?:it|them|both)\b", re.I)
+# Linear: the tail was ``\s*\|*\s*[.!]*\s*$``, three runs of blanks with only optional pieces between them, so a
+# verb followed by blanks and then anything else split the blanks among them in every possible way before failing
+# (cubic: a clause of "removed", 800 blanks and an "x" took 0.3 s; 5,000 blanks would take minutes). The tail is now
+# ``\s*(?:\|+\s*)?(?:[.!]+\s*)?$``: the same texts, one way to match each.
 _TERSE_REMOVAL_RE = re.compile(
     rf"(?:^|[:|—–]|\s-\s)\s*(?:was\s+|were\s+)?(?:{_REMOVAL_WORD}|no\s+longer\s+(?:included|disclosed|listed|present|appears?))"
-    r"(?:\s*,\s*(?:not|never)\s+\w+)?\s*\|*\s*[.!]*\s*$", re.I)         # "Removed, not reworded [id]"
+    r"(?:\s*,\s*(?:not|never)\s+\w+)?\s*(?:\|+\s*)?(?:[.!]+\s*)?$", re.I)         # "Removed, not reworded [id]"
 # a full stop ends a negation, whatever follows it (a closing quote, bracket or emphasis mark may come first)
 _SENTENCE_BREAK_RE = re.compile(r"(?<=[a-z0-9)\]”\"’']{2}[.!?…])[)\]”\"’'*_`]*\s+")
 # An abbreviation's full stop ("Micron Technology, Inc. was", "Jan. 26", "etc. as", "No. 12") is not a sentence end: masked before any
@@ -343,7 +351,9 @@ def _list_commas(tokens: list[str]) -> frozenset[int]:
     return frozenset(found)
 
 
-_LIST_CONTINUES_RE = re.compile(r"\s*,?\s*(?:or|nor|and)\s+\w", re.I)
+# Linear: ``\s*,?\s*`` let a run of blanks be split between the two ``\s*`` in every possible way (quadratic);
+# ``\s*(?:,\s*)?`` matches the same texts one way.
+_LIST_CONTINUES_RE = re.compile(r"\s*(?:,\s*)?(?:or|nor|and)\s+\w", re.I)
 
 
 def _trim_open_list(scope: Tokens, suffix: str) -> Tokens:
@@ -616,9 +626,15 @@ def _fronts_its_clause(tokens: Tokens, i: int) -> bool:
     return not (i and _is_word(tokens[i - 1][0]))
 
 
+# Up to three words, then a comma. Linear: it was ``(?:\s*[\w'’-]+){0,3}\s*,``, where adjacent iterations with no
+# blank between them could split ONE long word in every possible way (cubic: after a removal verb, one word of 800
+# characters took 0.9 s). Words are now told apart by the blank between them, so each text matches one way.
+_CLOSES_SOON_RE = re.compile(r"(?:\s*[\w'’-]+(?:\s+[\w'’-]+){0,2})?\s*,")
+
+
 def _closes_soon(suffix: str) -> bool:
     """A comma follows within three words: "Instead of being removed, ..." """
-    return bool(re.match(r"(?:\s*[\w'’-]+){0,3}\s*,", suffix))
+    return bool(_CLOSES_SOON_RE.match(suffix))
 
 
 def _negated(tokens: Tokens, spans: list[tuple[int, int]], matched: str = "", suffix: str = "", comparison: bool = True) -> bool:
@@ -708,8 +724,15 @@ def _none_tail(suffix: str, after: str = "") -> bool:
             and not _EXCEPTION_RE.search(after) and not CITE_RE.search(after))
 
 
-_CLAIM_THAT_RE = re.compile(r"\b(?:claims?|assertions?|suggestions?|assumptions?|notions?|ideas?|conclusions?|inferences?|beliefs?)"
-                            r"\s+that\b[^.;:]*$", re.I)
+# Read as a yes/no test (``.search`` in :func:`_survives`): is there a "claim that" after the last '.', ';' or ':'?
+# Linear: it was ``\b(?:claims?|...)\s+that\b[^.;:]*$``, and every "claim that" of a text with a ';' somewhere behind
+# it scanned up to that mark and failed (quadratic). It now starts only where a stretch of text free of those marks
+# starts (``(?<![^.;:])``), checks once that the stretch runs to the end of the text (``(?=[^.;:]*$)``, the check the
+# old tail made per occurrence) and looks for the phrase inside it. A match starts at the stretch, not at the phrase:
+# only whether one exists is read.
+_CLAIM_THAT_RE = re.compile(
+    r"(?<![^.;:])(?=[^.;:]*$)[^.;:]*?\b(?:claims?|assertions?|suggestions?|assumptions?|notions?|ideas?|"
+    r"conclusions?|inferences?|beliefs?)\s+that\b", re.I)
 _DENIED_AFTER_RE = re.compile(
     r"^[^.;]{0,60}?\b(?:(?:is|are|was|were|would\s+be|remains?)\s+(?:not\s+(?:supported|true|correct|accurate|justified|established|"
     r"verified|shown)|unsupported|false|incorrect|wrong|untrue|unfounded|inaccurate|unproven|unverified|unwarranted|misleading))\b", re.I)
@@ -822,16 +845,108 @@ _LABEL = (rf"(?P<label>(?P<removed>{_words_re(REMOVED_ITEMS_PREFIX)}\s+{_LABEL_U
           rf"|{_words_re(_PASSAGES_HEAD)}\s+(?:{_words_re(_PASSAGES_MIDDLE)}\s+{_LABEL_UNITS}\s+)?"
           rf"{_words_re(PASSAGES_REMOVED_PHRASE)})"
           rf"|(?P<unsettled>{_words_re(UNSETTLED_ITEMS_PREFIX.rstrip(' ('))}))")
-_NONE_STATEMENT = (rf"{_NONE_SUBJECT}(?:none|nothing|zero|0|n/a|empty|no\s+(?:risk\s+factors?|items?|entries|passages?|paragraphs?|"
-                   rf"matches?|results?))\b(?:\s+{_TAIL_WORD}){{0,8}}")
-# what may follow a label on its line: "none found" in any wording, the context's own "- showing 2 of 21 risk factors (note):"; a
-# parenthesis only when it is none / the context's own note ("the text check found no matching text ...", "a differently worded
-# version ... may exist"), never a NAME: "(the indebtedness risk factor)" puts an item under the label
+# what may follow a label on its line (:func:`_echo_match`): "none found" in any wording, the context's own "- showing
+# 2 of 21 risk factors (note):"; a parenthesis only when it is none / the context's own note ("the text check found no
+# matching text ...", "a differently worded version ... may exist"), never a NAME: "(the indebtedness risk factor)"
+# puts an item under the label
+_NONE_HEAD = (rf"{_NONE_SUBJECT}(?:none|nothing|zero|0|n/a|empty|no\s+(?:risk\s+factors?|items?|entries|passages?|"
+              rf"paragraphs?|matches?|results?))\b")
 _PAREN_BODY = r"(?:(?!(?:except|besides|other\s+than|apart|aside|but)\b)[^()\[\]])*"
-_ECHO_TAIL = (rf"(?:[\s\-–—:]*(?:(?P<none>{_NONE_STATEMENT})|showing\s+\d+\s+of\s+\d+(?:\s+{_TAIL_WORD}){{0,4}}"
-              rf"|\((?:(?P<none2>none|nothing|empty)\b{_PAREN_BODY}|(?:showing|the\s+text\s+check|a\s+differently\s+worded|"
-              rf"parts\s+of)\b{_PAREN_BODY})\)))*[\s:.]*")
-_ECHO_RE = re.compile(rf"^{_LABEL}{_ECHO_TAIL}$", re.I)
+_LABEL_RE = re.compile(_LABEL, re.I)
+_NONE_HEAD_RE = re.compile(_NONE_HEAD, re.I)
+_SHOWING_RE = re.compile(r"showing\s+\d+\s+of\s+(\d+)", re.I)
+_NOTE_RE = re.compile(rf"\((?:(?P<none>none|nothing|empty)\b{_PAREN_BODY}|(?:showing|the\s+text\s+check|"
+                      rf"a\s+differently\s+worded|parts\s+of)\b{_PAREN_BODY})\)", re.I)
+_TAIL_WORD_RE = re.compile(rf"\s+({_TAIL_WORD})", re.I)
+_SEPARATORS_RE = re.compile(r"[\s\-–—:]*")
+_LABEL_LINE_END_RE = re.compile(r"[\s:.]*$")
+_NONE_STATEMENT_WORDS, _SHOWING_WORDS = 8, 4     # words a none statement / a "showing N of M" may take after its head
+
+
+class _Echo(NamedTuple):
+    removed: bool         # the label of a removed list ("No longer appears ...", "Passages ..."), not "Not matched"
+    label_end: int
+    states_none: bool     # a none statement or a "(none ...)" note follows it
+
+
+def _tail_word_ends(text: str, pos: int, limit: int) -> Iterator[int]:
+    """Where an item that has just ended at ``pos`` may end after up to ``limit`` more words, longest first. Any end
+    inside the last word of a choice counts: the next item may start there (a line is not split at blanks only)."""
+    spans = []
+    while len(spans) < limit and (word := _TAIL_WORD_RE.match(text, pos)):
+        spans.append(word.span(1))
+        pos = word.end(1)
+    for start, end in reversed(spans):
+        yield from range(end, start, -1)
+
+
+def _echo_item(text: str, at: int) -> tuple[bool, list[int]] | None:
+    """The item that starts at ``at`` (a none statement, a "showing N of M" count or a parenthesised note): whether it
+    states none, and the positions it may end at, longest first (the order a greedy pattern tries them in); None if no
+    item starts there."""
+    if head := _NONE_HEAD_RE.match(text, at):
+        return True, [*_tail_word_ends(text, head.end(), _NONE_STATEMENT_WORDS), head.end()]
+    if shown := _SHOWING_RE.match(text, at):
+        first, last = shown.span(1)
+        return False, [*_tail_word_ends(text, last, _SHOWING_WORDS), *range(last, first, -1)]
+    if note := _NOTE_RE.match(text, at):
+        return bool(note["none"]), [note.end()]
+    return None
+
+
+def _echo_tail(text: str, start: int) -> Generator[int, bool | None, bool | None]:
+    """The line from ``start`` on is any number of items (each after separators), then blanks, colons and full stops
+    to the end: a generator that asks (``yield``) whether the line matches from each end an item may have, and returns
+    None (no), or whether some item of the first way that does states none."""
+    item = _echo_item(text, _SEPARATORS_RE.match(text, start).end())
+    if item is not None:
+        states_none, ends = item
+        for end in ends:
+            rest = yield end
+            if rest is not None:
+                return rest or states_none
+    return False if _LABEL_LINE_END_RE.match(text, start) else None
+
+
+def _echo_tail_states_none(text: str, start: int) -> bool | None:
+    """``_echo_tail`` driven without recursion, each position decided once (a line of many "none none none ..." can be
+    split into items in exponentially many ways; this tries them in the same order and remembers where it failed)."""
+    decided: dict[int, bool | None] = {}
+    stack = [(start, _echo_tail(text, start))]
+    answer = None
+    while stack:
+        position, frame = stack[-1]
+        try:
+            end = frame.send(answer)
+        except StopIteration as done:
+            decided[position] = answer = done.value
+            stack.pop()
+            continue
+        if end in decided:
+            answer = decided[end]
+        else:
+            stack.append((end, _echo_tail(text, end)))
+            answer = None
+    return decided[start]
+
+
+def _echo_match(text: str) -> _Echo | None:
+    """What ``^<label>(?:<separators><item>)*[\\s:.]*$`` found in ``text`` (None: no match). It was one regex whose
+    repeated items could be split in exponentially many ways: ``"No longer appears as a separate risk factor: " +
+    "none " * 24 + "#"`` took 16 s, and each further "none" doubled that. The label may give up a trailing 's' or a
+    second unit (``_LABEL_UNITS``) when the rest only matches without it, so every end of the label is tried, longest
+    first."""
+    label = _LABEL_RE.match(text)
+    if label is None:
+        return None
+    for end in range(label.end(), 0, -1):
+        if _LABEL_RE.fullmatch(text, 0, end):
+            states_none = _echo_tail_states_none(text, end)
+            if states_none is not None:
+                return _Echo(bool(label["removed"]), end, states_none)
+    return None
+
+
 _TAIL_VERB_RE = re.compile(r"\b(?:dropped|removed|deleted|eliminated|discontinued|stopped)\b", re.I)
 _QUOTE = "[\"“”'‘’`]"
 _QUOTED_TAIL = rf"(?:[\s\-–—:]*(?:none(?:\s+found)?|showing\s+\d+\s+of\s+\d+(?:\s+{_TAIL_WORD}){{0,4}}))?[\s,.:;!]*"
@@ -855,12 +970,12 @@ def _echo(line: str) -> tuple[str, bool] | None:
     bold line: the lower-case wording the prompt teaches ('the risk factor "no longer appears as a separate risk factor"') is a
     claim about one risk factor."""
     text = _undecorate(line)
-    found = _ECHO_RE.match(text)
-    if not found or (found["removed"] and _TAIL_VERB_RE.search(text[found.end("label"):])):
+    found = _echo_match(text)
+    if not found or (found.removed and _TAIL_VERB_RE.search(text[found.label_end:])):
         return None
-    if not (found["label"][:1].isupper() or line.strip().startswith(("#", "**", "__"))):
+    if not (text[:1].isupper() or line.strip().startswith(("#", "**", "__"))):
         return None
-    return ("removed" if found["removed"] else "unsettled"), bool(found["none"] or found["none2"])
+    return ("removed" if found.removed else "unsettled"), found.states_none
 
 
 def _none_item(text: str) -> bool:
@@ -872,7 +987,10 @@ def _none_item(text: str) -> bool:
             and not _claims_removal(_BRACKETED_RE.sub(" ", plain), comparison=True))
 
 
-_TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?\s*$")      # the "|---|---|" line under a table header
+# The "|---|---|" line under a table header. Linear: ``\|?`` between two ``\s*`` (and again at the end) let a run of
+# blanks be split among the three in every possible way before the match failed (quadratic on a blank-led line). A run
+# of blanks now belongs to the one ``\s*`` before or after a pipe, so there is a single way to match it.
+_TABLE_SEPARATOR_RE = re.compile(r"^\s*(?:\|\s*)?:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*(?:\|\s*)?$")
 
 
 def _starts_section(line: str) -> bool:
@@ -897,13 +1015,24 @@ def _list_items(lines: list[str], i: int, *, siblings: bool = True) -> tuple[lis
 
 _LIST_NOUN_RE = re.compile(r"\s*(?:list|heading|section|category|group|line|bullet|table|column)\b", re.I)
 _INTRODUCES_LABEL_RE = re.compile(r"\b(?:under|in|see|per|within|below|above|from)\s*$", re.I)
+_LONGEST_INTRODUCER = len("within")
+
+
+def _introduces_label(string: str, end: int) -> bool:
+    """``_INTRODUCES_LABEL_RE.search(string[:end])`` without reading all of ``string[:end]``, which made a text of
+    many quoted labels quadratic: the pattern is anchored to the end, so only the blanks that close the text and the
+    longest preposition before them can matter (``pos`` leaves the words before the window visible to ``\\b``)."""
+    stop = end
+    while stop and string[stop - 1].isspace():
+        stop -= 1
+    return bool(_INTRODUCES_LABEL_RE.search(string, max(0, stop - _LONGEST_INTRODUCER), end))
 
 
 def _quoted_label(found: re.Match) -> str:
     """A quoted list label as the context capitalises it is a mention of the list. So is one in lower case that is said to be a
     list ("the "no longer appears ..." list is empty") or that a preposition introduces ("Under "no longer appears ..."")."""
-    written_in_full = found["label"][:1].isupper() or _LIST_NOUN_RE.match(found.string, found.end()) or _INTRODUCES_LABEL_RE.search(
-        found.string[:found.start()])
+    written_in_full = (found["label"][:1].isupper() or _LIST_NOUN_RE.match(found.string, found.end())
+                       or _introduces_label(found.string, found.start()))
     if not written_in_full:
         return found.group(0)
     return _LIST_MENTION if found["removed"] else _LABEL_PLACEHOLDER
@@ -913,7 +1042,10 @@ def _quoted_label(found: re.Match) -> str:
 # that opens a new statement ("..., and Nvidia plans ...") is soft: the ids of the clauses that follow a claim, up to the next
 # claim, belong to it ("no longer appears as a separate risk factor, and parts of its content may be covered [id]": the answer
 # prompt asks for the statement and its ids in one SENTENCE).
-_HARD_SPLIT_RE = re.compile(r"(?<=[.!?…])[*_`\"”’)\]]*\s+(?=[A-Z0-9\-*(\"“])|\s*;\s*|\n+")
+# Linear: the semicolon branch was ``\s*;\s*``, and every blank of a long run of blanks was a start that scanned the
+# rest of the run for a ';' (quadratic). It now starts at the first blank of a run (``(?<!\s)``), or at a ';' that
+# follows blanks an earlier match already took (``;\s*``, as in "a; ;b"): a run of blanks is scanned once.
+_HARD_SPLIT_RE = re.compile(r"(?<=[.!?…])[*_`\"”’)\]]*\s+(?=[A-Z0-9\-*(\"“])|(?<!\s)\s*;\s*|;\s*|\n+")
 _SOFT_SPLIT_RE = re.compile(r",\s+(?=(?:and|but|while|whereas|which|although|though|yet|however|so)\b)")
 # a clause that starts with a connective or a pronoun and goes straight to a removal verb: "it was deleted", "which was removed"
 _CONTINUATION_RE = re.compile(
@@ -1044,7 +1176,9 @@ def unsupported_removal_claims(text: str, context: str) -> tuple[str, ...]:
             claims += found
             i = after if found else i + 1       # a heading that passes leaves its items to be judged like any other line
             continue
-        bullets, after = _bullets_under(lines, i)
+        # a blank line is no heading (below), so it collects nothing: the scan would only walk every blank line behind
+        # it, once per blank line (quadratic on a text of line breaks)
+        bullets, after = _bullets_under(lines, i) if line.strip() else ([], i + 1)
         # a quoted list label names a list: "The "No longer appears ..." list shows none found:" then a bullet is no heading of removals
         heading = _claims_removal(_BRACKETED_RE.sub(" ", _QUOTED_LABEL_RE.sub(_quoted_label, line)), heading=True, comparison=comparison)
         if bullets and heading:
