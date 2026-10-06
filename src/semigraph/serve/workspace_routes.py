@@ -103,7 +103,7 @@ def _require_read_rate(request: Request) -> None:
     token) skips the limiter entirely, since it never reaches the code after a successful auth, and still pays a
     full Neo4j lookup on every attempt."""
     st, s = request.app.state, request.app.state.settings
-    if not st.read_rate_limiter.allow(guard.ip_hash(guard.client_ip(request, s.client_ip_header))):
+    if not st.read_rate_limiter.allow(guard.hash_request_ip(request, s)):
         raise HTTPException(status_code=429, detail=MSG_READ_RATE, headers=NO_STORE)
 
 
@@ -140,8 +140,7 @@ async def _check_upload_turnstile(request: Request, token: str | None) -> None:
 async def create_workspace(body: WorkspaceCreateRequest, request: Request):
     st, s = request.app.state, request.app.state.settings
     _require_uploads_enabled(request)
-    ip = guard.client_ip(request, s.client_ip_header)
-    if not st.workspace_create_limiter.allow(guard.ip_hash(ip)):
+    if not st.workspace_create_limiter.allow(guard.hash_request_ip(request, s)):
         raise HTTPException(status_code=429, detail=MSG_UPLOAD_RATE, headers=NO_STORE)
     await _check_upload_turnstile(request, body.turnstile_token)
     ws, token, expires_at = await run_in_threadpool(repo.create_workspace, st.driver, s.workspace_ttl_hours)
@@ -372,8 +371,7 @@ async def upload_document(ws: str, request: Request):
     if await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch):
         raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
     await _check_upload_turnstile(request, request.headers.get("x-turnstile-token"))
-    ip = guard.client_ip(request, s.client_ip_header)
-    if not st.upload_limiter.allow(guard.ip_hash(ip)):
+    if not st.upload_limiter.allow(guard.hash_request_ip(request, s)):
         raise HTTPException(status_code=429, detail=MSG_UPLOAD_RATE, headers=NO_STORE)
     if _content_length_too_large(request, s.upload_max_bytes):
         return JSONResponse({"detail": "the file is too large", "code": "too_large"}, status_code=413,

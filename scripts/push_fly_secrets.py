@@ -28,6 +28,10 @@ FLY_KEYS = {
         # M4 freshness monitor: the SEC fair-access identity ("Name email") names a real person, so it is a secret, never
         # a fly.toml [env] entry in the public repo (docs/v2/M4_PLAN.md D4).
         "SEC_USER_AGENT",
+        # M5a I3 (docs/v2/M5_DECISIONS.md decision 6): the HMAC key of the stored address hashes, and the id of that
+        # pepper. Production refuses to start without the pepper. Rotate only on exposure, and push both together so
+        # one restart carries them: the version tells ledger rows made under different peppers apart.
+        "IP_HASH_PEPPER", "IP_HASH_VERSION",
     ],
     "semigraph-neo4j": ["NEO4J_AUTH"],
 }

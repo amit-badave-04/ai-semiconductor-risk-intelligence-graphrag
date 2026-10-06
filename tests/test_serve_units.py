@@ -43,8 +43,9 @@ def test_rate_limiter_disabled_when_max_is_zero():
 
 
 def test_ip_hash_is_stable_and_not_the_ip():
-    assert ip_hash("203.0.113.9") == ip_hash("203.0.113.9")
-    assert "203" not in ip_hash("203.0.113.9") and len(ip_hash("203.0.113.9")) == 16
+    pepper = "pepper-of-the-unit-tests-0123456789-abcdef"  # gitleaks:allow
+    assert ip_hash("203.0.113.9", pepper) == ip_hash("203.0.113.9", pepper)
+    assert "203" not in ip_hash("203.0.113.9", pepper) and len(ip_hash("203.0.113.9", pepper)) == 16
 
 
 def test_validate_question_normalizes_whitespace_and_bounds():

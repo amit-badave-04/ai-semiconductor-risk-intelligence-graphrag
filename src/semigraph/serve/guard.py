@@ -8,8 +8,12 @@ survive a restart (daily ceiling, kill switch) is in Neo4j instead.
 """
 
 import hashlib
+import hmac
+import ipaddress
 import logging
 import re
+import secrets
+import threading
 import time
 from collections import defaultdict, deque
 from datetime import UTC, date, datetime
@@ -22,6 +26,8 @@ logger = logging.getLogger("semigraph.serve.guard")
 
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 MAX_BUCKETS = 20_000
+IP_HASH_HEX_CHARS = 16          # of the HMAC: 64 bits, the width every ledger row already has
+PROCESS_PEPPER_BYTES = 32
 STRATEGIES = ("hybrid", "vector")
 AGENT_STRATEGY = "agent"
 WORKSPACE_STRATEGIES = ("hybrid",)
@@ -66,9 +72,81 @@ def client_ip(request: Request, trusted_header: str = "") -> str:
     return request.client.host if request.client else "unknown"
 
 
-def ip_hash(ip: str) -> str:
-    """Stable, non-reversible key for logs and the ledger (no raw IPs stored)."""
-    return hashlib.sha256(ip.encode()).hexdigest()[:16]
+def canonical_ip(ip: str) -> str:
+    """The text that is hashed for a client address. IPv4 as it is. IPv6 as its /64 network address: one subscriber is
+    handed a whole /64, so a window keyed by the full address would cost an abuser nothing to dodge. An IPv4-mapped IPv6
+    address (``::ffff:a.b.c.d``) is that IPv4. A zone id (``%eth0``) belongs to the host part and is dropped with it.
+    Text that is not an address comes back unchanged: hostile input is hashed like any other string, never raises."""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
+        return str(ipaddress.IPv6Address(int(address) >> 64 << 64))
+    return str(address)
+
+
+def ip_hash(ip: str, pepper: str | bytes, version: int | None = None) -> str:
+    """The key of the per-address windows and of a ledger row: 16 hex characters of HMAC-SHA-256 over
+    :func:`canonical_ip`, keyed by the secret ``pepper`` (``IP_HASH_PEPPER``). Only a holder of the pepper can recompute
+    it, so a row no longer names its client; the unsalted hash this replaces could be brute-forced over the whole IPv4
+    space (docs/v2/M5_DECISIONS.md 1.4 item 4). An empty pepper is a ``ValueError``: there is no safe hash without one.
+
+    ``version`` is the id of the pepper (``IP_HASH_VERSION``, stored on the row as ``ip_hash_v``). It is checked here
+    and NOT mixed into the hash: the secret already carries the entropy, and a mixed-in id would let a version bump
+    alone silently re-key every address (resetting every window) without a secret having changed. Rotate the pepper
+    only on exposure; that resets the windows and breaks correlation with older rows, and the version tells those
+    rows apart. Version 0 is never valid: it marks a row whose legacy hash was nulled."""
+    if version is not None and (type(version) is not int or version < 1):
+        raise ValueError("the IP hash version must be a positive integer (0 marks a nulled legacy row)")
+    key = pepper.encode("utf-8") if isinstance(pepper, str) else bytes(pepper)
+    if not key:
+        raise ValueError("IP_HASH_PEPPER is empty: an address cannot be hashed without it")
+    # surrogatepass: a lone surrogate in hostile text must hash like any other text, not raise
+    message = canonical_ip(ip).encode("utf-8", "surrogatepass")
+    return hmac.new(key, message, hashlib.sha256).hexdigest()[:IP_HASH_HEX_CHARS]
+
+
+_process_pepper: bytes | None = None
+_process_pepper_lock = threading.Lock()
+
+
+def _random_process_pepper() -> bytes:
+    """The pepper of a settings object that has none, outside production: random, created on first use, kept for the
+    life of the process. Development and tests work without a secret; the price (windows and hashes start over at every
+    restart) is logged once."""
+    global _process_pepper
+    with _process_pepper_lock:
+        if _process_pepper is None:
+            _process_pepper = secrets.token_bytes(PROCESS_PEPPER_BYTES)
+            logger.info("IP_HASH_PEPPER is not set: using a random pepper for this process, so per-address windows and "
+                        "address hashes start over at every restart")
+        return _process_pepper
+
+
+def _pepper_of(settings) -> str | bytes:
+    pepper = getattr(settings, "ip_hash_pepper", "")
+    if pepper or getattr(settings, "is_production", False):
+        # in production an empty one is never replaced: ``ip_hash`` refuses it (the settings validator comes first)
+        return pepper
+    return _random_process_pepper()
+
+
+def hash_request_ip(request: Request, settings) -> str:
+    """The ONE way a route keys a per-address window or a ledger row: :func:`ip_hash` of the client address
+    (:func:`client_ip`, which trusts a forwarding header only when ``CLIENT_IP_HEADER`` names it) under the configured
+    pepper. A settings object without the pepper attributes (a test double) gets the process-random pepper."""
+    return ip_hash(client_ip(request, settings.client_ip_header), _pepper_of(settings),
+                   getattr(settings, "ip_hash_version", None))
+
+
+def ip_hash_version_fields(settings) -> dict[str, int]:
+    """``{"ip_hash_v": n}``, the keyword a ledger write hands ``store.log_query`` so the row names the pepper that made
+    its ``ip_hash``. Empty for a settings object without a version (a test double): the row is written as before."""
+    version = getattr(settings, "ip_hash_version", None)
+    return {} if version is None else {"ip_hash_v": version}
 
 
 def validate_question(question: str, max_chars: int) -> str:

@@ -65,7 +65,9 @@ from semigraph.serve import guard, routes, store, stream_runtime
 from semigraph.serve.embed import LimitedEmbedder
 from semigraph.serve.limiters import LoopLagMonitor, make_limiters
 
-ASK_HEADER = "x-test-ask"        # the per-ask client address: ``guard.ip_hash`` of it is the ledger row's key
+ASK_HEADER = "x-test-ask"        # the per-ask client address: ``ask_key`` of it is the ledger row's key
+# the server is a subprocess, so its pepper is fixed and the test process can compute the same hash
+ASK_PEPPER = "pepper-of-the-async-app-0123456789-abcdef"     # gitleaks:allow
 PAUSE_HEADER = "x-test-pause-after-done"     # ``1``: the transport stops draining once the ``done`` frame is out
 DELTA_PAUSE_S = 0.015            # the simulated model's time per delta
 RETRIEVAL_PAUSE_S = 0.005        # the simulated graph read
@@ -81,6 +83,11 @@ _MODE_RE = re.compile(r"^\[(\w+)\]")
 def mode_of(question: str) -> str:
     match = _MODE_RE.match(question)
     return match.group(1) if match else "normal"
+
+
+def ask_key(tag: str) -> str:
+    """The ``ip_hash`` of the ledger row of an ask that sent ``tag`` in ``ASK_HEADER``."""
+    return guard.ip_hash(tag, ASK_PEPPER)
 
 
 def content_of(question: str) -> str:
@@ -341,9 +348,9 @@ def _settings(cfg: Config) -> SimpleNamespace:
     """The generous settings the routes and ``PaidStream`` read: no real cap, no kill switch, no Turnstile."""
     return SimpleNamespace(
         max_question_chars=500, agent_enabled=False, uploads_enabled=False, client_ip_header=ASK_HEADER,
-        answer_cache_ttl_hours=24, kill_switch=False, max_queries_per_day=100_000, turnstile_secret_key="",
-        turnstile_required=False, is_production=False, llm_request_timeout_s=30, llm_answer_max_tokens=100,
-        escalation_model="", send_timeout_s=cfg.send_timeout_s, embed_slots=cfg.embed_slots,
+        ip_hash_pepper=ASK_PEPPER, answer_cache_ttl_hours=24, kill_switch=False, max_queries_per_day=100_000,
+        turnstile_secret_key="", turnstile_required=False, is_production=False, llm_request_timeout_s=30,
+        llm_answer_max_tokens=100, escalation_model="", send_timeout_s=cfg.send_timeout_s, embed_slots=cfg.embed_slots,
         db_thread_limit=cfg.db_threads, max_concurrent_answers=cfg.max_answers, loop_lag_warn_ms=100)
 
 

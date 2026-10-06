@@ -1,17 +1,28 @@
-"""Emergency stop for paid answers — flips the persisted kill switch through the
-admin endpoint (no direct database access needed; Neo4j is private on Fly).
+"""Emergency stop for paid answers: read or set the three-level kill switch.
 
-    python -m scripts.kill_switch on|off|status [--env .env.fly]
+    python -m scripts.kill_switch get|status|on|retrieval_only|off [--env .env.fly]      (through the admin endpoint)
+    python -m scripts.kill_switch get|status|on|retrieval_only|off --direct [--env FILE]  (straight to the Neo4j policy
+    node)
 
-"on"  -> POST /api/ask returns 503 for live questions; cached/benchmark answers
-         keep working, the page stays up. The flag lives in Neo4j, so it survives
-         restarts and auto-stops.
-"off" -> live questions accepted again (subject to the daily ceiling + rate limit).
-"status" prints the flag and the spend ledger.
+``on``             paid questions answer 503; cached and benchmark answers keep working, the page stays up.
+``retrieval_only`` paid questions are off as well, until the page offers the retrieval-only view (503 with its own
+copy).
+``off``            paid questions are accepted again (subject to the daily caps and the rate limit).
+``get``            prints the level (``status`` is an alias of it; over the admin endpoint it also prints the spend
+ledger).
 
-Reads APP_BASE_URL and ADMIN_TOKEN from the env file (default .env.fly) unless
-they are already set in the environment. Note: if the API machine is stopped by
-autoscaling, the first call wakes it (~10 s).
+A pre-M5 image treats ``retrieval_only`` as ``off`` (it only knows ``on`` as stopped): set ``on`` or ``off`` before
+rolling back to one (docs/v2/M5A_BUILD_PLAN.md section 1, I4 rollback).
+
+Two ways in. The default talks to the running app's admin endpoint, which is what ``scripts/ops.ps1`` and the runbook
+use, because Neo4j is private on Fly and a laptop cannot reach it: it reads APP_BASE_URL and ADMIN_TOKEN from the env
+file (default .env.fly) unless they are already set in the environment, and a stopped machine is woken by the first call
+(~10 s). ``--direct`` is for a local or staging database: it builds the app's Settings (the repo's ``.env``, or ``--env
+FILE``, plus the environment) and reads or writes the ``SvcPolicy`` ``kill_switch`` node itself, so it works with the
+app stopped. Neither mode prints a secret.
+
+Over HTTP ``on`` and ``off`` send the boolean the pre-M5 endpoint takes; ``retrieval_only`` sends the level name and
+needs the endpoint widened by the M5a wiring (until then the endpoint answers 422 and nothing changes).
 """
 
 import argparse
@@ -20,6 +31,14 @@ import sys
 from pathlib import Path
 
 import httpx
+
+POLICY_KEY = "kill_switch"
+LEVELS = ("on", "retrieval_only", "off")
+READ_COMMANDS = ("get", "status")
+DEFAULT_ENV_FILE = ".env.fly"
+HTTP_TIMEOUT_S = 60
+EFFECT = {"on": "live questions declined (503)", "retrieval_only": "live questions declined (503), retrieval only",
+          "off": "live questions accepted"}
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -35,33 +54,83 @@ def load_env(path: Path) -> dict[str, str]:
     return values
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["on", "off", "status"], nargs="?", default="status")
-    ap.add_argument("--env", default=".env.fly", help="env file with APP_BASE_URL + ADMIN_TOKEN")
-    args = ap.parse_args()
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Read or set the paid-answer kill switch.")
+    parser.add_argument("command", choices=[*READ_COMMANDS, *LEVELS], nargs="?", default="status")
+    parser.add_argument("--direct", action="store_true",
+                        help="talk to the Neo4j policy node instead of the admin endpoint")
+    parser.add_argument("--env", default=None,
+                        help=f"env file (admin endpoint: default {DEFAULT_ENV_FILE}, needs APP_BASE_URL + "
+                             "ADMIN_TOKEN; --direct: Settings, default the repo .env)")
+    return parser.parse_args(argv)
 
-    env = load_env(Path(args.env))
+
+def level_of(value: object) -> str:
+    """A level name from what the endpoint or the policy node holds: a bool (the pre-M5 endpoint) or a name."""
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    return str(value) if value else "off"
+
+
+# ---- directly through the policy node ---------------------------------------------------------------------------
+
+def open_driver(args: argparse.Namespace):
+    """The app's own driver (Settings: the repo .env, or --env FILE, plus the environment)."""
+    from semigraph.config import Settings, get_settings
+    from semigraph.graph.client import get_driver
+
+    settings = Settings(_env_file=args.env) if args.env else get_settings()
+    try:
+        return get_driver(settings)
+    except RuntimeError as exc:
+        sys.exit(f"ERROR: {exc}")
+
+
+def run_direct(args: argparse.Namespace) -> int:
+    from semigraph.serve import store
+
+    driver = open_driver(args)
+    try:
+        if args.command in LEVELS:
+            store.set_policy(driver, POLICY_KEY, args.command)
+        print(f"kill switch: {level_of(store.get_policy(driver, POLICY_KEY))}")
+    finally:
+        close = getattr(driver, "close", None)
+        if close is not None:
+            close()
+    return 0
+
+
+# ---- through the admin endpoint (what ops.ps1 uses) -------------------------------------------------------------
+
+def run_http(args: argparse.Namespace) -> int:
+    env = load_env(Path(args.env or DEFAULT_ENV_FILE))
     base = os.environ.get("APP_BASE_URL") or env.get("APP_BASE_URL")
     token = os.environ.get("ADMIN_TOKEN") or env.get("ADMIN_TOKEN")
     if not base or not token:
         sys.exit("ERROR: APP_BASE_URL and ADMIN_TOKEN are required (env or --env file)")
-    client = httpx.Client(base_url=base.rstrip("/"), headers={"X-Admin-Token": token}, timeout=60)
+    client = httpx.Client(base_url=base.rstrip("/"), headers={"X-Admin-Token": token}, timeout=HTTP_TIMEOUT_S)
 
-    if args.command in ("on", "off"):
-        r = client.post("/api/admin/policy", json={"kill_switch": args.command == "on"})
-        r.raise_for_status()
-        state = r.json()["kill_switch"]
-        print(f"KILL SWITCH {state.upper()}: live questions "
-              f"{'declined (503)' if state == 'on' else 'accepted'}; cached answers unaffected.")
-    r = client.get("/api/admin/policy")
-    if r.status_code == 404:
+    if args.command in LEVELS:
+        body = {"kill_switch": args.command == "on"} if args.command in ("on", "off") else {"kill_switch": args.command}
+        response = client.post("/api/admin/policy", json=body)
+        response.raise_for_status()
+        state = level_of(response.json()["kill_switch"])
+        print(f"KILL SWITCH {state.upper()}: {EFFECT.get(state, state)}; cached answers unaffected.")
+    response = client.get("/api/admin/policy")
+    if response.status_code == 404:
         sys.exit("ERROR: admin endpoint rejected the token (or ADMIN_TOKEN is not set on the app)")
-    r.raise_for_status()
-    body = r.json()
-    print(f"kill switch: {body['kill_switch']}")
-    print(f"ledger: {body['ledger']}")
+    response.raise_for_status()
+    payload = response.json()
+    print(f"kill switch: {level_of(payload['kill_switch'])}")
+    print(f"ledger: {payload['ledger']}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    return run_direct(args) if args.direct else run_http(args)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

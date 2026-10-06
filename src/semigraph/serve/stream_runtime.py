@@ -258,9 +258,11 @@ class PaidStream:
         return out
 
     async def _write_ledger(self, **spend) -> None:
-        """One ledger row, on a worker thread. ``spend`` (``usage``, ``cost_usd``) is passed through only when known."""
+        """One ledger row, on a worker thread. ``spend`` (``usage``, ``cost_usd``) is passed through only when known;
+        the row names the version of the pepper that made its ``ip_hash``."""
         await self._on_db_thread(partial(store.log_query, self._st.driver, ip_hash=self._iph, strategy=self._strategy,
-                                         cached=False, **spend, workspace=self._in_workspace))
+                                         cached=False, **spend, workspace=self._in_workspace,
+                                         **guard.ip_hash_version_fields(self._st.settings)))
         self._ledgered = True
 
     async def _on_db_thread(self, fn: Callable[[], object]) -> None:

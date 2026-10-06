@@ -91,9 +91,8 @@ from pathlib import Path
 
 import httpx
 import pytest
-from serve_async_app import ASK_HEADER, PAUSE_HEADER, expected_events, mode_of
+from serve_async_app import ASK_HEADER, PAUSE_HEADER, ask_key, expected_events, mode_of
 
-from semigraph.serve import guard
 from semigraph.serve.stream_runtime import MSG_BUSY
 
 REPO = Path(__file__).resolve().parents[1]
@@ -301,7 +300,7 @@ def new_tag(prefix: str) -> str:
 
 
 def rows_of(state: dict, tag: str) -> list[dict]:
-    return [r for r in state["ledger_rows"] if r["ip_hash"] == guard.ip_hash(tag)]
+    return [r for r in state["ledger_rows"] if r["ip_hash"] == ask_key(tag)]
 
 
 class Events:
@@ -431,7 +430,7 @@ def _check_burst(run: dict) -> float:
     assert state["embed_calls"] == count and state["embed_concurrent_max"] == 1
     assert state["ledger_row_count"] == count and state["cache_puts"] == count, state["ledger_row_count"]
     per_ask = Counter(r["ip_hash"] for r in state["ledger_rows"])
-    assert per_ask == Counter(guard.ip_hash(t) for t in run["tags"]), "an ask has no ledger row, or has two"
+    assert per_ask == Counter(ask_key(t) for t in run["tags"]), "an ask has no ledger row, or has two"
     assert all(r["usage"] and r["cost_usd"] is not None for r in state["ledger_rows"])
     assert state["twins_started"] == state["upstream_closed"] == count
     assert state["twin_exits"] == {"completed": count}
@@ -529,7 +528,7 @@ async def _forty_waiting(base: str) -> None:
         threads_held = (seen["db_limiter_borrowed"], seen["embed_limiter_borrowed"], seen["default_limiter_borrowed"])
         assert threads_held == (0, 0, 0)
     assert healthz.status_code == 200 and health_s < 1.0
-    assert Counter(r["ip_hash"] for r in state["ledger_rows"]) == Counter(guard.ip_hash(t) for t in tags)
+    assert Counter(r["ip_hash"] for r in state["ledger_rows"]) == Counter(ask_key(t) for t in tags)
     assert all(r["usage"] is None and r["cost_usd"] is None for r in state["ledger_rows"])
     assert state["twin_exits"] == {"CancelledError": STREAMS} and state["cache_puts"] == 0
 
@@ -552,8 +551,8 @@ async def _leave_after_first_delta_repeatedly(base: str) -> list[float]:
             cleanups.append(await _leave_once(client, base, LONG if rep % 2 else HANG, tags[-1]))
         await asyncio.sleep(0.2)
         state = await astate(client, base)
-    ours = Counter(r["ip_hash"] for r in state["ledger_rows"] if r["ip_hash"] in {guard.ip_hash(t) for t in tags})
-    assert ours == Counter({guard.ip_hash(t): 1 for t in tags}), "an ask has no ledger row, or has two"
+    ours = Counter(r["ip_hash"] for r in state["ledger_rows"] if r["ip_hash"] in {ask_key(t) for t in tags})
+    assert ours == Counter({ask_key(t): 1 for t in tags}), "an ask has no ledger row, or has two"
     assert state["twins_started"] == state["upstream_closed"] == DISCONNECT_REPEATS + 1
     assert state["twin_exits"]["CancelledError"] == DISCONNECT_REPEATS
     assert state["background_calls"] >= DISCONNECT_REPEATS
@@ -603,7 +602,7 @@ async def _leave_before_the_first_byte(server: Server) -> None:
         later = await astate(client, server.base)
     assert later["ledger_row_count"] == state["ledger_row_count"], "a ledger row appeared after the server was quiet"
     per_ask = Counter(r["ip_hash"] for r in later["ledger_rows"])
-    assert set(per_ask) <= {guard.ip_hash(t) for t in tags} and max(per_ask.values(), default=0) <= 1, per_ask
+    assert set(per_ask) <= {ask_key(t) for t in tags} and max(per_ask.values(), default=0) <= 1, per_ask
     assert later["ledger_row_count"] == later["twins_started"] == later["upstream_closed"], later["twin_exits"]
     assert all(r["usage"] is None for r in later["ledger_rows"]) and later["cache_puts"] == 0
     held = (later["answer_limiter_borrowed"], later["db_limiter_borrowed"], later["embed_limiter_borrowed"])
@@ -677,7 +676,7 @@ async def _one_slot_five_ways(base: str) -> None:
     busy_events = [data for _tag, name, data in outcomes if name == "error"]
     assert len(holders) == 1 and busy_events == [{"event": "error", "detail": MSG_BUSY}] * 4
     assert (during["answer_limiter_borrowed"], during["twins_started"], during["ledger_row_count"]) == (1, 1, 0), during
-    assert [r["ip_hash"] for r in state["ledger_rows"]] == [guard.ip_hash(holders[0])]
+    assert [r["ip_hash"] for r in state["ledger_rows"]] == [ask_key(holders[0])]
     assert state["ledger_rows"][0]["usage"] is None and state["answer_limiter_borrowed"] == 0
 
 
@@ -778,7 +777,7 @@ def test_sigterm_during_a_stream_today_cuts_it_and_costs_one_row_without_usage(t
         returncode = server.stop()
     if outcome["signal_ignored"]:
         pytest.skip("the termination signal was sent but the server did not react to it (no console to deliver it to)")
-    ledger = [e for e in server.journal() if e["event"] == "ledger" and e["ip_hash"] == guard.ip_hash(tag)]
+    ledger = [e for e in server.journal() if e["event"] == "ledger" and e["ip_hash"] == ask_key(tag)]
     exits = [e["outcome"] for e in server.journal() if e["event"] == "twin_exit"]
     assert outcome["events"][-1][0] != "done" and outcome["error"], outcome      # cut, not finished
     assert [name for name, _ in outcome["events"]][:2] == ["retrieval", "delta"]

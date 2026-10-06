@@ -109,6 +109,31 @@ def get_driver(settings: Settings | None = None) -> DatabaseDriver:
     return DatabaseDriver(driver, settings.neo4j_database)
 
 
+# The state operations (``serve/state``) get a driver of their own so a stalled database can never starve the read
+# path of its connections, and every wait is short. Keyword names verified against neo4j 6.2.0 and 6.3.0 (2026-10-06):
+# GraphDatabase.driver accepts max_connection_pool_size, connection_acquisition_timeout, connection_timeout and
+# max_transaction_retry_time (an unknown keyword is a ConfigurationError at construction).
+STATE_POOL_SIZE = 8
+STATE_CONNECT_TIMEOUT_S = 1.0
+STATE_ACQUISITION_DEFAULT_S = 0.5      # Settings.state_connection_acquisition_s, until config.py has the field
+STATE_OP_TIMEOUT_DEFAULT_S = 1.0       # Settings.state_op_timeout_s, likewise
+
+
+def make_state_driver(settings: Settings) -> DatabaseDriver:
+    """A SECOND driver for the state operations of ``serve/state``: a pool of 8, a pool-acquisition timeout of
+    ``state_connection_acquisition_s`` (0.5 s), a TCP connect timeout of 1 s and a transaction retry window of
+    ``state_op_timeout_s`` (1 s), so a managed transaction stops retrying when the operation's budget is spent. Pinned to
+    the configured database like :func:`get_driver`. No connectivity check here: a database that is down at boot must
+    surface as ``StateUnavailable`` from the first state call (which fails closed), not as a crash."""
+    driver = GraphDatabase.driver(
+        settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password),
+        max_connection_pool_size=STATE_POOL_SIZE,
+        connection_acquisition_timeout=getattr(settings, "state_connection_acquisition_s", STATE_ACQUISITION_DEFAULT_S),
+        connection_timeout=STATE_CONNECT_TIMEOUT_S,
+        max_transaction_retry_time=getattr(settings, "state_op_timeout_s", STATE_OP_TIMEOUT_DEFAULT_S))
+    return DatabaseDriver(driver, settings.neo4j_database)
+
+
 def run_cypher(driver: Driver, query: str, *,
                session_config_: Mapping[str, object] | None = None,
                **params) -> list[dict]:

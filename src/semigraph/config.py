@@ -8,13 +8,17 @@ reading os.environ directly; the notebooks' PROJECT_ROOT convention becomes
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+MIN_PRODUCTION_PEPPER_BYTES = 32
 
 
 class Settings(BaseSettings):
+    # hide_input_in_errors: a refused value must never be echoed. A model-level error ends with the input it rejected,
+    # which for a settings object is the whole environment (the pepper, the database password, the API keys).
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
     )
 
     # --- LLM (LiteLLM model strings; Sonnet extracts/answers, Haiku critiques) ---
@@ -84,6 +88,13 @@ class Settings(BaseSettings):
     db_thread_limit: int = Field(32, ge=1)    # threads for graph reads/writes made on behalf of answer streams
     send_timeout_s: int = Field(30, ge=1)     # a client that stops reading an SSE stream is dropped after this
     loop_lag_warn_ms: int = Field(100, ge=1)  # the event-loop monitor logs a stall longer than this
+    # Address hashing (M5a I3, docs/v2/M5_DECISIONS.md decisions 6 and 12): HMAC-SHA-256 under a Fly secret.
+    # Production refuses to start without a pepper of at least 32 bytes; elsewhere an empty one means a random pepper
+    # per process. Rotate only on exposure (windows reset, older rows stop correlating) and bump the version with it:
+    # each ledger row stores the version of the pepper that made its hash (0 is reserved for rows whose legacy hash
+    # was nulled).
+    ip_hash_pepper: str = Field("", repr=False)
+    ip_hash_version: int = Field(2, ge=1)
 
     # --- Agent (semigraph.agent, docs/v2/M3_AGENT_PLAN.md): OPT-IN retrieval planner, strategy=agent; off = never imported by serve ---
     agent_enabled: bool = False
@@ -126,6 +137,15 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @model_validator(mode="after")
+    def _require_a_production_pepper(self) -> "Settings":
+        # The message names the setting, never the value (nor its length).
+        if self.is_production and len(self.ip_hash_pepper.encode("utf-8")) < MIN_PRODUCTION_PEPPER_BYTES:
+            raise ValueError(f"IP_HASH_PEPPER must be set to at least {MIN_PRODUCTION_PEPPER_BYTES} bytes "
+                             "in production (generate one: "
+                             "python -c \"import secrets; print(secrets.token_urlsafe(48))\")")
+        return self
 
     # --- Data lake root (git-ignored, rebuildable) ---
     data_dir: Path = Path("data")

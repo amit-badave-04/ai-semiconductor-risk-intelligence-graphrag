@@ -34,7 +34,7 @@ _DISABLED_PAYLOAD = {"checked_at": None, "snapshot_as_of": None, "last_error_at"
 
 def _read_gate(request: Request) -> None:
     st, s = request.app.state, request.app.state.settings
-    if not st.read_rate_limiter.allow(guard.ip_hash(guard.client_ip(request, s.client_ip_header))):
+    if not st.read_rate_limiter.allow(guard.hash_request_ip(request, s)):
         raise HTTPException(status_code=429, detail=MSG_READ_RATE)
 
 

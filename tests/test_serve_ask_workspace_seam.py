@@ -235,6 +235,8 @@ def test_uploads_are_unavailable_in_production_without_the_turnstile_secret(ws_c
     class ProdNoSecret(UploadsOn):
         is_production = True
         turnstile_secret_key = ""
+        # production boots only with a pepper, so a production double carries one
+        ip_hash_pepper = "pepper-of-the-seam-tests-0123456789-abcdef"  # gitleaks:allow
     ws_client.app.state.settings = ProdNoSecret()
     assert routes.uploads_available(ws_client.app.state) is False
     assert ws_client.get("/api/stats").json()["uploads_enabled"] is False

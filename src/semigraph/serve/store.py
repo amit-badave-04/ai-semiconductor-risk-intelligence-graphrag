@@ -4,8 +4,9 @@ Everything here survives machine restarts and auto-stops. Labels are
 prefixed with ``Svc`` so they never collide with the knowledge-graph schema:
 
 - ``(:SvcPolicy {key, value, updated_at})``  — kill_switch
-- ``(:SvcQuery {id, day, ip_hash, strategy, cached, prompt_tokens,
-  completion_tokens, cost_usd, created_at})`` — one row per answered question
+- ``(:SvcQuery {id, day, ip_hash, ip_hash_v, strategy, cached, prompt_tokens,
+  completion_tokens, cost_usd, created_at})`` — one row per answered question; ``ip_hash_v`` is the id of the
+  pepper that made ``ip_hash`` (absent on rows written before the pepper; 0 once such a hash was nulled)
 - ``(:SvcAnswer {key, question, strategy, answer, citations, hallucinated,
   usage_prompt, usage_completion, cost_usd, source, created_at})`` — cache
 - ``(:SvcUploadDay {day, n, updated_at})`` — uploads accepted that UTC day, all workspaces (M4 ``MAX_UPLOADS_PER_DAY``)
@@ -19,7 +20,7 @@ from datetime import UTC, datetime
 
 from neo4j import Driver
 
-from ..graph.client import run_cypher
+from ..graph.client import NO_UNRECOGNIZED_NOTIFICATIONS, run_cypher
 from ..retrieval.answerer import template_fingerprint
 from ..retrieval.verify import failed_check_names
 
@@ -89,16 +90,55 @@ def paid_queries_today(driver: Driver) -> int:
 
 
 def log_query(driver: Driver, *, ip_hash: str, strategy: str, cached: bool,
-              usage: dict | None = None, cost_usd: float | None = None, workspace: bool = False) -> None:
-    """One ledger row per answered question. ``workspace`` marks an ask over an upload workspace (M4): it counts against the
-    same daily ceiling; the row never names the workspace."""
+              usage: dict | None = None, cost_usd: float | None = None, workspace: bool = False,
+              ip_hash_v: int | None = None) -> None:
+    """One ledger row per answered question. ``workspace`` marks an ask over an upload workspace (M4): it counts against
+    the same daily ceiling; the row never names the workspace. ``ip_hash_v`` is the id of the pepper that made
+    ``ip_hash``; it is written on the row only when given (a row without it predates the pepper, see
+    :func:`null_legacy_ip_hashes`)."""
     usage = usage or {}
-    run_cypher(driver, """CREATE (q:SvcQuery {id: $id, day: $day, ip_hash: $ip, strategy: $strategy,
+    query = """CREATE (q:SvcQuery {id: $id, day: $day, ip_hash: $ip, strategy: $strategy,
                cached: $cached, prompt_tokens: $pt, completion_tokens: $ct, cost_usd: $cost,
-               workspace: $workspace, created_at: $ts})""",
-               id=str(uuid.uuid4()), day=_today(), ip=ip_hash, strategy=strategy, cached=cached,
-               pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, workspace=workspace,
-               ts=_now())
+               workspace: $workspace, created_at: $ts})"""
+    params = dict(id=str(uuid.uuid4()), day=_today(), ip=ip_hash, strategy=strategy, cached=cached,
+                  pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, workspace=workspace,
+                  ts=_now())
+    if ip_hash_v is not None:
+        query += "\n               SET q.ip_hash_v = $ipv"
+        params["ipv"] = ip_hash_v
+    run_cypher(driver, query, **params)
+
+
+# A ledger row is "legacy" when it has an ip_hash but no ip_hash_v: the hash is the unsalted SHA-256 written before the
+# pepper (docs/v2/M5_DECISIONS.md 1.4 item 4, decision 12), which the whole IPv4 space can brute-force.
+_LEGACY_IP_HASH = "q.ip_hash IS NOT NULL AND q.ip_hash_v IS NULL"
+COUNT_LEGACY_IP_HASHES = f"MATCH (q:SvcQuery) WHERE {_LEGACY_IP_HASH} RETURN count(q) AS n"
+# ``CALL (q) {...} IN TRANSACTIONS`` commits every ``batch`` rows and cannot run inside an explicit transaction: it is
+# sent as an auto-commit statement (``run_cypher``). The batch size is a validated int written into the text, as
+# ``schema.reset_graph`` does with its own batch size.
+NULL_LEGACY_IP_HASHES = (f"MATCH (q:SvcQuery) WHERE {_LEGACY_IP_HASH}\n"
+                         "CALL (q) {{ SET q.ip_hash = null, q.ip_hash_v = 0 }} IN TRANSACTIONS OF {batch} ROWS")
+
+
+def count_legacy_ip_hashes(driver: Driver) -> int:
+    """How many ledger rows still carry an unsalted hash: what :func:`null_legacy_ip_hashes` would null (the dry
+    run)."""
+    rows = run_cypher(driver, COUNT_LEGACY_IP_HASHES, session_config_=NO_UNRECOGNIZED_NOTIFICATIONS)
+    return rows[0]["n"]
+
+
+def null_legacy_ip_hashes(driver: Driver, batch: int = 5000) -> int:
+    """Null the unsalted ``ip_hash`` of every legacy ledger row and mark it ``ip_hash_v = 0``; returns how many rows
+    it nulled. IRREVERSIBLE: the per-address history of those rows is gone (owner decision 12, 2026-10-03). Rows
+    written with a pepper (``ip_hash_v`` set) are never touched, and running it again nulls nothing. Commits ``batch``
+    rows at a time; a failure part-way leaves earlier batches nulled and is cured by running it again."""
+    if type(batch) is not int or batch < 1:
+        raise ValueError("batch must be a positive integer")
+    before = count_legacy_ip_hashes(driver)
+    if before == 0:
+        return 0
+    run_cypher(driver, NULL_LEGACY_IP_HASHES.format(batch=batch), session_config_=NO_UNRECOGNIZED_NOTIFICATIONS)
+    return max(before - count_legacy_ip_hashes(driver), 0)
 
 
 def reserve_daily_upload(driver: Driver, limit: int) -> bool:

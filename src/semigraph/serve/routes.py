@@ -110,7 +110,7 @@ class PolicyRequest(BaseModel):
 def _read_gate(request: Request) -> None:
     """Per-address window for the free read endpoints (they hit the database)."""
     st, s = request.app.state, request.app.state.settings
-    if not st.read_rate_limiter.allow(guard.ip_hash(guard.client_ip(request, s.client_ip_header))):
+    if not st.read_rate_limiter.allow(guard.hash_request_ip(request, s)):
         raise HTTPException(status_code=429, detail=MSG_READ_RATE)
 
 
@@ -244,7 +244,7 @@ async def ask(body: AskRequest, request: Request):
     elif as_of is not None:
         raise HTTPException(status_code=400, detail="as_of is available only with a workspace")
     ip = guard.client_ip(request, s.client_ip_header)
-    iph = guard.ip_hash(ip)
+    iph = guard.hash_request_ip(request, s)
     snapshot_id = getattr(st, "snapshot_id", "")
 
     # Free tier (cache hits) has its own, wider window — and it is the first gate,
@@ -260,7 +260,8 @@ async def ask(body: AskRequest, request: Request):
         cached = await run_in_threadpool(store.get_answer, st.driver, store.cache_key(question, strategy, snapshot_id),
                                          s.answer_cache_ttl_hours)
         if cached:
-            await run_in_threadpool(store.log_query, st.driver, ip_hash=iph, strategy=strategy, cached=True)
+            await run_in_threadpool(store.log_query, st.driver, ip_hash=iph, strategy=strategy, cached=True,
+                                    **guard.ip_hash_version_fields(s))
             event = {"event": "done", "cached": True, **cached}
             return EventSourceResponse(_one_event(event), sep="\n")
 
