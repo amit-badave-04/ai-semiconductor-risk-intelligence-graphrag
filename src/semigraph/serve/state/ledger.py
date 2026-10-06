@@ -7,17 +7,14 @@ refused.
 
 The two rules every statement here follows, because the properties the backends promise hold only if they do:
 
-1. **Lock, then decide.** A statement that reads a value and then changes what depends on it first takes the write lock
-of
-   the node that serialises the decision (``SET x._lock = true``): the day counter for a reserve, the row itself before
-   its ``status`` is checked for a settle, a renew or an expiry. A ``MATCH ... {status: 'reserved'}`` alone is not
-   enough:
-   two transactions can both match the row while it is still ``reserved``, the second then blocks on its ``SET`` and
-   goes
-   on with its stale match (the lost update ``store.reserve_daily_upload`` documents). The lock on a row is taken and
-   removed again in the same statement (``SET q._lock = true REMOVE q._lock``): the lock lasts until the transaction
-   ends,
-   and no ``_lock`` property is left on a ledger row. The counters keep theirs, as ``SvcUploadDay`` does.
+1. **Lock, then decide.** A statement that reads a value and then changes what depends on it first takes the write
+   lock of the node that serialises the decision (``SET x._lock = true``): the day counter for a reserve, and the row
+   itself before its ``status`` is checked for a settle, a renew or an expiry. A ``MATCH ... {status: 'reserved'}``
+   alone is not enough. Two transactions can both match the row while it is still ``reserved``; the second then blocks
+   on its ``SET`` and goes on with its stale match (the lost update ``store.reserve_daily_upload`` documents). The lock
+   on a row is taken and removed again in the same statement (``SET q._lock = true REMOVE q._lock``): the lock lasts
+   until the transaction ends, and no ``_lock`` property is left on a ledger row. The counters keep theirs, as
+   ``SvcUploadDay`` does.
 2. **One lock order**, so two writers cannot deadlock: the day counter, then the per-IP counter or the ledger row.
 
 Columns. A ledger row is a ``SvcQuery`` (the label ``store.log_query`` writes), so every existing reader keeps working
@@ -55,8 +52,7 @@ STATE_SCHEMA_STATEMENTS = (
     "CREATE INDEX svc_query_day_status IF NOT EXISTS FOR (q:SvcQuery) ON (q.day, q.status)",
 )
 
-# ---- reserve (neo4j backend: the counters and the row in ONE transaction)
-# ---------------------------------------------
+# ---- reserve (neo4j backend: the counters and the row in ONE transaction) --------------------------------------------
 
 # The two MERGE ... SET _lock statements come first: they serialise concurrent reserves (one day counter per day), and
 # nothing is read before both locks are held. In-flight is every unexpired reserved row of any day and any machine.
@@ -91,8 +87,7 @@ OPTIONAL MATCH (r:SvcQuery {status: 'reserved'}) WHERE r.lease_until > $now
 RETURN c.paid AS paid, c.spend_micro AS spend_micro, i.paid AS ip_paid, count(r) AS inflight
 """
 
-# ---- the durable row alone (in-process backend)
-# -----------------------------------------------------------------------
+# ---- the durable row alone (in-process backend) ----------------------------------------------------------------------
 
 RESERVE_ROW = """\
 MERGE (q:SvcQuery {id: $id})
@@ -123,8 +118,7 @@ SET q.lease_until = $lease_until
 RETURN q.id AS id
 """
 
-# ---- settle with the counters (neo4j backend)
-# -------------------------------------------------------------------------
+# ---- settle with the counters (neo4j backend) ------------------------------------------------------------------------
 
 # The day counter is locked first (the order every writer uses), then the row, THEN the status is checked: whoever gets
 # the locks second sees ``settled`` and matches nothing. The counter is adjusted by actual - estimate in integers and
@@ -338,11 +332,10 @@ def _denial_reason(read: Mapping[str, Any], caps: Caps, estimate_micro: int) -> 
 def reserve_counted(driver: Any, *, lease_id: str, day: str, ip_hash: str, ip_hash_v: int | None, strategy: str,
                     workspace: bool, estimate_micro: int, now_wall: float, lease_until: float, machine_id: str,
                     caps: Caps, timeout_s: float) -> ReserveOutcome:
-    """Check all four caps against the counters and, if they all pass, increment them and create the ``reserved`` row:
-    ONE
-    transaction. Zero rows back means a cap said no; the cap is then named by a read in the same transaction, while the
-    day counter is still locked. Returns ``ReserveOutcome(False, None)`` only if no cap explains the denial (it cannot
-    happen under the lock; the caller treats it as unavailable)."""
+    """Check all four caps against the counters and, if they all pass, increment them and create the ``reserved`` row,
+    all in ONE transaction. Zero rows back means a cap said no; the cap is then named by a read in the same
+    transaction, while the day counter is still locked. Returns ``ReserveOutcome(False, None)`` only if no cap
+    explains the denial (it cannot happen under the lock; the caller treats it as unavailable)."""
     params = {"id": lease_id, "day": day, "ip_hash": ip_hash, "ip_hash_v": ip_hash_v, "strategy": strategy,
               "workspace": workspace, "estimate": int(estimate_micro), "now": now_wall, "lease_until": lease_until,
               "machine_id": machine_id, "created_at": iso(now_wall), "max_count": caps.max_count,
@@ -367,8 +360,7 @@ def reserve_row(driver: Any, *, lease_id: str, day: str, ip_hash: str, ip_hash_v
               created_at=iso(now_wall), lease_until=lease_until, machine_id=machine_id)
 
 
-# ---- settle, renew, sweep
-# ----------------------------------------------------------------------------------------------
+# ---- settle, renew, sweep --------------------------------------------------------------------------------------------
 
 def _tokens(usage: Mapping[str, Any] | None) -> tuple[Any, Any]:
     usage = usage or {}

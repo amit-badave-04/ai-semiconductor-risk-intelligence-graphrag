@@ -29,8 +29,10 @@ Every ``astream_answer_for_prompt`` call is ALSO captured (on both ``answerer_as
 a test can inspect the exact ``prompt``, ``valid_ids`` and ``sources`` the SERVER computed for one ask — the ground
 truth for isolation, independent of whatever text the scripted model happens to produce.
 
-The app is built with a small lifespan of its own that makes the named limiters and ``answer_limiter`` (M5a I2: the
-answer path is async), inside the one event loop that ``with TestClient(app)`` keeps alive for the whole module.
+The app is built with a small lifespan of its own that makes the named limiters (M5a I2: the answer path is async),
+inside the one event loop that ``with TestClient(app)`` keeps alive for the whole module. The paid-ask state (M5a I4) is
+the fake backend of ``tests/serve_state_fakes.py``: what this harness proves is isolation, not admission, and the state
+driver the workspace token check reads through is the recording driver, so the statements of an ask are still seen.
 
 Isolation proof (a) uses a BAG-OF-HASHED-TOKENS embedding, not a hash of the whole text: two documents that share
 every topic word except a marker and a number get a genuinely high, non-trivial cosine similarity to each other
@@ -58,18 +60,22 @@ import os
 import random
 import re
 import secrets
+import sys
 import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-import anyio
 import pytest
 
 pytest.importorskip("neo4j")
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))     # tests/: the shared fakes
+
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+from serve_state_fakes import FakeStateBackend, install_state  # noqa: E402
 
 from semigraph.config import Settings  # noqa: E402
 from semigraph.graph.client import get_driver, run_cypher  # noqa: E402
@@ -319,7 +325,6 @@ def _test_settings(**overrides) -> Settings:
 async def _lifespan(app: FastAPI):
     """What ``main.lifespan`` builds inside the running loop (the limiters are bound to it)."""
     app.state.limiters = make_limiters(app.state.settings)
-    app.state.answer_limiter = anyio.CapacityLimiter(app.state.settings.max_concurrent_answers)
     yield
 
 
@@ -337,6 +342,8 @@ def _build_app(driver, embedder, settings: Settings) -> FastAPI:
     app.state.workspace_create_limiter = guard.RateLimiter(settings.workspace_create_per_day, SECONDS_PER_DAY)
     app.state.upload_limiter = guard.RateLimiter(settings.uploads_per_hour, SECONDS_PER_HOUR)
     app.state.upload_slots = threading.BoundedSemaphore(1)
+    install_state(app, backend=FakeStateBackend())
+    app.state.state_store_driver = driver            # the driver the harness spies on: the token check reads through it
     jobs.start_if_enabled(app)             # real sweeper thread + app.state.uploads_ready via the fake embedder
     assert app.state.uploads_ready, "the fake embedder must report it can count tokens, or every upload 503s"
     return app

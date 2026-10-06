@@ -3,19 +3,27 @@
 Neo4j (``uploads.repo``), the daily-upload ledger (``serve.store``) and the job runner (``uploads.jobs``) are all
 monkeypatched at module level, in the style of ``tests/test_serve_api.py`` (fixtures NOT imported from it — that file
 is forbidden to import from for this worker's routes, so this module builds its own small fakes for the same
-policy-and-routing surface).
+policy-and-routing surface). The kill level an upload checks (M5a I4) comes from the fake state backend of
+``tests/serve_state_fakes.py``; the app has a small lifespan of its own that makes the limiters its state calls hop
+through, inside the loop ``with TestClient(app)`` keeps alive.
 """
 
 from __future__ import annotations
 
+import contextlib
 import threading
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from serve_state_fakes import FakeStateBackend, fresh_drain, install_state  # noqa: F401 - fresh_drain: a fixture
 
 from semigraph.serve import guard, routes, store, workspace_routes as wr
+from semigraph.serve.limiters import make_limiters
 from semigraph.uploads import jobs, repo
+
+pytestmark = pytest.mark.usefixtures("fresh_drain")
 
 WS = "a" * 32
 TOKEN = "good-token"
@@ -103,18 +111,27 @@ def fake_repo(monkeypatch):
 
 @pytest.fixture
 def fake_store(monkeypatch):
-    calls = {"kill_switch": False, "reserved": True, "reserve_calls": 0}
-
-    def kill_switch_on(driver, flag):
-        return calls["kill_switch"]
+    calls = {"reserved": True, "reserve_calls": 0}
 
     def reserve_daily_upload(driver, limit):
         calls["reserve_calls"] += 1
         return calls["reserved"]
 
-    monkeypatch.setattr(store, "kill_switch_on", kill_switch_on)
     monkeypatch.setattr(store, "reserve_daily_upload", reserve_daily_upload)
     return calls
+
+
+@pytest.fixture
+def backend():
+    return FakeStateBackend()
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """What ``main.lifespan`` builds inside the running loop (the limiters the state calls hop through are bound to
+    it)."""
+    app.state.limiters = make_limiters(SimpleNamespace(embed_slots=1, db_thread_limit=4))
+    yield
 
 
 @pytest.fixture
@@ -130,8 +147,8 @@ def fake_jobs(monkeypatch):
 
 
 @pytest.fixture
-def client(fake_repo, fake_store, fake_jobs):
-    app = FastAPI()
+def client(fake_repo, fake_store, fake_jobs, backend):
+    app = FastAPI(lifespan=_lifespan)
     app.include_router(wr.router)
     app.state.settings = FakeSettings()
     app.state.driver = object()
@@ -141,7 +158,9 @@ def client(fake_repo, fake_store, fake_jobs):
     app.state.upload_slots = threading.BoundedSemaphore(1)
     app.state.uploads_ready = True     # routes.uploads_available(app.state) = uploads_enabled AND uploads_ready
     app.state.upload_jobs = jobs.JobRegistry()
-    return TestClient(app)
+    install_state(app, backend=backend)
+    with TestClient(app) as test_client:         # ONE event loop for the whole test (the lifespan runs in it)
+        yield test_client
 
 
 def _auth(token=TOKEN):
@@ -252,10 +271,10 @@ def test_a_new_document_upload_is_accepted_and_starts_a_job(client, fake_jobs):
     assert r.headers["cache-control"] == "no-store"
 
 
-def test_kill_switch_blocks_uploads_with_503(client, fake_store):
-    fake_store["kill_switch"] = True
+def test_kill_switch_blocks_uploads_with_503(client, backend):
+    backend.kill = "on"
     r = _upload(client)
-    assert r.status_code == 503
+    assert r.status_code == 503 and r.json()["detail"] == routes.MSG_UPLOADS_OFF
 
 
 def test_upload_without_a_file_field_is_400(client):

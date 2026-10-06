@@ -1,42 +1,119 @@
-"""serve/main.py lifespan: the agent import at boot (fail fast), the async answer path's runtime and the tracer's
-lifecycle.
+"""serve/main.py lifespan: the agent import at boot (fail fast), the async answer path's runtime, the paid-ask state
+(M5a I4: built, rebuilt from the ledger, the windows seeded, the maintenance thread started and stopped in order) and
+the tracer's lifecycle.
 
-Neo4j and the embedder are never touched: ``bootstrap`` is replaced by a stub that records that it ran. The agent package is a
-stub too: a temporary ``semigraph.agent`` whose ``stream_async`` module (the module the ask route serves agent questions
-with) raises the way a missing langgraph would."""
+Neo4j and the embedder are never touched: ``bootstrap`` is replaced by a stub that records that it ran, and the state
+seams of ``main`` (``build_state``, ``MaintenanceThread``) by fakes. ``Boot.order`` records the events the lifespan
+tests have always pinned; the state's own events go to ``Boot.state_order`` and, in the ordering tests, to ``order`` too
+(``boot_in_order``). The agent package is a stub too: a temporary ``semigraph.agent`` whose ``stream_async`` module (the
+module the ask route serves agent questions with) raises the way a missing langgraph would."""
 
 import sys
 import threading
 import time
 import types
 
-import anyio
 import pytest
 from fastapi.testclient import TestClient
+from serve_state_fakes import fresh_drain  # noqa: F401 - a fixture
 
 from semigraph.config import Settings
-from semigraph.serve import main, routes
+from semigraph.serve import drain, main, routes, workspace_routes
+from semigraph.serve.state import RebuildReport, StateUnavailable
+from semigraph.serve.state.backend import BoundedDriver
+
+pytestmark = pytest.mark.usefixtures("fresh_drain")
 
 AGENT_STREAM = "semigraph.agent.stream_async"
 
 
-class Boot:
-    """The stand-ins for bootstrap and the driver; ``order`` records what happened in which order."""
+def a_report(*, now_wall: float | None = None, ip_events=(), paid=0, spend_micro=0, expired=0) -> RebuildReport:
+    now_wall = time.time() if now_wall is None else now_wall
+    return RebuildReport(day="2026-10-06", paid=paid, spend_micro=spend_micro, per_ip={}, expired=expired,
+                         foreign_leases=0, counters_synced=None, delta=None, ip_events=tuple(ip_events),
+                         now_wall=now_wall, now_mono=time.monotonic())
 
-    def __init__(self):
+
+class FakeBackend:
+    """The state backend the lifespan builds: its rebuild answers ``report`` (or raises what ``rebuild_errors``
+    queues)."""
+
+    def __init__(self, boot, report):
+        self._boot, self.report, self.rebuild_errors = boot, report, []
+        self.registry = None
+
+    def rebuild_from_ledger(self):
+        self._boot.note_state("state.rebuild")
+        if self.rebuild_errors:
+            raise self.rebuild_errors.pop(0)
+        return self.report
+
+
+class FakeMaintenance:
+    """``MaintenanceThread(backend, settings)``: records its start and stop."""
+
+    boot = None
+    start_error = None
+
+    def __init__(self, backend, settings):
+        self.backend, self.settings = backend, settings
+
+    def start(self):
+        type(self).boot.note_state("maintenance.start")
+        if type(self).start_error is not None:
+            raise type(self).start_error
+
+    def stop(self, timeout=5.0):
+        type(self).boot.note_state("maintenance.stop")
+        return True
+
+    def is_alive(self):
+        return True
+
+
+class Boot:
+    """The stand-ins for bootstrap, the driver and the state; ``order`` records what happened in which order."""
+
+    def __init__(self, in_order: bool = False):
         self.order: list[str] = []
+        self.state_order: list[str] = []
+        self._in_order = in_order
         self.driver = types.SimpleNamespace(close=lambda: self.order.append("driver.close"))
+        self.state_driver = types.SimpleNamespace(close=lambda: self.note_state("state_driver.close"))
+        self.backend = FakeBackend(self, a_report())
+
+    def note_state(self, event: str) -> None:
+        self.state_order.append(event)
+        if self._in_order:
+            self.order.append(event)
 
     def bootstrap(self, settings):
         self.order.append("bootstrap")
         return self.driver, types.SimpleNamespace(name="fake-embedder"), {"nodes": {}}, None, frozenset()
 
+    def build_state(self, settings):
+        self.note_state("state.build")
+        return self.state_driver, self.backend
+
+
+def install_boot(monkeypatch, boot: Boot) -> Boot:
+    monkeypatch.setattr(main, "bootstrap", boot.bootstrap)
+    monkeypatch.setattr(main, "build_state", boot.build_state)
+    monkeypatch.setattr(main, "MaintenanceThread", FakeMaintenance)
+    monkeypatch.setattr(main, "REBUILD_RETRY_SLEEP_S", 0)
+    FakeMaintenance.boot, FakeMaintenance.start_error = boot, None
+    return boot
+
 
 @pytest.fixture
 def boot(monkeypatch):
-    b = Boot()
-    monkeypatch.setattr(main, "bootstrap", b.bootstrap)
-    return b
+    return install_boot(monkeypatch, Boot())
+
+
+@pytest.fixture
+def boot_in_order(monkeypatch):
+    """The same stand-ins, with the state's events interleaved into ``order``."""
+    return install_boot(monkeypatch, Boot(in_order=True))
 
 
 def use_settings(monkeypatch, **over):
@@ -159,22 +236,14 @@ def test_the_lifespan_builds_the_async_path_runtime_and_stops_the_lag_monitor(mo
     assert boot.order[-1] == "driver.close"
 
 
-def test_the_lifespan_builds_the_in_flight_cap_of_paid_answers_as_a_limiter_on_the_app_loop(monkeypatch, boot):
-    """M5a I2: ``answer_limiter`` (an ``anyio.CapacityLimiter``, taken without waiting by ``PaidStream``) replaces the
-    ``answer_slots`` thread semaphore. It is built inside the lifespan's loop, so ``client.portal`` can use it."""
+def test_the_in_flight_cap_is_the_backends_so_the_lifespan_builds_no_limiter_or_slot_for_it(monkeypatch, boot):
+    """M5a I4: the cap on paid answers in flight is ``max_concurrent_answers`` inside ``state.reserve`` (a pre-stream
+    429); ``answer_limiter`` (I2) and ``answer_slots`` (the sync path) are both gone."""
     use_settings(monkeypatch, max_concurrent_answers=1)
     with TestClient(main.create_app()) as client:
         st = client.app.state
-        assert isinstance(st.answer_limiter, anyio.CapacityLimiter) and st.answer_limiter.total_tokens == 1
-        assert not hasattr(st, "answer_slots")
-        holder = object()
-        client.portal.call(st.answer_limiter.acquire_on_behalf_of_nowait, holder)
-        try:
-            with pytest.raises(anyio.WouldBlock):                          # exactly one answer in flight
-                client.portal.call(st.answer_limiter.acquire_on_behalf_of_nowait, object())
-        finally:
-            client.portal.call(st.answer_limiter.release_on_behalf_of, holder)
-        assert st.answer_limiter.borrowed_tokens == 0
+        assert not hasattr(st, "answer_limiter") and not hasattr(st, "answer_slots")
+        assert st.state is boot.backend and st.settings.max_concurrent_answers == 1
 
 
 def test_without_langfuse_keys_the_app_gets_the_no_op_tracer(monkeypatch, boot):
@@ -217,7 +286,12 @@ def test_with_both_m4_flags_off_no_monitor_runs_uploads_are_not_ready_but_the_tt
         st = client.app.state
         assert st.freshness_monitor is None and st.upload_sweeper is not None and st.uploads_ready is False
         assert isinstance(st.upload_slots, type(threading.BoundedSemaphore(1)))
+        # counted on the drain while it runs
+        assert isinstance(st.upload_slots, workspace_routes.DrainCountedSlot)
         assert st.upload_slots.acquire(blocking=False) and not st.upload_slots.acquire(blocking=False)   # exactly one
+        assert drain.DRAIN.active == 1
+        st.upload_slots.release()
+        assert drain.DRAIN.active == 0
         assert st.workspace_create_limiter.max_events == 3 and st.workspace_create_limiter.window == 86400
         assert st.upload_limiter.max_events == 10 and st.upload_limiter.window == 3600
     assert boot.order == ["bootstrap", "driver.close"]
@@ -244,12 +318,159 @@ def test_a_failing_background_stop_never_keeps_the_driver_open(monkeypatch, boot
     assert boot.order[-1] == "driver.close"
 
 
+# ---------------------------------------------------------------- M5a I4: the paid-ask state
+
+def test_the_state_is_built_rebuilt_and_the_maintenance_thread_started_before_serving_and_stopped_in_order(
+        monkeypatch, boot_in_order):
+    use_settings(monkeypatch)
+    monkeypatch.setattr(main.tracing, "get_tracer", lambda s: FakeTracer(boot_in_order.order))
+    monkeypatch.setattr(main.monitor, "stop", lambda app: boot_in_order.order.append("monitor.stop"))
+    monkeypatch.setattr(main.jobs, "stop", lambda app: boot_in_order.order.append("jobs.stop"))
+    with TestClient(main.create_app()) as client:
+        assert boot_in_order.order == ["bootstrap", "state.build", "state.rebuild", "maintenance.start"]
+        assert client.app.state.maintenance.boot is boot_in_order
+    assert boot_in_order.order[4:] == ["maintenance.stop", "monitor.stop", "jobs.stop", "tracer.shutdown",
+                                       "state_driver.close", "driver.close"]
+
+
+def test_the_lifespan_puts_the_state_on_the_app_with_its_estimates_cache_budget_and_bounded_store_driver(
+        monkeypatch, boot):
+    settings = use_settings(monkeypatch, cache_read_budget_per_s=7, state_op_timeout_s=0.8)
+    with TestClient(main.create_app()) as client:
+        st = client.app.state
+        assert st.state is boot.backend and st.state_driver is boot.state_driver
+        assert isinstance(st.state_store_driver, BoundedDriver) and st.state_store_driver._driver is boot.state_driver
+        assert st.state_store_driver._timeout_s == 0.8
+        assert st.cache_budget.rate == 7
+        assert set(st.estimates) == {"hybrid", "vector", "agent", "workspace"}
+        assert all(type(v) is int and v > 0 for v in st.estimates.values())
+        assert st.estimates == {k: v["micro"] for k, v in main.estimate.boot_estimates(settings).items()}
+
+
+def test_the_paid_windows_are_seeded_from_the_rebuilt_ledger_so_a_restart_gives_nobody_a_fresh_one(monkeypatch, boot):
+    use_settings(monkeypatch, rate_limit_questions=5, rate_limit_window_seconds=600)
+    now = time.time()
+    boot.backend.report = a_report(now_wall=now, paid=4, ip_events=[
+        ("addr-a", now - 30), ("addr-a", now - 20), ("addr-a", now - 10), ("addr-b", now - 5000), ("addr-c", now - 1)])
+    with TestClient(main.create_app()) as client:
+        window = client.app.state.rate_limiter
+        assert [window.allow("addr-a") for _ in range(3)] == [True, True, False]     # three of five already used
+        assert window.allow("addr-b") and window.allow("addr-c")                     # an old event does not count
+        assert [window.allow("addr-c") for _ in range(4)] == [True, True, True, False]
+
+
+def test_a_rebuild_that_fails_at_first_is_retried_and_the_service_boots(monkeypatch, boot, caplog):
+    use_settings(monkeypatch)
+    boot.backend.rebuild_errors = [StateUnavailable("the database is still starting")] * 2
+    with caplog.at_level("WARNING", logger="semigraph.serve.main"):
+        with TestClient(main.create_app()):
+            pass
+    assert boot.state_order.count("state.rebuild") == 3 and "maintenance.start" in boot.state_order
+    assert sum("not readable yet" in r.getMessage() for r in caplog.records) == 2
+
+
+def test_a_rebuild_that_never_succeeds_refuses_to_boot_and_closes_what_was_opened(monkeypatch, boot):
+    """Serving with counters that did not come from the ledger would let the day's caps be spent twice: no boot, no
+    maintenance thread, no paid ask. Both drivers are closed."""
+    use_settings(monkeypatch)
+    monkeypatch.setattr(main, "CONNECT_RETRY_S", 0.05)
+    boot.backend.rebuild_errors = [StateUnavailable("down")] * 10_000
+    with pytest.raises(RuntimeError, match="could not be read"):
+        with TestClient(main.create_app()):
+            pytest.fail("the service must not start")
+    assert "maintenance.start" not in boot.state_order and boot.state_order.count("state_driver.close") == 1
+    assert boot.order == ["bootstrap", "driver.close"]
+
+
+def test_a_maintenance_thread_that_cannot_start_refuses_to_boot_and_closes_both_drivers(monkeypatch, boot):
+    use_settings(monkeypatch)
+    FakeMaintenance.start_error = RuntimeError("cannot start a thread")
+    with pytest.raises(RuntimeError, match="cannot start"):
+        with TestClient(main.create_app()):
+            pytest.fail("the service must not start")
+    assert boot.state_order[-1] == "state_driver.close" and boot.order == ["bootstrap", "driver.close"]
+
+
+def test_an_estimate_that_cannot_be_computed_refuses_to_boot_before_the_state_is_built(monkeypatch, boot):
+    use_settings(monkeypatch)
+
+    def broken(settings):
+        raise ValueError("a configured price must be finite")
+
+    monkeypatch.setattr(main.estimate, "boot_estimates", broken)
+    with pytest.raises(ValueError, match="finite"):
+        with TestClient(main.create_app()):
+            pytest.fail("the service must not start")
+    assert boot.state_order == [] and boot.order == ["bootstrap", "driver.close"]
+
+
+def test_the_lifespan_waits_for_a_stream_still_counted_before_it_stops_the_maintenance_thread_and_closes_the_drivers(
+        monkeypatch, boot_in_order):
+    use_settings(monkeypatch)
+    with TestClient(main.create_app()):
+        drain.DRAIN.enter()                                  # a paid stream that is still finishing its ledger writes
+
+        def finishes_late():
+            time.sleep(0.3)
+            boot_in_order.order.append("stream.finished")
+            drain.DRAIN.leave()
+
+        threading.Thread(target=finishes_late).start()
+    order = boot_in_order.order
+    assert order.index("stream.finished") < order.index("maintenance.stop") < order.index("state_driver.close")
+    assert order.index("stream.finished") < order.index("driver.close")
+
+
+def test_a_stream_that_never_finishes_is_logged_and_does_not_hold_shutdown_past_the_bound(monkeypatch, boot, caplog):
+    use_settings(monkeypatch)
+    monkeypatch.setattr(drain, "LIFESPAN_IDLE_WAIT_S", 0.2)
+    with caplog.at_level("ERROR", logger="semigraph.serve.main"):
+        started = time.monotonic()
+        with TestClient(main.create_app()):
+            drain.DRAIN.enter()
+        assert time.monotonic() - started < 3.0
+    drain.DRAIN.leave()
+    assert boot.order[-1] == "driver.close" and "state_driver.close" in boot.state_order
+    assert any("still active at shutdown" in r.getMessage() for r in caplog.records)
+
+
+def test_a_failing_maintenance_stop_never_keeps_the_drivers_open(monkeypatch, boot):
+    use_settings(monkeypatch)
+
+    def boom(self, timeout=5.0):
+        raise RuntimeError("join failed")
+
+    monkeypatch.setattr(FakeMaintenance, "stop", boom)
+    with TestClient(main.create_app()):
+        pass
+    assert boot.state_order[-1] == "state_driver.close" and boot.order[-1] == "driver.close"
+
+
+def test_build_state_makes_the_bounded_state_driver_and_the_backend_over_it(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(main, "make_state_driver", lambda settings: seen.setdefault("driver", object()))
+    monkeypatch.setattr(main, "make_backend", lambda settings, drivers: seen.update(drivers=drivers) or "backend")
+    settings = Settings(_env_file=None)
+    driver, backend = main.build_state(settings)
+    assert driver is seen["driver"] and backend == "backend" and seen["drivers"].state is driver
+
+
+def test_rebuild_state_returns_the_report_and_retries_only_an_unavailable_store(monkeypatch):
+    monkeypatch.setattr(main, "REBUILD_RETRY_SLEEP_S", 0)
+    backend = FakeBackend(types.SimpleNamespace(note_state=lambda e: None), "the report")
+    assert main.rebuild_state(backend) == "the report"
+    backend.rebuild_errors = [ValueError("a bug, not an outage")]
+    with pytest.raises(ValueError, match="a bug"):
+        main.rebuild_state(backend)
+
+
 M4_PATHS = {
     "/api/freshness": {"get"}, "/api/admin/freshness/check": {"post"},
     "/api/company/{ticker}/dossier": {"get"}, "/api/company/{ticker}/risk-changes": {"get"},
     "/api/workspace": {"post"}, "/api/workspace/{ws}": {"get", "delete"}, "/api/workspace/{ws}/documents": {"post"},
     "/api/workspace/{ws}/jobs/{job_id}": {"get"}, "/api/workspace/{ws}/changes": {"get"},
     "/api/workspace/{ws}/evidence/{doc_id}": {"get"},
+    "/api/admin/state": {"get"}, "/api/admin/policy": {"get", "post"},        # M5a I4
 }
 
 

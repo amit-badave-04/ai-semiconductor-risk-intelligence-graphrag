@@ -1,6 +1,15 @@
-"""FastAPI application factory + lifespan (connect, schema, cache seed, embedder warm-up).
+"""FastAPI application factory + lifespan (connect, schema, cache seed, embedder warm-up, paid-ask state).
 
+    python -m semigraph.serve.drain          (what the image runs: uvicorn with the SIGTERM drain)
     uvicorn semigraph.serve.main:app --host 0.0.0.0 --port 8080
+
+Boot order of the paid-ask state (M5a I4, docs/v2/M5_DECISIONS.md 2.2): the bounded state driver and the backend are
+built; the backend rebuilds its counters from the ledger (a failure, after a retry window, refuses to boot: serving with
+empty counters would let the day's caps be spent twice); the paid per-address windows are seeded from the rebuilt rows;
+the maintenance thread starts and reads the kill level before it returns (paid asks are off until that read has
+happened). Shutdown runs the reverse, after the drain: wait for the streams and uploads still counted, stop the
+maintenance thread (and write the settles it still holds), stop the background services, the tracer, then close the
+drivers.
 """
 
 import asyncio
@@ -13,7 +22,6 @@ import threading
 from urllib.parse import quote, unquote
 import time
 
-import anyio
 from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 
@@ -21,15 +29,18 @@ from .. import __version__
 from ..artifacts import load_examples
 from ..config import get_settings
 from ..embeddings import Embedder
-from ..graph.client import DatabaseDriver, run_cypher
+from ..graph.client import DatabaseDriver, make_state_driver, run_cypher
 from ..graph.schema import PRIVATE_LABEL_PREFIXES, apply_schema, private_label_predicate
 from ..retrieval.answerer import template_fingerprint
 from ..uploads import jobs
 from .embed import LimitedEmbedder
-from .guard import RateLimiter
+from .guard import RateLimiter, TokenBucket
 from .limiters import LoopLagMonitor, make_limiters
 from .routes import router
-from . import dossier_routes, hardening, monitor, monitor_routes, store, tracing, workspace_routes
+from .state import StateDrivers, StateUnavailable, make_backend
+from .state.backend import BoundedDriver
+from .state.maintenance import MaintenanceThread
+from . import dossier_routes, drain, estimate, hardening, monitor, monitor_routes, store, tracing, workspace_routes
 
 SECONDS_PER_DAY = 86_400
 SECONDS_PER_HOUR = 3_600
@@ -90,6 +101,7 @@ class WorkspaceAccessLogFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(WorkspaceAccessLogFilter())
 
 CONNECT_RETRY_S = 90  # the database machine may still be booting after START
+REBUILD_RETRY_SLEEP_S = 3
 AGENT_MODULE = "semigraph.agent.stream_async"   # the module the ask route imports when an agent question is served
 TRACER_SHUTDOWN_TIMEOUT_S = 3  # a hung Langfuse endpoint must not delay teardown (or the driver close after it) indefinitely
 
@@ -112,6 +124,38 @@ def connect_with_retry(settings):
                 raise RuntimeError(f"Neo4j unreachable at {settings.neo4j_uri} after {CONNECT_RETRY_S}s") from e
             logger.warning("neo4j not ready (%s) — retrying", type(e).__name__)
             time.sleep(3)
+
+
+def build_state(settings) -> tuple[DatabaseDriver, object]:
+    """The bounded state driver and the backend ``settings.state_backend`` names, over it. Nothing connects here: a
+    database that is down surfaces from the first state call (the rebuild below), which fails closed."""
+    state_driver = make_state_driver(settings)
+    return state_driver, make_backend(settings, StateDrivers(state=state_driver))
+
+
+def rebuild_state(backend) -> object:
+    """The boot rebuild of the counters from the ledger, retried for ``CONNECT_RETRY_S`` like the database connection
+    (the database machine may still be booting). Raises RuntimeError when it never succeeds: the service must not serve
+    paid asks with counters that did not come from the ledger."""
+    deadline = time.monotonic() + CONNECT_RETRY_S
+    while True:
+        try:
+            return backend.rebuild_from_ledger()
+        except StateUnavailable as e:
+            if time.monotonic() > deadline:
+                raise RuntimeError(
+                    f"the paid-ask ledger could not be read after {CONNECT_RETRY_S}s: not serving") from e
+            logger.warning("the paid-ask ledger is not readable yet (%s) — retrying", e)
+            time.sleep(REBUILD_RETRY_SLEEP_S)
+
+
+def seed_paid_windows(rate_limiter: RateLimiter, report, window_seconds: int) -> int:
+    """Put the paid asks of the last window (from the ledger rows the rebuild read) back into the per-address paid
+    window, so a restart does not give every address a fresh one. Returns how many addresses had events."""
+    windows = report.window_events(window_seconds)
+    for iph, stamps in windows.items():
+        rate_limiter.seed(iph, stamps)
+    return len(windows)
 
 
 def graph_stats(driver) -> dict:
@@ -235,8 +279,6 @@ async def lifespan(app: FastAPI):
     # ONE bound on concurrent query embeddings for every caller, plus a bounded cache of query vectors (serve/embed.py).
     app.state.embedder = LimitedEmbedder(embedder, settings.embed_slots)
     app.state.limiters = make_limiters(settings)      # must be built inside the running loop (this lifespan)
-    # The in-flight cap of paid answers: taken without waiting by ``PaidStream`` (a full cap is the busy event).
-    app.state.answer_limiter = anyio.CapacityLimiter(settings.max_concurrent_answers)
     app.state.graph_stats = stats
     app.state.snapshot = snapshot
     app.state.example_ids = example_ids
@@ -245,11 +287,18 @@ async def lifespan(app: FastAPI):
     app.state.free_rate_limiter = RateLimiter(settings.free_rate_limit_questions,
                                               settings.rate_limit_window_seconds)
     app.state.read_rate_limiter = RateLimiter(settings.read_rate_limit_per_minute, 60)
+    # The answer-cache read before the bot check is bounded for the whole process (docs/v2/M5_DECISIONS.md 2.2).
+    app.state.cache_budget = TokenBucket(settings.cache_read_budget_per_s)
+    try:
+        state_driver = await start_state(app, settings)
+    except BaseException:
+        driver.close()                              # a refused boot must not leave the database driver behind
+        raise
     # M4 upload gates (docs/v2/M4_PLAN.md 4.4 and 5): per-address windows and ONE upload at a time on the machine
-    # (embedding never takes an answer slot).
+    # (embedding never takes an answer slot; the slot is counted on the drain while an upload runs).
     app.state.workspace_create_limiter = RateLimiter(settings.workspace_create_per_day, SECONDS_PER_DAY)
     app.state.upload_limiter = RateLimiter(settings.uploads_per_hour, SECONDS_PER_HOUR)
-    app.state.upload_slots = threading.BoundedSemaphore(1)
+    app.state.upload_slots = workspace_routes.DrainCountedSlot(1)
     # Background services, each only when its flag is on (freshness monitor, workspace TTL sweeper).
     monitor.start_if_enabled(app)
     jobs.start_if_enabled(app)
@@ -261,10 +310,52 @@ async def lifespan(app: FastAPI):
     with contextlib.suppress(asyncio.CancelledError):
         await lag_task
     try:
+        await wait_for_the_drain()
+        await run_in_threadpool(stop_maintenance, app)
         await run_in_threadpool(stop_background_services, app)
         await run_in_threadpool(shutdown_tracer_bounded, app.state.tracer)
     finally:
+        state_driver.close()
         driver.close()
+
+
+async def start_state(app: FastAPI, settings) -> DatabaseDriver:
+    """Build, rebuild and start the paid-ask state; returns the state driver (the caller closes it). The estimates are
+    computed first: a price that cannot be read must stop the boot before anything is written."""
+    app.state.estimates = {ask_type: detail["micro"] for ask_type, detail in estimate.boot_estimates(settings).items()}
+    state_driver, backend = await run_in_threadpool(build_state, settings)
+    try:
+        report = await run_in_threadpool(rebuild_state, backend)
+        seeded = seed_paid_windows(app.state.rate_limiter, report, settings.rate_limit_window_seconds)
+        logger.info("state rebuilt: %d paid asks today (%d micro-dollars), %d closed after the last stop, "
+                    "%d address windows seeded", report.paid, report.spend_micro, report.expired, seeded)
+        maintenance = MaintenanceThread(backend, settings)
+        await run_in_threadpool(maintenance.start)      # reads the kill level once before it returns
+    except BaseException:
+        state_driver.close()
+        raise
+    app.state.state_driver = state_driver
+    app.state.state_store_driver = BoundedDriver(state_driver, settings.state_op_timeout_s)
+    app.state.state = backend
+    app.state.maintenance = maintenance
+    return state_driver
+
+
+async def wait_for_the_drain() -> None:
+    """Streams and uploads that are still counted finish their ledger writes before the maintenance thread stops and the
+    drivers close (a stream's cleanup is shielded and would otherwise race ``driver.close()``). The signal handler of
+    ``serve.drain`` has already waited for them; this wait is for stragglers, bounded by what is left of Fly's kill
+    timeout."""
+    if not await drain.DRAIN.await_idle(drain.LIFESPAN_IDLE_WAIT_S):
+        logger.error("%d paid stream(s) or upload(s) still active at shutdown", drain.DRAIN.active)
+
+
+def stop_maintenance(app) -> None:
+    """Stop the maintenance thread (bounded) and let it write the settles it still holds. Never raises."""
+    try:
+        app.state.maintenance.stop()
+    except Exception:  # noqa: BLE001 - a failing stop must not keep the database driver open
+        logger.exception("stopping the state maintenance thread failed")
 
 
 def stop_background_services(app) -> None:

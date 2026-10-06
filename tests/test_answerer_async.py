@@ -1847,6 +1847,34 @@ def test_astream_answer_for_context_matches_the_sync_function():
     assert ordered(run(go)) == ordered(sync_events) and sync_events[0]["event"] == "retrieval"
 
 
+RETRIEVAL_EVENT_KEYS = ["event", "anchors", "counts", "anchor_defaulted"]
+
+
+@pytest.mark.parametrize("dropped, extra_keys", [
+    pytest.param(["Qualcomm", "TSMC"], ["anchors_dropped"], id="dropped"),
+    pytest.param([], [], id="empty_list"),
+    pytest.param(None, [], id="no_key")])
+def test_the_retrieval_event_lists_the_companies_the_anchor_cap_dropped_only_when_there_are_some(dropped, extra_keys):
+    """Additive: ``anchors_dropped`` follows ``anchor_defaulted`` and exists only for a retrieval that dropped
+    companies, in the sync writer and its twin alike; every other event keeps its keys and their order."""
+    r = {k: v for k, v in answerer.hybrid_retrieve(CTX_Q, FakeDriver.world(), FakeEmbedder()).items()
+         if k != "anchors_dropped"}
+    r = r if dropped is None else {**r, "anchors_dropped": dropped}
+    script = GOOD_C.with_id(WORLD_IDS["hybrid"])
+    sync_events = list(answerer.stream_answer_for_context(CTX_Q, r, "hybrid", llm_stream=lambda p: SyncFake(script)))
+
+    async def go():
+        return await collect(answerer_async.astream_answer_for_context(
+            CTX_Q, r, "hybrid", llm_stream=lambda p: AsyncFake(script)))
+
+    async_events = run(go)
+    assert ordered(async_events) == ordered(sync_events)
+    for first in (sync_events[0], async_events[0]):
+        assert list(first) == [*RETRIEVAL_EVENT_KEYS, *extra_keys]
+        assert first.get("anchors_dropped") == (dropped or None)
+    assert not any("anchors_dropped" in e for e in sync_events[1:])
+
+
 def test_an_unknown_strategy_is_the_same_value_error_before_anything_is_embedded_or_queried():
     driver, embedder = FakeDriver.world(), FakeEmbedder()
     with pytest.raises(ValueError) as sync_error:

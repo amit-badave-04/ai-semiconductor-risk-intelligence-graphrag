@@ -3,10 +3,13 @@
 Everything here survives machine restarts and auto-stops. Labels are
 prefixed with ``Svc`` so they never collide with the knowledge-graph schema:
 
-- ``(:SvcPolicy {key, value, updated_at})``  — kill_switch
+- ``(:SvcPolicy {key, value, updated_at})``  — kill_switch: ``on`` | ``retrieval_only`` | ``off``
 - ``(:SvcQuery {id, day, ip_hash, ip_hash_v, strategy, cached, prompt_tokens,
   completion_tokens, cost_usd, created_at})`` — one row per answered question; ``ip_hash_v`` is the id of the
-  pepper that made ``ip_hash`` (absent on rows written before the pepper; 0 once such a hash was nulled)
+  pepper that made ``ip_hash`` (absent on rows written before the pepper; 0 once such a hash was nulled). A cached
+  answer's row is written here (``log_query``); a PAID ask's row is the ``reserved`` row of ``serve.state`` (M5a I4: it
+  adds ``status``, ``outcome``, ``estimate_micro``, ``cost_micro``, ``lease_until``, ``machine_id``, ...) and is settled
+  by ``reconcile``, never written by ``log_query``
 - ``(:SvcAnswer {key, question, strategy, answer, citations, hallucinated,
   usage_prompt, usage_completion, cost_usd, source, created_at})`` — cache
 - ``(:SvcUploadDay {day, n, updated_at})`` — uploads accepted that UTC day, all workspaces (M4 ``MAX_UPLOADS_PER_DAY``)
@@ -23,6 +26,7 @@ from neo4j import Driver
 from ..graph.client import NO_UNRECOGNIZED_NOTIFICATIONS, run_cypher
 from ..retrieval.answerer import template_fingerprint
 from ..retrieval.verify import failed_check_names
+from .state import ledger as state_ledger
 
 
 def cache_key(question: str, strategy: str, snapshot_id: str = "", template: str | None = None) -> str:
@@ -73,11 +77,22 @@ def get_policy(driver: Driver, key: str) -> str | None:
 
 
 def set_policy(driver: Driver, key: str, value: str) -> None:
+    """Store a policy value. The kill switch holds a level: ``on`` | ``retrieval_only`` | ``off``. A value is not
+    validated here (the reader fails closed on one it does not know: ``serve.state.backend.StateCore._parse_policy``
+    reads it as ``on``); the admin route validates what it accepts.
+
+    ROLLBACK: a pre-M5 image reads only ``on`` as stopped (:func:`kill_switch_on`), so it reads ``retrieval_only`` as
+    ``off`` and would accept paid questions. Before rolling back to such an image, set the level to ``on`` or ``off``
+    (the RUNBOOK rule; ``scripts/kill_switch.py`` refuses to store ``retrieval_only`` directly without a flag saying
+    so)."""
     run_cypher(driver, "MERGE (p:SvcPolicy {key: $key}) SET p.value = $value, p.updated_at = $ts",
                key=key, value=value, ts=_now())
 
 
 def kill_switch_on(driver: Driver, env_flag: bool) -> bool:
+    """The pre-M5 reading of the kill switch (True only for ``on``); the serving path now asks ``serve.state`` backend
+    ``kill_level()`` instead, which also stops on ``retrieval_only``, an unread level and a stale one. Kept for any
+    caller of the old stored flag."""
     return env_flag or get_policy(driver, "kill_switch") == "on"
 
 
@@ -242,7 +257,9 @@ def seed_examples(driver: Driver, examples: list[dict], snapshot_id: str = "") -
 def ensure_indexes(driver: Driver) -> None:
     """Idempotent schema for the service labels. The first release created plain
     indexes named svc_policy_key / svc_answer_key; they are replaced by uniqueness
-    constraints under new names (Neo4j refuses a constraint whose name an index owns)."""
+    constraints under new names (Neo4j refuses a constraint whose name an index owns). The statements of the state
+    package (``serve.state.ledger.STATE_SCHEMA_STATEMENTS``: the unique ledger id, day counter and per-address day, and
+    the status indexes) run last, so they exist before the first paid ask is served."""
     for stmt in ("DROP INDEX svc_policy_key IF EXISTS",
                  "DROP INDEX svc_answer_key IF EXISTS",
                  "CREATE CONSTRAINT svc_policy_key_unique IF NOT EXISTS FOR (p:SvcPolicy) REQUIRE p.key IS UNIQUE",
@@ -251,7 +268,9 @@ def ensure_indexes(driver: Driver) -> None:
                  "CREATE CONSTRAINT svc_upload_day_unique IF NOT EXISTS FOR (u:SvcUploadDay) REQUIRE u.day IS UNIQUE",
                  # M4 freshness monitor: one lease and one result node per key, even on two machines' first MERGE
                  "CREATE CONSTRAINT svc_lease_key_unique IF NOT EXISTS FOR (l:SvcLease) REQUIRE l.key IS UNIQUE",
-                 "CREATE CONSTRAINT svc_freshness_key_unique IF NOT EXISTS FOR (f:SvcFreshness) REQUIRE f.key IS UNIQUE"):
+                 "CREATE CONSTRAINT svc_freshness_key_unique IF NOT EXISTS "
+                 "FOR (f:SvcFreshness) REQUIRE f.key IS UNIQUE",
+                 *state_ledger.STATE_SCHEMA_STATEMENTS):
         run_cypher(driver, stmt)
 
 

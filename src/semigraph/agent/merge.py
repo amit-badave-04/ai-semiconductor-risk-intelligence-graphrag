@@ -11,6 +11,10 @@ Its per-pair ITEM and PASSAGE lines are the one exception: when a company gains 
 total line budget one pair always had (:func:`~semigraph.retrieval.retriever.select_temporal`'s own per-pair caps), so an
 existing pair's shown lines CAN shrink even though its pair, and its true (uncapped) totals, never do.
 
+Companies: the context never covers more than ``retriever.MAX_ANCHORS`` of them in all, the prefetch's own counting
+first (:func:`add_anchors`, :func:`check_company_cap`). The tools refuse a call that would add a company past it before
+they run a query, and it is the company count that bounds the agent's spend estimate (``serve.estimate``).
+
 ``compute_change`` is the one place a number is derived. It reads only facts already in ``r["metrics"]`` and writes a
 ``computed: ...`` line in the grammar ``retrieval.verify`` grounds (``+65.5%`` right after the colon, so the percentage is checked
 against its sign), carrying BOTH ``[xbrl:...]`` ids. The ids only count as citable if ``build_blocks`` SHOWS the two rows (it renders
@@ -22,7 +26,7 @@ from datetime import date
 
 from ..retrieval import ids as _ids
 from ..retrieval import retriever as R
-from .sanitize import safe_unit
+from .sanitize import company_for_id, safe_unit
 
 MAX_CHUNKS = 16
 MAX_EDGES_ADDED = 40
@@ -35,9 +39,79 @@ class ComputeError(ValueError):
     """A computation the retrieved metrics cannot support. The message is fixed text (safe to show the planner)."""
 
 
-def add_anchors(r: dict, anchors: Mapping[str, int]) -> dict:
-    """``r`` with ``anchors`` added to ``r["anchors"]``. ``anchor_defaulted`` is the PREFETCH's fact and is left alone."""
-    return {**r, "anchors": {**(r.get("anchors") or {}), **anchors}}
+class CompanyCapError(ValueError):
+    """Adding the companies ``adding`` would take the context past ``cap`` companies; nothing was added. ``covered`` are
+    the names the context already holds. Both lists are sorted names, ``room`` is how many more companies still fit."""
+
+    def __init__(self, covered: Iterable[str], adding: Iterable[str], cap: int):
+        self.covered, self.adding, self.cap = sorted(covered), sorted(adding), cap
+        super().__init__(f"{len(self.covered)} companies covered, {len(self.adding)} would be added: the cap is {cap}")
+
+    @property
+    def room(self) -> int:
+        return max(0, self.cap - len(self.covered))
+
+
+def company_cap() -> int:
+    """The most companies one answer's context may carry: the retriever's anchor cap, read when asked (never copied)
+    so the plain retrieval, the agent and the spend estimate (``serve.estimate``) cannot drift apart."""
+    return R.MAX_ANCHORS
+
+
+def covered_companies(r: Mapping) -> dict[int, str]:
+    """``{entity id: name}`` of the companies whose blocks ``r`` carries: its anchors, plus the default company the
+    retrieval fell back to when it detected none (``anchors`` is then empty, yet that company's rules, metrics and
+    temporal blocks are in the context)."""
+    covered = {entity_id: name for name, entity_id in (r.get("anchors") or {}).items()}
+    if r.get("anchor_defaulted"):
+        covered.setdefault(R.DEFAULT_ANCHOR_CIK, company_for_id(R.DEFAULT_ANCHOR_CIK) or "the default company")
+    return covered
+
+
+def check_company_cap(r: Mapping, anchors: Mapping[str, int], *, cap: int | None = None) -> None:
+    """Raise :class:`CompanyCapError` when adding ``anchors`` to ``r`` would take the companies it covers past ``cap``
+    (:func:`company_cap` by default). Companies are counted by entity id: one ``r`` already covers is not an addition,
+    and a call that adds none never raises (a prefetch over a lowered cap still answers)."""
+    limit = company_cap() if cap is None else cap
+    covered = covered_companies(r)
+    new = {entity_id: name for name, entity_id in anchors.items() if entity_id not in covered}
+    if new and len(covered) + len(new) > limit:
+        raise CompanyCapError(covered.values(), new.values(), limit)
+
+
+def _uncover_dropped(r: dict, anchors: Mapping[str, int]) -> dict:
+    """``r`` once the companies in ``anchors`` are covered: they leave ``anchors_dropped`` and the "not covered" note
+    that names them (rewritten for the ones still dropped, removed with the key when none are), so the writer is never
+    told a company is not covered when its blocks are in the context. The note is found by equality with the retriever's
+    own, never by its look: a notice a tool wrote is not touched."""
+    dropped = list(r.get("anchors_dropped") or [])
+    remaining = [name for name in dropped if name not in anchors]
+    if len(remaining) == len(dropped):
+        return r
+    old_note = R._dropped_notice(dropped)
+    notices: list[dict] = []
+    for note in r.get("temporal_notices") or []:
+        if note != old_note:
+            notices.append(note)
+        elif remaining:
+            notices.append(R._dropped_notice(remaining))          # in place: the note keeps its position in the block
+    out = {**r, "temporal_notices": notices}
+    if remaining:
+        out["anchors_dropped"] = remaining
+    else:
+        del out["anchors_dropped"]
+    return out
+
+
+def add_anchors(r: dict, anchors: Mapping[str, int], *, cap: int | None = None) -> dict:
+    """``r`` with ``anchors`` added to ``r["anchors"]``. ``anchor_defaulted`` is the PREFETCH's fact and is left alone.
+
+    Raises :class:`CompanyCapError` (and adds nothing) when that would take the context past ``cap`` companies
+    (:func:`company_cap` by default): never a clamp, which would leave ``anchors`` saying less than the rows already
+    merged. The tools check first (:func:`check_company_cap`), before they run a query, so this is the backstop. A
+    company the retrieval dropped and a tool legitimately adds is no longer "not covered" (:func:`_uncover_dropped`)."""
+    check_company_cap(r, anchors, cap=cap)
+    return _uncover_dropped({**r, "anchors": {**(r.get("anchors") or {}), **anchors}}, anchors)
 
 
 def merge_chunks(r: dict, rows: Iterable[Mapping], *, cap: int = MAX_CHUNKS) -> dict:

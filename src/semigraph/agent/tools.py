@@ -10,9 +10,15 @@
 - returns a :class:`ToolOutcome` whose ``result`` (what the planner is told) is built from the allowlisted views of
   :mod:`semigraph.agent.sanitize`: counts, ids, fiscal years, metric values and universe company names, never filing text.
 
-A tool never raises: a refused call (unknown tool, malformed or invalid arguments, unknown company, a computation the facts cannot
-support) and a failure (a database or embedder error) both come back as ``{"error": ...}`` with ``ok=False``. Error results carry
-fixed text plus, for a failure, the exception TYPE name only: a Neo4j error message echoes its parameters.
+A tool never raises: a refused call (unknown tool, malformed or invalid arguments, unknown company, a computation the
+facts cannot support, a call that would take the answer past the company cap) and a failure (a database or embedder
+error) both come back as ``{"error": ...}`` with ``ok=False``. Error results carry fixed text plus, for a failure, the
+exception TYPE name only: a Neo4j error message echoes its parameters.
+
+The answer covers at most ``retriever.MAX_ANCHORS`` companies in all (:mod:`semigraph.agent.merge`): the five tools that
+add a company (``search_filings`` with companies, ``financial_metrics``, ``risk_changes``, ``relationships``,
+``active_risks``) check that BEFORE they run a query and refuse the whole call when its new companies do not fit. The
+result names the companies covered and how many more fit, so the planner can retry with fewer or stop.
 """
 
 import json
@@ -182,6 +188,20 @@ def _problems(error: ValidationError) -> str:
     return "; ".join(parts)
 
 
+def _cap_refusal(tool: str, e: M.CompanyCapError) -> tuple[dict, str]:
+    """``(result, summary)`` of a call refused for the company cap. The planner is told which companies the answer
+    covers (universe names only) and how many more fit."""
+    covered = [name for name in e.covered if S.canonical_name(name)]
+    if e.room == 0:
+        error, reason = (f"the answer already covers {len(e.covered)} companies and cannot cover more",
+                         f"the answer already covers {len(e.covered)} companies")
+    else:
+        error = f"this call would take the answer past {e.cap} companies; it has room for {e.room} more"
+        reason = f"it would take the answer past {e.cap} companies"
+    return ({"error": error, "covered_companies": covered, "company_limit": e.cap, "room": e.room},
+            f"{tool}: refused, {reason}")
+
+
 def _parse(raw: Any) -> dict | None:
     if isinstance(raw, Mapping):
         return dict(raw)
@@ -257,6 +277,9 @@ class Toolbox:
             return self._handlers[name](model, r, budget)
         except ToolError as e:
             return self._refused(tool, r, model.model_dump(mode="json", exclude_defaults=True), e.result, e.summary)
+        except M.CompanyCapError as e:
+            result, summary = _cap_refusal(tool, e)
+            return self._refused(tool, r, model.model_dump(mode="json", exclude_defaults=True), result, summary)
         except Exception as e:  # noqa: BLE001 - a tool must never raise into the planner loop; the type name is all that is reported
             logger.warning("tool %s failed: %s", tool, type(e).__name__, exc_info=True)
             return self._refused(tool, r, model.model_dump(mode="json", exclude_defaults=True),
@@ -299,6 +322,7 @@ class Toolbox:
 
     def _search_filings(self, a: SearchFilingsArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies) if a.companies else {}
+        M.check_company_cap(r, ids)
         vec = self.embedder.encode_query(a.query)
         if ids:
             rows = self._cypher(R.EXCERPTS_QUERY, budget, ids=list(ids.values()), vec=vec, k=a.k, candidates=R.EXCERPT_CANDIDATES)
@@ -313,6 +337,7 @@ class Toolbox:
 
     def _financial_metrics(self, a: FinancialMetricsArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)
+        M.check_company_cap(r, ids)
         years, dates = sorted(set(a.fiscal_years)), sorted(set(a.period_ends))
         rows = self._cypher(R.METRICS_QUERY, budget, ids=list(ids.values()), periods=R.METRIC_PERIODS_FETCHED, years=years, dates=dates)
         keep = [row for row in rows if not a.metrics or row.get("metric") in a.metrics]
@@ -324,6 +349,7 @@ class Toolbox:
 
     def _risk_changes(self, a: RiskChangesArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)
+        M.check_company_cap(r, ids)
         id_list = list(ids.values())
         mode = "named" if a.fiscal_years else "multi" if a.multi_year else None
         notices: list[dict] = []
@@ -345,6 +371,7 @@ class Toolbox:
 
     def _relationships(self, a: RelationshipsArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)
+        M.check_company_cap(r, ids)
         id_list = list(ids.values())
         rows = self._cypher(R.company_edges_query(a.hops), budget, ids=id_list)
         rows += self._cypher(R.RULE_EDGES_QUERY, budget, ids=id_list, include_neighbours=R.NEIGHBOUR_RULES and a.hops >= 2,
@@ -357,6 +384,7 @@ class Toolbox:
 
     def _active_risks(self, a: ActiveRisksArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)
+        M.check_company_cap(r, ids)
         vec = self.embedder.encode_query(a.topic or self.question)
         rows: list[dict] = []
         for entity_id in ids.values():

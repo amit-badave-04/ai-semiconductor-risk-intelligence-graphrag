@@ -5,13 +5,16 @@ the ledger records the terminal event's spend unchanged, that the cache never cr
 tracer is created, handed to the agent only for ``strategy=agent`` and always closed.
 
 The fixtures come from tests/test_serve_api.py: the app's own small lifespan builds the limiters inside the TestClient's
-loop, so everything that touches them (the ``PaidStream`` drives below) goes through ``client.portal``. The agent
-stream is an ASYNC generator function, installed as ``semigraph.agent.stream_async.aagent_answer_stream``."""
+loop, so everything that touches them (the ``PaidStream`` drives below) goes through ``client.portal``. The state
+backend is the fake of tests/serve_state_fakes.py: a paid ask's ledger row is the settle ``fakes.settled`` records (the
+cached rows ``fakes.queries`` are the ones ``store.log_query`` still writes). The agent stream is an ASYNC generator
+function, installed as ``semigraph.agent.stream_async.aagent_answer_stream``."""
 
 import json
 from types import SimpleNamespace
 
 import pytest
+from serve_state_fakes import fresh_drain  # noqa: F401 - a fixture
 from test_serve_api import (  # noqa: F401 - fixtures
     CID,
     Q,
@@ -21,12 +24,14 @@ from test_serve_api import (  # noqa: F401 - fixtures
     fake_answer_stream,
     fakes,
     install_agent_module,
+    make_stream,
     parse_sse,
     run_stream,
 )
 
 from semigraph.serve import routes, store
-from semigraph.serve.stream_runtime import PaidStream
+
+pytestmark = pytest.mark.usefixtures("fresh_drain")
 
 STEP_1 = {"event": "step", "n": 1, "tool": "lookup_company", "args": {"name": "Nvidia"}, "summary": "Nvidia", "ok": True}
 STEP_2 = {"event": "step", "n": 2, "tool": "financial_metrics", "args": {"cik": 1045810, "metrics": ["revenue"]},
@@ -68,9 +73,9 @@ def ask(client, question=Q, strategy="agent"):
 def disconnect_after_first_event(client, question, first):
     """The browser vanishes right after the first event: drive a ``PaidStream`` to it on the client's own loop (the
     limiters belong to it), close the generator as the response does for a gone peer, then settle the stream as
-    ``PaidResponse`` does. The ledger row of the abandoned ask is written by that last step."""
+    ``PaidResponse`` does. The abandoned ask's lease is settled by that last step."""
     async def go():
-        stream = PaidStream(client.app.state, question, "agent", "iph", twin=routes._stream_fn("agent"))
+        stream = make_stream(client, question, "agent", twin=routes._stream_fn("agent"))
         gen = stream.events()
         assert json.loads((await gen.__anext__()).data)["event"] == first
         await gen.aclose()
@@ -96,17 +101,18 @@ def test_a_step_event_is_never_logged_as_spend_and_never_cached_as_an_answer(age
     install_agent(monkeypatch, scripted(sneaky, STEP_2, DONE))
     events = parse_sse(ask(agent_client).text)
     assert events[0] == sneaky                                               # passed through, not interpreted
-    assert len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.0123
-    assert fakes.queries[0]["usage"] == DONE["usage"] and fakes.queries[0]["strategy"] == "agent"
+    assert len(fakes.settled) == 1 and fakes.settled[0]["cost_micro"] == 12_300
+    assert fakes.settled[0]["usage"] == DONE["usage"] and fakes.settled[0]["strategy"] == "agent"
     assert list(fakes.answers.values()) == [{"answer": DONE["answer"], "source": "live", "citations": [CID], "hallucinated": []}]
 
 
 def test_steps_followed_by_nothing_are_one_ledger_row_without_a_cost_and_no_cache_entry(agent_client, fakes, monkeypatch):
-    """The client vanished (or the agent died) after some steps: the query still counts, its cost is unknown, nothing is cached."""
+    """The client vanished (or the agent died) after some steps: the query still counts, its cost is unknown (settled
+    abandoned: the estimate stays charged), nothing is cached."""
     install_agent(monkeypatch, scripted(STEP_1, STEP_2, DONE))
     disconnect_after_first_event(agent_client, Q + " gone", first="step")
-    assert len(fakes.queries) == 1 and fakes.queries[0].get("cost_usd") is None and fakes.answers == {}
-    assert agent_client.app.state.answer_limiter.borrowed_tokens == 0          # and the slot is back
+    assert len(fakes.settled) == 1 and fakes.settled[0]["cost_micro"] is None and fakes.answers == {}
+    assert fakes.settled[0]["outcome"] == "abandoned" and fakes.backend.inflight == 0      # and the lease is back
 
 
 def test_steps_then_an_agent_crash_is_one_error_one_ledger_row_and_no_cache_entry(agent_client, fakes, monkeypatch):
@@ -116,8 +122,8 @@ def test_steps_then_an_agent_crash_is_one_error_one_ledger_row_and_no_cache_entr
     install_agent(monkeypatch, crashing)
     events = parse_sse(ask(agent_client).text)
     assert [e["event"] for e in events] == ["step", "error"] and "RuntimeError" in events[-1]["detail"]
-    assert len(fakes.queries) == 1 and fakes.queries[0].get("cost_usd") is None and fakes.answers == {}
-    assert agent_client.app.state.answer_limiter.borrowed_tokens == 0          # the slot was released
+    assert len(fakes.settled) == 1 and fakes.settled[0]["cost_micro"] is None and fakes.answers == {}
+    assert fakes.settled[0]["outcome"] == "error" and fakes.backend.inflight == 0          # the lease was released
 
 
 # ---------------------------------------------------------------- requirement 1: the ledger records the terminal event's cost as is
@@ -125,9 +131,9 @@ def test_steps_then_an_agent_crash_is_one_error_one_ledger_row_and_no_cache_entr
 def test_the_ledger_records_the_agents_terminal_cost_unchanged_and_does_not_add_the_planner_cost_again(agent_client, fakes, monkeypatch):
     install_agent(monkeypatch, scripted(STEP_1, DONE))
     run_stream(agent_client, Q + " ledger", "agent")
-    (row,) = fakes.queries
-    assert row["cost_usd"] == 0.0123 and row["usage"] == {"prompt_tokens": 1500, "completion_tokens": 120}
-    assert row["strategy"] == "agent" and row["cached"] is False
+    (row,) = fakes.settled
+    assert row["cost_micro"] == 12_300 and row["usage"] == {"prompt_tokens": 1500, "completion_tokens": 120}
+    assert row["strategy"] == "agent" and row["outcome"] == "done" and fakes.queries == []
 
 
 def test_the_ledger_records_the_agents_terminal_cost_on_the_error_path_too(agent_client, fakes, monkeypatch):
@@ -136,9 +142,9 @@ def test_the_ledger_records_the_agents_terminal_cost_on_the_error_path_too(agent
     install_agent(monkeypatch, scripted(STEP_1, STEP_2, failed))
     events = parse_sse(ask(agent_client).text)
     assert events[-1]["event"] == "error" and "overloaded" not in events[-1]["detail"]     # the provider text stays server-side
-    (row,) = fakes.queries
-    assert row["cost_usd"] == 0.0031 and row["usage"] == failed["usage"] and row["strategy"] == "agent"
-    assert fakes.answers == {}
+    (row,) = fakes.settled
+    assert row["cost_micro"] == 3_100 and row["usage"] == failed["usage"] and row["strategy"] == "agent"
+    assert row["outcome"] == "error" and fakes.answers == {}
 
 
 # ---------------------------------------------------------------- the cache never crosses strategies
@@ -155,8 +161,9 @@ def test_an_answer_cached_under_agent_is_not_served_for_hybrid_and_the_other_way
 
     assert parse_sse(ask(agent_client, strategy="agent").text)[0]["cached"] is True
     assert parse_sse(ask(agent_client, strategy="hybrid").text)[0]["cached"] is True
-    assert [q["strategy"] for q in fakes.queries] == ["agent", "hybrid", "agent", "hybrid"]
-    assert [q["cached"] for q in fakes.queries] == [False, False, True, True]
+    assert [r["strategy"] for r in fakes.settled] == ["agent", "hybrid"]               # the two paid misses
+    assert [q["strategy"] for q in fakes.queries] == ["agent", "hybrid"]                # the two cached hits
+    assert [q["cached"] for q in fakes.queries] == [True, True]
 
 
 # ---------------------------------------------------------------- the tracer: per request, agent only, always closed
@@ -240,7 +247,7 @@ def test_a_tracer_that_raises_never_breaks_the_answer(agent_client, fakes, monke
     agent_client.app.state.tracer = Broken()
     install_agent(monkeypatch, scripted(STEP_1, DONE))
     events = parse_sse(ask(agent_client).text)
-    assert events[-1]["event"] == "done" and len(fakes.queries) == 1
+    assert events[-1]["event"] == "done" and len(fakes.settled) == 1
 
     class BrokenClose(TracerFactory):
         def for_request(self, question="", *, strategy=""):
@@ -250,7 +257,7 @@ def test_a_tracer_that_raises_never_breaks_the_answer(agent_client, fakes, monke
     agent_client.app.state.tracer = BrokenClose()
     events = parse_sse(ask(agent_client, Q + " again").text)
     assert events[-1]["event"] == "done"
-    assert agent_client.app.state.answer_limiter.borrowed_tokens == 0
+    assert fakes.backend.inflight == 0
 
 
 # ---------------------------------------------------------------- /api/stats says whether the trace sample is running

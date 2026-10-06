@@ -1,7 +1,30 @@
-"""HTTP surface of the service. Paid work (``POST /api/ask``) passes every
-gate in order — free-tier window, cache, kill switch, daily ceiling, Turnstile,
-paid per-address window, concurrency slot — before a single LLM token is bought.
-Nothing is written to the database before the first (free-tier) gate.
+"""HTTP surface of the service. Paid work (``POST /api/ask``) passes every gate in order before a single LLM token is
+bought (M5a I4, docs/v2/M5_DECISIONS.md 2.2, docs/v2/M5A_BUILD_PLAN.md step 0-I4). Every call to the state backend is a
+worker-thread hop under ``limiters.state`` (``stream_runtime.state_call``); a state failure refuses, it never lets an
+ask through. The order, and what each gate answers:
+
+1. validate the question, strategy, ``as_of`` and workspace id (400) and hash the address (``guard.hash_request_ip``);
+2. DRAINING: a workspace ask is always paid, so while the process drains (``serve.drain``) it is refused here, before
+   any window, with 503 ``MSG_DRAINING``. A public ask is refused after the cache step below, if it misses (and, while
+   draining, the cache is read BEFORE the free window, so a refused miss consumes no window either);
+3. the free window (429 ``MSG_RATE``): the first gate that counts, so an unauthenticated client cannot write a ledger
+   row without passing it;
+4. a workspace ask: its token (404 for a bad id or token alike) is read through the state driver under the cache read
+   budget; a public ask: a token of the cache read budget (429 ``MSG_READ_RATE`` when the process-wide bucket is empty),
+   then ``state.cache_get``. A hit is logged as a cached row (under the same state bound) and replayed. The database
+   being unreachable or slow is 503 ``MSG_PAUSED`` in both: a cached answer is never served on a guess, and a failed
+   read never falls through to a paid call. A workspace ask never touches the answer cache;
+5. the kill level (``state.kill_level``): ``on`` (also unread, stale or the env override) 503 ``MSG_PAUSED``,
+   ``retrieval_only`` 503 ``MSG_RETRIEVAL_ONLY``;
+6. Turnstile (403 ``MSG_BOT``), then the paid per-address window (429 ``MSG_RATE``);
+7. the ask is counted on the drain (``DRAIN.try_enter``: 503 ``MSG_DRAINING``) and ``state.reserve`` takes a lease with
+   the ask type's estimate: both daily caps (429 ``MSG_BUDGET``), the per-address daily cap (429 ``MSG_IP_BUDGET``), the
+   in-flight cap (429 ``MSG_BUSY``, a pre-stream refusal with no event stream), the kill level again and an unreachable
+   state (503 ``MSG_PAUSED``). The lease, and the drain count, belong to the :class:`PaidStream` from then on;
+8. the event stream.
+
+A lease granted and then lost before the stream could take it (an exception, a cancelled request) is settled here as
+``abandoned``. Nothing is written to the database before the first (free-tier) gate.
 
 An ask over an upload workspace (M4, docs/v2/M4_PLAN.md 4.4) is ``hybrid`` only and never touches the answer cache; its token
 is checked right after the free-tier window (404 for a bad id or token alike), and nothing is written before that check."""
@@ -13,7 +36,9 @@ import time
 from collections.abc import AsyncIterator
 from functools import partial
 from pathlib import Path
+from typing import Literal
 
+import anyio
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -27,9 +52,11 @@ from ..retrieval.answerer_async import aanswer_stream
 from ..retrieval.ids import CHUNK_ID_RE, classify_id, metric_id_of, rule_id_of  # noqa: F401 - CHUNK_ID_RE: re-exported (tests/test_ids.py)
 from ..retrieval.workspace_async import astream_workspace_answer
 from ..uploads import WORKSPACE_TOKEN_MAX_CHARS
-from . import guard, store
-from .stream_runtime import (  # noqa: F401 - MSG_BUSY: re-exported (the message the busy event carries)
-    MSG_BUSY, PaidResponse, PaidStream, select_twin, sse_event)
+from . import drain, guard, store
+from .state import Denied, Lease, StateUnavailable, micro_to_usd
+from .state.backend import KILL_LEVELS, KILL_OFF, KILL_ON, KILL_RETRIEVAL_ONLY
+from .stream_runtime import (  # noqa: F401 - MSG_BUSY: re-exported (the message of the in-flight refusal)
+    MSG_BUSY, PaidResponse, PaidStream, select_twin, sse_event, state_call)
 
 logger = logging.getLogger("semigraph.serve")
 router = APIRouter()
@@ -43,11 +70,16 @@ SECURITY_HEADERS = {"Content-Security-Policy": CSP, "X-Content-Type-Options": "n
 MSG_READ_RATE = "Too many requests from your address — please slow down."
 MSG_PAUSED = "Live questions are paused right now — the example questions still work."
 MSG_BUDGET = "The daily budget of live questions is used up — try an example, or come back tomorrow."
+MSG_IP_BUDGET = ("You have used today's live questions for your address — the example questions still work, "
+                 "or come back tomorrow.")
+MSG_RETRIEVAL_ONLY = "Live questions are limited to cached answers right now — the example questions still work."
+MSG_DRAINING = "The service is restarting — please try again in a minute."
 MSG_BOT = "Bot check failed — reload the page and try again."
 MSG_RATE = "Too many questions from your address — please wait a few minutes."
 MSG_UPLOADS_OFF = "Uploaded documents are not available right now."
 MSG_WORKSPACE_NOT_FOUND = "workspace not found"    # an unknown workspace and a wrong token must look the same
 MSG_NOT_PUBLIC_EVIDENCE = "not a public evidence id"
+DRAINING_HEADERS = {"Retry-After": "30"}
 
 
 # The citation drawer: the excerpt, where it comes from, and its FRESHNESS — a paragraph a later
@@ -104,7 +136,15 @@ class AskRequest(BaseModel):
 
 
 class PolicyRequest(BaseModel):
-    kill_switch: bool
+    """The kill level: a level name, or a bool as before (``true`` is ``on``, ``false`` is ``off``)."""
+
+    kill_switch: Literal["on", "retrieval_only", "off"] | bool
+
+    @property
+    def level(self) -> str:
+        if isinstance(self.kill_switch, bool):
+            return KILL_ON if self.kill_switch else KILL_OFF
+        return self.kill_switch
 
 
 def _read_gate(request: Request) -> None:
@@ -159,14 +199,45 @@ async def _ledger_cached(st) -> dict:
     return ledger
 
 
+async def _kill_level(st) -> str:
+    """The kill level (``off``, ``retrieval_only`` or ``on``) from the backend's cache, which the maintenance thread
+    refreshes. Anything that goes wrong reads ``on``: a gate that cannot tell is closed."""
+    try:
+        level = await state_call(st, st.state.kill_level)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("kill level unavailable (%s): treating it as on", type(e).__name__)
+        return KILL_ON
+    return level if level in KILL_LEVELS else KILL_ON
+
+
+async def _spend_today_usd(st) -> float | None:
+    """Today's spend as the daily cap counts it (settled asks at their cost, running ones at their estimate), from the
+    backend's snapshot (cached like the ledger: the neo4j backend reads its counters from the database); None when the
+    backend cannot say right now."""
+    now = time.monotonic()
+    cached = getattr(st, "spend_cache", None)
+    if cached and now - cached[0] < st.settings.stats_cache_seconds:
+        return cached[1]
+    try:
+        spend = micro_to_usd((await state_call(st, st.state.snapshot))["spend_micro"])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("spend snapshot unavailable (%s)", type(e).__name__)
+        return None
+    st.spend_cache = (now, spend)
+    return spend
+
+
 @router.get("/api/stats")
 async def stats(request: Request):
     _read_gate(request)
     st, s = request.app.state, request.app.state.settings
     ledger = await _ledger_cached(st)
-    paused = await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch)
+    paused = await _kill_level(st) != KILL_OFF
     return {"graph": st.graph_stats, "snapshot": getattr(st, "snapshot", None), "ledger": ledger, "paused": paused,
+            "spend_today_usd": await _spend_today_usd(st),
             "limits": {"max_queries_per_day": s.max_queries_per_day,
+                       "max_spend_usd_per_day": s.max_spend_usd_per_day,
+                       "per_ip_per_day": s.paid_per_ip_per_day,
                        "per_ip": f"{s.rate_limit_questions} per {s.rate_limit_window_seconds // 60} min",
                        "max_question_chars": s.max_question_chars},
             "models": {"llm": s.answer_model, "escalation": s.escalation_model or None, "embedder": st.embedder.name},
@@ -247,36 +318,158 @@ async def ask(body: AskRequest, request: Request):
     iph = guard.hash_request_ip(request, s)
     snapshot_id = getattr(st, "snapshot_id", "")
 
-    # Free tier (cache hits) has its own, wider window — and it is the first gate,
-    # so an unauthenticated client cannot write a ledger row without passing it.
-    if not st.free_rate_limiter.allow(iph):
-        raise HTTPException(status_code=429, detail=MSG_RATE)
     if workspace is not None:
-        # No cache on either side: an answer drawn from a private document must never be replayed to anyone else.
-        token = request.headers.get("x-workspace-token", "")
-        if not await run_in_threadpool(_workspace_token_ok, st.driver, workspace["workspace_id"], token):
-            raise HTTPException(status_code=404, detail=MSG_WORKSPACE_NOT_FOUND)
+        # Always paid, never cached: refused before it takes a window while draining.
+        _refuse_while_draining()
+        _take_free_window(st, iph)
+        await _check_workspace_access(st, request, workspace["workspace_id"])
     else:
-        cached = await run_in_threadpool(store.get_answer, st.driver, store.cache_key(question, strategy, snapshot_id),
-                                         s.answer_cache_ttl_hours)
-        if cached:
-            await run_in_threadpool(store.log_query, st.driver, ip_hash=iph, strategy=strategy, cached=True,
-                                    **guard.ip_hash_version_fields(s))
-            event = {"event": "done", "cached": True, **cached}
-            return EventSourceResponse(_one_event(event), sep="\n")
+        cached = await _answer_from_cache(st, s, iph, strategy, store.cache_key(question, strategy, snapshot_id))
+        if cached is not None:
+            return cached
 
-    if await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch):
+    level = await _kill_level(st)
+    if level == KILL_RETRIEVAL_ONLY:
+        raise HTTPException(status_code=503, detail=MSG_RETRIEVAL_ONLY)
+    if level != KILL_OFF:
         raise HTTPException(status_code=503, detail=MSG_PAUSED)
-    if s.max_queries_per_day and await run_in_threadpool(store.paid_queries_today, st.driver) >= s.max_queries_per_day:
-        raise HTTPException(status_code=429, detail=MSG_BUDGET)
     if not await guard.verify_turnstile(body.turnstile_token, ip, s.turnstile_secret_key,
                                         s.is_production, required=s.turnstile_required):
         raise HTTPException(status_code=403, detail=MSG_BOT)
     if not st.rate_limiter.allow(iph):
         raise HTTPException(status_code=429, detail=MSG_RATE)
-    stream = PaidStream(st, question, strategy, iph, snapshot_id, workspace,
-                        twin=_stream_fn(strategy, workspace is not None))
-    return PaidResponse(stream, send_timeout=s.send_timeout_s)
+    # resolved before the reserve: an import error costs nothing
+    twin = _stream_fn(strategy, workspace is not None)
+    lease = await _admit(st, iph, strategy, workspace is not None, st.estimates["workspace" if workspace else strategy])
+    stream = PaidStream(st, question, strategy, iph, snapshot_id, workspace, twin=twin, lease=lease)
+    try:
+        return PaidResponse(stream, send_timeout=s.send_timeout_s)
+    except BaseException:
+        await stream.finalize()
+        raise
+
+
+# ---- the gates of an ask
+
+
+def _refuse_while_draining() -> None:
+    if drain.DRAIN.draining:
+        raise HTTPException(status_code=503, detail=MSG_DRAINING, headers=DRAINING_HEADERS)
+
+
+def _take_free_window(st, iph: str) -> None:
+    if not st.free_rate_limiter.allow(iph):
+        raise HTTPException(status_code=429, detail=MSG_RATE)
+
+
+async def _check_workspace_access(st, request: Request, workspace_id: str) -> None:
+    """The workspace token (404 for a bad id and a bad token alike) through the bounded state driver, under the cache
+    read budget: it is a graph read before the bot check. An empty budget is 429, an unreachable or slow database
+    503."""
+    token = request.headers.get("x-workspace-token", "")
+    if not st.cache_budget.take():
+        raise HTTPException(status_code=429, detail=MSG_READ_RATE)
+    try:
+        ok = await state_call(st, _workspace_token_ok, st.state_store_driver, workspace_id, token)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("workspace token check unavailable (%s): refusing", type(e).__name__)
+        raise HTTPException(status_code=503, detail=MSG_PAUSED) from None
+    if not ok:
+        raise HTTPException(status_code=404, detail=MSG_WORKSPACE_NOT_FOUND)
+
+
+async def _answer_from_cache(st, s, iph: str, strategy: str, key: str) -> EventSourceResponse | None:
+    """Free window, then the answer cache, for a public ask: the cached answer's response, or None on a miss (the ask
+    goes on as a paid one). While draining the order flips, so a miss that is refused takes no window: the cache is read
+    first, a hit then takes the free window, a miss is 503 ``MSG_DRAINING``."""
+    draining = drain.DRAIN.draining
+    if not draining:
+        _take_free_window(st, iph)
+    cached = await _read_cache(st, s, key)
+    if cached is None:
+        if draining:
+            raise HTTPException(status_code=503, detail=MSG_DRAINING, headers=DRAINING_HEADERS)
+        return None
+    if draining:
+        _take_free_window(st, iph)
+    await _log_cached_hit(st, s, iph, strategy)
+    return EventSourceResponse(_one_event({"event": "done", "cached": True, **cached}), sep="\n")
+
+
+async def _read_cache(st, s, key: str) -> dict | None:
+    """One token of the process-wide cache read budget, then ``state.cache_get``. Any failure is 503: a cached answer is
+    never served on a guess and a read that failed never falls through to a paid call."""
+    if not st.cache_budget.take():
+        raise HTTPException(status_code=429, detail=MSG_READ_RATE)
+    try:
+        return await state_call(st, st.state.cache_get, key, s.answer_cache_ttl_hours)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("answer cache unavailable (%s): refusing", type(e).__name__)
+        raise HTTPException(status_code=503, detail=MSG_PAUSED) from None
+
+
+async def _log_cached_hit(st, s, iph: str, strategy: str) -> None:
+    """The cached answer's ledger row, through the bounded state driver. If it cannot be written the answer is not
+    served: the free tier's accounting is the one thing a cache hit must not skip."""
+    try:
+        await state_call(st, store.log_query, st.state_store_driver, ip_hash=iph, strategy=strategy, cached=True,
+                         **guard.ip_hash_version_fields(s))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("cached-answer row not written (%s): refusing", type(e).__name__)
+        raise HTTPException(status_code=503, detail=MSG_PAUSED) from None
+
+
+_DENIALS = {Denied.DAILY_COUNT: (429, MSG_BUDGET), Denied.DAILY_SPEND: (429, MSG_BUDGET),
+            Denied.IP_DAILY: (429, MSG_IP_BUDGET), Denied.INFLIGHT: (429, MSG_BUSY),
+            Denied.KILL: (503, MSG_PAUSED), Denied.UNAVAILABLE: (503, MSG_PAUSED)}
+
+
+async def _admit(st, iph: str, strategy: str, workspace: bool, estimate_micro: int) -> Lease:
+    """Count the ask on the drain, then take its lease (``state.reserve``). Returns the lease, and with it the drain
+    count: both belong to the :class:`PaidStream` from then on. A refusal raises its HTTP error and gives the count
+    back; so does an exception or a cancellation, which also settles a lease that was granted but never reached the
+    caller (the reserve runs on a thread that a cancellation does not interrupt: the lease is recorded there, before the
+    checkpoint that delivers the cancellation)."""
+    if not drain.DRAIN.try_enter():
+        raise HTTPException(status_code=503, detail=MSG_DRAINING, headers=DRAINING_HEADERS)
+    granted: list[Lease] = []
+    try:
+        outcome = await state_call(st, _reserve_noting, st.state, granted, ip_hash=iph, strategy=strategy,
+                                   workspace=workspace, estimate_micro=estimate_micro, now_wall=time.time(),
+                                   now_mono=time.monotonic())
+    except StateUnavailable as e:
+        drain.DRAIN.leave()
+        logger.warning("reserve unavailable (%s): refusing", type(e).__name__)
+        raise HTTPException(status_code=503, detail=MSG_PAUSED) from None
+    except BaseException:
+        await _abandon(st, granted)
+        drain.DRAIN.leave()
+        raise
+    if isinstance(outcome, Denied):
+        drain.DRAIN.leave()
+        status, detail = _DENIALS[outcome]
+        raise HTTPException(status_code=status, detail=detail)
+    return outcome
+
+
+def _reserve_noting(backend, granted: list[Lease], **kwargs) -> Lease | Denied:
+    """``backend.reserve`` on the worker thread, remembering a granted lease where the caller can still find it when the
+    result is lost to a cancellation."""
+    outcome = backend.reserve(**kwargs)
+    if isinstance(outcome, Lease):
+        granted.append(outcome)
+    return outcome
+
+
+async def _abandon(st, granted: list[Lease]) -> None:
+    """Settle a lease that no stream took (shielded; the failure is logged: the sweep charges the estimate then)."""
+    for lease in granted:
+        with anyio.CancelScope(shield=True):
+            try:
+                await state_call(st, st.state.reconcile, lease.lease_id, outcome="abandoned", usage=None,
+                                 cost_micro=None)
+            except Exception as e:  # noqa: BLE001
+                logger.error("settling an unused lease failed (%s): its estimate stays charged", type(e).__name__)
 
 
 async def _one_event(event: dict) -> AsyncIterator[ServerSentEvent]:
@@ -302,16 +495,58 @@ def _check_admin(request: Request) -> None:
 
 @router.get("/api/admin/policy")
 async def admin_policy(request: Request):
+    """``kill_switch`` is the stored level (``on``, ``retrieval_only`` or ``off``); ``effective`` is what the gates
+    apply right now (the cached level: ``on`` while it is unread or stale, or the ``KILL_SWITCH`` env override is
+    set)."""
     _check_admin(request)
     st = request.app.state
-    return {"kill_switch": await run_in_threadpool(store.get_policy, st.driver, "kill_switch") or "off",
+    return {"kill_switch": await run_in_threadpool(store.get_policy, st.driver, "kill_switch") or KILL_OFF,
+            "effective": await _kill_level(st),
             "ledger": await run_in_threadpool(store.ledger_summary, st.driver)}
 
 
 @router.post("/api/admin/policy")
 async def admin_set_policy(body: PolicyRequest, request: Request):
+    """Set the kill level through the backend, so the flip is immediate on this machine: a level that tightens is
+    applied in memory first (it holds even when the database write fails: 200, ``stored`` false, and the maintenance
+    thread retries the write), a level that relaxes is applied only once stored (the database failing is 503: nothing
+    changed).
+
+    A pre-M5 image reads only ``on`` as stopped, so it treats ``retrieval_only`` as ``off``: before rolling back to one,
+    set ``on`` or ``off`` (docs/v2/M5A_BUILD_PLAN.md section 1, I4)."""
     _check_admin(request)
-    value = "on" if body.kill_switch else "off"
-    await run_in_threadpool(store.set_policy, request.app.state.driver, "kill_switch", value)
-    logger.warning("kill switch set to %s by admin", value)
-    return {"kill_switch": value}
+    st, level = request.app.state, body.level
+    stored = True
+    try:
+        await state_call(st, st.state.set_kill_level, level)
+    except StateUnavailable as e:
+        stored = False
+        logger.warning("kill level %s was not stored (%s)", level, type(e).__name__)
+        if await _kill_level(st) != level:
+            raise HTTPException(status_code=503,
+                                detail="the kill level could not be stored and was not applied") from None
+    logger.warning("kill switch set to %s by admin (stored=%s)", level, stored)
+    return {"kill_switch": level, "stored": stored}
+
+
+@router.get("/api/admin/state")
+async def admin_state(request: Request):
+    """The backend's snapshot (counters, leases, the kill level and its age) with what is running around it: the named
+    thread limiters, the drain and the maintenance thread. Admin only, like the policy: a lease id and the per-address
+    maximum are not for the public ``/api/stats``."""
+    _check_admin(request)
+    st = request.app.state
+    try:
+        snapshot = await state_call(st, st.state.snapshot)
+    except StateUnavailable:
+        raise HTTPException(status_code=503, detail="the state store is not reachable") from None
+    maintenance = getattr(st, "maintenance", None)
+    return {"state": snapshot, "limiters": _limiter_counts(st.limiters),
+            "drain": {"draining": drain.DRAIN.draining, "active": drain.DRAIN.active},
+            "maintenance": {"alive": bool(maintenance is not None and maintenance.is_alive())},
+            "pending_settles": getattr(st.state, "pending_settles", lambda: None)()}
+
+
+def _limiter_counts(limiters) -> dict:
+    return {name: {"borrowed": limiter.borrowed_tokens, "total": limiter.total_tokens}
+            for name, limiter in limiters._asdict().items()}

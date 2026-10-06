@@ -1,13 +1,21 @@
-"""M4 step 0.7: the ``/api/ask`` seam for upload workspaces (docs/v2/M4_PLAN.md 4.4 and 5).
+"""M4 step 0.7: the ``/api/ask`` seam for upload workspaces (docs/v2/M4_PLAN.md 4.4 and 5), in the gate order of M5a I4
+(``serve/routes.py``).
 
-A workspace ask is validated (shape, strategy, ``as_of``) -> the agent is refused (400, before Turnstile and the slot) -> uploads
-must be enabled (503) -> the free-tier window -> the workspace token (404 for a bad id or token, indistinguishable) -> kill
-switch -> daily ceiling -> Turnstile -> per-address paid window -> slot. It never reads or writes the answer cache (an answer
-drawn from a private document must never be replayed to anyone else), and nothing is written before the token check. The public
-evidence route refuses ``doc:`` ids outright: the workspace is not in the citation, so resolving one would leak existence.
+A workspace ask is validated (shape, strategy, ``as_of``) -> the agent is refused (400, before Turnstile and any state
+call) -> uploads must be enabled (503) -> not draining (503) -> the free-tier window -> the workspace token (404 for a bad
+id or token, indistinguishable; read under the cache read budget) -> the kill level (503: ``on``, or ``retrieval_only``
+with its own message) -> Turnstile -> per-address paid window -> ``state.reserve``, which refuses with the daily ceilings
+(both: 429 ``MSG_BUDGET``), the per-address daily cap and the in-flight cap before any lease exists. It never reads or
+writes the answer cache (an answer drawn from a private document must never be replayed to anyone else), and nothing is
+written before the token check. The public evidence route refuses ``doc:`` ids outright: the workspace is not in the
+citation, so resolving one would leak existence.
+
+The paid ask's ledger row is the lease the state backend settles (``fakes.settled``); ``fakes.queries`` holds only the
+cached rows ``store.log_query`` still writes.
 """
 
 import pytest
+from serve_state_fakes import fresh_drain  # noqa: F401 - a fixture
 from test_serve_api import (  # noqa: F401 - pytest fixtures
     CID,
     Q,
@@ -20,7 +28,10 @@ from test_serve_api import (  # noqa: F401 - pytest fixtures
 
 import semigraph.serve.routes as routes
 from semigraph.retrieval import answerer_async, workspace_async
-from semigraph.serve import guard, store
+from semigraph.serve import drain, guard, store
+from semigraph.serve.state import Denied
+
+pytestmark = pytest.mark.usefixtures("fresh_drain")
 
 WS = "0123456789abcdef0123456789abcdef"
 TOKEN = "t" * 22
@@ -60,6 +71,12 @@ def forbid_cache(monkeypatch):
     monkeypatch.setattr(store, "put_answer", never)
 
 
+def assert_cache_untouched(fakes):
+    """The answer cache is the state backend's now (``cache_get`` / ``cache_put``): its call record shows a touch, which
+    a patched store function cannot."""
+    assert not {"cache_get", "cache_put"} & set(fakes.backend.names())
+
+
 def ask(client, headers=None, **body):
     return client.post("/api/ask", json={"question": Q, **body}, headers=headers or {})
 
@@ -80,7 +97,7 @@ def test_the_agent_is_refused_with_a_workspace_before_turnstile_and_the_slot(ws_
     install_agent_stream_that_must_not_run(monkeypatch)
     monkeypatch.setattr(guard, "verify_turnstile", lambda *a, **kw: pytest.fail("Turnstile must not be reached"))
     r = ask(ws_client, {"X-Workspace-Token": TOKEN}, strategy="agent", workspace_id=WS)
-    assert r.status_code == 400 and fakes.queries == []
+    assert r.status_code == 400 and fakes.queries == [] and fakes.backend.calls == []     # no state call, no lease
     if agent_enabled:
         assert r.json()["detail"] == "strategy=agent is not available with a workspace"
     else:
@@ -148,6 +165,8 @@ def test_a_missing_or_wrong_token_is_404_and_writes_nothing(ws_client, fakes, mo
     forbid_cache(monkeypatch)
     r = ask(ws_client, headers, workspace_id=WS)
     assert r.status_code == 404 and r.json() == {"detail": "workspace not found"} and fakes.queries == []
+    assert fakes.backend.granted == [] and fakes.settled == []
+    assert_cache_untouched(fakes)
 
 
 def test_an_unknown_workspace_and_a_wrong_token_are_indistinguishable(ws_client, fakes):
@@ -156,15 +175,29 @@ def test_an_unknown_workspace_and_a_wrong_token_are_indistinguishable(ws_client,
     assert (unknown.status_code, unknown.json()) == (wrong.status_code, wrong.json()) == (404, {"detail": "workspace not found"})
 
 
-def test_the_token_is_checked_before_the_kill_switch(ws_client, fakes):
-    fakes.policy["kill_switch"] = "on"
+@pytest.mark.parametrize("level,message", [("on", routes.MSG_PAUSED), ("retrieval_only", routes.MSG_RETRIEVAL_ONLY)])
+def test_the_token_is_checked_before_the_kill_switch(ws_client, fakes, level, message):
+    fakes.backend.kill = level
     assert ask(ws_client, {"X-Workspace-Token": "wrong"}, workspace_id=WS).status_code == 404
-    assert ask(ws_client, {"X-Workspace-Token": TOKEN}, workspace_id=WS).status_code == 503
+    assert "kill_level" not in fakes.backend.names()           # a bad token is refused before the level is even read
+    r = ask(ws_client, {"X-Workspace-Token": TOKEN}, workspace_id=WS)
+    assert r.status_code == 503 and r.json() == {"detail": message}
+    assert "kill_level" in fakes.backend.names() and fakes.backend.granted == []     # refused at the level: no lease
 
 
-def test_the_daily_ceiling_applies_to_workspace_asks(ws_client, fakes):
-    fakes.paid_today = FakeSettings.max_queries_per_day
-    assert ask(ws_client, {"X-Workspace-Token": TOKEN}, workspace_id=WS).status_code == 429
+@pytest.mark.parametrize("denial", [Denied.DAILY_COUNT, Denied.DAILY_SPEND], ids=lambda denial: denial.name)
+def test_the_daily_ceiling_applies_to_workspace_asks(ws_client, fakes, monkeypatch, denial):
+    forbid_cache(monkeypatch)
+    calls = []
+    install_workspace_stream(monkeypatch, calls)
+    fakes.backend.deny.append(denial)
+    r = ask(ws_client, {"X-Workspace-Token": TOKEN}, workspace_id=WS)
+    assert r.status_code == 429 and r.json() == {"detail": routes.MSG_BUDGET}
+    assert fakes.backend.reserve_kwargs[-1]["workspace"] is True          # the ceiling was asked of the workspace ask
+    # refused without consuming anything: no lease, no ledger row of either kind, no writer call, no cache touch
+    assert fakes.backend.granted == [] and fakes.backend.inflight == 0 and fakes.settled == [] and fakes.queries == []
+    assert calls == [] and drain.DRAIN.active == 0
+    assert_cache_untouched(fakes)
 
 
 # ------------------------------------------------------------------------------------------------- an accepted workspace ask
@@ -176,8 +209,10 @@ def test_an_accepted_workspace_ask_streams_the_workspace_writer_and_never_touche
     r = ask(ws_client, {"X-Workspace-Token": TOKEN}, workspace_id=WS, as_of="2026-09-01")
     assert r.status_code == 200 and DOC in r.text and "event: done" in r.text
     assert calls and calls[0]["workspace_id"] == WS and calls[0]["as_of"] == "2026-09-01" and calls[0]["strategy"] == "hybrid"
-    assert len(fakes.queries) == 1 and fakes.queries[0]["workspace"] is True and fakes.queries[0]["cached"] is False
-    assert ws_client.app.state.answer_limiter.borrowed_tokens == 0          # the workspace ask gave its slot back
+    # its ledger row is the lease the backend settled, a workspace one; no cached row was written
+    assert [(s["workspace"], s["outcome"]) for s in fakes.settled] == [(True, "done")] and fakes.queries == []
+    assert_cache_untouched(fakes)
+    assert fakes.backend.inflight == 0 and drain.DRAIN.active == 0           # the workspace ask gave its lease back
 
 
 def test_a_workspace_answer_logs_counts_of_its_checks_never_their_sentences(ws_client, fakes, monkeypatch, caplog):
@@ -203,7 +238,8 @@ def test_a_public_ask_never_reaches_the_workspace_writer(client, fakes, monkeypa
     install_workspace_stream(monkeypatch, calls)
     r = ask(client)
     assert r.status_code == 200 and CID in r.text and calls == []
-    assert fakes.queries[-1].get("workspace", False) is False
+    assert fakes.backend.reserve_kwargs[-1]["workspace"] is False
+    assert [s["workspace"] for s in fakes.settled] == [False]               # its paid row is a public one
 
 
 def test_the_stream_function_is_chosen_by_workspace_first(monkeypatch):

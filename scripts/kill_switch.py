@@ -12,7 +12,10 @@ copy).
 ledger).
 
 A pre-M5 image treats ``retrieval_only`` as ``off`` (it only knows ``on`` as stopped): set ``on`` or ``off`` before
-rolling back to one (docs/v2/M5A_BUILD_PLAN.md section 1, I4 rollback).
+rolling back to one (docs/v2/M5A_BUILD_PLAN.md section 1, I4 rollback). The image that is live today is such an image,
+so ``--direct`` refuses to STORE any level it does not understand (``retrieval_only``) unless
+``--i-know-the-live-image-treats-it-as-off`` is given: a database that image reads would then let paid questions
+through while the operator believes they are paused. Reading a level never needs the flag.
 
 Two ways in. The default talks to the running app's admin endpoint, which is what ``scripts/ops.ps1`` and the runbook
 use, because Neo4j is private on Fly and a laptop cannot reach it: it reads APP_BASE_URL and ADMIN_TOKEN from the env
@@ -37,6 +40,8 @@ LEVELS = ("on", "retrieval_only", "off")
 READ_COMMANDS = ("get", "status")
 DEFAULT_ENV_FILE = ".env.fly"
 HTTP_TIMEOUT_S = 60
+LIVE_IMAGE_LEVELS = ("on", "off")      # the levels the image that is live today understands
+KNOW_FLAG = "--i-know-the-live-image-treats-it-as-off"
 EFFECT = {"on": "live questions declined (503)", "retrieval_only": "live questions declined (503), retrieval only",
           "off": "live questions accepted"}
 
@@ -59,6 +64,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("command", choices=[*READ_COMMANDS, *LEVELS], nargs="?", default="status")
     parser.add_argument("--direct", action="store_true",
                         help="talk to the Neo4j policy node instead of the admin endpoint")
+    parser.add_argument(KNOW_FLAG, dest="know_live_image", action="store_true",
+                        help="--direct only: store a level the live image does not understand (retrieval_only)")
     parser.add_argument("--env", default=None,
                         help=f"env file (admin endpoint: default {DEFAULT_ENV_FILE}, needs APP_BASE_URL + "
                              "ADMIN_TOKEN; --direct: Settings, default the repo .env)")
@@ -86,9 +93,18 @@ def open_driver(args: argparse.Namespace):
         sys.exit(f"ERROR: {exc}")
 
 
+def refuse_a_level_the_live_image_misreads(args: argparse.Namespace) -> None:
+    """Exit before any connection when ``args`` would store a level that the live image reads as ``off``."""
+    if args.command in LEVELS and args.command not in LIVE_IMAGE_LEVELS and not args.know_live_image:
+        sys.exit(f"ERROR: refusing to store {args.command!r} directly: the image that is live today reads only 'on' as "
+                 f"stopped, so it treats {args.command!r} as 'off' and would accept paid questions. Pass {KNOW_FLAG} "
+                 "if the database is read by no such image.")
+
+
 def run_direct(args: argparse.Namespace) -> int:
     from semigraph.serve import store
 
+    refuse_a_level_the_live_image_misreads(args)
     driver = open_driver(args)
     try:
         if args.command in LEVELS:

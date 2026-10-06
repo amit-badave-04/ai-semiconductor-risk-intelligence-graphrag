@@ -4,7 +4,8 @@ database: every cap is applied inside ONE write transaction that holds the day c
 both take the last slot.
 
 The process keeps no lease table: the ledger is the truth. What it does keep is the registry of leases whose stream has
-started (``mark_started``), which the maintenance thread renews and the sweep skips. All Cypher is in :mod:`.ledger`.
+started (``mark_started``), which the maintenance thread renews and the sweep skips, and the queue of settles that are
+waiting for a retry (also skipped by the sweep). All Cypher is in :mod:`.ledger`.
 
 ``reserve`` is one managed transaction (counters, in-flight, caps, increments and the ``reserved`` row together), so a
 failure leaves nothing to roll back. ``reconcile`` settles the row and adjusts its day's counter in one transaction, and
@@ -74,24 +75,24 @@ class Neo4jBackend(StateCore):
 
     def reconcile(self, lease_id: str, *, outcome: str, usage: dict | None, cost_micro: int | None) -> bool:
         """Settle the row and adjust its day counter by ``cost - estimate`` in one transaction; an unknown cost or an
-        abandoned ask keeps the estimate. True iff this call charged. A transaction that keeps failing (retried
-        ``SETTLE_RETRIES`` times, ``SETTLE_RETRY_DELAY_S`` apart) is logged and returns False: the row stays reserved,
-        its lease runs out, and the sweep (or the next boot) charges the estimate."""
+        abandoned ask keeps the estimate. True iff this call charged. If the transaction fails nothing was charged (it
+        rolled back): the call returns False at once and the settle is queued and retried by the maintenance thread
+        (see :mod:`.settle_queue`); until it lands, the row stays reserved and counts in-flight, and the sweep leaves
+        it alone. A settle that is given up is charged its estimate by the sweep once its lease runs out, or by the
+        next boot."""
         self.registry.discard(lease_id)
         charge = self._charge_micro(outcome, cost_micro)
-        done, charged = self._retry_write("settle", lambda: self._ledger.settle_counted(
+        done, charged = self._settle_or_queue("settle", lease_id, lambda: self._ledger.settle_counted(
             self._driver, lease_id, outcome=outcome, usage=usage, cost_micro=charge, now_wall=self._wall(),
             timeout_s=self._cfg.state_op_timeout_s))
-        if not done:
-            self._log_settle_failed(lease_id)
-            return False
-        return bool(charged)
+        return bool(done and charged)
 
     def sweep(self, now: float) -> int:
         """Close this machine's expired leases that were never started, charging each its estimate (already in the
         counters, so only the row changes). Returns how many this call closed; a batch at a time."""
         ids = self._call("sweep_scan", self._ledger.expired_lease_ids, self._driver, machine_id=self._cfg.machine_id,
-                         now_wall=now, skip=self.registry.active(), limit=self._ledger.SWEEP_BATCH,
+                         now_wall=now, skip=[*self.registry.active(), *self._settles.lease_ids()],
+                         limit=self._ledger.SWEEP_BATCH,
                          timeout_s=self._cfg.state_op_timeout_s)
         closed = 0
         for lease_id in ids:

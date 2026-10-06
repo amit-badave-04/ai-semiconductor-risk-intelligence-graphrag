@@ -27,4 +27,4 @@ RUN useradd --create-home --shell /usr/sbin/nologin app && chown -R app:app /srv
 COPY --from=model --chown=app:app /models /srv/models
 USER app
 EXPOSE 8080
-CMD ["uvicorn", "semigraph.serve.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "semigraph.serve.drain"]

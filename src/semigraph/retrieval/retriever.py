@@ -77,6 +77,16 @@ logger = logging.getLogger("semigraph.retrieval")
 DEFAULT_ANCHOR_CIK = 1045810
 
 # --- tunables (named, and pinned by tests) ---
+# The most companies one question may anchor. Every per-company block of the context (the rules, the metrics rows, the
+# temporal block with its passages, the active-risk search) scales with the anchor count, and one 500-character
+# question can name all 26 detectable companies, so without a cap the prompt, and what an ask can cost, had no
+# ceiling. Measured: no benchmark, example or agent-benchmark question names more than 2, and one company's blocks at
+# their caps are about 40,000 characters, so 4 anchors keep the worst-case prompt of every plain ask under the
+# 200,000-token tier the spend estimate assumes (serve/estimate.py derives its worst case from this value).
+# The FIRST ``MAX_ANCHORS`` companies in DETECTION order are kept: the order of ``canonical_entities.json``, not the
+# order the question names them, and deterministic (chip designers and foundries, Samsung, the hyperscalers, then
+# the companies that file nothing).
+MAX_ANCHORS = 4
 RULES_PER_COMPANY = 8           # newest AFFECTED_BY rules per company in the external-events block
 # Rules of the anchors' direct neighbours are OFF: each rule line is ~100 tokens and, with ~26 relevant
 # rules, 12 per company over an anchor plus 16 neighbours added ~8k tokens per answer (cost regression
@@ -331,8 +341,25 @@ def _alias_res() -> list[tuple[re.Pattern, tuple[str, int]]]:
 
 def detect_anchors(question: str) -> dict[str, int]:
     """Deterministic anchor-entity detection via canonical alias matching
-    (notebook 10 strategy C, no LLM). Returns {canonical_name: cik}."""
+    (notebook 10 strategy C, no LLM). Returns {canonical_name: cik}, in the order of ``canonical_entities.json``
+    (a company's aliases are consecutive in :func:`_alias_res`, so the order of the companies does not depend on
+    which alias matched or on the hash seed)."""
     return {name: eid for pat, (name, eid) in _alias_res() if pat.search(question)}
+
+
+def cap_anchors(anchors: Mapping[str, int]) -> tuple[dict[str, int], list[str]]:
+    """``(kept, dropped)``: the first :data:`MAX_ANCHORS` of ``anchors`` and the names of the rest, both in
+    detection order. A question that names no more than the cap is returned as it was, with nothing dropped."""
+    names = list(anchors)
+    return {name: anchors[name] for name in names[:MAX_ANCHORS]}, names[MAX_ANCHORS:]
+
+
+def _dropped_notice(dropped: list[str]) -> dict:
+    """The notice the writer reads when a question named more companies than the cap: a ``Note for this question:``
+    line at the end of the temporal block, where ``context_layout`` renders notices and where the answer prompt
+    already tells the writer to state a note plainly before the findings. It carries no citation id."""
+    return {"cik": None, "company": "this question",
+            "text": f"it names more companies than this answer covers; not covered: {', '.join(dropped)}"}
 
 
 # Words every risk headline shares with every question about them ("How have the risk disclosures changed?"): they must
@@ -721,13 +748,21 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     now explicit — ``anchors`` stays ``{}`` and the fallback is logged at INFO.
     v2 M2 replaces the fallback with a proper no-anchor mode.
 
+    At most :data:`MAX_ANCHORS` companies are anchors (:func:`cap_anchors`: the first in detection order). When the
+    question named more, ``anchors`` holds only the kept ones, every query below sees only their ids,
+    ``anchors_dropped`` lists the names that were not covered (the key exists ONLY then), and ``temporal_notices``
+    ends with a ``Note for this question:`` notice so the answer says what it does not cover.
+
     ``hops`` bounds the company-relation traversal; AFFECTED_BY rules of the anchors'
     direct neighbours are included only when ``hops >= 2`` (as in v1). ``query_vec`` is the question's embedding when the
     caller already has it (the async serving path embeds once, on its own thread, and hands the vector in); without it
     the embedder is called here, as before.
     """
     edges_query = company_edges_query(hops)      # rejects a bad ``hops`` before any work is done
-    anchors = detect_anchors(question)
+    anchors, dropped = cap_anchors(detect_anchors(question))
+    if dropped:
+        logger.info("the question names more than %d companies: kept %s, not covered %s",
+                    MAX_ANCHORS, list(anchors), dropped)
     anchor_defaulted = not anchors
     anchor_ids = list(dict.fromkeys(anchors.values())) or [DEFAULT_ANCHOR_CIK]
     if anchor_defaulted:
@@ -754,9 +789,13 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     logger.debug("hybrid_retrieve anchors=%s defaulted=%s edges=%d metrics=%d risks=%d "
                  "temporal=%d passages=%d chunks=%d", anchors, anchor_defaulted, len(edges), len(metrics),
                  len(risks), len(temporal), len(temporal_passages), len(chunks))
-    return {"anchors": anchors, "edges": edges, "metrics": metrics, "metric_periods": periods, "risks": risks,
-            "temporal": temporal, "temporal_pairs": temporal_pairs, "temporal_passages": temporal_passages,
-            "temporal_notices": temporal_notices, "chunks": chunks, "anchor_defaulted": anchor_defaulted}
+    result = {"anchors": anchors, "edges": edges, "metrics": metrics, "metric_periods": periods, "risks": risks,
+              "temporal": temporal, "temporal_pairs": temporal_pairs, "temporal_passages": temporal_passages,
+              "temporal_notices": temporal_notices, "chunks": chunks, "anchor_defaulted": anchor_defaulted}
+    if dropped:
+        result["temporal_notices"] = [*temporal_notices, _dropped_notice(dropped)]
+        result["anchors_dropped"] = dropped
+    return result
 
 
 def vector_retrieve(question: str, driver, embedder, k: int = 8, *, query_vec: list[float] | None = None) -> dict:

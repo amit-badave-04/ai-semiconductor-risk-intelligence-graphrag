@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 from test_state_inprocess import FakeClock, FakeStoreDriver, ask, build_inprocess, state_settings
 
-from semigraph.serve.state import StateUnavailable
+from semigraph.serve.state import StateUnavailable, maintenance, settle_queue
 from semigraph.serve.state.backend import LeaseRegistry
 from semigraph.serve.state.maintenance import MaintenanceThread
 
@@ -29,6 +29,8 @@ class FakeBackend:
         self.calls: list[tuple] = []
         self.fail: set[str] = set()
         self.renewed: dict[str, bool] = {}
+        self.pending = 0
+        self.flush_threads: list[str] = []
 
     def refresh_kill_level(self):
         self.calls.append(("kill",))
@@ -45,6 +47,22 @@ class FakeBackend:
     def sweep(self, now):
         self.calls.append(("sweep", now))
         if "sweep" in self.fail:
+            raise StateUnavailable("down")
+        return 0
+
+    def pending_settles(self):
+        return self.pending
+
+    def drain_settles(self):
+        self.calls.append(("drain",))
+        if "drain" in self.fail:
+            raise StateUnavailable("down")
+        return 0
+
+    def flush_settles(self, budget_s):
+        self.calls.append(("flush", budget_s))
+        self.flush_threads.append(threading.current_thread().name)
+        if "flush" in self.fail:
             raise StateUnavailable("down")
         return 0
 
@@ -209,6 +227,116 @@ def test_the_real_thread_survives_a_failing_task_and_keeps_ticking():
         assert thread.stop() is True
 
 
+# -------------------------------------------------------------------------------- the settle retry queue
+
+def test_every_tick_retries_the_queued_settles_even_when_no_other_task_is_due():
+    backend = FakeBackend()
+    thread, _ = thread_for(backend)
+    thread._first_read()                                                          # noqa: SLF001
+    thread.tick()
+    thread.tick()
+    assert backend.kinds().count("drain") == 2 and backend.kinds().count("sweep") == 0
+
+
+def test_the_wait_is_capped_at_the_retry_interval_while_settles_are_pending_and_not_otherwise():
+    backend = FakeBackend()
+    thread, _ = thread_for(backend)
+    thread._first_read()                                                          # noqa: SLF001
+    assert thread.tick() == pytest.approx(10.0)
+    backend.pending = 3
+    assert thread.tick() == pytest.approx(settle_queue.RETRY_INTERVAL_S)
+
+
+def test_the_drain_runs_after_the_due_tasks_so_a_slow_database_never_delays_the_kill_refresh():
+    backend = FakeBackend()
+    thread, clock = thread_for(backend)
+    thread._first_read()                                                          # noqa: SLF001
+    backend.calls.clear()
+    clock.advance(30)
+    thread.tick()
+    kinds = backend.kinds()
+    assert kinds.index("kill") < kinds.index("sweep") < kinds.index("drain")
+
+
+def test_a_failing_drain_is_logged_and_the_other_tasks_still_ran(caplog):
+    backend = FakeBackend()
+    backend.fail.add("drain")
+    thread, clock = thread_for(backend)
+    thread._first_read()                                                          # noqa: SLF001
+    clock.advance(30)
+    with caplog.at_level(logging.WARNING, logger="semigraph.serve.state"):
+        thread.tick()
+    assert {"kill", "sweep", "drain"} <= set(backend.kinds())
+    assert any("state_maintenance_failed" in r.message and "settle_drain" in r.message for r in caplog.records)
+
+
+class BareBackend:
+    """A backend written before the retry queue existed: only the three calls the thread always made."""
+
+    def __init__(self):
+        self.registry = LeaseRegistry()
+        self.calls: list[str] = []
+
+    def refresh_kill_level(self):
+        self.calls.append("kill")
+
+    def renew(self, lease_id, now_wall):
+        return True
+
+    def sweep(self, now):
+        self.calls.append("sweep")
+        return 0
+
+
+def test_a_backend_without_a_retry_queue_is_still_served():
+    backend = BareBackend()
+    thread, clock = thread_for(backend)
+    thread._first_read()                                                          # noqa: SLF001
+    clock.advance(30)
+    assert thread.tick() >= 0.0 and thread.stop() is True
+    assert backend.calls == ["kill", "kill", "sweep"]
+
+
+def test_stop_flushes_the_queued_settles_once_after_the_thread_has_ended_within_the_budget():
+    backend = FakeBackend()
+    thread = MaintenanceThread(backend, SimpleNamespace(kill_switch_refresh_s=30.0, lease_renew_s=30.0))
+    thread.start()
+    assert thread.stop() is True
+    assert [call for call in backend.calls if call[0] == "flush"] == [("flush", maintenance.FLUSH_BUDGET_S)]
+    assert "state-maintenance" not in backend.flush_threads and not thread.is_alive()   # flushed by the caller of stop
+    assert thread.stop() is True and backend.kinds().count("flush") == 1                # a second stop flushes nothing
+
+
+def test_a_failing_flush_is_logged_and_stop_still_reports_the_thread_ended(caplog):
+    backend = FakeBackend()
+    backend.fail.add("flush")
+    thread = MaintenanceThread(backend, SimpleNamespace(kill_switch_refresh_s=30.0, lease_renew_s=30.0))
+    thread.start()
+    with caplog.at_level(logging.WARNING, logger="semigraph.serve.state"):
+        assert thread.stop() is True
+    assert any("state_maintenance_failed" in r.message and "settle_flush" in r.message for r in caplog.records)
+
+
+def test_the_thread_retries_a_queued_settle_on_the_real_backend_and_stop_flushes_what_is_left():
+    backend, fake, _, clock = build_inprocess(state_settings(max_concurrent_answers=5, paid_per_ip_per_day=0))
+    first, second = ask(backend, clock, ip="a"), ask(backend, clock, ip="b")
+    fake.fail_settle = 2
+    backend.reconcile(first.lease_id, outcome="done", usage=None, cost_micro=1)
+    backend.reconcile(second.lease_id, outcome="done", usage=None, cost_micro=1)
+    assert backend.pending_settles() == 2
+    thread = MaintenanceThread(backend, state_settings(), clock=clock.mono, wall=clock.wall)
+    thread._first_read()                                                          # noqa: SLF001
+    thread.tick()
+    assert backend.pending_settles() == 0
+    assert {fake.rows[lease.lease_id]["status"] for lease in (first, second)} == {"settled"}
+    third = ask(backend, clock, ip="c")
+    fake.fail_settle = 1
+    backend.reconcile(third.lease_id, outcome="done", usage=None, cost_micro=1)
+    assert backend.pending_settles() == 1
+    assert thread.stop() is True and backend.pending_settles() == 0           # the shutdown flush wrote it
+    assert fake.rows[third.lease_id]["status"] == "settled"
+
+
 # ------------------------------------------------------------------------------------------ stop and the rest
 
 def test_the_thread_is_a_daemon_and_stop_joins_it_within_a_bound():
@@ -300,13 +428,75 @@ def test_the_cli_status_is_an_alias_of_get_and_an_unset_policy_reads_off(monkeyp
     assert capsys.readouterr().out.strip() == "kill switch: off"
 
 
-@pytest.mark.parametrize("level", ["on", "retrieval_only", "off"])
-def test_the_cli_sets_each_of_the_three_levels_and_reads_it_back(monkeypatch, capsys, level):
+@pytest.mark.parametrize("level", ["on", "off"])
+def test_the_cli_sets_the_two_levels_the_live_image_understands_and_reads_each_back(monkeypatch, capsys, level):
     cli, store = load_cli(), FakeStoreDriver()
     monkeypatch.setattr(cli, "open_driver", lambda args: store)
     assert cli.main(["--direct", level]) == 0
     assert store.policy["kill_switch"] == level
     assert f"kill switch: {level}" in capsys.readouterr().out
+
+
+KNOW_FLAG = "--i-know-the-live-image-treats-it-as-off"
+
+
+def test_the_cli_refuses_to_store_retrieval_only_directly_and_says_why_without_touching_the_database(monkeypatch):
+    """The image that is live today reads only ``on`` as stopped, so a stored ``retrieval_only`` would let paid
+    questions through."""
+    cli = load_cli()
+    monkeypatch.setattr(cli, "open_driver", lambda args: pytest.fail("the driver must not be opened on a refusal"))
+    with pytest.raises(SystemExit) as refusal:
+        cli.main(["--direct", "retrieval_only"])
+    message = str(refusal.value)
+    assert "retrieval_only" in message and "off" in message and KNOW_FLAG in message
+
+
+def test_the_cli_stores_retrieval_only_directly_only_when_the_flag_says_the_operator_knows(monkeypatch, capsys):
+    cli, store = load_cli(), FakeStoreDriver()
+    monkeypatch.setattr(cli, "open_driver", lambda args: store)
+    assert cli.main(["--direct", "retrieval_only", KNOW_FLAG]) == 0
+    assert store.policy["kill_switch"] == "retrieval_only"
+    assert "kill switch: retrieval_only" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", ["get", "status"])
+def test_the_cli_reads_any_stored_level_directly_without_the_flag(monkeypatch, capsys, command):
+    cli, store = load_cli(), FakeStoreDriver()
+    monkeypatch.setattr(cli, "open_driver", lambda args: store)
+    store.policy["kill_switch"] = "retrieval_only"
+    assert cli.main(["--direct", command]) == 0
+    assert "kill switch: retrieval_only" in capsys.readouterr().out
+
+
+def test_the_cli_over_http_does_not_need_the_flag(monkeypatch, tmp_path):
+    """Over HTTP the app, not this script, decides what a level means (the endpoint answers 422 until it is widened)."""
+    cli = load_cli()
+    sent = []
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"kill_switch": "retrieval_only", "ledger": {}}
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        def post(self, path, json):
+            sent.append(json)
+            return Response()
+
+        def get(self, path):
+            return Response()
+
+    monkeypatch.setattr(cli.httpx, "Client", Client)
+    env = tmp_path / "env"
+    env.write_text("APP_BASE_URL=https://example.invalid\nADMIN_TOKEN=tok\n", encoding="utf-8")
+    assert cli.main(["retrieval_only", "--env", str(env)]) == 0 and sent == [{"kill_switch": "retrieval_only"}]
 
 
 def test_the_cli_refuses_an_unknown_level():

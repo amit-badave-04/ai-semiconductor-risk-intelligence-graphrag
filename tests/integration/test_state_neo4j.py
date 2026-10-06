@@ -80,11 +80,11 @@ class Env:
         self._drivers.append(driver)
         return driver
 
-    def backend(self, kind="neo4j", *, machine=None, op_timeout=5.0, wall=None, driver=None, sleep=None, refresh=True,
+    def backend(self, kind="neo4j", *, machine=None, op_timeout=5.0, wall=None, driver=None, refresh=True,
                 **overrides):
         settings = SimpleNamespace(**{**BASE_SETTINGS, "state_backend": kind, "machine_id": machine or self.machine,
                                       "state_op_timeout_s": op_timeout, **overrides})
-        kwargs = {name: value for name, value in (("wall", wall), ("sleep", sleep)) if value is not None}
+        kwargs = {"wall": wall} if wall is not None else {}
         backend = make_backend(settings, StateDrivers(state=driver or self.driver(op_timeout)), **kwargs)
         if refresh:
             backend.refresh_kill_level()
@@ -333,18 +333,37 @@ def test_mixed_operations_from_two_instances_never_fail_and_leave_the_counters_e
 
 # -------------------------------------------------------------------------- the bound, with a real server
 
-# A server-side transaction timeout is enforced by the server's transaction monitor, which looks at the running
-# transactions every ``db.transaction.monitor.check.interval`` (2 s by default): a 1.0 s timeout is cut between 1 s and
-# 3 s, not at 1 s. Measured on Neo4j Community 2026.07.1 against a held day-counter lock, reserve returning unavailable
-# after (max over 4 runs): default interval 0.2 s -> 1.24 s, 0.5 s -> 1.23 s, 1.0 s -> 2.00 s; interval 100 ms -> 0.27
-# s, 0.57 s, 1.06 s. So the plan's "1.1 s" holds for a server configured with a short interval; the tests below assert
-# what the default server delivers (timeout + one monitor period + slack) and say so.
-MONITOR_PERIOD_S = 2.0
+# What bounds a state operation, measured on 2026-10-06 (Windows, neo4j driver 6.2.0 and 6.3.0, Neo4j Community
+# 2026.07.1; the figures and the before/after comparison are in the docstring of ``serve/state/backend.py``):
+#
+# - A DEAD server (closed port, a listener that accepts and never answers, a listener that never accepts): every
+#   connection attempt is cut at the attempt timeout, 0.47 s with the production settings (``make_state_driver``). An
+#   auto-commit read (cache_get, the kill-level read) is one attempt: 0.47 s. A managed transaction (reserve, settle,
+#   renew, sweep, snapshot) always makes two, because the driver starts its retry timer after the first failure, with a
+#   0.05 s delay between them: 1.0 s. (Before: 0.5 s and 1.8-2.2 s, with the driver's own 1 s retry delay.)
+# - A LOCK held by another transaction: the server cuts the transaction at its timeout, but only when its transaction
+#   monitor next looks, every ``db.transaction.monitor.check.interval``. deploy/neo4j/fly.toml sets 100 ms for the
+#   semigraph-neo4j app (the default is 2 s, which made this up to 2 s). The tests below READ the interval from the
+#   server they run against and allow the timeout plus one period, so they hold on a default server too; the plan's
+#   1.1 s holds only with the deployed interval.
+BOUND_SLACK_S = 0.2
+ATTEMPT_S = 0.47                                     # make_state_driver with the production settings
+DEAD_MANAGED_BOUND_S = 2 * ATTEMPT_S + 0.06 + BOUND_SLACK_S        # two attempts and the longest first retry delay
+DEAD_AUTOCOMMIT_BOUND_S = ATTEMPT_S + BOUND_SLACK_S
+
+
+def monitor_interval_s(admin) -> float:
+    """The server's ``db.transaction.monitor.check.interval`` in seconds (it prints as ``100ms`` or ``2s``)."""
+    rows = ledger.run_read(admin, "SHOW SETTINGS YIELD name, value WHERE name = "
+                           "'db.transaction.monitor.check.interval' RETURN value", timeout_s=30)
+    text = str(rows[0]["value"]).strip().lower() if rows else "2s"
+    return float(text[:-2]) / 1000 if text.endswith("ms") else float(text.rstrip("s"))
 
 
 def test_a_lock_held_by_another_transaction_makes_a_reserve_unavailable_within_the_server_bound(env):
     backend = env.backend(op_timeout=1.0)
     day = env.days[0]
+    bound = 1.0 + monitor_interval_s(env.admin) + BOUND_SLACK_S
     with env.admin.session() as holder:
         tx = holder.begin_transaction()
         tx.run("MERGE (c:SvcDayCounter {day: $d}) ON CREATE SET c.paid = 0, c.spend_micro = 0 "
@@ -356,40 +375,55 @@ def test_a_lock_held_by_another_transaction_makes_a_reserve_unavailable_within_t
         finally:
             tx.rollback()
     assert result is Denied.UNAVAILABLE
-    assert elapsed < 1.0 + MONITOR_PERIOD_S + 0.5, f"a reserve blocked on a held lock took {elapsed:.2f} s"
+    assert elapsed < bound, f"a reserve blocked on a held lock took {elapsed:.2f} s against a bound of {bound:.2f} s"
     again = env.ask(backend)                                                        # the lock is gone: it works, once
     assert isinstance(again, Lease) and env.counter(day) == (1, 60_000) and len(env.rows()) == 1
 
 
-def test_a_lock_held_by_another_transaction_makes_a_settle_unavailable_within_the_bound_and_charges_nothing(env):
-    backend = env.backend(op_timeout=1.0)
+@pytest.mark.parametrize("kind, lock", [
+    ("neo4j", "MATCH (c:SvcDayCounter {day: $d}) SET c._lock = true"),
+    ("inprocess", "MATCH (q:SvcQuery {id: $id}) SET q._lock = true"),
+], ids=["neo4j-day-counter", "inprocess-row"])
+def test_a_reconcile_blocked_on_a_lock_returns_within_the_bound_queues_its_settle_and_lands_it_once_the_lock_goes(
+        env, kind, lock):
+    backend = env.backend(kind, op_timeout=1.0)
     lease = env.ask(backend)
+    bound = 1.0 + monitor_interval_s(env.admin) + BOUND_SLACK_S
     with env.admin.session() as holder:
         tx = holder.begin_transaction()
-        tx.run("MATCH (c:SvcDayCounter {day: $d}) SET c._lock = true", d=env.days[0])
+        tx.run(lock, d=env.days[0], id=lease.lease_id)
         try:
-            sleeps = []
-            # no real 2 s waits between attempts
-            slow = env.backend(op_timeout=1.0, sleep=sleeps.append)
             started = time.perf_counter()
-            charged = slow.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1)
+            backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1)
             elapsed = time.perf_counter() - started
         finally:
             tx.rollback()
-    # four bounded attempts, then give up
-    assert charged is False and len(sleeps) == 3
-    assert elapsed < 4 * (1.0 + MONITOR_PERIOD_S) + 0.5
-    assert env.rows()[0]["status"] == "reserved" and env.counter(env.days[0]) == (1, 60_000)
-    assert backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1) is True       # the lock is gone
+    assert elapsed < bound, f"a reconcile blocked on a held lock took {elapsed:.2f} s against {bound:.2f} s"
+    assert backend.pending_settles() == 1 and env.rows()[0]["status"] == "reserved"      # queued, not lost
+    assert backend.drain_settles() == 1 and backend.pending_settles() == 0               # the lock is gone: it lands
+    assert env.rows()[0]["status"] == "settled" and env.rows()[0]["cost_micro"] == 1
+    assert env.counter(env.days[0]) == ((1, 1) if kind == "neo4j" else None)             # counters: neo4j only
 
 
-def listener(*, close_at_once):
-    """A local TCP listener that is not Neo4j: it either closes every connection at once (a refused-like failure that is
-    instant on every OS) or keeps them open and never answers (a black hole)."""
+def listener(mode):
+    """A local TCP listener that is not Neo4j. ``instant-close`` closes every connection at once (a refused-like failure
+    that is instant on every OS); ``blackhole`` accepts and never answers; ``never-accepted`` has a backlog of one that
+    is filled and never emptied, so a further connection is not completed. Returns ``(server, held connections)``."""
     server = socket.socket()
     server.bind(("127.0.0.1", 0))
+    held: list[socket.socket] = []
+    if mode == "never-accepted":
+        server.listen(1)
+        for _ in range(8):
+            filler = socket.socket()
+            filler.setblocking(False)
+            try:
+                filler.connect(server.getsockname())
+            except OSError:
+                pass                                         # in progress, or refused once the backlog is full
+            held.append(filler)
+        return server, held
     server.listen(64)
-    held = []
 
     def accept():
         while True:
@@ -397,46 +431,34 @@ def listener(*, close_at_once):
                 connection = server.accept()[0]
             except OSError:
                 return
-            if close_at_once:
+            if mode == "instant-close":
                 connection.close()
             else:
-                held.append(connection)                     # accepted, never read from, never answered
+                held.append(connection)                      # accepted, never read from, never answered
 
     threading.Thread(target=accept, daemon=True).start()
-    return server
+    return server, held
 
 
-@pytest.mark.parametrize("target", ["closed-port", "instant-close", "blackhole"])
-def test_an_unreachable_server_is_bounded_as_measured_on_2026_10_06(env, target):
-    """Not 1 s. Measured with the production settings (1 s operation timeout, 0.5 s acquisition, 1 s connect) on Windows
-    with the neo4j driver 6.2.0 (the retry loop is the same code in 6.3.0):
-
-    - an auto-commit read (the cache read, the kill-level read) gives up in about 0.5 s (the acquisition timeout);
-    - a managed transaction (reserve, renew, sweep, snapshot, settle) does NOT stop at ``max_transaction_retry_time``:
-      the driver starts that timer AFTER the first failed attempt, so it always retries at least once, after a delay of
-      1 s +-20% (then 2 s +-20% if the failures were instant). Against a listener that closes at once: 1.0-1.2 s half
-      the time and 2.4-3.4 s the other half (30 runs: median 1.23, p90 3.06, max 3.38). Against a black hole or a
-      closed port on Windows (each attempt costs the 0.5 s acquisition timeout): 1.8-2.2 s.
-
-    Candidate driver settings measured against the same targets (not applied: the plan fixes
-    ``max_transaction_retry_time = state_op_timeout_s``): ``max_transaction_retry_time=0.2`` with
-    ``initial_retry_delay=0.05`` gave 0.35-0.44 s (instant close) and 1.05-1.07 s (black hole).
-
-    The bounds asserted here are above the measured worst cases (3.4 s; 4.2 s from a 0.2 s attempt time): a regression
-    guard against an unbounded wait, not a promise of 1.1 s."""
-    close_at_once = target == "instant-close"
-    server = listener(close_at_once=close_at_once) if target != "closed-port" else None
+@pytest.mark.parametrize("target", ["closed-port", "instant-close", "blackhole", "never-accepted"])
+def test_a_dead_server_fails_every_state_operation_closed_within_the_measured_bound(env, target):
+    """The production settings (1 s operation timeout, 0.5 s configured acquisition), the real driver, a server that is
+    not there. The bounds are the measured worst case plus 0.2 s of slack: managed transactions about 1.0 s, auto-commit
+    reads about 0.47 s (a closed port on Linux, and an instant close, fail faster)."""
+    server, held = (None, []) if target == "closed-port" else listener(target)
     uri = f"bolt://127.0.0.1:{server.getsockname()[1]}" if server else "bolt://127.0.0.1:1"
     try:
         dead = env.driver(op_timeout=1.0, uri=uri)
         backend = env.backend("neo4j", driver=dead, refresh=False)
-        # serving had started: the kill level was read before the server went away
-        backend._kill_level, backend._kill_read_at = "off", backend._clock()
-        for label, call, bound in (
-                ("cache_get", lambda: backend.cache_get("k", 24), 1.5),
-                ("kill refresh", backend.refresh_kill_level, 1.5),
-                ("reserve", lambda: env.ask(backend), 5.0),
-                ("renew", lambda: backend.renew("l", env.wall), 5.0)):
+        lease_row = env.ask(env.backend("neo4j"))                                          # a lease on the live server
+        backend._kill_level, backend._kill_read_at = "off", backend._clock()               # noqa: SLF001
+        calls = (
+            ("cache_get", lambda: backend.cache_get("k", 24), DEAD_AUTOCOMMIT_BOUND_S),
+            ("kill refresh", backend.refresh_kill_level, DEAD_AUTOCOMMIT_BOUND_S),
+            ("reserve", lambda: env.ask(backend), DEAD_MANAGED_BOUND_S),
+            ("renew", lambda: backend.renew("l", env.wall), DEAD_MANAGED_BOUND_S),
+            ("snapshot", backend.snapshot, DEAD_MANAGED_BOUND_S))
+        for label, call, bound in calls:
             started = time.perf_counter()
             try:
                 outcome = call()
@@ -444,7 +466,85 @@ def test_an_unreachable_server_is_bounded_as_measured_on_2026_10_06(env, target)
                 outcome = Denied.UNAVAILABLE
             elapsed = time.perf_counter() - started
             assert outcome is Denied.UNAVAILABLE, label
-            assert elapsed < bound, f"{label} took {elapsed:.2f} s against {target}"
+            assert elapsed < bound, f"{label} took {elapsed:.2f} s against a {target} (bound {bound:.2f} s)"
+        started = time.perf_counter()
+        assert backend.reconcile(lease_row.lease_id, outcome="done", usage=None, cost_micro=1) is False
+        assert time.perf_counter() - started < DEAD_MANAGED_BOUND_S and backend.pending_settles() == 1
     finally:
+        for connection in held:
+            connection.close()
         if server:
             server.close()
+
+
+class Freezable:
+    """A TCP forwarder in front of the throwaway server whose ``freeze()`` stops moving bytes in both directions while
+    keeping every socket open: a server that went silent without closing anything (a frozen machine, a lost route)."""
+
+    def __init__(self):
+        self.frozen = threading.Event()
+        self.server = socket.socket()
+        self.server.bind(("127.0.0.1", 0))
+        self.server.listen(16)
+        self.port = self.server.getsockname()[1]
+        self._sockets: list[socket.socket] = []
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _accept(self):
+        while True:
+            try:
+                downstream = self.server.accept()[0]
+            except OSError:
+                return
+            upstream = socket.create_connection(("127.0.0.1", int(THROWAWAY_URI.rsplit(":", 1)[1])))
+            self._sockets += [downstream, upstream]
+            threading.Thread(target=self._pump, args=(downstream, upstream), daemon=True).start()
+            threading.Thread(target=self._pump, args=(upstream, downstream), daemon=True).start()
+
+    def _pump(self, source, sink):
+        try:
+            while data := source.recv(65536):
+                while self.frozen.is_set():
+                    time.sleep(0.02)
+                sink.sendall(data)
+        except OSError:
+            return
+
+    def close(self):
+        self.frozen.clear()
+        self.server.close()
+        for connection in self._sockets:
+            connection.close()
+
+
+def test_a_pooled_connection_whose_server_went_silent_fails_the_next_operation_within_the_bound(env):
+    """Measured 2026-10-06 (see ``serve/state/backend.py``): without the liveness check the first operation after the
+    silence read from the dead connection and was still blocked after 20 s (the server's receive-timeout hint is 120 s);
+    with it, each acquire proves the connection alive inside the attempt timeout and an operation fails in about 0.47 s
+    (a managed transaction in 1.0 s). An operation already IN FLIGHT when the server goes silent is not covered."""
+    forwarder = Freezable()
+    try:
+        backend = env.backend("neo4j", driver=env.driver(op_timeout=1.0, uri=f"bolt://127.0.0.1:{forwarder.port}"))
+        assert isinstance(env.ask(backend), Lease) and backend.cache_get("warm", 24) is None     # a pooled connection
+        forwarder.frozen.set()
+        results = {}
+
+        def timed(label, call):
+            started = time.perf_counter()
+            try:
+                call()
+                results[label] = ("returned", time.perf_counter() - started)
+            except StateUnavailable:
+                results[label] = ("unavailable", time.perf_counter() - started)
+
+        for label, call in (("cache_get", lambda: backend.cache_get("k", 24)),
+                            ("reserve", lambda: env.ask(backend, ip="after-the-silence"))):
+            worker = threading.Thread(target=timed, args=(label, call), daemon=True)
+            worker.start()
+            worker.join(10)
+            assert not worker.is_alive(), f"{label} is still blocked on a connection whose server went silent"
+        assert results["cache_get"][0] == "unavailable" and results["cache_get"][1] < DEAD_AUTOCOMMIT_BOUND_S
+        # a reserve answers Denied.UNAVAILABLE instead of raising
+        assert results["reserve"][0] == "returned" and results["reserve"][1] < DEAD_MANAGED_BOUND_S
+    finally:
+        forwarder.close()

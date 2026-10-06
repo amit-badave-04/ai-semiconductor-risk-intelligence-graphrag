@@ -7,6 +7,11 @@
 app = "semigraph"
 primary_region = "sin"
 swap_size_mb = 1024
+# Drain (docs/v2/M5A_BUILD_PLAN.md item D, src/semigraph/serve/drain.py): on SIGTERM the app refuses new paid asks and
+# uploads, lets running streams finish for up to DRAIN_TIMEOUT_S (240 s), then shuts down. Fly's maximum is 300 s.
+# Top-level keys: they must stay above the first [table].
+kill_signal = "SIGTERM"
+kill_timeout = 300
 
 [build]
   dockerfile = "Dockerfile"
@@ -31,6 +36,11 @@ swap_size_mb = 1024
   # Revert either feature: set it to "false" and redeploy (workspaces still expire on schedule: the sweeper always runs).
   FRESHNESS_ENABLED = "true"
   UPLOADS_ENABLED = "true"
+  # M5a I4 (docs/RUNBOOK.md "Paid-ask limits and the state backend"): where the paid-ask counters live. "inprocess" =
+  # memory on this one machine, with a durable row per ask in Neo4j (live). Rollback, or more than one machine:
+  # "neo4j" (counters in Neo4j too), then redeploy. The live caps are pinned by the production validators in
+  # src/semigraph/config.py, not set here.
+  STATE_BACKEND = "inprocess"
 
 [http_service]
   internal_port = 8080

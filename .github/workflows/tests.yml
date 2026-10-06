@@ -76,7 +76,7 @@ jobs:
       - name: Serving-side tests against the shipped dependency set
         run: >
           pytest -q -rs
-          tests/test_serve_*.py tests/test_escalation.py tests/test_verify*.py tests/test_router.py
+          tests/test_serve_*.py tests/test_state_*.py tests/test_escalation.py tests/test_verify*.py tests/test_router.py
           tests/test_ids.py tests/test_llm_shape.py tests/test_answerer_*.py tests/test_answer_checks_events.py
           tests/test_retrieval_*.py tests/test_static_ui.py
       # M4 spike S3 (docs/v2/M4_PLAN.md section 8): the upload parse sandbox under its real RLIMIT_AS on Linux, with the child's
@@ -94,6 +94,60 @@ jobs:
           pytest -q -s -rs
           "tests/test_serve_upload_compare.py::test_max_size_pair_compares_under_rlimit_as_and_reports_child_rss"
           | tee s4.log && grep -q "1 passed" s4.log
+
+  # The paid-ask state package against a REAL Neo4j Community (M5a I4a): what a fake cannot show: the ledger Cypher, the
+  # lock behaviour, a held lock cut at the server's transaction timeout, an unreachable server. These tests are opt-in
+  # (RUN_NEO4J_TESTS=1 and SEMIGRAPH_ALLOW_WIPE=1) and HARD-PINNED to a throwaway instance on port 7898 (127.0.0.1 in the
+  # state tests, localhost in the null test), whatever NEO4J_URI says, so the service container publishes its bolt port
+  # there. The password is a disposable value of this throwaway container, not a secret: the tests hard-code it too.
+  # Single underscores in NEO4J_db_transaction_monitor_check_interval: the setting has no underscore in it (see the
+  # comment in deploy/neo4j/fly.toml); at the 2 s default the held-lock bound the tests pin could not hold.
+  neo4j-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      neo4j:
+        image: neo4j:2026.07.1-community
+        env:
+          NEO4J_AUTH: neo4j/itest-throwaway-only  # gitleaks:allow
+          NEO4J_db_transaction_monitor_check_interval: 100ms
+        ports:
+          - 7898:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p itest-throwaway-only 'RETURN 1'"
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 30
+          --health-start-period 20s
+    env:
+      RUN_NEO4J_TESTS: "1"
+      SEMIGRAPH_ALLOW_WIPE: "1"
+      NEO4J_URI: bolt://localhost:7898
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: itest-throwaway-only  # gitleaks:allow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.13
+      - run: uv sync --extra serve
+      - name: Wait for Neo4j to accept bolt connections
+        run: |
+          for attempt in $(seq 1 60); do
+            if (echo > /dev/tcp/127.0.0.1/7898) 2>/dev/null; then echo "bolt is up after $attempt attempt(s)"; exit 0; fi
+            sleep 2
+          done
+          echo "Neo4j did not open port 7898" >&2
+          exit 1
+      - name: State tests against the real Neo4j
+        shell: bash   # an explicit bash runs with -e and pipefail: a failing pytest fails the step through the tee
+        run: |
+          uv run pytest -q -rs tests/test_state_contract.py tests/integration/test_state_neo4j.py \
+            tests/integration/test_null_legacy_ip_hashes_neo4j.py | tee neo4j-state.log
+          # Every one of these tests skips itself when the server is unreachable or the opt-in variables are missing, and a
+          # skip is not a failure: refuse a run that never reached the server.
+          ! grep -E "SKIPPED.*(not reachable|opt-in|ALLOW_WIPE)" neo4j-state.log
 
   security-scan:
     runs-on: ubuntu-latest

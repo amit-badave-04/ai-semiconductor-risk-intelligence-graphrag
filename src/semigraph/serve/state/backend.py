@@ -7,25 +7,45 @@ Clocks: ``now_wall`` / ``sweep(now)`` / ``renew(now_wall)`` are wall-clock epoch
 on a ledger row is wall clock so another machine can read it); ``now_mono`` and the kill-level staleness are monotonic.
 
 Every backend method is a plain synchronous function. The async caller runs each as ``await anyio.to_thread.run_sync(fn,
-limiter=limiters.state)`` with NO caller-side timeout: the bound lives in the work (the state driver's acquisition and
-connect timeouts, and the server-side transaction timeout set by :mod:`.ledger`). Any driver error becomes
-:class:`StateUnavailable`; a call that takes over one second is logged ``state_slow``.
+limiter=limiters.state)`` with NO caller-side timeout: abandoning a thread that a shielded reserve is running in would
+let the reserve complete after its caller gave up. The bound lives in the work: the state driver's per-attempt timeouts
+and short retry window (``graph.client.make_state_driver``) and the server-side transaction timeout set by
+:mod:`.ledger`. Any driver error becomes :class:`StateUnavailable`; a call that takes over one second is logged
+``state_slow``.
 
-What the bound really is. It is NOT 1 s. Measured on 2026-10-06 with the production settings (1 s operation timeout,
-0.5 s pool acquisition, 1 s connect; neo4j driver 6.2.0 and 6.3.0, Neo4j Community 2026.07.1):
+What the bound is. Measured on 2026-10-06 (Windows; neo4j driver 6.2.0, and 6.3.0 as a spot check; Neo4j Community
+2026.07.1; 20 runs per cell; the production settings: a 1 s operation budget and a 0.5 s configured acquisition
+timeout, which gives 0.47 s per connection attempt):
 
-- the server enforces a transaction timeout when its transaction monitor next looks, every
-  ``db.transaction.monitor.check.interval`` (2 s by default): an operation blocked on a held lock came back unavailable
-  after up to 2.0 s with the default interval and after 1.06 s with it set to 100 ms;
-- an unreachable server: an auto-commit read (``cache_get``, the kill-level read) gives up in about 0.5 s (the
-  acquisition timeout). A managed transaction (reserve, renew, sweep, snapshot, settle) does not stop at
-  ``max_transaction_retry_time``: the driver starts that timer after the FIRST failed attempt, so it always retries
-  at least once, after about 1 s (then about 2 s more if the failures were instant). Against a listener that closes at
-  once: 1.0-1.2 s half the time, 2.4-3.4 s the other half; against a black hole or a closed port on Windows 1.8-2.2 s.
-  ``max_transaction_retry_time=0.2`` with ``initial_retry_delay=0.05`` measured 0.35-0.44 s and 1.05-1.07 s on the
-  same targets (not applied here: the plan fixes ``max_transaction_retry_time = state_op_timeout_s``).
+- A DEAD server (a closed port, a listener that accepts and never answers, a listener that is never accepted from):
+  every connection attempt is cut at 0.47 s. An auto-commit read (``cache_get``, the kill-level read) is one attempt:
+  median 0.47 s, worst 0.49 s. A managed transaction (reserve, renew, sweep, snapshot, settle) always makes two, because
+  the driver starts its retry timer after the first failed attempt and checks it only after the second, with the 0.05 s
+  first retry delay between them: median 1.00 s, worst 1.03 s. Before the fix: 0.50 s and 1.8-2.2 s (the driver's own
+  1 s retry delay between two 0.5 s attempts). On Linux a closed port is refused at once and fails faster still.
+- A LOCK held by another transaction: the server cuts the transaction at its 1 s timeout, but only when its transaction
+  monitor next looks, every ``db.transaction.monitor.check.interval``. ``deploy/neo4j/fly.toml`` sets 100 ms for the
+  semigraph-neo4j app (the default is 2 s): median 1.04 s, worst 1.09 s (the cut is the non-retryable
+  ``Neo.ClientError.Transaction.LockClientStopped``, so there is no second attempt). With the default interval it was
+  1.99 s median and 2.01 s worst. The margin to 1.1 s is about 15 ms: a loaded server can exceed it. The server timeout
+  could be asked for as ``state_op_timeout_s`` minus one monitor period to widen it; that couples this code to the
+  server's setting and is not done.
+- A POOLED connection whose server goes silent (a frozen machine, a lost route; nothing is closed): once the handshake
+  is done the driver reads with no deadline of ours, only the server's receive-timeout hint (120 s). Measured through a
+  forwarder that stops moving bytes: WITHOUT a liveness check the first operation on such a connection was still
+  blocked after 20 s (until the hint); WITH ``liveness_check_timeout=0`` (``make_state_driver``) each acquire proves the
+  connection alive inside the attempt timeout and drops it: a read fails in 0.47 s, a managed transaction in 1.0 s.
+- NOT covered: an operation that is already IN FLIGHT when the server goes silent. Measured: a reserve blocked on a
+  held lock, the forwarder frozen 0.3 s into it, was still blocked after 25 s (the wait was not run longer). The socket
+  carries a 120 s read timeout from the server's hint, so it should end then, or sooner if the connection is reset.
+  Such an operation holds a state-limiter slot (4 on live) and its caller, with no caller-side timeout by design, for
+  that long. The driver has no read-timeout setting of its own; shortening the server's hint is a server setting that
+  was not measured or changed here.
+- A failed SETTLE is not waited for at all: ``reconcile`` returns after its first attempt (see :mod:`.settle_queue`).
+  Before, it slept 2 s three times while holding a state-limiter slot (about 14 s per reconcile during an outage).
 
-Both are bounded and both fail closed; neither is a hang. Callers must not size a queue on the 1 s figure.
+Every case in the first three bullets fails closed in a measured 1.0-1.1 s; the in-flight case does not. A caller must
+not size a queue on a flat 1 s.
 
 ``store`` (the answer cache and the policy flag) is imported inside the methods that use it: ``store`` pulls in the
 answerer, and a later increment may make ``store`` import this package.
@@ -44,13 +64,13 @@ from typing import Any, NamedTuple, Protocol
 from neo4j import Query
 from neo4j.exceptions import DriverError, Neo4jError
 
+from .settle_queue import DRAIN_PER_TICK, QUEUE_MAX, PendingSettle, SettleQueue
+
 logger = logging.getLogger("semigraph.serve.state")
 
 MICRO = 1_000_000
 SLOW_OP_S = 1.0                    # a state call slower than this is logged `state_slow`
 BOOT_TIMEOUT_S = 15.0              # server-side transaction timeout of the boot rebuild (not on the serving path)
-SETTLE_RETRIES = 3                 # extra attempts after a failed settle of a ledger row ...
-SETTLE_RETRY_DELAY_S = 2.0         # ... this far apart; then the boot charges the estimate
 KILL_POLICY_KEY = "kill_switch"
 KILL_OFF, KILL_RETRIEVAL_ONLY, KILL_ON = "off", "retrieval_only", "on"
 KILL_LEVELS = (KILL_OFF, KILL_RETRIEVAL_ONLY, KILL_ON)      # least to most restrictive
@@ -292,15 +312,19 @@ class StateCore:
 
     def __init__(self, config: StateConfig, drivers: StateDrivers, ledger: Any, *,
                  wall: Callable[[], float] = time.time, clock: Callable[[], float] = time.monotonic,
-                 perf: Callable[[], float] = time.perf_counter, sleep: Callable[[float], None] = time.sleep):
+                 perf: Callable[[], float] = time.perf_counter, settle_queue_max: int = QUEUE_MAX):
         self._cfg, self._driver, self._ledger = config, drivers.state, ledger
-        self._wall, self._clock, self._perf, self._sleep = wall, clock, perf, sleep
+        self._wall, self._clock, self._perf = wall, clock, perf
         self._store_driver = BoundedDriver(self._driver, config.state_op_timeout_s)
         self.registry = LeaseRegistry()
-        self._kill_lock = threading.Lock()
+        self._settles = SettleQueue(self._attempt_settle, clock, max_size=settle_queue_max)
+        self._kill_lock = threading.Lock()           # guards the cache below: the hot path (kill_level) takes only this
+        self._writer_lock = threading.Lock()         # serialises the database writes of the level; never taken to read
         self._kill_level: str | None = None          # None: never read
         self._kill_read_at: float | None = None
         self._pending_kill: str | None = None        # a tightening applied in memory whose DB write failed
+        self._kill_gen = 0                           # bumped when a set begins (its identity, see set_kill_level)
+        self._kill_done = 0                          # bumped when a set has applied its level; see refresh_kill_level
 
     # ---- the error and timing wrapper -------------------------------------------------------------------------
 
@@ -318,15 +342,37 @@ class StateCore:
             if elapsed > SLOW_OP_S:
                 logger.warning("state_slow op=%s elapsed_ms=%d", op, round(elapsed * 1000))
 
-    def _retry_write(self, op: str, fn: Callable[[], Any]) -> tuple[bool, Any]:
-        """``fn`` with up to SETTLE_RETRIES retries SETTLE_RETRY_DELAY_S apart; ``(done, result)``."""
-        for attempt in range(1 + SETTLE_RETRIES):
-            try:
-                return True, self._call(op, fn)
-            except StateUnavailable:
-                if attempt < SETTLE_RETRIES:
-                    self._sleep(SETTLE_RETRY_DELAY_S)
-        return False, None
+    # ---- settles that failed: the retry queue -----------------------------------------------------------------
+
+    def _settle_or_queue(self, op: str, lease_id: str, run: Callable[[], Any]) -> tuple[bool, Any]:
+        """One attempt now; ``(True, result)``. If the store fails the settle goes to the retry queue and the call
+        returns ``(False, None)`` at once: nothing here waits, so a limiter slot is never held through an outage."""
+        try:
+            return True, self._call(op, run)
+        except StateUnavailable:
+            self._settles.offer(op, lease_id, run)
+            return False, None
+
+    def _attempt_settle(self, entry: PendingSettle) -> bool:
+        try:
+            self._call(entry.op, entry.run)
+        except StateUnavailable:
+            return False
+        return True
+
+    def pending_settles(self) -> int:
+        """How many settles wait for a retry."""
+        return len(self._settles)
+
+    def drain_settles(self, limit: int = DRAIN_PER_TICK) -> int:
+        """Retry the queued settles, oldest first (the maintenance thread does this on every tick); returns how many
+        finished. Stops at the first failure: the store is down. Safe to call from any thread."""
+        return self._settles.drain(limit)
+
+    def flush_settles(self, budget_s: float) -> int:
+        """Shutdown: try each queued settle once, until ``budget_s`` seconds are spent or one fails (bounded by the
+        budget plus one state operation). What is left is logged and stays for the next boot to charge."""
+        return self._settles.flush(budget_s)
 
     # ---- the kill level ---------------------------------------------------------------------------------------
 
@@ -342,7 +388,11 @@ class StateCore:
         if self._cfg.kill_switch:
             return KILL_ON
         with self._kill_lock:
-            level, read_at = self._kill_level, self._kill_read_at
+            return self._level_locked()
+
+    def _level_locked(self) -> str:
+        """The cached level, or ``on`` when it was never read or is stale. The caller holds ``_kill_lock``."""
+        level, read_at = self._kill_level, self._kill_read_at
         if level is None or read_at is None or self._clock() - read_at > self._cfg.kill_switch_stale_s:
             return KILL_ON
         return level
@@ -355,17 +405,21 @@ class StateCore:
     def refresh_kill_level(self) -> str:
         """Read the policy into the cache (the maintenance thread calls this every ``kill_switch_refresh_s``). A
         tightening whose database write failed is written first, and is not overwritten by an older stored value.
-        Raises StateUnavailable when the database cannot be reached; the cache then simply ages towards ``on``."""
+        Raises StateUnavailable when the database cannot be reached; the cache then simply ages towards ``on``.
+
+        What the refresh read is applied only if no :meth:`set_kill_level` began or finished since the refresh did (the
+        two counters): otherwise a refresh that read ``off`` just before an admin set ``on`` would write ``off`` back,
+        and paid asks would reopen against a database that says ``on``. The same goes for a read that was taken before
+        a relaxation was stored and lands after it was applied."""
         from .. import store
 
         with self._kill_lock:
-            pending = self._pending_kill
-        if pending is not None:
-            self._persist_kill(pending)
+            started = (self._kill_gen, self._kill_done)
+        self._flush_pending_kill()
         stored = self._call("kill_read", store.get_policy, self._store_driver, KILL_POLICY_KEY)
         level = self._parse_policy(stored)
         with self._kill_lock:
-            if self._pending_kill is None:
+            if self._pending_kill is None and (self._kill_gen, self._kill_done) == started:
                 self._kill_level, self._kill_read_at = level, self._clock()
         return self.kill_level()
 
@@ -378,35 +432,51 @@ class StateCore:
         logger.error("unknown kill_switch policy value %r: failing closed (on)", stored)
         return KILL_ON
 
-    def _persist_kill(self, level: str) -> None:
+    def _flush_pending_kill(self) -> None:
+        """Write a tightening whose database write failed earlier. It runs under the writer lock, so it cannot
+        interleave with a set; a set that begins meanwhile supersedes it (the pending mark is then left to that set)."""
         from .. import store
 
-        self._call("kill_write", store.set_policy, self._store_driver, KILL_POLICY_KEY, level)
         with self._kill_lock:
-            if self._pending_kill == level:
-                self._pending_kill = None
+            if self._pending_kill is None:
+                return                                      # the usual case: nothing to write, no lock taken
+        with self._writer_lock:
+            with self._kill_lock:
+                pending, gen = self._pending_kill, self._kill_gen
+            if pending is None:
+                return
+            self._call("kill_write", store.set_policy, self._store_driver, KILL_POLICY_KEY, pending)
+            with self._kill_lock:
+                if self._kill_gen == gen and self._pending_kill == pending:
+                    self._pending_kill = None
 
     def set_kill_level(self, level: str) -> None:
         """Set the level. A TIGHTENING is applied in memory first, so it holds even if the database write then fails (it
         raises StateUnavailable, and the maintenance thread retries the write). A relaxing level is written first and
-        applied only once stored: an unstored relaxation must never open the gate."""
+        applied only once stored: an unstored relaxation must never open the gate.
+
+        Every set takes a generation number and decides, in the same critical section, whether it tightens. The
+        database writes are serialised, and a set that a later one has superseded by the time its turn comes skips its
+        write: the later set owns the level, in memory and in the database. Two concurrent sets therefore cannot leave
+        the two disagreeing."""
+        from .. import store
+
         if level not in KILL_LEVELS:
             raise ValueError(f"kill level must be one of {KILL_LEVELS}, got {level!r}")
-        if _kill_rank(level) > _kill_rank(self._cached_level()):
-            with self._kill_lock:
+        with self._kill_lock:
+            self._kill_gen += 1
+            gen = self._kill_gen
+            if _kill_rank(level) > _kill_rank(self._level_locked()):
                 self._kill_level, self._kill_read_at, self._pending_kill = level, self._clock(), level
-            self._persist_kill(level)
-            return
-        self._persist_kill(level)
-        with self._kill_lock:
-            self._kill_level, self._kill_read_at, self._pending_kill = level, self._clock(), None
-
-    def _cached_level(self) -> str:
-        with self._kill_lock:
-            level, read_at = self._kill_level, self._kill_read_at
-        if level is None or read_at is None or self._clock() - read_at > self._cfg.kill_switch_stale_s:
-            return KILL_ON
-        return level
+        with self._writer_lock:
+            with self._kill_lock:
+                if self._kill_gen != gen:
+                    return
+            self._call("kill_write", store.set_policy, self._store_driver, KILL_POLICY_KEY, level)
+            with self._kill_lock:
+                if self._kill_gen == gen:
+                    self._kill_level, self._kill_read_at, self._pending_kill = level, self._clock(), None
+                    self._kill_done += 1
 
     def _forget_kill_level(self) -> None:
         with self._kill_lock:
@@ -469,10 +539,6 @@ class StateCore:
                     day, report.paid, report.spend_micro, len(report.per_ip), expired, report.foreign_leases, synced,
                     dict(delta) if delta else None)
         return report
-
-    def _log_settle_failed(self, lease_id: str) -> None:
-        logger.error("state_settle_failed lease=%s: the row stays reserved and the next boot charges its estimate",
-                     lease_id)
 
 
 def make_backend(settings: Any, drivers: StateDrivers, **kwargs: Any) -> StateBackend:

@@ -25,6 +25,12 @@ The bot-check token travels in the ``X-Turnstile-Token`` HEADER, verified BEFORE
 15.2) — the literal 14.6 gate order (UPLOADS_ENABLED -> workspace token -> kill switch -> Turnstile -> per-address
 window -> streamed size cap -> byte gate -> quota -> slot -> daily budget) now holds exactly, since the token no
 longer has to be parsed out of the multipart body first.
+
+M5a I4 (docs/v2/M5_DECISIONS.md 2.2): while the process drains (``serve.drain``) workspace creation and an upload are
+refused with 503 ``MSG_DRAINING`` BEFORE any window is consumed, and every other route here (reads, the job stream, the
+evidence drawer) is served; an upload counts on the drain from the moment it takes the one upload slot until the job
+thread releases it (:class:`DrainCountedSlot`). The kill level (``state.kill_level``) replaces the stored-flag read: an
+upload is refused unless it is ``off``, and a level that cannot be read is not ``off``.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import threading
 
 import python_multipart.multipart as multipart
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -45,7 +52,8 @@ from ..retrieval.ids import DOC_ID_RE, DOCUMENT_ID_RE
 from ..uploads import jobs, new_document_id, repo
 from ..uploads.gate import GateError, check_bytes, sniff
 from ..uploads.versions import next_version
-from . import guard, routes, store
+from . import drain, guard, routes, store
+from .state.backend import KILL_OFF
 
 logger = logging.getLogger("semigraph.serve.workspace_routes")
 router = APIRouter()
@@ -76,6 +84,24 @@ MSG_NO_CHANGES = "no change report for that version pair"
 MSG_NO_EVIDENCE = "no evidence with that id"
 
 
+class DrainCountedSlot(threading.BoundedSemaphore):
+    """``app.state.upload_slots``: the one-upload-at-a-time semaphore, counted on the drain. A successful ``acquire`` is
+    one running upload and the matching ``release`` (the job thread's ``finally``, or the route when it gives the slot
+    up) ends it, so ``DRAIN.active`` covers the upload from acceptance until its thread has finished and the lifespan
+    shutdown cannot close the database under it. ``enter`` (not ``try_enter``): the upload route has already refused a
+    drain that began before it."""
+
+    def acquire(self, blocking: bool = True, timeout: float | None = None) -> bool:
+        got = super().acquire(blocking, timeout)
+        if got:
+            drain.DRAIN.enter()
+        return got
+
+    def release(self, n: int = 1) -> None:
+        super().release(n)               # an over-release raises here, before the count changes
+        drain.DRAIN.leave()
+
+
 class WorkspaceCreateRequest(BaseModel):
     turnstile_token: str | None = None
 
@@ -92,6 +118,13 @@ def _require_uploads_enabled(request: Request) -> None:
     ``/api/ask`` can never disagree about whether uploads actually work."""
     if not routes.uploads_available(request.app.state):
         raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
+
+
+def _refuse_while_draining() -> None:
+    """503 while the process drains: checked before any window is consumed, so a refused request costs nothing."""
+    if drain.DRAIN.draining:
+        raise HTTPException(status_code=503, detail=routes.MSG_DRAINING,
+                            headers={**NO_STORE, **routes.DRAINING_HEADERS})
 
 
 def _require_read_rate(request: Request) -> None:
@@ -140,6 +173,7 @@ async def _check_upload_turnstile(request: Request, token: str | None) -> None:
 async def create_workspace(body: WorkspaceCreateRequest, request: Request):
     st, s = request.app.state, request.app.state.settings
     _require_uploads_enabled(request)
+    _refuse_while_draining()
     if not st.workspace_create_limiter.allow(guard.hash_request_ip(request, s)):
         raise HTTPException(status_code=429, detail=MSG_UPLOAD_RATE, headers=NO_STORE)
     await _check_upload_turnstile(request, body.turnstile_token)
@@ -361,14 +395,15 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
 async def upload_document(ws: str, request: Request):
     """Gate order, now literal (docs/v2/M4_PLAN.md 14.6, 15.2 — the Turnstile token moved to the
     ``X-Turnstile-Token`` header, so it no longer needs the body read first; 16: every workspace route takes the
-    in-memory read-rate window before its database lookup): uploads-available -> read-rate window -> workspace token
-    (404) -> kill switch -> Turnstile -> per-address upload window -> streamed size cap (declared, then live) ->
-    byte gate -> quota -> slot -> daily budget."""
+    in-memory read-rate window before its database lookup): uploads-available -> draining (503) -> read-rate window ->
+    workspace token (404) -> kill level -> Turnstile -> per-address upload window -> streamed size cap (declared,
+    then live) -> byte gate -> quota -> slot -> daily budget."""
     st, s = request.app.state, request.app.state.settings
     _require_uploads_enabled(request)
+    _refuse_while_draining()
     _require_read_rate(request)
     await _authenticate(request, ws)
-    if await run_in_threadpool(store.kill_switch_on, st.driver, s.kill_switch):
+    if await routes._kill_level(st) != KILL_OFF:        # on, retrieval_only, unread or stale: no new upload job
         raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
     await _check_upload_turnstile(request, request.headers.get("x-turnstile-token"))
     if not st.upload_limiter.allow(guard.hash_request_ip(request, s)):

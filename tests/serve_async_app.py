@@ -1,10 +1,13 @@
-"""The app ``tests/test_serve_async_streams.py`` runs under a real uvicorn, in a subprocess (M5a I2).
+"""The app ``tests/test_serve_async_streams.py`` runs under a real uvicorn, in a subprocess (M5a I2 and I4).
 
 It mounts the real ``semigraph.serve.routes.router`` (``POST /api/ask``, ``GET /healthz``) over the real
-``PaidStream`` / ``PaidResponse``, the real limiters, ``LimitedEmbedder`` and ``LoopLagMonitor``, and fakes only what
-needs Neo4j or a model:
+``PaidStream`` / ``PaidResponse``, the real limiters, ``LimitedEmbedder`` and ``LoopLagMonitor``, the REAL
+``InProcessBackend`` (every cap, the in-flight cap and the per-address daily cap included) with the real
+``MaintenanceThread``, and fakes only what needs Neo4j or a model:
 
-* the store functions the routes call (``get_answer``, ``put_answer``, ``log_query``, ...) are in-memory recorders;
+* the ledger rows the backend writes go to :class:`serve_state_fakes.InMemoryLedger`, the store functions it and the
+  routes still call (``get_answer``, ``put_answer``, ``log_query`` for a cached hit, ``get_policy``) are in-memory
+  recorders;
 * ``routes.run_cypher`` (the ``/healthz`` ping) returns a row, so the real probe, with its ``limiters.health`` hop,
   answers;
 * ``routes.aanswer_stream`` is an async-generator twin of a real answer: it embeds on a worker thread under
@@ -26,12 +29,12 @@ whole duration; neither kind does that. Nothing here is for production: the modu
 fakes are installed by the lifespan only, so importing it (the test module imports the script helpers) patches
 nothing.
 
-What the test process observes, over ``GET /_test/state``: the ledger rows (keyed by ``ip_hash``: ``log_query`` never
-sees the question, so each ask sends its own ``x-test-ask`` header and the test computes the same hash), the borrowed
-tokens of the answer limiter, of the three thread limiters and of starlette's default thread pool, the thread count
-and its peak, the loop-lag monitor, how many stream cleanups ran (``PaidStream.finalize``, counted once per stream)
-and how many twins started and were closed. Every state-changing step is also appended, flushed, to a journal file
-(``ASYNC_APP_JOURNAL``) so a test that kills the server can still read what happened.
+What the test process observes, over ``GET /_test/state``: the SETTLED ledger rows (keyed by ``ip_hash``: a row never
+holds the question, so each ask sends its own ``x-test-ask`` header and the test computes the same hash), the leases in
+flight (the backend's snapshot), the borrowed tokens of the four thread limiters and of starlette's default thread pool,
+the thread count and its peak, the loop-lag monitor, how many stream cleanups ran (``PaidStream.finalize``, counted once
+per stream) and how many twins started and were closed. Every state-changing step is also appended, flushed, to a
+journal file (``ASYNC_APP_JOURNAL``) so a test that kills the server can still read what happened.
 
 The question picks the behaviour (a leading ``[mode]``, which is not part of the embedded text): none =
 ``DELTAS_NORMAL`` deltas then ``done``; ``[medium]`` = ``DELTAS_MEDIUM``; ``[long]`` = ``DELTAS_LONG``; ``[hang]`` =
@@ -61,9 +64,13 @@ from fastapi import APIRouter, FastAPI, Request
 from sse_starlette import EventSourceResponse, ServerSentEvent
 from starlette.background import BackgroundTask
 
+from serve_state_fakes import ESTIMATE_MICRO, InMemoryLedger
+
 from semigraph.serve import guard, routes, store, stream_runtime
 from semigraph.serve.embed import LimitedEmbedder
 from semigraph.serve.limiters import LoopLagMonitor, make_limiters
+from semigraph.serve.state import StateDrivers, make_backend
+from semigraph.serve.state.maintenance import MaintenanceThread
 
 ASK_HEADER = "x-test-ask"        # the per-ask client address: ``ask_key`` of it is the ledger row's key
 # the server is a subprocess, so its pepper is fixed and the test process can compute the same hash
@@ -127,6 +134,7 @@ class Config:
 
     def __init__(self, env=os.environ):
         self.max_answers = int(env.get("ASYNC_APP_MAX_ANSWERS", "40"))
+        self.ip_daily = int(env.get("ASYNC_APP_IP_DAILY", "20"))
         self.send_timeout_s = int(env.get("ASYNC_APP_SEND_TIMEOUT_S", "2"))
         self.embed_slots = int(env.get("ASYNC_APP_EMBED_SLOTS", "1"))
         self.db_threads = int(env.get("ASYNC_APP_DB_THREADS", "4"))
@@ -146,12 +154,17 @@ class ServerState:
         self.peak_threads = threading.active_count()
         self.baseline_threads = self.peak_threads
         self.embed_active = 0
-        self.ledger_delay_s = 0.0        # a slow ledger write, set by ``POST /_test/ledger-delay`` (a slow database)
+        # the durable rows of the real backend; ``POST /_test/ledger-delay`` slows its settles
+        self.ledger = InMemoryLedger()
         self.reset()
 
-    def reset(self) -> None:
+    def reset(self, app_state=None) -> None:
+        """Zero what a test reads. The ledger and the backend's counters live on (a lease can still be settling): what
+        was in them at the reset is the baseline the reads below subtract."""
+        self.baseline_ids = set(self.ledger.rows)
+        self.paid_baseline = app_state.state.snapshot()["paid"] if app_state is not None else 0
         with self._lock:
-            self.ledger_rows: list[dict] = []
+            self.cached_rows: list[dict] = []
             self.cache_puts: list[dict] = []
             self.counts: Counter = Counter()
             self.twin_exits: Counter = Counter()
@@ -192,30 +205,54 @@ class ServerState:
 
     # ---- the store functions the routes call (replacing ``semigraph.serve.store``'s)
 
-    def log_query(self, driver, *, ip_hash, strategy, cached, usage=None, cost_usd=None, workspace=False) -> None:
+    def log_query(self, driver, *, ip_hash, strategy, cached, usage=None, cost_usd=None, workspace=False,
+                  ip_hash_v=None) -> None:
+        """The row of a CACHED answer (the only row ``store.log_query`` still writes)."""
         row = {"ip_hash": ip_hash, "strategy": strategy, "cached": cached, "workspace": workspace, "usage": usage,
                "cost_usd": cost_usd}
-        time.sleep(self.ledger_delay_s)
         with self._lock:
-            self.ledger_rows.append(row)
+            self.cached_rows.append(row)
         self.note("ledger", **row)
+
+    def settled(self, row: dict) -> None:
+        """Called by the in-memory ledger after a lease was settled: the journal line of the ask's row."""
+        self.note("ledger", **self._shaped(row))
+
+    @staticmethod
+    def _shaped(row: dict) -> dict:
+        """A settled ledger row in the shape the tests read: usage and cost_usd are what the backend stored (an
+        abandoned ask has no usage and is charged its estimate), outcome says how the lease ended."""
+        return {"ip_hash": row["ip_hash"], "strategy": row["strategy"], "cached": False, "workspace": row["workspace"],
+                "usage": row["usage"], "cost_usd": row["cost_usd"], "outcome": row["outcome"]}
+
+    def ledger_rows(self) -> list[dict]:
+        """Every settled paid row, then the cached rows."""
+        with self.ledger._lock:
+            paid = [self._shaped(r) for r in self.ledger.rows.values()
+                    if r["status"] == "settled" and r["id"] not in self.baseline_ids]
+        with self._lock:
+            return paid + list(self.cached_rows)
+
+    def reserved_rows(self) -> int:
+        with self.ledger._lock:
+            return sum(1 for r in self.ledger.rows.values() if r["status"] == "reserved")
 
     def put_answer(self, driver, *, question, **kw) -> None:
         with self._lock:
             self.cache_puts.append({"question": question})
         self.note("put_answer")
 
-    def paid_queries_today(self, driver) -> int:
-        with self._lock:
-            return sum(1 for r in self.ledger_rows if not r["cached"])
-
     def snapshot(self, app_state) -> dict:
         st = app_state
+        rows = self.ledger_rows()
+        backend = st.state.snapshot()
         with self._lock:
             return {
-                "ledger_rows": list(self.ledger_rows), "ledger_row_count": len(self.ledger_rows),
+                "ledger_rows": rows, "ledger_row_count": len(rows), "reserved_rows": self.reserved_rows(),
                 "cache_puts": len(self.cache_puts),
-                "answer_limiter_borrowed": st.answer_limiter.borrowed_tokens,
+                "inflight_leases": backend["inflight"], "paid_today": backend["paid"] - self.paid_baseline,
+                "per_ip_max": backend["per_ip_max"],
+                "state_limiter_borrowed": st.limiters.state.borrowed_tokens,
                 "db_limiter_borrowed": st.limiters.db.borrowed_tokens,
                 "embed_limiter_borrowed": st.limiters.embed.borrowed_tokens,
                 "default_limiter_borrowed": anyio.to_thread.current_default_thread_limiter().borrowed_tokens,
@@ -305,8 +342,7 @@ def _install_fakes(state: ServerState) -> None:
     store.get_answer = lambda driver, key, ttl: None
     store.put_answer = state.put_answer
     store.log_query = state.log_query
-    store.kill_switch_on = lambda driver, env_flag: False
-    store.paid_queries_today = state.paid_queries_today
+    store.get_policy = lambda driver, key: None              # the kill level reads "off"
     routes.run_cypher = lambda driver, query, **params: [{"ok": 1}]
     routes.aanswer_stream = fake_twin
     _count_finalizes(state)
@@ -348,10 +384,13 @@ def _settings(cfg: Config) -> SimpleNamespace:
     """The generous settings the routes and ``PaidStream`` read: no real cap, no kill switch, no Turnstile."""
     return SimpleNamespace(
         max_question_chars=500, agent_enabled=False, uploads_enabled=False, client_ip_header=ASK_HEADER,
-        ip_hash_pepper=ASK_PEPPER, answer_cache_ttl_hours=24, kill_switch=False, max_queries_per_day=100_000,
+        ip_hash_pepper=ASK_PEPPER, ip_hash_version=2, answer_cache_ttl_hours=24, kill_switch=False,
+        max_queries_per_day=100_000, max_spend_usd_per_day=0, paid_per_ip_per_day=cfg.ip_daily,
         turnstile_secret_key="", turnstile_required=False, is_production=False, llm_request_timeout_s=30,
         llm_answer_max_tokens=100, escalation_model="", send_timeout_s=cfg.send_timeout_s, embed_slots=cfg.embed_slots,
-        db_thread_limit=cfg.db_threads, max_concurrent_answers=cfg.max_answers, loop_lag_warn_ms=100)
+        db_thread_limit=cfg.db_threads, max_concurrent_answers=cfg.max_answers, loop_lag_warn_ms=100,
+        kill_switch_refresh_s=10, kill_switch_stale_s=30, state_op_timeout_s=1.0, lease_ttl_s=60, lease_renew_s=15,
+        machine_id="async-app")
 
 
 async def _sample_threads(state: ServerState) -> None:
@@ -371,7 +410,13 @@ async def lifespan(app: FastAPI):
     app.state.driver = object()
     app.state.embedder = LimitedEmbedder(CpuBoundEmbedder(cfg.spin_s, cfg.spin_kind), settings.embed_slots)
     app.state.limiters = make_limiters(settings)
-    app.state.answer_limiter = anyio.CapacityLimiter(settings.max_concurrent_answers)
+    app.state.state_store_driver = object()
+    state.ledger.on_settle = state.settled
+    backend = make_backend(settings, StateDrivers(state=object()), ledger=state.ledger)
+    maintenance = MaintenanceThread(backend, settings)
+    maintenance.start()                                     # reads the kill level once before it returns
+    app.state.state, app.state.estimates = backend, dict(ESTIMATE_MICRO)
+    app.state.cache_budget = guard.TokenBucket(10**6)
     app.state.snapshot_id = ""
     app.state.tracer = None
     app.state.rate_limiter = guard.RateLimiter(10**6, 3600)
@@ -385,6 +430,7 @@ async def lifespan(app: FastAPI):
     for task in tasks:
         with contextlib.suppress(asyncio.CancelledError):
             await task
+    maintenance.stop()
 
 
 test_router = APIRouter(prefix="/_test")
@@ -413,16 +459,16 @@ async def set_embedder_kind(request: Request, kind: str) -> dict:
 
 @test_router.post("/ledger-delay")
 async def set_ledger_delay(ms: int) -> dict:
-    """Make every ledger write take ``ms`` more (it runs on a worker thread): a client that sees the terminal event
-    before the row exists will find the row missing."""
-    STATE.ledger_delay_s = ms / 1000.0
+    """Make every ledger SETTLE take ``ms`` more (it runs on a worker thread): a client that sees the terminal event
+    before the row is settled will find the row missing."""
+    STATE.ledger.delay_s = ms / 1000.0
     return {"ms": ms}
 
 
 @test_router.post("/reset")
 async def reset(request: Request) -> dict:
     """Zero the counters and the loop-lag and thread-peak records (after a warm-up, before the measured part)."""
-    STATE.reset()
+    STATE.reset(request.app.state)
     monitor = request.app.state.loop_lag
     monitor.max_lag_ms, monitor.warnings = 0.0, 0
     return STATE.snapshot(request.app.state)

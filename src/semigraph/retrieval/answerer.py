@@ -597,7 +597,8 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
 
     Events, in order: ``{"event": "retrieval", "anchors", "counts", "anchor_defaulted"}``
     (``anchor_defaulted`` is True when no company was detected and retrieval fell back to
-    the default anchor — additive; False when the retriever does not report it), then
+    the default anchor — additive; False when the retriever does not report it; a last key ``anchors_dropped``, the
+    names of the companies the anchor cap left out, exists only when there were some), then
     ``{"event": "delta", "text"}`` per token batch, finally ``{"event": "done",
     "answer", "citations", "hallucinated", "checks", "finish_reason", "usage", "cost_usd",
     "chunk_ids", "context_chars"}``. Citations are post-verified exactly like
@@ -624,6 +625,13 @@ def answer_stream(question: str, driver, embedder, strategy: str = "hybrid",
                                          escalation_stream=escalation_stream, **stream_kwargs)
 
 
+def dropped_anchors_field(r: dict) -> dict:
+    """``{"anchors_dropped": [names]}`` when the retrieval left companies out (the anchor cap), else ``{}``: the
+    additive tail of every ``retrieval`` event, so an event without dropped companies is exactly what it always was."""
+    dropped = r.get("anchors_dropped")
+    return {"anchors_dropped": list(dropped)} if dropped else {}
+
+
 def stream_answer_for_context(question: str, r: dict, strategy: str, *, llm_stream=None, escalation_model: str | None = None,
                               escalation_stream=None, **stream_kwargs):
     """Everything :func:`answer_stream` does AFTER retrieval: build the six blocks from the retrieval dict ``r``, emit the
@@ -635,7 +643,7 @@ def stream_answer_for_context(question: str, r: dict, strategy: str, *, llm_stre
     blocks, full_context, valid_ids = build_blocks(r)
     yield {"event": "retrieval", "anchors": r["anchors"],
            "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")},
-           "anchor_defaulted": bool(r.get("anchor_defaulted", False))}
+           "anchor_defaulted": bool(r.get("anchor_defaulted", False)), **dropped_anchors_field(r)}
     yield from stream_answer_for_prompt(question, render_prompt(question, blocks), full_context, valid_ids,
                                         [c["chunk_id"] for c in r["chunks"]], strategy,
                                         sources=sources_from_context(full_context), llm_stream=llm_stream,

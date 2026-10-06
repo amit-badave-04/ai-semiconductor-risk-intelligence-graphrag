@@ -111,26 +111,56 @@ def get_driver(settings: Settings | None = None) -> DatabaseDriver:
 
 # The state operations (``serve/state``) get a driver of their own so a stalled database can never starve the read
 # path of its connections, and every wait is short. Keyword names verified against neo4j 6.2.0 and 6.3.0 (2026-10-06):
-# GraphDatabase.driver accepts max_connection_pool_size, connection_acquisition_timeout, connection_timeout and
-# max_transaction_retry_time (an unknown keyword is a ConfigurationError at construction).
+# GraphDatabase.driver accepts max_connection_pool_size, connection_acquisition_timeout, connection_timeout,
+# max_transaction_retry_time, initial_retry_delay and liveness_check_timeout (an unknown keyword is a
+# ConfigurationError at construction).
+#
+# The bound is built into the driver's settings, not added by a caller. A managed transaction (reserve, settle, renew)
+# always makes at least TWO attempts: the driver starts its retry timer after the first failure and checks it only
+# after the second. So each attempt may take half of what the operation budget leaves after the retry delay, and the
+# retry window itself is short. A closed or silent server is then given up on inside the budget (0.47 s for a read,
+# 1.0 s for a managed transaction; see ``serve/state/backend.py`` for the measurements).
+#
+# A connection that is already in the pool is a different case: once its handshake is done the driver reads from it
+# with no deadline of ours, only the server's own receive-timeout hint (120 s). Measured: with the server gone silent
+# the first operation on a pooled connection blocked for as long as the test allowed. A liveness check of 0 makes every
+# acquire prove the connection alive first (one RESET round trip), inside the attempt timeout, and drop it if it does
+# not answer. An operation that is already in flight when the server goes silent is not covered.
 STATE_POOL_SIZE = 8
-STATE_CONNECT_TIMEOUT_S = 1.0
+STATE_RETRY_WINDOW_S = 0.2            # max_transaction_retry_time: a transient failure is retried only this long
+STATE_RETRY_DELAY_S = 0.05            # initial_retry_delay (the driver's default of 1 s alone would spend the budget)
+STATE_LIVENESS_CHECK_S = 0            # liveness_check_timeout: a pooled connection is checked on every acquire
+RETRY_DELAY_JITTER = 1.2              # the driver varies each delay by up to 20%
+MIN_ATTEMPT_S = 0.05                  # the floor of one connection attempt, for a tiny operation budget
 STATE_ACQUISITION_DEFAULT_S = 0.5      # Settings.state_connection_acquisition_s, until config.py has the field
 STATE_OP_TIMEOUT_DEFAULT_S = 1.0       # Settings.state_op_timeout_s, likewise
 
 
+def state_attempt_timeout_s(op_timeout_s: float, acquisition_s: float) -> float:
+    """What ONE connection attempt (pool acquisition, TCP connect and handshake) may take: the configured acquisition
+    timeout, but never more than half of the operation budget left after the longest retry delay. The configured value
+    stays a ceiling; with the defaults (1 s budget, 0.5 s acquisition) an attempt gets 0.47 s, so the two attempts of a
+    managed transaction and the delay between them add up to 1 s."""
+    derived = (op_timeout_s - STATE_RETRY_DELAY_S * RETRY_DELAY_JITTER) / 2
+    return max(MIN_ATTEMPT_S, min(acquisition_s, derived))
+
+
 def make_state_driver(settings: Settings) -> DatabaseDriver:
-    """A SECOND driver for the state operations of ``serve/state``: a pool of 8, a pool-acquisition timeout of
-    ``state_connection_acquisition_s`` (0.5 s), a TCP connect timeout of 1 s and a transaction retry window of
-    ``state_op_timeout_s`` (1 s), so a managed transaction stops retrying when the operation's budget is spent. Pinned to
-    the configured database like :func:`get_driver`. No connectivity check here: a database that is down at boot must
-    surface as ``StateUnavailable`` from the first state call (which fails closed), not as a crash."""
+    """A SECOND driver for the state operations of ``serve/state``: a pool of 8; every connection attempt bounded by
+    :func:`state_attempt_timeout_s` (pool acquisition and TCP connect alike); a transaction retry window of 0.2 s with
+    a first retry after 0.05 s, so the operation budget ``state_op_timeout_s`` (1 s) is not spent on the driver's own
+    waiting; and a liveness check on every acquire of a pooled connection. Pinned to the configured database like
+    :func:`get_driver`. No connectivity check here: a database that is down at boot must surface as
+    ``StateUnavailable`` from the first state call (which fails closed), not as a crash."""
+    op_timeout_s = getattr(settings, "state_op_timeout_s", STATE_OP_TIMEOUT_DEFAULT_S)
+    attempt_s = state_attempt_timeout_s(
+        op_timeout_s, getattr(settings, "state_connection_acquisition_s", STATE_ACQUISITION_DEFAULT_S))
     driver = GraphDatabase.driver(
         settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password),
         max_connection_pool_size=STATE_POOL_SIZE,
-        connection_acquisition_timeout=getattr(settings, "state_connection_acquisition_s", STATE_ACQUISITION_DEFAULT_S),
-        connection_timeout=STATE_CONNECT_TIMEOUT_S,
-        max_transaction_retry_time=getattr(settings, "state_op_timeout_s", STATE_OP_TIMEOUT_DEFAULT_S))
+        connection_acquisition_timeout=attempt_s, connection_timeout=attempt_s,
+        max_transaction_retry_time=min(STATE_RETRY_WINDOW_S, op_timeout_s),
+        initial_retry_delay=STATE_RETRY_DELAY_S, liveness_check_timeout=STATE_LIVENESS_CHECK_S)
     return DatabaseDriver(driver, settings.neo4j_database)
 
 

@@ -20,6 +20,11 @@ swap_size_mb = 1024
   # The SDK's retrieval uses the Cypher 25 SEARCH clause (vector indexes).
   NEO4J_db_query_default__language = "CYPHER_25"
   NEO4J_server_directories_import = "/data/import"
+  # The state operations carry a server-side transaction timeout (1 s). The server enforces it only when its
+  # transaction monitor next looks, every db.transaction.monitor.check.interval (default 2 s), so an operation blocked
+  # on a lock came back up to 2 s late. At 100 ms it comes back within about 1.1 s. The key has no underscore in it
+  # (db.transaction.monitor.check.interval), so a single underscore is the separator in the variable name.
+  NEO4J_db_transaction_monitor_check_interval = "100ms"
 
 [[mounts]]
   source = "neo4j_data"

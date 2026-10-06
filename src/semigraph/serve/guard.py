@@ -16,6 +16,7 @@ import secrets
 import threading
 import time
 from collections import defaultdict, deque
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
 
 from fastapi import HTTPException, Request
@@ -57,6 +58,39 @@ class RateLimiter:
         if len(self._buckets) > MAX_BUCKETS:  # bound memory over long uptime
             for k in [k for k, b in list(self._buckets.items()) if not b]:
                 self._buckets.pop(k, None)
+        return True
+
+    def seed(self, key: str, timestamps: Sequence[float]) -> None:
+        """Boot only, before serving: put the ``time.monotonic()`` readings of earlier events into ``key``'s window, so
+        a restart does not hand a client a fresh window. Readings older than the window or in the future are dropped,
+        only the newest ``max_events`` are kept, and a key that already has events is left alone (nothing here replaces
+        what a live request recorded). Like ``allow`` it is not thread-safe: call it before the first request."""
+        if self.max_events <= 0 or self._buckets.get(key):
+            return
+        now = time.monotonic()
+        recent = sorted(t for t in timestamps if 0 <= now - t <= self.window)
+        if recent:
+            self._buckets[key] = deque(recent[-self.max_events:])
+
+
+class TokenBucket:
+    """A refilling budget of ``rate`` operations per second (burst: one second's worth), for a gate that protects a
+    resource shared by every client, such as the answer-cache read before the bot check. ``take`` is not thread-safe;
+    the routes call it from the event loop only. ``rate <= 0`` disables it."""
+
+    def __init__(self, rate: float, clock=time.monotonic):
+        self.rate, self._clock = float(rate), clock
+        self._tokens, self._at = self.rate, clock()
+
+    def take(self) -> bool:
+        if self.rate <= 0:
+            return True
+        now = self._clock()
+        self._tokens = min(self.rate, self._tokens + (now - self._at) * self.rate)
+        self._at = now
+        if self._tokens < 1.0:
+            return False
+        self._tokens -= 1.0
         return True
 
 

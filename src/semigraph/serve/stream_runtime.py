@@ -1,43 +1,53 @@
-"""The per-ask state of a paid answer stream (M5a I2, docs/v2/M5A_BUILD_PLAN.md sections 0 and 4).
+"""The per-ask state of a paid answer stream (M5a I2 and I4, docs/v2/M5A_BUILD_PLAN.md sections 0, 3 and 4).
 
-:class:`PaidStream` replaces the sync ``routes._paid_stream``. It changes HOW an answer is streamed, not the policy: the
-in-flight cap, the gate order that precedes it, the ledger rows, the caching rule and the user-visible messages are the
-sync generator's. Four things differ on purpose, all of them in what happens after the money is spent: a failing
-answer-cache write is logged and no longer turns ``done`` into an error; an exception after the terminal ledger row was
-written is logged and costs no second row and no error event; the slot and the cleanup are released when ``events()``
-ends, not when the response has been sent; and the response's closing chunk is bounded by the send timeout.
+:class:`PaidStream` replaces the sync ``routes._paid_stream``. It changes HOW an answer is streamed, not the policy.
 
 ``events()`` is an async generator that holds no thread while it waits for the model (the twins in ``retrieval`` and
-``agent`` put every blocking hop on a worker thread). Each store call is a thread hop under ``limiters.db``.
+``agent`` put every blocking hop on a worker thread). Every call to the state backend is a thread hop under
+``limiters.state`` followed by a checkpoint (:func:`state_call`); the tracer close is a hop under ``limiters.db``.
 
-* **The slot.** The in-flight cap is ``st.answer_limiter`` (an ``anyio.CapacityLimiter``), taken first and without
-  waiting, under a private token. A full cap yields the busy ``error`` event and nothing else: no ledger row, no tracer.
-* **The money rule.** For the terminal event (``done`` or ``error``) the ledger row is written BEFORE the event is
-  yielded, then (``done`` only) the answer-cache write under the sync rule, the info line and the failed-checks warning.
-  That whole block runs in a shielded scope and takes ONE checkpoint, after it: the sync path always reached the cache
-  write once the answer was produced (its thread could not be interrupted), so a disconnect landing between the two
-  writes must not drop the cache write or the ledger row's usage. The flag that says "a row exists" is set the moment
-  the write returns, before that checkpoint, so a cancellation raised there can never lead to a second row. The cache
-  write is an optimisation, not part of the answer: when it fails after the ledger row, the failure is logged and the
-  ``done`` event is still sent (a second row for the same ask, and the generic error instead of the answer, would be
-  the alternative). The info line and the warning cannot raise for a ``done`` event of the twin's shape.
-* **Failures after the terminal row.** Once the ledger row exists the ask is on the ledger once. An exception from then
-  on (the twin raising after it yielded ``done``, a malformed terminal event) is logged and nothing else: no second row,
-  no ``error`` event after a ``done`` the client already has. A malformed event that never reached the client simply
-  ends the stream without a terminal event.
+* **The lease.** The route took it, before the stream existed: ``state.reserve`` checked the kill level, both daily
+  caps, the per-address cap and the in-flight cap, counted the ask and wrote its durable ``reserved`` ledger row
+  (docs/v2/ M5_DECISIONS.md 2.2). The stream is handed that :class:`~semigraph.serve.state.Lease` and owes the backend
+  exactly one ``reconcile`` for it. A full in-flight cap is therefore a pre-stream HTTP 429 (``routes``), never an event
+  of the stream. On the first event of the twin the stream calls ``mark_started``: from then on the maintenance thread
+  renews the lease, so the lease TTL has to cover only a stream that never started.
+* **The money rule.** For the terminal event (``done`` or ``error``) the lease is reconciled BEFORE the event is
+  yielded (``outcome`` ``done`` or ``error``, the twin's usage and its cost in micro-dollars, ``None`` when unknown:
+  the backend then keeps the estimate), then (``done`` only) the answer-cache write under the sync rule, the info line
+  and the failed-checks warning. That whole block runs in a shielded scope and takes ONE checkpoint, after it: a
+  disconnect landing between the two writes must not drop the cache write or the settled usage. The flag that says "the
+  lease is settled" is set the moment the reconcile returns, before that checkpoint, so a cancellation raised there can
+  never lead to a second settle (the backend is idempotent anyway). The cache write is an optimisation, not part of the
+  answer: when it fails after the reconcile, the failure is logged and the ``done`` event is still sent. A reconcile
+  that raises does not block the terminal event either: the lease is reserved on the ledger, the backend queues a failed
+  settle for a retry (``serve.state.settle_queue``), and the sweep or the next boot charges the estimate otherwise.
+* **Failures after the settle.** Once the lease is settled the ask is on the ledger once. An exception from then on (the
+  twin raising after it yielded ``done``, a malformed terminal event) is logged and nothing else: no second settle, no
+  ``error`` event after a ``done`` the client already has. A malformed event that never reached the client still gets
+  the generic ``error`` event: the page waits for ``done`` or ``error``.
 * **Cleanup is ``finalize()``, and only that.** It is idempotent and shielded and does not raise for an ordinary
-  failure. In order: the one ledger row without usage when the client left before a terminal event (first: the ask must
-  be counted even if the process is killed during the slower steps), the twin's generator is closed (so the upstream
-  model stream closes; for an agent ask that joins a thread, up to seconds), the request tracer is closed (on a worker
-  thread: it can flush) and the slot is released. ``events()`` calls it as its last statement, so the slot does not wait
-  for the response to be sent (a client that stops reading can stall the closing chunk as long as it likes). It is also
-  called from :class:`PaidResponse`: as the response's background task AND in a ``finally`` around the whole ASGI call,
-  for the paths on which ``events()`` never reaches its end: sse-starlette runs the background task only when the
-  response ends cleanly (a send timeout or a send error raises past it, and a generator suspended at its ``yield`` is
-  dropped, not closed). ``events()`` itself has no ``finally``.
+  failure. In order: the lease is settled as ``abandoned`` when the client left before a terminal event (cost unknown:
+  the estimate is charged; first, because the ask must be counted even if the process is killed during the slower
+  steps), the twin's generator is closed (so the upstream model stream closes; for an agent ask that joins a thread, up
+  to seconds), the request tracer is closed (on a worker thread: it can flush) and the drain count is given back. A
+  stream that never iterated (an exception between the reserve and the first event, a request cancelled before the
+  response started) is settled by the same ``finalize`` as ``abandoned``. ``events()`` calls it as its last statement,
+  so the lease does not wait for the response to be sent (a client that stops reading can stall the closing chunk as
+  long as it likes). It is also called from :class:`PaidResponse`: as the response's background task AND in a
+  ``finally`` around the whole ASGI call, for the paths on which ``events()`` never reaches its end: sse-starlette runs
+  the background task only when the response ends cleanly (a send timeout or a send error raises past it, and a
+  generator suspended at its ``yield`` is dropped, not closed). ``events()`` itself has no ``finally``.
+* **The drain count.** The route counted this stream on ``DRAIN`` (``try_enter``) before it reserved, so a drain that
+  begins while the reserve runs still waits for the stream; ``finalize`` gives that count back, exactly once and last
+  (after the settle and the closes), so ``DRAIN.active == 0`` means the ledger row is settled and the twin is closed.
+  ``PaidResponse`` takes no ``shutdown_grace_period``: the drain (``serve.drain``) tells sse-starlette to end the
+  streams only when it is over, and a positive grace would stack on top of it.
 
 A twin that does not return an async generator is a :class:`TwinContractError` (a ``TypeError``): there is no sync
-fallback and no adapter, and it is not turned into an error event (it is a wiring mistake, nothing was spent).
+fallback and no adapter, and it is not turned into an error event (it is a wiring mistake; nothing was spent, but the
+lease is settled as abandoned and charged its estimate: the one rule for every lease that never reached a terminal
+event).
 """
 
 import json
@@ -45,6 +55,7 @@ import logging
 import re
 from collections.abc import AsyncIterator, Callable
 from functools import partial
+from typing import Any
 
 import anyio
 import anyio.lowlevel
@@ -58,10 +69,12 @@ from starlette.types import Message, Receive, Scope, Send
 from ..retrieval.answerer_async import aanswer_stream
 from ..retrieval.verify import checks_failed
 from ..retrieval.workspace_async import astream_workspace_answer
-from . import guard, store, tracing
+from . import drain, guard, tracing
+from .state import Lease, usd_to_micro
 
 logger = logging.getLogger("semigraph.serve")
 
+# the route's 429 on a full in-flight cap
 MSG_BUSY = "The service is busy answering other questions — try again in a moment."
 MSG_FAILED = "The answer could not be completed — please try again."
 TERMINAL_EVENTS = ("done", "error")
@@ -72,6 +85,27 @@ _CLASS_NAME_RE = re.compile(r"[A-Za-z_][\w.]{0,99}")
 
 class TwinContractError(TypeError):
     """The answer stream function did not return an async generator (a wiring mistake)."""
+
+
+async def state_call(st: State, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """One call to the state backend, the one idiom: a worker thread under ``limiters.state``, then a checkpoint (a
+    shielded thread hop does not deliver a cancellation on its own). No caller-side timeout: abandoning a thread that a
+    shielded reserve runs in would let the reserve finish after its caller gave up; the bound is in the work (the state
+    driver's attempt timeouts and the server-side transaction timeout, ``serve.state.backend``)."""
+    result = await anyio.to_thread.run_sync(partial(fn, *args, **kwargs), limiter=st.limiters.state)
+    await anyio.lowlevel.checkpoint()
+    return result
+
+
+def cost_micro_of(cost_usd: object) -> int | None:
+    """A twin's ``cost_usd`` as whole micro-dollars; ``None`` (the backend then keeps the estimate) when it is unknown,
+    negative, not finite or not a number."""
+    if cost_usd is None:
+        return None
+    try:
+        return usd_to_micro(cost_usd)
+    except (TypeError, ValueError):
+        return None
 
 
 def sse_event(event: dict) -> ServerSentEvent:
@@ -159,35 +193,34 @@ def stream_extras(st: State, question: str, strategy: str) -> tuple[dict, Callab
 
 
 class PaidStream:
-    """One paid ask: slot -> retrieval -> LLM deltas -> done. ``workspace`` (``{"workspace_id", "as_of"}``) routes to
-    the workspace writer and disables the answer cache for this answer. ``twin`` is the answer stream function (an
-    async generator function; ``routes`` resolves it per request, the default is :func:`select_twin`)."""
+    """One paid ask holding ``lease``: retrieval -> LLM deltas -> done. ``workspace`` (``{"workspace_id", "as_of"}``)
+    routes to the workspace writer and disables the answer cache for this answer. ``twin`` is the answer stream function
+    (an async generator function; ``routes`` resolves it per request, the default is :func:`select_twin`). The caller
+    has counted the stream on the drain (``DRAIN.try_enter()``) and the stream gives that count back in ``finalize``."""
 
     def __init__(self, st: State, question: str, strategy: str, iph: str, snapshot_id: str = "",
-                 workspace: dict | None = None, *, twin: Callable | None = None):
+                 workspace: dict | None = None, *, lease: Lease, twin: Callable | None = None):
         self._st, self._question, self._strategy, self._iph = st, question, strategy, iph
         self._snapshot_id, self._workspace, self._twin = snapshot_id, workspace, twin
+        self._lease, self._backend, self._drain = lease, st.state, drain.DRAIN
         self._in_workspace = workspace is not None
-        self._token: object | None = None      # the in-flight slot, while this stream holds it
         self._stream = None                    # the twin's async generator
         self._close_tracer: Callable[[], None] = _nothing
-        self._started = False                  # paid work may have begun (the twin is being called or iterated)
-        self._ledgered = False                 # a ledger row exists for this ask
+        self._marked = False                   # mark_started was called (the maintenance thread renews the lease)
+        self._settled = False                  # the backend reconciled the lease (or a retry of it is queued there)
         self._finalized = False
 
     # ---- the stream
 
     async def events(self) -> AsyncIterator[ServerSentEvent]:
-        """The SSE events of this ask (what ``sse_event`` makes of each event dict). Iterating it takes the slot; only
-        :meth:`finalize` gives it back, and this generator calls it as its last statement: after the last event has been
-        taken by the consumer, not in a ``finally`` (a consumer that goes away, a contract error and a cancellation are
+        """The SSE events of this ask (what ``sse_event`` makes of each event dict). :meth:`finalize` gives the lease
+        and the drain count back, and this generator calls it as its last statement: after the last event has been taken
+        by the consumer, not in a ``finally`` (a consumer that goes away, a contract error and a cancellation are
         :class:`PaidResponse`'s to clean up)."""
-        if not self._take_slot():
-            yield sse_event({"event": "error", "detail": MSG_BUSY})
-            return
         terminal_sent = False                  # the client has been handed a done or error event
         try:
             async for ev in self._open_stream():
+                await self._note_started()
                 terminal = ev["event"] in TERMINAL_EVENTS
                 out = await self._settle(ev) if terminal else ev
                 yield sse_event(out)
@@ -195,10 +228,10 @@ class PaidStream:
         except TwinContractError:
             raise
         except Exception as e:  # noqa: BLE001 — report, never hang the stream
-            if self._ledgered:
-                # No second row (the ask is already counted). If the client never got its terminal event (the writes
+            if self._settled:
+                # No second settle (the ask is already counted). If the client never got its terminal event (the writes
                 # after it raised, or it was malformed) it still gets the generic error: the page waits for done or error.
-                logger.error("answer failed after its ledger row was written (%s)", self._failure_text(e))
+                logger.error("answer failed after its ledger row was settled (%s)", self._failure_text(e))
                 if not terminal_sent:
                     yield sse_event(self._generic_failure(e))
             else:
@@ -221,49 +254,54 @@ class PaidStream:
         else:
             logger.error(message, exc_info=e)
 
-    def _take_slot(self) -> bool:
-        token = object()
-        try:
-            self._st.answer_limiter.acquire_on_behalf_of_nowait(token)
-        except anyio.WouldBlock:
-            return False
-        self._token = token
-        return True
-
     def _open_stream(self):
         st, s = self._st, self._st.settings
         extra, self._close_tracer = ((dict(self._workspace), _nothing) if self._in_workspace
                                      else stream_extras(st, self._question, self._strategy))
         twin = self._twin or select_twin(self._strategy, self._in_workspace)
-        self._started = True            # from the call on: a twin that raises when CALLED is still an ask to count
         stream = twin(self._question, st.driver, st.embedder, strategy=self._strategy, timeout=s.llm_request_timeout_s,
                       max_tokens=s.llm_answer_max_tokens, escalation_model=s.escalation_model or None,
                       limiters=st.limiters, **extra)
         if not (hasattr(stream, "__aiter__") and hasattr(stream, "aclose")):
             getattr(stream, "close", _nothing)()
-            self._started = False       # a wiring mistake: nothing was spent, so nothing is owed on the ledger
             raise TwinContractError(
                 f"the answer stream function returned {type(stream).__name__}, not an async generator")
         self._stream = stream
         return stream
 
+    async def _note_started(self) -> None:
+        """The first event of the twin: the lease is registered for renewal. A failure is logged and changes nothing
+        else (the lease then expires after its TTL like any other that nobody renews; the reconcile still settles
+        it)."""
+        if self._marked:
+            return
+        self._marked = True
+        try:
+            await state_call(self._st, self._backend.mark_started, self._lease.lease_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("marking the lease as started failed (%s)", type(e).__name__)
+
     # ---- the terminal event: the money rule
 
     async def _settle(self, ev: dict) -> dict:
-        """The ledger row, then (done) the cache write, the info line and the warning; returns the event to send."""
+        """The reconcile, then (done) the cache write, the info line and the warning; returns the event to send."""
         with anyio.CancelScope(shield=True):
-            await self._write_ledger(usage=ev.get("usage"), cost_usd=ev.get("cost_usd"))
+            await self._reconcile(ev["event"], usage=ev.get("usage"), cost_usd=ev.get("cost_usd"))
             out = await self._after_done(ev) if ev["event"] == "done" else self._after_error(ev)
         await anyio.lowlevel.checkpoint()
         return out
 
-    async def _write_ledger(self, **spend) -> None:
-        """One ledger row, on a worker thread. ``spend`` (``usage``, ``cost_usd``) is passed through only when known;
-        the row names the version of the pepper that made its ``ip_hash``."""
-        await self._on_db_thread(partial(store.log_query, self._st.driver, ip_hash=self._iph, strategy=self._strategy,
-                                         cached=False, **spend, workspace=self._in_workspace,
-                                         **guard.ip_hash_version_fields(self._st.settings)))
-        self._ledgered = True
+    async def _reconcile(self, outcome: str, *, usage: dict | None = None, cost_usd: object = None) -> None:
+        """Settle the lease on a worker thread: its actual cost, or the estimate when ``cost_usd`` is unknown (and
+        always the estimate for an ``abandoned`` ask). A raise is logged, never propagated: the lease stays reserved on
+        the ledger, which is what the daily ceilings count, until a retry, the sweep or the next boot charges it."""
+        try:
+            await state_call(self._st, self._backend.reconcile, self._lease.lease_id, outcome=outcome, usage=usage,
+                             cost_micro=cost_micro_of(cost_usd))
+        except Exception as e:  # noqa: BLE001
+            logger.error("settling the ask failed (%s): its estimate stays charged", type(e).__name__)
+            return
+        self._settled = True
 
     async def _on_db_thread(self, fn: Callable[[], object]) -> None:
         await anyio.to_thread.run_sync(fn, limiter=self._st.limiters.db)
@@ -285,14 +323,12 @@ class PaidStream:
         return ev
 
     async def _cache_answer(self, ev: dict) -> None:
-        """The answer cache is an optimisation, not part of the answer: the ledger row already exists, so a failing
-        write is logged (the exception, never the answer text) and the visitor still gets the answer they paid for. If
-        it raised into ``events()`` instead, ``_record_failure`` would write a second row for the same ask."""
+        """The answer cache is an optimisation, not part of the answer: the lease is already settled, so a failing write
+        is logged (the exception, never the answer text) and the visitor still gets the answer they paid for."""
         try:
-            await self._on_db_thread(partial(
-                store.put_answer, self._st.driver, question=self._question, strategy=self._strategy,
-                answer=ev["answer"], citations=ev["citations"], hallucinated=ev["hallucinated"], usage=ev["usage"],
-                cost_usd=ev["cost_usd"], snapshot_id=self._snapshot_id))
+            await state_call(self._st, self._backend.cache_put, question=self._question, strategy=self._strategy,
+                             answer=ev["answer"], citations=ev["citations"], hallucinated=ev["hallucinated"],
+                             usage=ev["usage"], cost_usd=ev["cost_usd"], snapshot_id=self._snapshot_id)
         except Exception:  # noqa: BLE001
             logger.exception("caching the answer failed")
 
@@ -307,13 +343,11 @@ class PaidStream:
         return {"event": "error", "detail": MSG_FAILED}
 
     async def _record_failure(self, e: Exception) -> dict:
-        """The twin (or the writes after its terminal event) raised: a ledger row without usage, as the sync path did.
-        Called only while no row exists for the ask."""
-        try:
-            with anyio.CancelScope(shield=True):
-                await self._write_ledger()
-        except Exception:  # noqa: BLE001
-            logger.exception("ledger write failed after an answer failure")
+        """The twin (or the writes after its terminal event) raised: the lease is settled as ``error`` with no usage and
+        no cost (the estimate is charged), as the sync path wrote a row without usage. Called only while the lease is
+        not settled."""
+        with anyio.CancelScope(shield=True):
+            await self._reconcile("error")
         await anyio.lowlevel.checkpoint()
         return self._generic_failure(e)
 
@@ -325,23 +359,20 @@ class PaidStream:
 
     async def finalize(self) -> None:
         """Release everything this stream holds. Idempotent, shielded, and it does not raise for an ordinary failure:
-        each step logs its own. Nothing happens when the slot was never taken (the busy stream). The order is the order
-        of urgency: the abandoned ask's ledger row first (closing the twin can take seconds, joining an agent thread,
-        and the platform kills a stopping process after 5 s by default; the row decision cannot change while the twin
-        closes), then the twin, then the tracer, and the slot last, whatever happened before."""
+        each step logs its own. The order is the order of urgency: the abandoned ask's settle first (closing the twin
+        can take seconds, joining an agent thread, and the platform kills a stopping process after 5 s by default; the
+        settle decision cannot change while the twin closes), then the twin, then the tracer, and the drain count last,
+        whatever happened before."""
         if self._finalized:
             return
         self._finalized = True
-        token = self._token
-        if token is None:
-            return
         with anyio.CancelScope(shield=True):
             try:
-                await self._ledger_if_abandoned()
+                await self._settle_if_abandoned()
                 await self._close_upstream()
                 await self._close_request_tracer()
             finally:
-                self._release(token)
+                self._leave_drain()
 
     async def _close_upstream(self) -> None:
         if self._stream is None:
@@ -351,15 +382,12 @@ class PaidStream:
         except Exception as e:  # noqa: BLE001
             self._log_failure("closing the answer stream failed", e)
 
-    async def _ledger_if_abandoned(self) -> None:
-        """The client went away before the terminal event (a buffered draft widens that window to the whole generation).
-        The query still counts against the daily ceiling; its cost is unknown here."""
-        if not self._started or self._ledgered:
-            return
-        try:
-            await self._write_ledger()
-        except Exception:  # noqa: BLE001
-            logger.exception("ledger write failed for an abandoned answer")
+    async def _settle_if_abandoned(self) -> None:
+        """The client went away before the terminal event, or the stream never ran (a buffered draft widens the window
+        to the whole generation). The ask still counts against both daily ceilings, and its cost is unknown here: the
+        backend charges the estimate."""
+        if not self._settled:
+            await self._reconcile("abandoned")
 
     async def _close_request_tracer(self) -> None:
         if self._close_tracer is _nothing:
@@ -369,21 +397,20 @@ class PaidStream:
         except Exception:  # noqa: BLE001
             logger.exception("closing the request tracer failed")
 
-    def _release(self, token: object) -> None:
-        self._token = None
+    def _leave_drain(self) -> None:
         try:
-            self._st.answer_limiter.release_on_behalf_of(token)
+            self._drain.leave()
         except Exception:  # noqa: BLE001
-            logger.exception("releasing the answer slot failed")
+            logger.exception("leaving the drain count failed")
 
 
 class PaidResponse(EventSourceResponse):
     """The SSE response of a :class:`PaidStream`: ``finalize`` runs as the background task AND in a ``finally`` around
-    the whole ASGI call (and ``events()`` runs it at its own end, which is what normally frees the slot). sse-starlette
-    awaits the background task only when its task group exits cleanly, so a send timeout, a send error or a cancelled
-    request would otherwise skip it and leak the slot (and the abandoned ask's ledger row). A middleware that re-wraps
-    the body (Starlette's ``BaseHTTPMiddleware``) would bypass ``__call__`` altogether; the app uses none, and a
-    pure-ASGI middleware leaves it alone.
+    the whole ASGI call (and ``events()`` runs it at its own end, which is what normally settles the lease).
+    sse-starlette awaits the background task only when its task group exits cleanly, so a send timeout, a send error or
+    a cancelled request would otherwise skip it and leak the lease (and the drain count). A middleware that re-wraps the
+    body (Starlette's ``BaseHTTPMiddleware``) would bypass ``__call__`` altogether; the app uses none, and a pure-ASGI
+    middleware leaves it alone.
 
     A client that stops reading is dropped by sse-starlette with ``SendTimeoutError``. That is an expected event, not a
     server fault: once ``finalize`` has run it is logged as one warning line (the exception's class name only: no

@@ -1,42 +1,47 @@
 """The async answer path against a REAL uvicorn on a real socket (M5a I2, docs/v2/M5A_BUILD_PLAN.md sections 4 and 9.1).
 
 ``tests/serve_async_app.py`` (run as ``uvicorn serve_async_app:app`` in a subprocess, never imported by production
-code) mounts the real ``routes.router`` over the real ``PaidStream`` / ``PaidResponse``, limiters, ``LimitedEmbedder``
-and loop-lag monitor; only the store, the model and the CPU-bound embedder (0.3 s per question) are fakes.
+code) mounts the real ``routes.router`` over the real ``PaidStream`` / ``PaidResponse``, limiters, ``LimitedEmbedder``,
+loop-lag monitor, ``InProcessBackend`` and ``MaintenanceThread``; only the database (an in-memory ledger), the model and
+the CPU-bound embedder (0.3 s per question) are fakes. The ledger row of a paid ask is its lease: reserved before the
+stream starts, settled before the terminal event, so "a row" below means a SETTLED one.
 ``httpx.ASGITransport`` cannot disconnect mid-stream, a ``TestClient`` shares the test's loop, and a send timeout
 needs a client that really stops reading, so these tests talk to a socket. Each one asks the server for its state
-(``GET /_test/state``). Every ask sends its own ``x-test-ask`` header: ``log_query`` never sees the question, so the
-ledger row's ``ip_hash`` is the ask's name.
+(``GET /_test/state``). Every ask sends its own ``x-test-ask`` header: a ledger row never holds the question, so the
+row's ``ip_hash`` is the ask's name.
 
 1. 40 concurrent streams (40 distinct questions: 40 real embeddings) all reach ``done`` with the fake's events;
    ``/healthz`` answers in well under a second beside them; the loop-lag monitor stays silent; the thread count stays
-   at or below 40 plus a few (starlette's own pool, which the route's gate store calls use, is capped at 40; the
-   parked-streams test in 2 is what shows a stream holds no thread); every ledger row is
-   present exactly once. The 100 ms loop-lag criterion holds for an embedder that releases the GIL (native code, like
-   onnxruntime). A pure-Python CPU-bound embedder slows the loop whatever thread it runs on (the GIL is shared): its
-   test pins only what must still hold.
+   at or below 40 plus a few (the gates' state calls run under the 4-thread state limiter, so starlette's own pool,
+   capped at 40, is not used by an ask; the parked-streams test in 2 is what shows a stream holds no thread); every
+   ledger row is present exactly once. The 100 ms loop-lag criterion holds for an embedder that releases the GIL (native
+   code, like onnxruntime). A pure-Python CPU-bound embedder slows the loop whatever thread it runs on (the GIL is
+   shared): its test pins only what must still hold.
 2. The money rule over HTTP: with a slow database, the ledger row and the cache write exist by the time the client
-   sees ``done``. And 40 streams parked at the model hold an answer slot each and no thread at all; when all 40
-   clients leave at once, each costs exactly one ledger row without usage.
+   sees ``done``. And 40 streams parked at the model hold a lease each and no thread at all; when all 40
+   clients leave at once, each costs exactly one ledger row without usage (settled ``abandoned``, charged its estimate).
 3. A client that leaves after the first delta (20 times, alternating a stream that never finishes and one that would
-   run 15 s): within 2 s there is exactly one ledger row, without usage, the answer slot is back, the twin was closed
+   run 15 s): within 2 s there is exactly one ledger row, without usage, the lease is back, the twin was closed
    by a cancellation, and the model produces no further step.
 4. A client that leaves before the first byte (a raw socket, FIN or RST, after 0 to 300 ms): no leaked slot or twin,
-   never two rows for one ask, and exactly one row for every twin that started.
-5. The busy path over HTTP (a second server, ``max_concurrent_answers=1``): the busy ``error`` event, the sync path's
-   message, and no ledger row; five simultaneous asks leave exactly one holder.
+   never two rows for one ask, and exactly one row for every reserve the backend granted (some asks leave before the
+   route reserved: no row at all).
+5. The in-flight cap over HTTP (a second server, ``max_concurrent_answers=1``): the sync path's message as a pre-stream
+   HTTP 429 with a JSON body and NO event stream, and no ledger row; five simultaneous asks leave exactly one holder.
+   And the per-address daily cap: the 21st paid ask of one address is a 429 with its own message.
 6. A client that stops reading (a raw socket with a tiny receive buffer: headers read, then silence past
-   ``send_timeout_s=2``): the server drops it on the send timeout, writes the ledger row once and frees the slot. The
+   ``send_timeout_s=2``): the server drops it on the send timeout, settles the ledger row once and frees the lease. The
    server log holds one warning line for it and no traceback; uvicorn's own one-line ``ASGI callable returned without
    completing response.`` error (no traceback) remains, because the response was started and cannot be completed for a
    client that is not reading.
-7. SIGTERM during a stream, with no drain logic yet: what happens today is pinned (below); increment I4 (drain)
-   changes it.
+7. SIGTERM during a stream: under stock uvicorn (what a server not run by ``serve.drain`` does: the stream is cut) and
+   under the image's entry point ``python -m semigraph.serve.drain`` (the stream finishes with ``done``, its row is
+   settled ``done``, a paid ask that arrives during the drain is a 503 and the process exits 0).
 8. The sse-starlette behaviour ``PaidResponse`` relies on, asserted empirically (below).
 9. A client that stops reading in the LAST frame: after the ``done`` frame uvicorn's write flow control is paused (as
    its transport does with 64 KiB unsent; ``serve_async_app.PauseWritingAfterDone``), so the closing empty chunk is
-   never accepted. The slot is free before the send timeout (``events()`` ends with ``finalize``), a second ask on the
-   one-slot server is served, and the response itself ends on the send timeout with one warning line (``PaidResponse``
+   never accepted. The lease is free before the send timeout (``events()`` ends with ``finalize``), a second ask on the
+   one-lease server is served, and the response itself ends on the send timeout with one warning line (``PaidResponse``
    bounds the closing send, which sse-starlette leaves unbounded). The servers run ``--loop asyncio``, production's.
 
 What SIGTERM does today (test 7). Windows has no SIGTERM for a subprocess, so the server is started in its own process
@@ -45,10 +50,10 @@ if the signal cannot be sent or has no effect. The stream is CUT, not finished: 
 every SSE stream once uvicorn has the signal (``shutdown_grace_period`` is 0). The client gets a protocol error from a
 chunked body that never ended, the server logs "ASGI callable returned without completing response", and ``done``
 never arrives. The cancelled twin closes its upstream stream, ``PaidResponse`` runs ``finalize`` as the background
-task, and the ask costs exactly ONE ledger row, without usage or cost, written before the process exits. uvicorn then
+task, and the ask costs exactly ONE ledger row, settled abandoned (no usage) before the process exits. uvicorn then
 re-raises the signal with its default action, so the exit status is the platform's signal status (3 for SIGBREAK on
-Windows). Nothing refuses new asks and nothing waits for a stream: uvicorn closes its listener at once. Drain
-(increment I4) will change all of this.
+Windows). Nothing refuses new asks and nothing waits for a stream: uvicorn closes its listener at once. The drain entry
+point (``serve.drain``, the image's CMD) changes all of this: the second SIGTERM test below runs the same app under it.
 
 What sse-starlette does when the client disconnects (test 8; ``/_test/order`` is a plain ``EventSourceResponse`` built
 like ``PaidResponse``: a generator, a BackgroundTask, a ``finally`` around the ASGI call, a client-close handler).
@@ -93,6 +98,7 @@ import httpx
 import pytest
 from serve_async_app import ASK_HEADER, PAUSE_HEADER, ask_key, expected_events, mode_of
 
+from semigraph.serve.routes import MSG_DRAINING, MSG_IP_BUDGET
 from semigraph.serve.stream_runtime import MSG_BUSY
 
 REPO = Path(__file__).resolve().parents[1]
@@ -156,7 +162,8 @@ class Server:
     working directory is a temporary one (nothing the app imports can read the repository's ``.env``) and its
     environment holds no secrets: a whitelist of what an interpreter needs, plus ``PYTHONPATH``."""
 
-    def __init__(self, workdir: Path, **settings: object):
+    def __init__(self, workdir: Path, *, drained: bool = False, **settings: object):
+        self.drained = drained             # start it as the image does (``python -m semigraph.serve.drain``)
         self.port = _free_port()
         self.base = f"http://127.0.0.1:{self.port}"
         self.log_path = workdir / f"server-{self.port}.log"
@@ -175,6 +182,9 @@ class Server:
         # it is installed (the unit job has it, ``serve-shipped`` does not) and the two jobs would test different loops.
         command = [sys.executable, "-m", "uvicorn", "serve_async_app:app", "--app-dir", str(TESTS),
                    "--host", "127.0.0.1", "--port", str(self.port), "--log-level", "warning", "--loop", "asyncio"]
+        if self.drained:
+            command = [sys.executable, "-m", "semigraph.serve.drain", "--app", "serve_async_app:app", "--app-dir",
+                       str(TESTS), "--host", "127.0.0.1", "--port", str(self.port), "--loop", "asyncio"]
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if IS_WINDOWS else 0
         with open(self.log_path, "wb") as log:
             self.proc = subprocess.Popen(command, cwd=self.workdir, env=self.env, stdout=log, stderr=subprocess.STDOUT,
@@ -254,8 +264,9 @@ def server(main_server):
 # ---- observing the server
 
 def is_quiet(state: dict) -> bool:
-    return (state["answer_limiter_borrowed"] == 0 and state["db_limiter_borrowed"] == 0
-            and state["embed_limiter_borrowed"] == 0 and state["twins_started"] == state["upstream_closed"])
+    return (state["inflight_leases"] == 0 and state["reserved_rows"] == 0 and state["state_limiter_borrowed"] == 0
+            and state["db_limiter_borrowed"] == 0 and state["embed_limiter_borrowed"] == 0
+            and state["twins_started"] == state["upstream_closed"])
 
 
 def wait_until_quiet(server: Server, timeout: float = 10.0) -> dict:
@@ -349,6 +360,20 @@ async def ask_all(client: httpx.AsyncClient, base: str, question: str, tag: str)
         return await Events(response).rest()
 
 
+async def ask_refused(client: httpx.AsyncClient, base: str, question: str, tag: str) -> tuple[int, str, bytes]:
+    """An ask the route refuses before any stream: (status, content type, the whole body)."""
+    async with ask_request(client, base, question, tag) as response:
+        body = await response.aread()
+        return response.status_code, response.headers.get("content-type", ""), body
+
+
+def assert_refused_without_a_stream(refused: tuple[int, str, bytes], status: int, detail: str) -> None:
+    """A pre-stream refusal: the status, a JSON body with the message, and not one byte of an event stream."""
+    code, content_type, body = refused
+    assert code == status and content_type.startswith("application/json"), refused
+    assert json.loads(body) == {"detail": detail} and b"event:" not in body and b"data:" not in body, body
+
+
 async def leave_after_first_delta(base: str, question: str, tag: str) -> None:
     """Ask, read until the first ``delta``, then drop the connection (a fresh client, closed: the socket goes away)."""
     client = new_client()
@@ -431,7 +456,7 @@ def _check_burst(run: dict) -> float:
     assert state["ledger_row_count"] == count and state["cache_puts"] == count, state["ledger_row_count"]
     per_ask = Counter(r["ip_hash"] for r in state["ledger_rows"])
     assert per_ask == Counter(ask_key(t) for t in run["tags"]), "an ask has no ledger row, or has two"
-    assert all(r["usage"] and r["cost_usd"] is not None for r in state["ledger_rows"])
+    assert all(r["usage"] and r["cost_usd"] is not None and r["outcome"] == "done" for r in state["ledger_rows"])
     assert state["twins_started"] == state["upstream_closed"] == count
     assert state["twin_exits"] == {"completed": count}
     assert is_quiet(state)
@@ -505,9 +530,10 @@ def test_forty_streams_waiting_for_the_model_hold_no_thread_and_all_leave_cleanl
 
 
 async def _forty_waiting(base: str) -> None:
-    """40 streams parked at the model (retrieval and one delta delivered, then silence): every one holds an answer slot
-    and NO thread (no named limiter and not starlette's pool), and ``/healthz`` is fast. Then all 40 clients leave at
-    once: exactly one ledger row each, without usage, every slot back, every twin closed by a cancellation."""
+    """40 streams parked at the model (retrieval and one delta delivered, then silence): every one holds a lease and NO
+    thread (no named limiter and not starlette's pool), and ``/healthz`` is fast. Then all 40 clients leave at once:
+    exactly one ledger row each, settled abandoned without usage, every lease back, every twin closed by a
+    cancellation."""
     tags = [new_tag("parked") for _ in range(STREAMS)]
     async with new_client() as probe:
         async with contextlib.AsyncExitStack() as clients:
@@ -524,12 +550,13 @@ async def _forty_waiting(base: str) -> None:
             health_s = time.perf_counter() - started
         state, _ = await wait_for(probe, base, lambda s: is_quiet(s) and s["finalized"] == STREAMS, timeout=5.0)
     for seen in (parked, steady):
-        assert seen["answer_limiter_borrowed"] == STREAMS
-        threads_held = (seen["db_limiter_borrowed"], seen["embed_limiter_borrowed"], seen["default_limiter_borrowed"])
-        assert threads_held == (0, 0, 0)
+        assert seen["inflight_leases"] == STREAMS and seen["reserved_rows"] == STREAMS
+        threads_held = (seen["db_limiter_borrowed"], seen["embed_limiter_borrowed"], seen["state_limiter_borrowed"],
+                        seen["default_limiter_borrowed"])
+        assert threads_held == (0, 0, 0, 0)
     assert healthz.status_code == 200 and health_s < 1.0
     assert Counter(r["ip_hash"] for r in state["ledger_rows"]) == Counter(ask_key(t) for t in tags)
-    assert all(r["usage"] is None and r["cost_usd"] is None for r in state["ledger_rows"])
+    assert all(r["usage"] is None and r["outcome"] == "abandoned" for r in state["ledger_rows"])
     assert state["twin_exits"] == {"CancelledError": STREAMS} and state["cache_puts"] == 0
 
 
@@ -571,10 +598,10 @@ async def _leave_once(client: httpx.AsyncClient, base: str, question: str, tag: 
     rows = rows_of(state, tag)
     assert len(rows) == 1, f"{len(rows)} ledger rows for one abandoned ask"
     row = rows[0]
-    assert row["usage"] is None and row["cost_usd"] is None and row["cached"] is False, row
+    assert row["usage"] is None and row["outcome"] == "abandoned" and row["cached"] is False, row
     assert state["ledger_row_count"] == before["ledger_row_count"] + 1 and state["cache_puts"] == before["cache_puts"]
     assert state["twin_exits"].get("CancelledError", 0) == before["twin_exits"].get("CancelledError", 0) + 1
-    assert state["answer_limiter_borrowed"] == 0
+    assert state["inflight_leases"] == 0
     if mode_of(question) == "long":
         await asyncio.sleep(0.1)
         later = await astate(client, base)
@@ -591,7 +618,9 @@ def test_a_client_that_leaves_before_the_first_byte_leaks_nothing_and_never_cost
 async def _leave_before_the_first_byte(server: Server) -> None:
     """16 raw-socket asks (alternating FIN and RST) that close 0 to 300 ms after sending: before any response byte, some
     before the route has even run its gates, some while the embedding runs, some after the stream began. Whatever phase
-    each one was in: no leaked slot, no leaked twin, at most one row per ask and exactly one per twin that started."""
+    each one was in: no leaked lease, no leaked twin, at most one row per ask and exactly one per reserve the backend
+    granted (an ask that left before the route reserved has no row and no twin; one that left between the reserve and
+    the twin has a row and no twin)."""
     tags = [new_tag(f"early{i}") for i in range(EARLY_ASKS)]
     await asyncio.gather(*(raw_ask(server.port, HANG, tag, leave_after_s=EARLY_DELAYS_S[i % len(EARLY_DELAYS_S)],
                                    reset=bool(i % 2)) for i, tag in enumerate(tags)))
@@ -603,13 +632,15 @@ async def _leave_before_the_first_byte(server: Server) -> None:
     assert later["ledger_row_count"] == state["ledger_row_count"], "a ledger row appeared after the server was quiet"
     per_ask = Counter(r["ip_hash"] for r in later["ledger_rows"])
     assert set(per_ask) <= {ask_key(t) for t in tags} and max(per_ask.values(), default=0) <= 1, per_ask
-    assert later["ledger_row_count"] == later["twins_started"] == later["upstream_closed"], later["twin_exits"]
+    assert later["ledger_row_count"] == later["paid_today"], "a reserve has no settled row, or a row has no reserve"
+    assert later["twins_started"] == later["upstream_closed"] <= later["ledger_row_count"], later["twin_exits"]
     assert all(r["usage"] is None for r in later["ledger_rows"]) and later["cache_puts"] == 0
-    held = (later["answer_limiter_borrowed"], later["db_limiter_borrowed"], later["embed_limiter_borrowed"])
-    assert held == (0, 0, 0)
+    held = (later["inflight_leases"], later["reserved_rows"], later["db_limiter_borrowed"],
+            later["embed_limiter_borrowed"], later["state_limiter_borrowed"])
+    assert held == (0, 0, 0, 0, 0)
 
 
-# ---- 5: the busy path over HTTP
+# ---- 5: the in-flight cap and the per-address daily cap over HTTP
 
 @pytest.fixture(scope="module")
 def busy_server(tmp_path_factory):
@@ -626,7 +657,7 @@ def one_slot_server(busy_server):
     return busy_server
 
 
-def test_a_full_cap_answers_busy_without_a_ledger_row_and_the_holder_is_counted_once(one_slot_server):
+def test_a_full_cap_answers_429_before_any_stream_without_a_ledger_row_and_the_holder_is_counted_once(one_slot_server):
     asyncio.run(_busy_path(one_slot_server.base))
 
 
@@ -636,21 +667,23 @@ async def _busy_path(base: str) -> None:
         async with ask_request(client, base, HANG, holder_tag) as held:
             holder = Events(held)
             await holder.until("delta")
-            busy = await asyncio.gather(*(ask_all(other, base, HANG, t) for t in busy_tags))
+            busy = await asyncio.gather(*(ask_refused(other, base, HANG, t) for t in busy_tags))
             during = await astate(other, base)
         await wait_for(other, base, is_quiet)
         again = await ask_all(other, base, "Which suppliers does Nvidia list for advanced packaging capacity?",
                               new_tag("after"))
         state = await astate(other, base)
-    assert busy == [[("error", {"event": "error", "detail": MSG_BUSY})]] * 4
-    assert (during["answer_limiter_borrowed"], during["twins_started"], during["ledger_row_count"]) == (1, 1, 0), during
-    assert [name for name, _ in again][-1] == "done", "the slot was not reusable after the holder left"
+    for refused in busy:
+        assert_refused_without_a_stream(refused, 429, MSG_BUSY)
+    assert (during["inflight_leases"], during["twins_started"], during["ledger_row_count"]) == (1, 1, 0), during
+    assert during["reserved_rows"] == 1 and during["paid_today"] == 1, during      # a refused ask reserves nothing
+    assert [name for name, _ in again][-1] == "done", "the lease was not reusable after the holder left"
     assert len(rows_of(state, holder_tag)) == 1 and rows_of(state, holder_tag)[0]["usage"] is None
     assert not any(rows_of(state, t) for t in busy_tags)
-    assert state["ledger_row_count"] == 2 and state["answer_limiter_borrowed"] == 0
+    assert state["ledger_row_count"] == 2 and state["inflight_leases"] == 0 and state["paid_today"] == 2
 
 
-def test_five_simultaneous_asks_for_one_slot_leave_exactly_one_holder(one_slot_server):
+def test_five_simultaneous_asks_for_one_lease_leave_exactly_one_holder(one_slot_server):
     asyncio.run(_one_slot_five_ways(one_slot_server.base))
 
 
@@ -659,11 +692,14 @@ async def _one_slot_five_ways(base: str) -> None:
 
     async def contend(client: httpx.AsyncClient, tag: str) -> None:
         async with ask_request(client, base, HANG, tag) as response:
+            if response.status_code != 200:
+                body = await response.aread()
+                await first.put((tag, response.status_code, response.headers["content-type"], body))
+                return
             events = Events(response)
             name, data = await events.next()
-            await first.put((tag, name, data))
-            if name != "error":
-                await release.wait()                  # the holder keeps the connection until released
+            await first.put((tag, 200, name, data))
+            await release.wait()                          # the holder keeps the connection until released
 
     async with new_client() as client, new_client() as watch:
         tasks = [asyncio.create_task(contend(client, tag)) for tag in tags]
@@ -672,12 +708,33 @@ async def _one_slot_five_ways(base: str) -> None:
         release.set()
         await asyncio.gather(*tasks)
         state, _ = await wait_for(watch, base, is_quiet)
-    holders = [tag for tag, name, _data in outcomes if name != "error"]
-    busy_events = [data for _tag, name, data in outcomes if name == "error"]
-    assert len(holders) == 1 and busy_events == [{"event": "error", "detail": MSG_BUSY}] * 4
-    assert (during["answer_limiter_borrowed"], during["twins_started"], during["ledger_row_count"]) == (1, 1, 0), during
+    holders = [tag for tag, status, *_rest in outcomes if status == 200]
+    refused = [(status, content_type, body) for _tag, status, content_type, body in outcomes if status != 200]
+    assert len(holders) == 1 and len(refused) == 4
+    for one in refused:
+        assert_refused_without_a_stream(one, 429, MSG_BUSY)
+    assert (during["inflight_leases"], during["twins_started"], during["ledger_row_count"]) == (1, 1, 0), during
     assert [r["ip_hash"] for r in state["ledger_rows"]] == [ask_key(holders[0])]
-    assert state["ledger_rows"][0]["usage"] is None and state["answer_limiter_borrowed"] == 0
+    assert state["ledger_rows"][0]["usage"] is None and state["inflight_leases"] == 0 and state["paid_today"] == 1
+
+
+def test_the_21st_paid_ask_of_one_address_in_a_day_is_a_429_with_its_own_message_and_another_address_is_served(server):
+    asyncio.run(_per_address_daily_cap(server.base))
+
+
+async def _per_address_daily_cap(base: str) -> None:
+    tag, other_tag = new_tag("daily"), new_tag("other")
+    async with new_client() as client:
+        for _ in range(20):
+            events = await ask_all(client, base, NORMAL, tag)
+            assert [name for name, _ in events][-1] == "done"
+        refused = await ask_refused(client, base, NORMAL, tag)
+        elsewhere = await ask_all(client, base, NORMAL, other_tag)
+        state, _ = await wait_for(client, base, is_quiet)
+    assert_refused_without_a_stream(refused, 429, MSG_IP_BUDGET)
+    assert [name for name, _ in elsewhere][-1] == "done"
+    assert len(rows_of(state, tag)) == 20 and len(rows_of(state, other_tag)) == 1
+    assert state["per_ip_max"] == 20 and state["paid_today"] == 21         # the refused one reserved nothing
 
 
 # ---- 6: a client that stops reading
@@ -712,8 +769,8 @@ async def _stalled_reader(server: Server) -> float:
     assert 1.5 <= dropped_after_s <= 8.0, f"dropped after {dropped_after_s:.2f} s with send_timeout_s=2"
     rows = rows_of(state, tag)
     assert len(rows) == 1, f"{len(rows)} ledger rows for the dropped ask"
-    assert rows[0]["usage"] is None and rows[0]["cost_usd"] is None
-    assert state["ledger_row_count"] == 1 and state["answer_limiter_borrowed"] == 0
+    assert rows[0]["usage"] is None and rows[0]["outcome"] == "abandoned"
+    assert state["ledger_row_count"] == 1 and state["inflight_leases"] == 0
     assert state["twins_started"] == state["upstream_closed"] == 1 and state["background_calls"] == 0
     assert state["twin_exits"] == {TIMEOUT_EXIT: 1}, state["twin_exits"]
     assert healthz.status_code == 200
@@ -762,12 +819,12 @@ def send_terminate(server: Server) -> None:
         pytest.skip(f"the termination signal could not be sent to the server ({error!r})")
 
 
-def test_sigterm_during_a_stream_today_cuts_it_and_costs_one_row_without_usage(tmp_path_factory):
-    """Pins what a termination signal does TODAY, with no drain logic: the stream is cut (no ``done``, a protocol error
-    on the client), the twin is cancelled, and the ask costs exactly one ledger row without usage, written before the
-    server exits. This is the behaviour the drain work of increment I4 will change (``shutdown_grace_period``, a
-    ``draining`` state); when it does, this test is the one to rewrite. The module docstring has the details. Skipped,
-    saying why, where the signal cannot be delivered (Windows without a console)."""
+def test_sigterm_during_a_stream_under_stock_uvicorn_cuts_it_and_costs_one_row_without_usage(tmp_path_factory):
+    """Pins what a termination signal does to a server that is NOT run by ``serve.drain`` (stock uvicorn, which this
+    test app is): the stream is cut (no ``done``, a protocol error on the client), the twin is cancelled, and the ask
+    costs exactly one ledger row, settled abandoned without usage, written before the server exits. The drain
+    (``tests/test_serve_drain.py``, run by the image's CMD) changes this for the real service. Skipped, saying why,
+    where the signal cannot be delivered (Windows without a console)."""
     server = Server(tmp_path_factory.mktemp("serve_async_sigterm"), max_answers=4, send_timeout_s=30,
                     embed_slots=1, db_threads=4).start()
     tag = new_tag("sigterm")
@@ -781,7 +838,7 @@ def test_sigterm_during_a_stream_today_cuts_it_and_costs_one_row_without_usage(t
     exits = [e["outcome"] for e in server.journal() if e["event"] == "twin_exit"]
     assert outcome["events"][-1][0] != "done" and outcome["error"], outcome      # cut, not finished
     assert [name for name, _ in outcome["events"]][:2] == ["retrieval", "delta"]
-    assert len(ledger) == 1 and ledger[0]["usage"] is None and ledger[0]["cost_usd"] is None, ledger
+    assert len(ledger) == 1 and ledger[0]["usage"] is None and ledger[0]["outcome"] == "abandoned", ledger
     assert exits == [SIGTERM_TWIN_EXIT], exits
     assert outcome["exited"], f"the server did not exit within {SIGTERM_EXIT_WAIT_S} s of the signal ({returncode})"
 
@@ -807,6 +864,70 @@ async def _stream_through_sigterm(server: Server, tag: str) -> dict:
         exited = False
     ignored = not exited and error is None and bool(events) and events[-1][0] == "done"
     return {"events": events, "error": error, "exited": exited, "signal_ignored": ignored}
+
+
+def test_sigterm_during_a_stream_under_the_drain_entry_point_lets_it_finish_and_refuses_the_next_paid_ask(
+        tmp_path_factory):
+    """The same app started as the image starts the service (``python -m semigraph.serve.drain``), over the REAL
+    ``PaidStream`` / ``PaidResponse`` / ``InProcessBackend``: the signal begins the drain, the stream that was running
+    ends with ``done`` (not cut), its ledger row is settled ``done`` with its usage (not abandoned), a NEW paid ask
+    during the drain is a 503 ``MSG_DRAINING`` with ``Retry-After`` (the listener stays open: ``/healthz`` answers), and
+    the process exits 0 once nothing is counted. Skipped, saying why, where the signal cannot be delivered."""
+    server = Server(tmp_path_factory.mktemp("serve_async_drain"), drained=True, max_answers=4, send_timeout_s=30,
+                    embed_slots=1, db_threads=4).start()
+    tag, late_tag = new_tag("drain"), new_tag("late")
+    try:
+        outcome = asyncio.run(_stream_through_the_drain(server, tag, late_tag))
+    finally:
+        returncode = server.stop()
+    if outcome["signal_ignored"]:
+        pytest.skip("the termination signal was sent but the server did not react to it (no console to deliver it to)")
+    ledger = [e for e in server.journal() if e["event"] == "ledger" and e["ip_hash"] == ask_key(tag)]
+    assert outcome["error"] is None and outcome["events"][-1][0] == "done", outcome          # finished, not cut
+    assert [name for name, _ in outcome["events"]][:2] == ["retrieval", "delta"]
+    assert [(e["outcome"], bool(e["usage"])) for e in ledger] == [("done", True)], ledger
+    assert_refused_without_a_stream(outcome["refused"], 503, MSG_DRAINING)
+    assert outcome["retry_after"] == "30" and outcome["healthz"] == 200
+    assert outcome["exited"] and returncode == 0, f"the drain did not end in a clean exit: {returncode}"
+
+
+async def _stream_through_the_drain(server: Server, tag: str, late_tag: str) -> dict:
+    """Open a ``[medium]`` stream, read its first delta, signal the server, then ask again until the server refuses (the
+    signal is handled a moment after it is sent) and read the first stream to its end."""
+    events, error, probe = [], None, {"refused": None, "retry_after": None, "healthz": None}
+    async with new_client() as client, new_client() as other:
+        try:
+            async with ask_request(client, server.base, MEDIUM, tag) as response:
+                reader = Events(response)
+                while (item := await reader.next()) is not None:
+                    events.append(item)
+                    if item[0] == "delta" and len(events) == 2:
+                        send_terminate(server)
+                        probe = await _ask_until_refused(other, server.base, late_tag)
+        except (httpx.TransportError, OSError) as exc:
+            error = type(exc).__name__
+    try:
+        await asyncio.to_thread(server.proc.wait, SIGTERM_EXIT_WAIT_S)
+        exited = True
+    except subprocess.TimeoutExpired:
+        exited = False
+    ignored = not exited and error is None and bool(events) and events[-1][0] == "done"
+    return {"events": events, "error": error, "exited": exited, "signal_ignored": ignored, **probe}
+
+
+async def _ask_until_refused(client: httpx.AsyncClient, base: str, tag: str, timeout: float = 10.0) -> dict:
+    """Ask (a new question each time: a repeat would be a cached answer, which is served during a drain) until the
+    server answers something but 200. The first asks may be served: the signal has not been handled yet."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        async with ask_request(client, base, f"[normal] {BODY} {uuid.uuid4().hex[:8]}", tag) as response:
+            body = await response.aread()
+            if response.status_code != 200:
+                refused = (response.status_code, response.headers.get("content-type", ""), body)
+                healthz = (await client.get(f"{base}/healthz")).status_code
+                return {"refused": refused, "retry_after": response.headers.get("retry-after"), "healthz": healthz}
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"the server never refused a paid ask in {timeout} s after the signal")
 
 
 # ---- 8: what sse-starlette does on a client disconnect
@@ -857,7 +978,7 @@ def test_the_servers_run_the_production_event_loop(main_server, busy_server):
         assert server.loop.startswith("asyncio") and "uvloop" not in server.loop, server.loop
 
 
-def test_a_stalled_closing_chunk_frees_the_slot_at_once_and_the_response_ends_on_the_send_timeout(
+def test_a_stalled_closing_chunk_frees_the_lease_at_once_and_the_response_ends_on_the_send_timeout(
         one_slot_server, record_property):
     freed_after_s, dropped_after_s = asyncio.run(_stalled_closing_chunk(one_slot_server))
     record_property("closing_stall_slot_freed_s", round(freed_after_s, 3))
@@ -867,9 +988,9 @@ def test_a_stalled_closing_chunk_frees_the_slot_at_once_and_the_response_ends_on
 async def _stalled_closing_chunk(server: Server) -> tuple[float, float]:
     """The reviewer's scenario without 150 KiB of real backlog: ``done`` goes out, then the transport stops draining, so
     sse-starlette's closing send (which holds its send lock and has no timeout of its own) never completes. The client
-    stays connected throughout. The slot must be back before the send timeout fires (the end of ``events()`` released
-    it), a second ask on the one-slot server must be served rather than answered busy, and the response must end on the
-    send timeout with the one warning line and no traceback."""
+    stays connected throughout. The lease must be back before the send timeout fires (the end of ``events()`` released
+    it), a second ask on the one-lease server must be served rather than refused as busy, and the response must end on
+    the send timeout with the one warning line and no traceback."""
     base, tag, next_tag = server.base, new_tag("closing"), new_tag("after")
     async with new_client() as client, new_client() as other:
         await ask_all(client, base, NORMAL, new_tag("warm"))    # embed the question text once
@@ -892,12 +1013,12 @@ async def _stalled_closing_chunk(server: Server) -> tuple[float, float]:
             log = server.log_since(log_mark)
         final, _ = await wait_for(client, base, is_quiet)
     assert state["write_pauses"] == 1, "the stall was not injected: nothing here tested the closing send"
-    assert freed_after_s < SEND_TIMEOUT_S, f"the slot came back after {freed_after_s:.2f} s: the send timeout freed it"
+    assert freed_after_s < SEND_TIMEOUT_S, f"the lease came back after {freed_after_s:.2f} s: the send timeout freed it"
     rows = rows_of(state, tag)
     assert len(rows) == 1 and rows[0]["usage"] and rows[0]["cost_usd"] is not None, rows    # the answer's own row
     assert [name for name, _ in again][-1] == "done", "the second ask was not served while the first response hung"
     assert len(rows_of(final, next_tag)) == 1 and final["ledger_row_count"] == 2
-    assert final["answer_limiter_borrowed"] == 0 and final["twin_exits"] == {"completed": 2}, final["twin_exits"]
+    assert final["inflight_leases"] == 0 and final["twin_exits"] == {"completed": 2}, final["twin_exits"]
     assert dropped_after_s <= SEND_TIMEOUT_S + 1, f"the response ended {dropped_after_s:.2f} s after its last frame"
     assert "Traceback" not in log, log[-2000:]
     assert log.count(SEND_TIMEOUT_LINE) == 1 and log.count(UVICORN_INCOMPLETE_LINE) == 1, log[-2000:]

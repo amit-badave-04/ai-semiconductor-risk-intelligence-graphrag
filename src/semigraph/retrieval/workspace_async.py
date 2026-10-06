@@ -70,6 +70,7 @@ from contextlib import aclosing
 from functools import partial
 from typing import TYPE_CHECKING
 
+from .answerer import dropped_anchors_field
 from .answerer_async import _hop, astream_answer_for_prompt
 from .retriever import company_edges_query, hybrid_retrieve
 from .workspace import (
@@ -99,7 +100,8 @@ async def _on_db_thread(limiters: "Limiters", fn, *args, **kwargs):
 def _retrieval_event(r_sec: dict, doc_chunks: list[dict]) -> dict:
     return {"event": "retrieval", "anchors": r_sec["anchors"],
             "counts": {k: len(r_sec[k]) for k in RETRIEVAL_COUNT_LAYERS},
-            "anchor_defaulted": bool(r_sec.get("anchor_defaulted", False)), "doc_chunks": len(doc_chunks)}
+            "anchor_defaulted": bool(r_sec.get("anchor_defaulted", False)), "doc_chunks": len(doc_chunks),
+            **dropped_anchors_field(r_sec)}
 
 
 async def _with_workspace_block(done: dict, driver, workspace_id: str, limiters: "Limiters", *, doc_chunks: int,

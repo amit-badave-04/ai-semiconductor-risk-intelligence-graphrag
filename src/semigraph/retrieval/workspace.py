@@ -22,7 +22,7 @@ import secrets
 import string
 
 from ..artifacts import read_prompt
-from .answerer import build_blocks, sources_from_context, stream_answer_for_prompt
+from .answerer import build_blocks, dropped_anchors_field, sources_from_context, stream_answer_for_prompt
 from .ids import CITE_RE, classify_id
 from .retriever import hybrid_retrieve
 
@@ -274,7 +274,8 @@ def stream_workspace_answer(question: str, driver, embedder, *, strategy: str = 
     prompt, full_context, valid_ids, chunk_ids, sources = build_workspace_prompt(question, r_sec, r_ws, delimiter)
     yield {"event": "retrieval", "anchors": r_sec["anchors"],
           "counts": {k: len(r_sec[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")},
-          "anchor_defaulted": bool(r_sec.get("anchor_defaulted", False)), "doc_chunks": len(doc_chunks)}
+          "anchor_defaulted": bool(r_sec.get("anchor_defaulted", False)), "doc_chunks": len(doc_chunks),
+          **dropped_anchors_field(r_sec)}
     suspicious = looks_suspicious("\n".join(c["text"] for c in doc_chunks))
     # Only forwarded when set: TextStream's own defaults (a 1200-token budget, no timeout) must not be overridden by
     # a bare None from a caller (e.g. a direct test call) that never passed them.

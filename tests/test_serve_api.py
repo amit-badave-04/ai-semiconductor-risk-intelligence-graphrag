@@ -1,11 +1,14 @@
 """HTTP-layer tests for semigraph.serve — every gate, the SSE framing, the
-cache path and the admin surface, with Neo4j, the embedder and the LLM faked.
+cache path and the admin surface, with Neo4j, the embedder, the LLM and the state backend faked.
 
 The app is built with a small lifespan of its own (the production one connects to Neo4j): it builds the limiters INSIDE
 the running loop, which ``with TestClient(app)`` keeps alive for the whole test, so every request and every call made
 through ``client.portal`` shares the loop the limiters belong to. The rest of the state the routes read is installed by
-the ``client`` fixture, and the store/answer functions the routes call are monkeypatched at the module level (the answer
-writers are ASYNC generators, as the route requires), so what is exercised is exactly the routing + policy logic.
+the ``client`` fixture: a :class:`FakeStateBackend` (``tests/serve_state_fakes.py``) stands where the real backend does,
+so a paid ask's ledger row is the backend's ``settled`` record, its answer cache is the backend's dict and a refusal is
+a scripted ``Denied``; the store functions the routes still call (the cached-hit row, the stored policy, the ledger
+summary) and the answer writers (ASYNC generators, as the route requires) are monkeypatched at the module level, so what
+is exercised is exactly the routing + policy logic.
 """
 
 import asyncio
@@ -14,18 +17,21 @@ import json
 import sys
 import types
 
-import anyio
 import pytest
 import sse_starlette.sse as sse_sse
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from serve_state_fakes import FakeStateBackend, fresh_drain, install_state  # noqa: F401 - fresh_drain: a fixture
 
 import semigraph.serve.routes as routes
 from semigraph.artifacts import load_examples
-from semigraph.serve import guard, store
+from semigraph.serve import drain, guard, store
 from semigraph.serve.guard import RateLimiter
 from semigraph.serve.limiters import make_limiters
+from semigraph.serve.state import Denied
 from semigraph.serve.stream_runtime import PaidStream
+
+pytestmark = pytest.mark.usefixtures("fresh_drain")
 
 Q = "Which HBM suppliers does Nvidia depend on, and which export rules apply?"
 CID = "0001045810-26-000021:I.1:0320"
@@ -34,6 +40,8 @@ CID = "0001045810-26-000021:I.1:0320"
 class FakeSettings:
     kill_switch = False
     max_queries_per_day = 3
+    max_spend_usd_per_day = 10.0
+    paid_per_ip_per_day = 20
     turnstile_secret_key = ""
     turnstile_site_key = ""
     is_production = False
@@ -63,29 +71,26 @@ class FakeSettings:
 
 
 class Fakes:
-    """In-memory stand-ins for the Neo4j-backed store."""
+    """In-memory stand-ins for the Neo4j-backed store and the state backend. ``queries`` holds the CACHED rows that
+    ``store.log_query`` still writes; a paid ask's ledger row is a record of ``backend.settled``."""
 
     def __init__(self):
-        self.answers: dict[str, dict] = {}
+        self.backend = FakeStateBackend()
         self.policy: dict[str, str] = {}
         self.queries: list[dict] = []
-        self.paid_today = 0
 
-    def put_answer(self, driver, **kw):
-        self.answers[store.cache_key(kw["question"], kw["strategy"])] = {
-            "answer": kw["answer"], "source": "live",
-            "citations": kw["citations"], "hallucinated": kw["hallucinated"]}
+    @property
+    def answers(self) -> dict[str, dict]:
+        return self.backend.cache
+
+    @property
+    def settled(self) -> list[dict]:
+        return self.backend.settled
 
     def install(self, monkeypatch):
-        monkeypatch.setattr(store, "get_answer", lambda d, key, ttl: self.answers.get(key))
-        monkeypatch.setattr(store, "put_answer", self.put_answer)
         monkeypatch.setattr(store, "log_query", lambda d, **kw: self.queries.append(kw))
-        monkeypatch.setattr(store, "kill_switch_on",
-                            lambda d, flag: flag or self.policy.get("kill_switch") == "on")
-        monkeypatch.setattr(store, "paid_queries_today", lambda d: self.paid_today)
         monkeypatch.setattr(store, "get_policy", lambda d, k: self.policy.get(k))
-        monkeypatch.setattr(store, "set_policy", lambda d, k, v: self.policy.__setitem__(k, v))
-        monkeypatch.setattr(store, "ledger_summary", lambda d: {"today": {"paid": len(self.queries)}})
+        monkeypatch.setattr(store, "ledger_summary", lambda d: {"today": {"paid": len(self.backend.settled)}})
 
 
 async def fake_answer_stream(question, driver, embedder, strategy="hybrid", **kw):
@@ -138,18 +143,16 @@ def install_counting_agent_stream(monkeypatch, calls: list):
     install_agent_module(monkeypatch, counted)
 
 
-@contextlib.asynccontextmanager
-async def _lifespan(app: FastAPI):
-    """What ``main.lifespan`` builds inside the running loop (the limiters are bound to it)."""
-    app.state.limiters = make_limiters(app.state.settings)
-    app.state.answer_limiter = anyio.CapacityLimiter(app.state.settings.max_concurrent_answers)
-    app.state.loop = asyncio.get_running_loop()
-    yield
-
-
 @pytest.fixture
 def client(fakes):
-    app = FastAPI(lifespan=_lifespan)
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """What ``main.lifespan`` builds inside the running loop (the limiters are bound to it)."""
+        app.state.limiters = make_limiters(app.state.settings)
+        app.state.loop = asyncio.get_running_loop()
+        yield
+
+    app = FastAPI(lifespan=lifespan)
     app.include_router(routes.router)
     app.state.settings = FakeSettings()
     app.state.driver = object()
@@ -160,15 +163,25 @@ def client(fakes):
     app.state.free_rate_limiter = RateLimiter(FakeSettings.free_rate_limit_questions,
                                               FakeSettings.rate_limit_window_seconds)
     app.state.read_rate_limiter = RateLimiter(FakeSettings.read_rate_limit_per_minute, 60)
+    install_state(app, backend=fakes.backend)
     with TestClient(app) as test_client:         # ONE event loop for the whole test (the lifespan runs in it)
         yield test_client
+
+
+def make_stream(client, question, strategy="hybrid", iph="iph", twin=None):
+    """A ``PaidStream`` as the route builds one: counted on the drain, holding a lease the backend granted."""
+    st = client.app.state
+    lease = st.state.reserve(ip_hash=iph, strategy=strategy, workspace=False, estimate_micro=60_000, now_wall=0.0,
+                             now_mono=0.0)
+    drain.DRAIN.enter()
+    return PaidStream(st, question, strategy, iph, twin=twin or routes._stream_fn(strategy), lease=lease)
 
 
 def run_stream(client, question, strategy="hybrid", iph="iph"):
     """Drive one ``PaidStream`` to its end on the test client's own loop, settle it the way the response does, and
     return the decoded events."""
     async def go():
-        stream = PaidStream(client.app.state, question, strategy, iph, twin=routes._stream_fn(strategy))
+        stream = make_stream(client, question, strategy, iph)
         try:
             return [json.loads(event.data) async for event in stream.events()]
         finally:
@@ -204,8 +217,21 @@ def test_examples_lists_benchmark_questions_without_answers(client):
 def test_stats_reports_limits_and_models(client):
     body = client.get("/api/stats").json()
     assert body["limits"]["max_queries_per_day"] == 3
+    assert body["limits"]["max_spend_usd_per_day"] == 10.0 and body["limits"]["per_ip_per_day"] == 20
     assert body["models"]["embedder"] == "fake-embedder"
     assert body["models"]["escalation"] is None   # not configured on the test double
+
+
+@pytest.mark.parametrize("level,paused", [("off", False), ("retrieval_only", True), ("on", True)])
+def test_stats_says_paused_for_any_level_but_off_and_reports_the_spend_the_cap_counts(client, fakes, level, paused):
+    fakes.backend.kill = level
+    body = client.get("/api/stats").json()
+    assert body["paused"] is paused and body["spend_today_usd"] == 0.0
+
+
+def test_stats_reads_a_kill_level_that_cannot_be_read_as_paused(client, fakes):
+    fakes.backend.errors["kill_level"] = RuntimeError("the backend is gone")
+    assert client.get("/api/stats").json()["paused"] is True
 
 
 def test_evidence_rejects_malformed_ids(client):
@@ -225,9 +251,10 @@ def test_ask_rejects_unknown_strategy(client):
 
 def test_the_agent_strategy_is_refused_and_unadvertised_while_the_agent_is_off(client, fakes):
     assert client.get("/api/stats").json()["agent_enabled"] is False
+    calls_before = list(fakes.backend.calls)                       # what the stats page itself asked of the backend
     r = client.post("/api/ask", json={"question": Q, "strategy": "agent"})
     assert r.status_code == 400 and "agent" not in r.text
-    assert fakes.queries == []                                     # refused before any ledger write
+    assert fakes.queries == [] and fakes.backend.calls == calls_before   # refused before any ledger write or state call
 
 
 def test_an_enabled_agent_streams_through_the_lazily_imported_agent_and_is_ledgered_as_agent(client, fakes, monkeypatch):
@@ -247,7 +274,9 @@ def test_an_enabled_agent_streams_through_the_lazily_imported_agent_and_is_ledge
         client.app.state.settings.agent_enabled = False
     assert events[-1]["event"] == "done" and events[-1]["strategy"] == "agent"
     assert seen["settings"] is client.app.state.settings           # the agent reads its limits from the service's settings
-    assert fakes.queries[-1]["strategy"] == "agent" and fakes.queries[-1]["cached"] is False
+    assert fakes.settled[-1]["strategy"] == "agent" and fakes.settled[-1]["outcome"] == "done"
+    # the agent's own estimate
+    assert fakes.backend.reserve_kwargs[-1]["estimate_micro"] == client.app.state.estimates["agent"]
 
 
 def test_ask_streams_retrieval_deltas_and_done_then_caches(client, fakes):
@@ -256,19 +285,21 @@ def test_ask_streams_retrieval_deltas_and_done_then_caches(client, fakes):
     events = parse_sse(r.text)
     assert [e["event"] for e in events] == ["retrieval", "delta", "delta", "done"]
     assert events[-1]["citations"] == [CID] and events[-1]["hallucinated"] == []
-    assert fakes.queries[-1]["cached"] is False and fakes.queries[-1]["cost_usd"] == 0.00007
+    assert len(fakes.settled) == 1 and fakes.queries == []        # one paid ledger row (a settle), no cached row yet
+    assert (fakes.settled[-1]["outcome"], fakes.settled[-1]["cost_micro"]) == ("done", 70)
     # second identical question (any spacing/case) is served from the cache
     r2 = client.post("/api/ask", json={"question": Q.upper() + "  "})
     done = parse_sse(r2.text)[0]
     assert done["cached"] is True and done["source"] == "live"
-    assert fakes.queries[-1]["cached"] is True
+    assert fakes.queries[-1]["cached"] is True and len(fakes.settled) == 1     # a cached row, and no second lease
 
 
 def test_cached_answers_bypass_kill_switch_and_ceiling(client, fakes):
     client.post("/api/ask", json={"question": Q})
-    fakes.policy["kill_switch"] = "on"
-    fakes.paid_today = 99
+    fakes.backend.kill = "on"
+    fakes.backend.deny.extend([Denied.DAILY_COUNT, Denied.DAILY_SPEND])
     assert parse_sse(client.post("/api/ask", json={"question": Q}).text)[0]["cached"] is True
+    assert fakes.backend.names().count("reserve") == 1 and len(fakes.backend.deny) == 2   # the hit never reached a gate
 
 
 # The bytes of a cached answer as the page has always received them, captured from the route before the event moved
@@ -303,20 +334,21 @@ def test_a_cached_answer_never_waits_for_a_slot_of_the_default_thread_pool(clien
 def test_kill_switch_blocks_paid_answers_with_503(client, fakes, monkeypatch, strategy):
     client.app.state.settings.agent_enabled = True
     install_agent_stream_that_must_not_run(monkeypatch)
-    fakes.policy["kill_switch"] = "on"
+    fakes.backend.kill = "on"
     r = client.post("/api/ask", json={"question": Q, "strategy": strategy})
     assert r.status_code == 503 and "paused" in r.json()["detail"]
-    assert fakes.queries == []                                     # refused before a ledger write, whichever strategy
+    # refused before a lease or a ledger row, whichever strategy
+    assert fakes.queries == [] and fakes.backend.granted == []
 
 
 @pytest.mark.parametrize("strategy", ["hybrid", "agent"])
 def test_daily_ceiling_blocks_with_429(client, fakes, monkeypatch, strategy):
     client.app.state.settings.agent_enabled = True
     install_agent_stream_that_must_not_run(monkeypatch)
-    fakes.paid_today = FakeSettings.max_queries_per_day
+    fakes.backend.deny.append(Denied.DAILY_COUNT)
     r = client.post("/api/ask", json={"question": Q, "strategy": strategy})
     assert r.status_code == 429 and "budget" in r.json()["detail"]
-    assert fakes.queries == []
+    assert fakes.queries == [] and fakes.backend.granted == []
 
 
 @pytest.mark.parametrize("strategy", ["hybrid", "agent"])
@@ -326,35 +358,31 @@ def test_per_ip_rate_limit_after_window_quota(client, fakes, monkeypatch, strate
     install_counting_agent_stream(monkeypatch, calls)
     for i in range(FakeSettings.rate_limit_questions):
         assert client.post("/api/ask", json={"question": f"{Q} variant {i}", "strategy": strategy}).status_code == 200
-    calls_before, queries_before = len(calls), len(fakes.queries)
+    calls_before, settled_before = len(calls), len(fakes.settled)
     r = client.post("/api/ask", json={"question": f"{Q} variant last", "strategy": strategy})
     assert r.status_code == 429 and "address" in r.json()["detail"]
-    assert len(calls) == calls_before and len(fakes.queries) == queries_before   # the refused call reaches neither
+    assert len(calls) == calls_before and len(fakes.settled) == settled_before   # the refused call reaches neither
 
 
-def test_busy_slot_emits_error_event_and_keeps_slot_accounting(client, fakes):
-    limiter, holder = client.app.state.answer_limiter, object()
-    assert limiter.total_tokens == FakeSettings.max_concurrent_answers == 1
-    client.portal.call(limiter.acquire_on_behalf_of_nowait, holder)
-    try:
-        events = parse_sse(client.post("/api/ask", json={"question": Q}).text)
-        assert events == [{"event": "error", "detail": routes.MSG_BUSY}]
-        assert fakes.queries == [] and limiter.borrowed_tokens == 1    # the refused ask wrote nothing and took nothing
-    finally:
-        client.portal.call(limiter.release_on_behalf_of, holder)
-    assert limiter.borrowed_tokens == 0
-    client.portal.call(limiter.acquire_on_behalf_of_nowait, holder)    # the one slot is free again ...
-    try:
-        with pytest.raises(anyio.WouldBlock):                          # ... and still exactly one
-            client.portal.call(limiter.acquire_on_behalf_of_nowait, object())
-    finally:
-        client.portal.call(limiter.release_on_behalf_of, holder)
+def test_a_full_in_flight_cap_is_a_429_before_any_stream_and_the_cap_frees_again(client, fakes):
+    """The in-flight cap is the backend's: a full cap is a pre-stream 429 (a JSON ``detail``, no event stream: the page
+    shows ``detail`` for any non-OK response), with no lease taken and nothing on the ledger, and the next ask is
+    served."""
+    fakes.backend.deny.append(Denied.INFLIGHT)
+    r = client.post("/api/ask", json={"question": Q})
+    assert r.status_code == 429 and r.json() == {"detail": routes.MSG_BUSY}
+    assert r.headers["content-type"].startswith("application/json") and "event:" not in r.text
+    assert fakes.queries == [] and fakes.backend.granted == [] and fakes.backend.inflight == 0
+    assert parse_sse(client.post("/api/ask", json={"question": Q}).text)[-1]["event"] == "done"
+    assert fakes.backend.inflight == 0
 
 
-def test_a_finished_ask_gives_its_slot_back_and_the_next_ask_is_served(client, fakes):
+def test_a_finished_ask_gives_its_lease_back_and_the_next_ask_is_served(client, fakes):
+    fakes.backend.max_inflight = FakeSettings.max_concurrent_answers
     for question in (Q + " one", Q + " two"):
         assert parse_sse(client.post("/api/ask", json={"question": question}).text)[-1]["event"] == "done"
-        assert client.app.state.answer_limiter.borrowed_tokens == 0
+        assert fakes.backend.inflight == 0
+    assert len(fakes.settled) == 2
 
 
 def test_every_request_runs_on_the_loop_the_limiters_were_built_in(client, monkeypatch):
@@ -401,8 +429,8 @@ def test_mid_stream_error_event_still_logs_spend(client, fakes, monkeypatch):
     monkeypatch.setattr(routes, "aanswer_stream", failing)
     events = parse_sse(client.post("/api/ask", json={"question": Q}).text)
     assert events[-1]["event"] == "error" and "overloaded" not in events[-1]["detail"]
-    last = fakes.queries[-1]
-    assert last["cached"] is False and last["cost_usd"] == 0.0012 and last["usage"]["prompt_tokens"] == 500
+    last = fakes.settled[-1]
+    assert last["outcome"] == "error" and last["cost_micro"] == 1200 and last["usage"]["prompt_tokens"] == 500
     assert fakes.answers == {}
 
 
@@ -429,7 +457,7 @@ def test_free_tier_window_gates_cache_hits_before_any_write(client, fakes, monke
     calls: list = []
     install_counting_agent_stream(monkeypatch, calls)
     client.post("/api/ask", json={"question": Q, "strategy": strategy})  # paid, populates the cache
-    n_before, calls_before = len(fakes.queries), len(calls)
+    n_before, calls_before = len(fakes.queries), len(calls)     # the cached rows (log_query) and the planner calls
     for _ in range(FakeSettings.free_rate_limit_questions - 1):
         assert client.post("/api/ask", json={"question": Q, "strategy": strategy}).status_code == 200
     assert client.post("/api/ask", json={"question": Q, "strategy": strategy}).status_code == 429
@@ -443,15 +471,17 @@ def test_admin_non_ascii_header_is_404_not_500(client):
     assert client.get("/api/admin/policy", headers={b"x-admin-token": raw}).status_code == 404
 
 
-def test_stream_failure_emits_error_event_and_releases_slot(client, fakes, monkeypatch):
+def test_stream_failure_emits_error_event_and_releases_the_lease(client, fakes, monkeypatch):
     async def boom(*a, **kw):
         yield {"event": "retrieval", "anchors": {}, "counts": {}}
         raise RuntimeError("provider down")
     monkeypatch.setattr(routes, "aanswer_stream", boom)
     events = parse_sse(client.post("/api/ask", json={"question": Q}).text)
     assert events[-1]["event"] == "error" and "RuntimeError" in events[-1]["detail"]
-    assert client.app.state.answer_limiter.borrowed_tokens == 0           # slot was released
-    assert len(fakes.queries) == 1 and "usage" not in fakes.queries[0]    # one ledger row, no spend known
+    assert fakes.backend.inflight == 0                                    # the lease was released
+    assert len(fakes.settled) == 1 and fakes.settled[0]["usage"] is None and fakes.settled[0]["cost_micro"] is None
+    # one settle, no spend known: the estimate stands
+    assert fakes.settled[0]["outcome"] == "error"
 
 
 def test_truncated_answers_are_not_cached(client, fakes, monkeypatch):
@@ -461,7 +491,7 @@ def test_truncated_answers_are_not_cached(client, fakes, monkeypatch):
                "context_chars": 0}
     monkeypatch.setattr(routes, "aanswer_stream", truncated)
     client.post("/api/ask", json={"question": Q})
-    assert fakes.answers == {} and fakes.queries[-1]["cached"] is False
+    assert fakes.answers == {} and fakes.settled[-1]["outcome"] == "done"
 
 
 # --- admin ---
@@ -472,8 +502,9 @@ def test_admin_requires_token_and_toggles_kill_switch(client, fakes):
     ok = {"X-Admin-Token": "secret-token"}
     assert client.get("/api/admin/policy", headers=ok).json()["kill_switch"] == "off"
     assert client.post("/api/admin/policy", json={"kill_switch": True},
-                       headers=ok).json()["kill_switch"] == "on"
-    assert fakes.policy["kill_switch"] == "on"
+                       headers=ok).json() == {"kill_switch": "on", "stored": True}
+    assert fakes.backend.kill_sets == ["on"] and fakes.backend.kill == "on"      # through the backend: immediate here
+    assert client.get("/api/admin/policy", headers=ok).json()["effective"] == "on"
 
 
 def test_admin_disabled_when_no_token_configured(client):
@@ -488,7 +519,7 @@ def test_turnstile_required_fails_closed_without_keys(client, fakes, monkeypatch
     client.app.state.settings.turnstile_required = True
     r = client.post("/api/ask", json={"question": Q, "strategy": strategy})
     assert r.status_code == 403 and "Bot check" in r.json()["detail"]
-    assert fakes.queries == []
+    assert fakes.queries == [] and fakes.backend.granted == []
 
 
 @pytest.mark.parametrize("failing", [{"turnstile_required": True},
@@ -530,7 +561,7 @@ def test_a_failed_bot_check_never_touches_the_paid_window_which_only_a_passed_on
     r = client.post("/api/ask", json={"question": f"{Q} human last"})
     assert r.status_code == 429                 # ... and the next one is the window's own refusal
     assert events == ["bot check", "paid window"] * (n + 1)    # the order of the two gates, for every passed request
-    assert fakes.queries[-1]["cached"] is False and len(fakes.queries) == n
+    assert len(fakes.settled) == n and fakes.backend.granted[-1].lease_id == fakes.settled[-1]["lease_id"]
 
 
 def test_read_endpoints_are_rate_limited(client):
@@ -542,11 +573,6 @@ def test_read_endpoints_are_rate_limited(client):
 
 def test_a_cached_answer_is_not_served_after_the_data_snapshot_changes(client, fakes, monkeypatch):
     """The cache key includes the snapshot id: after a data refresh yesterday's answer is a miss."""
-    monkeypatch.setattr(store, "put_answer",
-                        lambda d, **kw: fakes.answers.__setitem__(
-                            store.cache_key(kw["question"], kw["strategy"], kw.get("snapshot_id", "")),
-                            {"answer": kw["answer"], "source": "live", "citations": kw["citations"],
-                             "hallucinated": kw["hallucinated"]}))
     client.app.state.snapshot_id = "snap-20260924-aaaaaaaaaa"
     first = parse_sse(client.post("/api/ask", json={"question": "Who does Nvidia depend on for HBM?"}).text)
     assert first[-1]["event"] == "done" and not first[-1].get("cached")
@@ -633,7 +659,7 @@ def test_no_escalation_model_means_the_answerer_is_told_none(client, monkeypatch
 
 def test_a_client_that_disconnects_during_the_answer_still_costs_a_ledger_row(client, fakes):
     async def disconnect():
-        stream = PaidStream(client.app.state, Q + " disconnect", "hybrid", "iph", twin=routes._stream_fn("hybrid"))
+        stream = make_stream(client, Q + " disconnect")
         gen = stream.events()
         await gen.__anext__()          # retrieval
         await gen.__anext__()          # first delta
@@ -641,13 +667,14 @@ def test_a_client_that_disconnects_during_the_answer_still_costs_a_ledger_row(cl
         await stream.finalize()        # what the response does after the disconnect
 
     client.portal.call(disconnect)
-    assert len(fakes.queries) == 1 and fakes.queries[0].get("cost_usd") is None
-    assert client.app.state.answer_limiter.borrowed_tokens == 0
+    # settled abandoned: the estimate stands
+    assert len(fakes.settled) == 1 and fakes.settled[0]["cost_micro"] is None
+    assert fakes.settled[0]["outcome"] == "abandoned" and fakes.backend.inflight == 0
 
 
 def test_a_completed_answer_writes_exactly_one_ledger_row(client, fakes):
     events = run_stream(client, Q + " complete")
-    assert events and len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.00007
+    assert events and len(fakes.settled) == 1 and fakes.settled[0]["cost_micro"] == 70
 
 
 def test_an_escalated_answer_passes_through_with_one_ledger_row_carrying_the_summed_cost(client, fakes, monkeypatch):
@@ -662,7 +689,7 @@ def test_an_escalated_answer_passes_through_with_one_ledger_row_carrying_the_sum
     monkeypatch.setattr(routes, "aanswer_stream", escalating)
     events = run_stream(client, Q + " esc")
     assert [e["event"] for e in events] == ["retrieval", "escalated", "delta", "done"]
-    assert len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.031
+    assert len(fakes.settled) == 1 and fakes.settled[0]["cost_micro"] == 31_000
     assert any(a["answer"] == "Strong answer." for a in fakes.answers.values())
 
 
@@ -819,7 +846,8 @@ def test_an_answer_whose_checks_failed_is_not_cached_so_the_failure_cannot_vanis
     monkeypatch.setattr(routes, "aanswer_stream", stream_with(failed))
     events = run_stream(client, Q + " failed")
     assert events[-1]["checks"] == failed
-    assert fakes.answers == {} and len(fakes.queries) == 1 and fakes.queries[0]["cost_usd"] == 0.01   # still on the ledger
+    # still on the ledger
+    assert fakes.answers == {} and len(fakes.settled) == 1 and fakes.settled[0]["cost_micro"] == 10_000
 
 
 @pytest.mark.parametrize("failed", [

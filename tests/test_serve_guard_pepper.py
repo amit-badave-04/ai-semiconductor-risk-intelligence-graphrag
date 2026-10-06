@@ -24,22 +24,32 @@ import importlib.util
 import logging
 import re
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
-import anyio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from serve_state_fakes import (
+    FakeStateBackend,
+    InMemoryLedger,
+    RouteSettings,
+    build_route_app,
+    fresh_drain,  # noqa: F401 - a fixture
+)
 from starlette.requests import Request
+from test_state_inprocess import state_settings
 
 from semigraph.config import Settings
 from semigraph.graph.client import NO_UNRECOGNIZED_NOTIFICATIONS
-from semigraph.serve import dossier_routes, guard, monitor_routes, routes, store, workspace_routes
-from semigraph.serve.guard import RateLimiter
+from semigraph.serve import dossier_routes, drain, guard, monitor_routes, routes, store, workspace_routes
 from semigraph.serve.limiters import make_limiters
+from semigraph.serve.state import Lease, StateDrivers, make_backend
 from semigraph.serve.stream_runtime import PaidStream
+
+pytestmark = pytest.mark.usefixtures("fresh_drain")
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "semigraph"
@@ -238,10 +248,16 @@ def test_the_ledger_carries_the_pepper_version_when_the_settings_have_one():
 
 # ---------------------------------------------------------------- settings
 
+PRODUCTION_ENVIRONMENT_VARIABLES = (
+    "IP_HASH_PEPPER", "IP_HASH_VERSION", "ENVIRONMENT", "TURNSTILE_REQUIRED", "TURNSTILE_SECRET_KEY",
+    "CLIENT_IP_HEADER", "MAX_QUERIES_PER_DAY", "MAX_SPEND_USD_PER_DAY", "PAID_PER_IP_PER_DAY",
+    "MAX_CONCURRENT_ANSWERS")
+
+
 @pytest.fixture
 def clean_environment(monkeypatch):
     """A variable left in the developer's shell must neither fail nor satisfy these tests."""
-    for name in ("IP_HASH_PEPPER", "IP_HASH_VERSION", "ENVIRONMENT"):
+    for name in PRODUCTION_ENVIRONMENT_VARIABLES:
         monkeypatch.delenv(name, raising=False)
 
 
@@ -249,36 +265,81 @@ def settings(**values) -> Settings:
     return Settings(_env_file=None, **values)
 
 
+# What production ALSO requires besides the pepper (the live validators, docs/v2/M5_DECISIONS.md 2.2): the bot check on
+# with its secret, and the one client-address header Fly's proxy sets. The caps stay at their defaults, which are the
+# approved ones. A production Settings built from this base boots, so a refusal of a case below can only be the setting
+# that case changes.
+TURNSTILE_SECRET = "turnstile-secret-for-the-tests-0123456789"        # gitleaks:allow
+PRODUCTION_BASE = {"environment": "production", "turnstile_required": True, "turnstile_secret_key": TURNSTILE_SECRET,
+                   "client_ip_header": "fly-client-ip"}
+PRODUCTION_SETTING_NAMES = ("IP_HASH_PEPPER", "TURNSTILE_REQUIRED", "TURNSTILE_SECRET_KEY", "CLIENT_IP_HEADER",
+                            "MAX_QUERIES_PER_DAY", "MAX_SPEND_USD_PER_DAY", "PAID_PER_IP_PER_DAY",
+                            "MAX_CONCURRENT_ANSWERS")
+
+
+def production(**changes) -> Settings:
+    """A production Settings with a valid pepper, unless ``changes`` say otherwise."""
+    return settings(**{**PRODUCTION_BASE, "ip_hash_pepper": PEPPER, **changes})
+
+
+# One entry per way a production Settings is refused in this file, with the setting its message must name.
+PRODUCTION_REFUSALS = [
+    ({"ip_hash_pepper": ""}, "IP_HASH_PEPPER"),
+    ({"ip_hash_pepper": SHORT_PEPPER}, "IP_HASH_PEPPER"),
+    ({"ip_hash_pepper": "p" * 31}, "IP_HASH_PEPPER"),
+    ({"ip_hash_pepper": "é" * 15 + "p"}, "IP_HASH_PEPPER"),                 # 31 UTF-8 bytes (30 + 1)
+    ({"turnstile_required": False}, "TURNSTILE_REQUIRED"),
+    ({"turnstile_secret_key": ""}, "TURNSTILE_SECRET_KEY"),
+    ({"client_ip_header": ""}, "CLIENT_IP_HEADER"),
+]
+
+
 def test_a_production_boot_without_a_pepper_is_refused(clean_environment):
     with pytest.raises(ValidationError, match="IP_HASH_PEPPER"):
-        settings(environment="production")
+        production(ip_hash_pepper="")
+
+
+def test_the_production_base_boots_and_each_refusal_names_its_own_setting_and_no_other(clean_environment):
+    """The control for every pepper test below: the same settings with a valid pepper boot, and each way of being
+    refused in this file names the one setting it changes. pydantic stops at the FIRST failing validator, so "no other
+    setting is named" alone would hold for a pepper refusal that hid a second problem; it is the control (this base
+    boots) that makes the pepper the only reason a pepper case fails, and the Turnstile or header cases (built on a
+    valid pepper) the only reason theirs do."""
+    assert production().is_production
+    for changes, name in PRODUCTION_REFUSALS:
+        with pytest.raises(ValidationError) as refused:
+            production(**changes)
+        named = [each for each in PRODUCTION_SETTING_NAMES if each in str(refused.value)]
+        assert named == [name], f"{changes.keys()} named {named}, expected only {name}"
 
 
 def test_a_production_pepper_of_31_bytes_is_refused_and_32_bytes_pass(clean_environment):
     with pytest.raises(ValidationError, match="IP_HASH_PEPPER"):
-        settings(environment="production", ip_hash_pepper="p" * 31)
-    assert settings(environment="production", ip_hash_pepper="p" * 32).is_production
-    assert settings(environment="Production", ip_hash_pepper="p" * 48).is_production
+        production(ip_hash_pepper="p" * 31)
+    assert production(ip_hash_pepper="p" * 32).is_production
+    assert production(environment="Production", ip_hash_pepper="p" * 48).is_production
 
 
 def test_the_pepper_length_is_counted_in_utf8_bytes(clean_environment):
-    exactly_32 = settings(environment="production", ip_hash_pepper="é" * 16)           # 16 characters, 32 bytes
+    exactly_32 = production(ip_hash_pepper="é" * 16)                                    # 16 characters, 32 bytes
     assert exactly_32.ip_hash_pepper == "é" * 16
     with pytest.raises(ValidationError, match="IP_HASH_PEPPER"):
-        settings(environment="production", ip_hash_pepper="é" * 15 + "p")             # 31 bytes
+        production(ip_hash_pepper="é" * 15 + "p")                                      # 31 bytes
 
 
 def test_the_refusal_never_prints_the_pepper_or_another_secret(clean_environment):
     """A pydantic error normally ends with the input it rejected (``input_value=...``): for a settings object that is
     the environment, shortened to its first and last characters, so the secret last in it would show. Any slice of a
-    secret in the text is a leak."""
-    for pepper in ("", SHORT_PEPPER):
+    secret in the text is a leak. Checked for a refused pepper and for a refusal of anything else, which must not
+    print the (valid) pepper either."""
+    refusals = (({"ip_hash_pepper": ""}, "IP_HASH_PEPPER"), ({"ip_hash_pepper": SHORT_PEPPER}, "IP_HASH_PEPPER"),
+                ({"turnstile_required": False}, "TURNSTILE_REQUIRED"))
+    for changes, name in refusals:
         with pytest.raises(ValidationError) as refused:
-            settings(environment="production", neo4j_password=DB_PASSWORD, admin_token=ADMIN_TOKEN,
-                     ip_hash_pepper=pepper)
+            production(neo4j_password=DB_PASSWORD, admin_token=ADMIN_TOKEN, **changes)
         text = str(refused.value)
-        assert "IP_HASH_PEPPER" in text and "input_value" not in text
-        for secret in (SHORT_PEPPER, DB_PASSWORD, ADMIN_TOKEN):
+        assert name in text and "input_value" not in text
+        for secret in (PEPPER, SHORT_PEPPER, TURNSTILE_SECRET, DB_PASSWORD, ADMIN_TOKEN):
             assert secret[:8] not in text and secret[-8:] not in text
 
 
@@ -301,19 +362,24 @@ def test_the_pepper_version_defaults_to_2_and_cannot_be_below_1(clean_environmen
 
 
 def test_a_real_production_settings_object_hashes_through_the_helper_and_names_its_version(clean_environment):
-    production = settings(environment="production", ip_hash_pepper=PEPPER, ip_hash_version=3,
-                          client_ip_header="fly-client-ip")
+    live = production(ip_hash_version=3)
     request = request_from("10.0.0.1", {"fly-client-ip": "198.51.100.7"})
-    assert guard.hash_request_ip(request, production) == guard.ip_hash("198.51.100.7", PEPPER)
-    assert guard.ip_hash_version_fields(production) == {"ip_hash_v": 3}
+    assert guard.hash_request_ip(request, live) == guard.ip_hash("198.51.100.7", PEPPER)
+    assert guard.ip_hash_version_fields(live) == {"ip_hash_v": 3}
 
 
 def test_the_pepper_and_its_version_are_read_from_the_environment(monkeypatch, clean_environment):
     monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("TURNSTILE_REQUIRED", "true")
+    monkeypatch.setenv("TURNSTILE_SECRET_KEY", TURNSTILE_SECRET)
+    monkeypatch.setenv("CLIENT_IP_HEADER", "fly-client-ip")
     monkeypatch.setenv("IP_HASH_PEPPER", PEPPER)
     monkeypatch.setenv("IP_HASH_VERSION", "3")
     s = settings()
     assert (s.ip_hash_pepper, s.ip_hash_version, s.is_production) == (PEPPER, 3, True)
+    monkeypatch.delenv("IP_HASH_PEPPER")
+    with pytest.raises(ValidationError, match="IP_HASH_PEPPER"):         # the pepper is what boots it, not the rest
+        settings()
 
 
 # ---------------------------------------------------------------- every call site goes through hash_request_ip
@@ -355,23 +421,28 @@ def test_the_read_gates_key_their_window_by_the_peppered_hash(module, gate):
     assert keys == [guard.ip_hash("198.51.100.7", PEPPER)]
 
 
+class PepperedRouteSettings(RouteSettings):
+    client_ip_header = "fly-client-ip"
+    ip_hash_pepper = PEPPER
+    ip_hash_version = 3
+
+
 def test_a_cached_answer_is_ledgered_under_the_peppered_hash_with_its_version(monkeypatch):
+    """The cached hit's row is written by the route (``store.log_query``) with the hash the helper made and the
+    settings' pepper version. The same ask through the real route app is also pinned in
+    ``tests/test_serve_state_wiring.py`` (version 2 there); this one is about the pepper: the version 3 of the settings
+    is the one stored, and the stored hash is the keyed one, never the legacy unsalted one."""
     rows: list[dict] = []
-    monkeypatch.setattr(store, "get_answer", lambda driver, key, ttl: {"answer": "cached", "citations": [],
-                                                                         "hallucinated": [], "source": "benchmark"})
     monkeypatch.setattr(store, "log_query", lambda driver, **kw: rows.append(kw))
-    app = FastAPI()
-    app.include_router(routes.router)
-    app.state.settings = SimpleNamespace(
-        client_ip_header="fly-client-ip", ip_hash_pepper=PEPPER, ip_hash_version=2, is_production=False,
-        max_question_chars=200, agent_enabled=False, answer_cache_ttl_hours=24)
-    app.state.free_rate_limiter = RateLimiter(10, 600)
-    app.state.driver, app.state.snapshot_id = object(), ""
-    with TestClient(app) as client:
+    backend = FakeStateBackend()
+    backend.cache[store.cache_key(Q, "hybrid", "")] = {"answer": "cached", "citations": [], "hallucinated": [],
+                                                      "source": "benchmark"}
+    with TestClient(build_route_app(backend=backend, settings=PepperedRouteSettings())) as client:
         response = client.post("/api/ask", json={"question": Q}, headers={"fly-client-ip": "198.51.100.7"})
     assert response.status_code == 200 and '"cached": true' in response.text
     assert rows == [{"ip_hash": guard.ip_hash("198.51.100.7", PEPPER), "strategy": "hybrid", "cached": True,
-                     "ip_hash_v": 2}]
+                     "ip_hash_v": 3}]
+    assert rows[0]["ip_hash"] != legacy_hash("198.51.100.7")
 
 
 # ---------------------------------------------------------------- the paid ledger row
@@ -381,35 +452,53 @@ DONE = {"event": "done", "answer": "Nvidia depends on suppliers.", "citations": 
         "strategy": "hybrid", "question": Q}
 
 
-def _paid_rows(monkeypatch, **settings_extra) -> list[dict]:
-    rows: list[dict] = []
-    monkeypatch.setattr(store, "log_query", lambda driver, **kw: rows.append(kw))
+def _paid_row(monkeypatch, **backend_settings) -> dict:
+    """One ask streamed by a ``PaidStream`` that holds a lease of the REAL in-process backend (its ledger rows kept in
+    memory), and the ledger row it left. ``ip_hash_version=None`` builds the backend from settings that do not have the
+    attribute at all, as a double that predates the pepper cutover. The row is written by the backend when it takes the
+    lease (``reserve``) from its own settings: the stream only settles it. The end-to-end route version of this is in
+    ``tests/test_serve_state_wiring.py``; this keeps the pepper's own assertion."""
+    monkeypatch.setattr(store, "get_policy", lambda driver, key: None)         # nothing stored: the kill level is off
     monkeypatch.setattr(store, "put_answer", lambda driver, **kw: None)
+    backend_config = state_settings(**backend_settings)
+    if backend_config.ip_hash_version is None:
+        del backend_config.ip_hash_version
+    ledger = InMemoryLedger()
+    backend = make_backend(backend_config, StateDrivers(state=object()), ledger=ledger)
+    backend.refresh_kill_level()                    # a level that was never read denies every ask
 
     async def twin(question, driver, embedder, **kw):
         yield DONE
 
     async def main():
         s = SimpleNamespace(llm_request_timeout_s=5, llm_answer_max_tokens=100, escalation_model="", embed_slots=1,
-                            db_thread_limit=2, max_concurrent_answers=1, **settings_extra)
+                            db_thread_limit=2, max_concurrent_answers=1)
         st = SimpleNamespace(settings=s, driver=object(), embedder=object(), limiters=make_limiters(s),
-                             answer_limiter=anyio.CapacityLimiter(1), tracer=None)
-        stream = PaidStream(st, Q, "hybrid", "iph", "snap-1", None, twin=twin)
+                             state=backend, tracer=None)
+        lease = backend.reserve(ip_hash="iph", strategy="hybrid", workspace=False, estimate_micro=60_000,
+                                now_wall=time.time(), now_mono=time.monotonic())
+        assert isinstance(lease, Lease)
+        drain.DRAIN.enter()                         # the route counts the ask on the drain before it reserves
+        stream = PaidStream(st, Q, "hybrid", "iph", "snap-1", None, twin=twin, lease=lease)
         async for _ in stream.events():
             pass
         await stream.finalize()
 
     asyncio.run(main())
-    return rows
+    row, = ledger.rows.values()
+    return row
 
 
 def test_the_paid_ledger_row_carries_the_pepper_version(monkeypatch):
-    rows = _paid_rows(monkeypatch, ip_hash_version=3)
-    assert len(rows) == 1 and rows[0]["ip_hash"] == "iph" and rows[0]["ip_hash_v"] == 3
+    row = _paid_row(monkeypatch, ip_hash_version=3)
+    assert row["ip_hash"] == "iph" and row["ip_hash_v"] == 3
+    assert (row["status"], row["outcome"]) == ("settled", "done")
 
 
 def test_settings_without_a_version_leave_the_paid_row_as_it_was(monkeypatch):
-    assert "ip_hash_v" not in _paid_rows(monkeypatch)[0]
+    # Neo4j does not store a null property, so this row looks like one written before the pepper existed.
+    row = _paid_row(monkeypatch, ip_hash_version=None)
+    assert row["ip_hash"] == "iph" and row["ip_hash_v"] is None
 
 
 # ---------------------------------------------------------------- store: log_query, the count and the null

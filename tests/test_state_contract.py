@@ -28,7 +28,15 @@ from types import SimpleNamespace
 import anyio
 import pytest
 from neo4j.exceptions import ServiceUnavailable, TransientError
-from test_state_inprocess import FakeClock, FakeLedger, FakeStoreDriver, state_settings
+from test_state_inprocess import (
+    FakeClock,
+    FakeLedger,
+    FakeStoreDriver,
+    InThread,
+    PolicyGate,
+    state_settings,
+    wait_until,
+)
 
 from semigraph.serve.state import Denied, Lease, StateDrivers, StateUnavailable, ledger, make_backend
 from semigraph.serve.state.backend import day_of
@@ -87,7 +95,7 @@ class FlakyDriver:
 
 class Harness:
     def __init__(self, kind, db):
-        self.kind, self.db, self.sleeps = kind, db, []
+        self.kind, self.db = kind, db
         index = 25_000 + (os.getpid() % 1000) * 200 + 5 * next(_tests_run)            # a block of days of its own
         self.days = [day_of((index + n) * 86400) for n in range(5)]
         self.start_wall = index * 86400 + 3600.0
@@ -114,7 +122,7 @@ class Harness:
         settings = state_settings(**{**OPEN, "machine_id": machine_id or self.machine,
                                      "state_op_timeout_s": OP_TIMEOUT_S,
                                      "state_backend": "neo4j" if self.kind == "neo4j" else "inprocess", **overrides})
-        kwargs = dict(wall=self.clock.wall, clock=self.clock.mono, sleep=self.sleeps.append)
+        kwargs = dict(wall=self.clock.wall, clock=self.clock.mono)
         if self.fake is not None:
             kwargs["ledger"] = self.fake
         backend = make_backend(settings, StateDrivers(state=self.state_driver), **kwargs)
@@ -255,6 +263,25 @@ def test_the_21st_ask_of_one_ip_is_denied_while_another_hash_passes(harness):
     assert backend.snapshot()["per_ip_max"] == 20
 
 
+@pytest.mark.parametrize("caps, estimate, same_ip, granted, denial", [
+    pytest.param(dict(max_spend_usd_per_day=1.0), 250_000, False, 4, Denied.DAILY_SPEND, id="spend-4-x-0.25-of-1.00"),
+    pytest.param(dict(max_queries_per_day=150), 1, False, 150, Denied.DAILY_COUNT, id="count-150th-granted"),
+    pytest.param(dict(paid_per_ip_per_day=20), 1, True, 20, Denied.IP_DAILY, id="per-ip-20th-granted"),
+])
+def test_an_ask_that_lands_exactly_on_a_cap_is_granted_and_the_next_one_is_denied(
+        harness, caps, estimate, same_ip, granted, denial):
+    """The boundary of each cap, one ask at a time: ``spend + estimate > cap`` (not ``>=``) and ``paid < cap`` are the
+    comparisons that decide whether the last slot is granted."""
+    backend = harness.make(**caps)
+    results = [harness.ask(backend, ip="one-ip" if same_ip else f"ip-{n}", estimate=estimate)
+               for n in range(granted + 1)]
+    assert all(isinstance(r, Lease) for r in results[:granted]), results[:granted]
+    assert results[granted] is denial
+    snapshot = backend.snapshot()
+    assert snapshot["paid"] == granted and snapshot["spend_micro"] == granted * estimate
+    assert len(harness.rows()) == granted                                   # the denied ask wrote nothing
+
+
 def test_50_threads_making_10_reserves_each_against_a_cap_of_20_never_overshoot(harness):
     backend = harness.make(max_queries_per_day=20)
 
@@ -293,6 +320,20 @@ def test_a_failed_row_write_rolls_the_counters_back(harness):
 
 
 # --------------------------------------------------------------------------------------------- reconcile
+
+def test_a_failed_settle_is_queued_not_slept_on_and_lands_on_the_next_drain(harness):
+    backend = harness.make()
+    lease = harness.ask(backend, estimate=60_000)
+    harness.fail_next_durable_calls(1)
+    started = time.perf_counter()
+    backend.reconcile(lease.lease_id, outcome="done", usage={"prompt_tokens": 3}, cost_micro=1_500)
+    assert time.perf_counter() - started < 1.0                                # the old retries slept 6 s
+    assert backend.pending_settles() == 1 and harness.rows()[0]["status"] == "reserved"
+    assert backend.drain_settles() == 1 and backend.pending_settles() == 0
+    (row,) = harness.rows()
+    assert (row["status"], row["outcome"], row["cost_micro"], row["prompt_tokens"]) == ("settled", "done", 1_500, 3)
+    assert backend.snapshot()["spend_micro"] == 1_500                          # the counters equal the ledger
+
 
 def test_a_double_reconcile_charges_once(harness):
     backend = harness.make()
@@ -407,6 +448,54 @@ def test_kill_levels_and_a_stale_cache_give_kill(harness):
     assert harness.ask(backend, ip="z") is Denied.KILL
     backend.refresh_kill_level()
     assert isinstance(harness.ask(backend, ip="z"), Lease)
+
+
+@pytest.mark.parametrize("before, flip", [("off", "on"), ("off", "retrieval_only"), ("on", "off"),
+                                          ("retrieval_only", "off")])
+def test_an_admin_flip_is_not_undone_by_a_refresh_that_had_already_read_the_old_level(
+        harness, monkeypatch, before, flip):
+    """A refresh reads the level, the admin sets another (stored, applied at once), and only then does the refresh apply
+    what it read. It must not: memory would disagree with the database for up to one refresh period."""
+    backend = harness.make()
+    backend.set_kill_level(before)
+    gate = PolicyGate(monkeypatch)
+    gate.hold_next_get()
+    refresh = InThread(backend.refresh_kill_level)
+    try:
+        assert gate.reached["get"].wait(10), "the refresh never reached its read"
+        backend.set_kill_level(flip)
+    finally:
+        gate.release()
+    refresh.finish()
+    assert backend.kill_level() == flip
+    assert backend.refresh_kill_level() == flip                               # and the database holds it too
+
+
+def test_a_refresh_that_finished_before_the_flip_is_overtaken_by_it(harness):
+    backend = harness.make()
+    assert backend.refresh_kill_level() == "off"
+    backend.set_kill_level("on")
+    assert backend.kill_level() == "on" and harness.ask(backend, ip="x") is Denied.KILL
+
+
+def test_two_concurrent_sets_leave_memory_and_database_agreeing_on_the_later_one(harness, monkeypatch):
+    """The first set is held just before its database write; the second starts, bumps its generation and (once the
+    writes are serialised) waits for it. Whatever order the writes then land in, the later set must win in both."""
+    backend = harness.make()
+    gate = PolicyGate(monkeypatch)
+    gate.hold_next_set()
+    first = InThread(lambda: backend.set_kill_level("on"))
+    second = None
+    try:
+        assert gate.reached["set"].wait(10), "the first set never reached its write"
+        second = InThread(lambda: backend.set_kill_level("off"))
+        wait_until(lambda: gate.set_calls >= 2 or getattr(backend, "_kill_gen", 0) >= 2)
+    finally:
+        gate.release()
+    first.finish()
+    second.finish()
+    assert backend.kill_level() == "off"
+    assert backend.refresh_kill_level() == "off"                              # the database says the same
 
 
 def test_an_unread_kill_level_and_the_env_override_both_give_kill(harness):
@@ -609,7 +698,7 @@ def stalled_backend(kind, op_timeout):
                               state_op_timeout_s=op_timeout)
     driver = StalledDriver()
     driver.stalled = False
-    backend = make_backend(settings, StateDrivers(state=driver), sleep=lambda s: None)
+    backend = make_backend(settings, StateDrivers(state=driver))
     backend.refresh_kill_level()                                         # serving has started: the level is cached
     driver.stalled = True
     return backend
@@ -628,8 +717,8 @@ def timed(op):
 def test_100_operations_against_a_stalled_driver_each_fail_within_the_bound_on_a_bounded_set_of_threads(kind):
     """Against a FAKE database that honours the server-side timeout it is given: this proves the backends hand every
     statement a timeout and add no waiting of their own, on a thread count the limiter bounds. It says nothing about the
-    real driver and server: their measured bounds (1-3.4 s unreachable, up to 2 s on a held lock) are in
-    ``tests/integration/test_state_neo4j.py``."""
+    real driver and server: their measured bounds (about 1.0 s against a dead server, about 1.1 s on a held lock with
+    the deployed 100 ms transaction-monitor interval) are in ``tests/integration/test_state_neo4j.py``."""
     op_timeout, limiter_size = 0.1, 4
     backend = stalled_backend(kind, op_timeout)
     clock = FakeClock()
@@ -682,14 +771,24 @@ def test_a_statement_without_a_server_side_timeout_would_not_be_bounded():
     assert time.perf_counter() - started >= 0.3
 
 
+def server_monitor_interval_s(admin) -> float:
+    """The server's ``db.transaction.monitor.check.interval`` in seconds (it prints as ``100ms`` or ``2s``)."""
+    rows = ledger.run_read(admin, "SHOW SETTINGS YIELD name, value WHERE name = "
+                           "'db.transaction.monitor.check.interval' RETURN value", timeout_s=30)
+    text = str(rows[0]["value"]).strip().lower() if rows else "2s"
+    return float(text[:-2]) / 1000 if text.endswith("ms") else float(text.rstrip("s"))
+
+
 def test_the_server_cuts_a_long_query_at_its_transaction_timeout(neo4j_harness):
-    """The server enforces a transaction timeout when its transaction monitor next looks (every 2 s by default, see
-    ``tests/integration/test_state_neo4j.py``), so the cut comes between the timeout and the timeout plus one period."""
+    """The server enforces a transaction timeout when its transaction monitor next looks (every
+    ``db.transaction.monitor.check.interval``: 2 s by default, 100 ms in deploy/neo4j/fly.toml), so the cut comes
+    between the timeout and the timeout plus one period."""
     from neo4j.exceptions import ClientError
 
+    period = server_monitor_interval_s(neo4j_harness.db.admin)
     started = time.perf_counter()
     with pytest.raises((ClientError, TransientError)):
         ledger.run_read(neo4j_harness.state_driver, "UNWIND range(1, 2000000000) AS x RETURN count(x) AS n",
                         timeout_s=0.2)
     # cut by the server, not run to the end
-    assert time.perf_counter() - started < 0.2 + 2.0 + 0.5
+    assert time.perf_counter() - started < 0.2 + period + 0.5

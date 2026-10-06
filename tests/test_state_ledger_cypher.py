@@ -15,13 +15,14 @@ The server-side behaviour itself is proven against a real Neo4j in ``tests/integ
 
 import logging
 import re
+import time
 from collections import namedtuple
 
 import pytest
 from neo4j.exceptions import ServiceUnavailable
 from test_state_inprocess import FakeClock, state_settings
 
-from semigraph.serve.state import Denied, Lease, StateConfig, StateDrivers, StateUnavailable, ledger
+from semigraph.serve.state import Denied, Lease, StateConfig, StateDrivers, StateUnavailable, ledger, settle_queue
 from semigraph.serve.state.neo4j import Neo4jBackend
 
 Statement = namedtuple("Statement", "text params kind timeout")
@@ -350,10 +351,10 @@ class Scripted(RecordingDriver):
         return [s.params for s in self.statements if s.text == statement]
 
 
-def neo4j_backend(driver, *, clock=None, sleeps=None, **settings):
+def neo4j_backend(driver, *, clock=None, **settings):
     clock = clock or FakeClock()
     backend = Neo4jBackend(StateConfig.from_settings(state_settings(**settings)), StateDrivers(state=driver),
-                           wall=clock.wall, clock=clock.mono, sleep=(sleeps if sleeps is not None else []).append)
+                           wall=clock.wall, clock=clock.mono)
     backend.refresh_kill_level()
     return backend, clock
 
@@ -431,23 +432,55 @@ def test_neo4j_reconcile_is_false_when_the_ledger_matched_nothing_and_leaves_the
     assert backend.registry.active() == []
 
 
-def test_neo4j_reconcile_retries_three_times_two_seconds_apart_then_logs_and_returns_false(caplog):
-    sleeps: list[float] = []
-    errors = {ledger.SETTLE_COUNTED: [ServiceUnavailable("down")] * 9}
-    driver = Scripted(errors=errors)
-    backend, _ = neo4j_backend(driver, sleeps=sleeps)
-    with caplog.at_level(logging.ERROR, logger="semigraph.serve.state"):
-        assert backend.reconcile("l", outcome="done", usage=None, cost_micro=1) is False
-    assert sleeps == [2.0, 2.0, 2.0] and driver.count(ledger.SETTLE_COUNTED) == 4
-    assert any("state_settle_failed" in r.message for r in caplog.records)
+def test_a_failed_neo4j_reconcile_returns_false_at_once_because_nothing_was_charged_and_queues_the_settle():
+    driver = Scripted(errors={ledger.SETTLE_COUNTED: [ServiceUnavailable("down")] * 9})
+    backend, _ = neo4j_backend(driver)
+    backend.registry.add("l")
+    started = time.perf_counter()
+    assert backend.reconcile("l", outcome="done", usage=None, cost_micro=1) is False
+    assert time.perf_counter() - started < 1.0                                  # the old retries slept 6 s
+    assert driver.count(ledger.SETTLE_COUNTED) == 1 and backend.pending_settles() == 1
+    assert backend.registry.active() == []                                  # no more renewals for a finished stream
 
 
-def test_neo4j_reconcile_that_succeeds_on_a_retry_charges_once():
-    sleeps: list[float] = []
+def test_the_queued_neo4j_settle_charges_once_on_the_next_drain():
     driver = Scripted({ledger.SETTLE_COUNTED: [{"id": "l"}]}, {ledger.SETTLE_COUNTED: [ServiceUnavailable("blip")]})
-    backend, _ = neo4j_backend(driver, sleeps=sleeps)
-    assert backend.reconcile("l", outcome="done", usage=None, cost_micro=1) is True
-    assert sleeps == [2.0] and driver.count(ledger.SETTLE_COUNTED) == 2
+    backend, _ = neo4j_backend(driver)
+    assert backend.reconcile("l", outcome="done", usage={"prompt_tokens": 2}, cost_micro=1_500) is False
+    assert backend.drain_settles() == 1 and backend.pending_settles() == 0
+    assert driver.count(ledger.SETTLE_COUNTED) == 2
+    first, second = driver.params_of(ledger.SETTLE_COUNTED)
+    assert first["cost_micro"] == second["cost_micro"] == 1_500 and second["pt"] == 2   # the same settle, retried
+
+
+def test_a_queued_settle_that_a_sweep_already_closed_is_done_not_retried_forever():
+    """The one-winner statement matches nothing for the loser; a queued entry treats that as finished."""
+    driver = Scripted({ledger.SETTLE_COUNTED: []}, {ledger.SETTLE_COUNTED: [ServiceUnavailable("blip")]})
+    backend, _ = neo4j_backend(driver)
+    backend.reconcile("l", outcome="done", usage=None, cost_micro=1)
+    assert backend.drain_settles() == 1 and backend.pending_settles() == 0
+
+
+def test_a_queued_settle_that_keeps_failing_is_given_up_and_logged_for_the_boot_or_the_sweep(caplog):
+    driver = Scripted(errors={ledger.SETTLE_COUNTED: [ServiceUnavailable("down")] * 1000})
+    backend, _ = neo4j_backend(driver)
+    backend.reconcile("l", outcome="done", usage=None, cost_micro=1)
+    with caplog.at_level(logging.ERROR, logger="semigraph.serve.state"):
+        for _ in range(settle_queue.MAX_ATTEMPTS):
+            backend.drain_settles()
+    assert backend.pending_settles() == 0 and driver.count(ledger.SETTLE_COUNTED) == settle_queue.MAX_ATTEMPTS
+    assert any("state_settle_abandoned" in r.message and "lease=l" in r.message for r in caplog.records)
+
+
+def test_the_sweep_leaves_a_lease_alone_while_its_settle_is_queued():
+    answers = {ledger.EXPIRED_LEASES: []}
+    driver = Scripted(answers, {ledger.SETTLE_COUNTED: [ServiceUnavailable("down")]})
+    backend, clock = neo4j_backend(driver)
+    backend.reconcile("queued", outcome="done", usage=None, cost_micro=1)
+    backend.mark_started("live")
+    backend.sweep(clock.wall() + 100)
+    (scan,) = driver.params_of(ledger.EXPIRED_LEASES)
+    assert sorted(scan["skip"]) == ["live", "queued"]
 
 
 def test_neo4j_sweep_skips_registered_leases_and_counts_only_the_rows_it_closed():

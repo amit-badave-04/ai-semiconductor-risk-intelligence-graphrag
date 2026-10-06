@@ -8,6 +8,7 @@ per row, legacy rows without a status count as settled) in Python; the real Cyph
 
 import logging
 import threading
+import time
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -24,6 +25,7 @@ from semigraph.serve.state import (
     ledger,
     make_backend,
     micro_to_usd,
+    settle_queue,
     usd_to_micro,
 )
 from semigraph.serve.state.inprocess import InProcessBackend
@@ -102,13 +104,90 @@ class _FakeStoreSession:
         raise AssertionError(f"unexpected statement: {text}")
 
 
+class PolicyGate:
+    """Holds ONE call of ``store.get_policy`` or ``store.set_policy`` mid-flight, deterministically (events, no sleeps).
+
+    ``hold_next_get()`` arms the next ``get_policy``: it reads the stored value, then waits for ``release("get")``, so
+    a refresh that has read ``off`` can be paused before it applies it. ``hold_next_set()`` arms the next
+    ``set_policy``: it waits for ``release("set")`` BEFORE it writes. ``release()`` lets every held call go. A held
+    call is never held for more than ``HOLD_LIMIT_S``."""
+
+    HOLD_LIMIT_S = 10.0
+
+    def __init__(self, monkeypatch):
+        from semigraph.serve import store
+
+        self._real_get, self._real_set = store.get_policy, store.set_policy
+        self._armed = {"get": False, "set": False}
+        self._lock = threading.Lock()
+        self._released = {"get": threading.Event(), "set": threading.Event()}
+        self.reached = {"get": threading.Event(), "set": threading.Event()}
+        self.set_calls = 0
+        monkeypatch.setattr(store, "get_policy", self._get)
+        monkeypatch.setattr(store, "set_policy", self._set)
+
+    def hold_next_get(self) -> None:
+        self._armed["get"] = True
+
+    def hold_next_set(self) -> None:
+        self._armed["set"] = True
+
+    def release(self, *kinds: str) -> None:
+        for kind in kinds or self._released:
+            self._released[kind].set()
+
+    def _take(self, kind: str) -> bool:
+        with self._lock:
+            armed, self._armed[kind] = self._armed[kind], False
+            return armed
+
+    def _get(self, driver, key):
+        value = self._real_get(driver, key)
+        if self._take("get"):
+            self.reached["get"].set()
+            self._released["get"].wait(self.HOLD_LIMIT_S)
+        return value
+
+    def _set(self, driver, key, value):
+        with self._lock:
+            self.set_calls += 1
+        if self._take("set"):
+            self.reached["set"].set()
+            self._released["set"].wait(self.HOLD_LIMIT_S)
+        return self._real_set(driver, key, value)
+
+
+class InThread:
+    """``fn`` on a thread of its own; ``finish()`` joins it (bounded) and re-raises what it raised."""
+
+    def __init__(self, fn):
+        self.error: BaseException | None = None
+        self.result = None
+        self._thread = threading.Thread(target=self._run, args=(fn,), daemon=True)
+        self._thread.start()
+
+    def _run(self, fn):
+        try:
+            self.result = fn()
+        except BaseException as exc:  # noqa: BLE001 - handed to the test thread by finish()
+            self.error = exc
+
+    def finish(self, timeout: float = 10.0):
+        self._thread.join(timeout)
+        assert not self._thread.is_alive(), "the thread did not finish"
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
 class FakeLedger:
     """The ledger module's functions, in memory. ``fail_reserve`` / ``fail_settle`` / ``fail_renew``: raise
-    ``ServiceUnavailable`` for the next n calls of that kind."""
+    ``ServiceUnavailable`` for the next n calls of that kind. ``settle_calls`` counts every settle attempt."""
 
     def __init__(self):
         self.rows: dict[str, dict] = {}
         self.fail_reserve = self.fail_settle = self.fail_renew = 0
+        self.settle_calls = 0
         self._lock = threading.Lock()
 
     def _maybe_fail(self, attribute: str) -> None:
@@ -127,6 +206,7 @@ class FakeLedger:
 
     def settle_row(self, driver, lease_id, *, outcome, usage, actual_micro, now_wall, timeout_s):
         with self._lock:
+            self.settle_calls += 1
             self._maybe_fail("fail_settle")
             row = self.rows.get(lease_id)
             if row is None or row["status"] != "reserved":
@@ -179,13 +259,12 @@ class FakeLedger:
         return ledger.DaySums(paid, spend, foreign, per_ip, tuple(sorted(events)))
 
 
-def build_inprocess(settings=None, *, fake_ledger=None, store=None, clock=None, sleeps=None):
+def build_inprocess(settings=None, *, fake_ledger=None, store=None, clock=None, **backend_kwargs):
     settings = settings or state_settings()
     fake_ledger, store = fake_ledger or FakeLedger(), store or FakeStoreDriver()
     clock = clock or FakeClock()
-    sleeps = [] if sleeps is None else sleeps
     backend = InProcessBackend(StateConfig.from_settings(settings), StateDrivers(state=store), ledger=fake_ledger,
-                               wall=clock.wall, clock=clock.mono, sleep=sleeps.append)
+                               wall=clock.wall, clock=clock.mono, **backend_kwargs)
     backend.refresh_kill_level()
     return backend, fake_ledger, store, clock
 
@@ -435,6 +514,100 @@ def test_a_failed_refresh_leaves_the_cache_to_age_towards_on():
     assert backend.kill_level() == "on"
 
 
+def test_a_refresh_held_after_its_read_applies_that_read_when_nothing_changed_in_between(monkeypatch):
+    """The control for the race tests: the gate itself does not stop a refresh from doing its job."""
+    backend, _, store, _ = build_inprocess()
+    store.policy["kill_switch"] = "retrieval_only"
+    gate = PolicyGate(monkeypatch)
+    gate.hold_next_get()
+    refresh = InThread(backend.refresh_kill_level)
+    assert gate.reached["get"].wait(10)
+    assert backend.kill_level() == "off"                      # not applied yet
+    gate.release()
+    assert refresh.finish() == "retrieval_only" and backend.kill_level() == "retrieval_only"
+
+
+def test_a_refresh_that_read_while_a_relaxation_was_being_written_does_not_undo_it_when_it_lands(monkeypatch):
+    """The refresh begins after the set did (so its generation matches), reads the old stored ``on``, and applies it
+    only after the set has stored and applied ``off``: the completion of a set must invalidate it as well."""
+    backend, _, store, _ = build_inprocess()
+    backend.set_kill_level("on")
+    gate = PolicyGate(monkeypatch)
+    gate.hold_next_set()
+    relax = InThread(lambda: backend.set_kill_level("off"))
+    assert gate.reached["set"].wait(10)
+    gate.hold_next_get()
+    refresh = InThread(backend.refresh_kill_level)
+    try:
+        assert gate.reached["get"].wait(10)                  # the refresh has read "on" from the database
+        gate.release("set")
+        relax.finish()
+        assert backend.kill_level() == "off"
+    finally:
+        gate.release()
+    refresh.finish()
+    assert backend.kill_level() == "off" and store.policy["kill_switch"] == "off"
+
+
+def test_the_kill_level_is_answered_at_once_while_a_database_write_is_in_flight(monkeypatch):
+    """The hot path of every paid ask touches only the memory lock, never the lock that serialises the writes."""
+    backend, *_ = build_inprocess()
+    backend.set_kill_level("on")
+    gate = PolicyGate(monkeypatch)
+    gate.hold_next_set()
+    relax = InThread(lambda: backend.set_kill_level("off"))
+    try:
+        assert gate.reached["set"].wait(10)
+        reader = InThread(backend.kill_level)
+        assert reader.finish(timeout=2.0) == "on"                # the relaxation is not applied before it is stored
+    finally:
+        gate.release()
+    relax.finish()
+    assert backend.kill_level() == "off"
+
+
+def test_a_pending_tightening_written_by_a_refresh_never_overwrites_a_later_relaxation(monkeypatch):
+    backend, _, store, _ = build_inprocess()
+    store.fail = ServiceUnavailable("down")
+    with pytest.raises(StateUnavailable):
+        backend.set_kill_level("on")                          # applied in memory, its database write pending
+    store.fail = None
+    gate = PolicyGate(monkeypatch)
+    gate.hold_next_set()
+    refresh = InThread(backend.refresh_kill_level)            # starts by writing the pending "on", held before it lands
+    relax = None
+    try:
+        assert gate.reached["set"].wait(10)
+        relax = InThread(lambda: backend.set_kill_level("off"))
+        wait_until(lambda: backend._kill_gen >= 2)                                       # noqa: SLF001
+    finally:
+        gate.release()
+    refresh.finish()
+    relax.finish()
+    assert backend.kill_level() == "off" and store.policy["kill_switch"] == "off"        # memory and database agree
+
+
+def test_a_set_that_a_later_set_superseded_before_it_wrote_skips_its_write():
+    backend, _, store, _ = build_inprocess()
+    backend.refresh_kill_level()
+    with backend._writer_lock:                                                          # noqa: SLF001
+        first = InThread(lambda: backend.set_kill_level("on"))
+        wait_until(lambda: backend._kill_gen >= 1)                                       # noqa: SLF001
+        second = InThread(lambda: backend.set_kill_level("retrieval_only"))
+        wait_until(lambda: backend._kill_gen >= 2)                                       # noqa: SLF001
+    first.finish()
+    second.finish()
+    assert backend.kill_level() == "retrieval_only" and store.policy["kill_switch"] == "retrieval_only"
+
+
+def wait_until(condition, timeout: float = 10.0) -> None:
+    """Spin (yielding the GIL) until ``condition()``: it waits for a state the test has set up, not for a duration."""
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "the awaited state was never reached"
+        time.sleep(0.001)
+
+
 # ------------------------------------------------------------------------------------- reserve: the order
 
 def test_a_granted_reserve_returns_a_lease_and_writes_the_durable_row_before_returning():
@@ -573,28 +746,149 @@ def test_a_negative_cost_is_floored_not_subtracted():
     assert backend.snapshot()["spend_micro"] == 0
 
 
-def test_a_failed_settle_is_retried_three_times_two_seconds_apart_then_logged_and_the_boot_charges_the_estimate(caplog):
-    sleeps: list[float] = []
-    backend, fake, _, clock = build_inprocess(sleeps=sleeps)
+# ----------------------------------------------------------------------------------- the settle retry queue
+
+class TickingLedger(FakeLedger):
+    """Every settle attempt takes ``cost`` seconds of the fake clock."""
+
+    def __init__(self, clock, cost):
+        super().__init__()
+        self._clock, self._cost = clock, cost
+
+    def settle_row(self, *args, **kwargs):
+        self._clock.advance(self._cost)
+        return super().settle_row(*args, **kwargs)
+
+
+def queue_many(backend, fake, clock, count, **settings):
+    """``count`` leases reconciled while the ledger refuses every settle: all of them end up in the retry queue."""
+    leases = [ask(backend, clock, ip=f"ip-{n}", estimate=60_000) for n in range(count)]
+    fake.fail_settle = 10**6
+    for lease in leases:
+        backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1)
+    return leases
+
+
+def many(**overrides):
+    return state_settings(max_concurrent_answers=100, paid_per_ip_per_day=0, max_queries_per_day=0, **overrides)
+
+
+def test_a_failed_settle_returns_at_once_charges_the_counters_and_queues_the_row_write():
+    backend, fake, _, clock = build_inprocess()
     lease = ask(backend, clock, estimate=60_000)
-    fake.fail_settle = 99
-    with caplog.at_level(logging.ERROR, logger="semigraph.serve.state"):
-        # the counters charged
-        assert backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1) is True
-    assert sleeps == [2.0, 2.0, 2.0]
-    # still reserved: the next boot closes it
-    assert fake.rows[lease.lease_id]["status"] == "reserved"
-    assert any("state_settle_failed" in record.message for record in caplog.records)
-    assert backend.snapshot()["inflight"] == 0                                    # the slot is free regardless
+    fake.fail_settle = 1
+    started = time.perf_counter()
+    assert backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1) is True
+    assert time.perf_counter() - started < 1.0                                    # the old retries slept 6 s
+    assert fake.settle_calls == 1 and backend.pending_settles() == 1
+    assert fake.rows[lease.lease_id]["status"] == "reserved"                       # the durable write is pending
+    snapshot = backend.snapshot()
+    assert (snapshot["spend_micro"], snapshot["inflight"]) == (1, 0)               # charged, and the slot is free
 
 
-def test_a_settle_that_succeeds_on_a_retry_stops_retrying():
-    sleeps: list[float] = []
-    backend, fake, _, clock = build_inprocess(sleeps=sleeps)
+def test_the_queued_settle_lands_on_the_next_drain_and_the_queue_empties():
+    backend, fake, _, clock = build_inprocess()
+    lease = ask(backend, clock, estimate=60_000)
+    fake.fail_settle = 1
+    backend.reconcile(lease.lease_id, outcome="done", usage={"prompt_tokens": 4}, cost_micro=1_500)
+    assert backend.drain_settles() == 1 and backend.pending_settles() == 0
+    row = fake.rows[lease.lease_id]
+    assert (row["status"], row["outcome"], row["cost_micro"], row["prompt_tokens"]) == ("settled", "done", 1_500, 4)
+    assert fake.settle_calls == 2
+    assert backend.drain_settles() == 0 and fake.settle_calls == 2                  # nothing queued: nothing attempted
+
+
+def test_a_drain_stops_at_the_first_failure_because_the_store_is_down_and_keeps_the_order():
+    backend, fake, _, clock = build_inprocess(many())
+    leases = queue_many(backend, fake, clock, 3)
+    assert fake.settle_calls == 3 and backend.pending_settles() == 3
+    assert backend.drain_settles() == 0 and fake.settle_calls == 4 and backend.pending_settles() == 3
+    fake.fail_settle = 0
+    assert backend.drain_settles() == 3 and backend.pending_settles() == 0
+    assert all(fake.rows[lease.lease_id]["status"] == "settled" for lease in leases)
+
+
+def test_a_drain_attempts_a_bounded_number_of_entries_per_tick():
+    backend, fake, _, clock = build_inprocess(many())
+    queue_many(backend, fake, clock, settle_queue.DRAIN_PER_TICK + 5)
+    fake.fail_settle = 0
+    assert backend.drain_settles() == settle_queue.DRAIN_PER_TICK and backend.pending_settles() == 5
+    assert backend.drain_settles() == 5 and backend.pending_settles() == 0
+
+
+def test_a_queued_settle_is_given_up_after_the_attempt_limit_and_logged_never_lost_silently(caplog):
+    backend, fake, _, clock = build_inprocess()
     lease = ask(backend, clock)
-    fake.fail_settle = 2
+    fake.fail_settle = 10**6
+    backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1)                # attempt 1, inline
+    with caplog.at_level(logging.ERROR, logger="semigraph.serve.state"):
+        for _ in range(settle_queue.MAX_ATTEMPTS - 2):
+            backend.drain_settles()
+        assert backend.pending_settles() == 1 and not [r for r in caplog.records if r.levelno >= logging.ERROR]
+        backend.drain_settles()                                                                 # the last attempt
+    assert backend.pending_settles() == 0 and fake.settle_calls == settle_queue.MAX_ATTEMPTS
+    gave_up = [r.message for r in caplog.records if "state_settle_abandoned" in r.message]
+    assert len(gave_up) == 1 and lease.lease_id in gave_up[0] and "attempts" in gave_up[0]
+    assert fake.rows[lease.lease_id]["status"] == "reserved"                    # the next boot charges its estimate
+
+
+def test_a_queued_settle_older_than_the_age_limit_is_given_up_without_another_attempt(caplog):
+    backend, fake, _, clock = build_inprocess()
+    lease = ask(backend, clock)
+    fake.fail_settle = 10**6
     backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1)
-    assert sleeps == [2.0, 2.0] and fake.rows[lease.lease_id]["status"] == "settled"
+    clock.advance(settle_queue.MAX_AGE_S + 1)
+    with caplog.at_level(logging.ERROR, logger="semigraph.serve.state"):
+        assert backend.drain_settles() == 0
+    assert backend.pending_settles() == 0 and fake.settle_calls == 1
+    assert any("state_settle_abandoned" in r.message and lease.lease_id in r.message for r in caplog.records)
+
+
+def test_a_full_queue_refuses_the_new_entry_with_an_error_and_never_evicts_an_old_one(caplog):
+    backend, fake, _, clock = build_inprocess(many(), settle_queue_max=2)
+    leases = [ask(backend, clock, ip=f"ip-{n}") for n in range(3)]
+    fake.fail_settle = 10**6
+    with caplog.at_level(logging.ERROR, logger="semigraph.serve.state"):
+        for lease in leases:
+            assert backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1) is True
+    assert backend.pending_settles() == 2
+    refused = [r.message for r in caplog.records if "state_settle_dropped" in r.message]
+    assert len(refused) == 1 and leases[2].lease_id in refused[0] and "queue_full" in refused[0]
+    fake.fail_settle = 0
+    assert backend.drain_settles() == 2
+    assert [fake.rows[lease.lease_id]["status"] for lease in leases] == ["settled", "settled", "reserved"]
+
+
+def test_flush_settles_writes_what_it_can_within_the_budget_and_logs_what_is_left(caplog):
+    clock = FakeClock()
+    ledger_fake = TickingLedger(clock, cost=1.0)
+    backend, fake, _, _ = build_inprocess(many(), fake_ledger=ledger_fake, clock=clock)
+    queue_many(backend, fake, clock, 5)
+    fake.fail_settle = 0
+    with caplog.at_level(logging.ERROR, logger="semigraph.serve.state"):
+        flushed = backend.flush_settles(budget_s=2.5)
+    # attempts at t=0, 1 and 2; at t=3 the budget is out
+    assert flushed == 3 and backend.pending_settles() == 2
+    assert any("state_settle_unflushed" in r.message and "count=2" in r.message for r in caplog.records)
+
+
+def test_flush_settles_stops_at_the_first_failure():
+    backend, fake, _, clock = build_inprocess(many())
+    queue_many(backend, fake, clock, 3)
+    calls_before = fake.settle_calls
+    assert backend.flush_settles(budget_s=60.0) == 0
+    assert fake.settle_calls == calls_before + 1 and backend.pending_settles() == 3
+
+
+def test_a_boot_charges_the_estimate_of_a_row_whose_settle_never_landed():
+    backend, fake, _, clock = build_inprocess()
+    lease = ask(backend, clock, estimate=60_000)
+    fake.fail_settle = 10**6
+    backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1)
+    fake.fail_settle = 0
+    reborn, *_ = build_inprocess(fake_ledger=fake, clock=clock)                       # the process restarted
+    report = reborn.rebuild_from_ledger()
+    assert fake.rows[lease.lease_id]["outcome"] == "abandoned_restart" and report.spend_micro == 60_000
 
 
 # ----------------------------------------------------------------------------------------- renew and sweep
@@ -873,9 +1167,35 @@ def test_make_state_driver_is_a_second_bounded_driver_pinned_to_the_configured_d
     assert isinstance(driver, client.DatabaseDriver) and driver.database == "sgtest"
     assert captured["uri"] == "bolt://localhost:1" and captured["auth"] == ("neo4j", "not-a-secret")
     assert captured["max_connection_pool_size"] == 8
-    assert captured["connection_acquisition_timeout"] == 0.25
-    assert captured["connection_timeout"] == 1.0
-    assert captured["max_transaction_retry_time"] == 0.8
+    # the configured 0.25 s is below the 0.37 s that half the 0.8 s budget leaves: it stays the ceiling
+    assert captured["connection_acquisition_timeout"] == captured["connection_timeout"] == 0.25
+    assert captured["max_transaction_retry_time"] == 0.2 and captured["initial_retry_delay"] == 0.05
+    # every acquire proves the pooled connection alive first, inside the attempt timeout: a connection whose server
+    # went silent is dropped in 0.47 s instead of being read from until the server's 120 s receive-timeout hint
+    assert captured["liveness_check_timeout"] == 0
+
+
+def test_the_attempt_timeout_is_the_configured_one_capped_so_two_attempts_and_a_delay_fit_the_budget():
+    from semigraph.graph import client
+
+    assert client.state_attempt_timeout_s(1.0, 0.5) == pytest.approx(0.47)               # the production defaults
+    assert client.state_attempt_timeout_s(1.0, 0.2) == 0.2                                 # a lower setting is kept
+    assert client.state_attempt_timeout_s(0.1, 0.5) == client.MIN_ATTEMPT_S               # never below the floor
+    for budget in (0.5, 0.8, 1.0, 2.0):
+        attempt = client.state_attempt_timeout_s(budget, 10.0)
+        longest_delay = client.STATE_RETRY_DELAY_S * client.RETRY_DELAY_JITTER
+        assert 2 * attempt + longest_delay <= budget + 1e-9
+
+
+def test_make_state_driver_gives_a_managed_transaction_at_most_the_operation_budget_on_paper(monkeypatch):
+    """Two connection attempts plus the longest first retry delay, from the settings the driver is built with."""
+    from semigraph.graph import client
+
+    captured = {}
+    monkeypatch.setattr(client.GraphDatabase, "driver", lambda uri, **kwargs: captured.update(kwargs) or object())
+    client.make_state_driver(driver_settings())
+    worst = 2 * captured["connection_acquisition_timeout"] + captured["initial_retry_delay"] * client.RETRY_DELAY_JITTER
+    assert worst <= 1.0 + 1e-9 and captured["connection_acquisition_timeout"] == pytest.approx(0.47)
 
 
 def test_make_state_driver_does_not_connect_at_construction(monkeypatch):
@@ -891,8 +1211,8 @@ def test_make_state_driver_does_not_connect_at_construction(monkeypatch):
 
 def test_make_state_driver_keywords_are_the_ones_the_installed_driver_accepts():
     """An unknown keyword is a ConfigurationError at construction, so building the real driver proves the names; the
-    pool
-    values it then reports prove they were applied (private attributes: skipped if a driver release renames them)."""
+    pool values it then reports prove they were applied (private attributes: skipped if a driver release renames
+    them)."""
     from semigraph.graph import client
 
     driver = client.make_state_driver(driver_settings(state_op_timeout_s=0.9, state_connection_acquisition_s=0.4))
@@ -900,9 +1220,11 @@ def test_make_state_driver_keywords_are_the_ones_the_installed_driver_accepts():
         pool = getattr(driver.wrapped, "_pool", None)
         if pool is None:
             pytest.skip("the driver keeps no _pool attribute")
-        assert pool.pool_config.max_connection_pool_size == 8 and pool.pool_config.connection_timeout == 1.0
+        assert pool.pool_config.max_connection_pool_size == 8 and pool.pool_config.connection_timeout == 0.4
         assert pool.workspace_config.connection_acquisition_timeout == 0.4
-        assert pool.workspace_config.max_transaction_retry_time == 0.9
+        assert pool.workspace_config.max_transaction_retry_time == 0.2
+        assert pool.workspace_config.initial_retry_delay == 0.05
+        assert pool.pool_config.liveness_check_timeout == 0
     finally:
         driver.close()
 
@@ -915,3 +1237,20 @@ def test_make_state_driver_falls_back_to_named_defaults_when_the_settings_do_not
     driver = client.make_state_driver(settings)
     driver.close()
     assert client.STATE_OP_TIMEOUT_DEFAULT_S == 1.0 and client.STATE_ACQUISITION_DEFAULT_S == 0.5
+
+
+# ------------------------------------------------------------------------------- the server side of the bound
+
+def test_the_neo4j_app_sets_the_transaction_monitor_interval_under_the_name_the_server_knows():
+    """The server enforces a transaction timeout only when its transaction monitor looks, every
+    ``db.transaction.monitor.check.interval`` (2 s by default): the state bound of about 1.1 s needs 100 ms. The
+    official image turns ``_`` into ``.`` and ``__`` into ``_`` in an ``NEO4J_`` variable, and the key has no
+    underscore in it, so the variable has single underscores only: with a double one the key would be unknown, which
+    strict config validation refuses at boot."""
+    import tomllib
+    from pathlib import Path
+
+    config = tomllib.loads((Path(__file__).resolve().parents[1] / "deploy/neo4j/fly.toml").read_text(encoding="utf-8"))
+    settings = {name.removeprefix("NEO4J_").replace("__", "\0").replace("_", ".").replace("\0", "_"): value
+                for name, value in config["env"].items() if name.startswith("NEO4J_")}
+    assert settings["db.transaction.monitor.check.interval"] == "100ms"

@@ -5,13 +5,29 @@ reading os.environ directly; the notebooks' PROJECT_ROOT convention becomes
 `settings.data_dir` (default: ./data relative to the current working dir).
 """
 
+import os
+import socket
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 MIN_PRODUCTION_PEPPER_BYTES = 32
+# What a live deployment may run with (docs/v2/M5_DECISIONS.md 2.2 and decision 11): a raised or zeroed cap refuses to
+# boot instead of widening what a stolen key or a bot can spend. 0 means "off" for every cap outside production.
+PRODUCTION_CLIENT_IP_HEADER = "fly-client-ip"
+PRODUCTION_MAX_QUERIES_PER_DAY = 150
+PRODUCTION_MAX_SPEND_USD_PER_DAY = 10.0
+PRODUCTION_PAID_PER_IP_PER_DAY = 20
+PRODUCTION_MAX_CONCURRENT_ANSWERS = 4
+DRAIN_TIMEOUT_CEILING_S = 289       # drain.py: the drain plus its shutdown margin must fit Fly's kill_timeout of 300 s
+
+
+def _default_machine_id() -> str:
+    """The id this process writes on every ledger row it owns: Fly's machine id, else the host name."""
+    return os.environ.get("FLY_MACHINE_ID") or socket.gethostname()
 
 
 class Settings(BaseSettings):
@@ -95,6 +111,24 @@ class Settings(BaseSettings):
     # was nulled).
     ip_hash_pepper: str = Field("", repr=False)
     ip_hash_version: int = Field(2, ge=1)
+    # Paid-ask admission state (M5a I4, docs/v2/M5_DECISIONS.md 2.2). Counters live in memory on the one live machine
+    # ("inprocess") or in Neo4j ("neo4j": the rollback, and any multi-machine setup); a durable ledger row is written
+    # either way.
+    state_backend: Literal["inprocess", "neo4j"] = "inprocess"
+    max_spend_usd_per_day: float = Field(10.0, ge=0)    # estimate-based daily cap beside max_queries_per_day (0 = off)
+    paid_per_ip_per_day: int = Field(20, ge=0)          # paid asks per address hash per UTC day (0 = off)
+    # Every state operation is bounded by this (the server-side transaction timeout); past it the ask fails closed.
+    state_op_timeout_s: float = Field(1.0, ge=0.1, le=10)
+    state_connection_acquisition_s: float = Field(0.5, ge=0.05, le=10)   # a ceiling on one connection attempt
+    kill_switch_refresh_s: float = Field(10, ge=1)      # the maintenance thread re-reads the kill level this often
+    kill_switch_stale_s: float = Field(30, ge=1)        # a kill level older than this reads as "on"
+    # answer-cache reads per second, process-wide, before the bot check
+    cache_read_budget_per_s: float = Field(10, ge=1)
+    lease_ttl_s: float = Field(60, ge=1)                # a lease nobody renews expires after this
+    lease_renew_s: float = Field(15, ge=1)              # renewal and sweep period of the maintenance thread
+    # How long a SIGTERM drain waits for running streams and uploads (env DRAIN_TIMEOUT_S; drain.py reads the same one).
+    drain_timeout_s: float = Field(240, ge=1, le=DRAIN_TIMEOUT_CEILING_S)
+    machine_id: str = Field(default_factory=_default_machine_id, min_length=1)
 
     # --- Agent (semigraph.agent, docs/v2/M3_AGENT_PLAN.md): OPT-IN retrieval planner, strategy=agent; off = never imported by serve ---
     agent_enabled: bool = False
@@ -145,6 +179,43 @@ class Settings(BaseSettings):
             raise ValueError(f"IP_HASH_PEPPER must be set to at least {MIN_PRODUCTION_PEPPER_BYTES} bytes "
                              "in production (generate one: "
                              "python -c \"import secrets; print(secrets.token_urlsafe(48))\")")
+        return self
+
+    @model_validator(mode="after")
+    def _require_timings_that_can_work(self) -> "Settings":
+        """A kill level that goes stale before its next refresh would read "on" part of the time, a lease that expires
+        before its renewal would be swept while its stream runs."""
+        if self.kill_switch_stale_s <= self.kill_switch_refresh_s:
+            raise ValueError("KILL_SWITCH_STALE_S must be larger than KILL_SWITCH_REFRESH_S")
+        if self.lease_renew_s >= self.lease_ttl_s:
+            raise ValueError("LEASE_RENEW_S must be smaller than LEASE_TTL_S")
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_a_live_deployment_that_is_open_or_raised(self) -> "Settings":
+        """Production refuses to boot with the bot check off, an untrusted client-address header, or any cap raised past
+        the owner-approved ones (or zeroed: 0 means off elsewhere). Every problem is named, by SETTING: never a
+        value."""
+        if not self.is_production:
+            return self
+        problems = []
+        if not self.turnstile_required:
+            problems.append("TURNSTILE_REQUIRED must be true in production")
+        if not self.turnstile_secret_key:
+            problems.append("TURNSTILE_SECRET_KEY must be set in production")
+        if self.client_ip_header.strip().lower() != PRODUCTION_CLIENT_IP_HEADER:
+            problems.append(f"CLIENT_IP_HEADER must be {PRODUCTION_CLIENT_IP_HEADER} in production")
+        if not 1 <= self.max_queries_per_day <= PRODUCTION_MAX_QUERIES_PER_DAY:
+            problems.append(f"MAX_QUERIES_PER_DAY must be 1 to {PRODUCTION_MAX_QUERIES_PER_DAY} in production")
+        if not 0 < self.max_spend_usd_per_day <= PRODUCTION_MAX_SPEND_USD_PER_DAY:
+            problems.append(f"MAX_SPEND_USD_PER_DAY must be above 0 and at most {PRODUCTION_MAX_SPEND_USD_PER_DAY:g} "
+                            "in production")
+        if not 1 <= self.paid_per_ip_per_day <= PRODUCTION_PAID_PER_IP_PER_DAY:
+            problems.append(f"PAID_PER_IP_PER_DAY must be 1 to {PRODUCTION_PAID_PER_IP_PER_DAY} in production")
+        if not 1 <= self.max_concurrent_answers <= PRODUCTION_MAX_CONCURRENT_ANSWERS:
+            problems.append(f"MAX_CONCURRENT_ANSWERS must be 1 to {PRODUCTION_MAX_CONCURRENT_ANSWERS} in production")
+        if problems:
+            raise ValueError("; ".join(problems))
         return self
 
     # --- Data lake root (git-ignored, rebuildable) ---

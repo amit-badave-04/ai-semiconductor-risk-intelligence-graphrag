@@ -147,8 +147,9 @@ class InProcessBackend(StateCore):
     def reconcile(self, lease_id: str, *, outcome: str, usage: dict | None, cost_micro: int | None) -> bool:
         """Charge the lease its actual cost (the estimate when unknown or abandoned) and settle its row. The lease is
         popped under the lock first, so a double reconcile, or a reconcile racing a sweep, charges exactly once. The
-        row write that follows is retried (``SETTLE_RETRIES`` times, ``SETTLE_RETRY_DELAY_S`` apart); if it still
-        fails the row stays ``reserved`` and the next boot charges its estimate. True iff the counters were charged."""
+        counters are charged and the slot is free when this returns, even if the row write failed: that write is then
+        queued, retried by the maintenance thread, and charged at its estimate by the next boot if it never lands (see
+        :mod:`.settle_queue`). Nothing here waits for the database to recover. True iff the counters were charged."""
         with self._lock:
             entry = self._leases.pop(lease_id, None)
             if entry is None:
@@ -164,11 +165,9 @@ class InProcessBackend(StateCore):
         return True
 
     def _settle_row(self, lease: Lease, outcome: str, usage: dict | None, actual_micro: int) -> None:
-        done, _ = self._retry_write("settle_row", lambda: self._ledger.settle_row(
+        self._settle_or_queue("settle_row", lease.lease_id, lambda: self._ledger.settle_row(
             self._driver, lease.lease_id, outcome=outcome, usage=usage, actual_micro=actual_micro,
             now_wall=self._wall(), timeout_s=self._cfg.state_op_timeout_s))
-        if not done:
-            self._log_settle_failed(lease.lease_id)
 
     def sweep(self, now: float) -> int:
         """Charge the estimate of every lease that expired (wall clock ``now``) and was never started: the stream never

@@ -6,7 +6,8 @@ wired to the real workspace writer. Neo4j (``uploads.repo``, SEC ``hybrid_retrie
 (``answerer_async.AsyncTextStream``) are faked, and a real model call is a hard failure. The app is built with a
 small lifespan of its own, as ``tests/test_serve_api.py`` builds it (the limiters are made inside the loop that
 ``with TestClient(app)`` keeps alive); it is not imported from that file: its fixtures are scoped to the SEC-only
-``client`` fixture there.
+``client`` fixture there. The state backend is the fake of ``tests/serve_state_fakes.py``: a workspace ask takes a lease
+(``workspace`` true), settles it, and never reads or writes the answer cache.
 """
 
 from __future__ import annotations
@@ -14,16 +15,18 @@ from __future__ import annotations
 import contextlib
 import json
 
-import anyio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from serve_state_fakes import FakeStateBackend, fresh_drain, install_state  # noqa: F401 - fresh_drain: a fixture
 
 from semigraph.retrieval import answerer, answerer_async, workspace_async
-from semigraph.serve import guard, routes, store
+from semigraph.serve import guard, routes
 from semigraph.serve.guard import RateLimiter
 from semigraph.serve.limiters import make_limiters
 from semigraph.uploads import repo
+
+pytestmark = pytest.mark.usefixtures("fresh_drain")
 
 WS = "c" * 32
 TOKEN = "good-token"
@@ -33,6 +36,8 @@ DOC1 = "doc:0123456789ab:v1:0007"
 class FakeSettings:
     kill_switch = False
     max_queries_per_day = 100
+    max_spend_usd_per_day = 10.0
+    paid_per_ip_per_day = 20
     turnstile_secret_key = ""
     turnstile_site_key = ""
     is_production = False
@@ -123,26 +128,20 @@ def fake_repo(monkeypatch):
 
 
 @pytest.fixture
-def store_spy(monkeypatch):
-    calls = {"get_answer": 0, "put_answer": 0, "log_query": []}
-    monkeypatch.setattr(store, "get_answer", lambda *a, **kw: (calls.__setitem__("get_answer", calls["get_answer"] + 1), None)[1])
-    monkeypatch.setattr(store, "put_answer", lambda *a, **kw: calls.__setitem__("put_answer", calls["put_answer"] + 1))
-    monkeypatch.setattr(store, "log_query", lambda d, **kw: calls["log_query"].append(kw))
-    monkeypatch.setattr(store, "kill_switch_on", lambda d, flag: flag)
-    monkeypatch.setattr(store, "paid_queries_today", lambda d: 0)
-    return calls
+def backend():
+    """The state backend: ``names()`` is every call the route made on it, ``settled`` every paid ledger row."""
+    return FakeStateBackend()
 
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI):
     """What ``main.lifespan`` builds inside the running loop (the limiters are bound to it)."""
     app.state.limiters = make_limiters(app.state.settings)
-    app.state.answer_limiter = anyio.CapacityLimiter(app.state.settings.max_concurrent_answers)
     yield
 
 
 @pytest.fixture
-def client(fake_repo, store_spy):
+def client(fake_repo, backend):
     app = FastAPI(lifespan=_lifespan)
     app.include_router(routes.router)
     app.state.settings = FakeSettings()
@@ -152,6 +151,7 @@ def client(fake_repo, store_spy):
     app.state.free_rate_limiter = RateLimiter(FakeSettings.free_rate_limit_questions,
                                               FakeSettings.rate_limit_window_seconds)
     app.state.read_rate_limiter = RateLimiter(FakeSettings.read_rate_limit_per_minute, 60)
+    install_state(app, backend=backend)
     # routes.uploads_available(app.state) = settings.uploads_enabled AND app.state.uploads_ready (finding 29,
     # docs/v2/M4_PLAN.md 15.5, set in production by uploads.jobs.start_if_enabled) — fixtures that exercise a
     # working workspace ask must set this explicitly, the same way jobs.start_if_enabled would.
@@ -190,20 +190,20 @@ def test_uploads_disabled_is_503(client):
     assert r.status_code == 503
 
 
-def test_agent_strategy_with_a_workspace_is_400_before_any_gate(client, store_spy, monkeypatch):
+def test_agent_strategy_with_a_workspace_is_400_before_any_gate(client, backend, monkeypatch):
     def must_not_run(*a, **kw):
         pytest.fail("a workspace ask with strategy=agent must never reach turnstile or the writer")
 
     monkeypatch.setattr(guard, "verify_turnstile", must_not_run)
     r = _ask(client, strategy="agent")
     assert r.status_code == 400
-    assert store_spy["log_query"] == []
+    assert backend.calls == []                                           # no state call: no lease, no row
 
 
 # ---------------------------------------------------------------- happy path: shapes
 
 
-def test_workspace_ask_streams_retrieval_with_doc_chunks_then_done_with_a_workspace_block(client):
+def test_workspace_ask_streams_retrieval_with_doc_chunks_then_done_with_a_workspace_block(client, backend):
     FakeTextStream.next_text = f"Our margin was 41.5% [{DOC1}]."
     events = _events(_ask(client))
     assert events[0]["event"] == "retrieval" and events[0]["doc_chunks"] == 1
@@ -211,13 +211,13 @@ def test_workspace_ask_streams_retrieval_with_doc_chunks_then_done_with_a_worksp
     assert done["event"] == "done" and done["citations"] == [DOC1]
     assert set(done["workspace"]) == {"id_hash", "doc_chunks", "stale_citations", "suspicious"}
     assert done["checks"]["numbers_grounded"] is True
-    assert client.app.state.answer_limiter.borrowed_tokens == 0         # the answer gave its slot back
+    assert backend.inflight == 0 and len(backend.settled) == 1           # the answer settled its lease and gave it back
 
 
-def test_workspace_ask_never_touches_the_answer_cache(client, store_spy):
+def test_workspace_ask_never_touches_the_answer_cache(client, backend):
     _ask(client)
-    assert store_spy["get_answer"] == 0 and store_spy["put_answer"] == 0
-    assert store_spy["log_query"] and store_spy["log_query"][-1]["cached"] is False
+    assert "cache_get" not in backend.names() and "cache_put" not in backend.names()
+    assert backend.settled and backend.settled[-1]["workspace"] is True and backend.settled[-1]["outcome"] == "done"
 
 
 def test_workspace_ask_strips_a_link_but_keeps_the_citation(client):

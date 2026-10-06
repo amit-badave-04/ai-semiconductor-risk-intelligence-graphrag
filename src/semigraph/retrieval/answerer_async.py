@@ -139,6 +139,7 @@ from .answerer import (
     _identity,
     _totals,
     build_blocks,
+    dropped_anchors_field,
     render_prompt,
     sources_from_context,
     usage_cost,
@@ -450,7 +451,7 @@ async def astream_answer_for_context(question: str, r: dict, strategy: str, *, l
     blocks, full_context, valid_ids = build_blocks(r)
     yield {"event": "retrieval", "anchors": r["anchors"],
            "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")},
-           "anchor_defaulted": bool(r.get("anchor_defaulted", False))}
+           "anchor_defaulted": bool(r.get("anchor_defaulted", False)), **dropped_anchors_field(r)}
     events = astream_answer_for_prompt(
         question, render_prompt(question, blocks), full_context, valid_ids, [c["chunk_id"] for c in r["chunks"]],
         strategy, sources=sources_from_context(full_context), llm_stream=llm_stream,

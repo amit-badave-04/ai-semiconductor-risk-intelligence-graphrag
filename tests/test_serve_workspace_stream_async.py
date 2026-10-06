@@ -306,6 +306,26 @@ def test_the_sync_runner_of_this_file_is_the_recorders_runner():
     assert run_sync(inputs) == recorder.run_workspace_scenario(inputs)
 
 
+Q_FOUR_COMPANIES = "Compare the revenue of Nvidia, AMD, Intel and Broadcom with my uploaded memo."
+Q_FIVE_COMPANIES = "Compare the revenue of Nvidia, AMD, Intel, Broadcom and Qualcomm with my uploaded memo."
+
+
+@pytest.mark.parametrize("question, dropped", [
+    pytest.param(Q_FIVE_COMPANIES, ["Qualcomm"], id="five_companies"),
+    pytest.param(Q_FOUR_COMPANIES, None, id="four_companies")])
+def test_the_workspace_retrieval_event_lists_the_companies_the_cap_dropped_after_doc_chunks(question, dropped):
+    """Additive and identical in the sync stream and the twin: ``anchors_dropped`` is the LAST key of the workspace
+    retrieval event (after ``doc_chunks``) and exists only when the question named more companies than the cap keeps."""
+    inputs = {**CITED, "question": question}
+    sync, twin = run_sync(inputs), run_twin(inputs)
+    first = sync["events"][0]
+    keys = ["event", "anchors", "counts", "anchor_defaulted", "doc_chunks"]
+    assert list(first) == [*keys, *(["anchors_dropped"] if dropped else [])]
+    assert first.get("anchors_dropped") == dropped
+    assert _wire(twin["events"]) == _wire(sync["events"])
+    assert not any("anchors_dropped" in e for e in sync["events"][1:])
+
+
 # --- 2. extra scenarios: the sync stream against the twin --------------------------------------------------------
 
 def _scenario(writer, rows, *, question=recorder.WS_QUESTION, as_of=None, escalation=None) -> dict:
