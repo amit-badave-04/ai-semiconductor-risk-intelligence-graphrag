@@ -25,6 +25,17 @@ def test_make_limiters_sizes_each_pool_from_the_settings():
     assert isinstance(lim, Limiters)
     assert lim.embed.total_tokens == 2 and lim.db.total_tokens == 7
     assert lim.health.total_tokens == 1 and lim.state.total_tokens == 4
+    assert lim.admin.total_tokens == 1                      # the admin routes' own one, apart from the public state pool
+    assert len({id(pool) for pool in lim}) == len(lim)      # five pools, none of them shared
+
+
+def test_a_limiters_tuple_built_without_the_admin_pool_still_works_for_everything_but_the_admin_routes():
+    """The pools are named fields: a test double that predates ``admin`` builds the other four."""
+    async def build():
+        return Limiters(embed=anyio.CapacityLimiter(1), db=anyio.CapacityLimiter(1), health=anyio.CapacityLimiter(1),
+                        state=anyio.CapacityLimiter(1))
+
+    assert asyncio.run(build()).admin is None
 
 
 @pytest.mark.parametrize("field", ["embed_slots", "db_thread_limit"])

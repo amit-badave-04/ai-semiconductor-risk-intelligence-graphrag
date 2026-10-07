@@ -145,9 +145,10 @@ jobs:
         run: |
           uv run pytest -q -rs tests/test_state_contract.py tests/integration/test_state_neo4j.py \
             tests/integration/test_null_legacy_ip_hashes_neo4j.py | tee neo4j-state.log
-          # Every one of these tests skips itself when the server is unreachable or the opt-in variables are missing, and a
-          # skip is not a failure: refuse a run that never reached the server.
-          ! grep -E "SKIPPED.*(not reachable|opt-in|ALLOW_WIPE)" neo4j-state.log
+          # These tests skip themselves when the server is unreachable or the opt-in variables are missing, and a skip is not
+          # a failure: refuse a run that never reached the server. Once the server is up NO test here has a legitimate reason
+          # to skip, whatever the reason it prints, so any skip fails the job (pytest -rs prints each as a SKIPPED line).
+          ! grep -E "^SKIPPED" neo4j-state.log
 
   security-scan:
     runs-on: ubuntu-latest

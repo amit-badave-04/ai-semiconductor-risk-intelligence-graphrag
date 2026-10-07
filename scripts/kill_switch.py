@@ -131,8 +131,12 @@ def run_http(args: argparse.Namespace) -> int:
         body = {"kill_switch": args.command == "on"} if args.command in ("on", "off") else {"kill_switch": args.command}
         response = client.post("/api/admin/policy", json=body)
         response.raise_for_status()
-        state = level_of(response.json()["kill_switch"])
+        result = response.json()
+        state = level_of(result["kill_switch"])
         print(f"KILL SWITCH {state.upper()}: {EFFECT.get(state, state)}; cached answers unaffected.")
+        if result.get("stored") is False:
+            print("NOT STORED YET: the level is in force on this machine but its database write failed; the app retries "
+                  "it. Confirm with `kill_switch get` once the database is back.")
     response = client.get("/api/admin/policy")
     if response.status_code == 404:
         sys.exit("ERROR: admin endpoint rejected the token (or ADMIN_TOKEN is not set on the app)")

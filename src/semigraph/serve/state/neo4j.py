@@ -67,6 +67,7 @@ class Neo4jBackend(StateCore):
                      cfg.machine_id)
 
     def mark_started(self, lease_id: str) -> None:
+        """Memory only (the protocol requires it: the async caller takes it on the event loop)."""
         self.registry.add(lease_id)
 
     def renew(self, lease_id: str, now_wall: float) -> bool:

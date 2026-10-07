@@ -98,9 +98,13 @@ def client_ip(request: Request, trusted_header: str = "") -> str:
     """The client address. A forwarding header is honoured ONLY when the
     deployment names it (``CLIENT_IP_HEADER=fly-client-ip`` on Fly, whose edge
     proxy sets it from the real connection); any other header is attacker
-    controlled and would turn the per-address limiter into a no-op."""
-    if trusted_header:
-        value = request.headers.get(trusted_header)
+    controlled and would turn the per-address limiter into a no-op.
+
+    ``Settings`` stores the name stripped and lower-cased (``CLIENT_IP_HEADER``); the name is stripped here too, so a
+    stray space from any other caller can never make the lookup miss and key every visitor by the proxy's address."""
+    name = trusted_header.strip()
+    if name:
+        value = request.headers.get(name)
         if value:
             return value.split(",")[0].strip()
     return request.client.host if request.client else "unknown"

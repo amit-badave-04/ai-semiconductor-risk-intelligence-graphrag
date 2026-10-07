@@ -31,9 +31,15 @@ so the package works with a ``SimpleNamespace`` in tests):
 - ``ip_hash_version``: optional; the pepper id written on each row as ``ip_hash_v`` and used to pick the rows that
   reseed the per-IP counters and windows at boot.
 
-Money is an integer number of micro-dollars everywhere (:func:`usd_to_micro`). Every backend method is synchronous: the
-async caller runs it as ``await anyio.to_thread.run_sync(fn, limiter=limiters.state)`` with no timeout of its own, and
-follows it with ``anyio.lowlevel.checkpoint()``. The bound lives in the work itself (see ``backend`` and ``ledger``).
+Money is an integer number of micro-dollars everywhere (:func:`usd_to_micro`). Every backend method is synchronous. The
+async caller runs each that touches the store through ``stream_runtime.slot_call``: it takes one token of
+``limiters.state`` (``limiters.admin`` for the admin routes) and waits for it at most ``state_op_timeout_s``, then
+refuses the call (``NoStateSlot``, a ``StateUnavailable``) without having run it; once it holds the token it runs the
+function on a worker thread with no timeout of its own, and follows it with ``anyio.lowlevel.checkpoint()``. The bound of
+the work lives in the work itself (see ``backend`` and ``ledger``). ``kill_level``, ``hold_kill_level`` and
+``mark_started`` are MEMORY ONLY: the async callers take them on the event loop, with no thread hop and no token, so a
+stuck database cannot delay them. The admin flip is ``hold_kill_level`` (a tightening in force at once) followed by
+``set_kill_level`` (the write, which raises ``KillNotStored`` when it fails).
 
 A failed settle never makes the caller wait: ``reconcile`` returns at once and the row write is retried by the
 maintenance thread (``drain_settles`` on every tick, ``flush_settles`` at shutdown; see ``settle_queue``).
@@ -41,6 +47,7 @@ maintenance thread (``drain_settles`` on every tick, ``flush_settles`` at shutdo
 
 from .backend import (
     Denied,
+    KillNotStored,
     Lease,
     RebuildReport,
     StateBackend,
@@ -54,6 +61,7 @@ from .backend import (
 
 __all__ = [
     "Denied",
+    "KillNotStored",
     "Lease",
     "RebuildReport",
     "StateBackend",

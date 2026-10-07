@@ -238,11 +238,12 @@ def _per_pair(caps: dict[str, int], pairs: int) -> dict[str, int]:
     return dict(caps) if pairs <= 1 else {kind: max(1, cap // pairs) for kind, cap in caps.items()}
 
 
-def _temporal(cik: int, pairs: int) -> tuple[list, list, list, list]:
-    """One company's temporal layer with every list full: ``(items, pairs, passages, notices)``."""
+def _temporal(cik: int, pairs: int, first: int = 0) -> tuple[list, list, list, list]:
+    """One company's temporal layer with every list full: ``(items, pairs, passages, notices)``. The ``pairs`` pairs are
+    numbered from ``first`` (their accessions and chunk ids differ from those of another ``first``)."""
     from semigraph.retrieval import retriever
-    pair_rows, items, passages, seed = [], [], [], cik * 1_000
-    for p in range(pairs):
+    pair_rows, items, passages, seed = [], [], [], cik * 1_000 + first * 100
+    for p in range(first, first + pairs):
         accessions = {"older_accession": f"0001045810-25-{p:06d}", "newer_accession": f"0001045810-26-{p:06d}"}
         pair_rows.append({"company": _company(cik), "cik": cik, "older_form": "10-K", "older_date": "2025-02-26",
                           "newer_form": "10-K", "newer_date": "2026-02-25", "compared": True,
@@ -386,32 +387,71 @@ def test_one_plain_anchors_blocks_at_their_caps_fit_the_per_anchor_allowance(pai
 
 def test_one_agent_companys_blocks_fit_the_agent_allowance_up_to_the_pair_count_the_allowance_covers():
     """The agent's tools add metrics (every annual row: 19 per series, all shown) and temporal pairs (up to 2 per
-    company per call, so 4 calls could give one company 8). The company count is capped, the pairs per company are not:
-    the allowance covers up to AGENT_PAIRS (5), one more than the graph holds (4 consecutive comparisons, see the
-    data test below); 6 and more do not fit it, and 8, what the code alone allows, is 66,410 characters."""
+    company per call, so 4 calls could offer one company 8). The company count AND the pairs a company holds are capped
+    in the code (agent/merge.py): the allowance covers exactly AGENT_PAIRS (5), the cap, one more than the graph holds
+    (4 consecutive comparisons, see the data test below); 6 and more do not fit it, and 8, what 4 calls offer, is 66,410
+    characters (what the cap keeps out)."""
     cost = {p: _company_chars(pairs=p, metric_rows=19, show_all=True) for p in range(1, 9)}
     assert cost == {1: 44_578, 2: 46_490, 3: 42_177, 4: 48_510, 5: 48_650, 6: 54_570, 7: 60_490, 8: 66_410}
     assert all(cost[p] <= est.AGENT_GRAPH_CHARS_PER_COMPANY for p in range(1, AGENT_PAIRS + 1))
     assert cost[AGENT_PAIRS + 1] > est.AGENT_GRAPH_CHARS_PER_COMPANY
 
 
-def test_the_agent_estimate_covers_every_pair_count_the_graph_holds_and_not_the_one_the_code_alone_allows():
-    """KNOWN, ACCEPTED RESIDUAL (reported to the owner, not hidden): four companies at 8 pairs each (4 calls x 2 pairs)
-    render 518,870 characters, 207,548 tokens and cost 907,767 micro-dollars of writer and planner calls at the live
-    prices, above the 827,661 the agent estimate holds and past the 200,000-token tier. It needs 9 annual filings of one
-    company; the graph has at most 5. The day ``merge_temporal`` caps the pairs per company this assertion is replaced
-    by the ones for the cap."""
+def merged_agent_context(companies: int, *, pair_cap: int | None = None) -> dict:
+    """The dearest context the agent can BUILD, through the real merge: the prefetch holds 2 pairs of each company (the
+    most one read gives), then 4 ``risk_changes`` calls (agent_max_tool_calls) each offer 2 MORE pairs of every company,
+    10 offered per company in all. ``pair_cap`` overrides the merge's own cap (the control that shows the cap matters)."""
+    from semigraph.agent import merge
+    cap = {} if pair_cap is None else {"pair_cap": pair_cap}
+    r = worst_case_retrieval(companies, pairs=2, metric_rows=19, show_all=True, chunks=16, risks=12, extra_edges=40,
+                             computed=4, dropped=ALL_26[MAX_ANCHORS:])
+    for call in range(4):
+        layers = [_temporal(cik, 2, first=2 + 2 * call) for cik in range(1, companies + 1)]
+        items, pairs, passages, notices = ([row for layer in layers for row in layer[i]] for i in range(4))
+        r = merge.merge_temporal(r, items=items, pairs=pairs, passages=passages, notices=notices, question=QUESTION, **cap)
+    return r
+
+
+def test_the_agent_estimate_covers_every_pair_count_up_to_the_cap():
     live = est.estimate_micro("agent", live_settings())
     for pairs in range(1, AGENT_PAIRS + 1):
         assert live >= math.ceil(writer_floor_micro("agent", _prompt_chars(agent_worst_case(pairs)))), pairs
-    eight = writer_floor_micro("agent", _prompt_chars(agent_worst_case(8)))
-    assert (_prompt_chars(agent_worst_case(8)), math.ceil(eight)) == (518_870, 907_767) and math.ceil(eight) > live
+
+
+def test_the_agent_estimate_is_a_bound_the_code_enforces_even_when_four_calls_offer_ten_pairs_of_every_company():
+    """THE CLOSED RESIDUAL. Without a cap on the pairs of a company, four companies at 8 pairs each rendered 518,870
+    characters, 207,548 tokens and cost 907,767 micro-dollars of writer and planner calls at the live prices, above the
+    827,661 the agent estimate holds and past the 200,000-token tier (it needed 9 annual filings of one company; the
+    graph has at most 5). The real merge now holds each company to 5 pairs: the context it builds renders within the
+    estimate's prompt ceiling, and one company's blocks within AGENT_GRAPH_CHARS_PER_COMPANY."""
+    from semigraph.agent import merge
+    live = live_settings()
+    r = merged_agent_context(AGENT_COMPANIES)
+    held = {cik: sum(1 for p in r["temporal_pairs"] if p["cik"] == cik) for cik in range(1, AGENT_COMPANIES + 1)}
+    assert held == dict.fromkeys(range(1, AGENT_COMPANIES + 1), merge.MAX_PAIRS_HELD_PER_COMPANY)
+    chars = _prompt_chars(r)
+    assert chars - _prompt_chars(agent_worst_case(AGENT_PAIRS)) <= AGENT_COMPANIES * 300, "5 pairs each, plus a cap note each"
+    assert est.prompt_tokens("agent", live) >= math.ceil(Fraction(chars) / Fraction(5, 2))
+    assert est.estimate_micro("agent", live) >= math.ceil(writer_floor_micro("agent", chars))
+    one_company = _prompt_chars(merged_agent_context(2)) - _prompt_chars(merged_agent_context(1))
+    assert 48_000 < one_company <= est.AGENT_GRAPH_CHARS_PER_COMPANY
+
+
+def test_without_the_cap_the_same_calls_cost_more_than_the_agent_estimate_holds():
+    """The control, so the test above cannot pass on its own: the same four calls through a merge whose cap is out of
+    reach end with 10 pairs of every company, 566,790 characters and 986,356 micro-dollars of writer and planner calls
+    at the live prices, above the 827,661 the estimate holds. The cap, not the data, is what keeps it a bound."""
+    r = merged_agent_context(AGENT_COMPANIES, pair_cap=100)
+    assert sum(1 for p in r["temporal_pairs"] if p["cik"] == 1) == 10
+    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (566_790, 986_356)
+    assert math.ceil(writer_floor_micro("agent", _prompt_chars(r))) > est.estimate_micro("agent", live_settings())
 
 
 def test_the_graph_holds_at_most_five_annual_filings_of_any_company_so_at_most_four_pairs():
-    """The pair bound of the agent allowance is the graph's: ANNUAL_PAIRS_QUERY reads SUPERSEDES edges of kind 'rolled'
-    between consecutive annual filings (10-K, 10-K/A, 20-F, 20-F/A), so n filings give at most n - 1 pairs. Measured
-    on the ingested chunk tables: 5 filings at most (AMD: four 10-Ks and a 10-K/A), 2 to 4 for the others."""
+    """The agent's cap on the pairs of a company (merge.MAX_PAIRS_HELD_PER_COMPANY) is above what the graph can give, so
+    on today's data it never cuts a comparison: ANNUAL_PAIRS_QUERY reads SUPERSEDES edges of kind 'rolled' between
+    consecutive annual filings (10-K, 10-K/A, 20-F, 20-F/A), so n filings give at most n - 1 pairs. Measured on the
+    ingested chunk tables: 5 filings at most (AMD: four 10-Ks and a 10-K/A), 2 to 4 for the others."""
     pd = pytest.importorskip("pandas", reason="reading the chunk tables needs pandas (pipeline-time, not shipped)")
     files = sorted((RUN_FILES / "chunks").glob("*.parquet"))
     if not files:
@@ -870,8 +910,9 @@ def test_the_agent_code_is_what_the_agent_allowance_was_measured_against():
     from semigraph.agent import merge, sanitize
     from semigraph.retrieval import retriever
     assert merge.company_cap() == est.agent_company_blocks() == retriever.MAX_ANCHORS
-    assert retriever.MAX_PAIRS_PER_COMPANY == 2          # the pairs a single call can add per company (AGENT_PAIRS)
-    assert Settings.model_fields["agent_max_tool_calls"].default == 4     # 4 calls x 2 pairs = the 8 the code allows
+    assert retriever.MAX_PAIRS_PER_COMPANY == 2          # the pairs a single call can offer per company
+    assert Settings.model_fields["agent_max_tool_calls"].default == 4     # 4 calls x 2 pairs offered (the cap keeps 5 in all)
+    assert merge.MAX_PAIRS_HELD_PER_COMPANY == AGENT_PAIRS == 5          # the pairs the allowance was measured at, held by the merge
     assert set(sanitize.KNOWN_METRICS) == {"revenue", "net_income", "rnd", "capex"}
 
 

@@ -3,15 +3,18 @@
 :class:`PaidStream` replaces the sync ``routes._paid_stream``. It changes HOW an answer is streamed, not the policy.
 
 ``events()`` is an async generator that holds no thread while it waits for the model (the twins in ``retrieval`` and
-``agent`` put every blocking hop on a worker thread). Every call to the state backend is a thread hop under
-``limiters.state`` followed by a checkpoint (:func:`state_call`); the tracer close is a hop under ``limiters.db``.
+``agent`` put every blocking hop on a worker thread). Every call to the state backend that touches the store is a thread
+hop under ``limiters.state`` followed by a checkpoint (:func:`state_call`; the settle waits for a slot as long as it
+takes, :func:`settle_call`; the memory-only ``kill_level`` and ``mark_started`` are called directly); the tracer close is
+a hop under ``limiters.db``.
 
 * **The lease.** The route took it, before the stream existed: ``state.reserve`` checked the kill level, both daily
   caps, the per-address cap and the in-flight cap, counted the ask and wrote its durable ``reserved`` ledger row
   (docs/v2/ M5_DECISIONS.md 2.2). The stream is handed that :class:`~semigraph.serve.state.Lease` and owes the backend
   exactly one ``reconcile`` for it. A full in-flight cap is therefore a pre-stream HTTP 429 (``routes``), never an event
-  of the stream. On the first event of the twin the stream calls ``mark_started``: from then on the maintenance thread
-  renews the lease, so the lease TTL has to cover only a stream that never started.
+  of the stream. When ``events()`` starts, before the twin is awaited, the stream calls ``mark_started``: from then on
+  the maintenance thread renews the lease, so the lease TTL has to cover only a stream that never started (not one whose
+  first event is slow).
 * **The money rule.** For the terminal event (``done`` or ``error``) the lease is reconciled BEFORE the event is
   yielded (``outcome`` ``done`` or ``error``, the twin's usage and its cost in micro-dollars, ``None`` when unknown:
   the backend then keeps the estimate), then (``done`` only) the answer-cache write under the sync rule, the info line
@@ -66,11 +69,12 @@ from starlette.background import BackgroundTask
 from starlette.datastructures import State
 from starlette.types import Message, Receive, Scope, Send
 
+from ..graph.client import STATE_OP_TIMEOUT_DEFAULT_S
 from ..retrieval.answerer_async import aanswer_stream
 from ..retrieval.verify import checks_failed
 from ..retrieval.workspace_async import astream_workspace_answer
 from . import drain, guard, tracing
-from .state import Lease, usd_to_micro
+from .state import Lease, StateUnavailable, usd_to_micro
 
 logger = logging.getLogger("semigraph.serve")
 
@@ -87,14 +91,63 @@ class TwinContractError(TypeError):
     """The answer stream function did not return an async generator (a wiring mistake)."""
 
 
-async def state_call(st: State, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """One call to the state backend, the one idiom: a worker thread under ``limiters.state``, then a checkpoint (a
-    shielded thread hop does not deliver a cancellation on its own). No caller-side timeout: abandoning a thread that a
-    shielded reserve runs in would let the reserve finish after its caller gave up; the bound is in the work (the state
-    driver's attempt timeouts and the server-side transaction timeout, ``serve.state.backend``)."""
-    result = await anyio.to_thread.run_sync(partial(fn, *args, **kwargs), limiter=st.limiters.state)
+class NoStateSlot(StateUnavailable):
+    """No state slot was free in time: the call did NOT run. Any other StateUnavailable comes from a call that ran and
+    failed, which may have changed state (a kill-level tightening held in memory, a lease granted); this one never did,
+    so a caller that must know the difference (the admin flip) can tell."""
+
+async def slot_call(limiter: anyio.CapacityLimiter, wait_s: float | None, fn: Callable[..., Any], *args: Any,
+                    **kwargs: Any) -> Any:
+    """``fn(*args, **kwargs)`` on a worker thread, holding one token of ``limiter``, then a checkpoint (a shielded thread
+    hop does not deliver a cancellation on its own).
+
+    Only the WAIT for the token is bounded: ``wait_s`` seconds (``None``: as long as it takes), then NoStateSlot (a
+    StateUnavailable), and ``fn`` never ran. Once the token is held the call is never abandoned: abandoning a thread
+    that a shielded reserve runs in would let the reserve finish after its caller gave up. Its own bound is in the work
+    (the state driver's attempt timeouts and the server-side transaction timeout, ``serve.state.backend``).
+
+    Why the token is taken here and not by ``run_sync(limiter=limiter)`` under a ``move_on_after``: ``run_sync`` is
+    shielded once it holds the token, so a deadline that passes during the work would still fire at the next checkpoint
+    and throw away the result of a call that completed (a granted lease would be lost). Taking the token ourselves
+    puts the deadline on the wait alone. ``run_sync`` is then given a limiter of its own that nobody else uses: it
+    takes its token at once, and handing it ``limiter`` too would be a second acquire by the same task (a
+    RuntimeError). A cancellation (or the deadline) that arrives while waiting leaves no token behind, and the token
+    that was granted is released in the ``finally``, whatever the work did."""
+    with anyio.move_on_after(wait_s) as waiting:
+        await limiter.acquire()
+    if waiting.cancelled_caught:
+        raise NoStateSlot(f"no state slot was free within {wait_s:g} s")
+    try:
+        result = await anyio.to_thread.run_sync(partial(fn, *args, **kwargs), limiter=anyio.CapacityLimiter(1))
+    finally:
+        limiter.release()
     await anyio.lowlevel.checkpoint()
     return result
+
+
+def _slot_wait_s(st: State) -> float:
+    return getattr(st.settings, "state_op_timeout_s", STATE_OP_TIMEOUT_DEFAULT_S)
+
+
+async def state_call(st: State, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """One call to the state backend, the one idiom for every caller that has a refusal to fall back on (the routes'
+    503 paths, the answer-cache write): a worker thread under ``limiters.state``, and a wait for a free slot of at most
+    ``state_op_timeout_s``. With every slot held by calls stuck on a silent database the call is refused with
+    StateUnavailable instead of queueing behind them for as long as they take. See :func:`slot_call`."""
+    return await slot_call(st.limiters.state, _slot_wait_s(st), fn, *args, **kwargs)
+
+
+async def settle_call(st: State, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """A state call that must not be dropped: the settle of a lease. Waits for a slot as long as it takes. A reconcile
+    that gave up would leave its lease registered (the maintenance thread renews exactly those) and its in-flight slot
+    taken for the life of the process; there is no refusal to answer here, only an ask that has been paid for."""
+    return await slot_call(st.limiters.state, None, fn, *args, **kwargs)
+
+
+async def admin_call(st: State, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """A state call of an admin route, on the admin limiter (one token): a kill-level flip or the state report is never
+    queued behind the public traffic of ``limiters.state``. The wait for the token is bounded like a public call's."""
+    return await slot_call(st.limiters.admin, _slot_wait_s(st), fn, *args, **kwargs)
 
 
 def cost_micro_of(cost_usd: object) -> int | None:
@@ -218,9 +271,9 @@ class PaidStream:
         by the consumer, not in a ``finally`` (a consumer that goes away, a contract error and a cancellation are
         :class:`PaidResponse`'s to clean up)."""
         terminal_sent = False                  # the client has been handed a done or error event
+        self._mark_started()                   # before the twin has yielded anything (see _mark_started)
         try:
             async for ev in self._open_stream():
-                await self._note_started()
                 terminal = ev["event"] in TERMINAL_EVENTS
                 out = await self._settle(ev) if terminal else ev
                 yield sse_event(out)
@@ -269,15 +322,18 @@ class PaidStream:
         self._stream = stream
         return stream
 
-    async def _note_started(self) -> None:
-        """The first event of the twin: the lease is registered for renewal. A failure is logged and changes nothing
-        else (the lease then expires after its TTL like any other that nobody renews; the reconcile still settles
-        it)."""
+    def _mark_started(self) -> None:
+        """The stream runs: the lease is registered for renewal. This happens before the twin is awaited, not on its
+        first event: retrieval can take longer than the lease TTL before it yields anything, and the sweep reclaims a
+        lease that is not registered (a second stream would be admitted next to this one, which would then be ledgered
+        abandoned). ``mark_started`` is a memory write on every backend (the protocol requires it), so it is called
+        directly: no thread hop, no state slot to wait for. A failure is logged and changes nothing else (the lease then
+        expires after its TTL like any other that nobody renews; the reconcile still settles it)."""
         if self._marked:
             return
         self._marked = True
         try:
-            await state_call(self._st, self._backend.mark_started, self._lease.lease_id)
+            self._backend.mark_started(self._lease.lease_id)
         except Exception as e:  # noqa: BLE001
             logger.warning("marking the lease as started failed (%s)", type(e).__name__)
 
@@ -296,8 +352,8 @@ class PaidStream:
         always the estimate for an ``abandoned`` ask). A raise is logged, never propagated: the lease stays reserved on
         the ledger, which is what the daily ceilings count, until a retry, the sweep or the next boot charges it."""
         try:
-            await state_call(self._st, self._backend.reconcile, self._lease.lease_id, outcome=outcome, usage=usage,
-                             cost_micro=cost_micro_of(cost_usd))
+            await settle_call(self._st, self._backend.reconcile, self._lease.lease_id, outcome=outcome, usage=usage,
+                              cost_micro=cost_micro_of(cost_usd))
         except Exception as e:  # noqa: BLE001
             logger.error("settling the ask failed (%s): its estimate stays charged", type(e).__name__)
             return

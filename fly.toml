@@ -8,7 +8,8 @@ app = "semigraph"
 primary_region = "sin"
 swap_size_mb = 1024
 # Drain (docs/v2/M5A_BUILD_PLAN.md item D, src/semigraph/serve/drain.py): on SIGTERM the app refuses new paid asks and
-# uploads, lets running streams finish for up to DRAIN_TIMEOUT_S (240 s), then shuts down. Fly's maximum is 300 s.
+# uploads, lets running streams finish for up to DRAIN_TIMEOUT_S (240 s), then shuts down. Fly's maximum is 300 s:
+# 240 s drain + 15 s for cut streams + 35 s lifespan shutdown + 10 s margin (tests/test_serve_drain.py sums the bounds).
 # Top-level keys: they must stay above the first [table].
 kill_signal = "SIGTERM"
 kill_timeout = 300
@@ -29,6 +30,9 @@ kill_timeout = 300
   ESCALATION_MODEL = "anthropic/claude-sonnet-5"
   # The Fly edge proxy sets this from the real connection; never trust it elsewhere.
   CLIENT_IP_HEADER = "fly-client-ip"
+  # The bot check fails CLOSED. Not a secret, and the production validators (src/semigraph/config.py) refuse to boot without
+  # it, so it lives here where scripts/check_env_fly.py and a reader of the repo can see it. TURNSTILE_SECRET_KEY stays a Fly secret.
+  TURNSTILE_REQUIRED = "true"
   # Opt-in retrieval-planning agent (strategy=agent), docs/RUNBOOK.md "The M3 agent" / docs/v2/M3_AGENT_PLAN.md section 7.
   # Enabled 2026-09-27 after a live paid ship-gate evaluation showed no regression vs the fixed path. Revert: set "false".
   AGENT_ENABLED = "true"

@@ -13,7 +13,9 @@ FIRST termination signal (Fly sends SIGTERM, ``fly.toml`` ``kill_signal``; Ctrl+
    so the ledger row of an abandoned ask is written) and let uvicorn shut down (close the listener, wait for the
    connections and tasks, run the lifespan shutdown).
 4. A SECOND signal exits without waiting: streams are ended and ``force_exit`` is set (uvicorn then skips its wait
-   loops and the lifespan shutdown). When the signal lands during the drain, the shutdown is also capped at
+   loops AND THE WHOLE LIFESPAN SHUTDOWN: ``Server.shutdown`` runs ``lifespan.shutdown()`` only ``if not
+   self.force_exit``, so there is no settle flush, no maintenance stop and no driver close; a settle that was lost is
+   charged at its estimate by the next boot). When the signal lands during the drain, the shutdown is also capped at
    ``FORCED_SHUTDOWN_S``; when it lands after uvicorn's ``shutdown()`` has started, that call has already read its
    timeout, so only the ending of the streams and ``force_exit`` apply.
 
@@ -23,10 +25,13 @@ insisted. uvicorn's habit of re-raising the signal at exit (status 143, or 3 on 
 
 Budget. uvicorn's graceful-shutdown clock starts only at ``should_exit``, i.e. AFTER the drain, so the 240 s drain and
 uvicorn's ``timeout_graceful_shutdown`` (``DRAIN_TIMEOUT_S + 10``, the ceiling) do not fit in ``kill_timeout`` (300 s,
-Fly's maximum) together. When the drain ends, the shutdown window is cut to what is left of the kill timeout minus
-``SHUTDOWN_MARGIN_S``: an early end keeps the whole 250 s, a timeout at 240 s leaves 50 s for the cut streams to
-finalize and for the lifespan shutdown. ``fly.toml`` pins ``kill_signal = "SIGTERM"`` and ``kill_timeout = 300``; a
-test checks both and that the numbers here agree with them.
+Fly's maximum) together. And ``timeout_graceful_shutdown`` covers only the wait for connections and request tasks:
+``Server.shutdown`` runs ``lifespan.shutdown()`` AFTER it, which is ``LIFESPAN_SHUTDOWN_BUDGET_S`` more at its worst.
+When the drain ends, the window is cut to what is left of the kill timeout minus ``SHUTDOWN_MARGIN_S`` and that
+lifespan budget: an early end keeps the whole 250 s, a timeout at 240 s leaves 15 s for the cut streams to finalize
+(240 + 15 + 35 + 10 = 300); the lifespan then waits up to ``LIFESPAN_IDLE_WAIT_S`` more for stragglers. ``fly.toml`` pins
+``kill_signal = "SIGTERM"`` and ``kill_timeout = 300``; a test checks both, derives the lifespan's worst case from the
+constants of the code that sets each bound, and sums the whole chain against the kill timeout.
 
 What the code under it does (observed: uvicorn 0.52.4, sse-starlette 3.4.11, Python 3.13 on Windows, 3.12 on Linux):
 
@@ -69,9 +74,9 @@ THE WIRING (what the service does with this module; ``tests/test_serve_state_wir
   its LAST step, in a ``finally``, after the lease is settled, the model stream is closed and the tracer is closed, so
   ``DRAIN.active == 0`` means the ledger row exists and the stream is closed. ``finalize`` is idempotent and shielded.
 * Uploads: ``workspace_routes.DrainCountedSlot`` (``app.state.upload_slots``) counts an upload on the drain from
-  ``acquire`` (``DRAIN.enter()``) until its job thread's ``release`` (``DRAIN.leave()``). Creating a workspace and
-  uploading are refused with 503 while draining, before any window. Reads (stats, evidence, examples, ``/healthz``,
-  workspace GETs) and cached answers keep being served.
+  ``acquire`` (``DRAIN.try_enter()``: a drain that began during the body read refuses it, 503) until its job thread's
+  ``release`` (``DRAIN.leave()``). Creating a workspace and uploading are refused with 503 while draining, before any
+  window. Reads (stats, evidence, examples, ``/healthz``, workspace GETs) and cached answers keep being served.
 * ``main.lifespan``, after ``yield``: ``await DRAIN.await_idle(LIFESPAN_IDLE_WAIT_S)`` (``wait_for_the_drain``) runs
   BEFORE the state maintenance thread stops (it still retries and flushes failed settles), the monitor and the sweeper
   stop, and the database drivers close: a stream's shielded cleanup would otherwise race ``driver.close()``. The drain
@@ -88,19 +93,20 @@ the next tick.
 
 import argparse
 import logging
-import math
 import os
 import signal
 import sys
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from types import FrameType
 
 import anyio
 import anyio.lowlevel
 import uvicorn
 from uvicorn.config import STARTUP_FAILURE
+
+from ..config import get_settings
 
 try:
     from sse_starlette.sse import AppStatus
@@ -112,13 +118,18 @@ logger = logging.getLogger("uvicorn.error")      # uvicorn configures this one: 
 DEFAULT_APP = "semigraph.serve.main:app"
 DEFAULT_HOST = "0.0.0.0"  # noqa: S104 - the container's listener; Fly's proxy reaches it over the private network
 DEFAULT_PORT = 8080
-DRAIN_TIMEOUT_ENV = "DRAIN_TIMEOUT_S"
-DEFAULT_DRAIN_TIMEOUT_S = 240.0
+DEFAULT_DRAIN_TIMEOUT_S = 240.0  # Settings.drain_timeout_s (env DRAIN_TIMEOUT_S) is the one source; a test pins the default
 KILL_TIMEOUT_S = 300.0           # fly.toml kill_timeout, Fly's maximum; tests/test_serve_drain.py pins the two together
 SHUTDOWN_MARGIN_S = 10.0         # uvicorn's graceful timeout is drain + this; the kill timeout is kept this far away
 MIN_SHUTDOWN_S = 1.0             # the floor of the shutdown window after a late drain end
 FORCED_SHUTDOWN_S = 2.0          # the shutdown window after a second signal
 LIFESPAN_IDLE_WAIT_S = 10.0      # what the lifespan shutdown waits for stragglers (uvicorn has waited for tasks)
+# The worst case of ``main.lifespan`` after ``yield``, which uvicorn runs AFTER its graceful-shutdown window: the idle wait
+# above 10 s + maintenance join 5 s + settle flush 3 s and the one state operation that can overrun it (1.5 s: the
+# server-side timeout and a connection attempt) + monitor stop 5 s + sweeper stop 5 s + tracer 3 s = 32.5 s, and the rest
+# for the two driver closes. tests/test_serve_drain.py derives the sum from those bounds in the code that sets them and
+# fails when one grows past this. A raised STATE_OP_TIMEOUT_S spends the slack (the budget assumes its default of 1 s).
+LIFESPAN_SHUTDOWN_BUDGET_S = 35.0
 AWAIT_IDLE_POLL_S = 0.05
 
 
@@ -211,26 +222,10 @@ def graceful_timeout_s(drain_timeout_s: float) -> float:
 
 
 def post_drain_window_s(elapsed_s: float, graceful_s: float) -> float:
-    """How long uvicorn may take to shut down when the drain ended ``elapsed_s`` after the first signal: its graceful
-    timeout, but never past ``KILL_TIMEOUT_S - SHUTDOWN_MARGIN_S`` counted from that signal, and never under the
-    floor."""
-    return max(MIN_SHUTDOWN_S, min(graceful_s, KILL_TIMEOUT_S - SHUTDOWN_MARGIN_S - elapsed_s))
-
-
-def drain_timeout_from_env(environ: Mapping[str, str] = os.environ) -> float:
-    """``DRAIN_TIMEOUT_S`` in seconds (default 240). Refuses what cannot work: not a finite positive number, or so
-    long that the shutdown which follows it would not fit in the kill timeout."""
-    raw = environ.get(DRAIN_TIMEOUT_ENV, "").strip()
-    if not raw:
-        return DEFAULT_DRAIN_TIMEOUT_S
-    try:
-        value = float(raw)
-    except ValueError:
-        raise ValueError(f"{DRAIN_TIMEOUT_ENV} must be a number of seconds, got {raw!r}") from None
-    if not math.isfinite(value) or value <= 0 or value + SHUTDOWN_MARGIN_S >= KILL_TIMEOUT_S:
-        raise ValueError(f"{DRAIN_TIMEOUT_ENV} must be above 0 and below {KILL_TIMEOUT_S - SHUTDOWN_MARGIN_S:g} "
-                         f"(the kill timeout is {KILL_TIMEOUT_S:g} s), got {raw!r}")
-    return value
+    """How long uvicorn may wait for connections and tasks when the drain ended ``elapsed_s`` after the first signal: its
+    graceful timeout, but never past ``KILL_TIMEOUT_S - SHUTDOWN_MARGIN_S - LIFESPAN_SHUTDOWN_BUDGET_S`` counted from that
+    signal (the lifespan shutdown runs after this window, not inside it), and never under the floor."""
+    return max(MIN_SHUTDOWN_S, min(graceful_s, KILL_TIMEOUT_S - SHUTDOWN_MARGIN_S - LIFESPAN_SHUTDOWN_BUDGET_S - elapsed_s))
 
 
 class DrainingServer(uvicorn.Server):
@@ -329,9 +324,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Serve until a signal ends the drain; returns the process exit code. The tail of ``uvicorn.run`` is mirrored: the
-    app is imported before the loop starts, and a start that failed exits with uvicorn's code 3."""
+    app is imported before the loop starts, and a start that failed exits with uvicorn's code 3. The drain timeout is
+    the validated ``Settings.drain_timeout_s`` (the app's own settings object: the production validators run here too,
+    before the app is imported, and a configuration they refuse ends the process with the refusal)."""
     args = _parse_args(argv)
-    drain_timeout_s = drain_timeout_from_env()
+    drain_timeout_s = get_settings().drain_timeout_s
     if args.app_dir:
         sys.path.insert(0, args.app_dir)
     config = build_config(args.app, args.host, args.port, drain_timeout_s, args.loop)

@@ -44,20 +44,27 @@ Equivalent by hand:
 ```
 & ".\.venv\Scripts\python.exe" -m scripts.kill_switch on
 flyctl scale count 0 -a semigraph --yes
+flyctl machines list -a semigraph --json          # repeat until it lists no machine (up to about 5.5 minutes)
 $db = (flyctl machines list -a semigraph-neo4j --json | ConvertFrom-Json)[0].id
 flyctl machine stop $db -a semigraph-neo4j
 ```
 
 Live questions go silent first (`kill_switch on` — cached answers still work while the page is
-up), then the API machine is destroyed (`scale count 0`), then the database machine is stopped
-(**not** destroyed — its volume and data stay attached). Check: `flyctl status -a semigraph`
-shows no machines; `flyctl status -a semigraph-neo4j` shows the machine `stopped`.
+up), then the API machine is destroyed (`scale count 0`), **then the script waits until the API machine is gone** (up
+to 330 s: the kill timeout of 300 s plus 30), and only then is the database machine stopped (**not** destroyed — its
+volume and data stay attached). Check: `flyctl status -a semigraph` shows no machines; `flyctl status -a
+semigraph-neo4j` shows the machine `stopped`.
 
 Order matters in each — START brings the database up before the API (the API connects to it on
-boot and fails its health check otherwise); STOP silences paid answers before killing machines.
+boot and fails its health check otherwise); STOP silences paid answers before killing machines, and stops the database
+last because a draining API still writes its ledger rows to it.
 
 If a paid answer is streaming when the API machine is removed, the process drains first (up to 240 s; usually it is
-idle and stops at once): see "Stopping, deploying and the drain (M5a)" below.
+idle and stops at once): see "Stopping, deploying and the drain (M5a)" below. Whether `flyctl scale count 0` itself
+waits for that drain was not verified (`docs/v2/research/fly_raw/` holds no such page), which is why the script polls
+the machine list instead of trusting it. If the machine is still listed after 330 s the script warns and stops the
+database anyway: Fly has killed the process by 300 s, and the rows of streams it cut are closed as `abandoned_restart` at
+their estimate by the next boot.
 
 ## Status
 
@@ -89,7 +96,10 @@ The limits, what a visitor sees at each, the kill levels, the state backend, the
 
 Done for this deployment. Since M5a the production validators make it mandatory: a production process does not start
 without `TURNSTILE_REQUIRED=true` and `TURNSTILE_SECRET_KEY` (see "Pre-deploy check" below), so there is no "gate off"
-mode on Fly any more.
+mode on Fly any more. `TURNSTILE_REQUIRED` is not a secret: it is a plain `fly.toml [env]` entry (`TURNSTILE_REQUIRED =
+"true"`), where the pre-deploy check and a reader of the repo can see it. Only the two keys below are Fly secrets. (If it
+was also pushed as a secret earlier, the two agree; leave it, or remove it with `flyctl secrets unset TURNSTILE_REQUIRED
+-a semigraph`, which restarts the machine.)
 
 1. Sign in at https://dash.cloudflare.com (a free account is enough; no domain needs to be on
    Cloudflare — Turnstile works on any hostname).
@@ -97,11 +107,11 @@ mode on Fly any more.
    (add `localhost` too if you want to test locally). Widget mode: **Managed**. Pre-clearance: off.
    Create.
 3. Copy the **Site Key** and the **Secret Key** into `.env.fly`:
-   `TURNSTILE_SITE_KEY=0x...` and `TURNSTILE_SECRET_KEY=0x...`, and add `TURNSTILE_REQUIRED=true`
-   (fail closed: if the secret is ever missing or Cloudflare cannot verify, live questions are refused
-   instead of silently allowed).
+   `TURNSTILE_SITE_KEY=0x...` and `TURNSTILE_SECRET_KEY=0x...`. The gate fails closed (`TURNSTILE_REQUIRED = "true"` in
+   `fly.toml [env]`): if the secret is ever missing or Cloudflare cannot verify, live questions are refused instead of
+   silently allowed.
 4. Push them (this restarts the API machine):
-   `python -m scripts.push_fly_secrets --only TURNSTILE_SITE_KEY,TURNSTILE_SECRET_KEY,TURNSTILE_REQUIRED`
+   `python -m scripts.push_fly_secrets --only TURNSTILE_SITE_KEY,TURNSTILE_SECRET_KEY`
 5. Verify: open https://semigraph.fly.dev/ — the widget renders under the Ask button; a live question
    works in the browser, while `curl -X POST .../api/ask` without a token gets **403 Bot check failed**.
    `flyctl logs -a semigraph` must not show the "turnstile not configured" warning any more.
@@ -115,8 +125,8 @@ the daily ceiling, and the kill switch. The database is never exposed publicly (
 The M5a image (branch `v2`, not deployed yet) changes how paid questions are admitted. Deploy it in this order; each
 step has its own section below.
 
-1. **Pre-deploy check** (last section of this chapter): `fly.toml [env]` plus `.env.fly` must pass the production
-   validators, or the new image refuses to boot.
+1. **Pre-deploy check** (last section of this chapter, `uv run python -m scripts.check_env_fly`): `fly.toml [env]` plus
+   `.env.fly` must pass the production validators, or the new image refuses to boot.
 2. **Stage the pepper** ("IP-hash pepper cutover", steps 1 to 3): the new image will not boot without `IP_HASH_PEPPER`.
 3. **Restart the Neo4j app with its new setting** ("The Neo4j transaction-monitor setting"), with the kill level `on`.
    Not needed to boot; needed before anyone relies on the 1.1 s bound of a state operation.
@@ -147,11 +157,12 @@ without a lease.
 | Bot check failed | `TURNSTILE_REQUIRED` | true | 403 "Bot check failed — reload the page and try again." |
 
 Both daily limits bind and whichever trips first pauses paid questions for the rest of the day. The count binds first
-unless the average ask costs more than about 6.32 cents (`tests/test_serve_estimate.py`, the break-even test); above
-that, the $10 limit does. The spend limit is **estimate-based**: a lease is charged the dearest the ask could cost
-(`serve/estimate.py`) until it settles, then its actual cost; a new ask is refused if today's spend plus its own estimate
-would pass $10. So an agent ask (estimate about $1.57 with the live models) is refused earlier in the day than a plain one
-(about $0.58; `tests/test_serve_estimate.py` derives both from `fly.toml`). The estimates are written to the boot log, one
+unless the average ask costs more than about 6.32 cents (6.16 cents when the asks are agent asks; the break-even tests of
+`tests/test_serve_estimate.py`); above that, the $10 limit does. The spend limit is **estimate-based**: a lease is
+charged the dearest the ask could cost (`serve/estimate.py`) until it settles, then its actual cost; a new ask is refused
+if today's spend plus its own estimate would pass $10. So an agent ask (estimate about $0.83 with the live models: its
+companies are capped at the anchor cap) is refused earlier in the day than a plain one (about $0.58;
+`tests/test_serve_estimate.py` derives both from `fly.toml`). The estimates are written to the boot log, one
 line per ask type: `flyctl logs -a semigraph | Select-String "ask_type="`. An ask whose client leaves before the answer
 ends (or whose stream is cut) is charged its whole estimate, not what the model had spent so far.
 
@@ -159,14 +170,17 @@ The page shows the `detail` text of any refusal. Other refusals, all 503:
 
 | When | A visitor sees |
 |---|---|
-| Kill level `on`; or Neo4j unreachable or a state operation slower than 1 s; or the kill level not read for 30 s | "Live questions are paused right now — the example questions still work." |
+| Kill level `on`; or the kill level not read for 30 s (never read, or the maintenance thread is stuck); or `KILL_SWITCH=true` | "Live questions are paused right now — the example questions still work." |
+| Neo4j unreachable, a state operation slower than 1 s, or no state slot free within `STATE_OP_TIMEOUT_S` (the cache read, the workspace token, the reserve) | "Live questions are temporarily unavailable — please try again in a few minutes." (it does not promise the examples: the cache read itself failed) |
 | Kill level `retrieval_only` | "Live questions are limited to cached answers right now — the example questions still work." |
 | The process is draining | "The service is restarting — please try again in a minute." (with `Retry-After: 30`) |
 | An upload while the kill level is not `off` (or while uploads are off) | "Uploaded documents are not available right now." |
 
 **Failing closed.** When Neo4j is unreachable, or a state operation takes more than 1 s (`STATE_OP_TIMEOUT_S`), paid
-questions are refused with the "paused" text, cached answers are unavailable (503 too: a cache hit also writes a ledger
-row) and nothing falls through to a paid call. `/healthz` answers 503 `degraded` while Neo4j cannot be reached.
+questions are refused with the "temporarily unavailable" text (the "paused" text is the kill switch's alone), cached
+answers are unavailable (503 too: a cache hit also writes a ledger row) and nothing falls through to a paid call. The same
+text answers when all four state slots are held by calls stuck on a silent connection: an ask waits at most
+`STATE_OP_TIMEOUT_S` for a slot, then is refused (`stream_runtime.slot_call`). `/healthz` answers 503 `degraded` while Neo4j cannot be reached.
 
 **Gate order** (`serve/routes.py`): validate the question; draining; the free window; the answer cache (a hit is served
 here, so cached answers are never stopped by the kill level or the daily limits; a workspace ask checks its token here
@@ -183,7 +197,8 @@ window; it takes nothing from the ledger.
 
 Switch by changing `STATE_BACKEND` in `fly.toml` and redeploying (`flyctl deploy --ha=false --remote-only --yes`), or
 without a deploy by `flyctl secrets set STATE_BACKEND=neo4j -a semigraph` (a restart; which of a secret and an `[env]`
-entry wins when both exist was not verified, as in "Answering models"). Check what the machine runs:
+entry wins when both exist was not verified, as in "Answering models": Fly's secrets page does not say, re-checked
+2026-10-07, so `scripts/check_env_fly.py` assumes the secret wins and warns when a name is in both). Check what the machine runs:
 `flyctl ssh console -a semigraph -C "printenv STATE_BACKEND"`, and the admin route `GET /api/admin/state` (header
 `X-Admin-Token`) shows `state.backend`, today's count and spend, the leases in flight and the drain. There is nothing to
 migrate: both backends write the same ledger rows and rebuild their counters from them.
@@ -225,10 +240,18 @@ Set it:
 
 This calls the admin route (`POST /api/admin/policy` with `X-Admin-Token`, body `{"kill_switch": "on"|"retrieval_only"|"off"}`;
 `true` and `false` still mean `on` and `off`), reading `APP_BASE_URL` and `ADMIN_TOKEN` from `.env.fly`. The flip is
-immediate on that machine. A level that tightens holds even if the database write fails (the answer says
-`"stored": false` and the maintenance thread retries the write); a level that relaxes is applied only once stored (a
-database that cannot store it gives 503 and changes nothing). `--direct` talks to a local or staging database instead,
-and refuses to store `retrieval_only` unless given `--i-know-the-live-image-treats-it-as-off`.
+immediate on that machine. **A level that holds is applied in memory the moment the request arrives**, before the route waits
+for its own one-token admin limiter, so an earlier admin call stuck on a silent connection (up to ~120 s) cannot delay an
+emergency kill. A level holds when it is not `off` and at least as tight as the level the gates apply now (`on` while the
+cache is stale or was never read). If it then cannot be stored (the database is down, or the admin limiter does not free
+within `STATE_OP_TIMEOUT_S`) the answer is 200 with `"stored": false`: it is in force and queued, and the maintenance thread
+writes it on its next tick once the database answers. **Confirm it:** `kill_switch get`, or `GET /api/admin/policy`
+(`kill_switch` is the STORED level, `effective` what the gates apply), until the stored level is the one you set;
+`kill_switch on` prints the same banner whether or not it was stored. A level that does not hold (a relaxation, or `off`) is
+applied only once stored: a database or admin limiter that cannot do it gives 503 and changes nothing, and nothing is queued
+(set it again). A `retrieval_only` set while the cache reads `on` only by age is such a relaxation: 503 during an outage.
+`--direct` talks to a local or staging database instead, and refuses to store `retrieval_only` unless given
+`--i-know-the-live-image-treats-it-as-off`.
 
 **Rollback rule.** A pre-M5 image treats `retrieval_only` as `off`: it only knows `on` as stopped, so it would accept paid
 questions while you believe they are paused. The image that is live today is such an image. **Before rolling back (or
@@ -246,15 +269,17 @@ new image stores an HMAC-SHA-256 under a secret pepper, and writes the pepper's 
    (Select-String -Path .env.fly -Pattern '^IP_HASH_PEPPER=').Count        # 0 expected (it prints a count, not the value)
    uv run python -c "import secrets; open('.env.fly','a',encoding='utf-8').write('\nIP_HASH_PEPPER=' + secrets.token_urlsafe(48) + '\nIP_HASH_VERSION=2\n')"
    ```
-   (48 random bytes, 64 characters.) Save `.env.fly` as UTF-8 **without** a BOM; a BOM mangles its first key.
+   (48 random bytes, 64 characters.) Save `.env.fly` as UTF-8. A BOM is tolerated: `push_fly_secrets` and `check_env_fly` both decode it away (`utf-8-sig`), so
+   it no longer mangles the first key name.
 2. Check what will be pushed (names only): `& ".\.venv\Scripts\python.exe" -m scripts.push_fly_secrets --only IP_HASH_PEPPER,IP_HASH_VERSION --dry-run`
 3. Stage it without restarting the running machine: `& ".\.venv\Scripts\python.exe" -m scripts.push_fly_secrets --only IP_HASH_PEPPER,IP_HASH_VERSION --stage`
 4. **Then** deploy the image (`flyctl deploy --ha=false --remote-only --yes`). Deploying it before step 3 fails the health
    check by design.
 5. Verify: `/healthz` is 200; the boot log has `state rebuilt: ...`; an example question is served cached; one live question
    from a browser (the bot check rejects scripts) works; and the new row carries the version:
-   `flyctl ssh console -a semigraph-neo4j -C "cypher-shell -u neo4j -p <password> \"MATCH (q:SvcQuery) WHERE q.ip_hash_v = 2 RETURN count(q)\""`
-   is at least 1.
+   `flyctl ssh console -a semigraph-neo4j -C "cypher-shell -u neo4j -p <password> 'MATCH (q:SvcQuery) WHERE q.ip_hash_v = 2 RETURN count(q)'"`
+   is at least 1. (Single quotes inside the double-quoted string: in Windows PowerShell 5.1 a `\"` ends the string and
+   `(q:SvcQuery)` is then run as a command.)
 6. **Only on the owner's explicit go**, null the old hashes. This is **IRREVERSIBLE**: those rows lose their address hash
    for good. The script (`scripts/null_legacy_ip_hashes.py`) runs on the API machine, against its own Neo4j; the runtime
    image carries only the installed package, so put the script there first:
@@ -264,7 +289,11 @@ new image stores an HMAC-SHA-256 under a secret pepper, and writes the pepper's 
    flyctl ssh console -a semigraph -C "python /tmp/null_legacy_ip_hashes.py"        # dry run: counts, changes nothing
    flyctl ssh console -a semigraph -C "python /tmp/null_legacy_ip_hashes.py --yes"  # the IRREVERSIBLE null
    ```
-   The dry run prints which database it would act on (host and port, never a password). Afterwards
+   The dry run prints which database it would act on (host and port, never a password). The script builds the app's
+   settings from the machine's environment, so the production validators run in the ssh session too: if the session has
+   `FLY_APP_NAME` but not the app's `[env]` values (check `flyctl ssh console -a semigraph -C "printenv ENVIRONMENT"`), it
+   stops with a validator message such as `ENVIRONMENT must be production on the Fly app semigraph` and changes nothing.
+   Afterwards
    `MATCH (q:SvcQuery) WHERE q.ip_hash IS NOT NULL AND q.ip_hash_v IS NULL RETURN count(q)` must be 0. It only touches
    rows that have an `ip_hash` and no `ip_hash_v`; rows written under a pepper are never changed. Exit status 1 means legacy
    rows remain.
@@ -291,14 +320,33 @@ deploy of this `fly.toml`; `flyctl`'s own default for `machine stop` is SIGINT, 
   questions, workspace creations and uploads get 503 "The service is restarting — please try again in a minute." Reads,
   `/healthz`, evidence, the example questions and cached answers keep being served. The drain ends the moment the last stream
   has written its ledger row and closed, or at 240 s: streams still running are then cut, their rows are written as
-  abandoned and charged their estimate, and 50 s remain for the shutdown (the lifespan waits up to 10 s more for stragglers
-  before it closes the databases). Exit status 0 means it drained empty, 1 means streams were cut or it was forced.
-- **A second signal exits without waiting** (streams ended at once, shutdown capped at 2 s); locally that is Ctrl+C twice.
-  Whether Fly delivers a second signal to a machine that is already stopping was not verified. The hard limit is the
-  300 s `kill_timeout`, after which Fly kills the process; rows of streams that never finished stay `reserved` and the
-  next boot closes them as `abandoned_restart` at their estimate.
-- `ops.ps1 stop` sets the kill level to `on` first, so no new paid question starts, then runs `flyctl scale count 0`: the
-  drain only waits for streams that were already open. A `flyctl deploy` over a running machine replaces it the same way,
+  abandoned and charged their estimate. Exit status 0 means it drained empty, 1 means streams were cut or it was forced.
+- An upload whose body was still being read when the signal came is refused too (503, nothing started, the upload slot
+  given back): the drain count is taken when the upload takes its slot, not only when the request arrives. An upload that
+  was already running is waited for like a stream.
+- **The shutdown budget** (it must fit the 300 s `kill_timeout`, and uvicorn's graceful timeout does not cover all of it):
+  the drain (at most `DRAIN_TIMEOUT_S`) + uvicorn's wait for connections and tasks + the lifespan shutdown (which uvicorn
+  runs AFTER that wait) + a 10 s margin. The lifespan's worst case is 32.5 s, budgeted as 35 s: up to 10 s waiting for
+  stragglers, 5 s joining the state maintenance thread, 3 s flushing queued settles plus one state operation (1.5 s), 5 s
+  stopping the freshness monitor, 5 s the upload sweeper, 3 s the tracer, then the two database drivers close. So after a
+  drain that ran out at 240 s the wait for the cut streams to finish is cut to **15 s** (`240 + 15 + 35 + 10 = 300`); a
+  drain that ends early keeps the full 250 s. A cut stream's cleanup normally takes a second or two (one ledger write); the
+  lifespan then still waits up to 10 s for any that is not finished. `DRAIN_TIMEOUT_S` (read by the app's settings, 1 to
+  254) cannot be set above 254: with the 1 s floor of the wait that is the most that still fits. A raised
+  `STATE_OP_TIMEOUT_S` spends the slack of the 35 s (the budget assumes its 1 s default). `tests/test_serve_drain.py` sums
+  these bounds from the constants of the code that sets them and fails when one grows. If Fly's SIGKILL does arrive during
+  the shutdown, a settle that was lost is charged at its estimate by the next boot (an over-charge, never an
+  under-charge).
+- **A second signal exits without waiting** (streams ended at once; locally that is Ctrl+C twice). It sets uvicorn's
+  `force_exit`, which skips the whole lifespan shutdown: **no settle flush, no stop of the maintenance thread, no driver
+  close** (the connections to Neo4j are simply cut when the process ends). Streams are ended first, so their own cleanup
+  runs, but a settle that could not be written is lost with the process: its row stays `reserved` and the next boot closes
+  it as `abandoned_restart` at its estimate (an over-charge, never an under-charge). Whether Fly delivers a second signal
+  to a machine that is already stopping was not verified. The hard limit is the 300 s `kill_timeout`, after which Fly kills
+  the process.
+- `ops.ps1 stop` sets the kill level to `on` first, so no new paid question starts, then runs `flyctl scale count 0` and
+  waits until the API machine is gone before it stops the database (see STOP): the drain only waits for streams that were
+  already open. A `flyctl deploy` over a running machine replaces it the same way,
   so a deploy also drains the old machine first (`ops.ps1 start` deploys onto an app with no machine: nothing to
   drain). Do not deploy during a demo.
 - How Fly's proxy routes requests that arrive while the machine drains is not verified; the rolling-deploy drill in
@@ -337,26 +385,59 @@ underscore in it). **It is not live yet**: the `semigraph-neo4j` machine has to 
 
 ### Pre-deploy check
 
-The production validators in `src/semigraph/config.py` stop a production process from starting when any of these is true:
-`TURNSTILE_REQUIRED` is not true; `TURNSTILE_SECRET_KEY` is empty; `CLIENT_IP_HEADER` is not `fly-client-ip`;
-`IP_HASH_PEPPER` is under 32 bytes; `MAX_QUERIES_PER_DAY` is not 1 to 150; `MAX_SPEND_USD_PER_DAY` is not above 0 and at
-most 10; `PAID_PER_IP_PER_DAY` is not 1 to 20; `MAX_CONCURRENT_ANSWERS` is not 1 to 4 (a 0 means "off" elsewhere, so it is
-refused too). A refused boot fails the deploy's health check, so run the same validators first, over what the machine will
-see: the `[env]` table of `fly.toml` plus the secrets in `.env.fly`. From the repo root:
+The production validators in `src/semigraph/config.py` stop a production process from starting when any of these is true
+(`ENVIRONMENT` and `CLIENT_IP_HEADER` are trimmed and lower-cased first, so `production ` is production; every pin below is
+"not looser than what runs today", and a 0 means "off" elsewhere, so it is refused too):
+
+| Setting | Refused when |
+|---|---|
+| `FLY_APP_NAME` (set by Fly itself) with `ENVIRONMENT` | the app is `semigraph` and `ENVIRONMENT` is not `production`, or `semigraph-stg` and it is not `staging`, or the app is any other name. No `FLY_APP_NAME` is a local process |
+| `TURNSTILE_REQUIRED` / `TURNSTILE_SECRET_KEY` | not true / empty |
+| `CLIENT_IP_HEADER` | not `fly-client-ip` |
+| `IP_HASH_PEPPER` | under 32 bytes |
+| `ADMIN_TOKEN` | set but under 32 characters. Empty is allowed: every `/api/admin` route then answers 404, and `scripts/kill_switch.py` and `ops.ps1` cannot flip the kill level |
+| `MAX_QUERIES_PER_DAY` / `PAID_PER_IP_PER_DAY` / `MAX_CONCURRENT_ANSWERS` | not 1 to 150 / 1 to 20 / 1 to 4 |
+| `MAX_SPEND_USD_PER_DAY` | not above 0 and at most 10 |
+| `RATE_LIMIT_QUESTIONS` / `FREE_RATE_LIMIT_QUESTIONS` / `READ_RATE_LIMIT_PER_MINUTE` | not 1 to 5 / 1 to 30 / 1 to 120 (`fly.toml` sets none of them: the live value is the code default) |
+| `WORKSPACE_CREATE_PER_DAY` / `UPLOADS_PER_HOUR` | not 1 to 3 / 1 to 10 |
+| `RATE_LIMIT_WINDOW_SECONDS` | under 600 (a window of 0 never holds an event) |
+| `CACHE_READ_BUDGET_PER_S` / `KILL_SWITCH_STALE_S` | above 10 / above 30 |
+| `DRAIN_TIMEOUT_S` (any environment) | not 1 to 254 |
+
+A refused boot fails the deploy's health check, so run the same validators first, over what the machine will see: the
+`[env]` table of `fly.toml` plus the secrets of `.env.fly`. From the repo root, before every deploy:
 
 ```
-uv run python -c "import sys, tomllib; sys.tracebacklimit = 0; from pathlib import Path; from scripts.push_fly_secrets import parse_env; from semigraph.config import Settings; env = {**tomllib.loads(Path('fly.toml').read_text(encoding='utf-8'))['env'], **parse_env(Path('.env.fly'))}; Settings(_env_file=None, **{k.lower(): v for k, v in env.items()}); print('OK: production settings valid,', len(env), 'keys read')"
+uv run python -m scripts.check_env_fly
 ```
 
-- **Success:** one line `OK: production settings valid, N keys read`, exit code 0.
-- **Failure:** a `ValidationError` that names every refused setting (for example `TURNSTILE_REQUIRED must be true in
-  production`), exit code 1. It never prints a value (the settings class hides its input), and it prints no secret on success.
-- It reads only those two files (`_env_file=None`), so run it in a shell where none of these settings is exported: an
-  exported variable fills in any setting the files leave out. `.env.fly` must be UTF-8 without a BOM.
-- It cannot see a secret that exists only on Fly. If it reports `TURNSTILE_REQUIRED` and you set it on the app by hand
-  (`flyctl secrets list -a semigraph` lists names only), add the line to `.env.fly` and the check will pass. Note that
-  `push_fly_secrets` leaves `TURNSTILE_REQUIRED` out of its default key list: push it with `--only` (the Turnstile steps above).
-- `scripts/check_env_fly.py` was planned in `docs/v2/M5A_BUILD_PLAN.md` and does not exist; this one-liner stands in for it.
+It prints one line per setting the validators cover, `PASS  NAME` or `FAIL  NAME  <the validator's reason>`, then `WARN`
+lines and `RESULT: PASS` (exit code 0) or `RESULT: FAIL (n)` (exit code 1). **It prints setting names and the validators'
+fixed reason texts only, never a value**, and a failure of the check itself prints the exception type only.
+
+- **What it builds:** `fly.toml [env]`, plus the secrets of `.env.fly` that `push_fly_secrets` pushes by default (its
+  `FLY_KEYS["semigraph"]`, non-empty values only), with the `fly.toml` app name as `FLY_APP_NAME`. `ENVIRONMENT` comes from
+  `[env]` as it does on the machine, so a missing one fails the app-name tie (it is not assumed). It ignores the shell's
+  variables and a `.env` in the working directory (the settings class is given the two files and nothing else).
+- **Warnings** (they do not change the exit code): a UTF-8 BOM at the start of `.env.fly` (harmless since
+  2026-10-08: `push_fly_secrets` reads `utf-8-sig` too; the warning text in `check_env_fly.py` still says the push would
+  mangle the first key name, which is no longer true); a name that is both a
+  secret and in `[env]`; keys of `.env.fly` that the default push does not send (they reach the machine only with `--only`,
+  so they are not checked); and the pushed keys that are empty or absent from `.env.fly`, by name.
+- **Assumption, not verified:** when a name is both a secret and an `[env]` entry, the check takes the secret. Fly's secrets
+  documentation does not say which wins (re-checked 2026-10-07), hence the warning: keep each name in one place.
+- **A secret that exists only on Fly is not seen.** If the check fails on `IP_HASH_PEPPER` or `ADMIN_TOKEN` and the secret
+  is on the app (`flyctl secrets list -a semigraph` lists names only), put the same line into `.env.fly`.
+- **If it fails on `ADMIN_TOKEN`:** the live token may be shorter than 32 characters (older images accepted any), and the new
+  image will not boot with it. Append a generated one (the value is never printed; the later line wins when the file is
+  read, delete the old line afterwards), re-run the check, and stage it so it arrives with the deploy:
+  ```
+  uv run python -c "import secrets; open('.env.fly','a',encoding='utf-8').write('\nADMIN_TOKEN=' + secrets.token_urlsafe(32) + '\n')"
+  uv run python -m scripts.check_env_fly
+  uv run python -m scripts.push_fly_secrets --only ADMIN_TOKEN --stage
+  ```
+  Until that deploy, the live machine still holds the old token, so `scripts/kill_switch.py` (which reads `.env.fly`) is
+  refused (404) in between: flip the kill level before staging, or after the deploy.
 
 ## Secrets
 
@@ -364,7 +445,8 @@ uv run python -c "import sys, tomllib; sys.tracebacklimit = 0; from pathlib impo
 sentence-transformers). Push with `python -m scripts.push_fly_secrets` (API app) and
 `python -m scripts.push_fly_secrets --app semigraph-neo4j` (database). Values travel on stdin,
 only key names are printed. `SEC_USER_AGENT` (the freshness monitor's SEC identity, "Name email") is a secret rather
-than a `fly.toml` entry because it names a real person. Rotate `ADMIN_TOKEN` by editing `.env.fly` and re-pushing. Rotating
+than a `fly.toml` entry because it names a real person. Rotate `ADMIN_TOKEN` (at least 32 characters, or the production
+validators refuse to boot) by editing `.env.fly` and re-pushing. Rotating
 `NEO4J_PASSWORD` needs `ALTER USER neo4j SET PASSWORD` inside the database
 (`flyctl ssh console -a semigraph-neo4j -C "cypher-shell ..."`) because the container applies
 `NEO4J_AUTH` only to a fresh system database, then re-push `NEO4J_PASSWORD` to the API app.
@@ -526,7 +608,9 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
   workspace.
 - **Soft rollback:** `UPLOADS_ENABLED = "false"` in `fly.toml` and redeploy (existing workspaces still expire on schedule).
   **Image rollback to a pre-M4 image:** first delete workspace data, because an older image has no sweeper:
-  `flyctl ssh console -a semigraph-neo4j -C "cypher-shell -u neo4j -p <password> \"MATCH (n) WHERE any(l IN labels(n) WHERE l STARTS WITH 'User') DETACH DELETE n\""`.
+  `flyctl ssh console -a semigraph-neo4j -C 'cypher-shell -u neo4j -p <password> \"MATCH (n) WHERE any(l IN labels(n) WHERE l STARTS WITH ''User'') DETACH DELETE n\"'`
+  (a PowerShell single-quoted string: its `\"` reach the remote command as double quotes and `''` as one single quote;
+  the same command inside a double-quoted string breaks in Windows PowerShell 5.1).
   Moving the VM back to `shared-cpu-1x` / 2 GB requires `UPLOADS_ENABLED = "false"`.
 
 ## Troubleshooting
@@ -534,13 +618,19 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
 - `/healthz` 503 → the API cannot reach Neo4j: `flyctl status -a semigraph-neo4j` (machine must be
   `started`), `flyctl logs -a semigraph-neo4j`. The API retries the connection for 90 s on boot.
 - The machine will not boot and `flyctl logs -a semigraph` shows `... must be set to at least 32 bytes in production`,
-  `TURNSTILE_REQUIRED must be true in production` or another `... in production` line: a production validator refused the
-  settings (it names the setting, never a value). Fix the secret or `[env]` entry and redeploy; run the pre-deploy check first.
+  `ENVIRONMENT must be production on the Fly app semigraph` or another `... in production` line: a production validator
+  refused the settings (it names the setting, never a value). Fix the secret or `[env]` entry and redeploy; run the
+  pre-deploy check (`uv run python -m scripts.check_env_fly`) first.
 - Boot fails with "the paid-ask ledger could not be read after 90s: not serving": Neo4j was unreachable for the whole boot
   rebuild. Start the database (`flyctl status -a semigraph-neo4j`) and restart the API machine.
 - Every live question answers "Live questions are paused right now": the kill level is `on` (or was never read, or is older
-  than 30 s: the maintenance thread is stuck), or Neo4j is slow. `& ".\.venv\Scripts\python.exe" -m scripts.kill_switch get`,
+  than 30 s: the maintenance thread is stuck), or `KILL_SWITCH=true` is set. (With Neo4j down a visitor sees "temporarily
+  unavailable" instead, never "paused": the cache read comes before the kill gate.) `& ".\.venv\Scripts\python.exe" -m scripts.kill_switch get`,
   then `GET /api/admin/state` (header `X-Admin-Token`): `state.kill`, `state.kill_age_s`, `pending_settles` and `maintenance.alive`.
+- Every live question answers "Live questions are temporarily unavailable": Neo4j is unreachable or slower than 1 s, or the
+  four state slots are all held by calls stuck on a silent connection (each can hold one for up to ~120 s).
+  `/healthz`, then `GET /api/admin/state`: `limiters.state.borrowed` of 4 and `limiters.admin`. The admin routes run on their
+  own one-token limiter, so they still answer.
 - The API is always-warm while online (`min_machines_running = 1`); if it was ever auto-stopped, the first request pays ~10 s (machine boot + 1 GB embedder load).
 - `flyctl logs -a semigraph` — every answered question logs strategy, citation count, hallucinated
   count and cost.

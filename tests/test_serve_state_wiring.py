@@ -18,12 +18,14 @@ No database and no network: the state backend is ``tests/serve_state_fakes.FakeS
 """
 
 import json
+import threading
 import time
 from types import SimpleNamespace
 
 import anyio
 import pytest
 from fastapi.testclient import TestClient
+from neo4j.exceptions import ServiceUnavailable
 from pydantic import ValidationError
 from serve_state_fakes import (
     FakeStateBackend,
@@ -35,7 +37,7 @@ from serve_state_fakes import (
 
 from semigraph.config import Settings
 from semigraph.serve import drain, guard, routes, store, workspace_routes
-from semigraph.serve.state import Denied, Lease, StateDrivers, StateUnavailable, make_backend
+from semigraph.serve.state import Denied, KillNotStored, Lease, StateDrivers, StateUnavailable, make_backend
 
 pytestmark = pytest.mark.usefixtures("fresh_drain")
 
@@ -140,7 +142,7 @@ def assert_json_refusal(response, status: int, detail: str) -> None:
     (Denied.IP_DAILY, 429, routes.MSG_IP_BUDGET),
     (Denied.INFLIGHT, 429, routes.MSG_BUSY),
     (Denied.KILL, 503, routes.MSG_PAUSED),
-    (Denied.UNAVAILABLE, 503, routes.MSG_PAUSED),
+    (Denied.UNAVAILABLE, 503, routes.MSG_STATE_UNAVAILABLE),
 ], ids=lambda value: getattr(value, "name", str(value)))
 def test_every_refusal_of_the_reserve_is_its_own_status_and_message_before_any_stream(client, backend, denial, status,
                                                                                       detail, fresh_drain):
@@ -157,13 +159,18 @@ def test_the_messages_are_the_plain_texts_the_page_shows():
     assert routes.MSG_RETRIEVAL_ONLY == ("Live questions are limited to cached answers right now — the example "
                                          "questions still work.")
     assert routes.MSG_DRAINING == "The service is restarting — please try again in a minute."
+    # the kill switch keeps its promise of the examples; an unreachable store, which serves them too, does not make it
+    assert routes.MSG_PAUSED == "Live questions are paused right now — the example questions still work."
+    assert routes.MSG_STATE_UNAVAILABLE == ("Live questions are temporarily unavailable — please try again in a few "
+                                            "minutes.")
+    assert "example" not in routes.MSG_STATE_UNAVAILABLE
     assert len({routes.MSG_BUDGET, routes.MSG_IP_BUDGET, routes.MSG_BUSY, routes.MSG_PAUSED, routes.MSG_RETRIEVAL_ONLY,
-                routes.MSG_DRAINING}) == 6
+                routes.MSG_DRAINING, routes.MSG_STATE_UNAVAILABLE}) == 7
 
 
-def test_a_reserve_that_raises_is_503_paused_and_counts_nothing(client, backend, fresh_drain):
+def test_a_reserve_that_raises_is_503_unavailable_and_counts_nothing(client, backend, fresh_drain):
     backend.errors["reserve"] = StateUnavailable("the database is slow")
-    assert_json_refusal(ask(client), 503, routes.MSG_PAUSED)
+    assert_json_refusal(ask(client), 503, routes.MSG_STATE_UNAVAILABLE)
     assert backend.granted == [] and fresh_drain.active == 0
 
 
@@ -252,10 +259,11 @@ def test_a_kill_level_the_maintenance_thread_stopped_refreshing_goes_stale_and_p
 
 # ---------------------------------------------------------------- the answer cache
 
-def test_a_cache_that_cannot_be_read_is_503_paused_and_never_falls_through_to_a_paid_call(client, backend, monkeypatch):
+def test_a_cache_that_cannot_be_read_is_503_unavailable_and_never_falls_through_to_a_paid_call(client, backend,
+                                                                                               monkeypatch):
     monkeypatch.setattr(routes, "aanswer_stream", must_not_run)
     backend.errors["cache_get"] = StateUnavailable("the database is down")
-    assert_json_refusal(ask(client), 503, routes.MSG_PAUSED)
+    assert_json_refusal(ask(client), 503, routes.MSG_STATE_UNAVAILABLE)
     assert backend.names().count("reserve") == 0 and backend.names().count("kill_level") == 0
 
 
@@ -277,7 +285,7 @@ def test_a_cached_hit_is_logged_as_a_cached_row_through_the_bounded_state_driver
 def test_a_cached_row_that_cannot_be_written_is_503_and_the_answer_is_not_served(client, backend, monkeypatch):
     ask(client)
     monkeypatch.setattr(store, "log_query", lambda driver, **kw: (_ for _ in ()).throw(StateUnavailable("down")))
-    assert_json_refusal(ask(client), 503, routes.MSG_PAUSED)
+    assert_json_refusal(ask(client), 503, routes.MSG_STATE_UNAVAILABLE)
 
 
 def test_the_cache_read_budget_is_one_bucket_for_the_process_and_an_empty_one_is_429_before_any_read(
@@ -330,8 +338,8 @@ def test_a_workspace_token_is_read_through_the_bounded_state_driver_and_a_bad_on
     assert backend.names().count("reserve") == 1                                  # the refused one never reached a gate
 
 
-def test_a_workspace_token_read_that_fails_is_503_paused_not_a_500_and_reserves_nothing(workspace_client, backend):
-    assert_json_refusal(ws_ask(workspace_client, "boom"), 503, routes.MSG_PAUSED)
+def test_a_workspace_token_read_that_fails_is_503_unavailable_not_a_500_and_reserves_nothing(workspace_client, backend):
+    assert_json_refusal(ws_ask(workspace_client, "boom"), 503, routes.MSG_STATE_UNAVAILABLE)
     assert backend.names().count("reserve") == 0
 
 
@@ -463,13 +471,20 @@ def test_the_lease_is_reconciled_before_the_cache_write_and_the_drain_count_is_o
     assert seen["active_while_streaming"] == 1 and fresh_drain.active == 0
 
 
-def test_the_reserve_cache_put_and_reconcile_are_state_hops_under_the_state_limiter(make_client, backend):
+def test_the_calls_that_touch_the_store_are_state_hops_under_the_state_limiter_and_the_memory_reads_are_not(
+        make_client, backend):
+    """``kill_level`` and ``mark_started`` are memory-only (the protocol says so): taken on the loop, holding no slot."""
     holds: dict[str, int] = {}
     client = make_client()
     backend.on_call = lambda name: holds.setdefault(name, client.app.state.limiters.state.borrowed_tokens)
     ask(client)
-    hops = ("cache_get", "kill_level", "reserve", "mark_started", "reconcile", "cache_put")
+    hops = ("cache_get", "reserve", "reconcile", "cache_put")
     assert {name: holds[name] for name in hops} == dict.fromkeys(hops, 1)
+    memory = ("kill_level", "mark_started")
+    assert {name: holds[name] for name in memory} == dict.fromkeys(memory, 0)
+    loop_thread = backend.threads["kill_level"]
+    assert len(loop_thread) == 1 and backend.threads["mark_started"] == loop_thread          # the event loop's thread
+    assert all(loop_thread.isdisjoint(backend.threads[name]) for name in hops)
 
 
 # ---------------------------------------------------------------- the drain
@@ -557,8 +572,8 @@ def test_creating_a_workspace_and_uploading_are_503_while_draining_and_consume_n
                                       files={"file": ("a.pdf", b"%PDF-1.7 x", "application/pdf")})
         assert uploaded.status_code == 503 and uploaded.json()["detail"] == routes.MSG_DRAINING
     assert st.workspace_create_limiter.allow("k") and st.upload_limiter.allow("k") and st.read_rate_limiter.allow("k")
-    assert st.upload_slots.acquire(blocking=False)                       # the slot was never taken by a refused upload
-    st.upload_slots.release()
+    # the slot was never taken by a refused upload, and nothing is counted on the drain for one
+    assert st.upload_slots._value == 1 and fresh_drain.active == 0               # noqa: SLF001
 
 
 @pytest.mark.parametrize("level", ["on", "retrieval_only"])
@@ -601,7 +616,8 @@ def test_admin_state_needs_the_admin_token_and_reports_the_snapshot_the_limiters
     fresh_drain.leave()
     assert body["state"]["backend"] == "fake" and body["state"]["paid"] == 0
     assert body["limiters"]["state"] == {"borrowed": 0, "total": 4}
-    assert set(body["limiters"]) == {"embed", "db", "health", "state"}
+    assert body["limiters"]["admin"] == {"borrowed": 0, "total": 1}
+    assert set(body["limiters"]) == {"embed", "db", "health", "state", "admin"}
     assert body["drain"] == {"draining": False, "active": 1} and body["maintenance"] == {"alive": False}
 
 
@@ -658,6 +674,324 @@ def test_a_flip_through_the_real_backend_is_immediate_without_waiting_for_a_refr
     assert stored["kill_switch"] == "retrieval_only"
     assert_json_refusal(ask(client, Q + " two"), 503, routes.MSG_RETRIEVAL_ONLY)       # no refresh in between
     assert client.get("/api/admin/policy", headers=ADMIN).json()["effective"] == "retrieval_only"
+
+
+def test_a_kill_set_while_the_database_is_down_and_the_cached_level_is_stale_holds_and_is_stored_after_the_recovery(
+        make_client, monkeypatch):
+    """The admin kills during an outage that has already made the cached level stale (so it reads ``on`` by age alone).
+    ``stored: false`` promises that the setting holds AND will be retried: when the database is back, the next refresh
+    must store ``on`` and not read the old ``off`` back."""
+    stored: dict[str, str] = {}
+    down = [False]
+
+    def get_policy(driver, key):
+        if down[0]:
+            raise ServiceUnavailable("the database is down")
+        return stored.get(key)
+
+    def set_policy(driver, key, value):
+        if down[0]:
+            raise ServiceUnavailable("the database is down")
+        stored[key] = value
+
+    monkeypatch.setattr(store, "get_policy", get_policy)
+    monkeypatch.setattr(store, "set_policy", set_policy)
+    now = [1_000.0]
+    real = make_backend(real_backend_settings(), StateDrivers(state=object()), ledger=InMemoryLedger(),
+                        clock=lambda: now[0])
+    real.refresh_kill_level()
+    client = make_client(backend=real)
+    assert events_of(ask(client, Q + " one"))[-1]["event"] == "done"
+    now[0] += 31                                                      # longer than kill_switch_stale_s: ``on`` by age
+    down[0] = True
+    r = client.post("/api/admin/policy", json={"kill_switch": "on"}, headers=ADMIN)
+    assert r.status_code == 200 and r.json() == {"kill_switch": "on", "stored": False}
+    down[0] = False
+    real.refresh_kill_level()                                         # the maintenance thread's next tick
+    assert stored["kill_switch"] == "on"
+    assert client.get("/api/admin/policy", headers=ADMIN).json()["effective"] == "on"
+    assert_json_refusal(ask(client, Q + " two"), 503, routes.MSG_PAUSED)
+
+
+# ---------------------------------------------------------------- M5a closeout: every state slot held
+
+def hold_slots(client, pool: str = "state"):
+    """Borrow every token of one limiter on the app's own loop; returns the function that gives them back."""
+    limiter = getattr(client.app.state.limiters, pool)
+    names = [f"held-{pool}-{n}" for n in range(int(limiter.total_tokens))]
+    for name in names:
+        client.portal.call(limiter.acquire_on_behalf_of, name)
+
+    def release() -> None:
+        for name in names:
+            client.portal.call(limiter.release_on_behalf_of, name)
+    return release
+
+
+def timed(call):
+    started = time.perf_counter()
+    response = call()
+    return response, time.perf_counter() - started
+
+
+class InThread:
+    """``fn`` on a thread of its own: a ``TestClient`` call blocks its caller, and a test that looks at the app while a
+    request is in flight needs the request somewhere else."""
+
+    def __init__(self, fn):
+        self.result, self.error = None, None
+        self._thread = threading.Thread(target=self._run, args=(fn,), daemon=True)
+        self._thread.start()
+
+    def _run(self, fn):
+        try:
+            self.result = fn()
+        except BaseException as exc:  # noqa: BLE001 - handed to the test thread by join()
+            self.error = exc
+
+    def alive(self) -> bool:
+        return self._thread.is_alive()
+
+    def wait(self, timeout: float) -> bool:
+        """True once the call has returned (or raised); False if it is still running after ``timeout`` seconds."""
+        self._thread.join(timeout)
+        return not self._thread.is_alive()
+
+    def join(self, timeout: float):
+        assert self.wait(timeout), f"the call was still running after {timeout} s"
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def bounded(call, seconds: float = 5.0, *, free=lambda: None):
+    """``call()`` (a blocking ``TestClient`` request) with a deadline INSIDE the test: ``anyio.fail_after`` cannot wrap a
+    synchronous client, and a regression to an unbounded wait for a state slot would hang the unit job (a reverted run
+    hung for 240 s) instead of failing it. If the call has not returned in ``seconds``, ``free()`` gives back what holds
+    it (the app can then shut down) and the test fails."""
+    running = InThread(call)
+    if not running.wait(seconds):
+        free()
+        running.wait(5)
+        pytest.fail(f"the request was still waiting after {seconds} s: an unbounded wait for a slot")
+    return running.join(0)
+
+
+def test_with_every_state_slot_held_an_ask_is_503_within_the_slot_wait_and_leaks_nothing(client, backend, fresh_drain):
+    client.app.state.settings.state_op_timeout_s = 0.3
+    release = hold_slots(client)
+    response, elapsed = timed(lambda: bounded(lambda: ask(client), free=release))
+    assert_json_refusal(response, 503, routes.MSG_STATE_UNAVAILABLE)
+    assert 0.25 <= elapsed < 0.3 + 0.5, elapsed                     # it waited for a slot, not for the stuck calls
+    assert backend.calls == [] and fresh_drain.active == 0           # no state call ran, nothing is counted
+    release()
+    state = client.app.state.limiters.state
+    assert state.borrowed_tokens == 0 and state.statistics().tasks_waiting == 0
+    assert events_of(ask(client, Q + " again"))[-1]["event"] == "done"        # the pool serves again
+
+
+def test_with_every_state_slot_held_the_reserve_is_refused_and_gives_the_drain_count_back(backend, fresh_drain):
+    from fastapi import HTTPException
+
+    from semigraph.serve.limiters import make_limiters
+
+    settings = RouteSettings()
+    settings.state_op_timeout_s = 0.2
+    st = build_route_app(backend=backend, settings=settings).state
+
+    async def main():
+        st.limiters = make_limiters(settings)
+        for n in range(int(st.limiters.state.total_tokens)):
+            await st.limiters.state.acquire_on_behalf_of(f"held-{n}")
+        with anyio.fail_after(5):                      # a regression to an unbounded wait fails here, in seconds
+            with pytest.raises(HTTPException) as refused:
+                await routes._admit(st, "iph", "hybrid", False, 60_000)
+        assert (refused.value.status_code, refused.value.detail) == (503, routes.MSG_STATE_UNAVAILABLE)
+        assert backend.calls == [] and fresh_drain.active == 0
+        assert st.limiters.state.borrowed_tokens == st.limiters.state.total_tokens        # only the held ones
+
+    anyio.run(main)
+
+
+def test_with_every_state_slot_held_the_admin_flip_and_the_state_report_still_answer_at_once(client, backend):
+    client.app.state.settings.state_op_timeout_s = 5.0                 # a wait for a state slot would be seen
+    release = hold_slots(client)
+    flipped, flip_s = timed(lambda: bounded(
+        lambda: client.post("/api/admin/policy", json={"kill_switch": "on"}, headers=ADMIN), free=release))
+    report, report_s = timed(lambda: bounded(lambda: client.get("/api/admin/state", headers=ADMIN), free=release))
+    assert flipped.status_code == 200 and flipped.json() == {"kill_switch": "on", "stored": True}
+    assert backend.kill == "on" and backend.kill_sets == ["on"]
+    assert report.status_code == 200 and report.json()["limiters"]["state"] == {"borrowed": 4, "total": 4}
+    assert max(flip_s, report_s) < 1.0, (flip_s, report_s)
+    release()
+    assert client.app.state.limiters.admin.borrowed_tokens == 0
+
+
+def test_with_every_state_slot_held_stats_answers_promptly_and_reads_the_kill_level_at_once(client, backend):
+    """The spend figure waits a quarter of a second for a slot at most, whatever ``state_op_timeout_s`` is."""
+    client.app.state.settings.state_op_timeout_s = 5.0
+    backend.kill = "on"
+    release = hold_slots(client)
+    response, elapsed = timed(lambda: bounded(lambda: client.get("/api/stats"), free=release))
+    assert response.status_code == 200 and routes.STATS_SLOT_WAIT_S - 0.05 <= elapsed < routes.STATS_SLOT_WAIT_S + 0.5
+    assert response.json()["paused"] is True and response.json()["spend_today_usd"] is None
+    assert "kill_level" in backend.names() and "snapshot" not in backend.names()
+    release()
+    assert client.app.state.limiters.state.borrowed_tokens == 0
+
+
+def test_a_backend_that_cannot_hold_a_level_before_the_write_gets_503_when_the_admin_limiter_stays_busy(
+        client, backend):
+    """A backend without ``hold_kill_level`` (the attribute is masked on the double): the flip never ran, so it must not
+    look like the 200 ``stored: false`` of a tightening that holds and is retried, whatever level the double reads."""
+    backend.hold_kill_level = None                                    # the route reads it with getattr(..., None)
+    client.app.state.settings.state_op_timeout_s = 0.2
+    backend.kill = "on"                                               # a lazy 200 would look right
+    release = hold_slots(client, "admin")
+    response, elapsed = timed(lambda: bounded(
+        lambda: client.post("/api/admin/policy", json={"kill_switch": "on"}, headers=ADMIN), free=release))
+    assert response.status_code == 503 and "not changed" in response.json()["detail"], response.text
+    assert elapsed < 0.2 + 0.5 and backend.kill_sets == [] and "set_kill_level" not in backend.names()
+    release()
+    assert client.post("/api/admin/policy", json={"kill_switch": "on"}, headers=ADMIN).json()["stored"] is True
+
+
+# ---------------------------------------------------------------- the emergency kill, the admin token and the database
+
+@pytest.mark.parametrize("reported, status, stored", [(True, 200, False), (False, 503, None)])
+def test_when_the_backend_says_whether_a_failed_write_holds_the_route_believes_it_and_not_the_effective_level(
+        client, backend, reported, status, stored):
+    """The hold before the write and the write itself can disagree (another set tightened the cache in between). The
+    error carries the backend's own word; the level the fake reads (``on``, equal to the request) must not outvote it."""
+    backend.kill = "on"
+    backend.hold_kill_level = lambda level: False
+    backend.errors["set_kill_level"] = KillNotStored("the database write failed", held=reported)
+    response = flip(client, "on")
+    assert response.status_code == status, response.text
+    if stored is not None:
+        assert response.json() == {"kill_switch": "on", "stored": stored}
+
+class PolicyDatabase:
+    """The policy row of the database, for the REAL backend: ``stored`` is what it holds, ``down`` makes every read and
+    write fail the way an unreachable Neo4j does."""
+
+    def __init__(self, monkeypatch):
+        self.stored: dict[str, str] = {}
+        self.down = False
+        monkeypatch.setattr(store, "get_policy", self.get)
+        monkeypatch.setattr(store, "set_policy", self.set)
+
+    def get(self, driver, key):
+        if self.down:
+            raise ServiceUnavailable("the database is down")
+        return self.stored.get(key)
+
+    def set(self, driver, key, value):
+        if self.down:
+            raise ServiceUnavailable("the database is down")
+        self.stored[key] = value
+
+
+def real_flip_app(make_client, monkeypatch, *, stored=None, clock=None, **settings):
+    """The real in-process backend (read once, as the lifespan does) behind the app: ``(client, backend, database)``."""
+    database = PolicyDatabase(monkeypatch)
+    if stored is not None:
+        database.stored["kill_switch"] = stored
+    kwargs = {} if clock is None else {"clock": clock}
+    real = make_backend(real_backend_settings(**settings), StateDrivers(state=object()), ledger=InMemoryLedger(), **kwargs)
+    real.refresh_kill_level()
+    return make_client(backend=real), real, database
+
+
+def flip(client, level):
+    return client.post("/api/admin/policy", json={"kill_switch": level}, headers=ADMIN)
+
+
+def reserve_directly(real):
+    return real.reserve(ip_hash="iph", strategy="hybrid", workspace=False, estimate_micro=60_000,
+                        now_wall=time.time(), now_mono=time.monotonic())
+
+
+def test_a_kill_behind_a_stuck_admin_call_is_in_force_at_once_and_is_stored_when_the_token_frees(
+        make_client, monkeypatch):
+    """The admin limiter has one token; an earlier admin call stuck on a half-open connection holds it for up to 120 s.
+    A tightening must not wait for it: it is in force the moment the request arrives, while the flip still waits."""
+    client, real, database = real_flip_app(make_client, monkeypatch)
+    client.app.state.settings.state_op_timeout_s = 1.5               # how long the flip waits for the admin token
+    release = hold_slots(client, "admin")                            # the earlier admin call
+    posting = InThread(lambda: flip(client, "on"))
+    try:
+        deadline = time.monotonic() + 1.0                            # well inside the 1.5 s wait for the token
+        while real.kill_level() != "on" and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert real.kill_level() == "on" and posting.alive(), "the kill waited for the admin token"
+        assert reserve_directly(real) is Denied.KILL                 # a paid ask is refused now
+        assert database.stored.get("kill_switch") is None            # nothing was written yet
+    finally:
+        response = posting.join(10)
+        release()
+    assert response.status_code == 200 and response.json() == {"kill_switch": "on", "stored": False}, response.text
+    assert_json_refusal(ask(client, Q + " two"), 503, routes.MSG_PAUSED)
+    real.refresh_kill_level()                                        # the maintenance thread's next tick
+    assert database.stored["kill_switch"] == "on" and real.kill_level() == "on"
+    assert client.app.state.limiters.admin.borrowed_tokens == 0
+
+
+def test_a_relaxation_behind_a_stuck_admin_call_is_503_and_changes_and_queues_nothing(make_client, monkeypatch):
+    client, real, database = real_flip_app(make_client, monkeypatch, stored="on")
+    client.app.state.settings.state_op_timeout_s = 0.2
+    release = hold_slots(client, "admin")
+    response = bounded(lambda: flip(client, "off"), free=release)
+    assert response.status_code == 503 and "not changed" in response.json()["detail"], response.text
+    assert real.kill_level() == "on" and real._pending_kill is None                         # noqa: SLF001
+    real.refresh_kill_level()
+    assert database.stored["kill_switch"] == "on" and real.kill_level() == "on"
+    release()
+    assert flip(client, "off").json() == {"kill_switch": "off", "stored": True}             # with the token: stored first
+    assert database.stored["kill_switch"] == "off" and real.kill_level() == "off"
+
+
+def test_a_kill_equal_to_a_stale_cached_level_during_an_outage_is_queued_and_beats_a_stored_value_that_differs(
+        make_client, monkeypatch):
+    now = [1_000.0]
+    client, real, database = real_flip_app(make_client, monkeypatch, stored="on", clock=lambda: now[0])
+    now[0] += 31                                                     # the cached ``on`` is stale: ``on`` by age as well
+    database.stored["kill_switch"] = "off"                           # another writer relaxed the database meanwhile
+    database.down = True
+    response = flip(client, "on")
+    assert response.status_code == 200 and response.json() == {"kill_switch": "on", "stored": False}, response.text
+    database.down = False
+    real.refresh_kill_level()                                        # without the queued write this would read ``off``
+    assert database.stored["kill_switch"] == "on" and real.kill_level() == "on"
+
+
+def test_with_the_env_override_on_a_tightening_that_was_applied_and_queued_is_not_reported_as_unapplied(
+        make_client, monkeypatch):
+    """``KILL_SWITCH`` makes every read ``on``, so comparing the effective level with the request said 'not applied' for
+    a tightening that WAS applied to the cache and queued for the database."""
+    client, real, database = real_flip_app(make_client, monkeypatch, kill_switch=True)
+    database.down = True
+    response = flip(client, "retrieval_only")
+    assert response.status_code == 200 and response.json() == {"kill_switch": "retrieval_only", "stored": False}
+    assert real._pending_kill == "retrieval_only"                                           # noqa: SLF001
+    database.down = False
+    real.refresh_kill_level()
+    assert database.stored["kill_switch"] == "retrieval_only"
+
+
+def test_retrieval_only_set_during_an_outage_on_a_stale_cache_is_503_and_leaves_the_level_and_the_database_alone(
+        make_client, monkeypatch):
+    now = [1_000.0]
+    client, real, database = real_flip_app(make_client, monkeypatch, clock=lambda: now[0])    # the cache reads ``off``
+    now[0] += 31                                                     # ... stale, so the gates apply ``on``
+    database.stored["kill_switch"] = "on"
+    database.down = True
+    response = flip(client, "retrieval_only")
+    assert response.status_code == 503 and "not applied" in response.json()["detail"], response.text
+    assert real.kill_level() == "on" and real._pending_kill is None                         # noqa: SLF001
+    database.down = False
+    real.refresh_kill_level()
+    assert database.stored["kill_switch"] == "on" and real.kill_level() == "on"
 
 
 # ---------------------------------------------------------------- the production validators

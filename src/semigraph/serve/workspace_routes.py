@@ -29,8 +29,10 @@ longer has to be parsed out of the multipart body first.
 M5a I4 (docs/v2/M5_DECISIONS.md 2.2): while the process drains (``serve.drain``) workspace creation and an upload are
 refused with 503 ``MSG_DRAINING`` BEFORE any window is consumed, and every other route here (reads, the job stream, the
 evidence drawer) is served; an upload counts on the drain from the moment it takes the one upload slot until the job
-thread releases it (:class:`DrainCountedSlot`). The kill level (``state.kill_level``) replaces the stored-flag read: an
-upload is refused unless it is ``off``, and a level that cannot be read is not ``off``.
+thread releases it (:class:`DrainCountedSlot`), and a drain that began after the entry check (during the Turnstile call
+or the body read) refuses the upload there with the same 503, before a job exists. The kill level (``state.kill_level``)
+replaces the stored-flag read: an upload is refused unless it is ``off``, and a level that cannot be read is not
+``off``.
 """
 
 from __future__ import annotations
@@ -84,17 +86,24 @@ MSG_NO_CHANGES = "no change report for that version pair"
 MSG_NO_EVIDENCE = "no evidence with that id"
 
 
+class DrainBegan(Exception):
+    """A drain began between the upload route's own draining check and its taking the upload slot."""
+
+
 class DrainCountedSlot(threading.BoundedSemaphore):
     """``app.state.upload_slots``: the one-upload-at-a-time semaphore, counted on the drain. A successful ``acquire`` is
     one running upload and the matching ``release`` (the job thread's ``finally``, or the route when it gives the slot
     up) ends it, so ``DRAIN.active`` covers the upload from acceptance until its thread has finished and the lifespan
-    shutdown cannot close the database under it. ``enter`` (not ``try_enter``): the upload route has already refused a
-    drain that began before it."""
+    shutdown cannot close the database under it. The count is ``try_enter``, not ``enter``: the route's draining check
+    runs at entry, then comes the Turnstile call and a client-paced body read, and a drain that began meanwhile must
+    refuse the upload (``DrainBegan``, answered 503), not start a job the lifespan shutdown would cut after a 202. A
+    refusal gives the semaphore back through the base class, because nothing was counted for ``release`` to uncount."""
 
     def acquire(self, blocking: bool = True, timeout: float | None = None) -> bool:
         got = super().acquire(blocking, timeout)
-        if got:
-            drain.DRAIN.enter()
+        if got and not drain.DRAIN.try_enter():
+            super().release()
+            raise DrainBegan()
         return got
 
     def release(self, n: int = 1) -> None:
@@ -120,11 +129,14 @@ def _require_uploads_enabled(request: Request) -> None:
         raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
 
 
+def _draining_refusal() -> HTTPException:
+    return HTTPException(status_code=503, detail=routes.MSG_DRAINING, headers={**NO_STORE, **routes.DRAINING_HEADERS})
+
+
 def _refuse_while_draining() -> None:
     """503 while the process drains: checked before any window is consumed, so a refused request costs nothing."""
     if drain.DRAIN.draining:
-        raise HTTPException(status_code=503, detail=routes.MSG_DRAINING,
-                            headers={**NO_STORE, **routes.DRAINING_HEADERS})
+        raise _draining_refusal()
 
 
 def _require_read_rate(request: Request) -> None:
@@ -370,7 +382,11 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
     if quota_error is not None:
         return quota_error
 
-    if not st.upload_slots.acquire(blocking=False):
+    try:
+        taken = st.upload_slots.acquire(blocking=False)
+    except DrainBegan:                  # the drain began during the body read: nothing is counted, nothing is taken
+        raise _draining_refusal() from None
+    if not taken:
         return JSONResponse({"detail": MSG_BUSY, "code": "busy"}, status_code=429, headers=NO_STORE)
     try:
         reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day)

@@ -113,6 +113,115 @@ def test_temporal_merge_with_no_pairs_changes_nothing():
     assert out["temporal"] == r["temporal"] and out["temporal_pairs"] == r["temporal_pairs"]
 
 
+# --- temporal: at most MAX_PAIRS_HELD_PER_COMPANY pairs of one company in all (what makes the agent's spend estimate a bound) --
+
+def _acc(year: int) -> str:
+    return f"0001045810-{year:02d}-000001"
+
+
+def years_call(years, cik: int = NVDA, company: str = "Nvidia") -> dict:
+    """The arguments of a ``merge_temporal`` call that returns the pair of annual filings ending in each of ``years`` (20yy),
+    in the order given: a pair row, two item rows and one passage per pair."""
+    pairs, items, passages = [], [], []
+    for year in years:
+        rows = temporal_rows(company, cik, _acc(year - 1), _acc(year), removed=(f"gone in {year}",), new=(f"new in {year}",))
+        pairs.append({**rows[0], "older_date": f"20{year - 1}-02-25", "newer_date": f"20{year}-02-25"})
+        items += [row for row in rows if row["change"] != "pair"]
+        passages.append(passage_row(cik=cik, older=_acc(year - 1), newer=_acc(year), n=year))
+    return {"pairs": pairs, "items": items, "passages": passages, "notices": []}
+
+
+def holding(call: dict, **layers) -> dict:
+    """A retrieval dict that already holds what ``call`` returned (the prefetch, or an earlier tool call)."""
+    return retrieval(temporal=call["items"], temporal_pairs=call["pairs"], temporal_passages=call["passages"], **layers)
+
+
+def combined(*calls: dict) -> dict:
+    return {key: [row for call in calls for row in call[key]] for key in ("pairs", "items", "passages", "notices")}
+
+
+def newer_accessions(out: dict, layer: str = "temporal_pairs", cik: int = NVDA) -> list[str]:
+    return sorted({row["newer_accession"] for row in out[layer] if row["cik"] == cik})
+
+
+def accessions(*years: int) -> list[str]:
+    return sorted(_acc(year) for year in years)
+
+
+def test_the_cap_on_the_pairs_of_one_company_is_five():
+    """Pinned to 5 on purpose: the agent's spend estimate prices up to 5 pairs of a company (serve/estimate.py)."""
+    assert M.MAX_PAIRS_HELD_PER_COMPANY == 5
+
+
+@pytest.mark.parametrize("years", [range(15, 25), range(24, 14, -1)], ids=["oldest first", "newest first"])
+def test_temporal_merge_holds_at_most_the_cap_of_pairs_of_a_company_and_keeps_the_newest(years):
+    """A tool can return more pairs than the cap (4 calls of 2 pairs, or one call of ten): the five NEWEST stay, whatever
+    order the call lists them in, and the items and passages of the others do not get in."""
+    out = pure(M.merge_temporal, retrieval(), **years_call(years))
+    keep = accessions(20, 21, 22, 23, 24)
+    assert newer_accessions(out) == keep
+    assert newer_accessions(out, "temporal") == keep and newer_accessions(out, "temporal_passages") == keep
+    assert not {row["headline"] for row in out["temporal"]} & {f"{kind} in {year}" for kind in ("gone", "new") for year in range(15, 20)}
+
+
+def test_temporal_merge_never_drops_a_pair_the_prefetch_held_to_make_room_for_a_new_one():
+    prefetch = years_call([25, 26])
+    r = holding(prefetch)
+    out = pure(M.merge_temporal, r, **years_call(range(18, 25)))                  # seven older pairs, room for three
+    assert newer_accessions(out) == accessions(22, 23, 24, 25, 26)
+    assert {"gone in 25", "new in 25", "gone in 26", "new in 26"} <= {row["headline"] for row in out["temporal"]}
+    assert {row["passage_id"] for row in prefetch["passages"]} <= {row["passage_id"] for row in out["temporal_passages"]}
+
+
+def test_temporal_merge_repeating_a_held_pair_at_the_cap_replaces_it_and_adds_nothing():
+    r = holding(years_call(range(20, 25)))
+    again = years_call([24])
+    again["items"] = [{**row, "headline": "refreshed"} for row in again["items"]]
+    out = pure(M.merge_temporal, r, **again)
+    assert newer_accessions(out) == accessions(20, 21, 22, 23, 24) and out["temporal_notices"] == []
+    headlines = {row["headline"] for row in out["temporal"]}
+    assert "refreshed" in headlines and "gone in 24" not in headlines
+
+
+def test_temporal_merge_over_a_lowered_cap_keeps_every_pair_it_holds_and_adds_none():
+    r = holding(years_call(range(20, 25)))                                         # five held, a cap of three
+    out = pure(M.merge_temporal, r, pair_cap=3, **years_call([25, 24]))            # 24 is held (a refresh), 25 is new
+    assert newer_accessions(out) == accessions(20, 21, 22, 23, 24)
+
+
+def test_temporal_merge_caps_each_company_on_its_own():
+    r = holding(years_call(range(20, 25)))
+    call = combined(years_call([25]), years_call([23, 24], cik=2488, company="AMD"))
+    out = pure(M.merge_temporal, r, **call)
+    assert newer_accessions(out) == accessions(20, 21, 22, 23, 24)                  # Nvidia is full: 25 is refused
+    assert newer_accessions(out, cik=2488) == accessions(23, 24)                    # AMD has room for both
+    assert [n["company"] for n in out["temporal_notices"]] == ["Nvidia"]
+
+
+def test_temporal_merge_says_so_once_when_it_refuses_a_pair_and_says_nothing_otherwise():
+    r = holding(years_call(range(20, 25)))
+    out = pure(M.merge_temporal, r, **years_call([25]))
+    (notice,) = out["temporal_notices"]
+    assert (notice["cik"], notice["company"]) == (NVDA, "Nvidia") and "5 annual-filing comparisons" in notice["text"]
+    again = M.merge_temporal(out, **years_call([26]))
+    assert again["temporal_notices"] == out["temporal_notices"], "the same note is not stacked up call after call"
+    assert M.merge_temporal(retrieval(), **years_call([25]))["temporal_notices"] == []
+
+
+def test_the_note_about_a_refused_pair_reaches_the_writer_and_the_refused_pair_does_not():
+    out = M.merge_temporal(holding(years_call(range(20, 25))), **years_call([25]))
+    _, context, _ = build_blocks(out)
+    assert context.count("Note for Nvidia: the context holds 5 annual-filing comparisons") == 1
+    assert "gone in 25" not in context and "new in 25" not in context and "gone in 24" in context
+
+
+def test_temporal_merge_keeps_the_notices_the_caller_passes_beside_the_cap_note():
+    r = holding(years_call(range(20, 25)))
+    mine = {"cik": NVDA, "company": "Nvidia", "text": "showing the 2 most recent of 6 annual-filing comparisons for Nvidia"}
+    out = pure(M.merge_temporal, r, **{**years_call([25]), "notices": [mine]})
+    assert mine in out["temporal_notices"] and len(out["temporal_notices"]) == 2
+
+
 # --- edges, risks, anchors --------------------------------------------------------------------------------------------------
 
 def test_edges_merge_dedupes_and_caps_what_it_ADDS_never_what_the_prefetch_had():

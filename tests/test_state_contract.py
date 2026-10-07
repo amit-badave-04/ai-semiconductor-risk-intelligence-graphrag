@@ -27,7 +27,7 @@ from types import SimpleNamespace
 
 import anyio
 import pytest
-from neo4j.exceptions import ServiceUnavailable, TransientError
+from neo4j.exceptions import Neo4jError, ServiceUnavailable, TransientError
 from test_state_inprocess import (
     FakeClock,
     FakeLedger,
@@ -38,8 +38,9 @@ from test_state_inprocess import (
     wait_until,
 )
 
-from semigraph.serve.state import Denied, Lease, StateDrivers, StateUnavailable, ledger, make_backend
-from semigraph.serve.state.backend import day_of
+from semigraph.serve.state import Denied, KillNotStored, Lease, StateDrivers, StateUnavailable, ledger, make_backend
+from semigraph.serve.state.backend import KILL_LEVELS, day_of
+from semigraph.serve.state.maintenance import MaintenanceThread
 
 THROWAWAY_URI = "bolt://127.0.0.1:7898"
 THROWAWAY_USER = "neo4j"
@@ -191,6 +192,34 @@ class Harness:
             self.fake.fail_reserve = self.fake.fail_settle = self.fake.fail_renew = n
         else:
             self.state_driver.fail_sessions = n
+
+    def outage(self, down):
+        """The database goes away (every statement, the kill-level read and write included) or comes back."""
+        if self.store is not None:
+            self.store.fail = ServiceUnavailable("injected outage") if down else None
+        else:
+            self.state_driver.fail_sessions = 10**9 if down else 0
+
+    def stored_level(self):
+        """The kill level the database holds (None: never set)."""
+        if self.store is not None:
+            return self.store.policy.get("kill_switch")
+        from semigraph.serve import store
+
+        return store.get_policy(self.db.admin, "kill_switch")
+
+    def write_level_elsewhere(self, level):
+        """Another machine (or the CLI) writes the level straight to the database, behind this backend's back."""
+        if self.store is not None:
+            self.store.policy["kill_switch"] = level
+        else:
+            from semigraph.serve import store
+
+            store.set_policy(self.db.admin, "kill_switch", level)
+
+    def maintenance_step(self, backend):
+        """One tick of the maintenance thread on this harness's clocks: what runs every few seconds in production."""
+        MaintenanceThread(backend, state_settings(), clock=self.clock.mono, wall=self.clock.wall).tick()
 
     def close(self):
         if self.db is None:
@@ -510,6 +539,219 @@ def test_a_level_set_through_one_backend_is_read_by_another(harness):
     first, second = harness.make(), harness.make(machine_id=harness.machine + "-b")
     first.set_kill_level("retrieval_only")
     assert second.refresh_kill_level() == "retrieval_only"
+
+
+@pytest.mark.parametrize("level, cache", [("on", "fresh"), ("on", "stale"), ("on", "unread"),
+                                          ("retrieval_only", "fresh")])
+def test_a_tightening_set_during_an_outage_holds_and_is_stored_when_the_database_is_back(harness, cache, level):
+    """The admin's kill reaches a database that is down. A level that reads ``on`` only because it is stale or was never
+    read must not make the set look like 'nothing to tighten': the level holds in memory AND its write is queued, so the
+    next refresh after the recovery stores it instead of reading the old ``off`` back and reopening paid asks."""
+    backend = harness.make(refresh=cache != "unread")
+    if cache == "stale":
+        harness.clock.advance(31)                                   # past kill_switch_stale_s: on by age alone
+    harness.outage(True)
+    with pytest.raises(KillNotStored) as failed:
+        backend.set_kill_level(level)
+    assert failed.value.held is True                                # the error says it holds and will be retried
+    assert backend.kill_level() == level and backend._pending_kill == level                # noqa: SLF001
+    assert harness.ask(backend) is Denied.KILL
+    harness.outage(False)
+    harness.maintenance_step(backend)
+    assert harness.stored_level() == level and backend._pending_kill is None                # noqa: SLF001
+    assert backend.kill_level() == level and harness.ask(backend, ip="after") is Denied.KILL
+    assert harness.rows() == []                                                 # no paid ask slipped through
+
+
+@pytest.mark.parametrize("level, age", [("on", "fresh"), ("on", "stale"), ("retrieval_only", "fresh")])
+def test_a_set_equal_to_the_cached_level_during_an_outage_is_queued_and_beats_a_stored_value_that_differs(
+        harness, level, age):
+    """The write failed and the level is as tight as the cache says: ``stored: false`` promises a retry, so it must be
+    queued. The database is made to differ (another writer relaxed it during the outage): a refresh that read it back
+    without the queued write would reopen paid asks, which is what makes this test fail without the fix."""
+    backend = harness.make()
+    backend.set_kill_level(level)                                   # the cache holds ``level``, and so does the database
+    if age == "stale":
+        harness.clock.advance(31)                                   # the cached ``on`` also reads ``on`` by age alone
+    harness.write_level_elsewhere("off")
+    harness.outage(True)
+    with pytest.raises(KillNotStored) as failed:
+        backend.set_kill_level(level)                               # equal to the raw cached level
+    assert failed.value.held is True and backend._pending_kill == level                    # noqa: SLF001
+    assert backend.kill_level() == level and harness.ask(backend) is Denied.KILL
+    harness.outage(False)
+    harness.maintenance_step(backend)
+    assert harness.stored_level() == level and backend._pending_kill is None                # noqa: SLF001
+    assert backend.kill_level() == level and harness.ask(backend, ip="after") is Denied.KILL
+
+
+def test_a_set_of_off_is_never_held_or_queued_even_when_the_cache_already_reads_off(harness):
+    """``off`` relaxes whatever the cache says: it is stored first or it is nothing. Queuing it would let the next
+    refresh write ``off`` over a level another machine stored, with nobody having confirmed it."""
+    backend = harness.make()                                        # the cache reads ``off``, fresh
+    harness.write_level_elsewhere("on")                             # the database holds ``on``; this backend has not read it
+    harness.outage(True)
+    with pytest.raises(KillNotStored) as failed:
+        backend.set_kill_level("off")
+    assert failed.value.held is False and backend._pending_kill is None                    # noqa: SLF001
+    harness.outage(False)
+    harness.maintenance_step(backend)
+    assert harness.stored_level() == "on" and backend.kill_level() == "on"
+    assert harness.ask(backend, ip="after") is Denied.KILL
+
+
+@pytest.mark.parametrize("cache", ["stale", "unread"])
+def test_retrieval_only_set_on_a_cache_that_reads_on_does_not_lower_the_level_or_overwrite_the_database(harness, cache):
+    """A cache that is stale or was never read says ``on`` whatever it holds. A set of ``retrieval_only`` is a
+    relaxation of THAT, so it needs a successful write: a failed one must neither lower the level the gates apply nor
+    queue ``retrieval_only`` over the ``on`` that is stored."""
+    backend = harness.make(refresh=cache != "unread")
+    if cache == "stale":
+        harness.clock.advance(31)
+    harness.write_level_elsewhere("on")
+    harness.outage(True)
+    with pytest.raises(KillNotStored) as failed:
+        backend.set_kill_level("retrieval_only")
+    assert failed.value.held is False and backend._pending_kill is None                    # noqa: SLF001
+    assert backend.kill_level() == "on" and harness.ask(backend) is Denied.KILL
+    harness.outage(False)
+    harness.maintenance_step(backend)
+    assert harness.stored_level() == "on" and backend.kill_level() == "on"
+
+
+def _cache_cases():
+    for cache in ("fresh", "stale"):
+        for raw in KILL_LEVELS:
+            for level in KILL_LEVELS:
+                yield cache, raw, level
+    for level in KILL_LEVELS:
+        yield "unread", "off", level                                # an unread cache holds nothing: one raw level only
+
+
+@pytest.mark.parametrize("cache, raw, level", list(_cache_cases()))
+def test_a_set_that_fails_during_an_outage_never_lowers_the_effective_level_and_never_queues_off(
+        harness, cache, raw, level):
+    """Every cache state x every cached level x every requested level. A failed write may keep the level the gates
+    apply or raise it, never lower it; it holds exactly when the level is not ``off`` and at least as tight as the level
+    the gates apply now (the cached level, or ``on`` when that is stale or unread); and only what holds is queued."""
+    backend = harness.make(refresh=cache != "unread")
+    if cache != "unread":
+        backend.set_kill_level(raw)
+    if cache == "stale":
+        harness.clock.advance(31)
+    effective_before = KILL_LEVELS.index(backend.kill_level())
+    stored_before = harness.stored_level()
+    holds = level != "off" and KILL_LEVELS.index(level) >= effective_before
+    harness.outage(True)
+    with pytest.raises(KillNotStored) as failed:
+        backend.set_kill_level(level)
+    assert failed.value.held is holds
+    assert KILL_LEVELS.index(backend.kill_level()) >= effective_before
+    assert backend._pending_kill == (level if holds else None)                              # noqa: SLF001
+    if backend.kill_level() != "off":
+        assert harness.ask(backend) is Denied.KILL
+    harness.outage(False)
+    harness.maintenance_step(backend)
+    assert harness.stored_level() == (level if holds else stored_before)                    # what was not held is not written
+
+
+@pytest.mark.parametrize("held, relax", [("on", "off"), ("on", "retrieval_only"), ("retrieval_only", "off")])
+def test_a_relaxation_set_during_an_outage_does_not_take_effect_and_is_not_retried(harness, held, relax):
+    backend = harness.make()
+    backend.set_kill_level(held)
+    harness.outage(True)
+    with pytest.raises(StateUnavailable):
+        backend.set_kill_level(relax)
+    assert backend.kill_level() == held and backend._pending_kill is None                  # noqa: SLF001
+    assert harness.ask(backend) is Denied.KILL
+    harness.outage(False)
+    harness.maintenance_step(backend)
+    assert harness.stored_level() == held and backend.kill_level() == held
+    assert harness.ask(backend, ip="after") is Denied.KILL
+
+
+def test_hold_kill_level_applies_a_tightening_in_memory_without_waiting_for_a_database_write(harness):
+    """The admin route calls it on the event loop BEFORE it waits for the admin limiter, so an emergency kill is not
+    delayed by an earlier admin call stuck on a silent connection (it holds the writer lock for up to 120 s)."""
+    backend = harness.make()
+    stored_before = harness.stored_level()
+    with backend._writer_lock:                                      # noqa: SLF001 - the stuck write
+        held = InThread(lambda: backend.hold_kill_level("on"))
+        assert held.finish(timeout=2.0) is True                     # it never waited for the lock
+        assert backend.kill_level() == "on" and harness.ask(backend) is Denied.KILL     # in force at once
+    assert harness.stored_level() == stored_before                  # nothing was written: memory only
+    assert backend._pending_kill == "on"                                                  # noqa: SLF001
+    harness.maintenance_step(backend)                               # the queued write lands on the next tick
+    assert harness.stored_level() == "on" and backend._pending_kill is None                # noqa: SLF001
+
+
+def test_hold_kill_level_refuses_what_relaxes_and_changes_nothing(harness):
+    backend = harness.make()
+    backend.set_kill_level("on")
+    generation = backend._kill_gen                                                        # noqa: SLF001
+    assert backend.hold_kill_level("retrieval_only") is False
+    assert backend.hold_kill_level("off") is False
+    assert backend.kill_level() == "on" and backend._pending_kill is None                  # noqa: SLF001
+    assert backend._kill_gen == generation                          # a refusal does not supersede an earlier set  # noqa: SLF001
+    with pytest.raises(ValueError):
+        backend.hold_kill_level("paused")
+
+
+# ------------------------------------------------------------------------------------------------- the log
+
+SENTINEL = "SENTINEL-the-question-an-analyst-typed"
+
+
+class BrokenDriver:
+    """A state driver whose every use raises ``error`` (a driver that quotes what the statement carried)."""
+
+    def __init__(self, error):
+        self.error = error
+
+    def session(self, **config):
+        raise self.error
+
+
+class UntouchableDriver:
+    """A state driver that fails the test the moment anything uses it."""
+
+    def session(self, **config):
+        raise AssertionError("the state driver was used")
+
+
+@pytest.mark.parametrize("kind", ["inprocess", "neo4j"])
+def test_kill_level_and_mark_started_are_memory_only_on_every_backend(kind):
+    """The async callers take these (and ``hold_kill_level``, the admin flip's first step) on the event loop, with no thread hop and no state slot (the protocol says
+    so): a backend that touched its driver in any of them would block the loop when the database goes silent."""
+    backend = make_backend(state_settings(**OPEN, state_backend=kind), StateDrivers(state=UntouchableDriver()))
+    assert backend.kill_level() == "on"                                    # never read: closed, without a read
+    backend.mark_started("a-lease")
+    backend._kill_level, backend._kill_read_at = "off", backend._clock()                  # noqa: SLF001
+    assert backend.kill_level() == "off"
+    backend.mark_started("a-lease")
+    assert ("a-lease" in backend.registry) == (kind == "neo4j")           # the in-process one registers only its own leases
+    backend._forget_kill_level()                                                          # noqa: SLF001
+    assert backend.hold_kill_level("retrieval_only") is False             # unread reads ``on``: this relaxes it
+    assert backend.hold_kill_level("on") is True and backend.kill_level() == "on"
+
+
+@pytest.mark.parametrize("kind", ["inprocess", "neo4j"])
+@pytest.mark.parametrize("error", [
+    ServiceUnavailable(SENTINEL), OSError(SENTINEL), TimeoutError(SENTINEL),
+    Neo4jError._hydrate_neo4j(code="Neo.ClientError.Statement.SyntaxError", message=SENTINEL),
+], ids=lambda error: type(error).__name__)
+def test_a_state_failure_is_logged_by_class_and_server_code_and_never_by_message(kind, error, caplog):
+    """A driver's message can quote the parameters of a statement: the text of a question, an address hash. The log
+    line names the exception class and, for a server error, its code, and nothing else."""
+    caplog.set_level("DEBUG")
+    settings = state_settings(**OPEN, state_backend=kind)
+    backend = make_backend(settings, StateDrivers(state=BrokenDriver(error)))
+    with pytest.raises(StateUnavailable) as raised:
+        backend.cache_get("key", 24)
+    assert SENTINEL not in caplog.text and SENTINEL not in str(raised.value)
+    (record,) = [r for r in caplog.records if "state_unavailable" in r.getMessage()]
+    assert f"error={type(error).__name__}" in record.getMessage()
+    assert getattr(error, "code", None) is None or f"code={error.code}" in record.getMessage()
 
 
 # ----------------------------------------------------------------------------------------------- the day

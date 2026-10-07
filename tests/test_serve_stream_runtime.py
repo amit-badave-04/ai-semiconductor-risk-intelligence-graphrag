@@ -19,21 +19,25 @@ from types import SimpleNamespace
 
 import anyio
 import pytest
-from serve_state_fakes import FakeStateBackend, fresh_drain  # noqa: F401 - fresh_drain: a fixture
+from serve_state_fakes import FakeStateBackend, InMemoryLedger, fresh_drain  # noqa: F401 - fresh_drain: a fixture
 from sse_starlette.event import ensure_bytes
+from test_state_inprocess import FakeClock, state_settings
 
-from semigraph.serve import drain
+from semigraph.serve import drain, store
 from semigraph.serve.limiters import make_limiters
-from semigraph.serve.state import StateUnavailable
+from semigraph.serve.state import Denied, StateDrivers, StateUnavailable, make_backend
 from semigraph.serve.stream_runtime import (
     MSG_BUSY,
     MSG_FAILED,
     PaidResponse,
     PaidStream,
     TwinContractError,
+    admin_call,
     cost_micro_of,
     select_twin,
+    slot_call,
     sse_event,
+    state_call,
 )
 
 pytestmark = pytest.mark.usefixtures("fresh_drain")
@@ -62,6 +66,14 @@ def run(main, timeout: float = 20.0):
         with anyio.fail_after(timeout):
             return await main()
     return asyncio.run(guarded())
+
+
+async def until(condition, timeout: float = 2.0) -> None:
+    """Let the loop run until ``condition()`` is true; fail instead of hanging when it never is."""
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "the condition was never met"
+        await asyncio.sleep(0.005)
 
 
 class Tracer:
@@ -197,22 +209,31 @@ def test_each_stream_settles_only_the_lease_it_holds(rec):
 
 # ---------------------------------------------------------------- the lease is registered when the stream starts
 
-def test_the_lease_is_marked_started_once_on_the_first_event_on_a_worker_thread_under_the_state_limiter(rec):
+def test_the_lease_is_marked_started_once_before_the_twin_yields_anything_with_no_thread_hop_and_no_state_token(rec):
+    """``mark_started`` is a memory write (the protocol says so), made as soon as the stream runs: a twin that is slow to
+    its first event (slow graph reads) must not leave a lease that the sweep may reclaim after the lease TTL."""
     async def main():
         st = make_state(rec)
-        stream = stream_of(st, twin_of(RETRIEVAL, DELTA_1, DONE))
-        gen = stream.events()
-        assert "mark_started" not in rec.backend.names()          # nothing before the twin yields
-        await gen.__anext__()
-        assert rec.backend.started == {stream._lease.lease_id}
-        await gen.aclose()
+        release = asyncio.Event()
+
+        async def slow_twin(question, driver, embedder, **kw):
+            await release.wait()                                  # nothing is yielded until the test says so
+            yield RETRIEVAL
+            yield DONE
+
+        stream = stream_of(st, slow_twin)
+        task = asyncio.ensure_future(drain_events(stream))
+        await until(lambda: rec.backend.started)
+        assert rec.backend.started == {stream._lease.lease_id}    # registered while the twin has yielded nothing
+        release.set()
+        await task
         await stream.finalize()
         return st
 
     run(main)
     assert rec.backend.names().count("mark_started") == 1
     (_, ident, tokens), = [t for t in rec.threads if t[0] == "mark_started"]
-    assert ident != MAIN_THREAD and tokens == 1
+    assert ident == MAIN_THREAD and tokens == 0
 
 
 def test_a_failing_mark_started_is_logged_and_never_stops_the_answer(rec, caplog):
@@ -755,7 +776,7 @@ def test_a_disconnect_during_the_terminal_settle_does_not_lose_the_usage_or_add_
 
 # ---------------------------------------------------------------- threads and tokens
 
-def test_every_state_call_runs_on_a_worker_thread_holding_one_state_token(rec):
+def test_every_state_call_that_touches_the_store_runs_on_a_worker_thread_holding_one_state_token(rec):
     async def main():
         st = make_state(rec, db_threads=4)
         stream = stream_of(st, twin_of(RETRIEVAL, DONE))
@@ -764,8 +785,8 @@ def test_every_state_call_runs_on_a_worker_thread_holding_one_state_token(rec):
         assert st.limiters.state.borrowed_tokens == 0 and st.limiters.db.borrowed_tokens == 0
 
     run(main)
-    hops = [(name, ident, tokens) for name, ident, tokens in rec.threads if name != "reserve"]
-    assert [name for name, _, _ in hops] == ["mark_started", "reconcile", "cache_put"]
+    hops = [(name, ident, tokens) for name, ident, tokens in rec.threads if name not in ("reserve", "mark_started")]
+    assert [name for name, _, _ in hops] == ["reconcile", "cache_put"]
     assert all(ident != MAIN_THREAD and tokens == 1 for _, ident, tokens in hops)
 
 
@@ -1280,3 +1301,213 @@ def test_the_logger_name_is_the_one_the_operator_filters_on(rec, caplog):
     run(main)
     assert any(r.name == "semigraph.serve" and r.getMessage().startswith("answered ") for r in caplog.records)
     assert logging.getLogger("semigraph.serve").propagate
+
+
+# ----------------------------------------------------------- M5a closeout: a slow first event does not cost the lease
+
+def test_a_lease_whose_twin_is_slow_to_its_first_event_is_not_swept_holds_its_slot_and_settles_done_once(
+        rec, monkeypatch):
+    """The real backend, a lease TTL of 5 s and a twin that yields nothing for 20 s: the sweep must leave the lease alone
+    (before the fix it reclaimed it, a second stream was admitted next to it and the first was ledgered abandoned)."""
+    monkeypatch.setattr(store, "get_policy", lambda driver, key: None)               # the kill level reads off
+    clock, ledger = FakeClock(), InMemoryLedger()
+    settings = state_settings(max_concurrent_answers=1, lease_ttl_s=5.0, lease_renew_s=1.0)
+    real = make_backend(settings, StateDrivers(state=object()), ledger=ledger, wall=clock.wall, clock=clock.mono)
+    real.refresh_kill_level()
+
+    def reserve(ip):
+        return real.reserve(ip_hash=ip, strategy="hybrid", workspace=False, estimate_micro=60_000,
+                            now_wall=clock.wall(), now_mono=clock.mono())
+
+    async def main():
+        st = make_state(rec)
+        st.state = real
+        entered, first_event = asyncio.Event(), asyncio.Event()
+
+        async def slow_twin(question, driver, embedder, **kw):
+            entered.set()
+            await first_event.wait()
+            yield RETRIEVAL
+            yield DONE
+
+        lease = reserve("a")
+        drain.DRAIN.enter()
+        stream = PaidStream(st, Q, "hybrid", "a", "snap-1", None, twin=slow_twin, lease=lease)
+        task = asyncio.ensure_future(drain_events(stream))
+        await until(entered.is_set)                                         # the twin is running, yielding nothing yet
+        clock.advance(20)                                                   # four lease TTLs, and still no event
+        assert real.sweep(clock.wall()) == 0
+        assert reserve("b") is Denied.INFLIGHT
+        first_event.set()
+        assert [e["event"] for e in await task] == ["retrieval", "done"]
+        await stream.finalize()
+
+    run(main)
+    (row,) = ledger.rows.values()
+    assert (row["status"], row["outcome"]) == ("settled", "done") and real.snapshot()["inflight"] == 0
+
+
+# ---------------------------------------------------------------- M5a closeout: the wait for a state slot
+
+def holding(limiter, *names):
+    async def take():
+        for name in names:
+            await limiter.acquire_on_behalf_of(name)
+    return take()
+
+
+# The slot-wait tests are the ones a regression turns into a hang (an unbounded wait for a token: a reverted run sat for
+# 240 s, and the unit job has no timeout of its own), so each runs under a deadline of its own, a few times what the
+# slowest of them needs and far below the 20 s of the other tests here. A regression fails them in seconds.
+SLOT_TEST_BOUND_S = 5.0
+
+
+def run_bounded(main):
+    return run(main, timeout=SLOT_TEST_BOUND_S)
+
+
+def test_slot_call_runs_the_work_on_a_worker_thread_under_the_token_and_gives_it_back():
+    async def main():
+        limiter, seen = anyio.CapacityLimiter(1), []
+        result = await slot_call(limiter, 1.0, lambda a, b=0: (seen.append((threading.get_ident(),
+                                                                          limiter.borrowed_tokens)), a + b)[1], 1, b=2)
+        assert result == 3 and limiter.borrowed_tokens == 0
+        ((ident, borrowed),) = seen
+        assert ident != MAIN_THREAD and borrowed == 1
+
+    run_bounded(main)
+
+
+def test_slot_call_a_deadline_only_bounds_the_wait_for_the_slot_never_the_work():
+    async def main():
+        limiter = anyio.CapacityLimiter(1)
+        assert await slot_call(limiter, 0.05, lambda: (time.sleep(0.3), "finished")[1]) == "finished"
+        assert limiter.borrowed_tokens == 0
+
+    run_bounded(main)
+
+
+def test_slot_call_gives_up_with_state_unavailable_when_no_slot_frees_in_time_and_never_runs_the_work():
+    async def main():
+        limiter, ran = anyio.CapacityLimiter(1), []
+        await limiter.acquire_on_behalf_of("holder")
+        started = time.perf_counter()
+        with pytest.raises(StateUnavailable, match="slot"):
+            await slot_call(limiter, 0.1, ran.append, 1)
+        assert 0.09 <= time.perf_counter() - started < 0.5
+        assert ran == [] and limiter.borrowed_tokens == 1 and limiter.statistics().tasks_waiting == 0
+        limiter.release_on_behalf_of("holder")
+        assert await slot_call(limiter, 0.1, lambda: "free again") == "free again"
+
+    run_bounded(main)
+
+
+def test_slot_call_a_cancellation_while_waiting_leaves_the_limiter_exactly_as_it_was():
+    async def main():
+        limiter, ran = anyio.CapacityLimiter(1), []
+        await limiter.acquire_on_behalf_of("holder")
+        task = asyncio.ensure_future(slot_call(limiter, None, ran.append, 1))
+        await until(lambda: limiter.statistics().tasks_waiting == 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert ran == [] and limiter.borrowed_tokens == 1 and limiter.statistics().tasks_waiting == 0
+        limiter.release_on_behalf_of("holder")
+        assert limiter.borrowed_tokens == 0
+
+    run_bounded(main)
+
+
+def test_slot_call_hands_the_slot_on_when_the_waiter_that_was_next_is_cancelled_in_the_instant_it_was_granted():
+    """The release wakes the first waiter; if that waiter is cancelled before it runs, the slot must go to the next."""
+    async def main():
+        limiter, ran = anyio.CapacityLimiter(1), []
+        await limiter.acquire_on_behalf_of("holder")
+        first = asyncio.ensure_future(slot_call(limiter, None, ran.append, "first"))
+        await until(lambda: limiter.statistics().tasks_waiting == 1)
+        second = asyncio.ensure_future(slot_call(limiter, None, ran.append, "second"))
+        await until(lambda: limiter.statistics().tasks_waiting == 2)
+        limiter.release_on_behalf_of("holder")                                # wakes ``first``
+        first.cancel()                                                        # ... which never gets to run
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        await second
+        assert ran == ["second"] and limiter.borrowed_tokens == 0
+
+    run_bounded(main)
+
+
+@pytest.mark.parametrize("path", ["returns", "raises", "scope cancelled while the work runs"])
+def test_slot_call_releases_the_slot_it_was_granted_on_every_path(path):
+    async def main():
+        limiter, started, finish = anyio.CapacityLimiter(1), threading.Event(), threading.Event()
+        scope = anyio.CancelScope()                                         # what a disconnect or a deadline cancels
+
+        def work():
+            started.set()
+            finish.wait(5)
+            if path == "raises":
+                raise ValueError("the work failed")
+            return "done"
+
+        async def call():
+            with scope:
+                return await slot_call(limiter, 0.5, work)
+
+        task = asyncio.ensure_future(call())
+        await until(started.is_set)
+        assert limiter.borrowed_tokens == 1
+        if path.startswith("scope cancelled"):
+            scope.cancel()
+            await asyncio.sleep(0.05)
+            assert limiter.borrowed_tokens == 1 and not task.done()         # the thread is not abandoned: it keeps it
+        finish.set()
+        if path == "raises":
+            with pytest.raises(ValueError, match="the work failed"):
+                await task
+        else:
+            # a cancelled call returns nothing: the cancellation is delivered once the work has finished
+            assert await task == ("done" if path == "returns" else None)
+            assert scope.cancelled_caught == path.startswith("scope cancelled")
+        assert limiter.borrowed_tokens == 0
+
+    run_bounded(main)
+
+
+def test_a_state_call_gives_up_when_every_slot_is_held_for_the_state_op_timeout_and_a_settle_does_not(rec):
+    """``state_call`` is for the callers that have a refusal to fall back on; a settle has none, and a lease whose
+    reconcile gave up would stay registered, be renewed for ever and hold its in-flight slot."""
+    async def main():
+        st = make_state(rec)
+        st.settings.state_op_timeout_s = 0.05
+        state = st.limiters.state
+        names = [f"held-{n}" for n in range(int(state.total_tokens))]
+        await holding(state, *names)
+        with pytest.raises(StateUnavailable):
+            await state_call(st, rec.backend.cache_get, "key", 24)
+        stream = stream_of(st, twin_of(RETRIEVAL, DONE))
+        task = asyncio.ensure_future(drain_events(stream))
+        await until(lambda: state.statistics().tasks_waiting == 1)             # at its reconcile
+        await asyncio.sleep(0.25)                                              # five times the bound of a state call
+        assert not task.done() and rec.charges() == []
+        for name in names:
+            state.release_on_behalf_of(name)
+        assert [e["event"] for e in await task] == ["retrieval", "done"]
+        await stream.finalize()
+        assert state.borrowed_tokens == 0
+
+    run_bounded(main)
+    assert rec.charges() == [SPEND] and len(rec.puts) == 1
+
+
+def test_an_admin_call_has_its_own_limiter_and_gives_up_at_the_same_bound_on_it():
+    async def main():
+        st = SimpleNamespace(settings=SimpleNamespace(state_op_timeout_s=0.1),
+                             limiters=SimpleNamespace(state=anyio.CapacityLimiter(1), admin=anyio.CapacityLimiter(1)))
+        await holding(st.limiters.state, "busy")                                # the public pool is full ...
+        assert await admin_call(st, lambda: "flipped") == "flipped"             # ... and the admin does not notice
+        await holding(st.limiters.admin, "another admin call")
+        with pytest.raises(StateUnavailable):
+            await admin_call(st, lambda: "never")
+
+    run_bounded(main)

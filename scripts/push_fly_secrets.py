@@ -39,7 +39,9 @@ FLY_KEYS = {
 
 def parse_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    # utf-8-sig: a file saved by a Windows tool may begin with a byte-order mark, which plain utf-8 keeps as part of the
+    # first key name (that key then reads as absent and is never pushed). Without a BOM it reads exactly as utf-8.
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

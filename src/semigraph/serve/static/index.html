@@ -650,6 +650,13 @@ function askExample(question) {
 
 function setStatus(text, cls) { $("status").innerHTML = cls ? `<span class="${cls}">${esc(text)}</span>` : esc(text); }
 
+// What an answer stream that ended without a done or error event says: the text on the page is what had arrived, and
+// the checks (citations, numbers) run only on the finished answer.
+const STREAM_CUT_STATUS = "connection lost before the answer finished: what is shown is incomplete and was not checked. Please ask again.";
+// What an answer says when the page itself threw while taking it in (a rendering bug, a malformed event): "generating…"
+// would claim the answer is still on its way, and "done" would claim its checks were shown.
+const PAGE_FAILED_STATUS = "the page could not show this answer completely: what is shown may be incomplete and was not checked. Please ask again.";
+
 async function ask() {
   const question = $("q").value.trim(); if (!question) return;
   const strategy = $("strategy").value;
@@ -666,7 +673,9 @@ async function ask() {
   try { resp = await fetch("/api/ask", { method: "POST", headers, body: JSON.stringify(body) }); }
   catch (e) { setStatus("network error — is the service online?", "err"); $("ask").disabled = false; return; }
   if (!resp.ok) { let detail = resp.statusText; try { detail = (await resp.json()).detail; } catch (_) {} if (resp.status === 403 && TURNSTILE_SITE_KEY) detail += (turnstileToken ? " (the check expired — please click Ask again)" : " (the bot check below has not completed yet — wait a moment and click Ask again)"); setStatus(detail, "err"); $("ask").disabled = false; resetTurnstile(); return; }
-  const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "", text = "";
+  const dec = new TextDecoder(); let buf = "", text = "";
+  let ended = false;    // a done or error event was handled completely: the server itself said how the answer ended
+  let failed = false;   // the page threw while taking the answer in: the status must not be left as it was
   const handle = (chunk) => {
     let event = "message", data = "";
     for (const l of chunk.split("\n")) { if (l.startsWith("event:")) event = l.slice(6).trim(); else if (l.startsWith("data:")) data += l.slice(5).trim(); }
@@ -676,15 +685,26 @@ async function ask() {
     else if (event === "retrieval") { setStatus(retrievalStatus(ev) + " — generating…"); }
     else if (event === "escalated") { setStatus(escalationStatus(ev)); }
     else if (event === "delta") { text += ev.text; $("answer").innerHTML = renderMarkdown(text); }
-    else if (event === "done") { text = ev.answer; $("answer").innerHTML = renderMarkdown(text); finish(ev); }
-    else if (event === "error") { setStatus(ev.detail, "err"); }
+    else if (event === "done") { text = ev.answer; $("answer").innerHTML = renderMarkdown(text); finish(ev); ended = true; }   // ended only once shown: a throw above is a page failure
+    else if (event === "error") { setStatus(ev.detail, "err"); ended = true; }
   };
-  while (true) {
-    const { value, done } = await reader.read(); if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let idx; while ((idx = buf.indexOf("\n\n")) >= 0) { const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2); handle(chunk); }
+  try {
+    const reader = resp.body.getReader();
+    while (true) {
+      let step; try { step = await reader.read(); } catch (e) { break; }   // a reset or aborted stream (a drain timeout, a restart): say so below
+      if (step.done) break;
+      buf += dec.decode(step.value, { stream: true });
+      let idx; while ((idx = buf.indexOf("\n\n")) >= 0) { const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2); handle(chunk); }
+    }
+  } catch (e) {
+    failed = true;   // handle(), the decoder or getReader() threw: say so below and let the error surface
+    throw e;
+  } finally {
+    // Every way out leaves a status that is true: never "generating…" for good, never over a done or error that was
+    // shown, and never "done" over an answer whose checks the page could not show. Ask comes back whatever happens.
+    try { if (!ended) setStatus(failed ? PAGE_FAILED_STATUS : STREAM_CUT_STATUS, "err"); }
+    finally { $("ask").disabled = false; resetTurnstile(); loadStats(); }
   }
-  $("ask").disabled = false; resetTurnstile(); loadStats();
 }
 
 function finish(ev) {

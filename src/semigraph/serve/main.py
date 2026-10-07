@@ -9,7 +9,8 @@ empty counters would let the day's caps be spent twice); the paid per-address wi
 the maintenance thread starts and reads the kill level before it returns (paid asks are off until that read has
 happened). Shutdown runs the reverse, after the drain: wait for the streams and uploads still counted, stop the
 maintenance thread (and write the settles it still holds), stop the background services, the tracer, then close the
-drivers.
+drivers. A boot that fails part-way unwinds the same way, minus the drain wait (``abort_boot``), before its error
+reaches the caller.
 """
 
 import asyncio
@@ -272,39 +273,40 @@ async def lifespan(app: FastAPI):
         logger.error("UPLOADS_ENABLED in production without TURNSTILE_SECRET_KEY: uploads stay unavailable "
                      "(the upload routes fail closed)")
     driver, embedder, stats, snapshot, example_ids = await run_in_threadpool(bootstrap, settings)
-    # A no-op unless all three langfuse settings are set (only then is langfuse imported, hence off the event loop).
-    app.state.tracer = await run_in_threadpool(tracing.get_tracer, settings)
-    app.state.settings = settings
-    app.state.driver = driver
-    # ONE bound on concurrent query embeddings for every caller, plus a bounded cache of query vectors (serve/embed.py).
-    app.state.embedder = LimitedEmbedder(embedder, settings.embed_slots)
-    app.state.limiters = make_limiters(settings)      # must be built inside the running loop (this lifespan)
-    app.state.graph_stats = stats
-    app.state.snapshot = snapshot
-    app.state.example_ids = example_ids
-    app.state.snapshot_id = (snapshot or {}).get("id", "")
-    app.state.rate_limiter = RateLimiter(settings.rate_limit_questions, settings.rate_limit_window_seconds)
-    app.state.free_rate_limiter = RateLimiter(settings.free_rate_limit_questions,
-                                              settings.rate_limit_window_seconds)
-    app.state.read_rate_limiter = RateLimiter(settings.read_rate_limit_per_minute, 60)
-    # The answer-cache read before the bot check is bounded for the whole process (docs/v2/M5_DECISIONS.md 2.2).
-    app.state.cache_budget = TokenBucket(settings.cache_read_budget_per_s)
+    state_driver = None                               # set once start_state has built it (it closes it itself on failure)
     try:
+        # A no-op unless all three langfuse settings are set (only then is langfuse imported, hence off the event loop).
+        app.state.tracer = await run_in_threadpool(tracing.get_tracer, settings)
+        app.state.settings = settings
+        app.state.driver = driver
+        # ONE bound on concurrent query embeddings for every caller, plus a bounded cache of query vectors (serve/embed.py).
+        app.state.embedder = LimitedEmbedder(embedder, settings.embed_slots)
+        app.state.limiters = make_limiters(settings)      # must be built inside the running loop (this lifespan)
+        app.state.graph_stats = stats
+        app.state.snapshot = snapshot
+        app.state.example_ids = example_ids
+        app.state.snapshot_id = (snapshot or {}).get("id", "")
+        app.state.rate_limiter = RateLimiter(settings.rate_limit_questions, settings.rate_limit_window_seconds)
+        app.state.free_rate_limiter = RateLimiter(settings.free_rate_limit_questions,
+                                                  settings.rate_limit_window_seconds)
+        app.state.read_rate_limiter = RateLimiter(settings.read_rate_limit_per_minute, 60)
+        # The answer-cache read before the bot check is bounded for the whole process (docs/v2/M5_DECISIONS.md 2.2).
+        app.state.cache_budget = TokenBucket(settings.cache_read_budget_per_s)
         state_driver = await start_state(app, settings)
+        # M4 upload gates (docs/v2/M4_PLAN.md 4.4 and 5): per-address windows and ONE upload at a time on the machine
+        # (embedding never takes an answer slot; the slot is counted on the drain while an upload runs).
+        app.state.workspace_create_limiter = RateLimiter(settings.workspace_create_per_day, SECONDS_PER_DAY)
+        app.state.upload_limiter = RateLimiter(settings.uploads_per_hour, SECONDS_PER_HOUR)
+        app.state.upload_slots = workspace_routes.DrainCountedSlot(1)
+        # Background services, each only when its flag is on (freshness monitor, workspace TTL sweeper).
+        monitor.start_if_enabled(app)
+        jobs.start_if_enabled(app)
+        app.state.loop_lag = LoopLagMonitor(settings.loop_lag_warn_ms)
+        logger.info("semigraph %s serving — graph: %s", __version__, stats)
+        lag_task = asyncio.create_task(app.state.loop_lag.run())      # last: nothing after it can fail
     except BaseException:
-        driver.close()                              # a refused boot must not leave the database driver behind
+        await abort_boot(app, driver, state_driver)
         raise
-    # M4 upload gates (docs/v2/M4_PLAN.md 4.4 and 5): per-address windows and ONE upload at a time on the machine
-    # (embedding never takes an answer slot; the slot is counted on the drain while an upload runs).
-    app.state.workspace_create_limiter = RateLimiter(settings.workspace_create_per_day, SECONDS_PER_DAY)
-    app.state.upload_limiter = RateLimiter(settings.uploads_per_hour, SECONDS_PER_HOUR)
-    app.state.upload_slots = workspace_routes.DrainCountedSlot(1)
-    # Background services, each only when its flag is on (freshness monitor, workspace TTL sweeper).
-    monitor.start_if_enabled(app)
-    jobs.start_if_enabled(app)
-    app.state.loop_lag = LoopLagMonitor(settings.loop_lag_warn_ms)
-    lag_task = asyncio.create_task(app.state.loop_lag.run())
-    logger.info("semigraph %s serving — graph: %s", __version__, stats)
     yield
     lag_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
@@ -339,6 +341,26 @@ async def start_state(app: FastAPI, settings) -> DatabaseDriver:
     app.state.state = backend
     app.state.maintenance = maintenance
     return state_driver
+
+
+async def abort_boot(app: FastAPI, driver: DatabaseDriver, state_driver: DatabaseDriver | None) -> None:
+    """A boot that failed part-way: stop what it had started and close what it had opened, in the order of the shutdown
+    (the maintenance thread and the background services, the tracer, the drivers), then the caller re-raises the boot's own
+    error. There is no drain to wait for: nothing was served. Only what exists is touched: ``state_driver`` is None until
+    ``start_state`` has built the state (a failure inside it closes its own driver), and the tracer is only there once it
+    was made. Each stop logs its own failure and the drivers close in a ``finally``, so a cleanup that fails can neither
+    keep a driver open nor replace the error that stopped the boot."""
+    try:
+        if state_driver is not None:
+            await run_in_threadpool(stop_maintenance, app)
+            await run_in_threadpool(stop_background_services, app)
+        tracer = getattr(app.state, "tracer", None)
+        if tracer is not None:
+            await run_in_threadpool(shutdown_tracer_bounded, tracer)
+    finally:
+        if state_driver is not None:
+            state_driver.close()
+        driver.close()
 
 
 async def wait_for_the_drain() -> None:

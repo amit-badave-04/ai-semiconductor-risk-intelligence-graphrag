@@ -1,7 +1,8 @@
 """HTTP surface of the service. Paid work (``POST /api/ask``) passes every gate in order before a single LLM token is
-bought (M5a I4, docs/v2/M5_DECISIONS.md 2.2, docs/v2/M5A_BUILD_PLAN.md step 0-I4). Every call to the state backend is a
-worker-thread hop under ``limiters.state`` (``stream_runtime.state_call``); a state failure refuses, it never lets an
-ask through. The order, and what each gate answers:
+bought (M5a I4, docs/v2/M5_DECISIONS.md 2.2, docs/v2/M5A_BUILD_PLAN.md step 0-I4). Every call to the state backend that
+touches the store is a worker-thread hop under ``limiters.state`` (``stream_runtime.state_call``) that waits at most
+``state_op_timeout_s`` for a free slot; the kill level is a memory read and is taken directly. A state failure (or no
+free slot) refuses, it never lets an ask through. The order, and what each gate answers:
 
 1. validate the question, strategy, ``as_of`` and workspace id (400) and hash the address (``guard.hash_request_ip``);
 2. DRAINING: a workspace ask is always paid, so while the process drains (``serve.drain``) it is refused here, before
@@ -12,15 +13,17 @@ ask through. The order, and what each gate answers:
 4. a workspace ask: its token (404 for a bad id or token alike) is read through the state driver under the cache read
    budget; a public ask: a token of the cache read budget (429 ``MSG_READ_RATE`` when the process-wide bucket is empty),
    then ``state.cache_get``. A hit is logged as a cached row (under the same state bound) and replayed. The database
-   being unreachable or slow is 503 ``MSG_PAUSED`` in both: a cached answer is never served on a guess, and a failed
-   read never falls through to a paid call. A workspace ask never touches the answer cache;
+   being unreachable or slow is 503 ``MSG_STATE_UNAVAILABLE`` in both (``MSG_PAUSED`` is the kill switch's alone): a
+   cached answer is never served on a guess, and a failed read never falls through to a paid call. A workspace ask
+   never touches the answer cache;
 5. the kill level (``state.kill_level``): ``on`` (also unread, stale or the env override) 503 ``MSG_PAUSED``,
    ``retrieval_only`` 503 ``MSG_RETRIEVAL_ONLY``;
 6. Turnstile (403 ``MSG_BOT``), then the paid per-address window (429 ``MSG_RATE``);
 7. the ask is counted on the drain (``DRAIN.try_enter``: 503 ``MSG_DRAINING``) and ``state.reserve`` takes a lease with
    the ask type's estimate: both daily caps (429 ``MSG_BUDGET``), the per-address daily cap (429 ``MSG_IP_BUDGET``), the
-   in-flight cap (429 ``MSG_BUSY``, a pre-stream refusal with no event stream), the kill level again and an unreachable
-   state (503 ``MSG_PAUSED``). The lease, and the drain count, belong to the :class:`PaidStream` from then on;
+   in-flight cap (429 ``MSG_BUSY``, a pre-stream refusal with no event stream), the kill level again (503
+   ``MSG_PAUSED``) and an unreachable state (503 ``MSG_STATE_UNAVAILABLE``). The lease, and the drain count, belong to
+   the :class:`PaidStream` from then on;
 8. the event stream.
 
 A lease granted and then lost before the stream could take it (an exception, a cancelled request) is settled here as
@@ -56,7 +59,8 @@ from . import drain, guard, store
 from .state import Denied, Lease, StateUnavailable, micro_to_usd
 from .state.backend import KILL_LEVELS, KILL_OFF, KILL_ON, KILL_RETRIEVAL_ONLY
 from .stream_runtime import (  # noqa: F401 - MSG_BUSY: re-exported (the message of the in-flight refusal)
-    MSG_BUSY, PaidResponse, PaidStream, select_twin, sse_event, state_call)
+    MSG_BUSY, NoStateSlot, PaidResponse, PaidStream, admin_call, select_twin, settle_call, slot_call, sse_event,
+    state_call)
 
 logger = logging.getLogger("semigraph.serve")
 router = APIRouter()
@@ -69,6 +73,9 @@ SECURITY_HEADERS = {"Content-Security-Policy": CSP, "X-Content-Type-Options": "n
                     "Strict-Transport-Security": "max-age=31536000; includeSubDomains"}
 MSG_READ_RATE = "Too many requests from your address — please slow down."
 MSG_PAUSED = "Live questions are paused right now — the example questions still work."
+# The state store cannot be reached or is too slow: the example questions are served from the same store, so they are
+# not promised here (MSG_PAUSED is the kill switch's message and keeps that promise).
+MSG_STATE_UNAVAILABLE = "Live questions are temporarily unavailable — please try again in a few minutes."
 MSG_BUDGET = "The daily budget of live questions is used up — try an example, or come back tomorrow."
 MSG_IP_BUDGET = ("You have used today's live questions for your address — the example questions still work, "
                  "or come back tomorrow.")
@@ -80,6 +87,9 @@ MSG_UPLOADS_OFF = "Uploaded documents are not available right now."
 MSG_WORKSPACE_NOT_FOUND = "workspace not found"    # an unknown workspace and a wrong token must look the same
 MSG_NOT_PUBLIC_EVIDENCE = "not a public evidence id"
 DRAINING_HEADERS = {"Retry-After": "30"}
+# How long ``/api/stats`` waits for a state slot for the spend figure. The figure is decoration: a busy pool shows None
+# (as an unreachable store does) instead of holding the page's poll for the whole ``state_op_timeout_s``.
+STATS_SLOT_WAIT_S = 0.25
 
 
 # The citation drawer: the excerpt, where it comes from, and its FRESHNESS — a paragraph a later
@@ -201,9 +211,11 @@ async def _ledger_cached(st) -> dict:
 
 async def _kill_level(st) -> str:
     """The kill level (``off``, ``retrieval_only`` or ``on``) from the backend's cache, which the maintenance thread
-    refreshes. Anything that goes wrong reads ``on``: a gate that cannot tell is closed."""
+    refreshes. Anything that goes wrong reads ``on``: a gate that cannot tell is closed. It is a memory read (the
+    StateBackend protocol requires it), so it is taken here, on the loop: no thread hop, no state slot to wait for, and
+    nothing the slots held by a stuck database can delay. (``async`` for the callers that await it.)"""
     try:
-        level = await state_call(st, st.state.kill_level)
+        level = st.state.kill_level()
     except Exception as e:  # noqa: BLE001
         logger.warning("kill level unavailable (%s): treating it as on", type(e).__name__)
         return KILL_ON
@@ -218,8 +230,9 @@ async def _spend_today_usd(st) -> float | None:
     cached = getattr(st, "spend_cache", None)
     if cached and now - cached[0] < st.settings.stats_cache_seconds:
         return cached[1]
+    wait_s = min(STATS_SLOT_WAIT_S, getattr(st.settings, "state_op_timeout_s", STATS_SLOT_WAIT_S))
     try:
-        spend = micro_to_usd((await state_call(st, st.state.snapshot))["spend_micro"])
+        spend = micro_to_usd((await slot_call(st.limiters.state, wait_s, st.state.snapshot))["spend_micro"])
     except Exception as e:  # noqa: BLE001
         logger.warning("spend snapshot unavailable (%s)", type(e).__name__)
         return None
@@ -373,7 +386,7 @@ async def _check_workspace_access(st, request: Request, workspace_id: str) -> No
         ok = await state_call(st, _workspace_token_ok, st.state_store_driver, workspace_id, token)
     except Exception as e:  # noqa: BLE001
         logger.warning("workspace token check unavailable (%s): refusing", type(e).__name__)
-        raise HTTPException(status_code=503, detail=MSG_PAUSED) from None
+        raise HTTPException(status_code=503, detail=MSG_STATE_UNAVAILABLE) from None
     if not ok:
         raise HTTPException(status_code=404, detail=MSG_WORKSPACE_NOT_FOUND)
 
@@ -405,7 +418,7 @@ async def _read_cache(st, s, key: str) -> dict | None:
         return await state_call(st, st.state.cache_get, key, s.answer_cache_ttl_hours)
     except Exception as e:  # noqa: BLE001
         logger.warning("answer cache unavailable (%s): refusing", type(e).__name__)
-        raise HTTPException(status_code=503, detail=MSG_PAUSED) from None
+        raise HTTPException(status_code=503, detail=MSG_STATE_UNAVAILABLE) from None
 
 
 async def _log_cached_hit(st, s, iph: str, strategy: str) -> None:
@@ -416,12 +429,12 @@ async def _log_cached_hit(st, s, iph: str, strategy: str) -> None:
                          **guard.ip_hash_version_fields(s))
     except Exception as e:  # noqa: BLE001
         logger.warning("cached-answer row not written (%s): refusing", type(e).__name__)
-        raise HTTPException(status_code=503, detail=MSG_PAUSED) from None
+        raise HTTPException(status_code=503, detail=MSG_STATE_UNAVAILABLE) from None
 
 
 _DENIALS = {Denied.DAILY_COUNT: (429, MSG_BUDGET), Denied.DAILY_SPEND: (429, MSG_BUDGET),
             Denied.IP_DAILY: (429, MSG_IP_BUDGET), Denied.INFLIGHT: (429, MSG_BUSY),
-            Denied.KILL: (503, MSG_PAUSED), Denied.UNAVAILABLE: (503, MSG_PAUSED)}
+            Denied.KILL: (503, MSG_PAUSED), Denied.UNAVAILABLE: (503, MSG_STATE_UNAVAILABLE)}
 
 
 async def _admit(st, iph: str, strategy: str, workspace: bool, estimate_micro: int) -> Lease:
@@ -440,7 +453,7 @@ async def _admit(st, iph: str, strategy: str, workspace: bool, estimate_micro: i
     except StateUnavailable as e:
         drain.DRAIN.leave()
         logger.warning("reserve unavailable (%s): refusing", type(e).__name__)
-        raise HTTPException(status_code=503, detail=MSG_PAUSED) from None
+        raise HTTPException(status_code=503, detail=MSG_STATE_UNAVAILABLE) from None
     except BaseException:
         await _abandon(st, granted)
         drain.DRAIN.leave()
@@ -462,12 +475,14 @@ def _reserve_noting(backend, granted: list[Lease], **kwargs) -> Lease | Denied:
 
 
 async def _abandon(st, granted: list[Lease]) -> None:
-    """Settle a lease that no stream took (shielded; the failure is logged: the sweep charges the estimate then)."""
+    """Settle a lease that no stream took (shielded; the failure is logged: the sweep charges the estimate then). It
+    waits for a state slot as long as it takes: a settle that gave up would leave the lease to the sweep, a minute
+    later."""
     for lease in granted:
         with anyio.CancelScope(shield=True):
             try:
-                await state_call(st, st.state.reconcile, lease.lease_id, outcome="abandoned", usage=None,
-                                 cost_micro=None)
+                await settle_call(st, st.state.reconcile, lease.lease_id, outcome="abandoned", usage=None,
+                                  cost_micro=None)
             except Exception as e:  # noqa: BLE001
                 logger.error("settling an unused lease failed (%s): its estimate stays charged", type(e).__name__)
 
@@ -507,37 +522,70 @@ async def admin_policy(request: Request):
 
 @router.post("/api/admin/policy")
 async def admin_set_policy(body: PolicyRequest, request: Request):
-    """Set the kill level through the backend, so the flip is immediate on this machine: a level that tightens is
-    applied in memory first (it holds even when the database write fails: 200, ``stored`` false, and the maintenance
-    thread retries the write), a level that relaxes is applied only once stored (the database failing is 503: nothing
-    changed).
+    """Set the kill level through the backend, so the flip is immediate on this machine.
+
+    1. A level that can be HELD (``state.hold_kill_level``: not ``off``, and at least as tight as the level the gates
+       apply now; a cache that is stale or was never read applies ``on``) is applied in memory at once, here on the loop,
+       BEFORE the flip waits for the admin limiter, and its database write is queued for the maintenance thread. An
+       emergency kill is therefore never delayed by an earlier admin call stuck on a silent connection (up to ~120 s).
+    2. The flip then runs on the admin limiter (one token, apart from the public state pool) and writes the level. If the
+       token does not free within ``state_op_timeout_s``, or the write fails, a level that was held answers 200 with
+       ``stored`` false (it is in force and will be stored); a level that was not held (a relaxation, or ``off``) answers
+       503 and nothing changed, nothing is queued: it is applied only once stored. A held level is never reported as
+       not applied because the KILL_SWITCH env override makes the gates read ``on``: the answer comes from the backend,
+       not from comparing the effective level with the request.
+
+    ``stored`` false means: in force on this machine now, not yet in the database. Confirm with ``GET /api/admin/policy``
+    (``kill_switch`` is the stored level) once the database is back. A backend that has no ``hold_kill_level`` (a test
+    double) skips step 1 and is judged by the effective level, as before.
 
     A pre-M5 image reads only ``on`` as stopped, so it treats ``retrieval_only`` as ``off``: before rolling back to one,
     set ``on`` or ``off`` (docs/v2/M5A_BUILD_PLAN.md section 1, I4)."""
     _check_admin(request)
     st, level = request.app.state, body.level
+    hold = getattr(st.state, "hold_kill_level", None)
+    held = None if hold is None else bool(hold(level))        # None: the backend cannot say before the write
     stored = True
     try:
-        await state_call(st, st.state.set_kill_level, level)
+        await admin_call(st, st.state.set_kill_level, level)
     except StateUnavailable as e:
         stored = False
-        logger.warning("kill level %s was not stored (%s)", level, type(e).__name__)
-        if await _kill_level(st) != level:
+        logger.warning("kill level %s was not stored (%s, held=%s)", level, type(e).__name__, held)
+        if not await _flip_holds(st, level, held, e):
+            if isinstance(e, NoStateSlot):
+                # the flip never ran: nothing was applied and nothing is queued for a retry
+                raise HTTPException(status_code=503, detail="another admin call is still running: the kill level was "
+                                                            "not changed, try again") from None
             raise HTTPException(status_code=503,
                                 detail="the kill level could not be stored and was not applied") from None
     logger.warning("kill switch set to %s by admin (stored=%s)", level, stored)
     return {"kill_switch": level, "stored": stored}
 
 
+async def _flip_holds(st, level: str, held_before: bool | None, error: StateUnavailable) -> bool:
+    """Whether a flip that could not be stored nonetheless holds on this machine with its write queued. The backend
+    says so: ``hold_kill_level`` before the write, or ``KillNotStored.held`` after a failed one. Only a backend that says
+    neither (a test double) is judged by the effective level, where a held tightening reads as itself."""
+    if held_before:
+        return True
+    reported = getattr(error, "held", None)
+    if reported is not None:
+        return bool(reported)
+    if held_before is None and not isinstance(error, NoStateSlot):
+        return await _kill_level(st) == level
+    return False
+
+
 @router.get("/api/admin/state")
 async def admin_state(request: Request):
     """The backend's snapshot (counters, leases, the kill level and its age) with what is running around it: the named
     thread limiters, the drain and the maintenance thread. Admin only, like the policy: a lease id and the per-address
-    maximum are not for the public ``/api/stats``."""
+    maximum are not for the public ``/api/stats``. The snapshot is taken on the admin limiter, so the report (the
+    limiter counts above all) is there when the public state pool is full, which is when it is needed."""
     _check_admin(request)
     st = request.app.state
     try:
-        snapshot = await state_call(st, st.state.snapshot)
+        snapshot = await admin_call(st, st.state.snapshot)
     except StateUnavailable:
         raise HTTPException(status_code=503, detail="the state store is not reachable") from None
     maintenance = getattr(st, "maintenance", None)
@@ -549,4 +597,4 @@ async def admin_state(request: Request):
 
 def _limiter_counts(limiters) -> dict:
     return {name: {"borrowed": limiter.borrowed_tokens, "total": limiter.total_tokens}
-            for name, limiter in limiters._asdict().items()}
+            for name, limiter in limiters._asdict().items() if limiter is not None}

@@ -30,6 +30,7 @@ import threading
 import time
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -37,6 +38,7 @@ import uvicorn
 from serve_drain_app import MSG_DRAINING, Journal, create_app, journal_events
 from sse_starlette.sse import AppStatus
 
+from semigraph.config import DRAIN_TIMEOUT_CEILING_S, Settings
 from semigraph.serve import drain as drain_module
 from semigraph.serve.drain import (
     DEFAULT_DRAIN_TIMEOUT_S,
@@ -44,12 +46,12 @@ from semigraph.serve.drain import (
     FORCED_SHUTDOWN_S,
     KILL_TIMEOUT_S,
     LIFESPAN_IDLE_WAIT_S,
+    LIFESPAN_SHUTDOWN_BUDGET_S,
     MIN_SHUTDOWN_S,
     SHUTDOWN_MARGIN_S,
     Drain,
     DrainingServer,
     build_config,
-    drain_timeout_from_env,
     graceful_timeout_s,
     post_drain_window_s,
 )
@@ -330,13 +332,14 @@ def test_the_drain_ends_when_the_timeout_runs_out_with_a_stream_still_active():
     assert len(h.ended) == 1                                # the streams that cannot finish are cut now
 
 
-def test_the_shutdown_window_after_a_timeout_leaves_the_margin_before_the_kill_timeout():
+def test_the_shutdown_window_after_a_timeout_leaves_the_margin_and_the_lifespan_before_the_kill_timeout():
     h = Harness(drain_timeout_s=240.0)
     h.drain.enter()
     h.signal()
     h.tick(240.0)
 
-    assert h.server.config.timeout_graceful_shutdown == KILL_TIMEOUT_S - SHUTDOWN_MARGIN_S - 240.0 == 50.0
+    assert (h.server.config.timeout_graceful_shutdown
+            == KILL_TIMEOUT_S - SHUTDOWN_MARGIN_S - LIFESPAN_SHUTDOWN_BUDGET_S - 240.0 == 15.0)
 
 
 def test_an_early_idle_end_keeps_uvicorns_full_graceful_timeout():
@@ -373,9 +376,10 @@ def test_a_signal_after_a_clean_drain_does_not_turn_it_into_a_failure():
 
 @pytest.mark.parametrize(("elapsed", "graceful", "expected"), [
     (0.0, 250.0, 250.0),            # an idle end at once: uvicorn's whole graceful timeout
-    (40.0, 250.0, 250.0),           # 300 - 10 - 40 = 250 is still the whole of it
-    (41.0, 250.0, 249.0),
-    (240.0, 250.0, 50.0),           # the timeout path: what is left of the kill timeout minus the margin
+    (5.0, 250.0, 250.0),            # 300 - 10 - 35 - 5 = 250 is still the whole of it
+    (6.0, 250.0, 249.0),
+    (240.0, 250.0, 15.0),           # the timeout path: what is left of the kill timeout after the margin and the lifespan
+    (254.0, 264.0, MIN_SHUTDOWN_S),                # the ceiling of DRAIN_TIMEOUT_S: only the floor is left
     (289.5, 250.0, MIN_SHUTDOWN_S),                # nothing left: the floor
     (1000.0, 250.0, MIN_SHUTDOWN_S),
 ])
@@ -383,20 +387,94 @@ def test_post_drain_window_never_runs_past_the_kill_timeout(elapsed, graceful, e
     assert post_drain_window_s(elapsed, graceful) == pytest.approx(expected)
 
 
+# ---- the shutdown budget: drain + the window of uvicorn's wait + the lifespan shutdown + the margin <= kill_timeout
+
+def lifespan_worst_case_s() -> float:
+    """``main.lifespan`` after ``yield`` with every step at its bound, read from the code that sets each bound, so a
+    bump anywhere fails the sum test below. uvicorn runs this AFTER ``timeout_graceful_shutdown`` (``Server.shutdown``:
+    the wait for connections and tasks, then ``lifespan.shutdown``), so it is not inside that window. Steps, in order:
+    the wait for stragglers on the drain, the maintenance thread join, its settle flush plus the one state operation that
+    can overrun it (the server-side timeout and a connection attempt), the monitor stop, the sweeper stop, the tracer."""
+    from semigraph.serve import main, monitor
+    from semigraph.serve.state import maintenance
+    from semigraph.uploads import jobs
+
+    state = Settings(_env_file=None)
+    one_operation = state.state_op_timeout_s + state.state_connection_acquisition_s
+    monitor_stop = inspect.signature(monitor.FreshnessMonitor.stop).parameters["timeout"].default
+    return (LIFESPAN_IDLE_WAIT_S + maintenance.STOP_TIMEOUT_S + maintenance.FLUSH_BUDGET_S + one_operation
+            + monitor_stop + jobs.SWEEP_STOP_TIMEOUT_S + main.TRACER_SHUTDOWN_TIMEOUT_S)
+
+
+def test_the_lifespan_shutdown_budget_covers_every_step_of_the_lifespan():
+    assert 30.0 < lifespan_worst_case_s() <= LIFESPAN_SHUTDOWN_BUDGET_S        # 32.5 s today, 35 s budgeted: the closes
+
+
+@pytest.mark.parametrize("drain_timeout_s", [1.0, 60.0, DEFAULT_DRAIN_TIMEOUT_S, float(DRAIN_TIMEOUT_CEILING_S)])
+@pytest.mark.parametrize("ends_after_s", ["at once", "halfway", "at the timeout"])
+def test_drain_plus_window_plus_lifespan_plus_margin_fit_in_the_kill_timeout(drain_timeout_s, ends_after_s):
+    """The overrun the panel found: 240 + 50 + 32 = 322 s against a kill_timeout of 300 s, so SIGKILL landed in the settle
+    flush or the driver close. Summed here over the drain's whole range, from fly.toml's own kill_timeout."""
+    fly = tomllib.loads((REPO / "fly.toml").read_text(encoding="utf-8"))
+    elapsed = {"at once": 0.0, "halfway": drain_timeout_s / 2, "at the timeout": drain_timeout_s}[ends_after_s]
+
+    window = post_drain_window_s(elapsed, graceful_timeout_s(drain_timeout_s))
+
+    assert elapsed + window + lifespan_worst_case_s() + SHUTDOWN_MARGIN_S <= fly["kill_timeout"]
+
+
+def test_the_ceiling_of_the_drain_timeout_setting_is_what_the_budget_leaves():
+    assert DRAIN_TIMEOUT_CEILING_S == KILL_TIMEOUT_S - SHUTDOWN_MARGIN_S - LIFESPAN_SHUTDOWN_BUDGET_S - MIN_SHUTDOWN_S == 254
+
+
 # ---- the configuration around it
 
-def test_drain_timeout_defaults_and_reads_the_environment():
-    assert drain_timeout_from_env({}) == DEFAULT_DRAIN_TIMEOUT_S == 240.0
-    assert drain_timeout_from_env({"DRAIN_TIMEOUT_S": ""}) == DEFAULT_DRAIN_TIMEOUT_S
-    assert drain_timeout_from_env({"DRAIN_TIMEOUT_S": "3"}) == 3.0
-    assert drain_timeout_from_env({"DRAIN_TIMEOUT_S": " 12.5 "}) == 12.5
-    assert drain_timeout_from_env({"DRAIN_TIMEOUT_S": "289"}) == 289.0
+@pytest.fixture
+def no_drain_timeout_variable(monkeypatch):
+    monkeypatch.delenv("DRAIN_TIMEOUT_S", raising=False)
 
 
-@pytest.mark.parametrize("raw", ["0", "-5", "abc", "nan", "inf", "290", "1000"])
-def test_drain_timeout_refuses_values_that_cannot_work(raw):
-    with pytest.raises(ValueError, match="DRAIN_TIMEOUT_S"):
-        drain_timeout_from_env({"DRAIN_TIMEOUT_S": raw})
+def test_drain_timeout_defaults_and_reads_the_environment(monkeypatch, no_drain_timeout_variable):
+    assert Settings(_env_file=None).drain_timeout_s == DEFAULT_DRAIN_TIMEOUT_S == 240.0
+    for raw, expected in (("3", 3.0), ("12.5", 12.5), ("254", 254.0)):
+        monkeypatch.setenv("DRAIN_TIMEOUT_S", raw)
+        assert Settings(_env_file=None).drain_timeout_s == expected
+
+
+@pytest.mark.parametrize("raw", ["0", "0.5", "-5", "abc", "nan", "inf", "-inf", "255", "289", "1000"])
+def test_drain_timeout_refuses_values_that_cannot_work(monkeypatch, no_drain_timeout_variable, raw):
+    monkeypatch.setenv("DRAIN_TIMEOUT_S", raw)
+    with pytest.raises(ValueError, match="drain_timeout_s"):                   # a ValidationError is a ValueError
+        Settings(_env_file=None)
+
+
+def test_main_takes_the_drain_timeout_from_the_validated_setting_and_from_nowhere_else(monkeypatch):
+    """One source of truth (the dead-setting finding): ``Settings.drain_timeout_s`` is what ``main`` hands to both uvicorn's
+    configuration and the server; the module no longer reads ``DRAIN_TIMEOUT_S`` itself."""
+    seen: dict = {}
+
+    class FakeConfig:
+        def load_app(self) -> None:
+            seen["loaded"] = True
+
+    class FakeServer:
+        started, exit_code = True, 0
+
+        def __init__(self, config, *, drain_timeout_s):
+            seen["server"] = drain_timeout_s
+
+        def run(self) -> None:
+            seen["ran"] = True
+
+    monkeypatch.setenv("DRAIN_TIMEOUT_S", "999")                                    # must be ignored: not read here
+    monkeypatch.setattr(drain_module, "get_settings", lambda: SimpleNamespace(drain_timeout_s=77.0))
+    monkeypatch.setattr(drain_module, "build_config",
+                        lambda app, host, port, timeout, loop="auto": seen.update(config=timeout) or FakeConfig())
+    monkeypatch.setattr(drain_module, "DrainingServer", FakeServer)
+
+    assert drain_module.main(["--port", "1"]) == 0
+    assert seen == {"config": 77.0, "server": 77.0, "loaded": True, "ran": True}
+    assert not hasattr(drain_module, "drain_timeout_from_env") and not hasattr(drain_module, "DRAIN_TIMEOUT_ENV")
 
 
 def test_the_timeouts_nest_drain_then_uvicorns_graceful_then_the_kill_timeout():

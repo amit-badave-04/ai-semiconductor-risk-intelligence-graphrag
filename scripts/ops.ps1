@@ -4,7 +4,7 @@
 
 .USAGE
   .\scripts\ops.ps1 start    # DB machine up -> deploy API -> kill switch off -> URL
-  .\scripts\ops.ps1 stop     # kill switch on -> API scaled to 0 -> DB machine stopped
+  .\scripts\ops.ps1 stop     # kill switch on -> API scaled to 0 -> wait until it is gone -> DB machine stopped
   .\scripts\ops.ps1 status   # both apps, health, kill switch, spend ledger
 
   Order matters: START brings the database up before the API (the API connects on
@@ -21,9 +21,28 @@ Set-Location $Root
 $Py = Join-Path $Root ".venv\Scripts\python.exe"
 $ApiApp = "semigraph"
 $DbApp = "semigraph-neo4j"
+$DrainWaitSeconds = 330   # fly.toml kill_timeout (300 s) + 30 s
 
 function Get-DbMachineIds {
   (flyctl machines list -a $DbApp --json | ConvertFrom-Json) | ForEach-Object { $_.id }
+}
+
+# Machines of an app that are not gone yet (-1: the listing failed, so nobody knows). A machine that is draining stays
+# listed until the process has exited, so an empty list means the drain is over.
+function Get-LiveMachineCount($app) {
+  try {
+    $machines = flyctl machines list -a $app --json | ConvertFrom-Json
+    return @($machines | Where-Object { $_.id -and $_.state -ne "destroyed" }).Count
+  } catch { return -1 }
+}
+
+function Wait-MachinesGone($app, $seconds) {
+  $deadline = (Get-Date).AddSeconds($seconds)
+  while ((Get-Date) -lt $deadline) {
+    if ((Get-LiveMachineCount $app) -eq 0) { return $true }
+    Start-Sleep -Seconds 5
+  }
+  return $false
 }
 
 function Wait-Health($url, $seconds) {
@@ -53,8 +72,13 @@ switch ($Action) {
   "stop" {
     Write-Host "1/3 kill switch on (live questions decline; cached answers keep working)..."
     try { & $Py -m scripts.kill_switch on } catch { Write-Warning "kill switch call failed (API already down?) - continuing" }
-    Write-Host "2/3 removing the API machine ($ApiApp)..."
+    Write-Host "2/3 removing the API machine ($ApiApp); it drains running streams first (up to 240 s)..."
     flyctl scale count 0 -a $ApiApp --yes
+    # The API still writes its ledger rows to the database while it drains: stop the database only once the machine is gone.
+    # Fly kills a stopping machine at kill_timeout (300 s, fly.toml), so after $DrainWaitSeconds nothing of it is left running.
+    if (-not (Wait-MachinesGone $ApiApp $DrainWaitSeconds)) {
+      Write-Warning "the API machine is still listed after $DrainWaitSeconds s (Fly has killed it by 300 s) - stopping the database anyway"
+    }
     Write-Host "3/3 stopping the Neo4j machine ($DbApp) - volume + data persist..."
     foreach ($id in Get-DbMachineIds) { flyctl machine stop $id -a $DbApp }
     Write-Host "OFFLINE. Remaining cost: rootfs + 3 GB volume (about 0.75 USD/month)."

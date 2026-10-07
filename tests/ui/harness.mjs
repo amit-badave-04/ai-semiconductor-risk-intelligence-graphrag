@@ -23,6 +23,8 @@ const EXPORTS = [
   "dropDocEvidence",
   // Round-7 verification: a benchmark example click forces hybrid and must re-sync the agent hint at once.
   "askExample",
+  // M5a closing review (V3): the answer stream's read loop, driven with a fake `fetch` (tests/ui/stream_cut.test.mjs).
+  "ask",
 ];
 
 function stubElement() {

@@ -273,3 +273,161 @@ skips were not itemised); the serve-shipped selection of the CI job (with
 - I1 (the embedder fix) is still held (owner decision 14). I5 (S7, S2, the fresh-machine probe) and I6 are not started.
 - The CI `neo4j-state` job could not be run locally; the first run on GitHub will show whether the service container, its
   health check and the 100 ms setting behave as written.
+
+## 2026-10-08 - The panel's fixes, the verifier's conditions, and what stays open
+
+**Where things stand.** Still an uncommitted working tree on `v2` (HEAD bfd7b71), now with the fixes for the three-reviewer
+panel on the 2026-10-06 wiring (W1 the state, W2 the config, drain and ops, W3 the page, the regex test and the merge cap),
+the Opus verifier's report on them (PASS WITH CONDITIONS), and the fixes for its conditions (W1b, this entry). Nothing is
+deployed, nothing was committed, and no call to Fly or to a model provider was made. W1 started a throwaway local Neo4j on
+port 7898 for its contract run and stopped it (the verifier confirmed ports 7898, 7698, 7474 and 7687 closed); W1b started
+none. M5a spend is still < $0.01.
+
+**Panel findings fixed**
+- **H1, a kill set during an outage was lost.** `set_kill_level` ranked the new level against the effective level, which
+  reads `on` for a stale or unread cache, so a set of `on` looked like "already on", nothing was queued, and the refresh after
+  the recovery read the stored `off` back and reopened paid asks. It now ranks against the cached level as last read or set
+  (see W1b item 2 for where that stops being enough).
+- **The wait for a state slot was unbounded.** `stream_runtime.slot_call` takes the limiter token itself under a deadline of
+  `state_op_timeout_s` and runs the work on a private one-token limiter, so only the WAIT is bounded (a granted call is never
+  abandoned); a timeout is `NoStateSlot` (a `StateUnavailable`) and the call never ran. The settle has no bound by design (a
+  reconcile that gave up would leave its lease registered and renewed for ever). `kill_level` and `mark_started` are called
+  directly, memory only. The admin routes got a limiter of their own (one token).
+- **A slow stream was reclaimed by the sweep.** `PaidStream.events()` now calls `mark_started` at its top, not at the first
+  event, so a lease whose twin is slow to its first event is renewed, keeps its in-flight slot and settles `done` once.
+- **The production validators** (`config.py`, `guard.py`): `ENVIRONMENT` and `CLIENT_IP_HEADER` are stripped and lower-cased
+  once; `FLY_APP_NAME` is tied to the environment (an unknown app name refuses to boot, not only a mismatch); zero and raised
+  values are refused for the three rate limits; `CACHE_READ_BUDGET_PER_S` is capped at 10 and `KILL_SWITCH_STALE_S` at 30;
+  `WORKSPACE_CREATE_PER_DAY`, `UPLOADS_PER_HOUR` and `RATE_LIMIT_WINDOW_SECONDS` are pinned; a set admin token must be 32+
+  characters; refusals name settings only. `scripts/check_env_fly.py` exists now (below).
+- **An upload could start during the drain** (`DrainCountedSlot.acquire` now uses `try_enter` and answers 503).
+- **The shutdown budget overran Fly's `kill_timeout`.** 240 (drain) + 15 (post-timeout window) + 35 (lifespan shutdown) + 10
+  = 300 s; a test derives the lifespan worst case from the code's own constants. `DRAIN_TIMEOUT_CEILING_S` is 254.
+- **LOWs:** logs carry the class and the server code, never a message; a failed boot unwinds (`abort_boot`); the page no
+  longer sticks on "generating…" after a cut stream; `MSG_STATE_UNAVAILABLE` is the text for an unreachable store (five
+  paths) and `MSG_PAUSED` is the kill switch's alone; the RUNBOOK `-C` commands, `ops.ps1 stop` (waits for the machines to
+  be gone), the second-signal text, `TURNSTILE_REQUIRED` in `fly.toml [env]`, the dead `drain_timeout_s`, the CI skip guard;
+  the agent merge holds at most 5 temporal pairs per company, which makes that part of the estimate a bound the code enforces.
+- **The red CI regex test, honestly.** `test_a_nest_deeper_than_the_cap_before_a_flood_costs_under_the_budget` measured a
+  20.0 ms wall-clock budget and failed on GitHub at 20.7 to 23 ms; it ran at 11 to 12 ms p95 on the dev desktop and could not
+  be reproduced locally. The budget is now `loop_lag_warn_ms / 2` = 50 ms: the budget protects the event loop, the answer cap
+  gives a 20k-character input 2x headroom, 50 ms is 2x the slowest CI p95 seen, and the old quadratic implementation took 886
+  ms on that input. A new test runs the old implementation verbatim and asserts it is still over the budget. **This loosened
+  a wall-clock threshold; it did not change the code, and the protection is the scaling tests and the legacy test.** Whether
+  CI is green is not confirmed: nothing has been pushed.
+
+**The verifier's evidence** (before W1b's edits): each of 17 fixes was reverted on its own in a scratch copy and its tests
+were run; all 17 reverts were caught. Dev suite `uv run pytest -q -p no:cacheprovider`: 7,782 passed, 312 skipped, 2 xfailed,
+0 failed (446 s). Shipped-dependency venv (`C:\temp\sg_sv`, the CI serve-shipped list): 5,142 passed, 106 skipped, 0 failed
+(335 s). UI (`node --test tests/ui/*.test.mjs`): 188 passed. `scripts/check_env_fly.py` against the real `.env.fly` and
+`fly.toml`: 22 PASS, 1 FAIL (the pepper). **These counts predate W1b's edits and the full suites were not re-run after them**:
+W1b ran the targeted files below.
+
+**W1b, the verifier's conditions.**
+1. **An emergency kill behind a stuck admin call (a regression against bfd7b71).** The admin limiter has one token, and an
+   admin call stuck on a half-open connection holds it for up to ~120 s, during which a kill `on` was refused with 503 and not
+   applied. The route now calls `state.hold_kill_level(level)` first, on the loop: memory only, it takes the memory lock and
+   never the lock that serialises the database writes. A level that holds is in force at once and its write is queued for the
+   maintenance thread; only the write (and a relaxation) waits for the admin token. If the token does not free in
+   `state_op_timeout_s`, or the write fails, a held level answers 200 `stored: false` and a level that is not held answers
+   503 with nothing changed. A relaxation still needs a successful write. The failed write raises `KillNotStored` (a
+   `StateUnavailable`) whose `held` attribute is the backend's own answer, so the route no longer infers it from the
+   effective level. Tests: `tests/test_serve_state_wiring.py::test_a_kill_behind_a_stuck_admin_call_is_in_force_at_once_and_is_stored_when_the_token_frees`
+   (the POST runs on a thread while the test sees the level go `on` inside the wait, a direct `reserve` is `KILL`, and the
+   next refresh stores it) and `::test_a_relaxation_behind_a_stuck_admin_call_is_503_and_changes_and_queues_nothing`.
+2. **Kill-level corners.** The rule is now one predicate (`StateCore._holds_locked`): a level holds when it is not `off` and
+   at least as tight as the level the gates apply now (the cached level, or `on` when stale or unread; the `KILL_SWITCH` env
+   override is a separate layer). (a) A set EQUAL to the cached level now queues its write when the database write fails (it
+   returned 200 `stored: false` with nothing queued, so the promised retry did not exist); the contract test makes the
+   database differ during the outage, because otherwise the refresh reads the same level back and the test passes without the
+   fix. (b) With `KILL_SWITCH` on, a tightening that was applied and queued was reported as 503 "not applied" because the
+   effective level reads `on`; the answer now comes from the backend. (c) `retrieval_only` set on a cache that reads `on` only
+   by age, or was never read, used to become the cache, lowering the level the gates apply from `on` and queuing
+   `retrieval_only` over a stored `on`; it is now a relaxation (503 during an outage, nothing queued). `off` is never held or
+   queued, not even equal to a cache that reads `off`: a queued `off` would be written over a level another machine stored,
+   with nobody having confirmed it. For the same reason an EQUAL `retrieval_only` on a cache that is stale is not queued
+   either (the gates apply `on`, so it relaxes): 503. Both go beyond the literal "equal included" wording on purpose. A property
+   test covers cache {fresh, stale, unread} x cached level x requested level. **Behaviour change to know about:** the earlier
+   H1 tests expected `retrieval_only` to hold on a stale or unread cache; they now expect it not to.
+3. **A regression in the slot wait would have hung CI** (a reverted run sat for 240 s). The slot-wait tests of
+   `test_serve_stream_runtime.py` run under a 5 s deadline of their own (`run_bounded`); the HTTP-level ones run the request
+   on a thread with a deadline (`bounded`: `anyio.fail_after` cannot wrap a synchronous `TestClient`) and give the held slots
+   back before they fail; the `_admit` test has `anyio.fail_after(5)`. Red check in a scratch copy with the wait made
+   unbounded: both groups fail in seconds instead of hanging.
+4. **The page (`index.html`).** An exception inside `handle()` re-enabled Ask but left the status on "generating…"; so did a
+   response with no body, and a throw in `finish()` left "done" over an answer whose checks were never shown. Every exit of
+   `ask()` now leaves a true status: a page failure says "the page could not show this answer completely…", the original
+   error still surfaces, a `done` or `error` the server sent and the page showed is never replaced. The page does NOT close
+   the connection on such a failure (a first draft did, and it was taken out: a disconnect settles the ask as `abandoned` at
+   its whole estimate, $0.58 to $0.83 against the daily cap, where an answer that is let finish settles `done` at its cost;
+   that is the owner's trade-off, not a side effect of a status fix). Six node tests (`tests/ui/stream_cut.test.mjs`); four
+   fail on the previous page (measured in a scratch copy), the other two are controls that already passed (the error still
+   surfaces; a server error is not replaced). Node suite: 194 passed.
+5. **Stale text fixed:** RUNBOOK (the refusal table, "Failing closed", the troubleshooting entries, the kill-level section,
+   the BOM lines) and the `serve/state/__init__.py` docstring. The corrections below cover this log.
+6. **`push_fly_secrets.parse_env` reads `utf-8-sig`:** a file that starts with a BOM no longer loses its first key to a name
+   that begins with `\ufeff` (it was reported absent and never pushed). `tests/test_push_fly_secrets.py`: three of five fail
+   on the old code. Its first fixture put a comment on line 1 and so proved nothing; the key is on line 1 now.
+
+**W1b evidence.** Red-then-green where a test could be written first (items 3, 4 and 6); items 1 and 2 were written against
+the new design and then checked by mutation in a scratch copy: eight mutants (no hold before the token, effective-level
+inference only, `KillNotStored.held` ignored, `off` may be held, ranking against the raw cached level, equal not queued, the
+hold waits for the writer lock, a refused hold bumps the generation) were all caught. Targeted runs on the final tree
+(`uv run pytest -q -p no:cacheprovider`): the files W1b owns plus `test_serve_api`, `test_serve_drain` and
+`test_state_inprocess` 587 passed, 143 skipped (the skips are the opt-in Neo4j kinds); `tests/test_serve_*.py`,
+`tests/test_state_*.py`, `test_check_env_fly.py` and `test_push_fly_secrets.py` 1,957 passed, 148 skipped, 0 failed (188 s);
+`node --test tests/ui/*.test.mjs` 194 passed; `tests/test_static_ui.py` and `tests/test_serve_agent_ui.py` 40 passed.
+
+**What W1b did NOT do, and the limits.**
+- The Neo4j kinds (`inprocess-db`, `neo4j`) of the new and changed contract tests never ran: no throwaway server was allowed,
+  so those parameters skip. Only the in-memory kind ran. W1's earlier run against a throwaway Neo4j (165 passed, 0 skipped)
+  predates these tests.
+- `FakeStateBackend` has no `hold_kill_level`; the route falls back to judging a double by its effective level, and the
+  route's real-backend tests use `make_backend`. `scripts/kill_switch.py` prints the same banner for `stored: false` as for a
+  stored flip; the operator confirms with `kill_switch get` (the RUNBOOK says so).
+- A queued tightening is an unconditional write. If this machine holds `retrieval_only` against a cache that read `off` while
+  another machine stored `on`, the flush overwrites that `on` with `retrieval_only` when the database returns. Both refuse paid
+  asks, so it costs nothing today; it would need a conditional write (read first, write only if tighter).
+- The admin limiter has one token for the flip and for `GET /api/admin/state`; a held tightening no longer waits for it, a
+  relaxation and the report still do (503 after `state_op_timeout_s`).
+- **A residual the hold introduces.** `hold_kill_level` runs outside the admin token and bumps the generation, so a held
+  tightening can supersede a set that holds the token and is waiting on the writer lock (for example behind a maintenance
+  flush stuck on a silent connection). That set then skips its write and returns, and its route answers 200 `stored: true`
+  for a level it never wrote. The error is on the safe side (the machine is tighter than reported, and the superseding
+  level is queued), but the `stored` flag can be wrong in that window. Before this wave the case could not arise from the
+  route: the single token serialised every set. Not fixed.
+- Full suites were not re-run (see above).
+
+**Still OPEN (these gate live traffic or a rollback)**
+- **H2 and the cost accounting.** One address can still pause the day (the verifier's H2/M3 policy), a paid ask's cost is not
+  accounted across its retry attempts (V2 M1), and the strong stream still runs with `num_retries=2` (so the estimate is not a
+  strict bound; `CHARS_PER_TOKEN = 2.5` is an assumption, not a bound). These go to the next wave, per council 4
+  (`docs/v2/research/m5-councils/council4/`).
+- **The `neo4j-state` CI job has never run green on GitHub** with the new rule that any `SKIPPED` line fails it. Against a
+  database that was already used locally it fails on 6 skips (311 leftover legacy ledger rows make the legacy-row tests skip);
+  a fresh service container has none, which is a reading, not a measurement. Until it is green once, a rollback to
+  `STATE_BACKEND=neo4j` rests on W1's local run.
+- **The pepper is not in `.env.fly`** (`IP_HASH_PEPPER` and `IP_HASH_VERSION` are absent), so the next deploy refuses to boot
+  unless Fly already holds one; `check_env_fly` cannot see Fly's own secrets. Generate 32+ bytes, put both in `.env.fly`, push
+  them together, re-run the check.
+- **`ESCALATION_MODEL` is set both in `.env.fly` and in `fly.toml [env]`.** Which one a Fly machine reads is not confirmed;
+  the owner decides which value is live.
+- Smaller: the agent planner is shown pre-merge pair counts (`agent/tools.py`, `_risk_changes`), the writer sees the cap note;
+  an unknown `FLY_APP_NAME` refuses to boot, so I5 must register any helper app that builds `Settings` (mockllm); an empty
+  `ADMIN_TOKEN` is allowed in production (the owner's call); shutdown leaves the two driver closes and the monitor's lease
+  release unbounded (about 2.5 s of slack).
+
+**Corrections to the entries above (this log is append-only; the text above stays as written).**
+- 2026-10-06 "The wiring (I4)": the 503 `MSG_PAUSED` line also listed "kill level or cache unreadable; reserve unavailable".
+  Only part of that moved. An unreadable, unread or stale KILL LEVEL is still `MSG_PAUSED` (`_kill_level` answers `on` on any
+  failure). The cache read, the workspace token, the cached row and the reserve being unavailable are now
+  `MSG_STATE_UNAVAILABLE` ("Live questions are temporarily unavailable — please try again in a few minutes."), which promises
+  no examples. Because the cache read comes before the kill gate, a visitor sees "unavailable", not "paused", while Neo4j is down.
+- 2026-10-06 "The anchor cap": the agent estimate of about $1.57 and the "not capped" bullet are stale. The agent's companies
+  are capped at the anchor cap and its temporal pairs at 5 per company; the estimate is about $0.83 (827,661 micro-dollars),
+  with break-evens of 6.32 and 6.16 cents (`tests/test_serve_estimate.py`).
+- 2026-10-06 "The drain": "after a 240 s drain 50 s remain" is stale. The post-timeout window is 15 s (240 + 15 + 35 for
+  the lifespan shutdown + 10 = 300); `DRAIN_TIMEOUT_CEILING_S` is 254, not 289. "`scripts/ops.ps1` was not changed" is stale: `stop` waits for
+  the machines to be gone.
+- 2026-10-06 "Known gaps": `TURNSTILE_REQUIRED` is now in `fly.toml [env]`, and `scripts/check_env_fly.py` was written (22
+  PASS, 1 FAIL on the real files today).

@@ -36,14 +36,16 @@ CHARS_PER_TOKEN``; the context ceiling is :func:`context_chars`).
   companies as a plain one and :func:`agent_company_blocks` reads that same cap. What its tools add per company is
   larger (every annual metric row, and filing pairs), priced at AGENT_GRAPH_CHARS_PER_COMPANY. Without the cap the
   estimate had to price all 13 SEC filers: $1.57 and a prompt past the 200,000-token tier; with it, $0.83 and under it.
+- CAPPED IN THE CODE, THE AGENT'S FILING PAIRS: those of one company. Each ``risk_changes`` call adds up to 2 pairs per
+  company, so 4 calls could give one company 8 (66,410 characters, an agent prompt of 518,870 characters: about $0.91
+  and past the long-context tier) if the graph held 9 annual filings of it. ``agent.merge.merge_temporal`` now holds a
+  company to MAX_PAIRS_HELD_PER_COMPANY (5) pairs in all, whatever the calls return and whatever the graph holds (today
+  at most 5 annual filings of a company, AMD: four 10-Ks and a 10-K/A, so at most 4 consecutive comparisons), and
+  AGENT_GRAPH_CHARS_PER_COMPANY covers exactly 5 (tests/test_serve_estimate.py offers 10 pairs of every company, the
+  prefetch's 2 and four calls of 2, to the real merge and renders what it holds through the real layout).
 - ALLOWANCES, NOT CAPS (measured, rounded up): the RELATIONSHIPS block (EDGE_LINES_ALLOWED lines: the code has no cap,
   the graph has 73 company relations), the earlier wording of a reworded item (542 characters at most in the corpus; the
   layout does not cut it), a rule title (234) and the note that names the companies a question named beyond the cap.
-- ALLOWANCE BOUNDED BY THE GRAPH, NOT THE CODE: the filing pairs one agent company can collect. Each ``risk_changes``
-  call adds up to 2 pairs per company, so 4 calls could give one company 8 (66,410 characters, an agent prompt of
-  518,870 characters: about $0.91 and past the long-context tier). The graph holds at most 5 annual filings of a company
-  (AMD: four 10-Ks and a 10-K/A), so at most 4 consecutive comparisons, and AGENT_GRAPH_CHARS_PER_COMPANY covers up to
-  5. A pair cap per company in the agent's merge would make that a cap in the code.
 - ASSUMPTIONS: CHARS_PER_TOKEN (below).
 
 Other things the estimate does not count: provider-level retries after an error (LiteLLM ``num_retries``; that a
@@ -100,11 +102,12 @@ EDGE_LINES_ALLOWED = 150
 # The note that names the companies a question named beyond the anchor cap: at most 22 names (26 detectable, 4 kept).
 ANCHOR_NOTE_CHARS = 300
 # What the agent's tools add per company: every annual metric row (up to 19 per series, all shown) and temporal pairs
-# (up to MAX_PAIRS_PER_COMPANY per call, so one company can collect several over the tool calls). The company COUNT is
-# capped (agent_company_blocks); the pairs per company are bounded by the graph, which holds at most 4 consecutive
-# comparisons of any company. Measured through the real renderer: 46,490 characters per company at 2 pairs and 48,650
-# at 5 (42,177 at 3: the pairs share one line budget), allowed at 50,000. At 6 pairs a company is 54,570 and at 8 (what
-# 4 calls could add, if the graph held 9 annual filings) 66,410.
+# (up to MAX_PAIRS_PER_COMPANY per call, so one company can collect several over the tool calls). Both the company COUNT
+# (agent_company_blocks) and the pairs per company are capped in the code: agent/merge.py holds a company to
+# MAX_PAIRS_HELD_PER_COMPANY = 5 pairs in all, however many the calls return. Measured through the real renderer: 46,490
+# characters per company at 2 pairs and 48,650 at 5 (42,177 at 3: the pairs share one line budget), allowed at 50,000.
+# At 6 pairs a company is 54,570 and at 8 (what 4 calls could add without the cap) 66,410: the cap is what keeps those
+# out, so a change to it must come with a new measurement here (a test pins the cap to 5 and renders the result).
 AGENT_GRAPH_CHARS_PER_COMPANY = 50_000
 # Uploaded-document excerpts (the workspace ask): DEFAULT_K_DOC_CHUNKS of at most uploads.units.DEFAULT_MAX_CHARS
 # characters.

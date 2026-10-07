@@ -353,6 +353,53 @@ def test_a_busy_slot_answers_429_busy_without_starting_a_job(client, fake_jobs):
     assert fake_jobs == []
 
 
+def _plain_slot_is_free(slot) -> bool:
+    """The semaphore underneath a ``DrainCountedSlot``, taken and given back WITHOUT the drain count."""
+    got = threading.BoundedSemaphore.acquire(slot, blocking=False)
+    if got:
+        threading.BoundedSemaphore.release(slot)
+    return got
+
+
+def test_an_upload_whose_drain_began_during_the_body_read_is_503_and_starts_nothing(client, fake_jobs, fake_store,
+                                                                                 fresh_drain, monkeypatch):
+    """Panel findings V2 M3 / V3 M3: the draining check ran at entry only, then came the Turnstile call and a client-paced
+    body read, and ``DrainCountedSlot.acquire`` counted the upload with ``enter()`` whatever had happened since: the job
+    started, the visitor got 202, and the lifespan then closed the database under it. Now the count is ``try_enter()``."""
+    client.app.state.upload_slots = wr.DrainCountedSlot(1)
+    read = wr._read_multipart
+
+    async def read_then_the_signal_arrives(request, max_bytes):
+        result = await read(request, max_bytes)
+        fresh_drain.begin()
+        return result
+
+    monkeypatch.setattr(wr, "_read_multipart", read_then_the_signal_arrives)
+
+    r = _upload(client)
+
+    assert r.status_code == 503 and r.json()["detail"] == routes.MSG_DRAINING
+    assert r.headers["retry-after"] == routes.DRAINING_HEADERS["Retry-After"] and r.headers["cache-control"] == "no-store"
+    assert fake_jobs == [] and fake_store["reserve_calls"] == 0          # no job, no daily upload spent
+    assert fresh_drain.active == 0 and _plain_slot_is_free(client.app.state.upload_slots)
+
+
+def test_the_upload_slot_refuses_a_count_once_the_drain_has_begun_and_restores_the_semaphore(fresh_drain):
+    slot = wr.DrainCountedSlot(1)
+    fresh_drain.begin()
+    with pytest.raises(wr.DrainBegan):
+        slot.acquire(blocking=False)
+    assert fresh_drain.active == 0 and _plain_slot_is_free(slot)         # nothing was counted, nothing was left taken
+
+
+def test_the_upload_slot_still_counts_an_upload_that_started_before_the_drain(fresh_drain):
+    slot = wr.DrainCountedSlot(1)
+    assert slot.acquire(blocking=False) and fresh_drain.active == 1
+    fresh_drain.begin()                                               # the running upload is waited for, not refused
+    slot.release()
+    assert fresh_drain.active == 0
+
+
 def test_the_daily_upload_limit_releases_the_slot_it_acquired(client, fake_store, fake_jobs):
     fake_store["reserved"] = False
     r = _upload(client)

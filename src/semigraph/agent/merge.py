@@ -5,11 +5,12 @@ tool calls: that is what makes "the agent degrades to today's behaviour" true (a
 what lets the tests compare a snapshot of the prefetch before and after a tool-heavy run.
 
 Caps (each is a context-size guard): chunks 16 in total, edges 40 ADDED PER RUN (never per call), risks 12 in total, computed
-lines 4. None of them ever drops a chunk, edge, risk or computed line the prefetch already had. The temporal layer's PAIRS and
-NOTICES are the same: a pair or notice the prefetch already holds is never dropped, only added to (see :func:`merge_temporal`).
-Its per-pair ITEM and PASSAGE lines are the one exception: when a company gains a second pair, the two pairs share the same
-total line budget one pair always had (:func:`~semigraph.retrieval.retriever.select_temporal`'s own per-pair caps), so an
-existing pair's shown lines CAN shrink even though its pair, and its true (uncapped) totals, never do.
+lines 4, filing pairs 5 PER COMPANY in total. None of them ever drops a chunk, edge, risk, computed line or pair the prefetch
+already had. The temporal layer's PAIRS and NOTICES are the same: a pair or notice the prefetch already holds is never
+dropped, only added to (see :func:`merge_temporal`). Its per-pair ITEM and PASSAGE lines are the one exception: when a company
+gains a second pair, the two pairs share the same total line budget one pair always had
+(:func:`~semigraph.retrieval.retriever.select_temporal`'s own per-pair caps), so an existing pair's shown lines CAN shrink even
+though its pair, and its true (uncapped) totals, never do.
 
 Companies: the context never covers more than ``retriever.MAX_ANCHORS`` of them in all, the prefetch's own counting
 first (:func:`add_anchors`, :func:`check_company_cap`). The tools refuse a call that would add a company past it before
@@ -21,6 +22,7 @@ against its sign), carrying BOTH ``[xbrl:...]`` ids. The ids only count as citab
 the newest three periods plus the ones the question names), so the two period ends are added to ``r["metric_periods"]``.
 """
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from datetime import date
 
@@ -32,6 +34,11 @@ MAX_CHUNKS = 16
 MAX_EDGES_ADDED = 40
 MAX_RISKS = 12
 MAX_COMPUTED = 4
+# Filing pairs of ONE company in the context, over every tool call. A call reads at most ``retriever.MAX_PAIRS_PER_COMPANY``
+# (2) of them and the prefetch holds at most as many, so without this the count was bounded only by the graph (at most 4
+# consecutive comparisons of any company today). With it the agent's spend estimate is a bound the code enforces:
+# ``serve.estimate.AGENT_GRAPH_CHARS_PER_COMPANY`` prices up to 5 (a test renders 5 through the real layout), and 6 do not fit.
+MAX_PAIRS_HELD_PER_COMPANY = 5
 PERIOD_LENGTH_TOLERANCE_DAYS = 10     # two periods are "the same kind" when their lengths differ by no more than this
 
 
@@ -160,8 +167,34 @@ def _pair_key(row: Mapping) -> tuple:
     return row.get("cik"), row.get("newer_accession")
 
 
+def _pairs_past_the_cap(r: Mapping, pairs: list[dict], cap: int) -> list[dict]:
+    """The pairs of this call that a company has no room for, ``cap`` pairs of one company in all. The pairs ``r`` already
+    holds come first (never dropped, and a repeat of one is a refresh, not an addition), then the call's NEW pairs newest
+    first, however the call lists them. A company already at or over ``cap`` (a lowered cap) takes none."""
+    held = r.get("temporal_pairs") or []
+    held_keys = {_pair_key(p) for p in held}
+    count = Counter(p.get("cik") for p in held)
+    refused: list[dict] = []
+    new_newest_first = sorted((p for p in pairs if _pair_key(p) not in held_keys), key=lambda p: p.get("newer_date") or "",
+                              reverse=True)
+    for pair in new_newest_first:
+        if count[pair.get("cik")] < cap:
+            count[pair.get("cik")] += 1
+        else:
+            refused.append(pair)
+    return refused
+
+
+def _pair_cap_notices(refused: list[dict], cap: int) -> list[dict]:
+    """One note per company that lost a pair to the cap, worded without a count of the lost ones, so the same note from a
+    later call is the same note (:func:`merge_temporal` keeps one copy of a note)."""
+    text = f"the context holds {cap} annual-filing comparisons, the most it carries for one company; further ones were not added"
+    companies = {p.get("cik"): p.get("company") for p in refused}
+    return [{"cik": cik, "company": company, "text": text} for cik, company in companies.items()]
+
+
 def merge_temporal(r: dict, *, items: list[dict], pairs: list[dict], passages: list[dict], notices: list[dict],
-                   question: str = "") -> dict:
+                   question: str = "", pair_cap: int = MAX_PAIRS_HELD_PER_COMPANY) -> dict:
     """The temporal layers of the touched companies UNIONED with what the prefetch already had, keyed by
     ``(cik, newer_accession)``: a second call about the exact SAME pair refreshes it (its old items, passages and notice
     belong to that one question and are replaced), but a call that names a DIFFERENT pair of a company the prefetch
@@ -178,7 +211,21 @@ def merge_temporal(r: dict, *, items: list[dict], pairs: list[dict], passages: l
     TRUE uncapped counts, "showing 4 of 8") are restored from whichever side owns that pair afterwards, since
     ``select_temporal`` / ``select_passages`` would otherwise recompute them from the already-capped rows fed back in.
 
+    A company holds at most ``pair_cap`` pairs in all (:data:`MAX_PAIRS_HELD_PER_COMPANY`), so the context a company adds
+    to the prompt is bounded by the code and not by what the graph happens to hold (the spend estimate rests on it). The
+    pairs the context already holds are never dropped for it; of a call's NEW pairs the newest are kept, and the items and
+    passages of a pair that did not fit are not merged. A pair that did not fit is a CLAMP, not a refusal like the company
+    cap (:func:`add_anchors`): the extra comparison is optional detail, while a clamped anchor would leave ``anchors``
+    saying less than the rows merged. It is not silent: the company's note says the context holds the most it carries.
+
     Nothing is replaced when the call returned no pair and no notice."""
+    refused = _pairs_past_the_cap(r, pairs, pair_cap)
+    if refused:
+        dropped = {_pair_key(p) for p in refused}
+        pairs = [p for p in pairs if _pair_key(p) not in dropped]
+        items = [row for row in items if _pair_key(row) not in dropped]
+        passages = [row for row in passages if _pair_key(row) not in dropped]
+        notices = [*notices, *_pair_cap_notices(refused, pair_cap)]
     refreshed = {_pair_key(p) for p in pairs}
     ciks = {p.get("cik") for p in pairs} | {n.get("cik") for n in notices}
     kept_pairs = [p for p in (r.get("temporal_pairs") or []) if p.get("cik") in ciks and _pair_key(p) not in refreshed]

@@ -19,8 +19,9 @@ character that could still start a construct (``_defang``). These tests pin:
    set apart from the text always survives; ``_defang`` alone is a fixed point that keeps every citation.
 3. REASSEMBLY: the eight inputs a review found (a second pass removes what the first one left) and deeper nestings
    of each shape, up to depth 5,000, now end as fixed points with no live construct.
-4. PERFORMANCE: a measured budget on adversarial inputs, on nests, and on the product of the cap and the most
-   expensive round that does not shrink; and a linear-scaling check.
+4. PERFORMANCE: an absolute budget, derived from the event-loop lag warning (``loop_lag_warn_ms``), on adversarial
+   inputs, on nests, and on the product of the cap and the most expensive round that does not shrink; and
+   machine-independent linear-scaling checks.
 
 Plain pytest and no network: this file must stay importable in the CI ``serve-shipped`` job.
 """
@@ -37,6 +38,7 @@ from collections.abc import Callable
 
 import pytest
 
+from semigraph.config import Settings
 from semigraph.retrieval import workspace as ws
 from semigraph.retrieval.ids import CITE_RE
 
@@ -668,9 +670,24 @@ def test_known_open_gaps_are_kept_as_the_old_function_kept_them(text, why):
 # ----------------------------------------------------------------------------------------------------------------
 # 4. Performance (the loop-blocking time of the pure-Python regex work; it holds the GIL, a thread does not help)
 
-# p95 over REPS runs at 20,000 characters. Measured: one round of anything is about 1 to 2 ms, a nest 3 to 5 ms, and
-# the worst input there is (a nest deeper than the cap before the most expensive filler no round shrinks) about 9 ms.
-BUDGET_MS = 20.0
+# p95 over REPS runs at 20,000 characters. Measured on the dev desktop: one round of anything is about 1 to 2 ms, a nest
+# 3 to 5 ms, and the worst input there is (a nest deeper than the cap before the most expensive filler no round
+# shrinks) about 9 ms.
+#
+# The budget comes from the REQUIREMENT, not from a measurement of one machine. This function runs on the event loop, so
+# what it must never do is stall the loop past what the loop-lag monitor warns about: ``loop_lag_warn_ms`` (config; read
+# from the field's default here, so there is no second copy of the number and no .env or environment in the test). Half
+# of it leaves the other half to everything else that shares the same turn of the loop. The input size is generous: an
+# answer is capped at llm_answer_max_tokens = 2,400 (fly.toml), about 10,000 characters, so 20,000 already has twice the
+# length of the longest answer the writer can produce.
+#
+# Why a measurement could not be the budget: the same inputs take about 9 ms on the dev desktop and 20.7 to 23 ms on the
+# GitHub Linux runner (about 2.3x slower), so the earlier 20 ms was red on CI with nothing wrong. 50 ms keeps 2x
+# headroom over the slowest runner measured. What it must still reject is the quadratic implementation this replaced:
+# 886 ms at 20,000 characters, 17x over (test_the_budget_still_rejects_the_quadratic_implementation_it_replaced). That
+# an input is LINEAR is the job of the scaling tests below, which are machine-independent and unchanged.
+# One budget serves every absolute-time test of this section.
+BUDGET_MS = Settings.model_fields["loop_lag_warn_ms"].default / 2
 REPS = 10
 SCALING_LIMIT = 3.0        # t(40,000) / t(20,000): linear is 2, quadratic is 4
 SCALING_FLOOR_MS = 1.0     # below this a sub-millisecond ratio is timer noise, not a trend
@@ -712,6 +729,16 @@ def test_a_20000_character_input_costs_under_the_budget(name):
     text = _adversarial(20_000)[name]
     p95 = _p95(_samples_ms(text, REPS))
     assert p95 < BUDGET_MS, f"{name}: p95 over {REPS} runs was {p95:.2f} ms, budget {BUDGET_MS} ms"
+
+
+def test_the_budget_still_rejects_the_quadratic_implementation_it_replaced():
+    """The budget was derived from the loop-lag warning, not tuned until the tests passed: the verbatim OLD function on
+    half the input size (10,000 letters: 222 to 266 ms measured, 886 ms at 20,000) is several times over it, so a
+    return to a quadratic pass cannot hide under the number."""
+    started = time.perf_counter()
+    _legacy_strip_links_images("a" * 10_000)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    assert elapsed_ms > BUDGET_MS, f"the old implementation took {elapsed_ms:.0f} ms, within the {BUDGET_MS} ms budget"
 
 
 def _scaling_ratio(small: str, large: str, reps: int = 5) -> tuple[float, float, float]:

@@ -130,6 +130,8 @@ class InProcessBackend(StateCore):
     # ---- the lease life cycle ---------------------------------------------------------------------------------
 
     def mark_started(self, lease_id: str) -> None:
+        """Memory only (the protocol requires it: the async caller takes it on the event loop): ``_lock`` is never held
+        across a database call anywhere in this class."""
         with self._lock:
             if lease_id in self._leases:
                 self.registry.add(lease_id)

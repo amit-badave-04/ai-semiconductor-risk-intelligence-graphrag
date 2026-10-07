@@ -6,12 +6,19 @@ rounding. :func:`usd_to_micro` is the one place a float price becomes micro-doll
 Clocks: ``now_wall`` / ``sweep(now)`` / ``renew(now_wall)`` are wall-clock epoch seconds (the durable ``lease_until``
 on a ledger row is wall clock so another machine can read it); ``now_mono`` and the kill-level staleness are monotonic.
 
-Every backend method is a plain synchronous function. The async caller runs each as ``await anyio.to_thread.run_sync(fn,
-limiter=limiters.state)`` with NO caller-side timeout: abandoning a thread that a shielded reserve is running in would
-let the reserve complete after its caller gave up. The bound lives in the work: the state driver's per-attempt timeouts
-and short retry window (``graph.client.make_state_driver``) and the server-side transaction timeout set by
-:mod:`.ledger`. Any driver error becomes :class:`StateUnavailable`; a call that takes over one second is logged
-``state_slow``.
+Every backend method is a plain synchronous function. The async caller runs each that touches the store on a worker
+thread, holding one token of ``limiters.state`` (``stream_runtime.slot_call``), with NO caller-side timeout once it
+holds the token: abandoning a thread that a shielded reserve is running in would let the reserve complete after its
+caller gave up. (Only the wait for a free token is bounded, by ``state_op_timeout_s``.) The bound lives in the work: the
+state driver's per-attempt timeouts and short retry window (``graph.client.make_state_driver``) and the server-side
+transaction timeout set by :mod:`.ledger`. Any driver error becomes :class:`StateUnavailable`; a call that takes over
+one second is logged ``state_slow``.
+
+``kill_level``, ``hold_kill_level`` and ``mark_started`` are the exceptions, and the protocol REQUIRES them to be
+memory-only on every backend (no driver, no ledger, no wait on anything that does I/O, and never the lock that serialises
+the kill-level writes): the async callers take them on the event loop, with no thread hop and no slot, so that a database
+that has gone silent, and the slots its stuck calls hold, can neither delay a kill-level read, an emergency kill, nor cost
+a stream its registration. Both backends keep them to a lock held only for memory operations.
 
 What the bound is. Measured on 2026-10-06 (Windows; neo4j driver 6.2.0, and 6.3.0 as a spot check; Neo4j Community
 2026.07.1; 20 runs per cell; the production settings: a 1 s operation budget and a 0.5 s configured acquisition
@@ -102,6 +109,16 @@ class StateUnavailable(RuntimeError):
     """The state store failed or was too slow: the caller fails closed (a paid ask is refused, never let through)."""
 
 
+class KillNotStored(StateUnavailable):
+    """``set_kill_level``: the database write failed. ``held`` says whether the level nonetheless holds on this machine
+    and its write is queued for the maintenance thread (a tightening, or the same level again): then the caller answers
+    that it is in force and will be stored. When it is False nothing changed and nothing is queued (a relaxation)."""
+
+    def __init__(self, message: str, *, held: bool):
+        super().__init__(message)
+        self.held = held
+
+
 def usd_to_micro(usd: float | int | Decimal) -> int:
     """Whole micro-dollars for a price in dollars: round HALF UP on the micro (0.0000005 -> 1, 0.0000004 -> 0).
 
@@ -158,7 +175,7 @@ class StateBackend(Protocol):
     def reserve(self, *, ip_hash: str, strategy: str, workspace: bool, estimate_micro: int,
                 now_wall: float, now_mono: float) -> Lease | Denied: ...
 
-    def mark_started(self, lease_id: str) -> None: ...        # registry entry: the maintenance thread renews it
+    def mark_started(self, lease_id: str) -> None: ...        # registry entry the maintenance thread renews; MEMORY ONLY
 
     def renew(self, lease_id: str, now_wall: float) -> bool: ...                       # writes lease_until on the row
 
@@ -168,9 +185,13 @@ class StateBackend(Protocol):
 
     def rebuild_from_ledger(self) -> RebuildReport: ...
 
-    def kill_level(self) -> str: ...                          # 'on' | 'retrieval_only' | 'off'
+    def kill_level(self) -> str: ...                          # 'on' | 'retrieval_only' | 'off'; MEMORY ONLY
 
-    def set_kill_level(self, level: str) -> None: ...
+    # MEMORY ONLY (event loop, no worker thread, no limiter token): apply a tightening, queue its write; True if it holds.
+    # The admin route calls it before it waits for the admin limiter, when the backend has it (a double need not).
+    def hold_kill_level(self, level: str) -> bool: ...
+
+    def set_kill_level(self, level: str) -> None: ...    # a failed write raises KillNotStored (a StateUnavailable)
 
     def cache_get(self, key: str, ttl_hours: int) -> dict | None: ...                  # raises StateUnavailable
 
@@ -333,9 +354,10 @@ class StateCore:
         try:
             return fn(*args, **kwargs)
         except _DRIVER_ERRORS as exc:
-            # a server error is logged by its code: its message can quote the properties of a node (an address hash)
-            detail = exc.code if isinstance(exc, Neo4jError) else str(exc)
-            logger.warning("state_unavailable op=%s error=%s: %.200s", op, type(exc).__name__, detail)
+            # the class and the server's code only, never the message: a driver quotes what the statement carried (a
+            # node's properties such as an address hash, or the text of a question)
+            code = exc.code if isinstance(exc, Neo4jError) else None
+            logger.warning("state_unavailable op=%s error=%s code=%s", op, type(exc).__name__, code)
             raise StateUnavailable(f"state operation {op} failed: {type(exc).__name__}") from exc
         finally:
             elapsed = self._perf() - started
@@ -450,15 +472,63 @@ class StateCore:
                 if self._kill_gen == gen and self._pending_kill == pending:
                     self._pending_kill = None
 
-    def set_kill_level(self, level: str) -> None:
-        """Set the level. A TIGHTENING is applied in memory first, so it holds even if the database write then fails (it
-        raises StateUnavailable, and the maintenance thread retries the write). A relaxing level is written first and
-        applied only once stored: an unstored relaxation must never open the gate.
+    def _holds_locked(self, level: str) -> bool:
+        """Whether ``level`` can be held in memory with its write queued, before any database write has succeeded: it is
+        not ``off`` and it is at least as tight as the level the gates apply NOW (``_level_locked``: the cached level, or
+        ``on`` when that is stale or was never read; the ``KILL_SWITCH`` env override is a separate layer and plays no part).
+        The caller holds ``_kill_lock``.
 
-        Every set takes a generation number and decides, in the same critical section, whether it tightens. The
-        database writes are serialised, and a set that a later one has superseded by the time its turn comes skips its
-        write: the later set owns the level, in memory and in the database. Two concurrent sets therefore cannot leave
-        the two disagreeing."""
+        Two corners decide this. (1) Against the effective level, not the raw cached one: a cache that reads ``on`` only
+        by age (or was never read) makes ``retrieval_only`` a relaxation of ``on``, which needs a stored write: held, it
+        would lower the level the gates apply on a failed write and queue ``retrieval_only`` over a stored ``on``. A set
+        of ``on`` against such a cache is not a relaxation, so it holds (the raw cached level may be ``off``: a set of
+        ``on`` is a tightening of it, and a set equal to it is queued all the same). (2) ``off`` never holds, not even
+        against a cache that reads ``off``: it relaxes whatever the database says, and a queued ``off`` would be written
+        over a level another machine stored, with nobody having confirmed it."""
+        return level != KILL_OFF and _kill_rank(level) >= _kill_rank(self._level_locked())
+
+    def _apply_hold_locked(self, level: str) -> None:
+        """Apply a level :meth:`_holds_locked` accepted, and queue its write. A level tighter than the raw cached one
+        becomes the cached level (read just now); the same level only gets its write queued. The caller holds
+        ``_kill_lock``."""
+        if _kill_rank(level) > _kill_rank(self._kill_level or KILL_OFF):
+            self._kill_level, self._kill_read_at = level, self._clock()
+        self._pending_kill = level
+
+    def hold_kill_level(self, level: str) -> bool:
+        """MEMORY ONLY: apply ``level`` now if it can be held (see :meth:`_holds_locked`) and queue its database write
+        for the maintenance thread; True when it holds, False (and nothing changed) when it would relax. It takes only
+        the memory lock, never the lock that serialises the database writes, so an emergency kill is in force at once
+        even while an earlier write sits on a silent connection (up to 120 s). It does not write anything: the caller
+        goes on to :meth:`set_kill_level` for the write. A held level takes a generation number, like a set, so a refresh
+        that read before it cannot undo it."""
+        if level not in KILL_LEVELS:
+            raise ValueError(f"kill level must be one of {KILL_LEVELS}, got {level!r}")
+        with self._kill_lock:
+            if not self._holds_locked(level):
+                return False
+            self._kill_gen += 1
+            self._apply_hold_locked(level)
+            return True
+
+    def set_kill_level(self, level: str) -> None:
+        """Set the level. A level that holds (:meth:`_holds_locked`: a tightening, or the same level again) is applied in
+        memory first, so it holds even if the database write then fails: that raises :class:`KillNotStored` with
+        ``held`` True, and the maintenance thread retries the write. A relaxing level is written first and applied only
+        once stored: an unstored relaxation must never open the gate (``KillNotStored``, ``held`` False, nothing
+        changed, nothing queued).
+
+        A failed write never lowers the level the gates apply, whatever the cache's age: what holds is judged against
+        that level (which reads ``on`` for a cache that is stale or was never read), and what does not hold is not
+        applied. Whether a set tightens the CACHE is judged against the cached level as it was last read or set, however
+        old it is (never read counts as ``off``): judged against :meth:`kill_level` instead, a set of ``on`` during an
+        outage would look like 'already on', nothing would be queued, and the refresh after the recovery would read the
+        stored ``off`` back and reopen paid asks.
+
+        Every set takes a generation number and decides, in the same critical section, whether it holds. The database
+        writes are serialised, and a set that a later one has superseded by the time its turn comes skips its write: the
+        later set owns the level, in memory and in the database. Two concurrent sets therefore cannot leave the two
+        disagreeing."""
         from .. import store
 
         if level not in KILL_LEVELS:
@@ -466,13 +536,17 @@ class StateCore:
         with self._kill_lock:
             self._kill_gen += 1
             gen = self._kill_gen
-            if _kill_rank(level) > _kill_rank(self._level_locked()):
-                self._kill_level, self._kill_read_at, self._pending_kill = level, self._clock(), level
+            held = self._holds_locked(level)
+            if held:
+                self._apply_hold_locked(level)
         with self._writer_lock:
             with self._kill_lock:
                 if self._kill_gen != gen:
                     return
-            self._call("kill_write", store.set_policy, self._store_driver, KILL_POLICY_KEY, level)
+            try:
+                self._call("kill_write", store.set_policy, self._store_driver, KILL_POLICY_KEY, level)
+            except StateUnavailable as exc:
+                raise KillNotStored(str(exc), held=held) from exc
             with self._kill_lock:
                 if self._kill_gen == gen:
                     self._kill_level, self._kill_read_at, self._pending_kill = level, self._clock(), None

@@ -7,7 +7,11 @@ streams queues for a thread instead of starving the event loop, and one kind of 
 * ``embed``  : query embeddings (CPU-bound; ``embed_slots``), taken together with the embedder's own semaphore;
 * ``db``     : graph reads and writes made on behalf of answer streams (``db_thread_limit``);
 * ``health`` : the ``/healthz`` ping (one thread, so a stuck database cannot hang the probe pool);
-* ``state``  : the service-state operations of later increments (reserve / reconcile; bounded and separate from ``db``).
+* ``state``  : the service-state operations (reserve / reconcile / cache reads; bounded and separate from ``db``). A
+  caller waits for a slot at most ``state_op_timeout_s`` (``stream_runtime.state_call``);
+* ``admin``  : the admin routes' state calls (a kill-level flip, the state report), one at a time and never queued
+  behind the public traffic of ``state``. It is None in a test double that predates it: such a double serves no admin
+  route.
 
 A limiter must be created inside a running event loop, so :func:`make_limiters` is called from the lifespan.
 
@@ -25,6 +29,7 @@ logger = logging.getLogger("semigraph.serve.loop")
 
 HEALTH_THREADS = 1
 STATE_THREADS = 4
+ADMIN_THREADS = 1
 DEFAULT_MONITOR_INTERVAL_S = 0.05
 
 
@@ -33,6 +38,7 @@ class Limiters(NamedTuple):
     db: anyio.CapacityLimiter
     health: anyio.CapacityLimiter
     state: anyio.CapacityLimiter
+    admin: anyio.CapacityLimiter | None = None
 
 
 def make_limiters(settings) -> Limiters:
@@ -40,7 +46,8 @@ def make_limiters(settings) -> Limiters:
         if getattr(settings, name) < 1:
             raise ValueError(f"{name} must be 1 or more, got {getattr(settings, name)}")
     return Limiters(embed=anyio.CapacityLimiter(settings.embed_slots), db=anyio.CapacityLimiter(settings.db_thread_limit),
-                    health=anyio.CapacityLimiter(HEALTH_THREADS), state=anyio.CapacityLimiter(STATE_THREADS))
+                    health=anyio.CapacityLimiter(HEALTH_THREADS), state=anyio.CapacityLimiter(STATE_THREADS),
+                    admin=anyio.CapacityLimiter(ADMIN_THREADS))
 
 
 class LoopLagMonitor:

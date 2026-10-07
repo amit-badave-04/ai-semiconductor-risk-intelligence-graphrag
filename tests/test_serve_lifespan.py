@@ -391,6 +391,70 @@ def test_a_maintenance_thread_that_cannot_start_refuses_to_boot_and_closes_both_
     assert boot.state_order[-1] == "state_driver.close" and boot.order == ["bootstrap", "driver.close"]
 
 
+@pytest.mark.parametrize("failing", ["monitor", "jobs"])
+def test_a_boot_that_fails_after_the_state_started_stops_what_it_started_and_closes_both_drivers(
+        monkeypatch, boot_in_order, failing):
+    """The maintenance thread and the state driver are open by then: a startup that raises later (a background service
+    that cannot start) must stop the thread, stop what did start, flush the tracer and close both drivers, in the order
+    of the normal shutdown, before the error reaches the caller."""
+    use_settings(monkeypatch)
+    order = boot_in_order.order
+    monkeypatch.setattr(main.tracing, "get_tracer", lambda s: FakeTracer(order))
+    monkeypatch.setattr(main.monitor, "stop", lambda app: order.append("monitor.stop"))
+    monkeypatch.setattr(main.jobs, "stop", lambda app: order.append("jobs.stop"))
+
+    def cannot_start(app):
+        raise RuntimeError("cannot start the background service")
+
+    if failing == "monitor":
+        monkeypatch.setattr(main.monitor, "start_if_enabled", cannot_start)
+    else:
+        monkeypatch.setattr(main.monitor, "start_if_enabled", lambda app: order.append("monitor.start"))
+        monkeypatch.setattr(main.jobs, "start_if_enabled", cannot_start)
+    with pytest.raises(RuntimeError, match="cannot start the background service"):
+        with TestClient(main.create_app()):
+            pytest.fail("the service must not start")
+    started = ["bootstrap", "state.build", "state.rebuild", "maintenance.start"] + (
+        ["monitor.start"] if failing == "jobs" else [])
+    assert order == [*started, "maintenance.stop", "monitor.stop", "jobs.stop", "tracer.shutdown", "state_driver.close",
+                     "driver.close"]
+
+
+def test_a_boot_that_fails_before_the_state_is_built_still_flushes_the_tracer_and_closes_the_driver(monkeypatch, boot):
+    use_settings(monkeypatch)
+    monkeypatch.setattr(main.tracing, "get_tracer", lambda s: FakeTracer(boot.order))
+
+    def broken(settings):
+        raise ValueError("cannot build the limiters")
+
+    monkeypatch.setattr(main, "make_limiters", broken)
+    with pytest.raises(ValueError, match="limiters"):
+        with TestClient(main.create_app()):
+            pytest.fail("the service must not start")
+    assert boot.order == ["bootstrap", "tracer.shutdown", "driver.close"] and boot.state_order == []
+
+
+def test_a_failing_stop_while_a_failed_boot_unwinds_never_keeps_the_drivers_open(monkeypatch, boot):
+    use_settings(monkeypatch)
+
+    def boom(app):
+        raise RuntimeError("stop failed")
+
+    def first_error(app):
+        raise ValueError("the first error")
+
+    def join_failed(self, timeout=5.0):
+        raise RuntimeError("join failed")
+
+    monkeypatch.setattr(main.monitor, "start_if_enabled", first_error)
+    monkeypatch.setattr(main.jobs, "stop", boom)
+    monkeypatch.setattr(FakeMaintenance, "stop", join_failed)
+    with pytest.raises(ValueError, match="the first error"):                  # the boot's own error, not the cleanup's
+        with TestClient(main.create_app()):
+            pytest.fail("the service must not start")
+    assert boot.state_order[-1] == "state_driver.close" and boot.order[-1] == "driver.close"
+
+
 def test_an_estimate_that_cannot_be_computed_refuses_to_boot_before_the_state_is_built(monkeypatch, boot):
     use_settings(monkeypatch)
 

@@ -59,7 +59,7 @@ OTHER_PEPPER = "another-pepper-for-the-tests-9876543210"     # gitleaks:allow
 # 31 bytes: one under the production minimum
 SHORT_PEPPER = "short-pepper-" + "p" * 18                     # gitleaks:allow
 DB_PASSWORD = "db-password-in-the-environment"               # gitleaks:allow
-ADMIN_TOKEN = "admin-token-in-the-environment"               # gitleaks:allow
+ADMIN_TOKEN = "admin-token-in-the-environment-0123456789"    # gitleaks:allow - 41 characters: production wants 32 or more
 Q = "Which HBM suppliers does Nvidia depend on, and which export rules apply?"
 LEGACY_ROW_COUNT = 12
 
@@ -194,6 +194,15 @@ def test_only_a_trusted_header_names_the_client():
     assert guard.hash_request_ip(request, cfg()) == guard.ip_hash("10.9.9.9", PEPPER)      # no header named: the socket
 
 
+@pytest.mark.parametrize("named", [" fly-client-ip", "fly-client-ip ", "\tFly-Client-IP\r\n"])
+def test_the_trusted_header_is_found_whatever_whitespace_or_case_the_name_carries(named):
+    """``Settings`` stores the name normalized; the guard still never looks up a name with whitespace around it (a
+    settings double or a hand-built call), because no header has one and the visitor would silently get the proxy's key."""
+    request = request_from("10.9.9.9", {"fly-client-ip": "198.51.100.7"})
+    assert guard.client_ip(request, named) == "198.51.100.7"
+    assert guard.client_ip(request, "   ") == "10.9.9.9"                 # a blank name is "no header named"
+
+
 def test_two_clients_of_one_ipv6_slash_64_are_one_window_key():
     a = request_from("2001:db8:aa:bb::1")
     b = request_from("2001:db8:aa:bb:1234:5678:9abc:def0")
@@ -249,9 +258,10 @@ def test_the_ledger_carries_the_pepper_version_when_the_settings_have_one():
 # ---------------------------------------------------------------- settings
 
 PRODUCTION_ENVIRONMENT_VARIABLES = (
-    "IP_HASH_PEPPER", "IP_HASH_VERSION", "ENVIRONMENT", "TURNSTILE_REQUIRED", "TURNSTILE_SECRET_KEY",
-    "CLIENT_IP_HEADER", "MAX_QUERIES_PER_DAY", "MAX_SPEND_USD_PER_DAY", "PAID_PER_IP_PER_DAY",
-    "MAX_CONCURRENT_ANSWERS")
+    "IP_HASH_PEPPER", "IP_HASH_VERSION", "ENVIRONMENT", "FLY_APP_NAME", "ADMIN_TOKEN", "TURNSTILE_REQUIRED",
+    "TURNSTILE_SECRET_KEY", "CLIENT_IP_HEADER", "MAX_QUERIES_PER_DAY", "MAX_SPEND_USD_PER_DAY", "PAID_PER_IP_PER_DAY",
+    "MAX_CONCURRENT_ANSWERS", "RATE_LIMIT_QUESTIONS", "FREE_RATE_LIMIT_QUESTIONS", "READ_RATE_LIMIT_PER_MINUTE",
+    "RATE_LIMIT_WINDOW_SECONDS", "CACHE_READ_BUDGET_PER_S", "KILL_SWITCH_STALE_S", "KILL_SWITCH_REFRESH_S")
 
 
 @pytest.fixture
@@ -366,6 +376,17 @@ def test_a_real_production_settings_object_hashes_through_the_helper_and_names_i
     request = request_from("10.0.0.1", {"fly-client-ip": "198.51.100.7"})
     assert guard.hash_request_ip(request, live) == guard.ip_hash("198.51.100.7", PEPPER)
     assert guard.ip_hash_version_fields(live) == {"ip_hash_v": 3}
+
+
+@pytest.mark.parametrize("raw", [" fly-client-ip", "Fly-Client-IP ", "\tFLY-CLIENT-IP\r\n"])
+def test_a_header_name_with_stray_whitespace_or_case_still_names_the_visitor_not_the_proxy(clean_environment, raw):
+    """The old validator stripped the name for its own comparison but stored it raw, and the guard looked the raw name up:
+    no header matched, every visitor was keyed by the proxy's address, and the whole site shared one 20-per-day bucket."""
+    live = production(client_ip_header=raw)
+    one = guard.hash_request_ip(request_from("10.0.0.1", {"fly-client-ip": "198.51.100.7"}), live)
+    two = guard.hash_request_ip(request_from("10.0.0.1", {"fly-client-ip": "203.0.113.50"}), live)
+    assert (one, two) == (guard.ip_hash("198.51.100.7", PEPPER), guard.ip_hash("203.0.113.50", PEPPER))
+    assert one != two != guard.ip_hash("10.0.0.1", PEPPER)
 
 
 def test_the_pepper_and_its_version_are_read_from_the_environment(monkeypatch, clean_environment):

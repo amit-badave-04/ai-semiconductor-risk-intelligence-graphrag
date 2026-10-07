@@ -136,9 +136,25 @@ class FakeStateBackend:
         self._enter("kill_level")
         return self.kill
 
+    def hold_kill_level(self, level):
+        """Memory only, like the real one (no ``_enter``, so no injected delay or error reaches it): a level other than
+        ``off`` that is at least as tight as the level in force applies at once and reports True."""
+        if level not in KILL_LEVELS:
+            raise ValueError(level)
+        with self._lock:
+            self.calls.append(("hold_kill_level", level))
+            holds = level != KILL_LEVELS[0] and KILL_LEVELS.index(level) >= KILL_LEVELS.index(self.kill)
+            if holds:
+                self.kill = level
+        return holds
+
     def set_kill_level(self, level):
-        """As the real backend: a level that tightens holds in memory even when the store write then fails (the error is
-        raised); one that relaxes is applied only when the write succeeded."""
+        """A level that tightens holds in memory even when the store write then fails (the error is raised); one that
+        relaxes is applied only when the write succeeded. The fake has ONE level, ``kill``, and models no staleness: it
+        ranks against that level, which the real backend does not (it ranks against the cached level as last read or
+        set, however old: a level that is ``on`` only because it is stale or unread must not make a set of ``on`` look
+        like a no-op). So this double cannot show that; ``tests/test_state_contract.py`` and the real-backend test in
+        ``tests/test_serve_state_wiring.py`` do."""
         if level not in KILL_LEVELS:
             raise ValueError(level)
         tightening = KILL_LEVELS.index(level) > KILL_LEVELS.index(self.kill)
@@ -272,6 +288,7 @@ class RouteSettings:
     rate_limit_questions = 5
     rate_limit_window_seconds = 600
     max_concurrent_answers = 2
+    state_op_timeout_s = 1.0
     admin_token = "secret-token"
     client_ip_header = ""
     free_rate_limit_questions = 10
