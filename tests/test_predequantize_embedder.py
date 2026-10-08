@@ -121,6 +121,15 @@ def run(model: Path, ids=(3, 9, 27, 40)) -> np.ndarray:
     return session.run(None, {"input_ids": arr, "attention_mask": np.ones_like(arr)})[0]
 
 
+def assert_same_vectors(actual: np.ndarray, desired: np.ndarray, rel: float = 1e-5) -> None:
+    """The weights are bit-exact (asserted separately); the OUTPUTS of a plain float32 MatMul and of MatMulNBits may still
+    differ by summation order, which depends on the CPU's GEMM kernel: a GitHub runner gave a 2.5e-4 difference on values
+    up to about 400 through two chained layers, where this desktop gives none. So the bound scales with each output row's
+    magnitude (the size of the sums), not a fixed absolute tolerance."""
+    scale = np.abs(desired).max(axis=-1, keepdims=True)
+    assert np.all(np.abs(actual - desired) <= rel * np.maximum(scale, 1.0)), float(np.abs(actual - desired).max())
+
+
 def ort_weight_t(weights: dict, k: int, n: int) -> np.ndarray:
     """ONNX Runtime's own dequantized W.T: the contrib op fed an identity matrix (Y = I @ W.T), accuracy_level unset.
     Written without the script's helpers on purpose, so the script is checked against an independent oracle."""
@@ -204,7 +213,7 @@ def test_every_matmulnbits_node_becomes_a_plain_matmul_and_the_vectors_do_not_mo
     assert [n.op_type for n in proto.graph.node].count("MatMul") == len(zero_points)
     assert report["dequantized_nodes"] == len(zero_points) == report["nodes_bit_exact"]
     assert report["max_node_abs_diff"] == 0.0 and report["gate"]["passed"] is True
-    np.testing.assert_allclose(run(out / "model_fp32.onnx"), run(src / SOURCE_GRAPH), rtol=1e-5, atol=1e-5)
+    assert_same_vectors(run(out / "model_fp32.onnx"), run(src / SOURCE_GRAPH))
 
 
 @pytest.mark.skipif(importlib.util.find_spec("onnx_ir") is None, reason="the quantizer needs onnx-ir (dev-only)")
@@ -220,7 +229,7 @@ def test_the_output_of_the_real_quantizer_is_pre_dequantized(tmp_path):
     assert report["dequantized_nodes"] == 1 and report["nodes_bit_exact"] == 1 and report["gate"]["passed"]
     proto = onnx.load(str(tmp_path / "fp32" / "model_fp32.onnx"), load_external_data=False)
     assert pq.bo.count_matmul_nbits(proto) == 0
-    np.testing.assert_allclose(run(tmp_path / "fp32" / "model_fp32.onnx"), run(model), rtol=1e-5, atol=1e-5)
+    assert_same_vectors(run(tmp_path / "fp32" / "model_fp32.onnx"), run(model))
 
 
 def test_the_output_survives_deleting_the_source_even_when_its_weights_sat_in_a_sidecar(tmp_path):
