@@ -1,0 +1,2266 @@
+{
+  "assumption": {
+    "chars_per_token": {
+      "openai/gpt-6-luna": 2.5,
+      "anthropic/claude-sonnet-5": 2.0
+    },
+    "default": 2.5,
+    "where": "semigraph.serve.estimate.chars_per_token(model)",
+    "meaning": "characters of a prompt / this = the tokens it is priced at, per model (the default for a model with no figure of its own); a prompt denser than this (fewer characters per token) costs more than its bound"
+  },
+  "method": "ratio = characters of the rebuilt prompt / prompt_tokens the provider billed; 'exact' rows rebuild the prompt the run sent (embedded 2026-07-03 template over the five saved blocks); 'approximate' rows stand in for a prompt that was not saved",
+  "template": {
+    "git": "9820b06:src/semigraph/artifacts/prompts/answer.txt",
+    "chars": 833,
+    "sha256": "8f5d043b18263551c8b34efb8dcc06c04770f9f10c88ca92be8b2ceb4857aabc"
+  },
+  "caveats": [
+    "A JOIN, not one measurement: the runs saved either a prompt's context (the baseline, which has its usage in the same row, the only single measurement) or a model's usage on that prompt (the bake-off, the deployed run). The bake-off rows are the baseline's hybrid context of the same question id joined to another model's usage; the deployed rows are not even that.",
+    "The prompts are rebuilt with the answer TEMPLATE the runs were made with (the 2026-07-03 text, 833 characters, embedded in the script; tiktoken's o200k_base counts the rebuilt Luna prompts at 0.998 to 1.000 of the tokens billed, see template_validation, which today's template does not: 1.10 to 1.52), not today's (about 9,100 characters, written after the runs). A regression of billed tokens on characters is NOT a way to test this: the contexts differ in kind, so its intercept (1,400 to 3,900 tokens) says nothing about the template. Today's template over these runs would have raised the baseline's median from 2.91 to 3.81 and its lowest from 2.10 to 2.90 characters per token: a ratio taken that way flatters the assumption.",
+    "The deployed run's prompts were never saved (eval_deployed.v2e.jsonl keeps usage and answers only): its rows use the baseline prompt of the same id as a stand-in (another day, another graph state, another context layout and template), are marked approximate, and are not part of the verdict. Some of them sit below an assumed figure (see flags); they are listed, not judged, and they are not evidence that the figures hold either.",
+    "The contexts are those of the 20 benchmark questions (prompts of 11 to 64 thousand characters), not a sample of what visitors ask, and far below the ceilings the estimate prices (106 to 470 thousand characters). The usage is the provider's own token count for that provider's tokenizer; the models of the bake-off the service never calls are listed, not judged (against the default figure, 2.5, when flagged).",
+    "The model of the baseline rows is not recorded in them: Sonnet 5 per docs/v2/M1_REPORT.md. Its tokenizer is not available offline, so the Sonnet rows are not validated the way the Luna rows are; they rest on the baseline having been prompted as the bake-off was (the same contexts and template: the bake-off rebuilt 'the byte-identical prompt the baseline saw')."
+  ],
+  "missing": [
+    "planner prompts: no run saved the planner's messages and tool schemas next to their usage (eval_agent*.jsonl keep usage and steps, no prompts), so the planner's characters per token cannot be measured offline",
+    "workspace prompts: no run saved an uploaded-document prompt with its usage",
+    "the deployed path's own prompts (the 2026-09-27 template and context layout): usage was saved, the prompt was not, so no ratio of the prompt the service sends today can be computed from the recorded runs",
+    "prompts near the estimate's ceiling: the recorded prompts are 11 to 64 thousand characters",
+    "the meter writes the missing measurement: PaidMeter.complete logs `meter_ratio model= role= prompt_chars= prompt_tokens=` at INFO for every completed call, so a preview run produces the ratio of the real prompts, planner and workspace included"
+  ],
+  "inputs": {
+    "eval_runs.v2-baseline.jsonl": {
+      "rows": 40,
+      "sha256": "efe670276d4672a768019df5aa284ff411373b885626c00b49f6aec0cf6721d3"
+    },
+    "bakeoff.jsonl": {
+      "rows": 128,
+      "sha256": "3de1d864e85eded13ffa4878b11d122d2cefbbf7d38595c082723815c1971c83"
+    },
+    "eval_deployed.v2e.jsonl": {
+      "rows": 60,
+      "sha256": "8fd214f3428d4a149e42ecf02e7db4975ba6447a0018444bcc1758d07774d0f3"
+    }
+  },
+  "excluded": {
+    "baseline": {},
+    "bakeoff": {},
+    "deployed_v2e": {
+      "escalated (the usage sums two calls)": 2
+    }
+  },
+  "unmatched_ids": {
+    "bakeoff": [],
+    "deployed_v2e": [
+      "NG01",
+      "NG02",
+      "NG03",
+      "NG04",
+      "NG05",
+      "NG06",
+      "NG07",
+      "NG08",
+      "NG09",
+      "NG10",
+      "NG11",
+      "NG12",
+      "NG13",
+      "NG14",
+      "NG15",
+      "NG16",
+      "NG17",
+      "NG18",
+      "NG19",
+      "NG20",
+      "NG21",
+      "NG22",
+      "NG23",
+      "NG24",
+      "T10",
+      "T11",
+      "T12",
+      "T13",
+      "T14",
+      "T15",
+      "T4",
+      "T5",
+      "T6",
+      "T7",
+      "T8",
+      "T9",
+      "X2",
+      "X3",
+      "X4"
+    ]
+  },
+  "summary": [
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "assumed": 2.5,
+      "n": 20,
+      "min": 2.718,
+      "median": 3.4617,
+      "max": 4.6576,
+      "below": 0
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "assumed": 2.5,
+      "n": 8,
+      "min": 2.6429,
+      "median": 3.026,
+      "max": 3.3532,
+      "below": 0
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "assumed": 2.5,
+      "n": 20,
+      "min": 2.9498,
+      "median": 3.7984,
+      "max": 4.9529,
+      "below": 0
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "assumed": 2.5,
+      "n": 20,
+      "min": 2.9498,
+      "median": 3.7984,
+      "max": 4.9529,
+      "below": 0
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "assumed": 2.5,
+      "n": 20,
+      "min": 2.0601,
+      "median": 3.0006,
+      "max": 4.4529,
+      "below": 2
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "assumed": 2.5,
+      "n": 20,
+      "min": 2.0601,
+      "median": 3.0006,
+      "max": 4.4529,
+      "below": 2
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "assumed": 2.5,
+      "n": 20,
+      "min": 3.0224,
+      "median": 3.8726,
+      "max": 4.9626,
+      "below": 0
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "assumed": 2.0,
+      "n": 20,
+      "min": 2.0997,
+      "median": 2.5293,
+      "max": 3.2314,
+      "below": 0
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "assumed": 2.0,
+      "n": 20,
+      "min": 2.8318,
+      "median": 3.1144,
+      "max": 3.5379,
+      "below": 0
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "assumed": 2.0,
+      "n": 3,
+      "min": 1.4729,
+      "median": 1.6628,
+      "max": 1.8932,
+      "below": 3
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "assumed": 2.5,
+      "n": 16,
+      "min": 1.9896,
+      "median": 2.7003,
+      "max": 4.2602,
+      "below": 5
+    }
+  ],
+  "verdict": {
+    "openai/gpt-6-luna": {
+      "assumed": 2.5,
+      "rows": 20,
+      "min_ratio": 3.0224,
+      "median_ratio": 3.8726,
+      "below": 0,
+      "holds": true
+    },
+    "anthropic/claude-sonnet-5": {
+      "assumed": 2.0,
+      "rows": 40,
+      "min_ratio": 2.0997,
+      "median_ratio": 2.9067,
+      "below": 0,
+      "holds": true
+    }
+  },
+  "conclusion": "the per-model assumptions hold on the recorded prompts (openai/gpt-6-luna: lowest 3.0224 over 20 rows, 0 below 2.5; anthropic/claude-sonnet-5: lowest 2.0997 over 40 rows, 0 below 2.0)",
+  "flags": [
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "id": "T3",
+      "system": "hybrid",
+      "chars": 25782,
+      "prompt_tokens": 10387,
+      "ratio": 2.4821,
+      "basis": "exact",
+      "assumed": 2.5,
+      "production_model": false
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "id": "U1",
+      "system": "hybrid",
+      "chars": 10929,
+      "prompt_tokens": 5305,
+      "ratio": 2.0601,
+      "basis": "exact",
+      "assumed": 2.5,
+      "production_model": false
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "id": "T3",
+      "system": "hybrid",
+      "chars": 25782,
+      "prompt_tokens": 10387,
+      "ratio": 2.4821,
+      "basis": "exact",
+      "assumed": 2.5,
+      "production_model": false
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "id": "U1",
+      "system": "hybrid",
+      "chars": 10929,
+      "prompt_tokens": 5305,
+      "ratio": 2.0601,
+      "basis": "exact",
+      "assumed": 2.5,
+      "production_model": false
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "id": "N1",
+      "system": "hybrid",
+      "chars": 31545,
+      "prompt_tokens": 13048,
+      "ratio": 2.4176,
+      "basis": "approximate",
+      "assumed": 2.5,
+      "production_model": true
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "id": "N3",
+      "system": "hybrid",
+      "chars": 28591,
+      "prompt_tokens": 12239,
+      "ratio": 2.3361,
+      "basis": "approximate",
+      "assumed": 2.5,
+      "production_model": true
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "anthropic/claude-sonnet-5",
+      "id": "T1",
+      "system": "hybrid",
+      "chars": 32492,
+      "prompt_tokens": 19541,
+      "ratio": 1.6628,
+      "basis": "approximate",
+      "assumed": 2.0,
+      "production_model": true
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "anthropic/claude-sonnet-5",
+      "id": "T2",
+      "system": "hybrid",
+      "chars": 33996,
+      "prompt_tokens": 17957,
+      "ratio": 1.8932,
+      "basis": "approximate",
+      "assumed": 2.0,
+      "production_model": true
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "anthropic/claude-sonnet-5",
+      "id": "T3",
+      "system": "hybrid",
+      "chars": 25782,
+      "prompt_tokens": 17504,
+      "ratio": 1.4729,
+      "basis": "approximate",
+      "assumed": 2.0,
+      "production_model": true
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "id": "Q3",
+      "system": "hybrid",
+      "chars": 43491,
+      "prompt_tokens": 18394,
+      "ratio": 2.3644,
+      "basis": "approximate",
+      "assumed": 2.5,
+      "production_model": true
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "id": "U1",
+      "system": "hybrid",
+      "chars": 10929,
+      "prompt_tokens": 5493,
+      "ratio": 1.9896,
+      "basis": "approximate",
+      "assumed": 2.5,
+      "production_model": true
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "id": "U2",
+      "system": "hybrid",
+      "chars": 32569,
+      "prompt_tokens": 13104,
+      "ratio": 2.4854,
+      "basis": "approximate",
+      "assumed": 2.5,
+      "production_model": true
+    }
+  ],
+  "rows": [
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 13059,
+      "ratio": 2.4156,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "N1",
+      "chars": 16160,
+      "prompt_tokens": 5454,
+      "ratio": 2.963,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 13347,
+      "ratio": 2.5024,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "N2",
+      "chars": 12154,
+      "prompt_tokens": 4185,
+      "ratio": 2.9042,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 11836,
+      "ratio": 2.4156,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "N3",
+      "chars": 16114,
+      "prompt_tokens": 5539,
+      "ratio": 2.9092,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 13281,
+      "ratio": 2.649,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "N4",
+      "chars": 23319,
+      "prompt_tokens": 7882,
+      "ratio": 2.9585,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 15083,
+      "ratio": 2.594,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "D1",
+      "chars": 22719,
+      "prompt_tokens": 7239,
+      "ratio": 3.1384,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 14817,
+      "ratio": 2.5411,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "D2",
+      "chars": 27150,
+      "prompt_tokens": 8167,
+      "ratio": 3.3244,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 15734,
+      "ratio": 2.4947,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "D3",
+      "chars": 20052,
+      "prompt_tokens": 7081,
+      "ratio": 2.8318,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 15724,
+      "ratio": 2.498,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "D4",
+      "chars": 23595,
+      "prompt_tokens": 8099,
+      "ratio": 2.9133,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "R1",
+      "chars": 48246,
+      "prompt_tokens": 17296,
+      "ratio": 2.7894,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "R1",
+      "chars": 36912,
+      "prompt_tokens": 10966,
+      "ratio": 3.366,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "R2",
+      "chars": 64101,
+      "prompt_tokens": 21221,
+      "ratio": 3.0206,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "R2",
+      "chars": 42872,
+      "prompt_tokens": 12251,
+      "ratio": 3.4995,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "R3",
+      "chars": 61062,
+      "prompt_tokens": 20400,
+      "ratio": 2.9932,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "R3",
+      "chars": 47358,
+      "prompt_tokens": 13386,
+      "ratio": 3.5379,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "T1",
+      "chars": 32492,
+      "prompt_tokens": 12907,
+      "ratio": 2.5174,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "T1",
+      "chars": 15975,
+      "prompt_tokens": 5094,
+      "ratio": 3.136,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "T2",
+      "chars": 33996,
+      "prompt_tokens": 11832,
+      "ratio": 2.8732,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "T2",
+      "chars": 21671,
+      "prompt_tokens": 6455,
+      "ratio": 3.3572,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "T3",
+      "chars": 25782,
+      "prompt_tokens": 10938,
+      "ratio": 2.3571,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "T3",
+      "chars": 12037,
+      "prompt_tokens": 3892,
+      "ratio": 3.0928,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "Q1",
+      "chars": 55619,
+      "prompt_tokens": 19860,
+      "ratio": 2.8006,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "Q1",
+      "chars": 31446,
+      "prompt_tokens": 9800,
+      "ratio": 3.2088,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "Q2",
+      "chars": 55626,
+      "prompt_tokens": 17214,
+      "ratio": 3.2314,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "Q2",
+      "chars": 49641,
+      "prompt_tokens": 14338,
+      "ratio": 3.4622,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "Q3",
+      "chars": 43491,
+      "prompt_tokens": 16522,
+      "ratio": 2.6323,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "Q3",
+      "chars": 27896,
+      "prompt_tokens": 8556,
+      "ratio": 3.2604,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "M1",
+      "chars": 33411,
+      "prompt_tokens": 13346,
+      "ratio": 2.5034,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "M1",
+      "chars": 13468,
+      "prompt_tokens": 4522,
+      "ratio": 2.9783,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "U1",
+      "chars": 10929,
+      "prompt_tokens": 5205,
+      "ratio": 2.0997,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "U1",
+      "chars": 21595,
+      "prompt_tokens": 7587,
+      "ratio": 2.8463,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "U2",
+      "chars": 32569,
+      "prompt_tokens": 13366,
+      "ratio": 2.4367,
+      "basis": "exact"
+    },
+    {
+      "source": "baseline",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "vector",
+      "id": "U2",
+      "chars": 18932,
+      "prompt_tokens": 6349,
+      "ratio": 2.9819,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 8665,
+      "ratio": 3.6405,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 8912,
+      "ratio": 3.7478,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 8032,
+      "ratio": 3.5596,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 8351,
+      "ratio": 4.2129,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 9897,
+      "ratio": 3.9532,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 9676,
+      "ratio": 3.8913,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 10193,
+      "ratio": 3.8509,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 10192,
+      "ratio": 3.8539,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "R1",
+      "chars": 48246,
+      "prompt_tokens": 11537,
+      "ratio": 4.1818,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "R2",
+      "chars": 64101,
+      "prompt_tokens": 14043,
+      "ratio": 4.5646,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "R3",
+      "chars": 61062,
+      "prompt_tokens": 13526,
+      "ratio": 4.5144,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "T1",
+      "chars": 32492,
+      "prompt_tokens": 8834,
+      "ratio": 3.6781,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "T2",
+      "chars": 33996,
+      "prompt_tokens": 8064,
+      "ratio": 4.2158,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "T3",
+      "chars": 25782,
+      "prompt_tokens": 7510,
+      "ratio": 3.433,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "Q1",
+      "chars": 55619,
+      "prompt_tokens": 12755,
+      "ratio": 4.3606,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "Q2",
+      "chars": 55626,
+      "prompt_tokens": 11209,
+      "ratio": 4.9626,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "Q3",
+      "chars": 43491,
+      "prompt_tokens": 10895,
+      "ratio": 3.9918,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "M1",
+      "chars": 33411,
+      "prompt_tokens": 8913,
+      "ratio": 3.7486,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "U1",
+      "chars": 10929,
+      "prompt_tokens": 3616,
+      "ratio": 3.0224,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "U2",
+      "chars": 32569,
+      "prompt_tokens": 8845,
+      "ratio": 3.6822,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 11633,
+      "ratio": 2.7117,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 11860,
+      "ratio": 2.8162,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 10961,
+      "ratio": 2.6084,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 10609,
+      "ratio": 3.3162,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 12856,
+      "ratio": 3.0433,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 12638,
+      "ratio": 2.9793,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 13084,
+      "ratio": 3.0,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 13088,
+      "ratio": 3.0011,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "R1",
+      "chars": 48246,
+      "prompt_tokens": 14393,
+      "ratio": 3.352,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "R2",
+      "chars": 64101,
+      "prompt_tokens": 16930,
+      "ratio": 3.7862,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "R3",
+      "chars": 61062,
+      "prompt_tokens": 16416,
+      "ratio": 3.7197,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "T1",
+      "chars": 32492,
+      "prompt_tokens": 11816,
+      "ratio": 2.7498,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "T2",
+      "chars": 33996,
+      "prompt_tokens": 10014,
+      "ratio": 3.3948,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "T3",
+      "chars": 25782,
+      "prompt_tokens": 10387,
+      "ratio": 2.4821,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "Q1",
+      "chars": 55619,
+      "prompt_tokens": 15346,
+      "ratio": 3.6243,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "Q2",
+      "chars": 55626,
+      "prompt_tokens": 12492,
+      "ratio": 4.4529,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "Q3",
+      "chars": 43491,
+      "prompt_tokens": 14194,
+      "ratio": 3.064,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "M1",
+      "chars": 33411,
+      "prompt_tokens": 11866,
+      "ratio": 2.8157,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "U1",
+      "chars": 10929,
+      "prompt_tokens": 5305,
+      "ratio": 2.0601,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.8-flash",
+      "system": "hybrid",
+      "id": "U2",
+      "chars": 32569,
+      "prompt_tokens": 11800,
+      "ratio": 2.7601,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 11633,
+      "ratio": 2.7117,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 11860,
+      "ratio": 2.8162,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 10961,
+      "ratio": 2.6084,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 10609,
+      "ratio": 3.3162,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 12856,
+      "ratio": 3.0433,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 12638,
+      "ratio": 2.9793,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 13084,
+      "ratio": 3.0,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 13088,
+      "ratio": 3.0011,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "R1",
+      "chars": 48246,
+      "prompt_tokens": 14393,
+      "ratio": 3.352,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "R2",
+      "chars": 64101,
+      "prompt_tokens": 16930,
+      "ratio": 3.7862,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "R3",
+      "chars": 61062,
+      "prompt_tokens": 16416,
+      "ratio": 3.7197,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "T1",
+      "chars": 32492,
+      "prompt_tokens": 11816,
+      "ratio": 2.7498,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "T2",
+      "chars": 33996,
+      "prompt_tokens": 10014,
+      "ratio": 3.3948,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "T3",
+      "chars": 25782,
+      "prompt_tokens": 10387,
+      "ratio": 2.4821,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "Q1",
+      "chars": 55619,
+      "prompt_tokens": 15346,
+      "ratio": 3.6243,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "Q2",
+      "chars": 55626,
+      "prompt_tokens": 12492,
+      "ratio": 4.4529,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "Q3",
+      "chars": 43491,
+      "prompt_tokens": 14194,
+      "ratio": 3.064,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "M1",
+      "chars": 33411,
+      "prompt_tokens": 11866,
+      "ratio": 2.8157,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "U1",
+      "chars": 10929,
+      "prompt_tokens": 5305,
+      "ratio": 2.0601,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "gemini/gemini-3.5-flash-lite",
+      "system": "hybrid",
+      "id": "U2",
+      "chars": 32569,
+      "prompt_tokens": 11800,
+      "ratio": 2.7601,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 8847,
+      "ratio": 3.5656,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 9082,
+      "ratio": 3.6776,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 8194,
+      "ratio": 3.4893,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 8430,
+      "ratio": 4.1734,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 10075,
+      "ratio": 3.8834,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 9863,
+      "ratio": 3.8175,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 10390,
+      "ratio": 3.7779,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 10393,
+      "ratio": 3.7794,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "R1",
+      "chars": 48246,
+      "prompt_tokens": 11703,
+      "ratio": 4.1225,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "R2",
+      "chars": 64101,
+      "prompt_tokens": 14211,
+      "ratio": 4.5107,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "R3",
+      "chars": 61062,
+      "prompt_tokens": 13689,
+      "ratio": 4.4607,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "T1",
+      "chars": 32492,
+      "prompt_tokens": 9002,
+      "ratio": 3.6094,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "T2",
+      "chars": 33996,
+      "prompt_tokens": 8120,
+      "ratio": 4.1867,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "T3",
+      "chars": 25782,
+      "prompt_tokens": 7664,
+      "ratio": 3.364,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "Q1",
+      "chars": 55619,
+      "prompt_tokens": 12797,
+      "ratio": 4.3463,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "Q2",
+      "chars": 55626,
+      "prompt_tokens": 11231,
+      "ratio": 4.9529,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "Q3",
+      "chars": 43491,
+      "prompt_tokens": 11104,
+      "ratio": 3.9167,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "M1",
+      "chars": 33411,
+      "prompt_tokens": 9085,
+      "ratio": 3.6776,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "U1",
+      "chars": 10929,
+      "prompt_tokens": 3705,
+      "ratio": 2.9498,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+      "system": "hybrid",
+      "id": "U2",
+      "chars": 32569,
+      "prompt_tokens": 9028,
+      "ratio": 3.6076,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 8847,
+      "ratio": 3.5656,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 9082,
+      "ratio": 3.6776,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 8194,
+      "ratio": 3.4893,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 8430,
+      "ratio": 4.1734,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 10075,
+      "ratio": 3.8834,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 9863,
+      "ratio": 3.8175,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 10390,
+      "ratio": 3.7779,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 10393,
+      "ratio": 3.7794,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "R1",
+      "chars": 48246,
+      "prompt_tokens": 11703,
+      "ratio": 4.1225,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "R2",
+      "chars": 64101,
+      "prompt_tokens": 14211,
+      "ratio": 4.5107,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "R3",
+      "chars": 61062,
+      "prompt_tokens": 13689,
+      "ratio": 4.4607,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "T1",
+      "chars": 32492,
+      "prompt_tokens": 9002,
+      "ratio": 3.6094,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "T2",
+      "chars": 33996,
+      "prompt_tokens": 8120,
+      "ratio": 4.1867,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "T3",
+      "chars": 25782,
+      "prompt_tokens": 7664,
+      "ratio": 3.364,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "Q1",
+      "chars": 55619,
+      "prompt_tokens": 12797,
+      "ratio": 4.3463,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "Q2",
+      "chars": 55626,
+      "prompt_tokens": 11231,
+      "ratio": 4.9529,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "Q3",
+      "chars": 43491,
+      "prompt_tokens": 11104,
+      "ratio": 3.9167,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "M1",
+      "chars": 33411,
+      "prompt_tokens": 9085,
+      "ratio": 3.6776,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "U1",
+      "chars": 10929,
+      "prompt_tokens": 3705,
+      "ratio": 2.9498,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+      "system": "hybrid",
+      "id": "U2",
+      "chars": 32569,
+      "prompt_tokens": 9028,
+      "ratio": 3.6076,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 11477,
+      "ratio": 2.7485,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 11719,
+      "ratio": 2.8501,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 10818,
+      "ratio": 2.6429,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 10492,
+      "ratio": 3.3532,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 12716,
+      "ratio": 3.0768,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 12483,
+      "ratio": 3.0163,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 12930,
+      "ratio": 3.0357,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "deepinfra/Qwen/Qwen3.8-27B",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 12929,
+      "ratio": 3.0381,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 9625,
+      "ratio": 3.2774,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 9842,
+      "ratio": 3.3936,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 8878,
+      "ratio": 3.2204,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 9131,
+      "ratio": 3.853,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 10952,
+      "ratio": 3.5724,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 10751,
+      "ratio": 3.5022,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 11479,
+      "ratio": 3.4195,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 11481,
+      "ratio": 3.4212,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "R1",
+      "chars": 48246,
+      "prompt_tokens": 12601,
+      "ratio": 3.8287,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "R2",
+      "chars": 64101,
+      "prompt_tokens": 15315,
+      "ratio": 4.1855,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "R3",
+      "chars": 61062,
+      "prompt_tokens": 14758,
+      "ratio": 4.1376,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "T1",
+      "chars": 32492,
+      "prompt_tokens": 9722,
+      "ratio": 3.3421,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "T2",
+      "chars": 33996,
+      "prompt_tokens": 8691,
+      "ratio": 3.9116,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "T3",
+      "chars": 25782,
+      "prompt_tokens": 8278,
+      "ratio": 3.1145,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "Q1",
+      "chars": 55619,
+      "prompt_tokens": 13930,
+      "ratio": 3.9927,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "Q2",
+      "chars": 55626,
+      "prompt_tokens": 11943,
+      "ratio": 4.6576,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "Q3",
+      "chars": 43491,
+      "prompt_tokens": 11993,
+      "ratio": 3.6264,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "M1",
+      "chars": 33411,
+      "prompt_tokens": 9844,
+      "ratio": 3.394,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "U1",
+      "chars": 10929,
+      "prompt_tokens": 4021,
+      "ratio": 2.718,
+      "basis": "exact"
+    },
+    {
+      "source": "bakeoff",
+      "model": "anthropic/claude-haiku-4-5",
+      "system": "hybrid",
+      "id": "U2",
+      "chars": 32569,
+      "prompt_tokens": 9824,
+      "ratio": 3.3152,
+      "basis": "exact"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "N1",
+      "chars": 31545,
+      "prompt_tokens": 13048,
+      "ratio": 2.4176,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "N2",
+      "chars": 33400,
+      "prompt_tokens": 13155,
+      "ratio": 2.539,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "N3",
+      "chars": 28591,
+      "prompt_tokens": 12239,
+      "ratio": 2.3361,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "N4",
+      "chars": 35182,
+      "prompt_tokens": 12834,
+      "ratio": 2.7413,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "D1",
+      "chars": 39125,
+      "prompt_tokens": 14153,
+      "ratio": 2.7644,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "D2",
+      "chars": 37652,
+      "prompt_tokens": 13967,
+      "ratio": 2.6958,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "D3",
+      "chars": 39252,
+      "prompt_tokens": 14488,
+      "ratio": 2.7093,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "D4",
+      "chars": 39279,
+      "prompt_tokens": 14522,
+      "ratio": 2.7048,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "R2",
+      "chars": 64101,
+      "prompt_tokens": 18358,
+      "ratio": 3.4917,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "R3",
+      "chars": 61062,
+      "prompt_tokens": 17864,
+      "ratio": 3.4182,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "T1",
+      "chars": 32492,
+      "prompt_tokens": 19541,
+      "ratio": 1.6628,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "T2",
+      "chars": 33996,
+      "prompt_tokens": 17957,
+      "ratio": 1.8932,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "anthropic/claude-sonnet-5",
+      "system": "hybrid",
+      "id": "T3",
+      "chars": 25782,
+      "prompt_tokens": 17504,
+      "ratio": 1.4729,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "Q1",
+      "chars": 55619,
+      "prompt_tokens": 17056,
+      "ratio": 3.261,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "Q2",
+      "chars": 55626,
+      "prompt_tokens": 13057,
+      "ratio": 4.2602,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "Q3",
+      "chars": 43491,
+      "prompt_tokens": 18394,
+      "ratio": 2.3644,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "M1",
+      "chars": 33411,
+      "prompt_tokens": 13313,
+      "ratio": 2.5097,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "U1",
+      "chars": 10929,
+      "prompt_tokens": 5493,
+      "ratio": 1.9896,
+      "basis": "approximate"
+    },
+    {
+      "source": "deployed_v2e",
+      "model": "openai/gpt-6-luna",
+      "system": "hybrid",
+      "id": "U2",
+      "chars": 32569,
+      "prompt_tokens": 13104,
+      "ratio": 2.4854,
+      "basis": "approximate"
+    }
+  ],
+  "template_validation": {
+    "available": true,
+    "encoding": "o200k_base",
+    "model": "openai/gpt-6-luna",
+    "rows": 20,
+    "min": 0.9983,
+    "mean": 0.9993,
+    "max": 0.9996,
+    "meaning": "tokens of the rebuilt prompt (tiktoken) / prompt_tokens billed; 1.0 = the rebuild is the prompt billed"
+  }
+}

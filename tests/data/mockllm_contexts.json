@@ -1,0 +1,537 @@
+{
+ "_about": "Recorded retrieval contexts (question + the first chunks of the recorded run, text cut at a sentence end) for tests/test_tools_mockllm.py. Regenerate: uv run python -m tools.mockllm.record_contexts",
+ "source": [
+  "data/processed/eval_runs.v2-baseline.jsonl",
+  "data/processed/eval_runs.jsonl"
+ ],
+ "contexts": [
+  {
+   "id": "N1",
+   "type": "numeric",
+   "question": "What was Nvidia's total revenue for the fiscal year ended January 28, 2024?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0367",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. Since our original focus on PC graphics, we have expanded to several other large and important computationally intensive fields. Fueled by the sustained demand for exceptional 3D graphics and the scale of the gaming market, NVIDIA has leveraged its GPU architecture to create platforms for scientific computing, AI, data science, autonomous vehicles, robotics, and digital twin applications."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:I.2:0001",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. Since our original focus on PC graphics, we have expanded to several other large and important computationally intensive fields. Fueled by the sustained demand for exceptional 3D graphics and the scale of the gaming market, NVIDIA has leveraged its GPU architecture to create platforms for scientific computing, AI, data science, autonomous vehicles, robotics, and digital twin applications."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0314",
+     "text": "Gaming is the largest entertainment industry, with PC gaming as the predominant platform. Many factors propel its growth, including new high production value games, the continued rise of eSports, social connectivity and the increasing popularity of game streamers, modders, or gamers who remaster games, and creators.Our products for the gaming market include GeForce RTX GPUs for gaming desktop and laptop PCs, GeForce NOW cloud gaming service, as well as SoCs and development services for game consoles.Our gaming platforms leverage our GPUs and sophisticated software to enhance the gaming experience with smoother, higher quality graphics. NVIDIA RTX features ray tracing technology for real-time, cinematic-quality rendering, and deep learning super sampling, or NVIDIA DLSS, our AI technology that boosts frame rates while generating high-quality images for games."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0309",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. NVIDIA is now a data center scale AI infrastructure company reshaping all industries.Our technology stack includes the foundational NVIDIA CUDA development platform that runs on all NVIDIA GPUs, as well as hundreds of domain-specific software libraries, frameworks, algorithms, software development kits, or SDKs, and application programming interfaces, or APIs."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0382",
+     "text": "We refer to customers who purchase products directly from NVIDIA as direct customers, such as AIBs, distributors, ODMs, OEMs, CSPs, AI model makers, and system integrators. Certain direct customers may use either internal resources or third-party system integrators to complete their build. We refer to indirect customers as those who purchase products through our direct customers; indirect customers include CSPs, Neocloud builders, AI model makers, enterprises, and public sector entities."
+    }
+   ]
+  },
+  {
+   "id": "N2",
+   "type": "numeric",
+   "question": "What was Nvidia's total revenue for the fiscal year ended January 25, 2026?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0377",
+     "text": "A discussion regarding our financial condition and results of operations for fiscal year 2026 compared to fiscal year 2025 is presented below. A discussion regarding our financial condition and results of operations for fiscal year 2025 compared to fiscal year 2024 can be found under Item 7 in our Annual Report on Form 10-K for the fiscal year ended January 26, 2025, filed with the SEC on February 26, 2025, which is available free of charge on the SEC’s website at http://www.sec.gov and at our investor relations website, http://investor.nvidia.com.The following table sets forth, for the periods indicated, certain items in our Consolidated Statements of Income expressed as a percentage of revenue."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0000",
+     "text": "Other than the risk factors listed below, there have been no material changes from the risk factors previously described under Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026 and Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026.Purchasing or owning NVIDIA securities involves investment risks including, but not limited to, the risks described in Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026, Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026, and below. Any one of those risks could harm our business, financial condition and results of operations or reputation, which could cause our stock price to decline."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0368",
+     "text": "Revenue growth in fiscal year 2026 was driven by data center compute and networking platforms for accelerated computing and AI solutions. Our Blackwell architectures represented the majority of our Data Center revenue.The availability of data centers, energy, and capital to support the buildout of NVIDIA AI infrastructure by our customers and partners is crucial, and any shortage of these or other necessary resources could impact our future revenue and financial performance. Expanding energy capacity to meet demand is a complex, multi-year process that involves significant regulatory, technical, and construction challenges. In addition, access to capital can be particularly constrained for less-capitalized companies, which may face difficulties securing financing for large-scale infrastructure projects."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0314",
+     "text": "Gaming is the largest entertainment industry, with PC gaming as the predominant platform. Many factors propel its growth, including new high production value games, the continued rise of eSports, social connectivity and the increasing popularity of game streamers, modders, or gamers who remaster games, and creators.Our products for the gaming market include GeForce RTX GPUs for gaming desktop and laptop PCs, GeForce NOW cloud gaming service, as well as SoCs and development services for game consoles.Our gaming platforms leverage our GPUs and sophisticated software to enhance the gaming experience with smoother, higher quality graphics. NVIDIA RTX features ray tracing technology for real-time, cinematic-quality rendering, and deep learning super sampling, or NVIDIA DLSS, our AI technology that boosts frame rates while generating high-quality images for games."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0382",
+     "text": "We refer to customers who purchase products directly from NVIDIA as direct customers, such as AIBs, distributors, ODMs, OEMs, CSPs, AI model makers, and system integrators. Certain direct customers may use either internal resources or third-party system integrators to complete their build. We refer to indirect customers as those who purchase products through our direct customers; indirect customers include CSPs, Neocloud builders, AI model makers, enterprises, and public sector entities."
+    }
+   ]
+  },
+  {
+   "id": "N3",
+   "type": "numeric",
+   "question": "What was Nvidia's total revenue for the fiscal year ended January 26, 2025?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0377",
+     "text": "A discussion regarding our financial condition and results of operations for fiscal year 2026 compared to fiscal year 2025 is presented below. A discussion regarding our financial condition and results of operations for fiscal year 2025 compared to fiscal year 2024 can be found under Item 7 in our Annual Report on Form 10-K for the fiscal year ended January 26, 2025, filed with the SEC on February 26, 2025, which is available free of charge on the SEC’s website at http://www.sec.gov and at our investor relations website, http://investor.nvidia.com.The following table sets forth, for the periods indicated, certain items in our Consolidated Statements of Income expressed as a percentage of revenue."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0368",
+     "text": "Revenue growth in fiscal year 2026 was driven by data center compute and networking platforms for accelerated computing and AI solutions. Our Blackwell architectures represented the majority of our Data Center revenue.The availability of data centers, energy, and capital to support the buildout of NVIDIA AI infrastructure by our customers and partners is crucial, and any shortage of these or other necessary resources could impact our future revenue and financial performance. Expanding energy capacity to meet demand is a complex, multi-year process that involves significant regulatory, technical, and construction challenges. In addition, access to capital can be particularly constrained for less-capitalized companies, which may face difficulties securing financing for large-scale infrastructure projects."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0314",
+     "text": "Gaming is the largest entertainment industry, with PC gaming as the predominant platform. Many factors propel its growth, including new high production value games, the continued rise of eSports, social connectivity and the increasing popularity of game streamers, modders, or gamers who remaster games, and creators.Our products for the gaming market include GeForce RTX GPUs for gaming desktop and laptop PCs, GeForce NOW cloud gaming service, as well as SoCs and development services for game consoles.Our gaming platforms leverage our GPUs and sophisticated software to enhance the gaming experience with smoother, higher quality graphics. NVIDIA RTX features ray tracing technology for real-time, cinematic-quality rendering, and deep learning super sampling, or NVIDIA DLSS, our AI technology that boosts frame rates while generating high-quality images for games."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0382",
+     "text": "We refer to customers who purchase products directly from NVIDIA as direct customers, such as AIBs, distributors, ODMs, OEMs, CSPs, AI model makers, and system integrators. Certain direct customers may use either internal resources or third-party system integrators to complete their build. We refer to indirect customers as those who purchase products through our direct customers; indirect customers include CSPs, Neocloud builders, AI model makers, enterprises, and public sector entities."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0000",
+     "text": "Other than the risk factors listed below, there have been no material changes from the risk factors previously described under Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026 and Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026.Purchasing or owning NVIDIA securities involves investment risks including, but not limited to, the risks described in Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026, Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026, and below. Any one of those risks could harm our business, financial condition and results of operations or reputation, which could cause our stock price to decline."
+    }
+   ]
+  },
+  {
+   "id": "N4",
+   "type": "numeric",
+   "question": "What was Microsoft's total revenue for the fiscal year ended June 30, 2025?",
+   "chunks": [
+    {
+     "chunk_id": "0001193125-26-323660:II.7:0001",
+     "text": "Microsoft is a technology company committed to making digital technology and artificial intelligence (“AI”) available broadly and doing so responsibly, with a mission to empower every person and every organization on the planet to achieve more. We create platforms and applications, powered by AI, that deliver innovative solutions that meet the evolving needs of our customers. We generate revenue by offering a wide range of cloud-based solutions, content, and other services to people and businesses; licensing and supporting an array of software products; delivering relevant online advertising to a global audience; and designing and selling devices."
+    },
+    {
+     "chunk_id": "0001193125-26-323660:II.7:0000",
+     "text": "The following Management’s Discussion and Analysis of Financial Condition and Results of Operations (“MD&A”) is intended to help the reader understand the results of operations and financial condition of Microsoft Corporation. MD&A is provided as a supplement to, and should be read in conjunction with, our consolidated financial statements and the accompanying Notes to Financial Statements (Part II, Item 8 of this Form 10-K). This section generally discusses the results of our operations for the year ended June 30, 2026 compared to the year ended June 30, 2025. For a discussion of the year ended June 30, 2025 compared to the year ended June 30, 2024, please refer to Part II, Item 7, “Management’s Discussion and Analysis of Financial Condition and Results of Operations” in our Annual Report on Form 10-K for the year ended June 30, 2025."
+    },
+    {
+     "chunk_id": "0001193125-26-323660:II.7:0013",
+     "text": "Revenue increased $19.2 billion or 16%.•Microsoft 365 Commercial products and cloud services revenue increased $14.2 billion or 16%. Microsoft 365 Commercial cloud revenue grew 17% with growth in revenue per user driven by Microsoft 365 Copilot and Microsoft 365 E5. Microsoft 365 Commercial seats grew 6% driven by small and medium businesses and frontline worker offerings. Microsoft 365 Commercial products revenue grew 13% driven by growth in the Windows Commercial on-premises components of Microsoft 365 suite sales, as well as an increase in Office 2024 transactional purchasing.•Microsoft 365 Consumer products and cloud services revenue increased $1.8 billion or 24%."
+    },
+    {
+     "chunk_id": "0001193125-26-323660:I.1:0002",
+     "text": "Commitment to SustainabilityMicrosoft is committed to sustainability and our approach to addressing climate change starts with the sustainability of our own business. In 2020, we announced goals to become a carbon negative, water positive, and zero waste company by 2030. Since announcing these goals, we have seen major changes in both the technology sector and in our understanding of what it will take to meet our goals. More information about our progress toward these goals can be found in our annual Environmental Sustainability Report.OPERATING SEGMENTSWe operate our business and report our financial performance using three segments: Productivity and Business Processes, Intelligent Cloud, and More Personal Computing. Our segments provide management with a comprehensive financial view of our key businesses."
+    },
+    {
+     "chunk_id": "0001193125-26-323660:I.1:0001",
+     "text": "Founded in 1975, we develop and support software, services, devices, and solutions that deliver new value for customers and help people and businesses realize their full potential.We offer an array of services, including cloud-based solutions that provide customers with AI, software, services, platforms, and content, and we provide solution support and consulting services. We also deliver relevant online advertising to a global audience.Our products include operating systems, server applications, business solution applications, software development tools, desktop and server management tools, and video games."
+    }
+   ]
+  },
+  {
+   "id": "D1",
+   "type": "dependency",
+   "question": "Which companies does Nvidia depend on for chip manufacturing and assembly?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0367",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. Since our original focus on PC graphics, we have expanded to several other large and important computationally intensive fields. Fueled by the sustained demand for exceptional 3D graphics and the scale of the gaming market, NVIDIA has leveraged its GPU architecture to create platforms for scientific computing, AI, data science, autonomous vehicles, robotics, and digital twin applications."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:I.2:0001",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. Since our original focus on PC graphics, we have expanded to several other large and important computationally intensive fields. Fueled by the sustained demand for exceptional 3D graphics and the scale of the gaming market, NVIDIA has leveraged its GPU architecture to create platforms for scientific computing, AI, data science, autonomous vehicles, robotics, and digital twin applications."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0310",
+     "text": "More than half of our engineers work on software.All major cloud service providers, or CSPs, AI model makers, and enterprises use our data center-scale infrastructure and computing platforms to accelerate the services and offerings they deliver to billions of end users and customers, including AI solutions and assistants, AI foundation models, advertising, search, recommendation systems, social networking, data processing, online shopping, live video, and translation. AI model makers use our infrastructure and software hosted at CSPs to develop, build and run AI models, product offerings, and services.Enterprises and startups across a broad range of industries use our accelerated computing platforms to build new generative and agentic AI-enabled products and services, and/or to dramatically accelerate and reduce the costs of their workloads and workflows."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0309",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. NVIDIA is now a data center scale AI infrastructure company reshaping all industries.Our technology stack includes the foundational NVIDIA CUDA development platform that runs on all NVIDIA GPUs, as well as hundreds of domain-specific software libraries, frameworks, algorithms, software development kits, or SDKs, and application programming interfaces, or APIs."
+    },
+    {
+     "chunk_id": "0001045810-23-000017:I.1A:0051",
+     "text": "government, or USG, announced new export restrictions and export licensing requirements targeting China’s semiconductor and supercomputing industries. These restrictions impact exports of certain chips, as well as software, hardware, equipment, and technology used to develop, produce, and manufacture certain chips, to China (including Hong Kong and Macau) and Russia, and specifically impact our A100 and H100 integrated circuits, DGX or any other systems or boards which incorporate A100 or H100 integrated circuits and our A100X. The new license requirements also apply to any future NVIDIA integrated circuit achieving certain peak performance and chip-to-chip I/O performance thresholds, as well as any system or board that includes those circuits."
+    }
+   ]
+  },
+  {
+   "id": "D2",
+   "type": "dependency",
+   "question": "Which memory suppliers does Nvidia buy HBM or memory from?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0367",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. Since our original focus on PC graphics, we have expanded to several other large and important computationally intensive fields. Fueled by the sustained demand for exceptional 3D graphics and the scale of the gaming market, NVIDIA has leveraged its GPU architecture to create platforms for scientific computing, AI, data science, autonomous vehicles, robotics, and digital twin applications."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:I.2:0001",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. Since our original focus on PC graphics, we have expanded to several other large and important computationally intensive fields. Fueled by the sustained demand for exceptional 3D graphics and the scale of the gaming market, NVIDIA has leveraged its GPU architecture to create platforms for scientific computing, AI, data science, autonomous vehicles, robotics, and digital twin applications."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0309",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. NVIDIA is now a data center scale AI infrastructure company reshaping all industries.Our technology stack includes the foundational NVIDIA CUDA development platform that runs on all NVIDIA GPUs, as well as hundreds of domain-specific software libraries, frameworks, algorithms, software development kits, or SDKs, and application programming interfaces, or APIs."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0021",
+     "text": "Our primary competitor in the supply of CPUs and APUs is Intel. A variety of companies provide or have developed Arm-based microprocessors and platforms which could lead to further adoption of Arm-based PC solutions. Our principal competitor in the supply of discrete graphics is Nvidia, who is the discrete GPU market share leader, and Intel, who manufactures and sells integrated graphics processors and gaming-focused discrete GPUs. With respect to integrated graphics, higher unit shipments of our APUs and Intel’s integrated graphics may drive computer manufacturers to reduce the number of systems they build paired with discrete graphics components, particularly for notebooks, because they may offer satisfactory graphics performance for most mainstream PC users at a lower cost. We are the market share leader in semi-custom game console products, where graphics performance is critical."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0328",
+     "text": "Jen-Hsun Huang co-founded NVIDIA in 1993 and has served as our President, Chief Executive Officer, and a member of the Board of Directors since our inception. From 1985 to 1993, Mr. Huang was employed at LSI Logic Corporation, a computer chip manufacturer, where he held a variety of positions including as Director of Coreware, the business unit responsible for LSI's SOC. From 1983 to 1985, Mr. Huang was a microprocessor designer for AMD, a semiconductor company. Mr. Huang holds a B.S.E.E. degree from Oregon State University and an M.S.E.E. degree from Stanford University.Colette M. Kress joined NVIDIA in 2013 as Executive Vice President and Chief Financial Officer. Prior to NVIDIA, Ms."
+    }
+   ]
+  },
+  {
+   "id": "D3",
+   "type": "dependency",
+   "question": "Which foundries does AMD rely on to manufacture its chips?",
+   "chunks": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0038",
+     "text": "AMD was incorporated under the laws of Delaware on May 1, 1969 and became a publicly held company in 1972. Our common stock is currently listed on The NASDAQ Global Select Market (NASDAQ) under the symbol “AMD”. Our mailing address and executive offices are located at 2485 Augustine Drive, Santa Clara, California 95054, and our telephone number is (408) 749-4000. For financial information about geographic areas and for segment information with respect to revenues and operating results, refer to the information set forth in Note 4 of our consolidated financial statements. We use a 52- or 53-week fiscal year ending on the last Saturday in December."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0002",
+     "text": "AMD drives innovation in high performance and AI computing to solve the world’s most important challenges. AMD technology powers billions of experiences across cloud and AI infrastructure, embedded systems, AI PCs and gaming. With a broad portfolio of AI-optimized CPUs, GPUs, networking and software, AMD delivers full-stack solutions that help customers turn data into breakthroughs, with the speed and scale needed for a new era of intelligent computing. Our high-performance product portfolios provide differentiated solutions, including semi-custom System-on-Chip (SoCs), adaptive SoCs and accelerated processing units (APUs). For data centers, we offer AI accelerators, microprocessors (CPUs), graphic processing units (GPUs), data processing units (DPUs), AI Network Interface Cards (AI NICs) and field programmable gate arrays (FPGAs). We offer ultra-low latency networking solutions."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0013",
+     "text": "We sell our products via a direct sales force, our OEMs (as described in detail below) and through independent distributors and sales representatives in both domestic and international markets. Our sales arrangements generally operate on the basis of product forecasts provided by the particular customer, but do not typically include any commitment or requirement for minimum product purchases. We use purchase orders and related documents, and contractual agreements as evidence of our sales arrangements. Our agreements typically contain standard terms and conditions covering matters such as payment terms, warranties and indemnities for issues specific to our products.We generally warrant that our products sold to our customers will conform to our approved specifications and be free from defects in material and workmanship under normal use and conditions for one year."
+    },
+    {
+     "chunk_id": "0000002488-26-000123:I.2:0002",
+     "text": "We are a global semiconductor company primarily offering: •Artificial Intelligence (AI) accelerators, microprocessors (CPUs) for servers, graphics processing units (GPUs), accelerated processing units (APUs), data processing units (DPUs), AI Network Interface Cards (AI NICs), Field Programmable Gate Arrays (FPGAs) and adaptive System-on-Chip (SoC) products for data centers;•CPUs, APUs, chipsets for desktops and notebooks, discrete GPUs, semi-custom SoC products and development services; and•embedded CPUs, APUs, FPGAs, System on Modules (SOMs), and adaptive SoC products.From time to time, we may also sell or license portions of our intellectual property (IP) portfolio.In this section, we will describe the general financial condition and the results of operations of Advanced Micro Devices, Inc."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0011",
+     "text": "Embedded CPUs and APUs. Our embedded portfolio expanded in 2025 with the introduction of three new AMD EPYC embedded processor series: AMD EPYC Embedded 9005 Series, EPYC Embedded 4005 Series processors and EPYC Embedded 2005 Series. These new series deliver enhanced performance and extended lifecycles for networking, storage, and edge server applications. We also launched the AMD Ryzen Embedded 9000 Series processors, offering performance-per-watt and low latency for automation systems and machine vision applications. In January 2026, we introduced a new family of Ryzen AI Embedded series processors with two new series: the Ryzen AI Embedded P100 and Ryzen AI Embedded X100 Series. These additions complement our existing AMD EPYC Embedded CPUs and AMD Ryzen Embedded Series processors including V-Series APUs and CPUs and R-Series APUs and CPUs."
+    }
+   ]
+  },
+  {
+   "id": "D4",
+   "type": "dependency",
+   "question": "Which hyperscaler is disclosed as a customer of AMD in the knowledge graph?",
+   "chunks": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0003",
+     "text": "We believe AI is shaping the next era of computing and its full potential will be realized when it becomes pervasive across cloud, edge and endpoint devices. With our compute engines, intellectual property, software enablement and deep expertise, AMD is positioned to lead in this next computing era. Our broad portfolio spans supercomputing, cloud, edge, embedded and end devices, providing the unique opportunity to make AMD the end-to-end AI leader. In 2025, a key priority was accelerating growth in our Data Center segment. Demand for our data center AI accelerator products was strong as large hyperscale customers, OEMs and ODMs deployed our AMD Instinct™ MI350X Series GPUs. We advanced our AMD AI GPU roadmap to deliver an annual cadence of leadership for AMD Instinct solutions, beginning with the AMD Instinct MI350 Series GPUs in 2025."
+    },
+    {
+     "chunk_id": "0000002488-26-000123:I.2:0000",
+     "text": "The statements in this report include forward-looking statements within the meaning of the Private Securities Litigation Reform Act of 1995. These forward-looking statements are based on current expectations and beliefs and involve numerous risks and uncertainties that could cause actual results to differ materially from expectations. These forward-looking statements speak only as of the date hereof or as of the dates indicated in the statements and should not be relied upon as predictions of future events, as we cannot assure you that the events or circumstances reflected in these statements will be achieved or will occur."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0006",
+     "text": "Server CPUs. Our CPUs for server platforms currently include the AMD EPYC™ Series processors. EPYC CPUs, which are based on the x86 architecture, are server-specific processors designed for high-performance computing, enterprise IT, supercomputing, and large data centers. Our 5th generation AMD EPYC family of server processors delivers improved performance and efficiency for AI, cloud and enterprise workloads.Data Center GPUs. Our AMD Instinct™ family of GPU products, including AMD Instinct MI200, MI300, MI325 and MI350 series, are based on AMD CDNA™ architecture and designed for AI training, inference and exascale-class scientific computing. We also announced next-generation AMD Instinct MI355X GPUs for large-scale AI deployments. Our visual cloud GPU offerings include products in the AMD Radeon™ PRO V families."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0002",
+     "text": "AMD drives innovation in high performance and AI computing to solve the world’s most important challenges. AMD technology powers billions of experiences across cloud and AI infrastructure, embedded systems, AI PCs and gaming. With a broad portfolio of AI-optimized CPUs, GPUs, networking and software, AMD delivers full-stack solutions that help customers turn data into breakthroughs, with the speed and scale needed for a new era of intelligent computing. Our high-performance product portfolios provide differentiated solutions, including semi-custom System-on-Chip (SoCs), adaptive SoCs and accelerated processing units (APUs). For data centers, we offer AI accelerators, microprocessors (CPUs), graphic processing units (GPUs), data processing units (DPUs), AI Network Interface Cards (AI NICs) and field programmable gate arrays (FPGAs). We offer ultra-low latency networking solutions."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0038",
+     "text": "AMD was incorporated under the laws of Delaware on May 1, 1969 and became a publicly held company in 1972. Our common stock is currently listed on The NASDAQ Global Select Market (NASDAQ) under the symbol “AMD”. Our mailing address and executive offices are located at 2485 Augustine Drive, Santa Clara, California 95054, and our telephone number is (408) 749-4000. For financial information about geographic areas and for segment information with respect to revenues and operating results, refer to the information set forth in Note 4 of our consolidated financial statements. We use a 52- or 53-week fiscal year ending on the last Saturday in December."
+    }
+   ]
+  },
+  {
+   "id": "R1",
+   "type": "regulatory",
+   "question": "Which BIS export-control rules is AMD affected by?",
+   "chunks": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0020",
+     "text": "We are subject to U.S. laws and regulations, including the Export Administration Regulations (EAR) administered by the Bureau of Industry and Security (BIS) of the U.S. Department of Commerce, which restrict the export of certain products and technologies to certain countries, including China, Russia, and Belarus, among others. These restrictions may limit our ability to sell certain products or technologies in these markets or to certain customers.Evolving U.S. government policy toward semiconductor exports, particularly in the context of national security and foreign policy priorities could adversely affect our business."
+    },
+    {
+     "chunk_id": "0000002488-25-000012:I.1A:0020",
+     "text": "We have equity interests in two joint ventures (collectively, the THATIC JV) with Higon Information Technology Co., Ltd. (THATIC), a third-party Chinese entity. In June 2019, the Bureau of Industry and Security (BIS) of the United States Department of Commerce added certain Chinese entities to the Entity List, including THATIC and the THATIC JV. Since that time, the United States administration has called for changes to domestic and foreign policy, including policies with respect to China and Russia. Specifically, United States-China trade relations remain uncertain as the United States continues to add more Chinese companies to the Entity List and more regulations targeted to advanced computing, semiconductor manufacturing, and emerging technologies such as AI."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0022",
+     "text": " We may, from time to time, receive technical data from third parties that is subject to the International Traffic and Arms Regulations (ITAR), which are administered by the U.S. Department of State. Export Administration Regulation (EAR) governs the export and re-export of certain AMD products, including FPGAs, as well as the transfer of related technologies or provision of services, whether in the U.S. or abroad. We are required to maintain an internal compliance program and security infrastructure to meet EAR and ITAR requirements. An inability to obtain the required export licenses, or to predict when or pursuant to which conditions they will be granted, increases the difficulties of forecasting shipments."
+    },
+    {
+     "chunk_id": "0000002488-26-000123:I.2:0000",
+     "text": "The statements in this report include forward-looking statements within the meaning of the Private Securities Litigation Reform Act of 1995. These forward-looking statements are based on current expectations and beliefs and involve numerous risks and uncertainties that could cause actual results to differ materially from expectations. These forward-looking statements speak only as of the date hereof or as of the dates indicated in the statements and should not be relied upon as predictions of future events, as we cannot assure you that the events or circumstances reflected in these statements will be achieved or will occur."
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0021",
+     "text": "We are subject to complex and evolving U.S. and international laws, including export controls, trade restrictions, and national‑security‑based regulations, which may restrict or prohibit the design, manufacture, sale, distribution, or use of our products. Certain prohibitions may apply based on ownership, control, or jurisdictional nexus rather than manufacturing location. Compliance with evolving regulations, particularly those related to China or Russia, may require product redesigns, impose customer or transaction limitations, require supply chain restructuring, or increase compliance costs, and could materially adversely affect our business, revenue and results of operations.The Export Administration Regulations (EAR) administered by the Bureau of Industry and Security (BIS) of the U.S."
+    }
+   ]
+  },
+  {
+   "id": "R2",
+   "type": "regulatory",
+   "question": "Which companies in the graph are affected by US export-control rules?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0005",
+     "text": "The GAIN AI Act would restrict the Trump Administration’s ability to adapt the Biden Administration’s export control rules and could also allow private U.S. persons to review and overturn licensing and foreign policy decisions made by the Trump Administration. Congress is also considering legislation such as the Remote Access Security Act, or RASA, which could prohibit the provision of cloud services to any company with an ultimate parent headquartered in China."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0356",
+     "text": "persons to review and overturn licensing and foreign policy decisions made by the Trump Administration.Our competitive position has been harmed by export controls, and our competitive position and future results will be further harmed, over the long term, if the restrictions remain in place or are expanded in geographic, customer, or product scope, if customers purchase product from competitors, if customers develop their own internal solution, if we are unable to provide contractual warranty or other extended service obligations, if the USG does not grant licenses in a timely manner or denies licenses to significant customers or if we incur significant transition costs. The licensing process may not be resolved before significant business opportunities evaporate."
+    },
+    {
+     "chunk_id": "0001045810-24-000029:I.1A:0152",
+     "text": "and its allies. The United States has imposed unilateral controls restricting GPUs and associated products, and it is likely that additional unilateral or multilateral controls will be adopted. Such controls have been and may again be very broad in scope and application, prohibit us from exporting our products to any or all customers in one or more markets, including but not limited to China, and could negatively impact our manufacturing, testing and warehousing locations and options, or could impose other conditions that limit our ability to serve demand abroad and could negatively and materially impact our business, revenue and financial results."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0003",
+     "text": "Concurrently, the war in Ukraine has impacted sales in EMEA and may continue to do so in the future.The increasing focus on the risks and strategic importance of AI technologies has resulted in regulatory restrictions that target products and services capable of enabling or facilitating AI and may in the future result in additional restrictions impacting some or all of our product and service offerings.Concerns regarding third-party use of AI for purposes contrary to local governmental interests, including concerns relating to the misuse of AI applications, models, and solutions, has resulted in and could in the future result in unilateral or multilateral restrictions on products that can be used for training, modifying, tuning, and deploying LLMs and other AI applications."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0354",
+     "text": "Concurrently, the war in Ukraine has impacted sales in EMEA and may continue to do so in the future.The increasing focus on the risks and strategic importance of AI technologies has resulted in regulatory restrictions that target products and services capable of enabling or facilitating AI and may in the future result in additional restrictions impacting some or all of our product and service offerings.Concerns regarding third-party use of AI for purposes contrary to local governmental interests, including concerns relating to the misuse of AI applications, models, and solutions, has resulted in and could in the future result in unilateral or multilateral restrictions on products that can be used for training, modifying, tuning, and deploying LLMs and other AI applications."
+    }
+   ]
+  },
+  {
+   "id": "R3",
+   "type": "regulatory",
+   "question": "What does Nvidia disclose about export controls affecting its sales to China?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-24-000029:I.1A:0152",
+     "text": "and its allies. The United States has imposed unilateral controls restricting GPUs and associated products, and it is likely that additional unilateral or multilateral controls will be adopted. Such controls have been and may again be very broad in scope and application, prohibit us from exporting our products to any or all customers in one or more markets, including but not limited to China, and could negatively impact our manufacturing, testing and warehousing locations and options, or could impose other conditions that limit our ability to serve demand abroad and could negatively and materially impact our business, revenue and financial results."
+    },
+    {
+     "chunk_id": "0001045810-23-000017:I.1A:0051",
+     "text": "government, or USG, announced new export restrictions and export licensing requirements targeting China’s semiconductor and supercomputing industries. These restrictions impact exports of certain chips, as well as software, hardware, equipment, and technology used to develop, produce, and manufacture certain chips, to China (including Hong Kong and Macau) and Russia, and specifically impact our A100 and H100 integrated circuits, DGX or any other systems or boards which incorporate A100 or H100 integrated circuits and our A100X. The new license requirements also apply to any future NVIDIA integrated circuit achieving certain peak performance and chip-to-chip I/O performance thresholds, as well as any system or board that includes those circuits."
+    },
+    {
+     "chunk_id": "0001045810-25-000023:I.1A:0256",
+     "text": "Concurrently, the war in Ukraine has impacted sales in EMEA and may continue to do so in the future.The increasing focus on the risks and strategic importance of AI technologies has resulted in regulatory restrictions that target products and services capable of enabling or facilitating AI and may in the future result in additional restrictions impacting some or all of our product and service offerings.Concerns regarding third-party use of AI for purposes contrary to local governmental interests, including concerns relating to the misuse of AI applications, models, and solutions, has resulted in and could in the future result in unilateral or multilateral restrictions on products that can be used for training, modifying, tuning, and deploying LLMs and other AI applications."
+    },
+    {
+     "chunk_id": "0001045810-25-000023:I.1A:0258",
+     "text": "We expanded our Data Center product portfolio to offer new solutions, including those for which the USG does not require a license or advance notice before each shipment. To the extent that a customer requires products covered by the licensing requirements, we may seek a license for the customer. However, the licensing process is time-consuming. We have no assurance that the USG will grant such a license or that the USG will act on the license application in a timely manner or at all. Even if a license is approved, it may impose burdensome conditions that we or our customer or end users cannot or decide not to accept. The USG evaluates license requests in a closed process that does not have clear standards or an opportunity for review. For example, the Notified Advanced Computing, or “NAC,” process has not resulted in approvals for exports of products to customers in China."
+    },
+    {
+     "chunk_id": "0001045810-24-000029:I.1A:0153",
+     "text": "We are working to expand our Data Center product portfolio to offer new solutions, including those for which the USG does not require a license or advance notice before each shipment. To the extent that a customer requires products covered by the licensing requirements, we may seek a license for the customer. However, the licensing process is time-consuming. We have no assurance that the USG will grant such a license or that the USG will act on the license application in a timely manner or at all. Even if a license is offered, it may impose burdensome conditions that we or our customer or end users cannot or decide not to accept. The USG is evaluating license requests in a closed process that does not have clear standards or an opportunity for review."
+    }
+   ]
+  },
+  {
+   "id": "T1",
+   "type": "temporal",
+   "question": "Did Nvidia stop disclosing any risk factors in its latest 10-K that appeared in earlier 10-Ks?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0000",
+     "text": "Other than the risk factors listed below, there have been no material changes from the risk factors previously described under Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026 and Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026.Purchasing or owning NVIDIA securities involves investment risks including, but not limited to, the risks described in Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026, Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026, and below. Any one of those risks could harm our business, financial condition and results of operations or reputation, which could cause our stock price to decline."
+    },
+    {
+     "chunk_id": "0001045810-23-000017:I.1A:0028",
+     "text": "In evaluating NVIDIA, the following risk factors should be considered in addition to the other information in this Annual Report on Form 10-K. Purchasing or owning NVIDIA common stock involves investment risks including, but not limited to, the risks described below. Any one of the following risks could harm our business, financial condition, results of operations or reputation, which could cause our stock price to decline, and you may lose all or a part of your investment. Additional risks, trends and uncertainties not presently known to us or that we currently believe are immaterial may also harm our business, financial condition, results of operations or reputation."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:I.2:0000",
+     "text": "This Quarterly Report on Form 10-Q contains forward-looking statements within the meaning of Section 27A of the Securities Act of 1933, as amended, and Section 21E of the Securities Exchange Act of 1934, as amended, which are subject to the “safe harbor” created by those sections based on management’s beliefs and assumptions and on information currently available to management. In some cases, you can identify forward-looking statements by terms such as “may,” “will,” “should,” “could,” “goal,” “would,” “expect,” “plan,” “anticipate,” “believe,” “estimate,” “project,” “predict,” “potential” and similar expressions intended to identify forward-looking statements."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0329",
+     "text": "Our annual reports on Form 10-K, quarterly reports on Form 10-Q, current reports on Form 8-K and, if applicable, amendments to those reports filed or furnished pursuant to Section 13(a) or 15(d) of the Securities Exchange Act of 1934, as amended, or the Exchange Act, are available free of charge on or through our website, http://www.nvidia.com, as soon as reasonably practicable after we electronically file such material with, or furnish it to, the Securities and Exchange Commission, or the SEC. The SEC’s website, http://www.sec.gov, contains reports, proxy and information statements, and other information regarding issuers that file electronically with the SEC. Our web site and the information on it or connected to it are not a part of this Annual Report on Form 10-K."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0344",
+     "text": "Breaches of our GFN security measures, which have happened in the past, could expose our partners to the risk of loss or misuse of this source code, damage both us and our partners, and expose NVIDIA to potential litigation and liability. If we or a third party we rely on experience a security incident, which has occurred in the past, or are perceived to have experienced a security incident, we may experience adverse consequences, including government enforcement actions, additional reporting requirements and/or oversight, restrictions on processing data, litigation, indemnification obligations, reputational harm, diversion of funds, diversion of management attention, financial loss, loss of data, material disruptions in our systems and operations, supply chain, and ability to produce, sell and distribute our goods and services, and other similar harms."
+    }
+   ]
+  },
+  {
+   "id": "T2",
+   "type": "temporal",
+   "question": "What new supply-chain or geopolitical risks appeared in Meta's most recent annual report?",
+   "chunks": [
+    {
+     "chunk_id": "0001628280-26-003942:I.1:0010",
+     "text": "At Meta, everything we do is about helping people feel connected and closer, and we are proud of our unique company culture. We had a global workforce of 78,865 employees as of December 31, 2025, and we have offices in more than 90 cities around the world. We are committed to fostering an enriching environment for our workforce and we are focused on supporting our people in doing the best work of their careers. We offer competitive compensation and a wide range of benefits, including many learning and development resources.From time to time, we implement organizational changes to pursue greater efficiency and realign our business and strategic priorities. For example, we have previously undertaken cost reduction efforts such as scaling back budgets, reducing company perks, shrinking our real estate footprint, and employee layoffs and restructurings."
+    },
+    {
+     "chunk_id": "0001628280-26-003942:I.1:0015",
+     "text": "We were incorporated in Delaware in July 2004. We completed our initial public offering in May 2012 and our Class A common stock is currently listed on the Nasdaq Global Select Market under the symbol \"META.\" Our principal executive offices are located at 1 Meta Way, Menlo Park, California 94025, and our telephone number is (650) 543-4800.Meta, the Meta logo, Meta Quest, Meta Horizon, Facebook, Instagram, WhatsApp, Reels, and our other registered or common law trademarks, service marks, or trade names appearing in this Annual Report on Form 10-K are the property of Meta Platforms, Inc. or its affiliates. Other trademarks, service marks, or trade names appearing in this Annual Report on Form 10‑K are the property of their respective owners."
+    },
+    {
+     "chunk_id": "0001628280-26-003942:I.1:0016",
+     "text": "Our Annual Reports on Form 10-K, Quarterly Reports on Form 10-Q, Current Reports on Form 8-K, and amendments to reports filed pursuant to Sections 13(a) and 15(d) of the Securities Exchange Act of 1934, as amended (Exchange Act), are filed with the U.S. Securities and Exchange Commission (SEC). We are subject to the informational requirements of the Exchange Act and file or furnish reports, proxy statements, and other information with the SEC. Such reports and other information filed by us with the SEC are available free of charge on our website at investor.atmeta.com when such reports are available on the SEC's website."
+    },
+    {
+     "chunk_id": "0001628280-26-003942:I.1A:0034",
+     "text": "Our tax obligations, including income and non-income taxes, are based in part on our corporate operating structure and intercompany arrangements, including the manner in which we operate our business, develop, value, manage, protect, and use our intellectual property, and the valuations of our intercompany transactions. The tax laws applicable to our business, including the laws of the United States and other jurisdictions, are subject to interpretation. Certain jurisdictions have applied novel or aggressive interpretations of their laws in an effort to raise additional tax revenue from companies such as Meta, and we may experience similar developments in the future. We are subject to regular review and audit by U.S. federal, state, and foreign tax authorities."
+    },
+    {
+     "chunk_id": "0001628280-26-003942:I.1:0000",
+     "text": "Our mission is to build the future of human connection and the technology that makes it possible. Our products enable people to connect and share through mobile devices, personal computers, virtual reality (VR) headsets, and AI glasses. We are innovating in artificial intelligence (AI) technologies to build transformative experiences and capabilities across our Family of Apps and new platforms, and to advance our vision to deliver personal superintelligence for everyone.We build technology that helps people connect and share, find and build communities, and grow businesses."
+    }
+   ]
+  },
+  {
+   "id": "T3",
+   "type": "temporal",
+   "question": "How has Nvidia's disclosed risk profile evolved across its recent annual reports?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-23-000017:I.1A:0028",
+     "text": "In evaluating NVIDIA, the following risk factors should be considered in addition to the other information in this Annual Report on Form 10-K. Purchasing or owning NVIDIA common stock involves investment risks including, but not limited to, the risks described below. Any one of the following risks could harm our business, financial condition, results of operations or reputation, which could cause our stock price to decline, and you may lose all or a part of your investment. Additional risks, trends and uncertainties not presently known to us or that we currently believe are immaterial may also harm our business, financial condition, results of operations or reputation."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0000",
+     "text": "Other than the risk factors listed below, there have been no material changes from the risk factors previously described under Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026 and Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026.Purchasing or owning NVIDIA securities involves investment risks including, but not limited to, the risks described in Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026, Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026, and below. Any one of those risks could harm our business, financial condition and results of operations or reputation, which could cause our stock price to decline."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:I.2:0000",
+     "text": "This Quarterly Report on Form 10-Q contains forward-looking statements within the meaning of Section 27A of the Securities Act of 1933, as amended, and Section 21E of the Securities Exchange Act of 1934, as amended, which are subject to the “safe harbor” created by those sections based on management’s beliefs and assumptions and on information currently available to management. In some cases, you can identify forward-looking statements by terms such as “may,” “will,” “should,” “could,” “goal,” “would,” “expect,” “plan,” “anticipate,” “believe,” “estimate,” “project,” “predict,” “potential” and similar expressions intended to identify forward-looking statements."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0344",
+     "text": "Breaches of our GFN security measures, which have happened in the past, could expose our partners to the risk of loss or misuse of this source code, damage both us and our partners, and expose NVIDIA to potential litigation and liability. If we or a third party we rely on experience a security incident, which has occurred in the past, or are perceived to have experienced a security incident, we may experience adverse consequences, including government enforcement actions, additional reporting requirements and/or oversight, restrictions on processing data, litigation, indemnification obligations, reputational harm, diversion of funds, diversion of management attention, financial loss, loss of data, material disruptions in our systems and operations, supply chain, and ability to produce, sell and distribute our goods and services, and other similar harms."
+    },
+    {
+     "chunk_id": "0001045810-25-000023:I.1A:0247",
+     "text": "Breaches of our GFN security measures, which have happened in the past, could expose our partners to the risk of loss or misuse of this source code, damage both us and our partners, and expose NVIDIA to potential litigation and liability. If we or a third party we rely on experience a security incident, which has occurred in the past, or are perceived to have experienced a security incident, we may experience adverse consequences, including government enforcement actions, additional reporting requirements and/or oversight, restrictions on processing data, litigation, indemnification obligations, reputational harm, diversion of funds, diversion of management attention, financial loss, loss of data, material disruptions in our systems and operations, supply chain, and ability to produce, sell and distribute our goods and services, and other similar harms."
+    }
+   ]
+  },
+  {
+   "id": "Q1",
+   "type": "risk",
+   "question": "What supply-chain related risks does TSMC disclose in its annual report?",
+   "chunks": [
+    {
+     "chunk_id": "0001628280-26-025362:I.4:0016",
+     "text": "Due to changes in government energy policy, the growth of manufacturers in Taiwan’s Science Parks, and the droughts that Taiwan experiences from time to time, raise ongoing concerns regarding future availability of sufficient electricity and water for our production in Taiwan. To help address these potential shortages and mitigate the potential impact that insufficient electricity and water supplies may have on our semiconductor production, we have adopted various natural resources conservation methodologies. Moreover, we have encountered and anticipate continued increases in utility prices. Higher electricity prices could increase our manufacturing costs and therefore adversely impact our financial results. Please see “Item 3. Key Information – Risk Factors – Risks Relating to Our Business” for a discussion of the risk related to shortages or increased prices in electricity and water."
+    },
+    {
+     "chunk_id": "0001730168-26-000080:II.1A:0009",
+     "text": "Dependence on contract manufacturing and suppliers of critical components within our supply chain may adversely affect our ability to bring products to market, damage our reputation and adversely affect our results of operations.\n\nWe operate a primarily outsourced manufacturing business model that principally utilizes CMs, such as third-party wafer foundries. Our semiconductor products require wafer manufacturers with state-of-the-art fabrication equipment and techniques and critical components within our supply chain, such as memory chips, and most of our products are designed to be manufactured in a specific process, typically at one particular fab or foundry, either our own or with a particular CM."
+    },
+    {
+     "chunk_id": "0000050863-25-000009:I.1A:0010",
+     "text": "As a further example, a limited number of third-party foundries offer leading-edge manufacturing processes, and these providers are geographically concentrated in Asia. Some of our most advanced current and future products are or will be either exclusively manufactured by TSMC or reliant upon critical components, including various compute die, manufactured by TSMC. We are subject to the risks of product defects, errata, or other product issues. From time to time, we identify product defects, errata, and other product issues, which can result from problems in our product design or our manufacturing and assembly and test processes. Components and products we purchase or license from third-party suppliers, or gain"
+    },
+    {
+     "chunk_id": "0001628280-26-025362:I.4:0000",
+     "text": "Our legal and commercial name is 台灣積體電路製造股份有限公司 (Taiwan Semiconductor Manufacturing Company Limited). We were founded in 1987 as a joint venture among the R.O.C. government and other private investors and were incorporated in the R.O.C. as a company limited by shares on February 21, 1987. Since our establishment, we have built a strong position in manufacturing capacity as a dedicated foundry. Our common shares have been listed on the Taiwan Stock Exchange since September 5, 1994, and our ADSs have been listed on the New York Stock Exchange (“NYSE”) since October 8, 1997.\n\n15Our Principal Office Our principal executive office is located at No. 8, Li-Hsin Road 6, Hsinchu Science Park, Hsinchu, Taiwan, Republic of China. Our telephone number at that office is (886-3) 563-6688. Our website is www.tsmc.com."
+    },
+    {
+     "chunk_id": "0001628280-26-025362:I.4:0015",
+     "text": "We have installed in our fabs various types of pollution control equipment for the treatment of gaseous and liquid chemical wastes and wastewater, equipment for GHG emission reduction and equipment for the recycling of used chemicals and treated water. Operations at our fabs are subject to regulations and periodic monitoring by the R.O.C. Ministry of Environment, the U.S. Environmental Protection Agency, the State Environmental Protection Administration of China, the Japan Ministry of the Environment, the European Environment Agency and European Chemicals Agency, and local environmental protection authorities in Taiwan, the U.S., China, Japan and Germany."
+    }
+   ]
+  },
+  {
+   "id": "Q2",
+   "type": "risk",
+   "question": "What geopolitical risks does ASML disclose?",
+   "chunks": [
+    {
+     "chunk_id": "0000937966-25-000009:I.3:0010",
+     "text": "5. Operations (continued)We face challenges to meet expected demandOur operations expose us to health, safety and environment risksRisk category:Risk category:Manufacturing and install, Human resources, Supplier strategy and performanceEnvironment, health and safetyWe are continuing to increase production capacity in our end-to-end supply chain to meet expected demand, but we face challenges in increasing capacity. For example, we depend on our suppliers increasing their capacity and their ability to invest, and it takes time to build the production space and equipment required for expansion. We and our supply chain also need to obtain permits to make expansion possible, and the time it takes for these to be granted may cause delays.   It is a challenge for ASML and its suppliers to hire and retain employees to support expansion."
+    },
+    {
+     "chunk_id": "0000937966-25-000009:I.3:0004",
+     "text": "1. Strategy and products (continued)We are exposed to economic, geopolitical and other developments in our international operationsWe may be unable to make desirable acquisitions or to integrate successfully any businesses we acquireRisk category:Risk category:GeopoliticalMerger and acquisitionOur business is subject to export control restrictions, sanctions, tariffs and, more generally, international trade regulations which impact our ability to deliver our systems, technology and services, and geopolitical tensions have led, and may lead to, an increase in such restrictions and regulations. Our ability to deliver systems and services in certain countries such as China has been the subject of increased export regulations or policies and continues to be impacted by our ability to obtain required licenses and approvals."
+    },
+    {
+     "chunk_id": "0000937966-25-000009:I.3:0000",
+     "text": "Many risks have the potential to impact our business and it is important to understand their nature. We assess risks using the ASML risk universe, which comprises six risk types (Strategy and products, Finance and reporting, Partners, People, Operations, Legal and compliance).\n\nThe risk factors in this section are classified under these six risk types. Any of these risks and the related events or circumstances described therein may have a material adverse effect on our business, financial condition, results of operations and reputation. These risks are not the only ones that we face. Some risks may not yet be known to us, and certain risks that we do not currently believe to be material could become material in the future."
+    },
+    {
+     "chunk_id": "0001628280-26-011378:I.3:0010",
+     "text": "Operations (continued)Finance and reportingWe face challenges to meet expected demandWe are exposed to financial risks including liquidity risk, interest rate risk, counterparty credit risk, foreign exchange risk and inflation riskChanges in taxation could affect our future profitabilityWe are continuing to increase production capacity in our end-to-end supply chain to meet future demand, but we face challenges in increasing capacity. For example, we depend on our suppliers increasing their capacity and their ability to invest, and it takes time to build the production space and equipment required for expansion. We and our supply chain also need to obtain permits to make expansion possible, and the time it takes for these to be granted may cause delays.It is a challenge for ASML and its suppliers to hire and retain employees to support expansion."
+    },
+    {
+     "chunk_id": "0001628280-26-011378:I.3:0003",
+     "text": "Strategic (continued)Defending against intellectual property claims brought by others could harm our businessWe are exposed to economic, geopolitical and other developments in our international operations.We may be unable to make desirable acquisitions, to invest successfully, or to integrate successfully any businesses we acquireIn the course of our business, we have been and may be subject to claims by third parties alleging that our products or processes infringe upon their IP rights."
+    }
+   ]
+  },
+  {
+   "id": "Q3",
+   "type": "risk",
+   "question": "Compare the competition risks disclosed by AMD and Nvidia.",
+   "chunks": [
+    {
+     "chunk_id": "0000002488-25-000012:I.1A:0007",
+     "text": "Intel Corporation’s dominance of the microprocessor market and its aggressive business practices may limit our ability to compete effectively on a level playing field.\n\nIntel’s microprocessor market share position, significant financial resources, introduction of competitive new products, and existing relationships with top-tier OEMs have enabled it to market and price its products aggressively, to target our customers and our channel partners with special incentives and to influence customers who do business with us. These aggressive activities have in the past resulted in lower unit sales and a lower average selling price for many of our products and adversely affected our margins and profitability. Intel also dominates the computer system platform and has a heavy influence on PC manufacturers, other PC industry participants, and benchmarks."
+    },
+    {
+     "chunk_id": "0000002488-26-000123:I.2:0000",
+     "text": "The statements in this report include forward-looking statements within the meaning of the Private Securities Litigation Reform Act of 1995. These forward-looking statements are based on current expectations and beliefs and involve numerous risks and uncertainties that could cause actual results to differ materially from expectations. These forward-looking statements speak only as of the date hereof or as of the dates indicated in the statements and should not be relied upon as predictions of future events, as we cannot assure you that the events or circumstances reflected in these statements will be achieved or will occur."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0021",
+     "text": "Our primary competitor in the supply of CPUs and APUs is Intel. A variety of companies provide or have developed Arm-based microprocessors and platforms which could lead to further adoption of Arm-based PC solutions. Our principal competitor in the supply of discrete graphics is Nvidia, who is the discrete GPU market share leader, and Intel, who manufactures and sells integrated graphics processors and gaming-focused discrete GPUs. With respect to integrated graphics, higher unit shipments of our APUs and Intel’s integrated graphics may drive computer manufacturers to reduce the number of systems they build paired with discrete graphics components, particularly for notebooks, because they may offer satisfactory graphics performance for most mainstream PC users at a lower cost. We are the market share leader in semi-custom game console products, where graphics performance is critical."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0002",
+     "text": "AMD drives innovation in high performance and AI computing to solve the world’s most important challenges. AMD technology powers billions of experiences across cloud and AI infrastructure, embedded systems, AI PCs and gaming. With a broad portfolio of AI-optimized CPUs, GPUs, networking and software, AMD delivers full-stack solutions that help customers turn data into breakthroughs, with the speed and scale needed for a new era of intelligent computing. Our high-performance product portfolios provide differentiated solutions, including semi-custom System-on-Chip (SoCs), adaptive SoCs and accelerated processing units (APUs). For data centers, we offer AI accelerators, microprocessors (CPUs), graphic processing units (GPUs), data processing units (DPUs), AI Network Interface Cards (AI NICs) and field programmable gate arrays (FPGAs). We offer ultra-low latency networking solutions."
+    },
+    {
+     "chunk_id": "0000002488-25-000012:I.1A:0002",
+     "text": "◦Intel Corporation’s dominance of the microprocessor market and its aggressive business practices may limit our ability to compete effectively on a level playing field. ◦Nvidia’s dominance in the graphics processing unit market and its aggressive business practices may limit our ability to compete effectively on a level playing field.◦The markets in which our products are sold are highly competitive and rapidly evolving. ◦The semiconductor industry is highly cyclical and has experienced severe downturns.◦The demand for our products depends in part on the market conditions in the industries into which they are sold."
+    }
+   ]
+  },
+  {
+   "id": "M1",
+   "type": "numeric",
+   "question": "By how much did Nvidia's annual revenue grow from the fiscal year ended January 28, 2024 to the fiscal year ended January 25, 2026?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0377",
+     "text": "A discussion regarding our financial condition and results of operations for fiscal year 2026 compared to fiscal year 2025 is presented below. A discussion regarding our financial condition and results of operations for fiscal year 2025 compared to fiscal year 2024 can be found under Item 7 in our Annual Report on Form 10-K for the fiscal year ended January 26, 2025, filed with the SEC on February 26, 2025, which is available free of charge on the SEC’s website at http://www.sec.gov and at our investor relations website, http://investor.nvidia.com.The following table sets forth, for the periods indicated, certain items in our Consolidated Statements of Income expressed as a percentage of revenue."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0368",
+     "text": "Revenue growth in fiscal year 2026 was driven by data center compute and networking platforms for accelerated computing and AI solutions. Our Blackwell architectures represented the majority of our Data Center revenue.The availability of data centers, energy, and capital to support the buildout of NVIDIA AI infrastructure by our customers and partners is crucial, and any shortage of these or other necessary resources could impact our future revenue and financial performance. Expanding energy capacity to meet demand is a complex, multi-year process that involves significant regulatory, technical, and construction challenges. In addition, access to capital can be particularly constrained for less-capitalized companies, which may face difficulties securing financing for large-scale infrastructure projects."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0367",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. Since our original focus on PC graphics, we have expanded to several other large and important computationally intensive fields. Fueled by the sustained demand for exceptional 3D graphics and the scale of the gaming market, NVIDIA has leveraged its GPU architecture to create platforms for scientific computing, AI, data science, autonomous vehicles, robotics, and digital twin applications."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0000",
+     "text": "Other than the risk factors listed below, there have been no material changes from the risk factors previously described under Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026 and Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026.Purchasing or owning NVIDIA securities involves investment risks including, but not limited to, the risks described in Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026, Item 1A of our Quarterly Report on Form 10-Q for the fiscal quarter ended April 26, 2026, and below. Any one of those risks could harm our business, financial condition and results of operations or reputation, which could cause our stock price to decline."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0314",
+     "text": "Gaming is the largest entertainment industry, with PC gaming as the predominant platform. Many factors propel its growth, including new high production value games, the continued rise of eSports, social connectivity and the increasing popularity of game streamers, modders, or gamers who remaster games, and creators.Our products for the gaming market include GeForce RTX GPUs for gaming desktop and laptop PCs, GeForce NOW cloud gaming service, as well as SoCs and development services for game consoles.Our gaming platforms leverage our GPUs and sophisticated software to enhance the gaming experience with smoother, higher quality graphics. NVIDIA RTX features ray tracing technology for real-time, cinematic-quality rendering, and deep learning super sampling, or NVIDIA DLSS, our AI technology that boosts frame rates while generating high-quality images for games."
+    }
+   ]
+  },
+  {
+   "id": "U1",
+   "type": "refusal",
+   "question": "What is Samsung's total annual revenue according to its SEC filings?",
+   "chunks": [
+    {
+     "chunk_id": "0000804328-25-000085:I.1:0012",
+     "text": "A small number of customers/licensees historically have accounted for a significant portion of our consolidated revenues. In fiscal 2025, revenues from Apple, Samsung and Xiaomi each comprised 10% or more of our consolidated revenues. Additional information regarding revenue concentrations is provided in this Annual Report in “Notes to Consolidated Financial Statements, Note 2. Composition of Certain Financial Statement Items” and “Notes to Consolidated Financial Statements, Note 8. Segment Information.”"
+    },
+    {
+     "chunk_id": "0000723125-25-000028:I.1:0010",
+     "text": "We face intense competition in the semiconductor memory and storage markets from a number of companies, including Samsung Electronics Co., Ltd.; SK hynix Inc.; Kioxia Holdings Corporation; Sandisk Corporation; ChangXin Memory Technologies, Inc. (“CXMT”); and Yangtze Memory Technologies Co., Ltd. (“YMTC”). Our competitors may use aggressive pricing to obtain market share. Some of our competitors are large corporations or conglomerates that may operate in jurisdictions with lower labor and compliance costs and may have a larger market share and greater resources to invest in technology, capitalize on growth opportunities, and withstand downturns in the semiconductor markets in which we compete. Consolidation of industry competitors could put us at a competitive disadvantage as our competitors may benefit from increased manufacturing scale and a stronger product portfolio."
+    }
+   ]
+  },
+  {
+   "id": "U2",
+   "type": "refusal",
+   "question": "What did Nvidia's CEO say on the most recent earnings call?",
+   "chunks": [
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0328",
+     "text": "Jen-Hsun Huang co-founded NVIDIA in 1993 and has served as our President, Chief Executive Officer, and a member of the Board of Directors since our inception. From 1985 to 1993, Mr. Huang was employed at LSI Logic Corporation, a computer chip manufacturer, where he held a variety of positions including as Director of Coreware, the business unit responsible for LSI's SOC. From 1983 to 1985, Mr. Huang was a microprocessor designer for AMD, a semiconductor company. Mr. Huang holds a B.S.E.E. degree from Oregon State University and an M.S.E.E. degree from Stanford University.Colette M. Kress joined NVIDIA in 2013 as Executive Vice President and Chief Financial Officer. Prior to NVIDIA, Ms."
+    },
+    {
+     "chunk_id": "0001045810-23-000017:I.1A:0028",
+     "text": "In evaluating NVIDIA, the following risk factors should be considered in addition to the other information in this Annual Report on Form 10-K. Purchasing or owning NVIDIA common stock involves investment risks including, but not limited to, the risks described below. Any one of the following risks could harm our business, financial condition, results of operations or reputation, which could cause our stock price to decline, and you may lose all or a part of your investment. Additional risks, trends and uncertainties not presently known to us or that we currently believe are immaterial may also harm our business, financial condition, results of operations or reputation."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0314",
+     "text": "Gaming is the largest entertainment industry, with PC gaming as the predominant platform. Many factors propel its growth, including new high production value games, the continued rise of eSports, social connectivity and the increasing popularity of game streamers, modders, or gamers who remaster games, and creators.Our products for the gaming market include GeForce RTX GPUs for gaming desktop and laptop PCs, GeForce NOW cloud gaming service, as well as SoCs and development services for game consoles.Our gaming platforms leverage our GPUs and sophisticated software to enhance the gaming experience with smoother, higher quality graphics. NVIDIA RTX features ray tracing technology for real-time, cinematic-quality rendering, and deep learning super sampling, or NVIDIA DLSS, our AI technology that boosts frame rates while generating high-quality images for games."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:I.2:0000",
+     "text": "This Quarterly Report on Form 10-Q contains forward-looking statements within the meaning of Section 27A of the Securities Act of 1933, as amended, and Section 21E of the Securities Exchange Act of 1934, as amended, which are subject to the “safe harbor” created by those sections based on management’s beliefs and assumptions and on information currently available to management. In some cases, you can identify forward-looking statements by terms such as “may,” “will,” “should,” “could,” “goal,” “would,” “expect,” “plan,” “anticipate,” “believe,” “estimate,” “project,” “predict,” “potential” and similar expressions intended to identify forward-looking statements."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0367",
+     "text": "NVIDIA pioneered accelerated computing to help solve the most challenging computational problems. Since our original focus on PC graphics, we have expanded to several other large and important computationally intensive fields. Fueled by the sustained demand for exceptional 3D graphics and the scale of the gaming market, NVIDIA has leveraged its GPU architecture to create platforms for scientific computing, AI, data science, autonomous vehicles, robotics, and digital twin applications."
+    }
+   ]
+  }
+ ]
+}

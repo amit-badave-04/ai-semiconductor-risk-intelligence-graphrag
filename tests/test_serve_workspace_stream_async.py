@@ -39,6 +39,7 @@ from typing import NamedTuple
 import anyio
 import anyio.to_thread
 import pytest
+import test_answerer_async as writer_tests
 from agent_fakes import LUNA, SONNET, FakeDriver, FakeEmbedder, FakeStream
 from test_answerer_async import gc_paused
 
@@ -470,13 +471,14 @@ def test_a_graph_failure_surfaces_exactly_as_in_the_sync_stream(fail_kind, event
     assert twin_message == sync_message == f"graph down ({fail_kind})"
 
 
-def test_the_twin_takes_the_sync_arguments_and_adds_only_the_limiters_keyword():
+def test_the_twin_takes_the_sync_arguments_and_adds_only_the_limiters_and_meter_keywords():
     def shape(fn, drop=()):
         return [(p.name, p.kind, p.default) for p in inspect.signature(fn).parameters.values() if p.name not in drop]
 
-    limiters = inspect.signature(astream_workspace_answer).parameters["limiters"]
-    assert limiters.kind is inspect.Parameter.KEYWORD_ONLY and limiters.default is inspect.Parameter.empty
-    assert shape(astream_workspace_answer, drop=("limiters",)) == shape(ws.stream_workspace_answer)
+    params = inspect.signature(astream_workspace_answer).parameters
+    assert params["limiters"].kind is inspect.Parameter.KEYWORD_ONLY and params["limiters"].default is inspect.Parameter.empty
+    assert params["meter"].kind is inspect.Parameter.KEYWORD_ONLY and params["meter"].default is None   # off by default
+    assert shape(astream_workspace_answer, drop=("limiters", "meter")) == shape(ws.stream_workspace_answer)
 
 
 def test_timeout_and_max_tokens_reach_the_model_stream_only_when_set(monkeypatch):
@@ -498,7 +500,68 @@ def test_timeout_and_max_tokens_reach_the_model_stream_only_when_set(monkeypatch
 
     run(lambda: ask())
     run(lambda: ask(timeout=7.5, max_tokens=321, model="provider/some-model"))
-    assert seen == [{}, {"timeout": 7.5, "max_tokens": 321, "model": "provider/some-model"}]
+    # ``meter`` (None: nobody is metering this ask), ``role`` and ``num_retries`` (0: the sole answer model makes no provider
+    # retries, the meter counts every provider call) are the writer's own arguments to the model stream, set whether or not
+    # the caller passed anything; the caller's timeout and token budget still arrive only when set
+    own = {"meter": None, "role": "strong", "num_retries": 0}
+    assert seen == [own, {**own, "timeout": 7.5, "max_tokens": 321, "model": "provider/some-model"}]
+
+
+def test_the_workspace_twin_passes_the_meter_to_the_writer(monkeypatch):
+    """The meter is a keyword of the twin, handed to the writer as its own argument (never through the stream's keyword
+    arguments, so it cannot reach an injected stream): the sole answer model is metered as ``strong``, the draft of an
+    escalating ask as ``draft``."""
+    seen: list[dict] = []
+
+    class Recording(AsyncReplay):
+        def __init__(self, prompt, **kwargs):
+            seen.append(kwargs)
+            super().__init__(FakeStream([f"Gross margin was 41.5% [{DOC_A}]."], model=LUNA))
+
+    monkeypatch.setattr(answerer_async, "AsyncTextStream", Recording)
+    sentinel = object()
+    base = {"strategy": "hybrid", "workspace_id": CITED["workspace_id"], "as_of": None, "meter": sentinel}
+
+    async def ask(**extra):
+        stream = astream_workspace_answer(CITED["question"], _upload_driver(CITED), FakeEmbedder(),
+                                          limiters=make_limiters(_Settings()), **base, **extra)
+        async with aclosing(stream) as events:
+            return [e async for e in events]
+
+    assert kinds(run(lambda: ask()))[-1] == "done"
+    assert [(kw["meter"], kw["role"]) for kw in seen] == [(sentinel, "strong")]
+    seen.clear()
+    assert kinds(run(lambda: ask(escalation_model=SONNET, model=LUNA)))[-1] == "done"
+    assert [(kw["meter"], kw["role"]) for kw in seen] == [(sentinel, "draft")]      # a clean draft: no escalation
+
+
+def test_a_workspace_ask_is_metered_through_the_real_model_stream(monkeypatch):
+    """No double for the model stream: the real ``AsyncTextStream`` against a scripted provider, and a real ``PaidMeter``.
+    A rejected draft escalates, so the ask is two metered calls; the strong one makes no provider retries."""
+    wt = writer_tests
+    uncited = wt.answer_chunks(("Gross margin was 41.5%.",), (2000, 50))
+    cited = wt.answer_chunks((f"Gross margin was 41.5% [{DOC_A}].",), (2100, 120))
+    fake = wt.FakeAcompletion(wt.FakeUpstream(uncited), wt.FakeUpstream(cited))
+    monkeypatch.setattr(answerer_async, "acompletion", fake)
+    meter = wt.new_meter()
+
+    async def ask():
+        stream = astream_workspace_answer(CITED["question"], _upload_driver(CITED), FakeEmbedder(),
+                                          limiters=make_limiters(_Settings()), strategy="hybrid",
+                                          workspace_id=CITED["workspace_id"], as_of=None, meter=meter,
+                                          escalation_model=SONNET, model=LUNA, max_tokens=2400)
+        async with aclosing(stream) as events:
+            return [e async for e in events]
+
+    events = run(ask)
+    assert kinds(events) == ["retrieval", "escalated", "delta", "done"] and len(fake.calls) == 2
+    chars = len(fake.calls[0]["messages"][0]["content"])
+    assert [(c.role, c.model, c.prompt_chars) for c in meter.calls] == [("draft", LUNA, chars), ("strong", SONNET, chars)]
+    assert [c.bound_micro for c in meter.calls] == [wt.bound_micro(LUNA, "draft", chars, 2400),
+                                                    wt.bound_micro(SONNET, "strong", chars, 2400)]
+    assert [c.reported_micro for c in meter.calls] == [wt.reported_micro(LUNA, "draft", (2000, 50)),
+                                                       wt.reported_micro(SONNET, "strong", (2100, 120))]
+    assert fake.calls[1]["num_retries"] == 0 and fake.calls[0]["num_retries"] == 0
 
 
 # --- 3. what the twin is for -------------------------------------------------------------------------------------

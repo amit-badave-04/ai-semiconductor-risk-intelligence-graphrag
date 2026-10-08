@@ -1,0 +1,86 @@
+# Fly.io config - the STAGING API (semigraph-stg) for the S2 gate run (M5a I5, docs/v2/M5_DECISIONS.md 2.1 "Staging rules").
+# THROWAWAY: created for a test window by scripts/staging.py and destroyed after it. It is never the live app and it holds no
+# live data, no provider key and no real person's identity: the model is the mock LLM (deploy/staging/fly.mockllm.toml), the
+# bot check is stubbed, the graph is the staging Neo4j (deploy/staging/fly.neo4j-stg.toml) loaded from the repository's own
+# baked dump. Every secret (the address-hash pepper, the origin-header secret, the admin token, the mock's key, the database
+# password) is generated per window and pushed by scripts/staging.py; none is written in this file.
+#
+# What differs from the live fly.toml, and why:
+#   - ENVIRONMENT = staging. The production validators (src/semigraph/config.py) do not apply, and the staging ones refuse the
+#     live database host, any provider key and any model that is not a mock. The live app refuses a stubbed bot check and a
+#     raised cap in turn (tests/test_serve_config_production.py).
+#   - the performance-2x class and soft/hard 200/400: the fleet is sized from spike S2, and the proxy counts an SSE stream as a
+#     request for as long as it is open, so the live hard limit of 40 would refuse the 40+ concurrent streams of the gate.
+#   - the paid-ask caps are off (0) so the gate's roughly 9,000 asks per hour are not refused for being many. A separate
+#     sub-run sets them back to the production values (scripts/staging.py deploy --set ...).
+#   - the client address comes from a header the load generator sets per virtual user, so the per-address caps see 1,000 users.
+#
+# Build and deploy only through scripts/staging.py, which passes the Dockerfile and the build context explicitly.
+app = "semigraph-stg"
+primary_region = "sin"
+swap_size_mb = 1024
+# Drain (src/semigraph/serve/drain.py): same budget as the live app, so the rolling-deploy drill measures what live does.
+kill_signal = "SIGTERM"
+kill_timeout = 300
+
+[env]
+  ENVIRONMENT = "staging"
+  EMBEDDING_BACKEND = "onnx"
+  ONNX_MODEL_PATH = "/srv/models/qwen3-embedding-0.6b-q8/model_q8.onnx"
+  ONNX_THREADS = "1"
+  # One embedding slot per core of the class (performance-2x has 2): decision 2.2, "at least 2" on staging.
+  EMBED_SLOTS = "2"
+  LLM_ANSWER_MAX_TOKENS = "2400"
+  # The mock LLM. The service prices openai/mock-* as the real models it stands for (src/semigraph/serve/estimate.py), and
+  # every call is sent to OPENAI_API_BASE (the mock's private name), never to a provider.
+  ANSWER_MODEL = "openai/mock-luna"
+  ESCALATION_MODEL = "openai/mock-sonnet"
+  AGENT_PLANNER_MODEL = "openai/mock-luna"
+  OPENAI_API_BASE = "http://semigraph-mockllm.internal:8000/v1"
+  # The staging graph, over the private network. The password is a per-window secret.
+  NEO4J_URI = "bolt://semigraph-neo4j-stg.internal:7687"
+  # The load generator sets this header per virtual user; the live app trusts only the Fly edge's header.
+  CLIENT_IP_HEADER = "x-test-client-ip"
+  # The bot check stays required and fails closed; the stub accepts any non-empty token. Live refuses the stub.
+  TURNSTILE_REQUIRED = "true"
+  TURNSTILE_STUB = "true"
+  AGENT_ENABLED = "true"
+  # No outside call at all: the freshness monitor would reach EDGAR and the Federal Register.
+  FRESHNESS_ENABLED = "false"
+  UPLOADS_ENABLED = "true"
+  STATE_BACKEND = "inprocess"
+  # In flight at once: at least 120 on the gate run (decision 2.2; the live value is the code default).
+  MAX_CONCURRENT_ANSWERS = "120"
+  MAX_QUERIES_PER_DAY = "0"
+  MAX_SPEND_USD_PER_DAY = "0"
+  PAID_PER_IP_PER_DAY = "0"
+  # One address's share of the day's spend (the per-address cap that lives in dollars): off too, or a virtual user would be
+  # refused after about two hybrid asks. The production-settings sub-run sets it back to the live share (1.32,
+  # config.PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD) with `staging.py deploy --set`.
+  PAID_SPEND_SHARE_PER_IP_USD = "0"
+  # 5 uploads VUs x one upload per 10 minutes over a soak is above the live 40 a day.
+  MAX_UPLOADS_PER_DAY = "1000"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 400
+
+[[vm]]
+  size = "performance-2x"
+  memory = "4gb"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8080
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "180s"

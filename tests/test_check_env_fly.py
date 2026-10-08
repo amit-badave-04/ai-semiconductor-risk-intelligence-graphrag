@@ -233,6 +233,80 @@ def test_the_shell_and_a_dotenv_in_the_working_directory_are_ignored(tmp_path, c
     assert code == 0 and lines_of(out, "FAIL") == []
 
 
+# ---------------------------------------------------------------- the model base variables: files only, never the shell
+
+MODEL_BASES = ("OPENAI_BASE_URL", "OPENAI_API_BASE", "ANTHROPIC_API_BASE", "ANTHROPIC_BASE_URL")
+
+
+def base_sentinel(name: str) -> str:
+    return f"https://chk-gateway-{name.lower().replace('_', '-')}-LAMBDA-137.invalid/v1"
+
+
+def test_the_check_covers_exactly_the_model_base_variables_production_refuses():
+    assert check_env_fly.MODEL_BASE_VARIABLES == MODEL_BASES
+    assert set(MODEL_BASES) <= set(config.CHECKED_SETTINGS)
+
+
+def test_a_base_url_exported_in_the_shell_is_not_seen_and_is_still_in_the_shell_afterwards(tmp_path, capsys, monkeypatch):
+    """Claude Code's own environment exports ``ANTHROPIC_BASE_URL``, and a gateway wrapper may export the others: the check
+    judges ``.env.fly`` and ``fly.toml [env]``, so none of them may fail it, and it must put the shell back as it found it."""
+    for name in MODEL_BASES:
+        monkeypatch.setenv(name, base_sentinel(name))
+
+    code, out = run(env_file(tmp_path), capsys=capsys)
+
+    assert code == 0 and lines_of(out, "FAIL") == [] and "RESULT: PASS" in out
+    assert names_of(out, "PASS") == [n for n in config.CHECKED_SETTINGS]
+    assert_no_value_printed(out, tuple(base_sentinel(name) for name in MODEL_BASES))
+    assert {name: os.environ.get(name) for name in MODEL_BASES} == {name: base_sentinel(name) for name in MODEL_BASES}
+
+
+@pytest.mark.parametrize("name", MODEL_BASES)
+def test_the_shell_is_put_back_even_when_the_check_fails(name, tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv(name, base_sentinel(name))
+    monkeypatch.setenv("ENVIRONMENT", "kept-in-the-shell")
+
+    code, _ = run(env_file(tmp_path, drop=("IP_HASH_PEPPER",)), capsys=capsys)
+
+    assert code == 1
+    assert os.environ[name] == base_sentinel(name) and os.environ["ENVIRONMENT"] == "kept-in-the-shell"
+
+
+@pytest.mark.parametrize("name", MODEL_BASES)
+def test_a_base_url_in_fly_toml_env_fails_naming_it_and_never_prints_its_value(name, tmp_path, capsys):
+    with_base = tmp_path / "fly.toml"
+    with_base.write_text(FLY_TOML.read_text(encoding="utf-8").replace("[env]\n", f'[env]\n  {name} = "{base_sentinel(name)}"\n'),
+                         encoding="utf-8")
+
+    code, out = run(env_file(tmp_path), with_base, capsys=capsys)
+
+    assert code == 1 and names_of(out, "FAIL") == [name]
+    assert "must be empty in production" in lines_of(out, "FAIL")[0]
+    assert_no_value_printed(out, (base_sentinel(name),))
+
+
+@pytest.mark.parametrize("name", MODEL_BASES)
+def test_a_base_url_in_env_fly_fails_naming_it_though_the_default_push_would_not_send_it(name, tmp_path, capsys):
+    """The default push sends a fixed list of keys, and these are not on it; but ``push_fly_secrets --only`` can send any key
+    of the file, and a green check followed by that push would boot a machine that refuses to start. So these four are judged
+    wherever they appear, and a value that would divert the live model calls is a FAIL, not the 'not pushed' warning."""
+    assert name not in push_fly_secrets.FLY_KEYS["semigraph"]
+
+    code, out = run(env_file(tmp_path, extra=f"{name}={base_sentinel(name)}\n"), capsys=capsys)
+
+    assert code == 1 and names_of(out, "FAIL") == [name] and "RESULT: FAIL" in out
+    assert not any(name in line for line in lines_of(out, "WARN"))           # reported once, as a failure
+    assert_no_value_printed(out, (base_sentinel(name),))
+
+
+@pytest.mark.parametrize("name", MODEL_BASES)
+def test_an_empty_base_url_in_env_fly_is_not_a_base(name, tmp_path, capsys):
+    """An exported-but-empty variable is falsy for LiteLLM's ``or`` chain, and the push skips an empty value."""
+    code, out = run(env_file(tmp_path, extra=f"{name}=\n"), capsys=capsys)
+
+    assert code == 0 and lines_of(out, "FAIL") == []
+
+
 # ---------------------------------------------------------------- never a value, whatever goes wrong
 
 def test_a_missing_file_names_the_file_only(tmp_path, capsys):

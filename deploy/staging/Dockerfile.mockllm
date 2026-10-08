@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+# Staging mock LLM provider (tools/mockllm): an OpenAI-compatible server the staging fleet is pointed at. Not part of the
+# service image; never deployed to production. Build from the REPOSITORY ROOT (the context needs src/ and tools/):
+#   docker build -f deploy/staging/Dockerfile.mockllm -t semigraph-mockllm .
+#   docker run --rm -p 8000:8000 -e MOCKLLM_ADMIN_TOKEN=<token> semigraph-mockllm
+# What is inside: python + the hash-locked web stack of deploy/staging/requirements-mockllm.txt (the versions of
+# deploy/requirements-serve.txt; no litellm, neo4j or onnx), the mock, and ONE file of the semigraph package: the citation-id
+# grammar (src/semigraph/retrieval/ids.py), copied to the same relative path so tools/mockllm/idgrammar.py finds it. No secret
+# is baked in; the only secret the mock takes is MOCKLLM_ADMIN_TOKEN (the fault-knob endpoint), set at run time.
+#
+# PIN (open, needs network): the base image is the tag the main Dockerfile uses. Replace PYTHON_IMAGE with
+# python:3.13-slim@sha256:<digest> (docker buildx imagetools inspect python:3.13-slim) before the first paid staging window.
+ARG PYTHON_IMAGE=python:3.13-slim
+FROM ${PYTHON_IMAGE}
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
+COPY --from=ghcr.io/astral-sh/uv:0.11.20 /uv /bin/uv
+WORKDIR /srv
+COPY deploy/staging/requirements-mockllm.txt deploy/staging/
+RUN uv pip install --system --no-cache --require-hashes -r deploy/staging/requirements-mockllm.txt
+COPY src/semigraph/retrieval/ids.py src/semigraph/retrieval/ids.py
+COPY tools/__init__.py tools/__init__.py
+COPY tools/mockllm tools/mockllm
+# Never run as root; port 8000 needs no privileges.
+RUN useradd --create-home --shell /usr/sbin/nologin app && chown -R app:app /srv
+USER app
+# MOCKLLM_HOST is left unset on purpose: the mock binds "::" (dual-stack) when the machine has IPv6, which Fly's
+# <app>.internal names need (they resolve to IPv6 only), else 0.0.0.0. Set it to override.
+ENV MOCKLLM_PORT=8000
+EXPOSE 8000
+CMD ["python", "-m", "tools.mockllm"]

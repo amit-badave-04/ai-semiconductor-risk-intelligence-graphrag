@@ -36,7 +36,8 @@ MIDNIGHT_NEXT = DAY - 3600.0 + 86400.0
 
 def state_settings(**overrides) -> SimpleNamespace:
     values = dict(state_backend="inprocess", max_queries_per_day=150, max_spend_usd_per_day=10.0,
-                  paid_per_ip_per_day=20, max_concurrent_answers=2, kill_switch=False, kill_switch_refresh_s=10.0,
+                  paid_per_ip_per_day=20, paid_spend_share_per_ip_usd=1.32, max_concurrent_answers=2,
+                  kill_switch=False, kill_switch_refresh_s=10.0,
                   kill_switch_stale_s=30.0, state_op_timeout_s=1.0, state_connection_acquisition_s=0.5,
                   lease_ttl_s=60.0, lease_renew_s=15.0, machine_id="m1", ip_hash_version=2)
     return SimpleNamespace(**{**values, **overrides})
@@ -238,6 +239,7 @@ class FakeLedger:
     def day_sums(self, driver, *, day, now_wall, machine_id, ip_hash_v, timeout_s):
         paid = spend = foreign = 0
         per_ip: dict[str, int] = {}
+        per_ip_spend: dict[str, int] = {}
         events: list[tuple[str, float]] = []
         with self._lock:
             for row in self.rows.values():
@@ -255,8 +257,9 @@ class FakeLedger:
                 paid, spend = paid + 1, spend + micro
                 if ip_hash_v is not None and row.get("ip_hash") and row.get("ip_hash_v") == ip_hash_v:
                     per_ip[row["ip_hash"]] = per_ip.get(row["ip_hash"], 0) + 1
+                    per_ip_spend[row["ip_hash"]] = per_ip_spend.get(row["ip_hash"], 0) + micro
                     events.append((row["ip_hash"], row["ts"]))
-        return ledger.DaySums(paid, spend, foreign, per_ip, tuple(sorted(events)))
+        return ledger.DaySums(paid, spend, foreign, per_ip, tuple(sorted(events)), per_ip_spend)
 
 
 def build_inprocess(settings=None, *, fake_ledger=None, store=None, clock=None, **backend_kwargs):
@@ -313,6 +316,7 @@ def test_micro_to_usd_is_exact_to_the_micro():
 def test_state_config_reads_every_setting_and_converts_the_spend_cap_to_micro():
     config = StateConfig.from_settings(state_settings())
     assert (config.max_queries_per_day, config.max_spend_micro, config.paid_per_ip_per_day) == (150, 10_000_000, 20)
+    assert config.paid_spend_share_micro == 1_320_000
     assert config.machine_id == "m1" and config.ip_hash_version == 2
 
 
@@ -636,8 +640,14 @@ def test_the_lease_day_is_the_utc_day_of_now_wall():
      Denied.DAILY_SPEND),
     (dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=1, max_concurrent_answers=1),
      Denied.IP_DAILY),
-    (dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=0, max_concurrent_answers=1),
-     Denied.INFLIGHT),
+    # the address's share comes after its count and before the in-flight cap; the first ask is still running, so only its
+    # estimate pushes the address over (settled spend alone would fit): the "busy" variant
+    (dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=1, paid_spend_share_per_ip_usd=0.05,
+          max_concurrent_answers=1), Denied.IP_DAILY),
+    (dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=0, paid_spend_share_per_ip_usd=0.05,
+          max_concurrent_answers=1), Denied.IP_SPEND_INFLIGHT),
+    (dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=0, paid_spend_share_per_ip_usd=0,
+          max_concurrent_answers=1), Denied.INFLIGHT),
 ])
 def test_the_checks_run_in_the_documented_order(caps, denial):
     backend, _, _, clock = build_inprocess(state_settings(**caps))
@@ -664,7 +674,8 @@ def test_a_denied_reserve_writes_nothing_and_changes_no_counter():
 
 def test_zero_caps_are_off_except_concurrency_where_zero_allows_nothing():
     backend, _, _, clock = build_inprocess(state_settings(max_queries_per_day=0, max_spend_usd_per_day=0,
-                                                          paid_per_ip_per_day=0, max_concurrent_answers=1000))
+                                                          paid_per_ip_per_day=0, paid_spend_share_per_ip_usd=0,
+                                                          max_concurrent_answers=1000))
     assert all(isinstance(ask(backend, clock, estimate=10**9), Lease) for _ in range(50))
     none_allowed, _, _, clock2 = build_inprocess(state_settings(max_concurrent_answers=0))
     assert ask(none_allowed, clock2) is Denied.INFLIGHT
@@ -716,11 +727,16 @@ def test_reconcile_with_an_unknown_cost_keeps_the_estimate():
     assert backend.snapshot()["spend_micro"] == 60_000 and fake.rows[lease.lease_id]["cost_micro"] == 60_000
 
 
-def test_an_abandoned_outcome_charges_the_estimate_whatever_cost_is_passed():
-    backend, fake, _, clock = build_inprocess()
-    lease = ask(backend, clock, estimate=60_000)
-    backend.reconcile(lease.lease_id, outcome="abandoned", usage=None, cost_micro=5)
-    assert backend.snapshot()["spend_micro"] == 60_000 and fake.rows[lease.lease_id]["outcome"] == "abandoned"
+def test_an_abandoned_outcome_charges_the_integer_cost_it_is_given_and_the_estimate_only_for_none():
+    """Council 4 (option C): the runtime passes the metered charge of an ask whose client went away (0 when no paid call
+    started), so an integer cost is charged as given, 'abandoned' included. Only an unknown cost keeps the estimate."""
+    backend, fake, _, clock = build_inprocess(state_settings(max_concurrent_answers=5, paid_per_ip_per_day=0))
+    metered, unknown = ask(backend, clock, ip="a", estimate=60_000), ask(backend, clock, ip="b", estimate=60_000)
+    backend.reconcile(metered.lease_id, outcome="abandoned", usage=None, cost_micro=5)
+    assert backend.snapshot()["spend_micro"] == 60_005 and fake.rows[metered.lease_id]["outcome"] == "abandoned"
+    assert fake.rows[metered.lease_id]["cost_micro"] == 5
+    backend.reconcile(unknown.lease_id, outcome="abandoned", usage=None, cost_micro=None)
+    assert backend.snapshot()["spend_micro"] == 5 + 60_000 and fake.rows[unknown.lease_id]["cost_micro"] == 60_000
 
 
 def test_an_actual_cost_above_the_estimate_raises_the_spend():
@@ -997,6 +1013,25 @@ def test_per_ip_counts_are_per_day_and_per_hash():
     clock.advance(86400)
     backend.refresh_kill_level()
     assert isinstance(ask(backend, clock, ip="a"), Lease)
+
+
+def test_the_address_spend_is_per_day_and_per_hash():
+    backend, _, _, clock = build_inprocess(state_settings(paid_spend_share_per_ip_usd=0.1, paid_per_ip_per_day=0,
+                                                          max_concurrent_answers=10))
+    assert isinstance(ask(backend, clock, ip="a", estimate=60_000), Lease)
+    assert ask(backend, clock, ip="a", estimate=60_000) is Denied.IP_SPEND_INFLIGHT        # 120_000 > the 100_000 share
+    assert isinstance(ask(backend, clock, ip="b", estimate=60_000), Lease)      # another address, its own share
+    clock.advance(86400)
+    backend.refresh_kill_level()
+    assert isinstance(ask(backend, clock, ip="a", estimate=60_000), Lease)                 # a new UTC day, a new share
+
+
+def test_a_share_denial_writes_no_row_and_leaves_no_counter_behind():
+    backend, fake, _, clock = build_inprocess(state_settings(paid_spend_share_per_ip_usd=0.05,
+                                                             max_concurrent_answers=10))
+    assert ask(backend, clock, ip="a", estimate=60_000) is Denied.IP_SPEND      # the estimate alone passes the 50_000
+    assert fake.rows == {} and not backend._counters                                       # noqa: SLF001
+    assert (backend.snapshot()["paid"], backend.snapshot()["spend_micro"], backend.snapshot()["inflight"]) == (0, 0, 0)
 
 
 # ---------------------------------------------------------------------------------------------- snapshot

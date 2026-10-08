@@ -62,7 +62,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
@@ -78,6 +78,8 @@ logger = logging.getLogger("semigraph.serve.state")
 MICRO = 1_000_000
 SLOW_OP_S = 1.0                    # a state call slower than this is logged `state_slow`
 BOOT_TIMEOUT_S = 15.0              # server-side transaction timeout of the boot rebuild (not on the serving path)
+NOTED_DAYS_KEPT = 3                # days of already-logged half-way and pause warnings kept in memory (today, and the
+                                   # day a straggling lease may still settle into)
 KILL_POLICY_KEY = "kill_switch"
 KILL_OFF, KILL_RETRIEVAL_ONLY, KILL_ON = "off", "retrieval_only", "on"
 KILL_LEVELS = (KILL_OFF, KILL_RETRIEVAL_ONLY, KILL_ON)      # least to most restrictive
@@ -90,6 +92,11 @@ class Denied(Enum):
     DAILY_COUNT = "daily_count"
     DAILY_SPEND = "daily_spend"
     IP_DAILY = "ip_daily"
+    # The address's share of the day's spend (council 4, option C). IP_SPEND: its SETTLED spend plus this ask's estimate
+    # already passes the share, so it cannot ask again today. IP_SPEND_INFLIGHT: it fits once the address's own running
+    # asks settle (only their estimates push it over), so the caller says "busy", not "used up".
+    IP_SPEND = "ip_spend"
+    IP_SPEND_INFLIGHT = "ip_spend_inflight"
     INFLIGHT = "inflight"
     UNAVAILABLE = "unavailable"
 
@@ -159,6 +166,9 @@ class RebuildReport:
     ip_events: tuple[tuple[str, float], ...]    # (ip_hash, wall-clock time) of today's rows that carry ip_hash_v
     now_wall: float
     now_mono: float
+    # micro-dollars each address spent today (a reserved row counts its estimate), as the day counter counts them; empty
+    # when the ledger's sums carry none (a ledger that predates the per-address share)
+    per_ip_spend: Mapping[str, int] = field(default_factory=dict)
 
     def window_events(self, window_s: float) -> dict[str, list[float]]:
         """``{ip_hash: [monotonic times]}`` of the events inside the last ``window_s`` seconds, in the clock
@@ -179,6 +189,9 @@ class StateBackend(Protocol):
 
     def renew(self, lease_id: str, now_wall: float) -> bool: ...                       # writes lease_until on the row
 
+    # cost_micro None: the cost is unknown and the lease's ESTIMATE is charged, whatever the outcome. An integer is charged
+    # as given (floored at 0), 'abandoned' included: the runtime passes the metered charge of an ask whose client went away
+    # (0 when no paid call started).
     def reconcile(self, lease_id: str, *, outcome: str, usage: dict | None, cost_micro: int | None) -> bool: ...
 
     def sweep(self, now: float) -> int: ...                   # unregistered, expired leases: charge the estimate
@@ -210,11 +223,12 @@ def _need(settings: Any, name: str) -> Any:
 @dataclass(frozen=True)
 class StateConfig:
     """The settings the state package reads, validated once. Caps of 0 mean off, EXCEPT ``max_concurrent_answers`` where
-    0 means nothing is allowed."""
+    0 means nothing is allowed. ``paid_spend_share_micro`` is one address's share of the day's spend (0 = off)."""
 
     max_queries_per_day: int
     max_spend_micro: int
     paid_per_ip_per_day: int
+    paid_spend_share_micro: int
     max_concurrent_answers: int
     kill_switch: bool
     kill_switch_refresh_s: float
@@ -231,6 +245,7 @@ class StateConfig:
             max_queries_per_day=int(_need(settings, "max_queries_per_day")),
             max_spend_micro=usd_to_micro(_need(settings, "max_spend_usd_per_day")),
             paid_per_ip_per_day=int(_need(settings, "paid_per_ip_per_day")),
+            paid_spend_share_micro=usd_to_micro(_need(settings, "paid_spend_share_per_ip_usd")),
             max_concurrent_answers=int(_need(settings, "max_concurrent_answers")),
             kill_switch=bool(_need(settings, "kill_switch")),
             kill_switch_refresh_s=float(_need(settings, "kill_switch_refresh_s")),
@@ -245,7 +260,8 @@ class StateConfig:
         return cfg
 
     def _validate(self) -> None:
-        for name in ("max_queries_per_day", "max_spend_micro", "paid_per_ip_per_day", "max_concurrent_answers"):
+        for name in ("max_queries_per_day", "max_spend_micro", "paid_per_ip_per_day", "paid_spend_share_micro",
+                     "max_concurrent_answers"):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} must be 0 or more, got {getattr(self, name)}")
         for name in ("kill_switch_refresh_s", "kill_switch_stale_s", "state_op_timeout_s", "lease_ttl_s",
@@ -346,6 +362,8 @@ class StateCore:
         self._pending_kill: str | None = None        # a tightening applied in memory whose DB write failed
         self._kill_gen = 0                           # bumped when a set begins (its identity, see set_kill_level)
         self._kill_done = 0                          # bumped when a set has applied its level; see refresh_kill_level
+        self._notes_lock = threading.Lock()          # a leaf lock: guards `_noted` only, never held across a call out
+        self._noted: dict[str, set[str]] = {}        # UTC day -> the warnings already logged for it (per process)
 
     # ---- the error and timing wrapper -------------------------------------------------------------------------
 
@@ -584,15 +602,54 @@ class StateCore:
 
     @staticmethod
     def _charge_micro(outcome: str, cost_micro: int | None) -> int | None:
-        """What a settled ask is charged, or None for 'the estimate': an unknown cost and an abandoned ask both keep
-        the estimate; a known cost is floored at zero."""
-        if outcome == "abandoned" or cost_micro is None:
+        """What a settled ask is charged, or None for 'the estimate'. The estimate is kept ONLY for an unknown cost
+        (None), whatever the outcome; a known cost is charged as given, floored at zero and NEVER capped at the estimate,
+        'abandoned' included: the runtime passes the metered charge of an ask whose client went away (``serve.meter``:
+        ``max(reported, min(estimate, total))``, i.e. the reported cost of its finished calls in full, plus the bound of the
+        ones still running up to the estimate, ``max(estimate, reported)`` after a metering fault, and 0 when no paid call
+        started). A report above the estimate is therefore
+        charged whole: the ledger, the day's spend and the address's share hold what the provider billed, not what the
+        estimate said it could bill. A caller with no number to give (the sweep, the boot, a lease no stream took) passes None
+        or the estimate itself and is charged the estimate. ``outcome`` is kept for the callers' signature."""
+        if cost_micro is None:
             return None
         return max(0, int(cost_micro))
 
     def _actual_micro(self, estimate_micro: int, outcome: str, cost_micro: int | None) -> int:
         charge = self._charge_micro(outcome, cost_micro)
         return estimate_micro if charge is None else charge
+
+    # ---- the day's level, for the operator ------------------------------------------------------------------
+
+    def _note_level(self, day: str, paid: int, spend_micro: int) -> None:
+        """Log ONE warning per day and per cap when the day's paid count or spend first reaches half its cap (a cap of 0
+        is off and never warns). The caller passes the counters as they stand after a granted reserve (or after the boot
+        rebuild). Once per PROCESS and day: a restart in a day already past half warns once more. No address is ever
+        passed here or logged."""
+        cfg = self._cfg
+        if cfg.max_queries_per_day and paid * 2 >= cfg.max_queries_per_day:
+            self._warn_once(day, "half_count", "state_day_half day=%s kind=count used=%d cap=%d", day, paid,
+                            cfg.max_queries_per_day)
+        if cfg.max_spend_micro and spend_micro * 2 >= cfg.max_spend_micro:
+            self._warn_once(day, "half_spend", "state_day_half day=%s kind=spend used_micro=%d cap_micro=%d", day,
+                            spend_micro, cfg.max_spend_micro)
+
+    def _note_pause(self, day: str, reason: Denied | str) -> None:
+        """Log ONE warning per day and per reason when a daily cap refuses an ask: the day is paused for everyone until
+        UTC midnight (``reason`` is ``Denied.DAILY_COUNT`` / ``Denied.DAILY_SPEND`` or its value). The runbook for it
+        is the kill switch, then waiting for midnight."""
+        value = reason.value if isinstance(reason, Denied) else str(reason)
+        self._warn_once(day, f"pause_{value}", "state_day_paused day=%s reason=%s", day, value)
+
+    def _warn_once(self, day: str, tag: str, message: str, *args: Any) -> None:
+        with self._notes_lock:
+            seen = self._noted.setdefault(day, set())
+            if tag in seen:
+                return
+            seen.add(tag)
+            for old in sorted(self._noted)[:-NOTED_DAYS_KEPT]:
+                del self._noted[old]
+        logger.warning(message, *args)
 
     def _boot_expire(self, now_wall: float) -> int:
         """Boot step 1 (both backends): close this machine's reserved rows and the long-expired ones, charged their
@@ -608,7 +665,9 @@ class StateCore:
         self._forget_kill_level()
         report = RebuildReport(day=day, paid=sums.paid, spend_micro=sums.spend_micro, per_ip=dict(sums.per_ip),
                                expired=expired, foreign_leases=sums.foreign_leases, counters_synced=synced,
-                               delta=delta, ip_events=tuple(sums.ip_events), now_wall=now_wall, now_mono=now_mono)
+                               delta=delta, ip_events=tuple(sums.ip_events), now_wall=now_wall, now_mono=now_mono,
+                               per_ip_spend=dict(getattr(sums, "per_ip_spend", None) or {}))
+        self._note_level(day, report.paid, report.spend_micro)
         logger.info("state_rebuilt day=%s paid=%d spend_micro=%d ips=%d expired=%d foreign=%d synced=%s delta=%s",
                     day, report.paid, report.spend_micro, len(report.per_ip), expired, report.foreign_leases, synced,
                     dict(delta) if delta else None)

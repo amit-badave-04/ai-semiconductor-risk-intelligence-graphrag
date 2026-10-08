@@ -150,6 +150,7 @@ without a lease.
 | Paid questions per UTC day, all visitors | `MAX_QUERIES_PER_DAY` | 150 | 429 "The daily budget of live questions is used up — try an example, or come back tomorrow." |
 | Spend per UTC day, estimate-based | `MAX_SPEND_USD_PER_DAY` | $10 | the same 429 and the same text |
 | Paid questions per address per UTC day (IPv6 counted per /64) | `PAID_PER_IP_PER_DAY` | 20 | 429 "You have used today's live questions for your address — the example questions still work, or come back tomorrow." |
+| One address's share of the day's spend: its settled spend, plus the estimates of its running asks, plus this ask's estimate (0 = off) | `PAID_SPEND_SHARE_PER_IP_USD` | $1.32 (seven full shares still leave room for a hybrid ask) | 429 "This network's live allowance for today is used — the cached examples still work." when its settled spend alone would pass the share; 429 "The service is busy answering other questions — try again in a moment." when only its own running asks push it over (see "The per-address spend share") |
 | Paid answers running at once | `MAX_CONCURRENT_ANSWERS` | 2 | 429 "The service is busy answering other questions — try again in a moment." (a plain refusal before any stream starts) |
 | Paid questions per address in a short window | `RATE_LIMIT_QUESTIONS` per `RATE_LIMIT_WINDOW_SECONDS` | 5 per 10 min | 429 "Too many questions from your address — please wait a few minutes." |
 | Any question per address in the same window (a cached answer needs only this one) | `FREE_RATE_LIMIT_QUESTIONS` | 30 | the same 429 text |
@@ -157,14 +158,21 @@ without a lease.
 | Bot check failed | `TURNSTILE_REQUIRED` | true | 403 "Bot check failed — reload the page and try again." |
 
 Both daily limits bind and whichever trips first pauses paid questions for the rest of the day. The count binds first
-unless the average ask costs more than about 6.32 cents (6.16 cents when the asks are agent asks; the break-even tests of
+unless the average ask costs more than about 6.24 cents (6.03 cents when the asks are agent asks; the break-even tests of
 `tests/test_serve_estimate.py`); above that, the $10 limit does. The spend limit is **estimate-based**: a lease is
 charged the dearest the ask could cost (`serve/estimate.py`) until it settles, then its actual cost; a new ask is refused
-if today's spend plus its own estimate would pass $10. So an agent ask (estimate about $0.83 with the live models: its
-companies are capped at the anchor cap) is refused earlier in the day than a plain one (about $0.58;
-`tests/test_serve_estimate.py` derives both from `fly.toml`). The estimates are written to the boot log, one
+if today's spend plus its own estimate would pass $10. The estimates with the live models (each model sizes the prompt at
+its own characters per token: Claude Sonnet 5 at 2.0, every other model at 2.5; `tests/test_serve_estimate.py` derives them
+from `fly.toml`) are: a plain (hybrid) ask **$0.709573**, a vector ask $0.265873, an agent ask **$1.015669** (its companies
+are capped at the anchor cap) and an upload-workspace ask $0.734632, so an agent ask is refused earlier in the day than a
+plain one. (The earlier figures, $0.58 / $0.22 / $0.83 / $0.60, priced Sonnet's prompt at 2.5 characters per token, which
+the recorded Sonnet prompts did not hold to.) The estimates are written to the boot log, one
 line per ask type: `flyctl logs -a semigraph | Select-String "ask_type="`. An ask whose client leaves before the answer
-ends (or whose stream is cut) is charged its whole estimate, not what the model had spent so far.
+ends (or whose stream is cut) is charged what its **meter** says ("The per-address spend share" below): 0 when no paid model call had
+started, the call's bound (the most it could cost) when one started and never reported its usage, and the usage the provider
+reported otherwise; the estimate caps what is a bound, never what the provider reported (a reported cost above the estimate is
+charged as reported and logged as `meter_over_estimate`). A stream that could not meter (or whose meter cannot be read), and an ask that a restart closes
+(`abandoned_restart`), are still charged their whole estimate.
 
 The page shows the `detail` text of any refusal. Other refusals, all 503:
 
@@ -185,7 +193,7 @@ text answers when all four state slots are held by calls stuck on a silent conne
 **Gate order** (`serve/routes.py`): validate the question; draining; the free window; the answer cache (a hit is served
 here, so cached answers are never stopped by the kill level or the daily limits; a workspace ask checks its token here
 instead); the kill level; Turnstile; the short per-address window; then the lease (daily count, daily spend,
-per-address daily, in flight). A refusal by the lease has already used a Turnstile check and one slot of the short
+per-address daily count, per-address spend share, in flight). A refusal by the lease has already used a Turnstile check and one slot of the short
 window; it takes nothing from the ledger.
 
 **Which backend.** `STATE_BACKEND` (set in `fly.toml [env]`):
@@ -213,6 +221,75 @@ last stop, W address windows seeded`):
 - The service does not serve paid questions until this succeeded and the kill level was read once. The rebuild is
   retried for 90 s; after that the boot fails with "the paid-ask ledger could not be read after 90s: not serving".
 - The answer cache lives in Neo4j and survives.
+
+### The per-address spend share
+
+`PAID_SPEND_SHARE_PER_IP_USD` (live: **1.32**; `0` = off, refused in production, which also refuses anything above 1.32).
+An ask is admitted only while this holds for the visitor's address hash: `settled spend today + the estimates of its
+running asks + this ask's estimate <= the share`. The checks run after the per-address daily count and before the global
+in-flight cap (gate order above). The same rule runs on both backends (`inprocess`, `neo4j`).
+
+**Why 1.32** (council 4's two requirements, applied to the estimates of "Paid-ask limits": hybrid $0.709573, vector $0.265873,
+agent $1.015669, workspace $0.734632). (i') Pausing live asks takes at least eight addresses: after seven addresses have each
+spent a full share, the rest of the day still admits a hybrid ask, `10 - 7 x share >= 0.709573`, so the share is at most
+`(10 - 0.709573) / 7 = $1.3272`. (The first form of this rule, only `7 x share < 10`, was met by the earlier $1.40, which left
+$0.20 of the day: less than any live ask, so seven addresses could stop live asks for the day, because the day cap is judged on
+estimates. Cached answers would still have worked.) (ii) The buyer demo from one office is admitted whole (20 asks with 3
+escalations and 2 agent asks: the second agent ask arrives with about $0.30 settled), so the share is at least
+`0.30 + 1.015669 = $1.3157`. The window is $1.3157 to $1.3272 and $1.32 is inside it. The old share, $1.25 (`$10 / 8`), fails
+(ii). Seven full shares at $1.32 are $9.24 and leave $0.76: a hybrid ask ($0.709573), a workspace ask ($0.734632) and a vector
+ask ($0.265873) still fit, an agent ask ($1.015669) does not; an eighth address then pauses live asks. `tests/test_serve_config_production.py`
+computes both rules from the live estimates and the production caps, and `tests/test_state_contract.py` pins them on every
+backend; if an estimate or a cap moves, those tests fail until the share is re-derived.
+
+What $1.32 allows one address at a time (a running ask counts at its estimate):
+
+| Ask | Admitted while the address's settled spend is at most |
+|---|---|
+| hybrid ($0.709573) | about $0.61 |
+| agent ($1.015669) | about $0.30 |
+| workspace ($0.734632) | about $0.59 |
+| vector ($0.265873) | about $1.05 |
+
+Two hybrid asks in flight together from one address (2 x $0.709573 = $1.419) do not fit: the second is told the service is
+busy until the first settles. An agent ask beside a hybrid one ($1.73) and a workspace ask beside a hybrid one ($1.44) do
+not fit either; a vector ask fits beside a hybrid ($0.98) or an agent ask ($1.28). Other addresses are unaffected.
+
+- **Two refusals, both 429.** "This network's live allowance for today is used — the cached examples still work." means the
+  address's *settled* spend plus this estimate already passes the share: it cannot ask again today (the cached examples still
+  answer, they cost nothing). "The service is busy answering other questions — try again in a moment." means the settled
+  spend would have fitted and only the address's own *running* asks (counted at their estimates) push it over: it can ask
+  again when one of them ends. The share is the per-address spend counter of the ledger: it is rebuilt from the ledger at
+  every boot like the other counters, and no address (only its hash) is ever logged.
+- **What the meter charges.** Every paid model call (draft, escalation, planner) is recorded the moment it starts, with the
+  most it could cost (its bound), and again with the usage the provider reports when it ends (`serve/meter.py`). An ask is
+  settled at `max(reported, min(estimate, the sum over its calls of the reported cost, or the bound while a call has none))`,
+  where `reported` is the sum of the costs the provider reported: the ledger never records less than the provider billed, and
+  the estimate caps only what is a bound. So an address that was admitted at the edge of its share can end the day above it by
+  the excess of a report over its estimate, and the eight-address floor holds up to the sum of such excesses, not to the dollar
+  (pinned in `tests/test_state_contract.py`). A record that
+  cannot be trusted (a completion for a call that never started, a second completion, a bound that cannot be computed)
+  charges the whole estimate (or the reported cost, if that is higher). An ask whose client leaves is settled the same way, so
+  one that left before any paid call started costs 0 against the share (it still counts against the day's count and the
+  address's count); so does an ask whose answer stream was never opened. A stream that cannot
+  meter (a test double or an unreadable meter) and an ask closed by a restart (`abandoned_restart`) are charged the whole estimate.
+- **A buyer demo from one office (every visitor behind one address).** The share is not what ends such a demo. A settled
+  answer typically costs about $0.002 (the cheap draft model); an escalated answer costs more, and the dearest of the 60
+  recorded deployed-eval rows cost $0.066 (`V2E_ROW_MAX_USD` in `tests/test_serve_estimate.py`). The 20 live asks per
+  address per day that `PAID_PER_IP_PER_DAY` admits therefore come to about $0.04 against a share of $1.32: about 20 live
+  asks a day are still admitted, and `PAID_PER_IP_PER_DAY` is what ends the twenty-first. (A hybrid ask is admitted only while
+  the settled spend plus its own $0.709573 estimate fits $1.32, i.e. while settled spend is at most about $0.61: about 305 asks
+  at $0.002, but only 10 asks if every one cost the dearest recorded $0.066, so a day of nothing but long escalated
+  answers from one address would be cut off at its 11th ask.) While an ask runs it is
+  counted at its ESTIMATE (about $0.71 for a hybrid ask, $1.02 for an agent ask; `tests/test_serve_estimate.py`). A demo with
+  3 escalations ($0.04 each) and 2 agent asks ($0.15 each) has about $0.30 settled when its second agent ask arrives, which
+  fits ($0.30 + $1.015669 = $1.315669 <= $1.32, with $0.004 to spare; an agent ask is admitted only while the address's settled
+  spend is at most about $0.30). What the share adds for one office is narrower: **one hybrid or one agent ask in
+  flight leaves no room for a second hybrid ask from the same address even when the global cap (`MAX_CONCURRENT_ANSWERS`, 2
+  on the live app) has a free slot** (2 x $0.709573 = $1.419 is more than $1.32), and that second ask is told the service is busy
+  (not the "allowance used" text) until the first ends. Other addresses are unaffected. Cached examples take no lease and are
+  never refused by the share. A demo that needs more cannot raise the share (production refuses a value above 1.32): give the
+  room a second address, run the asks one at a time, or show the examples.
 
 ### Kill levels
 
@@ -391,13 +468,18 @@ The production validators in `src/semigraph/config.py` stop a production process
 
 | Setting | Refused when |
 |---|---|
-| `FLY_APP_NAME` (set by Fly itself) with `ENVIRONMENT` | the app is `semigraph` and `ENVIRONMENT` is not `production`, or `semigraph-stg` and it is not `staging`, or the app is any other name. No `FLY_APP_NAME` is a local process |
+| `FLY_APP_NAME` (set by Fly itself) with `ENVIRONMENT` | the app is `semigraph` and `ENVIRONMENT` is not `production`, or one of the staging apps (`semigraph-stg`, `semigraph-mockllm`, `semigraph-tools-stg`, `semigraph-loadgen-stg`) and it is not `staging`, or the app is any other name. No `FLY_APP_NAME` is a local process |
 | `TURNSTILE_REQUIRED` / `TURNSTILE_SECRET_KEY` | not true / empty |
 | `CLIENT_IP_HEADER` | not `fly-client-ip` |
 | `IP_HASH_PEPPER` | under 32 bytes |
 | `ADMIN_TOKEN` | set but under 32 characters. Empty is allowed: every `/api/admin` route then answers 404, and `scripts/kill_switch.py` and `ops.ps1` cannot flip the kill level |
 | `MAX_QUERIES_PER_DAY` / `PAID_PER_IP_PER_DAY` / `MAX_CONCURRENT_ANSWERS` | not 1 to 150 / 1 to 20 / 1 to 4 |
 | `MAX_SPEND_USD_PER_DAY` | not above 0 and at most 10 |
+| `PAID_SPEND_SHARE_PER_IP_USD` | not above 0 (0 = off elsewhere) and at most 1.32 |
+| `TURNSTILE_STUB` / `OPENAI_API_BASE` / `ORIGIN_AUTH_SECRET` | set at all: they are staging-only switches (next section) |
+| `OPENAI_BASE_URL` / `ANTHROPIC_API_BASE` / `ANTHROPIC_BASE_URL` | set at all, in `fly.toml [env]`, a secret or the process environment. LiteLLM reads them itself (`OPENAI_BASE_URL` before `OPENAI_API_BASE`; the two Anthropic names for every Sonnet call) and a live call passes no `api_base` of its own, so a value would divert the live model calls from the providers. Only the setting's name is printed, never the value. An exported-but-empty variable is not a base |
+| `ANSWER_MODEL` / `ESCALATION_MODEL` / `AGENT_PLANNER_MODEL` (and `LLM_MODEL`, `CRITIC_MODEL`, `ADJUDICATION_MODEL`) | an `openai/mock-*` model |
+| `NEO4J_URI` | the host is the staging database, `semigraph-neo4j-stg.internal` |
 | `RATE_LIMIT_QUESTIONS` / `FREE_RATE_LIMIT_QUESTIONS` / `READ_RATE_LIMIT_PER_MINUTE` | not 1 to 5 / 1 to 30 / 1 to 120 (`fly.toml` sets none of them: the live value is the code default) |
 | `WORKSPACE_CREATE_PER_DAY` / `UPLOADS_PER_HOUR` | not 1 to 3 / 1 to 10 |
 | `RATE_LIMIT_WINDOW_SECONDS` | under 600 (a window of 0 never holds an event) |
@@ -438,6 +520,30 @@ fixed reason texts only, never a value**, and a failure of the check itself prin
   ```
   Until that deploy, the live machine still holds the old token, so `scripts/kill_switch.py` (which reads `.env.fly`) is
   refused (404) in between: flip the kill level before staging, or after the deploy.
+
+### Staging-only switches (and why production refuses them)
+
+The load-test window (`deploy/staging/`, `scripts/staging.py`; M5a I5) runs the same image as the live app on throwaway
+machines, with no provider and no live data. Four settings make that possible. **Production refuses to boot with any of
+them set** (the pre-deploy check above lists each by name), so a staging value that leaks into `fly.toml` or `.env.fly` stops
+the deploy instead of changing what the live app does.
+
+| Setting | Staging | What it does | Production |
+|---|---|---|---|
+| `TURNSTILE_STUB` | `true` | the bot check accepts any non-empty token and never calls Cloudflare (a missing token is still a 403). It comes before the secret test, because the staging API requires the check and holds no secret | refused when `true`; the check itself also refuses a stub when `ENVIRONMENT=production` |
+| `ORIGIN_AUTH_SECRET` | 32+ bytes, a per-window secret | every request but `GET /healthz` must carry it in `X-Origin-Auth`, else a 403 before routing (`serve/asgi_middleware.py`; the middleware is wired only when the secret is set) | refused when set at all: it would make the live site answer 403 to every browser |
+| `OPENAI_API_BASE` | `http(s)://<name>.internal...` (the mock LLM's private name) | every `openai/` model call is sent there instead of to OpenAI (`llm_shape.provider_kwargs`: the answer stream, the sync writer, the planner) | refused when set at all (live calls go to the providers) |
+| `ANSWER_MODEL`, `ESCALATION_MODEL`, `AGENT_PLANNER_MODEL` = `openai/mock-*` | all three | the mock models; `openai/mock-luna`, `-sonnet`, `-haiku` are priced as the real models they stand for (estimate and settled cost), so the staging run meets the live caps' arithmetic | a mock in any model setting is refused |
+
+A process with `ENVIRONMENT=staging` (the Fly apps `semigraph-stg`, `semigraph-mockllm`, `semigraph-tools-stg`,
+`semigraph-loadgen-stg`, or a local one) must also satisfy an **allowlist**, or it refuses to boot: `NEO4J_URI` on the host
+`semigraph-neo4j-stg.internal` (a look-alike host, or a name with user information, is refused; production refuses that host),
+`ANTHROPIC_API_KEY` empty, `OPENAI_API_KEY` starting with `mock-`, `OPENAI_API_BASE` an `http(s)` URL on a `.internal` host,
+the three models above, `ORIGIN_AUTH_SECRET` of at least 32 bytes, `FRESHNESS_ENABLED=false` (the monitor calls EDGAR and the
+Federal Register), and `CLIENT_IP_HEADER` either `x-test-client-ip` (the load generator's per-user header) or `fly-client-ip`.
+A refusal names the setting and the rule, never the value. A local development process (no `ENVIRONMENT`, or `development`) may
+use any of the switches, for a local smoke run against the mock. The staging database's Fly app (`semigraph-neo4j-stg`) runs
+no Python of ours and is not a known app: only its host name is allowed.
 
 ## Secrets
 

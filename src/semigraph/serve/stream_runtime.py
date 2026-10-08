@@ -15,9 +15,22 @@ a hop under ``limiters.db``.
   of the stream. When ``events()`` starts, before the twin is awaited, the stream calls ``mark_started``: from then on
   the maintenance thread renews the lease, so the lease TTL has to cover only a stream that never started (not one whose
   first event is slow).
+* **The paid-call meter** (``serve.meter``, council 4 option C). Each ask has ONE :class:`~semigraph.serve.meter.PaidMeter`,
+  created with the stream (:attr:`PaidStream.meter`) and handed to the twin as the keyword-only argument ``meter`` (never
+  through ``**extra``, so it cannot reach anything but the twin). The twin records every paid model call the moment it
+  starts (with the most it could cost) and the usage the provider reports when it ends. The lease is settled at what
+  those calls cost: never less than the cost the provider REPORTED, and the estimate caps only what is a bound (a call
+  still running): see :meth:`PaidStream._read_meter` and ``PaidMeter.charge_micro``. A meter that cannot be READ is
+  not an EMPTY one: the cost is then unknown and the estimate stays charged. DETECTION keys on a twin parameter literally
+  named ``meter``: a twin that does not declare it (every test double that takes ``**kw``, a wrapper that forwards it
+  blindly) is not given one, and since it cannot record anything an empty meter is no evidence of an unpaid ask: it is
+  settled exactly as before the meter existed. A twin that was never CALLED (the stream never ran, or its function could
+  not even be chosen) made no paid call whatever it is: it is settled at 0, still counted, as ``routes._abandon``
+  settles a lease no stream took.
 * **The money rule.** For the terminal event (``done`` or ``error``) the lease is reconciled BEFORE the event is
-  yielded (``outcome`` ``done`` or ``error``, the twin's usage and its cost in micro-dollars, ``None`` when unknown:
-  the backend then keeps the estimate), then (``done`` only) the answer-cache write under the sync rule, the info line
+  yielded (``outcome`` ``done`` or ``error``, the twin's usage and its cost in micro-dollars: the metered charge when
+  the meter recorded a call or a fault, else the cost the event reports, ``None`` when that is unknown: the backend
+  then keeps the estimate), then (``done`` only) the answer-cache write under the sync rule, the info line
   and the failed-checks warning. That whole block runs in a shielded scope and takes ONE checkpoint, after it: a
   disconnect landing between the two writes must not drop the cache write or the settled usage. The flag that says "the
   lease is settled" is set the moment the reconcile returns, before that checkpoint, so a cancellation raised there can
@@ -25,17 +38,25 @@ a hop under ``limiters.db``.
   answer: when it fails after the reconcile, the failure is logged and the ``done`` event is still sent. A reconcile
   that raises does not block the terminal event either: the lease is reserved on the ledger, the backend queues a failed
   settle for a retry (``serve.state.settle_queue``), and the sweep or the next boot charges the estimate otherwise.
+  The meter is closed just before the terminal settle reads it: a paid call that starts later is counted and logged
+  (``paid call after settlement``) but the lease is settled and is not settled again.
 * **Failures after the settle.** Once the lease is settled the ask is on the ledger once. An exception from then on (the
   twin raising after it yielded ``done``, a malformed terminal event) is logged and nothing else: no second settle, no
   ``error`` event after a ``done`` the client already has. A malformed event that never reached the client still gets
   the generic ``error`` event: the page waits for ``done`` or ``error``.
 * **Cleanup is ``finalize()``, and only that.** It is idempotent and shielded and does not raise for an ordinary
-  failure. In order: the lease is settled as ``abandoned`` when the client left before a terminal event (cost unknown:
-  the estimate is charged; first, because the ask must be counted even if the process is killed during the slower
-  steps), the twin's generator is closed (so the upstream model stream closes; for an agent ask that joins a thread, up
-  to seconds), the request tracer is closed (on a worker thread: it can flush) and the drain count is given back. A
-  stream that never iterated (an exception between the reserve and the first event, a request cancelled before the
-  response started) is settled by the same ``finalize`` as ``abandoned``. ``events()`` calls it as its last statement,
+  failure. In order: the twin's generator is closed (so the upstream model stream closes; for an agent ask that joins
+  the planning thread, up to seconds: a paid call still running there is billed whatever the client did, so its cost is
+  known only once it has stopped), the request tracer is closed (on a worker thread: it can flush), the meter is closed,
+  the lease is settled as ``abandoned`` when the client left before a terminal event (its cost is the metered charge: 0
+  when no paid call started, the call's bound when it started and never reported; the estimate when the twin could not
+  meter) and the drain count is given back. The settle used to come first, so that a process killed during the slow close
+  still had the ask counted. It cannot come first now, and nothing is lost to a kill in the close: the row stays
+  reserved, and the next boot settles it as ``abandoned_restart`` at the whole estimate (fail closed). The settle and the
+  drain count are still given whatever the close raised (a ``finally``). A stream that never iterated (an exception
+  between the reserve and the first event, a request cancelled before the response started) is settled by the same
+  ``finalize`` as ``abandoned``, at 0: its twin was never called, so no paid call was possible (the same as
+  ``routes._abandon``). ``events()`` calls it as its last statement,
   so the lease does not wait for the response to be sent (a client that stops reading can stall the closing chunk as
   long as it likes). It is also called from :class:`PaidResponse`: as the response's background task AND in a
   ``finally`` around the whole ASGI call, for the paths on which ``events()`` never reaches its end: sse-starlette runs
@@ -43,22 +64,23 @@ a hop under ``limiters.db``.
   generator suspended at its ``yield`` is dropped, not closed). ``events()`` itself has no ``finally``.
 * **The drain count.** The route counted this stream on ``DRAIN`` (``try_enter``) before it reserved, so a drain that
   begins while the reserve runs still waits for the stream; ``finalize`` gives that count back, exactly once and last
-  (after the settle and the closes), so ``DRAIN.active == 0`` means the ledger row is settled and the twin is closed.
+  (after the closes and the settle), so ``DRAIN.active == 0`` means the ledger row is settled and the twin is closed.
   ``PaidResponse`` takes no ``shutdown_grace_period``: the drain (``serve.drain``) tells sse-starlette to end the
   streams only when it is over, and a positive grace would stack on top of it.
 
 A twin that does not return an async generator is a :class:`TwinContractError` (a ``TypeError``): there is no sync
-fallback and no adapter, and it is not turned into an error event (it is a wiring mistake; nothing was spent, but the
-lease is settled as abandoned and charged its estimate: the one rule for every lease that never reached a terminal
-event).
+fallback and no adapter, and it is not turned into an error event (it is a wiring mistake; the lease is settled as
+abandoned and charged what its meter says it started, the estimate when the twin could not meter or the meter cannot be
+read: the one rule for every lease that never reached a terminal event).
 """
 
+import inspect
 import json
 import logging
 import re
 from collections.abc import AsyncIterator, Callable
 from functools import partial
-from typing import Any
+from typing import Any, NamedTuple
 
 import anyio
 import anyio.lowlevel
@@ -74,6 +96,7 @@ from ..retrieval.answerer_async import aanswer_stream
 from ..retrieval.verify import checks_failed
 from ..retrieval.workspace_async import astream_workspace_answer
 from . import drain, guard, tracing
+from .meter import PaidMeter
 from .state import Lease, StateUnavailable, usd_to_micro
 
 logger = logging.getLogger("semigraph.serve")
@@ -84,7 +107,18 @@ MSG_FAILED = "The answer could not be completed — please try again."
 TERMINAL_EVENTS = ("done", "error")
 PING_SECONDS = 15
 UNKNOWN_ERROR = "unknown error"
+METER_PARAMETER = "meter"      # the keyword-only parameter a twin declares to be handed the ask's PaidMeter
+METER_CHARGED, METER_EMPTY, METER_UNREADABLE = "charged", "empty", "unreadable"    # the states of a MeterReading
 _CLASS_NAME_RE = re.compile(r"[A-Za-z_][\w.]{0,99}")
+
+
+class MeterReading(NamedTuple):
+    """What an ask's meter says. ``state`` is ``charged`` (it recorded a call or a fault: ``charge_micro`` is what they
+    cost), ``empty`` (it can be read and holds nothing) or ``unreadable`` (reading it raised: nothing is known, which is
+    not the same as nothing being spent)."""
+
+    state: str
+    charge_micro: int | None = None
 
 
 class TwinContractError(TypeError):
@@ -201,6 +235,18 @@ def _nothing() -> None:
     return None
 
 
+def accepts_meter(twin: Callable) -> bool:
+    """True when ``twin`` declares a parameter literally named ``meter`` that can be passed by keyword. ``**kwargs`` does
+    not count: nearly every test double takes it and records nothing, and a twin that cannot record must not be taken for
+    one that did (its empty meter would settle an abandoned ask at zero). A signature that cannot be read is "no"."""
+    try:
+        parameter = inspect.signature(twin).parameters.get(METER_PARAMETER)
+    except (TypeError, ValueError):
+        return False
+    return parameter is not None and parameter.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                                        inspect.Parameter.KEYWORD_ONLY)
+
+
 def select_twin(strategy: str, workspace: bool = False, *, sec: Callable | None = None,
                 workspace_twin: Callable | None = None) -> Callable:
     """The async event-stream function for a strategy. A workspace ask always goes to the workspace writer (``strategy``
@@ -248,8 +294,10 @@ def stream_extras(st: State, question: str, strategy: str) -> tuple[dict, Callab
 class PaidStream:
     """One paid ask holding ``lease``: retrieval -> LLM deltas -> done. ``workspace`` (``{"workspace_id", "as_of"}``)
     routes to the workspace writer and disables the answer cache for this answer. ``twin`` is the answer stream function
-    (an async generator function; ``routes`` resolves it per request, the default is :func:`select_twin`). The caller
-    has counted the stream on the drain (``DRAIN.try_enter()``) and the stream gives that count back in ``finalize``."""
+    (an async generator function; ``routes`` resolves it per request, the default is :func:`select_twin`). A twin that
+    declares a keyword parameter named ``meter`` is handed this ask's :attr:`meter` (:func:`accepts_meter`) and the lease
+    is settled at what the calls it records cost. The caller has counted the stream on the drain (``DRAIN.try_enter()``)
+    and the stream gives that count back in ``finalize``."""
 
     def __init__(self, st: State, question: str, strategy: str, iph: str, snapshot_id: str = "",
                  workspace: dict | None = None, *, lease: Lease, twin: Callable | None = None):
@@ -257,11 +305,20 @@ class PaidStream:
         self._snapshot_id, self._workspace, self._twin = snapshot_id, workspace, twin
         self._lease, self._backend, self._drain = lease, st.state, drain.DRAIN
         self._in_workspace = workspace is not None
+        self._meter = PaidMeter(st.settings)   # this ask's paid calls; handed to the twin only if it declares ``meter``
+        self._metered = False                  # the twin was handed the meter, so an empty meter means "nothing was spent"
+        self._twin_called = False              # the twin was invoked; until then no paid call was possible at all
+        self._failed_settle = False            # a done / error settle raised: the cost the twin knew is not on the ledger
         self._stream = None                    # the twin's async generator
         self._close_tracer: Callable[[], None] = _nothing
         self._marked = False                   # mark_started was called (the maintenance thread renews the lease)
         self._settled = False                  # the backend reconciled the lease (or a retry of it is queued there)
         self._finalized = False
+
+    @property
+    def meter(self) -> PaidMeter:
+        """The ask's paid-call meter (read-only: the twin records into it, :meth:`finalize` closes it)."""
+        return self._meter
 
     # ---- the stream
 
@@ -312,9 +369,12 @@ class PaidStream:
         extra, self._close_tracer = ((dict(self._workspace), _nothing) if self._in_workspace
                                      else stream_extras(st, self._question, self._strategy))
         twin = self._twin or select_twin(self._strategy, self._in_workspace)
+        metering = {METER_PARAMETER: self._meter} if accepts_meter(twin) else {}
+        self._metered = bool(metering)         # set before the call: a twin may start a paid call while it is being called
+        self._twin_called = True               # likewise: from here on a paid call may have started, whatever the call does
         stream = twin(self._question, st.driver, st.embedder, strategy=self._strategy, timeout=s.llm_request_timeout_s,
                       max_tokens=s.llm_answer_max_tokens, escalation_model=s.escalation_model or None,
-                      limiters=st.limiters, **extra)
+                      limiters=st.limiters, **extra, **metering)
         if not (hasattr(stream, "__aiter__") and hasattr(stream, "aclose")):
             getattr(stream, "close", _nothing)()
             raise TwinContractError(
@@ -340,24 +400,82 @@ class PaidStream:
     # ---- the terminal event: the money rule
 
     async def _settle(self, ev: dict) -> dict:
-        """The reconcile, then (done) the cache write, the info line and the warning; returns the event to send."""
+        """The reconcile, then (done) the cache write, the info line and the warning; returns the event to send. The twin
+        has yielded its terminal event, so the strong stream is closed and the planning thread joined: the meter is closed
+        here, then read."""
         with anyio.CancelScope(shield=True):
-            await self._reconcile(ev["event"], usage=ev.get("usage"), cost_usd=ev.get("cost_usd"))
+            self._close_meter()
+            await self._reconcile(ev["event"], usage=ev.get("usage"),
+                                  cost_micro=self._terminal_cost_micro(ev.get("cost_usd")))
             out = await self._after_done(ev) if ev["event"] == "done" else self._after_error(ev)
         await anyio.lowlevel.checkpoint()
         return out
 
-    async def _reconcile(self, outcome: str, *, usage: dict | None = None, cost_usd: object = None) -> None:
-        """Settle the lease on a worker thread: its actual cost, or the estimate when ``cost_usd`` is unknown (and
-        always the estimate for an ``abandoned`` ask). A raise is logged, never propagated: the lease stays reserved on
-        the ledger, which is what the daily ceilings count, until a retry, the sweep or the next boot charges it."""
+    async def _reconcile(self, outcome: str, *, usage: dict | None = None, cost_micro: int | None = None) -> None:
+        """Settle the lease on a worker thread at ``cost_micro`` micro-dollars; ``None`` means the cost is unknown and the
+        backend keeps the estimate (an ``abandoned`` ask is charged exactly what it is given: the caller decides, see
+        :meth:`_abandoned_cost_micro`). A raise is logged, never propagated: the lease stays reserved on the ledger, which
+        is what the daily ceilings count, until a retry, the sweep or the next boot charges it."""
         try:
             await settle_call(self._st, self._backend.reconcile, self._lease.lease_id, outcome=outcome, usage=usage,
-                              cost_micro=cost_micro_of(cost_usd))
+                              cost_micro=cost_micro)
         except Exception as e:  # noqa: BLE001
             logger.error("settling the ask failed (%s): its estimate stays charged", type(e).__name__)
+            self._failed_settle = self._failed_settle or outcome != "abandoned"
             return
         self._settled = True
+
+    # ---- what an ask is charged
+
+    def _read_meter(self) -> MeterReading:
+        """What the ask's meter says: ``charged`` (it recorded a call or a fault; the charge is what the calls cost, never
+        less than what the provider reported and otherwise not more than the estimate: see ``PaidMeter.charge_micro``),
+        ``empty`` (it can be read and holds nothing) or ``unreadable`` (reading it raised, so nothing is known). The last
+        two are NOT the same: an empty meter on a metered twin is a call that was never made, an unreadable one is a meter
+        that may be hiding calls that were, and the estimate stays charged."""
+        try:
+            if not (self._meter.calls or self._meter.faults):
+                return MeterReading(METER_EMPTY)
+            return MeterReading(METER_CHARGED, self._meter.charge_micro(self._lease.estimate_micro))
+        except Exception:  # noqa: BLE001 - the meter never decides whether an ask is settled
+            logger.exception("reading the paid-call meter failed; the estimate stays charged")
+            return MeterReading(METER_UNREADABLE)
+
+    def _terminal_cost_micro(self, cost_usd: object) -> int | None:
+        """The cost a done / error settle carries: the metered charge when the meter recorded anything; the estimate
+        (``None``) when it cannot be read; else the cost the event reports (``None`` when that is unknown or unusable)."""
+        reading = self._read_meter()
+        if reading.state == METER_CHARGED:
+            return reading.charge_micro
+        return None if reading.state == METER_UNREADABLE else cost_micro_of(cost_usd)
+
+    def _failure_cost_micro(self) -> int | None:
+        """The cost of an ask whose twin raised (or could not be chosen): the metered charge when the meter recorded
+        anything. With nothing recorded the cost is unknown (the twin broke before it said what it spent) and the estimate
+        stays charged, unless the twin was never called: no paid call was possible then, so it is ``0``."""
+        reading = self._read_meter()
+        if reading.state == METER_CHARGED:
+            return reading.charge_micro
+        return 0 if reading.state == METER_EMPTY and not self._twin_called else None
+
+    def _abandoned_cost_micro(self) -> int | None:
+        """The cost an ask pays that never reached a terminal event: the metered charge when the meter recorded anything;
+        the estimate (``None``) when the meter cannot be read. An empty meter means the ask spent nothing (``0``) when the
+        twin was never called (no paid call was possible: the route's own ``_abandon`` settles the same case at 0) or when
+        it was handed the meter, and its settle was not a done / error one that failed (the twin knew a cost the ledger
+        never got); otherwise the cost is unknown and the backend charges the estimate."""
+        reading = self._read_meter()
+        if reading.state == METER_CHARGED:
+            return reading.charge_micro
+        if reading.state == METER_UNREADABLE:
+            return None
+        return 0 if not self._twin_called or (self._metered and not self._failed_settle) else None
+
+    def _close_meter(self) -> None:
+        try:
+            self._meter.close()
+        except Exception:  # noqa: BLE001
+            logger.exception("closing the paid-call meter failed")
 
     async def _on_db_thread(self, fn: Callable[[], object]) -> None:
         await anyio.to_thread.run_sync(fn, limiter=self._st.limiters.db)
@@ -400,10 +518,13 @@ class PaidStream:
 
     async def _record_failure(self, e: Exception) -> dict:
         """The twin (or the writes after its terminal event) raised: the lease is settled as ``error`` with no usage and
-        no cost (the estimate is charged), as the sync path wrote a row without usage. Called only while the lease is
-        not settled."""
+        the metered charge when the meter recorded a paid call; with none the cost is unknown (the twin broke before it
+        said what it spent) and the estimate is charged, as the sync path wrote a row without usage, unless the twin was
+        never called (it could not even be chosen): no paid call was possible, so 0. Called only while the lease is not
+        settled."""
         with anyio.CancelScope(shield=True):
-            await self._reconcile("error")
+            self._close_meter()
+            await self._reconcile("error", cost_micro=self._failure_cost_micro())
         await anyio.lowlevel.checkpoint()
         return self._generic_failure(e)
 
@@ -415,20 +536,27 @@ class PaidStream:
 
     async def finalize(self) -> None:
         """Release everything this stream holds. Idempotent, shielded, and it does not raise for an ordinary failure:
-        each step logs its own. The order is the order of urgency: the abandoned ask's settle first (closing the twin
-        can take seconds, joining an agent thread, and the platform kills a stopping process after 5 s by default; the
-        settle decision cannot change while the twin closes), then the twin, then the tracer, and the drain count last,
-        whatever happened before."""
+        each step logs its own. The order: the twin (closing it joins an agent's planning thread, and a paid call still
+        running there is billed whatever the client did: what an abandoned ask cost is known only once the twin has
+        stopped), the tracer, the meter (a paid call that starts after this is counted and logged, not charged), the
+        abandoned ask's settle, and the drain count last, whatever happened before. The settle and the drain count are in
+        ``finally`` clauses: whatever closing the twin or the tracer raised, they still happen. A process killed in the
+        slow close leaves the row reserved; the next boot charges its estimate (``abandoned_restart``)."""
         if self._finalized:
             return
         self._finalized = True
         with anyio.CancelScope(shield=True):
             try:
-                await self._settle_if_abandoned()
-                await self._close_upstream()
-                await self._close_request_tracer()
+                try:
+                    await self._close_upstream()
+                finally:
+                    await self._close_request_tracer()
             finally:
-                self._leave_drain()
+                try:
+                    self._close_meter()
+                    await self._settle_if_abandoned()
+                finally:
+                    self._leave_drain()
 
     async def _close_upstream(self) -> None:
         if self._stream is None:
@@ -440,10 +568,12 @@ class PaidStream:
 
     async def _settle_if_abandoned(self) -> None:
         """The client went away before the terminal event, or the stream never ran (a buffered draft widens the window
-        to the whole generation). The ask still counts against both daily ceilings, and its cost is unknown here: the
-        backend charges the estimate."""
+        to the whole generation). The ask still counts against both daily ceilings (the backend counts every settled
+        ask), and it is charged what its paid calls cost: see :meth:`_abandoned_cost_micro` (0 for a metered ask that
+        started no call and for a stream whose twin was never called, the estimate when the twin could not meter or the
+        meter cannot be read)."""
         if not self._settled:
-            await self._reconcile("abandoned")
+            await self._reconcile("abandoned", cost_micro=self._abandoned_cost_micro())
 
     async def _close_request_tracer(self) -> None:
         if self._close_tracer is _nothing:

@@ -18,6 +18,7 @@ No database and no network: the state backend is ``tests/serve_state_fakes.FakeS
 """
 
 import json
+import math
 import threading
 import time
 from types import SimpleNamespace
@@ -36,8 +37,11 @@ from serve_state_fakes import (
 )
 
 from semigraph.config import Settings
+from semigraph.llm_shape import KNOWN_PRICES_PER_MTOK
 from semigraph.serve import drain, guard, routes, store, workspace_routes
+from semigraph.serve.estimate import tokens_for_chars
 from semigraph.serve.state import Denied, KillNotStored, Lease, StateDrivers, StateUnavailable, make_backend
+from semigraph.serve.stream_runtime import PaidStream
 
 pytestmark = pytest.mark.usefixtures("fresh_drain")
 
@@ -65,7 +69,7 @@ def real_backend_settings(**changes) -> SimpleNamespace:
     values = dict(state_backend="inprocess", max_queries_per_day=150, max_spend_usd_per_day=10.0,
                   paid_per_ip_per_day=20, max_concurrent_answers=2, kill_switch=False, kill_switch_refresh_s=10,
                   kill_switch_stale_s=30, state_op_timeout_s=1.0, lease_ttl_s=60, lease_renew_s=15, machine_id="m1",
-                  ip_hash_version=2)
+                  ip_hash_version=2, paid_spend_share_per_ip_usd=1.32)
     values.update(changes)
     return SimpleNamespace(**{key: value for key, value in values.items() if value is not None})
 
@@ -404,7 +408,9 @@ def test_an_exception_between_the_reserve_and_the_stream_settles_the_lease_as_ab
     client = make_client()
     with pytest.raises(RuntimeError, match="cannot build"):
         client.post("/api/ask", json={"question": Q})
-    assert [(r["outcome"], r["usage"], r["cost_micro"]) for r in backend.settled] == [("abandoned", None, None)]
+    # The stream's twin was never called, so no paid call was possible: the ask is charged nothing, as `routes._abandon`
+    # charges it (the old rule settled this case at the whole estimate; `None` still means "the estimate").
+    assert [(r["outcome"], r["usage"], r["cost_micro"]) for r in backend.settled] == [("abandoned", None, 0)]
     assert backend.inflight == 0 and fresh_drain.active == 0
 
 
@@ -994,6 +1000,115 @@ def test_retrieval_only_set_during_an_outage_on_a_stale_cache_is_503_and_leaves_
     assert database.stored["kill_switch"] == "on" and real.kill_level() == "on"
 
 
+# ---------------------------------------------------------------- the paid-call meter behind the route and the backend
+# A twin that declares ``meter`` records its paid calls; the stream settles the lease at what they cost. These tests run
+# the real route over the fake backend (the settle's arguments) and a real PaidStream over the REAL in-process backend
+# (what the day's counters end up holding).
+
+METERED_MODEL = "anthropic/claude-sonnet-5"                 # a listed model: priced without any setting
+PRICE_IN, PRICE_OUT = KNOWN_PRICES_PER_MTOK[METERED_MODEL]  # dollars per million tokens = micro-dollars per token
+# The bound of a call that started and never reported: 2500 prompt characters at the model's characters per token (the
+# meter's own input, `estimate.tokens_for_chars`: 2.0 for this model, 1250 tokens) and 100 output tokens. The arithmetic itself
+# is pinned in test_serve_meter.py; here only the wiring is: the stream settles at the figure the meter gives.
+BOUND_METERED = math.ceil(tokens_for_chars(2_500, METERED_MODEL) * PRICE_IN + 100 * PRICE_OUT)
+REPORTED_METERED = math.ceil(10 * PRICE_IN + 5 * PRICE_OUT)      # the 10 / 5 tokens of ``DONE["usage"]``
+TWIN_COST_USD = 0.00009                                          # what the twin itself reports: not the meter's figure
+
+
+def metered_twin(*, start=True, complete=True, then=None):
+    """A twin that DECLARES ``meter`` as the real ones do: one call of ``METERED_MODEL`` (started when ``start``, finished
+    with ``DONE``'s usage when ``complete``), a retrieval event and ``DONE``; ``then`` is awaited before ``DONE``."""
+    async def twin(question, driver, embedder, strategy="hybrid", *, meter=None, **kw):
+        if start:
+            call_id = meter.start(role="strong", model=METERED_MODEL, prompt_chars=2_500, max_output_tokens=100)
+            if complete:
+                meter.complete(call_id, DONE["usage"])
+        yield {"event": "retrieval", "anchors": {}, "counts": {}}
+        if then is not None:
+            await then()
+        yield {**DONE, "cost_usd": TWIN_COST_USD, "strategy": strategy, "question": question}
+    return twin
+
+
+def test_a_metered_twin_behind_the_route_settles_the_lease_at_the_metered_cost(make_client, backend, monkeypatch):
+    """The twin reports 90 micro-dollars of its own; the meter prices the provider's usage and says something else. The
+    ledger gets the meter's figure."""
+    assert REPORTED_METERED != round(TWIN_COST_USD * 1_000_000)
+    monkeypatch.setattr(routes, "aanswer_stream", metered_twin())
+    assert events_of(ask(make_client()))[-1]["event"] == "done"
+    assert [(s["outcome"], s["usage"], s["cost_micro"]) for s in backend.settled] == [
+        ("done", DONE["usage"], REPORTED_METERED)]
+
+
+def test_a_twin_that_does_not_declare_meter_is_settled_at_its_own_cost_through_the_route(client, backend):
+    """The test doubles of this file take ``**kw`` only: no meter reaches them, and the settle is what it always was."""
+    assert events_of(ask(client))[-1]["event"] == "done"
+    assert [(s["outcome"], s["cost_micro"]) for s in backend.settled] == [("done", 70)]
+
+
+def open_backend():
+    """The real in-process backend with its kill level read once (as the lifespan does), over an in-memory ledger."""
+    real = make_backend(real_backend_settings(), StateDrivers(state=object()), ledger=InMemoryLedger())
+    real.refresh_kill_level()
+    return real
+
+
+def metered_stream(real, twin):
+    """A PaidStream over a lease of ``real`` (the in-process backend), as the route builds one."""
+    from semigraph.serve.limiters import make_limiters
+
+    settings = RouteSettings()
+    st = SimpleNamespace(settings=settings, driver=object(), embedder=object(), limiters=make_limiters(settings),
+                         state=real, tracer=None)
+    lease = real.reserve(ip_hash="iph", strategy="hybrid", workspace=False, estimate_micro=60_000, now_wall=time.time(),
+                         now_mono=time.monotonic())
+    assert isinstance(lease, Lease)
+    drain.DRAIN.enter()
+    return PaidStream(st, Q, "hybrid", "iph", "snap", None, lease=lease, twin=twin)
+
+
+async def leave_after_first_event(stream: PaidStream) -> None:
+    gen = stream.events()
+    await gen.__anext__()
+    await gen.aclose()
+    await stream.finalize()
+
+
+@pytest.mark.parametrize("twin,spend", [
+    (metered_twin(start=False, then=anyio.sleep_forever), 0),
+    (metered_twin(complete=False, then=anyio.sleep_forever), BOUND_METERED),
+    (metered_twin(then=anyio.sleep_forever), REPORTED_METERED),
+    (fake_twin, 60_000),
+], ids=["no paid call", "a call started and never reported", "a finished call", "a twin that cannot meter"])
+def test_an_abandoned_ask_is_counted_whatever_it_cost_and_the_days_spend_holds_what_its_calls_cost(twin, spend):
+    """The ledger counts the ask once (``paid`` 1, the lease gone) at the metered cost: nothing for an ask that never
+    reached a provider, the bound of a call that never reported, the reported cost of one that did, and the whole
+    estimate for a twin that has no meter to say anything (today's rule)."""
+    real = open_backend()
+
+    async def main():
+        stream = metered_stream(real, twin)
+        assert real.snapshot()["spend_micro"] == 60_000 and real.snapshot()["inflight"] == 1   # in flight: the estimate
+        await leave_after_first_event(stream)
+
+    anyio.run(main)
+    snapshot = real.snapshot()
+    assert (snapshot["paid"], snapshot["spend_micro"], snapshot["inflight"]) == (1, spend, 0)
+
+
+def test_a_done_ask_settles_the_days_spend_at_the_metered_cost_on_the_real_backend():
+    real = open_backend()
+
+    async def main():
+        stream = metered_stream(real, metered_twin())
+        async for _ in stream.events():
+            pass
+
+    anyio.run(main)
+    snapshot = real.snapshot()
+    assert (snapshot["paid"], snapshot["spend_micro"], snapshot["inflight"]) == (1, REPORTED_METERED, 0)
+
+
 # ---------------------------------------------------------------- the production validators
 
 PRODUCTION = {"environment": "production", "ip_hash_pepper": "p" * 32, "turnstile_required": True,
@@ -1002,9 +1117,10 @@ PRODUCTION = {"environment": "production", "ip_hash_pepper": "p" * 32, "turnstil
 
 @pytest.fixture
 def clean_environment(monkeypatch):
-    for name in ("ENVIRONMENT", "IP_HASH_PEPPER", "TURNSTILE_REQUIRED", "TURNSTILE_SECRET_KEY", "CLIENT_IP_HEADER",
-                 "MAX_QUERIES_PER_DAY", "MAX_SPEND_USD_PER_DAY", "PAID_PER_IP_PER_DAY", "MAX_CONCURRENT_ANSWERS"):
-        monkeypatch.delenv(name, raising=False)
+    """Every setting's variable is cleared, not a fixed list: production refuses a model base held in the process environment
+    (``OPENAI_BASE_URL``, ``ANTHROPIC_BASE_URL``, ...), and a developer's shell or gateway may export one."""
+    for name in Settings.model_fields:
+        monkeypatch.delenv(name.upper(), raising=False)
 
 
 def production(**changes) -> Settings:
@@ -1050,7 +1166,9 @@ def test_every_problem_is_named_at_once_and_the_pepper_is_still_checked_first(cl
 
 
 def test_outside_production_the_caps_may_be_raised_zeroed_or_open(clean_environment):
-    s = Settings(_env_file=None, environment="staging", max_queries_per_day=0, max_spend_usd_per_day=0,
+    # "development", not "staging": staging has its own allowlist (database host, mock models, origin secret) and keeps its
+    # caps raised through the staging toml (tests/test_staging_tomls.py), so a bare staging object is refused for other reasons.
+    s = Settings(_env_file=None, environment="development", max_queries_per_day=0, max_spend_usd_per_day=0,
                  paid_per_ip_per_day=0, max_concurrent_answers=40, turnstile_required=False, client_ip_header="")
     assert not s.is_production and s.max_concurrent_answers == 40
 

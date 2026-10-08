@@ -37,6 +37,18 @@ on purpose:
 * a stream that is not async iterable is a ``TypeError`` (a wiring mistake), not a ``draft_error`` that would
   silently escalate.
 
+The paid-call meter (Wave 2, ``serve/meter.py``): an optional :class:`~semigraph.serve.meter.PaidMeter` rides on the
+``meter`` keyword of every writer function down to :class:`AsyncTextStream`, which records each provider call it makes
+(``start`` right after the checkpoint above and before ``acompletion``; ``complete`` in a ``finally`` after the upstream
+is closed) so that an ask whose visitor left is settled at the calls that were really started. Every strong-role stream (the escalation, a question routed straight
+to the strong model, and the sole answer model of a deployment with no escalation model) makes NO provider retries
+(``num_retries=0``, as the draft never did; see ``_strong_stream``): each of its own attempts is one metered call, the
+estimate prices exactly those attempts (``estimate.STREAM_ATTEMPTS``), and a LiteLLM retry would be a billed call nobody
+could bound. This is deliberately NOT the sync writer's behaviour: ``answerer.TextStream`` (the CLI and the evaluation
+harness, never a served ask) keeps LiteLLM's two retries, and so does ``AsyncTextStream`` constructed directly with its
+default ``num_retries``. An injected stream is never metered. Nothing in the events changes: ``usage`` and ``cost_usd``
+keep the sync writer's meaning (the last attempt's), the meter is a separate record.
+
 The deterministic checks (``_done_event`` -> ``answer_checks``, and ``verify_answer``) are CPU-bound regex work: about
 6,300 to 7,500 ``re`` calls for the two checks of one released draft, over a context of up to about 85,000 characters
 (the eight largest real chunks plus a graph block). With ``limiters`` they run on a thread under ``limiters.db``;
@@ -130,7 +142,7 @@ import litellm
 from litellm import acompletion
 
 from ..config import get_settings
-from ..llm_shape import completion_params
+from ..llm_shape import completion_params, provider_kwargs
 from .answerer import (
     CITE_RE,
     TRANSIENT,
@@ -150,6 +162,7 @@ from .verify import verify_answer
 
 if TYPE_CHECKING:
     from ..serve.limiters import Limiters
+    from ..serve.meter import PaidMeter
 
 # The sync writer's logger on purpose: the same operator filters and the same lines ("draft model ... failed") apply.
 logger = logging.getLogger("semigraph.answerer")
@@ -177,18 +190,31 @@ class AsyncTextStream:
 
     The provider stream (what ``acompletion`` returns) is closed however the iteration ends; :meth:`aclose` closes it
     on demand.
+
+    ``usage`` keeps the sync stream's meaning: the usage of the LAST attempt that reported one (an attempt that reported
+    none leaves the earlier value), which is what ``done`` carries. It therefore forgets a first attempt that was billed
+    and returned no text. ``attempt_usages`` is the record that does not forget: one entry per provider call this stream
+    started, in order, the usage that call reported or None (the call raised, was cut off, or the provider sent none).
+
+    ``meter`` (a :class:`semigraph.serve.meter.PaidMeter`, or None) is told about each of those calls: ``start`` the
+    moment before the provider is asked (``role`` is ``"draft"`` or ``"strong"``; ``attempts`` is ``1 + num_retries``,
+    the provider calls one ``acompletion`` may make) and ``complete`` once the upstream is closed, with that attempt's
+    usage. See ``_attempt`` for why the two sit exactly where they do.
     """
 
     def __init__(self, prompt: str, *, model: str | None = None, max_tokens: int = 1200,
                  attempts: int = 2, backoff: tuple[int, ...] = (5, 15),
-                 timeout: float | None = None, num_retries: int = 2):
+                 timeout: float | None = None, num_retries: int = 2,
+                 meter: "PaidMeter | None" = None, role: str = "strong"):
         self.prompt = prompt
         self.num_retries = num_retries
         self.model = model or get_settings().answer_model
         self.max_tokens, self.attempts = max_tokens, attempts
         self.backoff, self.timeout = backoff, timeout
+        self.meter, self.role = meter, role
         self.finish_reason: str | None = None
         self.usage: dict | None = None
+        self.attempt_usages: list[dict | None] = []
         self.text = ""
         self._chunks: list = []
         self._upstream = None
@@ -207,33 +233,57 @@ class AsyncTextStream:
             except Exception as e:  # noqa: BLE001 - releasing a connection must never break the caller
                 logger.debug("closing the model stream failed: %s", e)
 
+    def _meter_start(self) -> int | None:
+        """Record the provider call that is about to be made and return its id (None without a meter). ``attempts`` is
+        ``1 + num_retries``: the provider calls one ``acompletion`` may make, each billed. Synchronous on purpose: see
+        :meth:`_attempt`."""
+        if self.meter is None:
+            return None
+        return self.meter.start(role=self.role, model=self.model, prompt_chars=len(self.prompt),
+                                max_output_tokens=self.max_tokens, attempts=1 + self.num_retries)
+
     async def _attempt(self, messages: list[dict]) -> AsyncIterator[str]:
         extra = {"timeout": self.timeout} if self.timeout else {}
         chunks = []
+        attempt_usage: dict | None = None       # what THIS attempt's provider call reported (``usage`` keeps the last)
         # Every paid default call starts here. A cancellation that landed during a shielded wait just before (a hop, the
         # close of the previous attempt's upstream) is raised now, so a visitor who left never buys the call.
         await anyio.lowlevel.checkpoint()
-        resp = await acompletion(
-            model=self.model, messages=messages, **completion_params(self.model, self.max_tokens),
-            num_retries=self.num_retries, stream=True, stream_options={"include_usage": True}, **extra,
-        )
-        self._upstream = resp
+        # The meter is told AFTER that checkpoint (a call that is never made is not recorded) and with no await between
+        # this line and the provider call (a record whose call is not made, or a call made after the record was settled,
+        # needs a suspension in between).
+        call_id = self._meter_start()
         try:
-            async for chunk in resp:
-                chunks.append(chunk)
-                choice = chunk.choices[0] if chunk.choices else None
-                delta = getattr(getattr(choice, "delta", None), "content", None)
-                if delta:
-                    self.text += delta
-                    yield delta
-                if choice is not None and choice.finish_reason:
-                    self.finish_reason = choice.finish_reason
-                usage = getattr(chunk, "usage", None)
-                if usage and getattr(usage, "prompt_tokens", None):
-                    self.usage = {"prompt_tokens": usage.prompt_tokens,
-                                  "completion_tokens": usage.completion_tokens}
+            resp = await acompletion(
+                model=self.model, messages=messages, **completion_params(self.model, self.max_tokens),
+                num_retries=self.num_retries, stream=True, stream_options={"include_usage": True}, **extra,
+                **provider_kwargs(self.model, get_settings()),
+            )
+            self._upstream = resp
+            try:
+                async for chunk in resp:
+                    chunks.append(chunk)
+                    choice = chunk.choices[0] if chunk.choices else None
+                    delta = getattr(getattr(choice, "delta", None), "content", None)
+                    if delta:
+                        self.text += delta
+                        yield delta
+                    if choice is not None and choice.finish_reason:
+                        self.finish_reason = choice.finish_reason
+                    usage = getattr(chunk, "usage", None)
+                    if usage and getattr(usage, "prompt_tokens", None):
+                        attempt_usage = {"prompt_tokens": usage.prompt_tokens,
+                                         "completion_tokens": usage.completion_tokens}
+                        self.usage = dict(attempt_usage)
+            finally:
+                await self.aclose()
         finally:
-            await self.aclose()
+            # An outer ``finally`` of its own, not a line after the close: the close can be cut short (a second native
+            # ``task.cancel()`` landing inside it), and a usage the provider had already reported must still be recorded.
+            # The call is completed whatever ended it: a provider error, a cut-off stream, a cancelled visitor.
+            self.attempt_usages.append(attempt_usage)
+            if call_id is not None:
+                self.meter.complete(call_id, attempt_usage)
         self._chunks = chunks
 
     async def _estimate_usage(self, messages: list[dict]) -> None:
@@ -376,12 +426,33 @@ async def _abuffered_events(stream, *, postprocess, question, strategy, valid_id
                         cost_usd=cost, extra=carry.get("extra"), context=context, sources=sources)
 
 
+def _strong_stream(prompt: str, *, model: str | None, stream_kwargs: dict,
+                   meter: "PaidMeter | None") -> AsyncTextStream:
+    """A strong-role model's stream: the caller's arguments without the draft's ``model``, and NO provider retries. Every
+    stream of the strong role is built here: the escalation model's, the one a question routed straight to the strong
+    model gets, and the sole answer model's when there is no escalation model (``model`` None: the configured answer
+    model).
+
+    The stream makes its own attempts (``attempts``, 2 by default: a first answer that comes back empty is asked for
+    again) and each of them is metered as one provider call. A LiteLLM retry (``num_retries``, 2 by default) would be a
+    billed call inside an attempt that nothing could see or bound, so it is switched off here, as ``_draft_kwargs``
+    switches it off for the draft, whatever the caller passed; a transient error before the first token is already
+    retried by the stream, after its backoff. (Merged as a dict, so a ``num_retries`` in ``stream_kwargs`` cannot
+    collide with the one set here.) The estimate prices exactly those attempts (``estimate.STREAM_ATTEMPTS``). The model
+    is passed only when there is one, so a sole answer model the caller did not name is resolved by the stream itself."""
+    kwargs = {**{k: v for k, v in stream_kwargs.items() if k != "model"}, "num_retries": 0}
+    if model is not None:
+        kwargs["model"] = model
+    return AsyncTextStream(prompt, meter=meter, role="strong", **kwargs)
+
+
 async def _adraft_then_escalate(prompt, *, llm_stream, escalation_stream, escalation_model, stream_kwargs, context,
-                                postprocess=None, release=None, limiters=None, **ctx):
+                                postprocess=None, release=None, limiters=None, meter=None, **ctx):
     """Cheap draft -> deterministic verification -> release it, or escalate to the strong model (the twin of
     :func:`answerer._draft_then_escalate`: a rejected draft is never shown; both attempts' tokens and cost land in
     ``done``)."""
-    draft = llm_stream(prompt) if llm_stream else AsyncTextStream(prompt, **_draft_kwargs(stream_kwargs))
+    draft = (llm_stream(prompt) if llm_stream
+             else AsyncTextStream(prompt, meter=meter, role="draft", **_draft_kwargs(stream_kwargs)))
     text, error = await _adrain(draft)
     if postprocess is not None:
         text = await _acheck(limiters, postprocess, text)
@@ -402,9 +473,8 @@ async def _adraft_then_escalate(prompt, *, llm_stream, escalation_stream, escala
     await anyio.lowlevel.checkpoint()
     logger.info("draft rejected (%s) - escalating to %s", ",".join(reasons), escalation_model)
     yield {"event": "escalated", "reasons": reasons, "from": draft_model, "to": escalation_model}
-    strong_kwargs = {k: v for k, v in stream_kwargs.items() if k != "model"}
     strong = (escalation_stream(prompt) if escalation_stream
-              else AsyncTextStream(prompt, model=escalation_model, **strong_kwargs))
+              else _strong_stream(prompt, model=escalation_model, stream_kwargs=stream_kwargs, meter=meter))
     draft_usage = getattr(draft, "usage", None)
     carry = {"usage": draft_usage, "cost_usd": usage_cost(draft_usage, draft_model) if draft_usage else None,
              "extra": {"escalated": True, "escalation_reasons": reasons, "routed": "cheap",
@@ -417,14 +487,18 @@ async def _adraft_then_escalate(prompt, *, llm_stream, escalation_stream, escala
 
 async def aanswer_stream(question: str, driver, embedder, strategy: str = "hybrid",
                          llm_stream=None, k_chunks: int = 8, hops: int = 2, *, limiters: "Limiters",
-                         escalation_model: str | None = None, escalation_stream=None, **stream_kwargs):
+                         escalation_model: str | None = None, escalation_stream=None,
+                         meter: "PaidMeter | None" = None, **stream_kwargs):
     """Async twin of :func:`answerer.answer_stream`: the same event grammar, with retrieval off the event loop.
 
     The question is embedded ONCE, on a worker thread under ``limiters.embed``, and the retrieval receives that vector
     (``query_vec``) instead of embedding again; it runs on a thread under ``limiters.db``. ``llm_stream`` and
     ``escalation_stream`` are injectable: ``callable(prompt) -> async iterable[str]``. An unknown strategy raises the
     sync writer's ValueError on the first ``__anext__``, before anything is embedded; so does a bad ``hops`` of the
-    hybrid strategy (the vector strategy never reads it, as in the sync writer)."""
+    hybrid strategy (the vector strategy never reads it, as in the sync writer).
+
+    ``meter`` (a :class:`semigraph.serve.meter.PaidMeter`) is a keyword of its own, like ``limiters``: it never reaches
+    ``**stream_kwargs``, so it cannot reach an injected stream either, and an injected stream is not metered."""
     if strategy == "hybrid":
         company_edges_query(hops)       # the validator ``hybrid_retrieve`` runs first: refuse before the embed
         retrieve = partial(hybrid_retrieve, question, driver, embedder, k_chunks=k_chunks, hops=hops)
@@ -436,7 +510,7 @@ async def aanswer_stream(question: str, driver, embedder, strategy: str = "hybri
     r = await _hop(partial(retrieve, query_vec=vec), limiter=limiters.db)
     events = astream_answer_for_context(
         question, r, strategy, llm_stream=llm_stream, escalation_model=escalation_model,
-        escalation_stream=escalation_stream, limiters=limiters, **stream_kwargs)
+        escalation_stream=escalation_stream, limiters=limiters, meter=meter, **stream_kwargs)
     async with aclosing(events) as inner:
         async for event in inner:
             yield event
@@ -444,10 +518,11 @@ async def aanswer_stream(question: str, driver, embedder, strategy: str = "hybri
 
 async def astream_answer_for_context(question: str, r: dict, strategy: str, *, llm_stream=None,
                                      escalation_model: str | None = None, escalation_stream=None,
-                                     limiters: "Limiters | None" = None, **stream_kwargs):
+                                     limiters: "Limiters | None" = None, meter: "PaidMeter | None" = None,
+                                     **stream_kwargs):
     """Async twin of :func:`answerer.stream_answer_for_context`: everything AFTER retrieval (the six blocks, the
-    ``retrieval`` event, then :func:`astream_answer_for_prompt`). ``limiters`` is a keyword of its own, so it never
-    reaches the model stream."""
+    ``retrieval`` event, then :func:`astream_answer_for_prompt`). ``limiters`` and ``meter`` are keywords of their own,
+    so they never reach the model stream's arguments."""
     blocks, full_context, valid_ids = build_blocks(r)
     yield {"event": "retrieval", "anchors": r["anchors"],
            "counts": {k: len(r[k]) for k in ("edges", "metrics", "risks", "temporal", "chunks")},
@@ -455,7 +530,8 @@ async def astream_answer_for_context(question: str, r: dict, strategy: str, *, l
     events = astream_answer_for_prompt(
         question, render_prompt(question, blocks), full_context, valid_ids, [c["chunk_id"] for c in r["chunks"]],
         strategy, sources=sources_from_context(full_context), llm_stream=llm_stream,
-        escalation_model=escalation_model, escalation_stream=escalation_stream, limiters=limiters, **stream_kwargs)
+        escalation_model=escalation_model, escalation_stream=escalation_stream, limiters=limiters, meter=meter,
+        **stream_kwargs)
     async with aclosing(events) as inner:
         async for event in inner:
             yield event
@@ -465,10 +541,14 @@ async def astream_answer_for_prompt(question: str, prompt: str, full_context: st
                                     chunk_ids: list[str], strategy: str, *, sources: dict[str, str] | None = None,
                                     llm_stream=None, escalation_model: str | None = None, escalation_stream=None,
                                     postprocess=None, force_buffered: bool = False,
-                                    limiters: "Limiters | None" = None, **stream_kwargs):
+                                    limiters: "Limiters | None" = None, meter: "PaidMeter | None" = None,
+                                    **stream_kwargs):
     """Async twin of :func:`answerer.stream_answer_for_prompt`: route, draft / verify / escalate or stream live,
     ending in ``done``, for an ALREADY RENDERED prompt. Same arguments and behaviour (including the ``postprocess`` /
-    ``force_buffered`` ValueError and the same-model collapse), plus ``limiters`` (see the module docstring)."""
+    ``force_buffered`` ValueError and the same-model collapse), plus ``limiters`` (see the module docstring) and
+    ``meter``: every model stream THIS function builds is metered (the draft as ``"draft"``; the escalation, the
+    question routed straight to the strong model and the sole answer model as ``"strong"``, the role the estimate
+    prices a sole answer model in); an injected ``llm_stream`` / ``escalation_stream`` is not."""
     if postprocess is not None and not force_buffered:
         raise ValueError("postprocess needs force_buffered=True: a live stream cannot be edited after it is shown")
     ctx = {"question": question, "strategy": strategy, "valid_ids": valid_ids, "chunk_ids": list(chunk_ids),
@@ -478,9 +558,8 @@ async def astream_answer_for_prompt(question: str, prompt: str, full_context: st
     if escalation_model and escalation_model == (stream_kwargs.get("model") or get_settings().answer_model):
         escalation_model = None    # one model in both roles is plain live streaming (the documented rollback)
     if escalation_model and needs_strong_model(question):
-        strong_kwargs = {k: v for k, v in stream_kwargs.items() if k != "model"}
         strong = (escalation_stream(prompt) if escalation_stream else
-                  AsyncTextStream(prompt, model=escalation_model, **strong_kwargs))
+                  _strong_stream(prompt, model=escalation_model, stream_kwargs=stream_kwargs, meter=meter))
         extra = {"escalated": False, "routed": "strong",
                  "answered_by": getattr(strong, "model", None) or escalation_model}
         events = release(strong, carry={"extra": extra}, context=full_context, limiters=limiters, **ctx)
@@ -488,9 +567,11 @@ async def astream_answer_for_prompt(question: str, prompt: str, full_context: st
         events = _adraft_then_escalate(prompt, llm_stream=llm_stream, escalation_stream=escalation_stream,
                                        escalation_model=escalation_model, stream_kwargs=stream_kwargs,
                                        context=full_context, postprocess=postprocess,
-                                       release=release if force_buffered else None, limiters=limiters, **ctx)
+                                       release=release if force_buffered else None, limiters=limiters, meter=meter,
+                                       **ctx)
     else:
-        stream = llm_stream(prompt) if llm_stream else AsyncTextStream(prompt, **stream_kwargs)
+        stream = (llm_stream(prompt) if llm_stream
+                  else _strong_stream(prompt, model=stream_kwargs.get("model"), stream_kwargs=stream_kwargs, meter=meter))
         events = release(stream, context=full_context, limiters=limiters, **ctx)
     async with aclosing(events) as inner:
         async for event in inner:

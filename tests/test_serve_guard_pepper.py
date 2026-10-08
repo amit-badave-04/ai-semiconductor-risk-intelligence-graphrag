@@ -356,7 +356,7 @@ def test_the_refusal_never_prints_the_pepper_or_another_secret(clean_environment
 def test_outside_production_no_pepper_or_a_short_one_is_fine(clean_environment):
     assert settings().ip_hash_pepper == ""
     assert settings(ip_hash_pepper="short").ip_hash_pepper == "short"
-    assert not settings(environment="staging").is_production
+    assert not settings(environment="development").is_production      # not "staging": that has its own rules (test_serve_config_staging.py)
 
 
 def test_the_pepper_stays_out_of_the_repr(clean_environment):

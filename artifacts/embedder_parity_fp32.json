@@ -1,0 +1,132 @@
+{
+  "provenance": {
+    "what": "Retrieval parity of the PRE-DEQUANTIZED fp32 query embedder (scripts/predequantize_embedder.py) against the shipped 8-bit model, measured with scripts/verify_embedder_parity.py over the real corpus vectors (data/processed/embeddings/*.parquet, 3152 vectors) and 60 questions (benchmark.json + examples.json). All four pre-registered gates (docs/v2/M5_DECISIONS.md section 2.1: cosine mean >= 0.998 and min >= 0.997, top-1 identical >= 0.95, mean top-8 overlap >= 0.97) pass. The fields below this block are the report exactly as the script wrote it; no metric was changed.",
+    "origin": "A scratch experiment of 2026-10-08 (not a CI run), made on Windows 11 / AMD64 with onnxruntime 1.29.0, four threads, against the local single-file model models/qwen3-embedding-0.6b-q8/model_q8.onnx.",
+    "edits_to_the_original_report": "Only the path-valued fields were shortened (the original held absolute scratch-directory paths): candidate, corpus_glob and question_files. Nothing else differs.",
+    "scope": "This report covers the LOCAL q8 -> fp32 pair named below. An image built with EMBEDDER_VARIANT=fp32 starts from the 8-bit model the Docker model stage quantizes itself, whose source hash may differ; that build is covered only by the in-build gates of scripts/predequantize_embedder.py (every node bit-exact against onnxruntime's own dequantization, read back from the written sidecar, plus the 53-question cosine gate against its 8-bit source). The output does not depend on how the source stores its weights: the same local 8-bit model rewritten into the Docker layout (graph + model_q8.onnx_data, a different source hash) produced byte-identical fp32 files.",
+    "candidate_build": {
+      "script": "scripts/predequantize_embedder.py",
+      "same_bytes_as_the_experiment": "The experiment built its candidate with an ad-hoc script. The repo script was run on the same source afterwards and produced byte-identical files, so this report describes the repo script's output.",
+      "model_fp32.onnx_sha256": "7442a36ff3ec8705f9fd762f0339659eef421e3a5e0ca521bd22fbceda37cda2",
+      "model_fp32.onnx.data_sha256": "149b4004500a7ce6c3004ee3eae7348f1f1e5c8d149eabaecec3458db1a12cb0",
+      "source_model_sha256": "0b2937d85ef4f8fffa223b5fe3418ad481b66eae88099fcb81f96fc70e8cb710",
+      "dequantized_nodes": 196,
+      "nodes_bit_exact_vs_onnxruntime": 196,
+      "max_node_abs_diff": 0.0,
+      "in_build_cosine_gate": {
+        "questions": 53,
+        "cosine_mean": 0.9999999999987079,
+        "cosine_min": 0.9999999999979065,
+        "passed": true
+      }
+    },
+    "measured_on_the_same_machine": {
+      "single_question_median_s_one_thread": {
+        "q8": 1.4397,
+        "fp32": 0.3487,
+        "speedup": 4.13,
+        "rounds": 50
+      },
+      "single_question_median_s_two_threads": {
+        "q8": 0.8857,
+        "fp32": 0.1714,
+        "speedup": 5.17,
+        "rounds": 50
+      },
+      "windows_rss_mb_after_session_load": {
+        "q8": 1147,
+        "fp32": 1785
+      },
+      "disk_mb": {
+        "q8": 1043,
+        "fp32": 2289
+      }
+    },
+    "not_measured": [
+      "Linux RSS and timing, and anything on Fly (a later Fly window will measure both).",
+      "Peak memory of the build-time cosine gate on the Docker/Fly remote builder (the gate holds a 2.3 GB session).",
+      "Bit-exactness is a property of the build machine's onnxruntime dequantization; the build re-checks it on every build."
+    ]
+  },
+  "baseline": "models/qwen3-embedding-0.6b-q8/model_q8.onnx",
+  "candidate": "<scratch>/embed_paths/fp32/model_fp32.onnx",
+  "corpus_glob": "data/processed/embeddings/*.parquet",
+  "corpus_vectors": 3152,
+  "questions": 60,
+  "question_files": [
+    "src/semigraph/artifacts/benchmark.json",
+    "src/semigraph/artifacts/examples.json"
+  ],
+  "threads": 4,
+  "onnxruntime": "1.29.0",
+  "query_prompt": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:",
+  "metrics": {
+    "questions": 60,
+    "corpus_vectors": 3152,
+    "query_cosine": {
+      "mean": 0.9999999999987246,
+      "min": 0.9999999999979068,
+      "p05": 0.9999999999982387
+    },
+    "top8_overlap": {
+      "mean": 1.0,
+      "min": 1.0,
+      "identical_set_fraction": 1.0
+    },
+    "top10_overlap": {
+      "mean": 1.0,
+      "min": 1.0,
+      "identical_set_fraction": 1.0
+    },
+    "top1_identical_fraction": 1.0,
+    "top1_changed_questions": 0,
+    "max_top10_score_gap": 3.0765266290089244e-07
+  },
+  "gates": [
+    {
+      "name": "query cosine mean",
+      "value": 0.9999999999987246,
+      "threshold": 0.998,
+      "passed": true
+    },
+    {
+      "name": "query cosine min",
+      "value": 0.9999999999979068,
+      "threshold": 0.997,
+      "passed": true
+    },
+    {
+      "name": "top-1 identical fraction",
+      "value": 1.0,
+      "threshold": 0.95,
+      "passed": true
+    },
+    {
+      "name": "mean top-8 overlap",
+      "value": 1.0,
+      "threshold": 0.97,
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "changed_top1_questions": [],
+  "changed_top1_details": [],
+  "lowest_overlap_questions": [
+    {
+      "top10_overlap": 1.0,
+      "top8_overlap": 1.0,
+      "q": "What was Nvidia's total revenue for the fiscal year ended January 28, 2024?"
+    },
+    {
+      "top10_overlap": 1.0,
+      "top8_overlap": 1.0,
+      "q": "What was Nvidia's total revenue for the fiscal year ended January 25, 2026?"
+    },
+    {
+      "top10_overlap": 1.0,
+      "top8_overlap": 1.0,
+      "q": "What was Nvidia's total revenue for the fiscal year ended January 26, 2025?"
+    }
+  ],
+  "elapsed_s": 50.2
+}

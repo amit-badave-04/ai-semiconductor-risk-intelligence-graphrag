@@ -23,7 +23,7 @@ import threading
 from urllib.parse import quote, unquote
 import time
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 
 from .. import __version__
@@ -34,6 +34,7 @@ from ..graph.client import DatabaseDriver, make_state_driver, run_cypher
 from ..graph.schema import PRIVATE_LABEL_PREFIXES, apply_schema, private_label_predicate
 from ..retrieval.answerer import template_fingerprint
 from ..uploads import jobs
+from .asgi_middleware import OriginAuth
 from .embed import LimitedEmbedder
 from .guard import RateLimiter, TokenBucket
 from .limiters import LoopLagMonitor, make_limiters
@@ -41,7 +42,7 @@ from .routes import router
 from .state import StateDrivers, StateUnavailable, make_backend
 from .state.backend import BoundedDriver
 from .state.maintenance import MaintenanceThread
-from . import dossier_routes, drain, estimate, hardening, monitor, monitor_routes, store, tracing, workspace_routes
+from . import dossier_routes, drain, estimate, hardening, monitor, monitor_routes, routes, store, tracing, workspace_routes
 
 SECONDS_PER_DAY = 86_400
 SECONDS_PER_HOUR = 3_600
@@ -255,6 +256,23 @@ def shutdown_tracer_bounded(tracer) -> None:
     thread.join(TRACER_SHUTDOWN_TIMEOUT_S)
 
 
+def log_bot_check_posture(settings) -> None:
+    """One line about the bot check at boot. A stubbed check (``TURNSTILE_STUB``, staging only, which the production
+    validators refuse) is a warning and not the fail-closed error: with the stub on a required check without a secret is
+    exactly what the staging API runs, and the error would read as a fault."""
+    has_secret = bool(settings.turnstile_secret_key)
+    if getattr(settings, "turnstile_stub", False) is True:
+        logger.warning("TURNSTILE_STUB: the bot check accepts any non-empty token and never calls Cloudflare (staging only)")
+    elif settings.turnstile_required and not has_secret:
+        logger.error("TURNSTILE_REQUIRED without TURNSTILE_SECRET_KEY: live questions will be refused")
+    elif settings.is_production and not has_secret:
+        logger.warning("production without Turnstile: cost is bounded only by the daily ceiling (%d) and the per-IP window",
+                       settings.max_queries_per_day)
+    if settings.uploads_enabled and settings.is_production and not has_secret:
+        logger.error("UPLOADS_ENABLED in production without TURNSTILE_SECRET_KEY: uploads stay unavailable "
+                     "(the upload routes fail closed)")
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     # FIRST, before any thread or the upload parse subprocess exists: a same-uid child must not be able to read this
@@ -264,14 +282,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     if settings.agent_enabled:
         require_agent_package()
-    if settings.turnstile_required and not settings.turnstile_secret_key:
-        logger.error("TURNSTILE_REQUIRED without TURNSTILE_SECRET_KEY: live questions will be refused")
-    elif settings.is_production and not settings.turnstile_secret_key:
-        logger.warning("production without Turnstile: cost is bounded only by the daily ceiling (%d) and the per-IP window",
-                       settings.max_queries_per_day)
-    if settings.uploads_enabled and settings.is_production and not settings.turnstile_secret_key:
-        logger.error("UPLOADS_ENABLED in production without TURNSTILE_SECRET_KEY: uploads stay unavailable "
-                     "(the upload routes fail closed)")
+    log_bot_check_posture(settings)
     driver, embedder, stats, snapshot, example_ids = await run_in_threadpool(bootstrap, settings)
     state_driver = None                               # set once start_state has built it (it closes it itself on failure)
     try:
@@ -390,9 +401,50 @@ def stop_background_services(app) -> None:
             logger.exception("stopping the %s failed", name)
 
 
+health_router = APIRouter()
+
+
+def embedder_health_fields(embedder) -> dict:
+    """The two ``/healthz`` fields that say which query-embedder model is loaded: ``embedder_variant`` (``q8`` or ``fp32``)
+    and ``embedder_fidelity`` (the few numbers proving the fp32 build, None for the 8-bit model). Read from the backend
+    behind the serving wrapper (``LimitedEmbedder`` -> ``Embedder._impl``); None for a backend that has no variant (the
+    local and remote ones) and for anything of the wrong type. Never raises: a health probe must not fail on a label."""
+    backend = getattr(embedder, "_impl", embedder)
+    variant, fidelity = getattr(backend, "variant", None), getattr(backend, "fidelity", None)
+    return {"embedder_variant": variant if isinstance(variant, str) else None,
+            "embedder_fidelity": dict(fidelity) if isinstance(fidelity, dict) else None}
+
+
+@health_router.get("/healthz", include_in_schema=False)
+async def healthz_with_embedder(request: Request):
+    """``routes.healthz`` with the embedder fields added to a healthy answer. It is included BEFORE ``routes.router``, so it
+    answers first; the route in ``routes.py`` does the database ping, the 503 and the old fields, unchanged. A degraded
+    answer is returned as it is (the embedder is not the reason it is degraded)."""
+    reply = await routes.healthz(request)
+    if isinstance(reply, dict):
+        reply = {**reply, **embedder_health_fields(getattr(request.app.state, "embedder", None))}
+    return reply
+
+
+class Concealed(str):
+    """A ``str`` whose ``repr`` hides it. Starlette keeps a middleware's arguments and prints them in
+    ``repr(app.user_middleware)``, so the origin secret travels wrapped in this and cannot reach a log through it."""
+
+    def __repr__(self) -> str:
+        return "'<concealed>'"
+
+
 def create_app() -> FastAPI:
+    """The application. When ``ORIGIN_AUTH_SECRET`` is set (STAGING ONLY: the production validators refuse it) every request
+    but ``GET /healthz`` must carry it in ``X-Origin-Auth`` or is answered 403 before routing (``asgi_middleware``). The
+    secret is read here, and ``app = create_app()`` below runs at import, so the gate is wired for the process that sets it;
+    settings without the attribute (a test double) wire nothing."""
     app = FastAPI(title="semigraph", version=__version__, lifespan=lifespan,
                   docs_url=None, redoc_url=None)
+    origin_secret = getattr(get_settings(), "origin_auth_secret", "")
+    if isinstance(origin_secret, str) and origin_secret:
+        app.add_middleware(OriginAuth, secret=Concealed(origin_secret))
+    app.include_router(health_router)         # before ``router``: the first route that matches GET /healthz answers
     app.include_router(router)
     for extra in (monitor_routes.router, dossier_routes.router, workspace_routes.router):   # M4
         app.include_router(extra)

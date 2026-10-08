@@ -1,0 +1,29 @@
+# Fly.io config - the STAGING mock LLM provider (semigraph-mockllm), tools/mockllm: an OpenAI-compatible server the staging API
+# is pointed at (OPENAI_API_BASE in deploy/staging/fly.stg.toml). THROWAWAY: created for a test window by scripts/staging.py
+# and destroyed after it. It calls no provider and holds no data. It binds "::" (dual-stack) because a <app>.internal name
+# resolves to an IPv6 address only. The one secret it takes, the fault-knob token, is generated per window and pushed by
+# scripts/staging.py.
+#
+# No services block: it is reachable only over the private network, as semigraph-mockllm.internal:8000. Its CPU is a validity
+# input of the run (the mock must stay under 50 %), so it gets its own dedicated-core machine.
+#
+# Deploy only through scripts/staging.py (the build context is the repository root; the Dockerfile is passed explicitly).
+app = "semigraph-mockllm"
+primary_region = "sin"
+
+[env]
+  MOCKLLM_PORT = "8000"
+  MOCKLLM_TIME_SCALE = "1"
+
+[[vm]]
+  size = "performance-1x"
+  memory = "2gb"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8000
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"

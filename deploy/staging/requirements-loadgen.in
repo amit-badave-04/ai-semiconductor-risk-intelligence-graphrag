@@ -1,0 +1,10 @@
+# Direct dependencies of the S2 load-generator image ONLY (Locust master + workers, the CPU sampler, the fake-API-free client).
+# No semigraph, no torch, no PDF library at all (a test pins that the word is absent from deploy/staging). Pinned and
+# hashed by (run from the repository root; needs network):
+#   uv pip compile deploy/staging/requirements-loadgen.in -o deploy/staging/requirements-loadgen.txt \
+#       --python-version 3.13 --python-platform linux --generate-hashes
+# Locust is MIT-licensed (PyPI metadata: License: MIT). It imports gevent and monkey-patches it in at import time, and it ships
+# a pytest11 plugin (pytest_locust): keep it OUT of the developer environment's default groups (docs: tools/loadtest/README.md).
+locust>=2.46.7
+psutil>=7.2
+requests>=2.34

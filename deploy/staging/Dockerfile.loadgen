@@ -1,0 +1,20 @@
+# S2 load generator: Locust master / workers and the CPU sampler (M5a I5; tools/loadtest/README.md).
+# Build from the repository root:  docker build -f deploy/staging/Dockerfile.loadgen -t semigraph-loadgen .   (or fly deploy -c deploy/staging/fly.loadgen.toml)
+#
+# What is in the image: the pinned, hash-locked Locust closure (deploy/staging/requirements-loadgen.txt), tools/loadtest (the
+# generator, its 300-question pool.json) and nothing of semigraph: the generator needs no database, no embedder and no model
+# files, and the image carries no PDF library and no provider key. No secret is baked in: LOADTEST_ORIGIN_AUTH and the run id
+# arrive as Fly secrets / machine environment (see .dockerignore: .env* never enters the build context).
+FROM python:3.13-slim
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PYTHONPATH=/app LOADTEST_OUT_DIR=/out
+COPY --from=ghcr.io/astral-sh/uv:0.11.20 /uv /bin/uv
+WORKDIR /app
+COPY deploy/staging/requirements-loadgen.txt deploy/staging/
+RUN uv pip install --system --no-cache --require-hashes --only-binary=:all: -r deploy/staging/requirements-loadgen.txt
+COPY tools/__init__.py tools/__init__.py
+COPY tools/loadtest/ tools/loadtest/
+# Never run as root; /out is where the raw run files (events, meta, cpu) are written for collection.
+RUN useradd --create-home --shell /usr/sbin/nologin app && mkdir -p /out && chown -R app:app /app /out
+USER app
+# LOADTEST_ROLE=master|worker|standalone selects the Locust role; the CPU sampler runs beside it.
+CMD ["python", "-m", "tools.loadtest.launch"]

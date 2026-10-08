@@ -22,7 +22,16 @@ import pytest
 from neo4j.exceptions import ServiceUnavailable
 from test_state_inprocess import FakeClock, state_settings
 
-from semigraph.serve.state import Denied, Lease, StateConfig, StateDrivers, StateUnavailable, ledger, settle_queue
+from semigraph.serve.state import (
+    Denied,
+    Lease,
+    StateConfig,
+    StateDrivers,
+    StateUnavailable,
+    ledger,
+    settle_queue,
+    usd_to_micro,
+)
 from semigraph.serve.state.neo4j import Neo4jBackend
 
 Statement = namedtuple("Statement", "text params kind timeout")
@@ -84,6 +93,11 @@ def cap_where(text: str) -> str:
 
 
 CAPS = ledger.Caps(max_count=150, max_spend_micro=10_000_000, max_per_ip=20, max_inflight=2)
+# A share of this file's own, NOT the production one: the boundary cases of the denial reasons below (500_000 + 750_000 and
+# the like) are written against it. The backend tests further down take the share from ``state_settings`` instead.
+SHARE_MICRO = 1_250_000
+CAPS_WITH_SHARE = ledger.Caps(max_count=150, max_spend_micro=10_000_000, max_per_ip=20, max_inflight=2,
+                              max_share_micro=SHARE_MICRO)
 
 
 def reserve(driver, **overrides):
@@ -126,6 +140,34 @@ def test_reserve_applies_all_four_caps_in_one_where_and_writes_the_increments_af
     assert text.index("SET c.paid = c.paid + 1") < text.index("CREATE (q:SvcQuery")
 
 
+def test_reserve_checks_the_share_after_both_locks_and_returns_the_new_counters():
+    """Council 4: the address's share is one more term of the SAME where that applies the other caps, so it is decided on
+    counters both locks protect, and the increments and the row are written in that transaction. The new day counters come
+    back from the same statement (the warnings need them) and are read after the increments."""
+    driver = RecordingDriver(lambda text, params: [{"id": "lease-1", "paid": 3, "spend_micro": 180_000}]
+                             if "CREATE (q:SvcQuery" in text else [])
+    outcome = reserve(driver, caps=CAPS_WITH_SHARE)
+    text, params = driver.statements[0].text, driver.statements[0].params
+    where = cap_where(text)
+    assert text.index("SET i._lock = true") < text.index("$max_share") < text.index("SET c.paid = c.paid + 1")
+    assert "$max_share = 0 OR" in where                                           # 0 turns the check off
+    assert "coalesce(i.spend_micro, 0) + $estimate <= $max_share" in where          # `<=`, as for the day's spend
+    assert where.index("$max_ip") < where.index("$max_share") < where.index("inflight < $max_inflight")
+    increments = text[text.index("SET c.paid = c.paid + 1"):text.index("CREATE (q:SvcQuery")]
+    assert "i.spend_micro = coalesce(i.spend_micro, 0) + $estimate" in increments
+    returned = text[text.index("CREATE (q:SvcQuery"):]
+    assert "RETURN q.id AS id" in returned and "c.paid AS paid" in returned
+    assert "c.spend_micro AS spend_micro" in returned
+    assert params["max_share"] == SHARE_MICRO and params["estimate"] == 60_000
+    assert outcome.granted and (outcome.paid, outcome.spend_micro) == (3, 180_000)
+
+
+def test_a_new_ip_node_starts_its_spend_at_zero_and_an_old_one_without_the_property_is_read_as_zero():
+    text = ledger.RESERVE_COUNTED
+    assert "ON CREATE SET i.paid = 0, i.spend_micro = 0" in text
+    assert "i.spend_micro + $estimate" not in text                  # a node written before the share has no property
+
+
 def test_reserve_creates_the_row_with_the_columns_the_existing_readers_know_plus_the_new_ones():
     driver = RecordingDriver(lambda text, params: [{"id": "lease-1"}] if "CREATE (q:SvcQuery" in text else [])
     outcome = reserve(driver)
@@ -161,6 +203,53 @@ def test_a_denied_reserve_names_its_cap_from_a_read_in_the_same_transaction(snap
     assert outcome == ledger.ReserveOutcome(False, reason)
     assert driver.transactions == ["write"]                       # the read ran inside the locked write transaction
     assert [s.kind for s in driver.statements] == ["write", "write"]
+
+
+QUIET = {"paid": 3, "spend_micro": 0, "ip_paid": 1, "inflight": 0, "ip_spend_micro": 0, "ip_live_micro": 0}
+
+
+@pytest.mark.parametrize("snapshot, estimate, reason", [
+    # settled spend 700_000 + the estimate already passes the share: it is used up
+    (dict(ip_spend_micro=700_000, ip_live_micro=0), 580_089, "ip_spend"),
+    # 600_000 of the 700_000 is running: settled 100_000 + the estimate fits, only the running ask pushes it over
+    (dict(ip_spend_micro=700_000, ip_live_micro=600_000), 580_089, "ip_spend_inflight"),
+    # the boundary: settled + estimate equal to the share fits (inflight), one micro-dollar over does not (settled)
+    (dict(ip_spend_micro=900_000, ip_live_micro=400_000), 750_000, "ip_spend_inflight"),
+    (dict(ip_spend_micro=900_000, ip_live_micro=400_000), 750_001, "ip_spend"),
+    # the order of the documented caps: the per-address count first, then the share, then in-flight
+    (dict(ip_spend_micro=700_000, ip_paid=20), 580_089, "ip_daily"),
+    (dict(ip_spend_micro=700_000, inflight=2), 580_089, "ip_spend"),
+    (dict(ip_spend_micro=100_000, inflight=2), 580_089, "inflight"),
+    # a node written before the share existed has no property at all
+    (dict(ip_spend_micro=None, ip_live_micro=None, inflight=2), 580_089, "inflight"),
+])
+def test_a_denied_reserve_names_the_share_and_whether_the_address_is_settled_or_only_inflight(snapshot, estimate, reason):
+    driver = RecordingDriver(lambda text, params: [{**QUIET, **snapshot}] if "RETURN c.paid AS paid" in text else [])
+    outcome = reserve(driver, caps=CAPS_WITH_SHARE, estimate_micro=estimate)
+    assert outcome == ledger.ReserveOutcome(False, reason)
+
+
+def test_a_zero_share_never_names_the_share():
+    no_share = ledger.Caps(max_count=150, max_spend_micro=10_000_000, max_per_ip=20, max_inflight=2)
+    driver = RecordingDriver(lambda text, params: [{**QUIET, "ip_spend_micro": 10**9, "inflight": 2}]
+                             if "RETURN c.paid AS paid" in text else [])
+    assert reserve(driver, caps=no_share).reason == "inflight"
+    assert driver.statements[0].params["max_share"] == 0
+
+
+def test_the_denial_read_sums_this_addresses_live_leases_in_a_stage_of_its_own():
+    """A second OPTIONAL MATCH in the stage that counts the in-flight rows would multiply ``count(r)`` by the number of
+    this address's leases; the sum is taken after that count is aggregated."""
+    text = ledger.DENIAL_READ
+    counted = text.index("WITH c, i, count(r) AS inflight")
+    own = text.index("OPTIONAL MATCH", counted)
+    assert text.index("OPTIONAL MATCH (r:SvcQuery") < counted < own < text.index("RETURN")
+    clause = text[own:text.index("RETURN")]
+    for needle in ("status: 'reserved'", "day: $day", "ip_hash: $ip_hash", "lease_until > $now"):
+        assert needle in clause
+    returned = text[text.index("RETURN"):]
+    assert "c.paid AS paid" in returned and "i.spend_micro AS ip_spend_micro" in returned
+    assert "sum(p.estimate_micro)" in returned and "AS ip_live_micro" in returned and "inflight" in returned
 
 
 def test_a_zero_cap_is_off_except_for_inflight_where_zero_means_nothing_is_allowed():
@@ -203,6 +292,23 @@ def test_settle_counted_takes_the_day_counter_lock_before_the_row_lock_and_floor
     assert "CASE WHEN" in text and "THEN 0" in text                                  # floor at zero
     # an unknown cost keeps the estimate
     assert "coalesce($cost_micro, q.estimate_micro)" in text
+
+
+def test_settle_counted_adjusts_the_ip_counter_in_the_day_then_ip_then_row_order():
+    """The address's spend moves with the day's, by the same ``actual - estimate`` and the same floor, under the lock order
+    every writer uses: the day counter, then the address's counter, then the row (whose status is checked last)."""
+    driver = RecordingDriver()
+    ledger.settle_counted(driver, "lease-1", outcome="done", usage=None, cost_micro=40_000, now_wall=1.0, timeout_s=1.0)
+    text = driver.statements[0].text
+    assert text.index("SET c._lock = true") < text.index("SET i._lock = true") < text.index("SET q._lock = true")
+    assert text.index("SET q._lock = true") < text.index("REMOVE q._lock") < text.index("WHERE q.status = 'reserved'")
+    # the node is only matched: a settle never creates a counter for a lease whose reserve did not (the rollback from the
+    # other backend), and a null address on the row must not make the statement fail (MERGE refuses a null property)
+    assert "OPTIONAL MATCH (i:SvcIpDay {day: q.day, ip_hash: q.ip_hash})" in text and "MERGE (i:SvcIpDay" not in text
+    adjust = text[text.index("i.spend_micro = "):]
+    assert "CASE WHEN" in adjust and "THEN 0" in adjust and "actual - q.estimate_micro" in adjust
+    assert "coalesce(i.spend_micro, 0)" in adjust                       # a node written before the share has none
+    assert text.index("coalesce($cost_micro, q.estimate_micro)") < text.index("i.spend_micro = ")
 
 
 def test_settle_counted_is_idempotent_by_matching_nothing_the_second_time():
@@ -308,6 +414,58 @@ def test_per_ip_rows_come_only_from_rows_made_under_the_current_pepper():
     assert "q.ip_hash IS NOT NULL" in ip_statement.text
 
 
+def test_per_ip_rows_come_with_the_same_micro_as_the_day_sums_count_for_them():
+    """The per-address spend is rebuilt from the same rows with the same rule as the day's: a reserved row at its estimate,
+    a settled one at its cost, a legacy one at its dollar cost."""
+    driver = RecordingDriver(sums_responder)
+    ledger.day_sums(driver, day="2026-10-06", now_wall=1.0, machine_id="m1", ip_hash_v=2, timeout_s=1.0)
+    ip_rows = driver.statements[1].text
+    assert "CASE WHEN q.status = 'reserved' THEN coalesce(q.estimate_micro, 0)" in ip_rows
+    assert "coalesce(q.cost_micro, toInteger(round(coalesce(q.cost_usd, 0.0) * 1000000)))" in ip_rows
+    assert "AS micro" in ip_rows and "q.ip_hash AS ip" in ip_rows and "AS ts" in ip_rows
+    assert "count(q) AS paid" not in ip_rows                           # the stub that answers DAY_SUMS must not catch it
+
+
+def test_the_day_sums_add_up_each_addresss_spend_next_to_its_count():
+    def respond(text, params):
+        if "count(q) AS paid" in text:
+            return [{"paid": 4, "spend_micro": 500_000, "foreign": 0}]
+        return [{"ip": "aa", "ts": 1.0, "micro": 300_000}, {"ip": "aa", "ts": 2.0, "micro": 150_000},
+                {"ip": "bb", "ts": 3.0, "micro": 50_000}, {"ip": "cc", "ts": None, "micro": None}]
+
+    sums = ledger.day_sums(RecordingDriver(respond), day="2026-10-06", now_wall=1.0, machine_id="m1", ip_hash_v=2,
+                           timeout_s=1.0)
+    assert sums.per_ip == {"aa": 2, "bb": 1, "cc": 1}
+    assert sums.per_ip_spend == {"aa": 450_000, "bb": 50_000, "cc": 0}
+
+
+def test_a_day_sums_built_without_a_per_address_spend_has_an_empty_one():
+    sums = ledger.DaySums(1, 2, 0, {"a": 1}, ())                      # the positional shape the fakes use
+    assert sums.per_ip_spend == {}
+
+
+def test_the_boot_sync_writes_each_addresss_spend_and_zeroes_the_others():
+    def respond(text, params):
+        if "count(q) AS paid" in text:
+            return [{"paid": 3, "spend_micro": 350_000, "foreign": 0}]
+        if text == ledger.LOCK_DAY:
+            return [{"paid": 9, "spend_micro": 9}]
+        if "q.ip_hash AS ip" in text:
+            return [{"ip": "aa", "ts": 1.0, "micro": 300_000}, {"ip": "aa", "ts": 2.0, "micro": 20_000},
+                    {"ip": "bb", "ts": 3.0, "micro": 30_000}]
+        return []
+
+    driver = RecordingDriver(respond)
+    result = ledger.sync_day_counters(driver, day="2026-10-06", now_wall=1.0, machine_id="m1", ip_hash_v=2,
+                                      timeout_s=1.0)
+    assert result.synced and result.sums.per_ip_spend == {"aa": 320_000, "bb": 30_000}
+    (write,) = [s for s in driver.statements if s.text == ledger.WRITE_IP_DAYS]
+    assert write.params["rows"] == [{"ip": "aa", "n": 2, "spend": 320_000}, {"ip": "bb", "n": 1, "spend": 30_000}]
+    assert "i.spend_micro = row.spend" in write.text and "i.paid = row.n" in write.text
+    (zero,) = [s for s in driver.statements if s.text == ledger.ZERO_OTHER_IP_DAYS]
+    assert "i.spend_micro = 0" in zero.text and "i.paid = 0" in zero.text and zero.params["ips"] == ["aa", "bb"]
+
+
 def test_per_ip_rows_are_not_read_at_all_when_the_deployment_has_no_pepper_version():
     driver = RecordingDriver(lambda text, params: [{"paid": 0, "spend_micro": 0, "foreign": 0}])
     sums = ledger.day_sums(driver, day="2026-10-06", now_wall=1.0, machine_id="m1", ip_hash_v=None, timeout_s=1.0)
@@ -351,6 +509,9 @@ class Scripted(RecordingDriver):
         return [s.params for s in self.statements if s.text == statement]
 
 
+DEFAULT_BACKEND_SHARE_MICRO = usd_to_micro(state_settings().paid_spend_share_per_ip_usd)   # what ``neo4j_backend`` is built with
+
+
 def neo4j_backend(driver, *, clock=None, **settings):
     clock = clock or FakeClock()
     backend = Neo4jBackend(StateConfig.from_settings(state_settings(**settings)), StateDrivers(state=driver),
@@ -378,15 +539,66 @@ def test_a_granted_neo4j_reserve_returns_the_lease_and_sends_the_caps_and_the_ma
 
 
 @pytest.mark.parametrize("reason, denied", [("daily_count", Denied.DAILY_COUNT), ("daily_spend", Denied.DAILY_SPEND),
-                                            ("ip_daily", Denied.IP_DAILY), ("inflight", Denied.INFLIGHT),
-                                            (None, Denied.UNAVAILABLE)])
+                                            ("ip_daily", Denied.IP_DAILY), ("ip_spend", Denied.IP_SPEND),
+                                            ("ip_spend_inflight", Denied.IP_SPEND_INFLIGHT),
+                                            ("inflight", Denied.INFLIGHT), (None, Denied.UNAVAILABLE)])
 def test_a_denial_reason_from_the_ledger_maps_to_the_enum_and_an_unexplained_one_fails_closed(reason, denied):
     snapshots = {"daily_count": {"paid": 150}, "daily_spend": {"spend_micro": 10_000_000}, "ip_daily": {"ip_paid": 20},
+                 "ip_spend": {"ip_spend_micro": DEFAULT_BACKEND_SHARE_MICRO},
+                 "ip_spend_inflight": {"ip_spend_micro": DEFAULT_BACKEND_SHARE_MICRO,
+                                       "ip_live_micro": DEFAULT_BACKEND_SHARE_MICRO},
                  "inflight": {"inflight": 2}}
     driver = Scripted({ledger.DENIAL_READ: [{"paid": 0, "spend_micro": 0, "ip_paid": 0, "inflight": 0,
                                              **snapshots.get(reason, {})}]})
     backend, clock = neo4j_backend(driver, max_concurrent_answers=2)
     assert ask_neo4j(backend, clock) is denied
+
+
+def test_the_neo4j_backend_hands_the_share_to_the_ledger_as_whole_micro_dollars_and_zero_for_off():
+    driver = Scripted({ledger.RESERVE_COUNTED: [{"id": "x"}]})
+    backend, clock = neo4j_backend(driver, paid_spend_share_per_ip_usd=1.25)
+    ask_neo4j(backend, clock)
+    assert driver.params_of(ledger.RESERVE_COUNTED)[0]["max_share"] == 1_250_000
+    off = Scripted({ledger.RESERVE_COUNTED: [{"id": "x"}]})
+    backend, clock = neo4j_backend(off, paid_spend_share_per_ip_usd=0)
+    ask_neo4j(backend, clock)
+    assert off.params_of(ledger.RESERVE_COUNTED)[0]["max_share"] == 0
+
+
+def test_a_granted_neo4j_reserve_warns_once_at_half_the_day_from_the_counters_the_statement_returned(caplog):
+    """The day counters come back from the reserve itself, so the warning costs no extra statement."""
+    rows = iter([{"id": "a", "paid": 74, "spend_micro": 4_000_000}, {"id": "b", "paid": 75, "spend_micro": 5_000_000},
+                 {"id": "c", "paid": 76, "spend_micro": 5_100_000}])
+    driver = Scripted({ledger.RESERVE_COUNTED: lambda params: [next(rows)]})
+    backend, clock = neo4j_backend(driver)
+    with caplog.at_level(logging.WARNING, logger="semigraph.serve.state"):
+        for _ in range(3):
+            assert isinstance(ask_neo4j(backend, clock), Lease)
+    half = [r.getMessage() for r in caplog.records if "state_day_half" in r.getMessage()]
+    by_kind = {("count" if "kind=count" in m else "spend"): m for m in half}
+    assert len(half) == 2 and sorted(by_kind) == ["count", "spend"]
+    assert "used=75" in by_kind["count"] and "used_micro=5000000" in by_kind["spend"]
+    assert driver.transactions.count("write") == 3                      # no extra statement for the warning
+
+
+@pytest.mark.parametrize("reason, text", [("daily_count", "reason=daily_count"), ("daily_spend", "reason=daily_spend")])
+def test_a_neo4j_denial_by_a_daily_cap_logs_the_pause_once_and_a_share_denial_logs_nothing(reason, text, caplog):
+    snapshots = {"daily_count": {"paid": 150}, "daily_spend": {"spend_micro": 10_000_000}}
+    driver = Scripted({ledger.DENIAL_READ: [{"paid": 0, "spend_micro": 0, "ip_paid": 0, "inflight": 0,
+                                             **snapshots[reason]}]})
+    backend, clock = neo4j_backend(driver)
+    with caplog.at_level(logging.WARNING, logger="semigraph.serve.state"):
+        for _ in range(3):
+            ask_neo4j(backend, clock)
+    paused = [r.getMessage() for r in caplog.records if "state_day_paused" in r.getMessage()]
+    assert len(paused) == 1 and text in paused[0]
+    share = Scripted({ledger.DENIAL_READ: [{"paid": 0, "spend_micro": 0, "ip_paid": 0, "inflight": 0,
+                                            "ip_spend_micro": DEFAULT_BACKEND_SHARE_MICRO}]})
+    backend, clock = neo4j_backend(share)
+    with caplog.at_level(logging.WARNING, logger="semigraph.serve.state"):
+        caplog.clear()
+        assert ask_neo4j(backend, clock) is Denied.IP_SPEND
+    assert not [r for r in caplog.records if "state_day_paused" in r.getMessage()]
 
 
 def test_kill_is_answered_from_memory_before_the_database_is_touched():
@@ -413,7 +625,7 @@ def test_a_bug_in_the_ledger_call_is_not_swallowed_as_unavailable():
         ask_neo4j(backend, clock)
 
 
-def test_neo4j_reconcile_passes_the_known_cost_or_none_for_unknown_and_abandoned():
+def test_neo4j_reconcile_passes_the_known_cost_or_none_for_an_unknown_one():
     driver = Scripted({ledger.SETTLE_COUNTED: [{"id": "l"}]})
     backend, _ = neo4j_backend(driver)
     assert backend.reconcile("l", outcome="done", usage={"prompt_tokens": 1}, cost_micro=1_234) is True
@@ -421,7 +633,8 @@ def test_neo4j_reconcile_passes_the_known_cost_or_none_for_unknown_and_abandoned
     assert backend.reconcile("l", outcome="abandoned", usage=None, cost_micro=99) is True
     assert backend.reconcile("l", outcome="done", usage=None, cost_micro=-7) is True
     costs = [p["cost_micro"] for p in driver.params_of(ledger.SETTLE_COUNTED)]
-    assert costs == [1_234, None, None, 0]
+    # an integer is charged as given, 'abandoned' included (the metered charge); only None keeps the estimate
+    assert costs == [1_234, None, 99, 0]
 
 
 def test_neo4j_reconcile_is_false_when_the_ledger_matched_nothing_and_leaves_the_registry():

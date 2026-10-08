@@ -386,6 +386,7 @@ def _settings(cfg: Config) -> SimpleNamespace:
         max_question_chars=500, agent_enabled=False, uploads_enabled=False, client_ip_header=ASK_HEADER,
         ip_hash_pepper=ASK_PEPPER, ip_hash_version=2, answer_cache_ttl_hours=24, kill_switch=False,
         max_queries_per_day=100_000, max_spend_usd_per_day=0, paid_per_ip_per_day=cfg.ip_daily,
+        paid_spend_share_per_ip_usd=0,
         turnstile_secret_key="", turnstile_required=False, is_production=False, llm_request_timeout_s=30,
         llm_answer_max_tokens=100, escalation_model="", send_timeout_s=cfg.send_timeout_s, embed_slots=cfg.embed_slots,
         db_thread_limit=cfg.db_threads, max_concurrent_answers=cfg.max_answers, loop_lag_warn_ms=100,

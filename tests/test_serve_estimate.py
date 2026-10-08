@@ -36,20 +36,25 @@ LUNA_IN, LUNA_OUT = Fraction("0.10"), Fraction("0.50")
 SONNET_IN, SONNET_OUT = Fraction(2), Fraction(10)
 
 # What the estimate assumes about the prompt, per ask type (the arithmetic is in the comments; question = 500 chars).
-#   chars per token 2.5; one excerpt 12,000 chars + 64 framing; 8 excerpts = 96,512; the RELATIONSHIPS allowance 150
+#   characters per token PER MODEL: 2.5 for Luna (and every model with no figure of its own), 2.0 for Claude Sonnet 5
+#   (artifacts/chars_per_token_check.json: Sonnet's lowest exact row is 2.0997, Luna's 3.0224; the old single 2.5 failed for
+#   Sonnet); one excerpt 12,000 chars + 64 framing; 8 excerpts = 96,512; the RELATIONSHIPS allowance 150
 #   lines x 300 = 45,000 and 6 risk lines x 700 = 4,200 (49,200 shared by every company count); one anchor's blocks
 #   42,000; the anchor cap 4 (retriever.MAX_ANCHORS) = 168,000; the note naming the dropped companies 300; templates
 #   9,200 (answer) / 10,300 (workspace).
-#   vector:    9,200 + 500 + 96,512                                   = 106,212 chars -> 42,485 tokens
-#   hybrid:    9,200 + 500 + 96,512 + 49,200 + 168,000 + 300          = 323,712 chars -> 129,485 tokens
+#                                                                                       Luna (2.5)     Sonnet (2.0)
+#   vector:    9,200 + 500 + 96,512                                   = 106,212 chars -> 42,485 tokens   53,106
+#   hybrid:    9,200 + 500 + 96,512 + 49,200 + 168,000 + 300          = 323,712 chars -> 129,485          161,856
 #   workspace: 10,300 + 500 + 96,512 + 49,200 + 168,000 + 300 + 6 x (1,800 + 64) = 11,184
-#                                                                     = 335,996 chars -> 134,399 tokens
+#                                                                     = 335,996 chars -> 134,399          167,998
 #   agent:     9,200 + 500 + 96,512 + 8 more excerpts (96,512) + 49,200 + 40 edges x 300 + 6 more risks x 700 + 4
 #              computed x 400 + 4 companies' blocks (the agent covers no more companies than a plain ask: its tools
-#              are refused past the anchor cap) x 50,000 + 300         = 470,024 chars -> 188,010 tokens
-PROMPT_TOKENS = {"vector": 42_485, "hybrid": 129_485, "workspace": 134_399, "agent": 188_010}
+#              are refused past the anchor cap) x 50,000 + 300         = 470,024 chars -> 188,010          235,012
+PROMPT_CHARS = {"vector": 106_212, "hybrid": 323_712, "workspace": 335_996, "agent": 470_024}
+LUNA_PROMPT_TOKENS = {"vector": 42_485, "hybrid": 129_485, "workspace": 134_399, "agent": 188_010}       # chars / 2.5, up
+SONNET_PROMPT_TOKENS = {"vector": 53_106, "hybrid": 161_856, "workspace": 167_998, "agent": 235_012}     # chars / 2.0, up
 OUT_TOKENS = 2_400                    # fly.toml LLM_ANSWER_MAX_TOKENS
-PLANNER_IN_TOKENS, PLANNER_OUT_TOKENS = 23_400, 400   # (8,000 fixed + 500 question + 50,000 growth) / 2.5; the cap
+PLANNER_IN_TOKENS, PLANNER_OUT_TOKENS = 23_400, 400   # (8,000 fixed + 500 question + 50,000 growth) / 2.5 (Luna); the cap
 PLANNER_CALLS = 3                     # agent_max_model_calls
 MAX_ANCHORS = 4                       # retriever.MAX_ANCHORS: twice the most any recorded question names (2)
 AGENT_COMPANIES = MAX_ANCHORS         # the agent's merge refuses a tool call past the anchor cap (agent/merge.py)
@@ -70,6 +75,7 @@ LARGEST_RECORDED_CONTEXT_CHARS = 64_427   # eval_runs.jsonl, system=hybrid, row 
 LARGEST_CHUNK_CHARS = 10_217          # data/processed/chunks, 5,894 chunks of 13 filers: the longest (AMD)
 
 CAP_MICRO, COUNT_CAP = 10_000_000, 150   # decision 5: $10 a day, 150 paid asks a day
+SANITY_CEILING_USD = 2.0              # owner decision 2: no live estimate may be dearer (the agent's is $1.0157)
 
 
 def make_settings(**override) -> Settings:
@@ -100,9 +106,10 @@ def cost_micro(tokens_in: int, tokens_out: int, price_in: Fraction, price_out: F
 
 
 def expected_micro(ask_type: str, *, out_tokens: int = OUT_TOKENS) -> int:
-    """The estimate of the live shape (Luna draft, Sonnet strong, Luna planner) from the literals above, rounded up."""
-    total = (cost_micro(PROMPT_TOKENS[ask_type], out_tokens, LUNA_IN, LUNA_OUT, DRAFT_CALLS)
-             + cost_micro(PROMPT_TOKENS[ask_type], out_tokens, SONNET_IN, SONNET_OUT, STRONG_CALLS))
+    """The estimate of the live shape (Luna draft, Sonnet strong, Luna planner) from the literals above, rounded up: each
+    model prices the prompt at ITS OWN token count."""
+    total = (cost_micro(LUNA_PROMPT_TOKENS[ask_type], out_tokens, LUNA_IN, LUNA_OUT, DRAFT_CALLS)
+             + cost_micro(SONNET_PROMPT_TOKENS[ask_type], out_tokens, SONNET_IN, SONNET_OUT, STRONG_CALLS))
     if ask_type == "agent":
         total += cost_micro(PLANNER_IN_TOKENS, PLANNER_OUT_TOKENS, LUNA_IN, LUNA_OUT, PLANNER_CALLS)
     return math.ceil(total)
@@ -122,7 +129,12 @@ def asks_granted(cost: int, estimate: int, *, in_flight: int = 0) -> int:
 
 @pytest.mark.parametrize("ask_type", ASK_TYPES)
 def test_prompt_ceiling_is_the_documented_assumption(ask_type):
-    assert est.prompt_tokens(ask_type, make_settings()) == PROMPT_TOKENS[ask_type]
+    """The same prompt is a different number of tokens on each model: Sonnet's 2.0 characters per token against Luna's
+    2.5. The characters are the hand arithmetic's (PROMPT_CHARS); the tokens are those characters over each ratio."""
+    settings = make_settings()
+    assert est.prompt_chars(ask_type, settings) == PROMPT_CHARS[ask_type]
+    assert est.prompt_tokens(ask_type, settings, LUNA) == LUNA_PROMPT_TOKENS[ask_type] == -(-PROMPT_CHARS[ask_type] * 2 // 5)
+    assert est.prompt_tokens(ask_type, settings, SONNET) == SONNET_PROMPT_TOKENS[ask_type] == -(-PROMPT_CHARS[ask_type] // 2)
 
 
 @pytest.mark.parametrize("ask_type", ASK_TYPES)
@@ -131,10 +143,76 @@ def test_live_shape_estimate_equals_the_hand_computation(ask_type):
 
 
 def test_hand_computed_live_numbers_are_the_ones_reported_to_the_owner():
-    # hybrid: Luna 129,485 x 0.10 + 2,400 x 0.50 = 14,148.5; Sonnet 2 x (129,485 x 2 + 2,400 x 10) = 565,940 -> 580,089
-    assert [expected_micro(t) for t in ("hybrid", "vector", "workspace")] == [580_089, 223_389, 600_236]
-    # agent: Luna 20,001 + Sonnet 2 x (188,010 x 2 + 24,000) = 800,040 + planner 7,620
-    assert expected_micro("agent") == 827_661
+    # hybrid: Luna 129,485 x 0.10 + 2,400 x 0.50 = 14,148.5; Sonnet 2 x (161,856 x 2 + 2,400 x 10) = 695,424 -> 709,573
+    assert [expected_micro(t) for t in ("hybrid", "vector", "workspace")] == [709_573, 265_873, 734_632]
+    # agent: Luna 188,010 x 0.10 + 1,200 = 20,001; Sonnet 2 x (235,012 x 2 + 24,000) = 988,048; planner 3 x 2,540 = 7,620
+    assert expected_micro("agent") == 1_015_669
+
+
+def test_the_estimates_before_sonnet_had_a_ratio_of_its_own_are_what_this_change_moved_from():
+    """The old single 2.5 characters per token gave 580,089 / 223,389 / 600,236 / 827,661 (hybrid, vector, workspace,
+    agent). Sonnet carries about 98% of an estimate and its ratio moved from 2.5 to 2.0 (the old figure failed on the
+    recorded Sonnet prompts), so every estimate rose by 19 to 23 percent."""
+    old = {"hybrid": 580_089, "vector": 223_389, "workspace": 600_236, "agent": 827_661}
+    new = {t: est.estimate_micro(t, make_settings()) for t in ASK_TYPES}
+    assert new == {"hybrid": 709_573, "vector": 265_873, "workspace": 734_632, "agent": 1_015_669}
+    assert {t: round(new[t] / old[t], 2) for t in ASK_TYPES} == {"hybrid": 1.22, "vector": 1.19, "workspace": 1.22,
+                                                                  "agent": 1.23}
+
+
+def test_chars_per_token_is_per_model_mock_aliases_resolve_to_the_real_model_and_the_rest_get_the_default():
+    from decimal import Decimal
+    default, sonnet = Decimal("2.5"), Decimal("2.0")
+    assert est.chars_per_token(SONNET) == sonnet and est.chars_per_token(LUNA) == default
+    assert est.chars_per_token("acme/unknown-1") == default and est.chars_per_token("anthropic/claude-haiku-4-5") == default
+    assert est.chars_per_token("openai/mock-sonnet") == sonnet and est.chars_per_token("openai/mock-luna") == default
+    # a mock with no alias is the real model of its role; with no role, nothing is known about it: the default
+    assert est.chars_per_token("openai/mock-anything", "strong") == sonnet
+    assert est.chars_per_token("openai/mock-anything", "draft") == est.chars_per_token("openai/mock-anything", "planner") == default
+    assert est.chars_per_token("openai/mock-anything") == default
+    assert est.chars_per_token("openai/mock-anything", "no-such-role") == default       # never raises
+    # an alias names its model whatever role it is asked in
+    assert est.chars_per_token("openai/mock-sonnet", "draft") == sonnet
+    # the same prompt, two models: the characters are rounded UP once per model
+    assert est.tokens_for_chars(100_001, SONNET) == 50_001 and est.tokens_for_chars(100_001, LUNA) == 40_001
+    assert est.tokens_for_chars(0, SONNET) == 0 and est.tokens_for_chars(1, SONNET) == 1
+
+
+def test_there_is_no_single_characters_per_token_constant_any_more_only_a_default_and_a_table():
+    """The deprecated single ``CHARS_PER_TOKEN`` is gone (nothing imports it: the two scripts that did now go through
+    :func:`chars_per_token` per model). What remains is the DEFAULT, 2.5, and the table of the models that have a figure of
+    their own; Sonnet's is not the default."""
+    from decimal import Decimal
+    assert not hasattr(est, "CHARS_PER_TOKEN")
+    assert est.DEFAULT_CHARS_PER_TOKEN == Decimal("2.5")
+    assert est.chars_per_token(SONNET) == est.SONNET_CHARS_PER_TOKEN == Decimal("2.0") != est.DEFAULT_CHARS_PER_TOKEN
+    assert est.CHARS_PER_TOKEN_BY_MODEL == {SONNET: Decimal("2.0")}
+
+
+CHARS_PER_TOKEN_CHECK = ROOT / "artifacts" / "chars_per_token_check.json"
+
+
+@pytest.mark.skipif(not CHARS_PER_TOKEN_CHECK.exists(), reason="the measurement artifact is not in this checkout")
+def test_each_models_figure_sits_below_the_lowest_ratio_measured_for_it():
+    """The figures are ASSUMPTIONS, not proofs, but each must at least sit below every exact row measured for its model
+    (the artifact is a join of the recorded runs' prompts and billed tokens; its approximate deployed rows, whose prompts
+    were not saved, are left out of its verdict and go lower: Sonnet 1.47, Luna 1.99). Sonnet's old 2.5 failed this."""
+    verdict = json.loads(CHARS_PER_TOKEN_CHECK.read_text(encoding="utf-8"))["verdict"]
+    assert {LUNA, SONNET} <= set(verdict)
+    for model in (LUNA, SONNET):
+        assert verdict[model]["min_ratio"] >= float(est.chars_per_token(model)), model
+    assert verdict[SONNET]["min_ratio"] < float(est.DEFAULT_CHARS_PER_TOKEN)           # why Sonnet needed its own figure
+    assert 0.9 * verdict[SONNET]["min_ratio"] < float(est.SONNET_CHARS_PER_TOKEN)      # and it is within 10% of that row
+
+
+def test_the_asks_prompt_tokens_is_the_largest_input_any_answering_call_is_priced_at():
+    """``AskEstimate.prompt_tokens`` is the strong call's on the live shape (the dearest, densest prompt): not the draft's,
+    and never the planner's own prompt."""
+    for ask_type in ASK_TYPES:
+        e = est.estimate(ask_type, make_settings())
+        assert e.prompt_tokens == SONNET_PROMPT_TOKENS[ask_type] == max(c.input_tokens for c in e.components
+                                                                         if c.name in ("draft", "strong"))
+    assert est.estimate("hybrid", make_settings(escalation_model="")).prompt_tokens == LUNA_PROMPT_TOKENS["hybrid"]
 
 
 def test_the_ask_types_are_the_four_the_route_meters():
@@ -160,7 +238,8 @@ def test_estimate_covers_the_largest_recorded_prompt_on_both_models_at_the_outpu
 
 def test_every_prompt_ceiling_leaves_headroom_over_the_largest_recorded_call():
     for ask_type in ASK_TYPES:
-        assert est.prompt_tokens(ask_type, make_settings()) >= 1.5 * LARGEST_RECORDED_CALL_TOKENS, ask_type
+        for model in (LUNA, SONNET):
+            assert est.prompt_tokens(ask_type, make_settings(), model) >= 1.5 * LARGEST_RECORDED_CALL_TOKENS, (ask_type, model)
 
 
 def test_the_sec_context_ceiling_is_above_the_longest_recorded_context():
@@ -171,20 +250,84 @@ def test_the_sec_context_ceiling_is_above_the_longest_recorded_context():
     assert ceiling["vector"] >= 1.9 * VECTOR_LONGEST_CONTEXT_CHARS
 
 
-def test_no_ceiling_reaches_the_long_context_tier_the_agents_included():
-    """ASSUMPTION, unverified for Sonnet 5: providers price a prompt above about 200,000 tokens in a dearer tier (the
-    KNOWN_PRICES comment records one for Luna above short contexts). Every ceiling stays below it with the anchor cap
-    at 4 (the table test below shows where the plain ones would reach it). The agent's does too only because its tools
-    are refused past the same cap: before that cap it priced 13 companies and was 368,010 tokens."""
-    assert {t: est.prompt_tokens(t, make_settings()) for t in ASK_TYPES} == PROMPT_TOKENS
-    assert max(PROMPT_TOKENS.values()) == PROMPT_TOKENS["agent"] < 200_000
+# What is known about each model's context window and long-context pricing, and from where.
+# Claude Sonnet 5: Anthropic's pricing page, https://platform.claude.com/docs/en/about-claude/pricing (checked 2026-10-08),
+# says Claude 4.6 and later models, Sonnet 5 included, have the full 1,000,000-token context window at STANDARD pricing (a
+# 900,000-token request is billed at the same per-token rate as a 9,000-token one), and LiteLLM 1.100.0's cost map for
+# claude-sonnet-5 lists no above-200k price (max_input_tokens 1,000,000 and no size-tiered key in the bundled JSON, read
+# on 2026-10-08). So the estimate's flat Sonnet price is the right price at any size the service can send, and there is no
+# tier for the agent's 235,012-token strong call to cross.
+SONNET_MAX_INPUT_TOKENS = 1_000_000
+# GPT-6 Luna is not the same: the note above KNOWN_PRICES_PER_MTOK in llm_shape.py records a long-context tier for it (a
+# probe that priced a 1M-token prompt returned an input price of 0.20, twice the base 0.10). ``openai/gpt-6-luna`` is NOT
+# in LiteLLM 1.100.0's bundled cost map (checked 2026-10-08; the similarly named gpt-5.6-luna, another model, doubles its price
+# above 272,000 tokens and has a 922,000-token window: the family's pattern, not a fact about gpt-6-luna). Its threshold and
+# its window are not recorded anywhere in this repository, so 200,000 tokens is only a tripwire for it: the largest prompt
+# Luna is priced at is 188,010 tokens (the agent's draft), and a change that takes any Luna ceiling to 200,000 must stop and
+# find the threshold first.
+LUNA_TRIPWIRE_TOKENS = 200_000
+
+
+def known_prices_note() -> tuple[str, str]:
+    """The source of the KNOWN_PRICES_PER_MTOK table, split at the Luna entry: (the comment above it, everything from the
+    Luna entry to the end of the table)."""
+    from semigraph import llm_shape
+    source = inspect.getsource(llm_shape)
+    start = source.index("KNOWN_PRICES_PER_MTOK = {")
+    table = source[start:source.index("\n}", start)]
+    luna_at = table.index('"openai/gpt-6-luna"')
+
+    def prose(text: str) -> str:           # comment markers and line breaks out, so a phrase wrapped over two lines is one
+        return re.sub(r"\s+", " ", text.replace("#", " "))
+    return prose(table[:luna_at]), prose(table[luna_at:])
+
+
+def test_every_models_prompt_ceiling_is_within_its_context_window_and_sonnet_has_no_long_context_premium():
+    """Owner decision 1, resolved by a verified fact (see SONNET_MAX_INPUT_TOKENS): Claude Sonnet 5 prices its whole
+    1,000,000-token window at the standard rate, so the agent ceiling's 235,012 tokens (past 200,000) cost no more than the
+    estimate's flat price says. What stays true and is asserted: Sonnet's ceilings fit its window, its price is one flat
+    pair that does not depend on the prompt, the table's note records a long-context tier for Luna only, and Luna's
+    ceilings stay under the tripwire above."""
+    from semigraph.llm_shape import KNOWN_PRICES_PER_MTOK
+    settings = make_settings()
+    strong = {t: est.prompt_tokens(t, settings, SONNET, "strong") for t in ASK_TYPES}
+    assert max(strong.values()) <= SONNET_MAX_INPUT_TOKENS, strong
+    assert max(strong.values()) == SONNET_PROMPT_TOKENS["agent"] == 235_012          # 4x inside the window
+
+    # a flat price: one (input, output) pair per model, and nothing in the price lookup takes a size
+    assert KNOWN_PRICES_PER_MTOK[SONNET] == (float(SONNET_IN), float(SONNET_OUT))
+    assert list(inspect.signature(est.resolve_price).parameters) == ["model", "role", "settings"]
+    flat = est.resolve_price(SONNET, "strong", settings)
+    assert (flat.input, flat.output) == (2_000_000, 10_000_000) and flat.listed
+
+    # the source note records a long-context tier for Luna (above its entry's comment) and none for any model after it
+    above_luna, from_luna = known_prices_note()
+    assert "long-context tier" in above_luna and "long-context tier" not in from_luna
+    assert '"anthropic/claude-sonnet-5"' in from_luna
+
+    # Luna, whose threshold is not recorded: every prompt it is priced at stays under the tripwire
+    luna = {t: est.prompt_tokens(t, settings, LUNA, "draft") for t in ASK_TYPES}
+    assert max(luna.values()) == LUNA_PROMPT_TOKENS["agent"] < LUNA_TRIPWIRE_TOKENS
+    planner = est.estimate("agent", settings).components[-1]
+    assert planner.name == "planner" and planner.model == LUNA and planner.input_tokens == PLANNER_IN_TOKENS
+
+
+def test_only_the_agent_ceiling_is_past_200k_tokens_on_sonnet_where_it_is_not_a_price_boundary():
+    """The facts behind the test above, pinned: the plain, vector and workspace ceilings are under 200,000 tokens on the
+    strong model (and every ceiling on the draft, Luna, is too), the agent's is not, and for Sonnet 5 that costs nothing
+    extra (its window is priced flat to 1,000,000)."""
+    strong = {t: est.prompt_tokens(t, make_settings(), SONNET, "strong") for t in ASK_TYPES}
+    assert strong == SONNET_PROMPT_TOKENS
+    assert [t for t in ASK_TYPES if strong[t] >= 200_000] == ["agent"]
+    assert max(strong.values()) < SONNET_MAX_INPUT_TOKENS
+    assert max(est.prompt_tokens(t, make_settings(), LUNA, "draft") for t in ASK_TYPES) == LUNA_PROMPT_TOKENS["agent"] < 200_000
 
 
 @pytest.mark.parametrize("tool_calls", [0, 1, 4, 16])
 def test_the_agent_ceiling_does_not_depend_on_how_many_tool_calls_it_may_make(tool_calls):
     """The tool-call limit used to scale the company count (4 companies per call); the cap makes it irrelevant."""
     settings = make_settings(agent_max_tool_calls=tool_calls)
-    assert est.prompt_tokens("agent", settings) == PROMPT_TOKENS["agent"]
+    assert est.prompt_tokens("agent", settings, SONNET) == SONNET_PROMPT_TOKENS["agent"]
     assert est.estimate_micro("agent", settings) == expected_micro("agent")
     # the optional ``settings`` of the three public helpers is accepted and changes nothing
     assert est.context_chars("agent", settings) == est.context_chars("agent")
@@ -346,11 +489,16 @@ def rendered_worst_case_chars(ask_type: str) -> int:
                                                 "<<<DOC-ABCDEFGHIJKL>>>")[0])
 
 
+def tokens_of(chars: int, model: str) -> int:
+    """The tokens ``chars`` characters are priced at on ``model``, from the literals: Sonnet 2.0 per token, Luna 2.5."""
+    return math.ceil(Fraction(chars) / (Fraction(2) if model == SONNET else Fraction(5, 2)))
+
+
 def writer_floor_micro(ask_type: str, chars: int) -> Fraction:
-    """The cost of the writer calls (and, for the agent, the planner's) on the live models for a prompt of ``chars``."""
-    tokens = math.ceil(Fraction(chars) / Fraction(5, 2))
-    floor = (cost_micro(tokens, OUT_TOKENS, LUNA_IN, LUNA_OUT, DRAFT_CALLS)
-             + cost_micro(tokens, OUT_TOKENS, SONNET_IN, SONNET_OUT, STRONG_CALLS))
+    """The cost of the writer calls (and, for the agent, the planner's) on the live models for a prompt of ``chars``,
+    each model at its own characters per token."""
+    floor = (cost_micro(tokens_of(chars, LUNA), OUT_TOKENS, LUNA_IN, LUNA_OUT, DRAFT_CALLS)
+             + cost_micro(tokens_of(chars, SONNET), OUT_TOKENS, SONNET_IN, SONNET_OUT, STRONG_CALLS))
     if ask_type == "agent":
         floor += cost_micro(PLANNER_IN_TOKENS, PLANNER_OUT_TOKENS, LUNA_IN, LUNA_OUT, PLANNER_CALLS)
     return floor
@@ -365,7 +513,8 @@ def test_every_estimate_covers_the_worst_case_prompt_rendered_at_the_caps_on_the
     chars = rendered_worst_case_chars(ask_type)
     floor = writer_floor_micro(ask_type, chars)
     assert est.estimate_micro(ask_type, live) >= math.ceil(floor)
-    assert est.prompt_tokens(ask_type, live) >= math.ceil(Fraction(chars) / Fraction(5, 2))
+    assert est.prompt_tokens(ask_type, live, LUNA) >= tokens_of(chars, LUNA)
+    assert est.prompt_tokens(ask_type, live, SONNET) >= tokens_of(chars, SONNET)
     assert est.estimate_micro(ask_type, live) <= 1.15 * float(floor), (ask_type, chars)
 
 
@@ -420,8 +569,8 @@ def test_the_agent_estimate_covers_every_pair_count_up_to_the_cap():
 
 def test_the_agent_estimate_is_a_bound_the_code_enforces_even_when_four_calls_offer_ten_pairs_of_every_company():
     """THE CLOSED RESIDUAL. Without a cap on the pairs of a company, four companies at 8 pairs each rendered 518,870
-    characters, 207,548 tokens and cost 907,767 micro-dollars of writer and planner calls at the live prices, above the
-    827,661 the agent estimate holds and past the 200,000-token tier (it needed 9 annual filings of one company; the
+    characters (259,435 tokens on Sonnet, 207,548 on Luna) and cost 1,115,315 micro-dollars of writer and planner calls
+    at the live prices, above the 1,015,669 the agent estimate holds (it needed 9 annual filings of one company; the
     graph has at most 5). The real merge now holds each company to 5 pairs: the context it builds renders within the
     estimate's prompt ceiling, and one company's blocks within AGENT_GRAPH_CHARS_PER_COMPANY."""
     from semigraph.agent import merge
@@ -431,7 +580,8 @@ def test_the_agent_estimate_is_a_bound_the_code_enforces_even_when_four_calls_of
     assert held == dict.fromkeys(range(1, AGENT_COMPANIES + 1), merge.MAX_PAIRS_HELD_PER_COMPANY)
     chars = _prompt_chars(r)
     assert chars - _prompt_chars(agent_worst_case(AGENT_PAIRS)) <= AGENT_COMPANIES * 300, "5 pairs each, plus a cap note each"
-    assert est.prompt_tokens("agent", live) >= math.ceil(Fraction(chars) / Fraction(5, 2))
+    assert est.prompt_tokens("agent", live, LUNA) >= tokens_of(chars, LUNA)
+    assert est.prompt_tokens("agent", live, SONNET) >= tokens_of(chars, SONNET)
     assert est.estimate_micro("agent", live) >= math.ceil(writer_floor_micro("agent", chars))
     one_company = _prompt_chars(merged_agent_context(2)) - _prompt_chars(merged_agent_context(1))
     assert 48_000 < one_company <= est.AGENT_GRAPH_CHARS_PER_COMPANY
@@ -439,11 +589,11 @@ def test_the_agent_estimate_is_a_bound_the_code_enforces_even_when_four_calls_of
 
 def test_without_the_cap_the_same_calls_cost_more_than_the_agent_estimate_holds():
     """The control, so the test above cannot pass on its own: the same four calls through a merge whose cap is out of
-    reach end with 10 pairs of every company, 566,790 characters and 986,356 micro-dollars of writer and planner calls
-    at the live prices, above the 827,661 the estimate holds. The cap, not the data, is what keeps it a bound."""
+    reach end with 10 pairs of every company, 566,790 characters and 1,213,072 micro-dollars of writer and planner calls
+    at the live prices, above the 1,015,669 the estimate holds. The cap, not the data, is what keeps it a bound."""
     r = merged_agent_context(AGENT_COMPANIES, pair_cap=100)
     assert sum(1 for p in r["temporal_pairs"] if p["cik"] == 1) == 10
-    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (566_790, 986_356)
+    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (566_790, 1_213_072)
     assert math.ceil(writer_floor_micro("agent", _prompt_chars(r))) > est.estimate_micro("agent", live_settings())
 
 
@@ -475,19 +625,23 @@ def test_the_note_at_its_longest_fits_its_allowance():
 
 
 def test_the_ceiling_by_anchor_cap_is_the_table_the_cap_was_chosen_from(monkeypatch):
-    """Prompt tokens of a hybrid ask at 1..10 anchors (live models, 2.5 characters per token): 42,000 characters, 16,800
-    tokens, about $0.069 an anchor. The 200,000-token tier the estimate assumes ends after 8 anchors for a hybrid ask
-    and after 7 for a workspace ask; the cap is 4."""
+    """Prompt tokens of a hybrid ask on the strong model (Sonnet, 2.0 characters per token) at 1..10 anchors: 42,000
+    characters, 21,000 tokens an anchor (16,800 on Luna at 2.5). The 200,000-token mark (a price boundary for no model
+    the estimate prices Sonnet at; Luna's threshold is not recorded, see ``LUNA_TRIPWIRE_TOKENS``) is passed after 5
+    anchors for a hybrid ask and after 5 for a workspace ask on Sonnet (after 8 and 7 at the old single 2.5); the cap is
+    4."""
     from semigraph.retrieval import retriever
     tokens = {"hybrid": {}, "workspace": {}}
     for anchors in range(1, 11):
         monkeypatch.setattr(retriever, "MAX_ANCHORS", anchors)
         for ask_type in tokens:
-            tokens[ask_type][anchors] = est.prompt_tokens(ask_type, make_settings())
-    assert tokens["hybrid"] == {1: 79_085, 2: 95_885, 3: 112_685, 4: 129_485, 5: 146_285, 6: 163_085, 7: 179_885,
-                                8: 196_685, 9: 213_485, 10: 230_285}
-    assert [n for n, t in tokens["hybrid"].items() if t < 200_000] == list(range(1, 9))
-    assert [n for n, t in tokens["workspace"].items() if t < 200_000] == list(range(1, 8))
+            tokens[ask_type][anchors] = est.prompt_tokens(ask_type, make_settings(), SONNET, "strong")
+    assert tokens["hybrid"] == {1: 98_856, 2: 119_856, 3: 140_856, 4: 161_856, 5: 182_856, 6: 203_856, 7: 224_856,
+                                8: 245_856, 9: 266_856, 10: 287_856}
+    assert tokens["workspace"] == {1: 104_998, 2: 125_998, 3: 146_998, 4: 167_998, 5: 188_998, 6: 209_998, 7: 230_998,
+                                   8: 251_998, 9: 272_998, 10: 293_998}
+    assert [n for n, t in tokens["hybrid"].items() if t < 200_000] == list(range(1, 6))
+    assert [n for n, t in tokens["workspace"].items() if t < 200_000] == list(range(1, 6))
 
 
 # --- the structure: escalation, planner, workspace -------------------------------------------------------------------
@@ -498,28 +652,33 @@ def test_an_escalation_model_adds_the_strong_models_full_input_and_output():
     assert set(parts) == {"draft", "strong"}
     strong = parts["strong"]
     assert (strong.model, strong.input_tokens, strong.output_tokens, strong.calls) == (
-        SONNET, PROMPT_TOKENS["hybrid"], OUT_TOKENS, STRONG_CALLS)
-    assert strong.micro == math.ceil(cost_micro(PROMPT_TOKENS["hybrid"], OUT_TOKENS, SONNET_IN, SONNET_OUT,
+        SONNET, SONNET_PROMPT_TOKENS["hybrid"], OUT_TOKENS, STRONG_CALLS)
+    assert strong.micro == math.ceil(cost_micro(SONNET_PROMPT_TOKENS["hybrid"], OUT_TOKENS, SONNET_IN, SONNET_OUT,
                                                  STRONG_CALLS))
     draft = parts["draft"]
     assert (draft.model, draft.input_tokens, draft.output_tokens, draft.calls) == (
-        LUNA, PROMPT_TOKENS["hybrid"], OUT_TOKENS, DRAFT_CALLS)
+        LUNA, LUNA_PROMPT_TOKENS["hybrid"], OUT_TOKENS, DRAFT_CALLS)    # the same prompt, fewer tokens: Luna's 2.5 per token
     assert est.estimate_micro("hybrid", make_settings(escalation_model="")) < with_escalation.micro
 
 
-def test_without_an_escalation_model_the_answer_model_is_the_only_call_and_keeps_the_stream_retry():
+def test_without_an_escalation_model_the_answer_model_is_the_only_call_and_keeps_the_stream_attempts():
+    """The sole answer model carries STREAM_ATTEMPTS and, since the served stream makes no provider retries of its own on
+    top (answerer_async._strong_stream), exactly those: the estimate prices what the stream can bill."""
     only = est.estimate("hybrid", make_settings(escalation_model=""))
     assert [c.name for c in only.components] == ["answer"]
     assert only.components[0].calls == STRONG_CALLS and only.components[0].model == LUNA
-    assert only.micro == math.ceil(cost_micro(PROMPT_TOKENS["hybrid"], OUT_TOKENS, LUNA_IN, LUNA_OUT, STRONG_CALLS))
+    assert only.micro == math.ceil(cost_micro(LUNA_PROMPT_TOKENS["hybrid"], OUT_TOKENS, LUNA_IN, LUNA_OUT, STRONG_CALLS))
 
 
 def test_an_escalation_model_equal_to_the_answer_model_is_one_model_in_both_roles():
     """answerer.stream_answer_for_prompt drops the escalation when it equals the answering model (the documented
-    rollback)."""
+    rollback). Sonnet alone is sized at Sonnet's ratio: 161,856 tokens a call, twice, with no draft."""
     same = est.estimate("hybrid", make_settings(answer_model=SONNET, escalation_model=SONNET))
     assert [c.name for c in same.components] == ["answer"]
     assert same.micro == est.estimate_micro("hybrid", make_settings(answer_model=SONNET, escalation_model=""))
+    assert same.micro == math.ceil(cost_micro(SONNET_PROMPT_TOKENS["hybrid"], OUT_TOKENS, SONNET_IN, SONNET_OUT,
+                                              STRONG_CALLS)) == 695_424
+    assert same.components[0].input_tokens == SONNET_PROMPT_TOKENS["hybrid"]
 
 
 def test_the_agent_estimate_includes_the_planner_calls():
@@ -538,7 +697,10 @@ def test_the_agent_estimate_includes_the_planner_calls():
 
 def test_the_planner_is_priced_at_its_own_model():
     dear = est.estimate_micro("agent", make_settings(agent_planner_model=SONNET))
-    assert dear - est.estimate_micro("agent", make_settings()) > 100_000      # 3 calls x 23,400 tokens at $2 is ~$0.14
+    # 3 calls x 29,250 tokens (58,500 characters at Sonnet's 2.0 per token) at $2 is ~$0.18, less Luna's own ~$0.007
+    assert dear - est.estimate_micro("agent", make_settings()) > 100_000
+    sonnet_planner = {c.name: c for c in est.estimate("agent", make_settings(agent_planner_model=SONNET)).components}["planner"]
+    assert (sonnet_planner.model, sonnet_planner.input_tokens) == (SONNET, 29_250)       # the planner's tokens follow ITS model
 
 
 def test_a_workspace_ask_costs_at_least_a_hybrid_ask_and_adds_the_document_excerpts():
@@ -625,7 +787,7 @@ def test_an_unknown_model_is_flagged_and_priced_at_the_configured_list_prices():
     e = est.estimate("hybrid", s)
     assert e.unpriced == ("acme/unknown-1",)
     assert (e.components[0].input_price, e.components[0].output_price) == (3_000_000, 9_000_000)
-    assert e.micro == math.ceil(cost_micro(PROMPT_TOKENS["hybrid"], OUT_TOKENS, Fraction(3), Fraction(9),
+    assert e.micro == math.ceil(cost_micro(LUNA_PROMPT_TOKENS["hybrid"], OUT_TOKENS, Fraction(3), Fraction(9),   # default 2.5
                                            STRONG_CALLS))
 
 
@@ -687,7 +849,8 @@ def test_the_workspace_estimate_covers_the_recorded_workspace_asks():
     worst_chars = max(a["context_chars"] for a in asks)
     assert est.estimate_usd("workspace", live_settings()) >= worst_usd
     assert est.context_chars("workspace") >= 2 * worst_chars
-    assert est.prompt_tokens("workspace", live_settings()) >= 2 * max(a["usage"]["prompt_tokens"] for a in asks)
+    assert est.prompt_tokens("workspace", live_settings(), SONNET) >= 2 * max(a["usage"]["prompt_tokens"] for a in asks)
+    assert est.prompt_tokens("workspace", live_settings(), LUNA) >= 2 * max(a["usage"]["prompt_tokens"] for a in asks)
 
 
 RUN_FILES = ROOT / "data" / "processed"
@@ -784,26 +947,41 @@ def test_the_live_configuration_is_what_the_estimates_assume():
 
 
 def test_the_live_estimates_are_cents_not_dollars_and_not_zero():
-    """The band found: from the dearest recorded ask (about 7 cents) to under a dollar. Hybrid about 58 cents, vector
-    22, workspace 60, agent 83 (they carry the escalation's retry allowance and a context two to eleven times the
-    largest recorded; the agent's also three planner calls)."""
+    """Above the dearest recorded ask (about 7 cents) and below ``SANITY_CEILING_USD``. The estimates carry the strong
+    stream's second attempt and a context two to eleven times the largest recorded; the agent's also three planner calls.
+
+    OWNER DECISION 2: the bound was one dollar while the agent estimate was 83 cents; at Sonnet's 2.0 characters per token
+    (the old 2.5 failed on the recorded Sonnet prompts) it is $1.0157 (the others 27 to 73 cents), and that is the honest
+    upper bound, so the sanity bound moved to two dollars. It is only a sanity check: it catches an estimate that is off by
+    an order of magnitude (a price per million read as a price per token, a ceiling nobody capped). What limits money is
+    the $10 day cap and the per-address share, pinned in tests/test_state_contract.py, not this assertion."""
     s = live_settings()
     worst_recorded = {"hybrid": V2E_ROW_MAX_USD, "vector": VECTOR_ROW_MAX_USD, "workspace": V2E_ROW_MAX_USD,
                       "agent": AGENT_ROW_MAX_USD}
     for ask_type in ASK_TYPES:
         usd = est.estimate_usd(ask_type, s)
-        assert worst_recorded[ask_type] < usd < 1.0, (ask_type, usd)
-    assert round(est.estimate_usd("hybrid", s), 2) == 0.58
-    assert [round(est.estimate_usd(t, s), 2) for t in ("vector", "workspace", "agent")] == [0.22, 0.60, 0.83]
+        assert worst_recorded[ask_type] < usd < SANITY_CEILING_USD, (
+            f"the {ask_type} estimate is ${usd:.4f}, outside the sanity band (above the dearest recorded ask, below "
+            f"${SANITY_CEILING_USD:.2f}): an upper bound at Sonnet's measured 2.0 characters per token should be nowhere near")
 
 
-def test_the_agent_estimate_is_83_cents_because_its_companies_are_capped_at_the_anchor_cap():
+def test_the_live_estimates_to_the_cent():
+    """What the owner is told: hybrid 71 cents, vector 27, workspace 73, agent 102 (it was 58 / 22 / 60 / 83)."""
+    s = live_settings()
+    assert round(est.estimate_usd("hybrid", s), 2) == 0.71
+    assert [round(est.estimate_usd(t, s), 2) for t in ("vector", "workspace", "agent")] == [0.27, 0.73, 1.02]
+    assert [est.estimate_micro(t, s) for t in ASK_TYPES] == [709_573, 265_873, 1_015_669, 734_632]
+
+
+def test_the_agent_estimate_is_the_anchor_capped_one_and_the_company_cap_is_the_one_place_that_sets_it():
     """OWNER DECISION (option b): capping the companies in the agent's merge at MAX_ANCHORS (agent/merge.py and
-    agent/tools.py) took the estimate from $1.57 (13 companies' blocks, a 368,010-token prompt, past the long-context
-    tier) to $0.83 (4 companies, 188,010 tokens). ``agent_company_blocks`` is the one place that reads that cap."""
+    agent/tools.py) took the estimate from $1.57 (13 companies' blocks, a 368,010-token prompt) to $0.83 (4 companies,
+    188,010 tokens) at the single 2.5 characters per token; at Sonnet's 2.0 the same ceiling is 235,012 tokens on the
+    strong model and $1.02 (inside Sonnet's 1,000,000-token window at its flat price, see the long-context test above).
+    ``agent_company_blocks`` is the one place that reads that cap."""
     from semigraph.agent import merge
     live = live_settings()
-    assert est.estimate_micro("agent", live) == 827_661 and est.estimate_usd("agent", live) < 1.0
+    assert est.estimate_micro("agent", live) == 1_015_669
     assert est.agent_company_blocks() == merge.company_cap() == AGENT_COMPANIES == MAX_ANCHORS
 
 
@@ -833,38 +1011,39 @@ def test_the_agents_tools_cannot_cover_more_companies_than_the_estimate_prices()
 def test_which_cap_binds_first_the_150_ask_count_or_the_10_dollar_estimate():
     """The reserve rule denies an ask when spend + its estimate exceeds the cap, where a settled ask counts at its
     ACTUAL cost and only a lease in flight counts at its estimate. So the estimate is headroom, not a per-ask charge:
-      - every ask at the estimate (a pile of in-flight leases): 150 hybrid asks would be $87.01, the cap would stop the
-        18th, but the live in-flight cap is 2, so that never happens;
+      - every ask at the estimate (a pile of in-flight leases): 150 hybrid asks would be $106.44, the cap would stop the
+        15th, but the live in-flight cap is 2, so that never happens;
       - asks that settle at the recorded mean (1.5 cents): the 150-ask count binds first, with $2.19 spent;
       - asks that all cost the dearest straight-to-Sonnet ask (6.06 cents): still all 150 granted;
       - asks that all cost the dearest recorded ask (6.6 cents, a rejected draft plus the strong answer): the $10 cap
-        binds first, at the 145th ask (the 144th was the last granted);
-      - break-even: an average above 6.32 cents per ask makes the $10 cap bind before the count.
-    The anchor cap moved the hybrid estimate from $0.52 to $0.58 and the break-even from 6.36 to 6.32 cents: the
-    estimate is headroom, so the cap that binds first is still the count at every recorded cost but the dearest.
-    The agent, with its companies capped ($0.83 rather than $1.57): asks at the recorded mean (1.4 cents) meet the count
-    first ($2.17 spent); asks that all cost the dearest recorded one (7.07 cents) meet the $10 cap first, at the 131st
-    (130 granted, where $1.57 granted 120); the break-even is 6.16 cents per ask. A pile of 12 agent leases at their
-    estimate fills the day, but the live in-flight cap is 2."""
+        binds first, at the 143rd ask (the 142nd was the last granted);
+      - break-even: an average above 6.24 cents per ask makes the $10 cap bind before the count.
+    The estimate is headroom, so the cap that binds first is still the count at every recorded cost but the dearest.
+    (Sonnet's own characters per token moved the hybrid estimate from $0.58 to $0.71 and the break-even from 6.32 to 6.24
+    cents; the anchor cap had moved them from $0.52 / 6.36.)
+    The agent: asks at the recorded mean (1.4 cents) meet the count first ($2.17 spent); asks that all cost the dearest
+    recorded one (7.07 cents) meet the $10 cap first, at the 129th (128 granted, where $0.83 granted 130 and $1.57
+    granted 120); the break-even is 6.03 cents per ask. A pile of 9 agent leases at their estimate fills the day, but the
+    live in-flight cap is 2."""
     s = live_settings()
     hybrid, agent = est.estimate_micro("hybrid", s), est.estimate_micro("agent", s)
-    assert (hybrid, agent) == (580_089, 827_661)
-    assert 150 * hybrid / 1_000_000 == pytest.approx(87.01, abs=0.01)
-    assert CAP_MICRO // hybrid == 17                       # at the estimate the 18th ask cannot reserve
+    assert (hybrid, agent) == (709_573, 1_015_669)
+    assert 150 * hybrid / 1_000_000 == pytest.approx(106.44, abs=0.01)
+    assert CAP_MICRO // hybrid == 14                       # at the estimate the 15th ask cannot reserve
     dearest, mean = round(V2E_ROW_MAX_USD * 1_000_000), round(V2E_MEAN_ROW_USD * 1_000_000)
     assert asks_granted(mean, hybrid) == COUNT_CAP
     assert 150 * mean / 1_000_000 == pytest.approx(2.19, abs=0.01)
     assert asks_granted(round(V2E_STRONG_ROW_MAX_USD * 1_000_000), hybrid) == COUNT_CAP
-    assert asks_granted(dearest, hybrid) == 144            # the 145th is denied by the $10 cap
-    assert asks_granted(dearest, hybrid, in_flight=1) == 135     # one other lease in flight (the live cap is 2)
-    assert (CAP_MICRO - hybrid) // (COUNT_CAP - 1) == 63_220       # the break-even cost per ask: the dearest that still
-    assert asks_granted(63_220, hybrid) == COUNT_CAP and asks_granted(63_221, hybrid) == COUNT_CAP - 1   # gets all 150
+    assert asks_granted(dearest, hybrid) == 142            # the 143rd is denied by the $10 cap
+    assert asks_granted(dearest, hybrid, in_flight=1) == 131     # one other lease in flight (the live cap is 2)
+    assert (CAP_MICRO - hybrid) // (COUNT_CAP - 1) == 62_351       # the break-even cost per ask: the dearest that still
+    assert asks_granted(62_351, hybrid) == COUNT_CAP and asks_granted(62_352, hybrid) == COUNT_CAP - 1   # gets all 150
     agent_dearest, agent_mean = round(AGENT_ROW_MAX_USD * 1_000_000), round(AGENT_MEAN_ROW_USD * 1_000_000)
-    assert asks_granted(agent_mean, agent) == COUNT_CAP and asks_granted(agent_dearest, agent) == 130
+    assert asks_granted(agent_mean, agent) == COUNT_CAP and asks_granted(agent_dearest, agent) == 128
     assert 150 * agent_mean / 1_000_000 == pytest.approx(2.17, abs=0.01)
-    assert (CAP_MICRO - agent) // (COUNT_CAP - 1) == 61_559        # the agent's break-even cost per ask
-    assert asks_granted(61_559, agent) == COUNT_CAP and asks_granted(61_560, agent) == COUNT_CAP - 1
-    assert CAP_MICRO // agent == 12       # twelve agent asks at their estimate fill the day (a ceiling, not a charge)
+    assert (CAP_MICRO - agent) // (COUNT_CAP - 1) == 60_297        # the agent's break-even cost per ask
+    assert asks_granted(60_297, agent) == COUNT_CAP and asks_granted(60_298, agent) == COUNT_CAP - 1
+    assert CAP_MICRO // agent == 9        # nine agent asks at their estimate fill the day (a ceiling, not a charge)
 
 
 # --- the assumptions are the code's ----------------------------------------------------------------------------------
@@ -954,8 +1133,10 @@ def test_boot_estimates_logs_one_info_line_per_ask_type_with_the_number_and_its_
     assert len(lines) == 4 and not [r for r in caplog.records if r.levelno > logging.INFO]
     by_type = {t: next(r.getMessage() for r in lines if f"ask_type={t} " in r.getMessage()) for t in ASK_TYPES}
     hybrid = by_type["hybrid"]
-    for fragment in ("usd=0.580089", "micro=580089", "prompt_tokens=129485", "anchors_max=4", "company_blocks=4", LUNA,
-                     SONNET, "x2", "unpriced=none"):
+    # each component carries ITS model's tokens: Luna 129,485, Sonnet 161,856 (the ask's own prompt_tokens is the larger)
+    for fragment in ("usd=0.709573", "micro=709573", "prompt_tokens=161856", "anchors_max=4", "company_blocks=4", LUNA,
+                     SONNET, "x2", "unpriced=none", f"[{LUNA} x1: in 129485 out 2400 = 14149]",
+                     f"[{SONNET} x2: in 161856 out 2400 = 695424]"):
         assert fragment in hybrid, fragment
     assert "anchors_assumed" not in hybrid
     assert "company_blocks=4" in by_type["agent"] and "company_blocks=0" in by_type["vector"]

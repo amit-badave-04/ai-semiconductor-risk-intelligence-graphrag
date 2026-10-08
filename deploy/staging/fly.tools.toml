@@ -1,0 +1,20 @@
+# Fly.io config - the STAGING tools machine (semigraph-tools-stg): the S7 replay driver (tools/s7) and the throttle probe
+# (tools/probe), image deploy/staging/Dockerfile.tools. THROWAWAY: created for a test window by scripts/staging.py and
+# destroyed after it. It idles (sleep) until the operator starts a run with `flyctl ssh console`; it accepts no inbound traffic
+# and holds exactly one secret, the staging database credential, which scripts/staging.py generates per window and pushes (a
+# replay reads it from the machine's environment; it is never written on a command line).
+#
+# The machine class is set per window by scripts/staging.py (windows.json): shared-cpu-2x / 4 GB for the throttle probe,
+# performance-1x / 2 GB for the S7 replay driver. The size below is the S7 one.
+#
+# Deploy only through scripts/staging.py (the build context is the repository root; the Dockerfile is passed explicitly).
+app = "semigraph-tools-stg"
+primary_region = "sin"
+
+[env]
+  S7_OUT_DIR = "/out"
+  PROBE_OUT_DIR = "/out"
+
+[[vm]]
+  size = "performance-1x"
+  memory = "2gb"

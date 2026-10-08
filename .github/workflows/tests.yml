@@ -10,6 +10,10 @@
 # serve-shipped has NO pandas or sentence-transformers (it does ship rapidfuzz and scipy since M4: the upload what-changed
 # comparison uses graph/alignment.py in a sandboxed subprocess). A test module its selection matches by name that needs a missing
 # package starts with pytest.importorskip(...) and states why; eval and pipeline tests live in files the selection does not match.
+# The three files named at the end of the selection are not matched by a pattern: the provider-base kwargs of every serve-path
+# model call, the meter keyword every answer twin must declare, and the embedder's fp32/q8 loading (its five tests that need `onnx`,
+# a developer package, skip themselves). Tests whose subject is the harness (test_tools_*, test_staging_*, test_loadtest_*,
+# test_latency_smoke, test_check_chars_per_token) cover files the image does not ship and run in `unit` only.
 # Reproduce it on a developer machine (a throwaway venv outside the repo, then the pytest command of the step below):
 #   uv venv <tmp>/sv --python 3.13
 #   uv pip install --python <tmp>/sv/Scripts/python.exe -r deploy/requirements-serve.txt pytest    (bin/python on Linux/macOS)
@@ -79,6 +83,7 @@ jobs:
           tests/test_serve_*.py tests/test_state_*.py tests/test_escalation.py tests/test_verify*.py tests/test_router.py
           tests/test_ids.py tests/test_llm_shape.py tests/test_answerer_*.py tests/test_answer_checks_events.py
           tests/test_retrieval_*.py tests/test_static_ui.py
+          tests/test_llm_provider_kwargs.py tests/test_agent_seam.py tests/test_embeddings_onnx_variant.py
       # M4 spike S3 (docs/v2/M4_PLAN.md section 8): the upload parse sandbox under its real RLIMIT_AS on Linux, with the child's
       # peak RSS printed into this log (the step above captures output; this one shows it and fails if the test is skipped).
       - name: Upload parse sandbox under RLIMIT_AS (Linux-only measurement)

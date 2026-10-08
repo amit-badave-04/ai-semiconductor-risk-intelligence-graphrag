@@ -5,6 +5,7 @@ draft / verify / escalate implementation both paths share, the agent package is 
 image unless the agent is enabled), and code-computed change lines ride in the METRICS block as data (no template change).
 """
 
+import inspect
 import sys
 import types
 
@@ -82,3 +83,18 @@ def test_the_route_streams_through_the_agent_only_for_strategy_agent_and_imports
     assert routes._stream_fn("hybrid") is routes.aanswer_stream and routes._stream_fn("vector") is routes.aanswer_stream
     assert routes._stream_fn("hybrid", True) is routes.astream_workspace_answer   # a workspace ask never gets the agent
     assert routes._stream_fn("agent", True) is routes.astream_workspace_answer
+
+
+def test_every_twin_a_route_can_stream_through_takes_the_paid_call_meter_as_its_own_keyword():
+    """The runtime hands the ask's meter to whichever twin the route resolved (``twin(..., meter=...)``). A twin without
+    that keyword would fail every ask, and one that took it through ``**kwargs`` would hand the meter to a model stream.
+    The same keyword runs through the writer functions the twins call, so an injected stream never receives it."""
+    from semigraph.agent.stream_async import aagent_answer_stream
+    from semigraph.retrieval import answerer_async
+
+    twins = [routes.aanswer_stream, routes.astream_workspace_answer, aagent_answer_stream,
+             answerer_async.astream_answer_for_context, answerer_async.astream_answer_for_prompt]
+    for twin in twins:
+        meter = inspect.signature(twin).parameters["meter"]
+        assert meter.kind is inspect.Parameter.KEYWORD_ONLY and meter.default is None, twin.__name__
+    assert inspect.signature(routes.aanswer_stream).parameters["limiters"].kind is inspect.Parameter.KEYWORD_ONLY

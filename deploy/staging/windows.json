@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "source": "I5 staging harness plan section 2 (2026-10-07). Hourly price = 30-day price / 720. Derived, not reconciled with an invoice; remote-builder minutes and egress between machines are not priced (UNVERIFIED for this org).",
+  "hours_per_month": 720,
+  "rates_30_day_usd": {
+    "shared-cpu-1x:1gb": 8.5,
+    "shared-cpu-2x:4gb": 32.24,
+    "performance-1x:2gb": 41.89,
+    "performance-2x:4gb": 83.77
+  },
+  "volume_usd_per_gb_30_day": 0.15,
+  "egress_usd_per_gb": 0.04,
+  "apps": {
+    "api": {
+      "name": "semigraph-stg",
+      "environment": "staging",
+      "toml": "deploy/staging/fly.stg.toml",
+      "dockerfile": "Dockerfile",
+      "context": ".",
+      "builds_settings": true,
+      "public": true
+    },
+    "neo4j": {
+      "name": "semigraph-neo4j-stg",
+      "environment": "staging",
+      "toml": "deploy/staging/fly.neo4j-stg.toml",
+      "dockerfile": "Dockerfile",
+      "context": "deploy/neo4j",
+      "builds_settings": false,
+      "public": false,
+      "volume": {"name": "neo4j_data", "size_gb": 3}
+    },
+    "mockllm": {
+      "name": "semigraph-mockllm",
+      "environment": "staging",
+      "toml": "deploy/staging/fly.mockllm.toml",
+      "dockerfile": "deploy/staging/Dockerfile.mockllm",
+      "context": ".",
+      "builds_settings": false,
+      "public": false
+    },
+    "tools": {
+      "name": "semigraph-tools-stg",
+      "environment": "staging",
+      "toml": "deploy/staging/fly.tools.toml",
+      "dockerfile": "deploy/staging/Dockerfile.tools",
+      "context": ".",
+      "builds_settings": false,
+      "public": false
+    },
+    "loadgen": {
+      "name": "semigraph-loadgen-stg",
+      "environment": "staging",
+      "toml": "deploy/staging/fly.loadgen.toml",
+      "dockerfile": "deploy/staging/Dockerfile.loadgen",
+      "context": ".",
+      "builds_settings": false,
+      "public": false
+    }
+  },
+  "windows": {
+    "W0": {
+      "title": "Fresh-machine throttle probe",
+      "duration": "60 min burn + idle/refill",
+      "apps": ["tools"],
+      "machines": [{"app": "tools", "class": "shared-cpu-2x:4gb", "count": 1, "hours": 1.0}],
+      "quote_usd": 0.05,
+      "cap_usd": 0.10
+    },
+    "W1": {
+      "title": "S6 embedder timing on both classes",
+      "duration": "30 min each",
+      "apps": ["api"],
+      "machines": [
+        {"app": "api", "class": "shared-cpu-2x:4gb", "count": 1, "hours": 0.5},
+        {"app": "api", "class": "performance-2x:4gb", "count": 1, "hours": 0.5}
+      ],
+      "quote_usd": 0.08,
+      "cap_usd": 0.15,
+      "note": "Image built with KEEP_UNPATCHED=1; 60 interleaved rounds plus the salt-format set; the shared class twice (fresh, burst-drained). Remote-builder minutes are unpriced."
+    },
+    "W2": {
+      "title": "S12 calibration (provider spend, no machine)",
+      "duration": "10 SEC + 2 agent streamed asks",
+      "apps": [],
+      "machines": [],
+      "quote_usd": 0.0,
+      "cap_usd": 0.0,
+      "provider_cap_usd": 0.5,
+      "note": "Run locally against the local graph with the live model strings; scripts/latency_smoke.py --live --max-usd 0.50."
+    },
+    "W3": {
+      "title": "S7 Neo4j service state under sustained load",
+      "duration": "seed 20 + baseline 15 + drain soak <=120 + L5 60 + control 30 + L10 60 + L20 60 min",
+      "apps": ["neo4j", "tools"],
+      "machines": [
+        {"app": "neo4j", "class": "shared-cpu-1x:1gb", "count": 1, "hours": 6.1},
+        {"app": "tools", "class": "performance-1x:2gb", "count": 1, "hours": 6.1}
+      ],
+      "volume_gb_hours": [{"app": "neo4j", "gb": 3, "hours": 6.1}],
+      "quote_usd": 0.45,
+      "cap_usd": 0.6,
+      "options": [
+        {"name": "L5 only (the M5a minimum)", "hours": 3.6, "quote_usd": 0.25, "cap_usd": 0.35,
+         "duration": "seed 20 + baseline 15 + drain soak <=120 + L5 60 min"}
+      ]
+    },
+    "W4": {
+      "title": "S2 one performance-class machine against the gate",
+      "duration": "pilot 5 min, restart, soak (ramp 10, steady 20, spike 3, soak 60, fault 10), production-settings sub-run 15, rolling-deploy drill 10",
+      "apps": ["api", "neo4j", "mockllm", "loadgen"],
+      "machines": [
+        {"app": "api", "class": "performance-2x:4gb", "count": 1, "hours": 3.5},
+        {"app": "neo4j", "class": "shared-cpu-1x:1gb", "count": 1, "hours": 3.5},
+        {"app": "mockllm", "class": "performance-1x:2gb", "count": 1, "hours": 3.5},
+        {"app": "loadgen", "class": "performance-1x:2gb", "count": 3, "hours": 3.0}
+      ],
+      "volume_gb_hours": [{"app": "neo4j", "gb": 3, "hours": 3.5}],
+      "egress_gb_max": 0.5,
+      "quote_usd": 1.25,
+      "cap_usd": 2.0,
+      "options": [
+        {"name": "4 load workers + the master (5 generator machines; only if the pilot's generator CPU is above 40 %)", "extra_quote_usd": 0.35,
+         "extra_machines": [{"app": "loadgen", "class": "performance-1x:2gb", "count": 2, "hours": 3.0}]}
+      ]
+    }
+  }
+}

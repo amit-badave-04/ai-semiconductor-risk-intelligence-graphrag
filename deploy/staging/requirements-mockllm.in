@@ -1,0 +1,14 @@
+# Direct dependencies of the staging mock LLM (tools/mockllm), pinned to the versions already resolved in
+# deploy/requirements-serve.txt so the mock and the service under test run the same web stack. NO litellm / neo4j / onnx.
+# starlette and idna are named here only to hold them at the serve pins (the newest in the index is one release ahead).
+# uvloop is not in the serve file (it was compiled on Windows, where uvicorn[standard] skips it); the mock runs on Linux.
+# The ids grammar is read from src/semigraph/retrieval/ids.py (copied into the image), never from the semigraph package.
+# Re-pin WITH hashes (run from the repo root; works offline from the uv cache, else needs the package index):
+#   uv pip compile deploy/staging/requirements-mockllm.in -o deploy/staging/requirements-mockllm.txt \
+#       --generate-hashes --python-version 3.13 --python-platform linux --no-header
+fastapi==0.141.1
+starlette==1.6.0
+idna==3.19
+uvicorn==0.52.4
+httptools==0.8.0
+uvloop==0.22.1

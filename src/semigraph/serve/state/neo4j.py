@@ -8,8 +8,10 @@ started (``mark_started``), which the maintenance thread renews and the sweep sk
 waiting for a retry (also skipped by the sweep). All Cypher is in :mod:`.ledger`.
 
 ``reserve`` is one managed transaction (counters, in-flight, caps, increments and the ``reserved`` row together), so a
-failure leaves nothing to roll back. ``reconcile`` settles the row and adjusts its day's counter in one transaction, and
-a second call matches nothing. ``sweep`` closes this machine's expired, unregistered leases (their estimate is already
+failure leaves nothing to roll back. The caps include the address's share of the day's spend (``SvcIpDay.spend_micro``,
+council 4 option C), decided under the same two locks, so two machines cannot both take the last of an address's share.
+``reconcile`` settles the row and adjusts its day's counter and its address's counter in one transaction, and a second
+call matches nothing. ``sweep`` closes this machine's expired, unregistered leases (their estimate is already
 in the counters). A lease of another machine is never touched here: its owner renews or sweeps it, and a dead machine's
 are closed by the next boot (``abandoned_restart``).
 """
@@ -34,7 +36,8 @@ from .backend import (
 logger = logging.getLogger("semigraph.serve.state")
 
 _DENIALS = {"daily_count": Denied.DAILY_COUNT, "daily_spend": Denied.DAILY_SPEND, "ip_daily": Denied.IP_DAILY,
-            "inflight": Denied.INFLIGHT}
+            "ip_spend": Denied.IP_SPEND, "ip_spend_inflight": Denied.IP_SPEND_INFLIGHT, "inflight": Denied.INFLIGHT}
+_DAY_PAUSES = (Denied.DAILY_COUNT, Denied.DAILY_SPEND)       # the denials that pause the day for everyone
 
 
 class Neo4jBackend(StateCore):
@@ -44,7 +47,8 @@ class Neo4jBackend(StateCore):
             ledger = default_ledger
         super().__init__(config, drivers, ledger, **clocks)
         self._caps = ledger.Caps(max_count=config.max_queries_per_day, max_spend_micro=config.max_spend_micro,
-                                 max_per_ip=config.paid_per_ip_per_day, max_inflight=config.max_concurrent_answers)
+                                 max_per_ip=config.paid_per_ip_per_day, max_inflight=config.max_concurrent_answers,
+                                 max_share_micro=config.paid_spend_share_micro)
 
     def reserve(self, *, ip_hash: str, strategy: str, workspace: bool, estimate_micro: int, now_wall: float,
                 now_mono: float) -> Lease | Denied:
@@ -62,7 +66,12 @@ class Neo4jBackend(StateCore):
         except StateUnavailable:
             return Denied.UNAVAILABLE
         if not outcome.granted:
-            return _DENIALS.get(outcome.reason, Denied.UNAVAILABLE)
+            denial = _DENIALS.get(outcome.reason, Denied.UNAVAILABLE)
+            if denial in _DAY_PAUSES:
+                self._note_pause(day, denial)
+            return denial
+        if outcome.paid is not None and outcome.spend_micro is not None:
+            self._note_level(day, outcome.paid, outcome.spend_micro)
         return Lease(lease_id, day, ip_hash, strategy, workspace, estimate_micro, now_mono + cfg.lease_ttl_s,
                      cfg.machine_id)
 
@@ -75,12 +84,13 @@ class Neo4jBackend(StateCore):
                                lease_until=now_wall + self._cfg.lease_ttl_s, timeout_s=self._cfg.state_op_timeout_s))
 
     def reconcile(self, lease_id: str, *, outcome: str, usage: dict | None, cost_micro: int | None) -> bool:
-        """Settle the row and adjust its day counter by ``cost - estimate`` in one transaction; an unknown cost or an
-        abandoned ask keeps the estimate. True iff this call charged. If the transaction fails nothing was charged (it
-        rolled back): the call returns False at once and the settle is queued and retried by the maintenance thread
-        (see :mod:`.settle_queue`); until it lands, the row stays reserved and counts in-flight, and the sweep leaves
-        it alone. A settle that is given up is charged its estimate by the sweep once its lease runs out, or by the
-        next boot."""
+        """Settle the row and adjust its day counter and its address's counter by ``cost - estimate`` in one
+        transaction. An integer cost is charged as given, 'abandoned' included (the runtime passes the metered charge of
+        an ask whose client went away, 0 when no paid call started); only an unknown cost (None) keeps the estimate.
+        True iff this call charged. If the transaction fails nothing was charged (it rolled back): the call returns
+        False at once and the settle is queued and retried by the maintenance thread (see :mod:`.settle_queue`); until
+        it lands, the row stays reserved and counts in-flight, and the sweep leaves it alone. A settle that is given up
+        is charged its estimate by the sweep once its lease runs out, or by the next boot."""
         self.registry.discard(lease_id)
         charge = self._charge_micro(outcome, cost_micro)
         done, charged = self._settle_or_queue("settle", lease_id, lambda: self._ledger.settle_counted(

@@ -72,6 +72,14 @@ handled. The limits of this design:
   cancelled, the hosting task of the thread included, and the join then ends with that task, not with the thread (which
   cannot be interrupted and is left to finish on its own).
 
+The paid-call meter (Wave 2, ``serve/meter.py``): with a ``meter`` every planner call is recorded from the planning
+thread, ``start`` just before it and ``complete`` when it ends (:func:`_metered`, inside the stop guard: a call the guard
+refuses is never made and never recorded; a call that got past it is recorded however the consumer leaves, and one that
+starts after the ask was settled is recorded too, marked late by the meter). The writer is metered by the same meter, as
+its own argument. The settlement reads the meter only after this stream has been closed, which joins the planning thread
+first, so the planner records are final by then. The one way that fails is the documented limit above: a bare native
+``task.cancel()`` that ends the join of an event loop being shut down.
+
 What the sync ``stream._run`` does around ``run_agent`` is repeated here, because ``run_agent`` itself does none of
 it: the ``agent`` span, the ``tracer.flush()`` in a ``finally`` and, when the stream is abandoned before a terminal
 event (a close, and here also a cancellation, which the sync code cannot tell apart), the WARNING of logger
@@ -93,6 +101,7 @@ to exit it), so the thread is hosted by a plain asyncio task, the server's own e
 """
 
 import asyncio
+import json
 import logging
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable, Generator
@@ -109,15 +118,18 @@ from ..retrieval.answerer import usage_cost
 from ..retrieval.answerer_async import astream_answer_for_context
 from ..serve.tracing import redact_secret_shaped
 from .graph import AgentResult, run_agent
-from .planner import LiteLLMPlanner
+from .planner import PLANNER_MAX_TOKENS, LiteLLMPlanner
 from .state import Ledger, Limits, PlannerTurn
 from .stream import _PREFETCH_ARGS, _agent_info, _fold_spend, _planner_cost
 from .trace import Tracer, as_safe
 
 if TYPE_CHECKING:
     from ..serve.limiters import Limiters
+    from ..serve.meter import PaidMeter
 
 logger = logging.getLogger("semigraph.agent")
+
+UNSIZED_PROMPT = -1       # what the meter is told when a planner prompt cannot be measured: not a length, so it is a fault
 
 
 async def _wait_through_cancellation(wait: Callable[[], Awaitable], done: Callable[[], bool]) -> BaseException | None:
@@ -154,6 +166,46 @@ def _unless_stopped(planner: Callable[..., PlannerTurn], stop: threading.Event) 
         return planner(messages, tools, timeout=timeout)
 
     return guarded
+
+
+def _prompt_chars(messages: list[dict], tools: list[dict]) -> int:
+    """The characters a planner prompt weighs: the messages and the tool schemas, as JSON (unescaped, so a non-ASCII
+    character counts once, as it does to the tokenizer). A prompt that cannot be serialised is not measured at all:
+    ``UNSIZED_PROMPT`` is not a length, so the meter records a fault and charges the whole estimate. It must never raise,
+    or ``run_agent`` would turn the error into a ``planner_error`` fallback for a call that was never made."""
+    try:
+        return (len(json.dumps(messages, ensure_ascii=False, default=str))
+                + len(json.dumps(tools, ensure_ascii=False, default=str)))
+    except Exception:  # noqa: BLE001 - see above
+        return UNSIZED_PROMPT
+
+
+def _metered(planner: Callable[..., PlannerTurn], meter: "PaidMeter | None", model: str) -> Callable[..., PlannerTurn]:
+    """``planner`` with every call recorded in ``meter``: ``start`` immediately before the call and ``complete`` when it
+    ends, with the usage of the turn it returned, or None when it raised (the meter then keeps the call's bound: it
+    started, and the provider may bill it whatever came back). No meter, no wrapper: ``planner`` itself.
+
+    It runs on the planning thread (the meter has a lock for that; nothing here awaits) and it sits INSIDE the stop guard
+    (``_unless_stopped(_metered(planner))``): a call the guard refuses never happens, so it must not be recorded, and a
+    call that got past the guard is made, and so recorded, whatever the consumer does next. A call that starts after the
+    ask was settled is still recorded (the meter marks it late and logs it): hiding it would be worse. The wrapper has
+    the signature of a planner."""
+    if meter is None:
+        return planner
+    max_output_tokens = getattr(planner, "max_tokens", PLANNER_MAX_TOKENS)
+
+    def metered(messages: list[dict], tools: list[dict], *, timeout: float) -> PlannerTurn:
+        call_id = meter.start(role="planner", model=model, prompt_chars=_prompt_chars(messages, tools),
+                              max_output_tokens=max_output_tokens)
+        usage = None
+        try:
+            turn = planner(messages, tools, timeout=timeout)
+            usage = getattr(turn, "usage", None)
+            return turn
+        finally:
+            meter.complete(call_id, usage)
+
+    return metered
 
 
 class _Planning:
@@ -318,7 +370,7 @@ def _split_kwargs(stream_kwargs: dict, timeout) -> tuple[dict, dict]:
 async def aagent_answer_stream(question: str, driver, embedder, strategy: str = "agent", *, limiters: "Limiters",
                                timeout=None, max_tokens: int = 1200, escalation_model: str | None = None,
                                settings=None, planner=None, tracer=None, llm_stream=None, escalation_stream=None,
-                               **stream_kwargs) -> AsyncIterator[dict]:
+                               meter: "PaidMeter | None" = None, **stream_kwargs) -> AsyncIterator[dict]:
     """Async twin of :func:`semigraph.agent.stream.agent_answer_stream`: an async generator of the same event dicts
     (``step`` events, then ``retrieval``, ``delta``*, ``done`` | ``error``; ``done`` carries the ``agent`` object, and
     the planner's dollars are folded into the ``cost_usd`` of both terminal events).
@@ -326,15 +378,21 @@ async def aagent_answer_stream(question: str, driver, embedder, strategy: str = 
     ``limiters`` (:class:`semigraph.serve.limiters.Limiters`) bounds the planning thread (``db``) and the writer's
     checks. ``llm_stream`` / ``escalation_stream`` are ``callable(prompt) -> async iterable[str]``; ``k_chunks`` /
     ``hops`` configure the prefetch and every other keyword goes to the writer, as in the sync stream. See the module
-    docstring for the planning thread, the disconnect behaviour and its limits."""
+    docstring for the planning thread, the disconnect behaviour and its limits.
+
+    ``meter`` (a :class:`semigraph.serve.meter.PaidMeter`, or None) is a keyword of its own, like ``limiters``: every
+    planner call is recorded in it from the planning thread (:func:`_metered`) and it goes to the writer as its own
+    argument, which meters the writer's model calls. It never reaches ``**stream_kwargs`` or an injected stream."""
     settings = settings if settings is not None else get_settings()
     safe, planner_model = as_safe(tracer), settings.agent_planner_model
     prefetch, writer_kwargs = _split_kwargs(stream_kwargs, timeout)
     # Kept here, not inside ``run_agent``, so it survives an abandoned stream (the sync code's reason too).
     ledger, terminal_emitted = Ledger(), False
     stop = threading.Event()                    # set when the consumer leaves; read by the thread and the planner guard
+    # The guard is outermost: a call it refuses is never made, so it is never recorded.
+    guarded = _unless_stopped(_metered(planner or LiteLLMPlanner(planner_model), meter, planner_model), stop)
     planning_events = run_agent(question, driver, embedder,
-                                planner=_unless_stopped(planner or LiteLLMPlanner(planner_model), stop),
+                                planner=guarded,
                                 planner_model=planner_model, limits=Limits.from_settings(settings), tracer=safe,
                                 ledger=ledger, **prefetch)
     try:
@@ -355,7 +413,8 @@ async def aagent_answer_stream(question: str, driver, embedder, strategy: str = 
                 await anyio.lowlevel.checkpoint()
                 writer = astream_answer_for_context(
                     question, plan.r, strategy, llm_stream=llm_stream, escalation_model=escalation_model,
-                    escalation_stream=escalation_stream, max_tokens=max_tokens, limiters=limiters, **writer_kwargs)
+                    escalation_stream=escalation_stream, max_tokens=max_tokens, limiters=limiters, meter=meter,
+                    **writer_kwargs)
                 try:
                     async with aclosing(writer) as events:
                         async for event in events:

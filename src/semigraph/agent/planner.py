@@ -21,7 +21,8 @@ from collections.abc import Mapping
 import litellm
 
 from ..artifacts import read_prompt
-from ..llm_shape import completion_params
+from ..config import get_settings
+from ..llm_shape import completion_params, provider_kwargs
 from .sanitize import prefetch_summary
 from .state import PlannerTurn, ToolCall
 
@@ -62,7 +63,8 @@ class LiteLLMPlanner:
     def __call__(self, messages: list[dict], tools: list[dict], *, timeout: float) -> PlannerTurn:
         response = litellm.completion(
             model=self.model, messages=messages, tools=tools, tool_choice="auto", timeout=timeout, num_retries=0,
-            **completion_params(self.model, self.max_tokens, reasoning_effort="none"))
+            **completion_params(self.model, self.max_tokens, reasoning_effort="none"),
+            **provider_kwargs(self.model, get_settings()))
         choice = response.choices[0]
         calls = tuple(ToolCall(id=call.id or f"call_{i}", name=call.function.name, arguments=call.function.arguments or "{}")
                       for i, call in enumerate(getattr(choice.message, "tool_calls", None) or []))

@@ -25,13 +25,15 @@ from test_state_inprocess import FakeClock, state_settings
 
 from semigraph.serve import drain, store
 from semigraph.serve.limiters import make_limiters
-from semigraph.serve.state import Denied, StateDrivers, StateUnavailable, make_backend
+from semigraph.serve.meter import PaidMeter
+from semigraph.serve.state import Denied, Lease, StateDrivers, StateUnavailable, make_backend
 from semigraph.serve.stream_runtime import (
     MSG_BUSY,
     MSG_FAILED,
     PaidResponse,
     PaidStream,
     TwinContractError,
+    accepts_meter,
     admin_call,
     cost_micro_of,
     select_twin,
@@ -55,6 +57,7 @@ FAILED_CHECKS = {"citations_retrieved": True, "numbers_grounded": False, "unmatc
 WORKSPACE = {"workspace_id": "0123456789abcdef", "as_of": None}
 # What the backend is told when a lease is settled: (outcome, usage, cost in micro-dollars; None keeps the estimate).
 ABANDONED = ("abandoned", None, None)
+NEVER_RAN = ("abandoned", None, 0)     # the twin was never called: no paid call was possible (still a counted ask)
 ERROR_NO_SPEND = ("error", None, None)
 SPEND = ("done", DONE["usage"], 70)
 MAIN_THREAD = threading.get_ident()
@@ -130,7 +133,8 @@ def rec():
 def make_state(rec: Recorder, *, db_threads: int = 4, tracer=None, escalation_model: str = ""):
     """The app state the stream reads; built INSIDE the running loop (the limiters are bound to it)."""
     settings = SimpleNamespace(llm_request_timeout_s=5, llm_answer_max_tokens=100, escalation_model=escalation_model,
-                               embed_slots=1, db_thread_limit=db_threads)
+                               embed_slots=1, db_thread_limit=db_threads,
+                               llm_input_price_per_mtok=1.0, llm_output_price_per_mtok=2.0)   # 1 and 2 micro-dollars/token
     st = SimpleNamespace(settings=settings, driver=object(), embedder=object(), limiters=make_limiters(settings),
                          state=rec.backend, tracer=tracer)
     rec.st = st
@@ -159,6 +163,45 @@ def failing_twin(*events, error: Exception):
         for event in events:
             yield event
         raise error
+    return twin
+
+
+MODEL = "test/strong"                  # not a listed model: priced at the configured 1 / 2 micro-dollars per token (make_state)
+USAGE_20 = {"prompt_tokens": 10, "completion_tokens": 5}      # 10 x 1 + 5 x 2 = 20 micro-dollars
+USAGE_70K = {"prompt_tokens": 60_000, "completion_tokens": 5_000}   # 60,000 x 1 + 5,000 x 2 = 70,000: above a 60,000 lease
+BOUND_1200 = 1_200                     # 2500 chars = 1000 prompt tokens x 1 + 100 output tokens x 2 = 1200 micro-dollars
+
+
+def start_call(meter, *, role="strong", prompt_chars=2_500, max_output_tokens=100, usage=None):
+    """What a real twin does around one provider call: record it as started and, when it ended with usage, complete it."""
+    call_id = meter.start(role=role, model=MODEL, prompt_chars=prompt_chars, max_output_tokens=max_output_tokens)
+    if usage is not None:
+        meter.complete(call_id, usage)
+    return call_id
+
+
+def call(**kw):
+    """A step of :func:`metered_twin` that makes one metered provider call."""
+    return lambda meter: start_call(meter, **kw)
+
+
+def metered_twin(*steps, then=None, closed=None, seen=None):
+    """An async-generator twin that DECLARES ``meter`` (as the real twins do). A step that is a dict is yielded; a
+    callable step is called with the meter (it starts or completes calls) at that point of the run."""
+    async def twin(question, driver, embedder, *, meter=None, **kw):
+        if seen is not None:
+            seen.update(kw, question=question, driver=driver, embedder=embedder, meter=meter)
+        try:
+            for step in steps:
+                if callable(step):
+                    step(meter)
+                else:
+                    yield step
+            if then is not None:
+                await then()
+        finally:
+            if closed is not None:
+                closed.append(True)
     return twin
 
 
@@ -666,7 +709,8 @@ def test_the_stream_is_released_when_the_closing_chunk_reaches_send(rec):
 # ---------------------------------------------------------------- the client leaves
 
 def test_an_abandoned_stream_is_one_abandoned_settle_made_by_finalize_and_only_by_it(rec):
-    tracer, closed = Tracer(), []
+    tracer, closed, closed_at_settle = Tracer(), [], []
+    rec.backend.on_call = lambda name: closed_at_settle.append(list(closed)) if name == "reconcile" else None
 
     async def main():
         st = make_state(rec, tracer=tracer)
@@ -687,6 +731,7 @@ def test_an_abandoned_stream_is_one_abandoned_settle_made_by_finalize_and_only_b
 
     run(main)
     assert rec.charges() == [ABANDONED] and rec.settled[0]["strategy"] == "agent"
+    assert closed_at_settle == [[True]]                          # the settle came AFTER the twin had been closed
     assert rec.puts == []
     assert tracer.created == 1 and len(tracer.closed_on) == 1 and tracer.closed_on[0] != MAIN_THREAD
 
@@ -975,27 +1020,38 @@ def test_finalize_logs_instead_of_raising_and_still_leaves_the_drain(rec, caplog
     assert len(tracer.closed_on) == 1                            # the tracer close was still attempted
 
 
-def test_the_abandoned_settle_is_made_before_the_upstream_is_closed_and_before_the_tracer(rec):
-    """Closing an agent twin joins its thread (up to 12 s) and the platform may kill the process long before that: the
-    settle that the daily ceilings count is the FIRST thing ``finalize`` does. The order is: settle, twin, tracer,
-    drain."""
+class SlowClose:
+    """An upstream whose ``aclose`` announces itself and then waits for the test (joining an agent thread takes seconds)."""
+
+    def __init__(self, entered, gate):
+        self.entered, self.gate = entered, gate
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        return RETRIEVAL
+
+    async def aclose(self):
+        self.entered.set()
+        await self.gate.wait()
+
+
+def test_finalize_closes_the_twin_before_the_abandoned_settle_and_charges_the_metered_cost(rec):
+    """The cost of an abandoned ask is what its paid calls cost, and that is known only after the twin has stopped: closing
+    an agent twin joins the planning thread, and a planner call that is still running is billed whatever the client did.
+    So ``finalize`` closes the twin and the tracer first, then settles. (A process killed in the middle of the close
+    leaves the row reserved, which the next boot charges at the estimate: nothing is lost, only charged in full.)"""
     async def main():
         entered, gate = anyio.Event(), anyio.Event()
 
-        class SlowClose:
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                return RETRIEVAL
-
-            async def aclose(self):
-                entered.set()
-                await gate.wait()
+        def twin(question, driver, embedder, *, meter=None, **kw):
+            start_call(meter)                                    # a paid call is under way when the client leaves
+            return SlowClose(entered, gate)
 
         tracer = Tracer()
         st = make_state(rec, tracer=tracer)
-        stream = stream_of(st, lambda *a, **kw: SlowClose(), strategy="agent")
+        stream = stream_of(st, twin, strategy="agent")
         gen = stream.events()
         await gen.__anext__()
         await gen.aclose()
@@ -1003,21 +1059,93 @@ def test_the_abandoned_settle_is_made_before_the_upstream_is_closed_and_before_t
             tg.start_soon(stream.finalize)
             await entered.wait()                                 # the upstream close is under way and blocked
             try:
-                assert rec.charges() == [ABANDONED] and rec.settled[0]["strategy"] == "agent"   # ... the settle is done
-                assert rec.backend.inflight == 0                 # ... the lease is free ...
-                # ... and the drain count is not yet given back
-                assert drain.DRAIN.active == 1 and tracer.closed_on == []
+                assert rec.settled == [] and rec.backend.inflight == 1          # ... the settle has NOT been made ...
+                assert drain.DRAIN.active == 1 and tracer.closed_on == []      # ... nor the tracer closed, nor the drain left
+                assert not stream.meter.closed                   # ... and the meter is still open: the twin may call it
             finally:
                 gate.set()                       # finalize is shielded: a failed assertion must not leave it blocked
-        assert drain.DRAIN.active == 0 and len(tracer.closed_on) == 1
+        assert rec.charges() == [("abandoned", None, BOUND_1200)] and rec.settled[0]["strategy"] == "agent"
+        assert rec.backend.inflight == 0 and drain.DRAIN.active == 0 and len(tracer.closed_on) == 1
+        assert stream.meter.closed
 
     run(main)
     assert len(rec.settled) == 1
 
 
-def test_a_stream_that_never_ran_finalizes_to_one_abandoned_settle(rec):
+def test_the_meter_is_closed_after_the_twin_and_before_the_settle(rec, monkeypatch):
+    """The whole order: the twin (its thread joined), the tracer, the meter's close, the settle, the drain count."""
+    order = []
+
+    class OrderedTracer(Tracer):
+        def _close(self):
+            order.append("tracer")
+            super()._close()
+
+    async def main():
+        async def twin(question, driver, embedder, *, meter=None, **kw):
+            start_call(meter)
+            try:
+                yield RETRIEVAL
+                await anyio.sleep_forever()
+            finally:
+                order.append("twin")
+
+        st = make_state(rec, tracer=OrderedTracer())
+        stream = stream_of(st, twin, strategy="agent")
+        real_close, real_leave = stream.meter.close, drain.DRAIN.leave
+        monkeypatch.setattr(stream.meter, "close", lambda: (order.append("meter"), real_close())[1])
+        monkeypatch.setattr(drain.DRAIN, "leave", lambda: (order.append("drain"), real_leave())[1])
+        rec.backend.on_call = lambda name: order.append("settle") if name == "reconcile" else None
+        gen = stream.events()
+        await gen.__anext__()
+        await gen.aclose()
+        await stream.finalize()
+
+    run(main)
+    assert order == ["twin", "tracer", "meter", "settle", "drain"]
+
+
+def test_the_abandoned_settle_is_still_made_when_closing_the_twin_raises_something_that_is_not_an_exception(rec):
+    """The old order settled first, so nothing the close did could cost the ledger its row. The new one keeps the same
+    guarantee: the meter is closed, the lease is settled and the drain count is given back whatever the close raised."""
+    class Halt(BaseException):
+        pass
+
+    class BrokenClose:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            return RETRIEVAL
+
+        async def aclose(self):
+            raise Halt()
+
+    tracer = Tracer()
+
+    async def main():
+        st = make_state(rec, tracer=tracer)
+
+        def twin(question, driver, embedder, *, meter=None, **kw):
+            start_call(meter)
+            return BrokenClose()
+
+        stream = stream_of(st, twin, strategy="agent")
+        gen = stream.events()
+        await gen.__anext__()
+        await gen.aclose()
+        with pytest.raises(Halt):
+            await stream.finalize()
+        assert rec.backend.inflight == 0 and drain.DRAIN.active == 0 and stream.meter.closed
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, BOUND_1200)] and len(tracer.closed_on) == 1
+
+
+def test_a_stream_that_never_ran_finalizes_to_one_abandoned_settle_at_zero(rec):
     """Reserved, then the request went away before the first event (or the response could not be built): the lease is
-    settled as abandoned by ``finalize``, and the drain count is given back."""
+    settled as abandoned by ``finalize`` and the drain count is given back. The twin was never called, so no paid call
+    was possible: it is charged 0 (and still counted), as ``routes._abandon`` charges a lease no stream took."""
     async def main():
         st = make_state(rec)
         stream = stream_of(st, twin_of(RETRIEVAL))
@@ -1026,7 +1154,447 @@ def test_a_stream_that_never_ran_finalizes_to_one_abandoned_settle(rec):
         assert rec.backend.inflight == 0 and drain.DRAIN.active == 0
 
     run(main)
-    assert rec.charges() == [ABANDONED]
+    assert rec.charges() == [NEVER_RAN]
+
+
+# ---------------------------------------------------------------- the paid-call meter (Wave 2, council 4 option C)
+# One PaidMeter per ask. A twin that DECLARES a ``meter`` parameter is handed it and records its paid calls; the lease is
+# then settled at what those calls cost (never more than the estimate). A twin that does not declare it cannot record
+# anything, so a zero there means nothing: it keeps today's rule (an abandoned ask is charged its estimate).
+
+async def abandon(stream: PaidStream) -> None:
+    """The client reads the first event and leaves; the response runs ``finalize``."""
+    gen = stream.events()
+    await gen.__anext__()
+    await gen.aclose()
+    await stream.finalize()
+
+
+def test_a_twin_that_declares_meter_is_given_the_streams_own_meter_and_every_ask_has_its_own(rec):
+    first_seen, second_seen = {}, {}
+
+    async def main():
+        st = make_state(rec)
+        first = stream_of(st, metered_twin(RETRIEVAL, DONE, seen=first_seen))
+        second = stream_of(st, metered_twin(RETRIEVAL, DONE, seen=second_seen))
+        await drain_events(first)
+        await drain_events(second)
+        return first, second
+
+    first, second = run(main)
+    assert isinstance(first_seen["meter"], PaidMeter) and first_seen["meter"] is first.meter
+    assert second_seen["meter"] is second.meter and first.meter is not second.meter
+
+
+def test_a_twin_without_a_meter_parameter_is_not_given_one_and_its_abandon_keeps_the_estimate(rec):
+    """Injected twins (every test double, a wrapper that forwards ``**kw``) keep working exactly as before: no ``meter``
+    reaches them, and since they cannot record, an empty meter is not evidence of an unpaid ask."""
+    seen = {}
+
+    async def strict(question, driver, embedder, *, strategy, timeout, max_tokens, escalation_model, limiters):
+        seen["called"] = True                  # a signature without ``meter`` and without ``**kw``: a TypeError if given one
+        yield RETRIEVAL
+        await anyio.sleep_forever()
+
+    async def main():
+        st = make_state(rec)
+        await abandon(stream_of(st, strict))
+        await abandon(stream_of(st, twin_of(RETRIEVAL, then=anyio.sleep_forever, seen=seen)))
+
+    run(main)
+    assert seen["called"] and "meter" not in seen
+    assert rec.charges() == [ABANDONED, ABANDONED]
+
+
+def test_an_abandon_with_no_paid_call_is_settled_at_zero_and_still_counted(rec):
+    """The client left during retrieval: no provider was called, so nothing is charged. The ask is still ledgered (one
+    settled row: the backend counts it against the daily count, the address's count and the paid window)."""
+    async def main():
+        st = make_state(rec)
+        stream = stream_of(st, metered_twin(RETRIEVAL, then=anyio.sleep_forever))
+        await abandon(stream)
+        assert stream.meter.calls == ()
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, 0)] and len(rec.settled) == 1 and rec.backend.inflight == 0
+
+
+def test_an_abandon_is_charged_the_bound_of_a_call_that_started_and_never_reported(rec):
+    async def main():
+        st = make_state(rec)
+        await abandon(stream_of(st, metered_twin(call(), RETRIEVAL, then=anyio.sleep_forever)))
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, BOUND_1200)]
+
+
+def test_an_abandon_is_charged_the_reported_cost_of_a_finished_call_plus_the_bound_of_a_started_one(rec):
+    """A draft that finished (20 micro-dollars reported) and an escalation that had just started (its 1200 bound)."""
+    async def main():
+        st = make_state(rec)
+        twin = metered_twin(call(role="draft", usage=USAGE_20), call(role="strong"), RETRIEVAL,
+                            then=anyio.sleep_forever)
+        await abandon(stream_of(st, twin))
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, 20 + BOUND_1200)]
+
+
+def test_the_metered_charge_is_capped_at_the_estimate_of_the_lease(rec):
+    async def main():
+        st = make_state(rec)
+        await abandon(stream_of(st, metered_twin(call(prompt_chars=10_000_000), RETRIEVAL, then=anyio.sleep_forever)))
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, 60_000)]               # the 60 000 the stream_of lease was reserved at
+
+
+def test_a_record_the_meter_cannot_trust_charges_the_whole_estimate_for_an_abandon_and_a_done(rec):
+    def untrustworthy(meter):
+        meter.complete(99, USAGE_20)                                    # a completion for a call that never started
+
+    async def main():
+        st = make_state(rec)
+        await abandon(stream_of(st, metered_twin(untrustworthy, RETRIEVAL, then=anyio.sleep_forever)))
+        await drain_events(stream_of(st, metered_twin(untrustworthy, RETRIEVAL, DONE)))
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, 60_000), ("done", DONE["usage"], 60_000)]
+
+
+def test_a_done_event_is_settled_at_the_metered_cost_when_calls_were_metered(rec):
+    """The event says 70 micro-dollars; the meter, which prices the provider's own usage, says 20. The ledger gets the
+    meter's figure, and the usage and the cache write are the event's, as before."""
+    async def main():
+        st = make_state(rec)
+        stream = stream_of(st, metered_twin(call(usage=USAGE_20), RETRIEVAL, DONE))
+        await drain_events(stream, rec)
+
+    run(main)
+    assert rec.charges() == [("done", DONE["usage"], 20)] and len(rec.puts) == 1
+    assert rec.puts[0]["cost_usd"] == DONE["cost_usd"]                  # the cached answer keeps the twin's own figure
+
+
+def test_a_done_event_without_meter_records_keeps_the_events_cost(rec):
+    async def main():
+        st = make_state(rec)
+        await drain_events(stream_of(st, metered_twin(RETRIEVAL, DONE)))
+
+    run(main)
+    assert rec.charges() == [SPEND]
+
+
+def test_an_error_event_is_settled_at_the_metered_cost_when_calls_were_metered(rec):
+    failed = {"event": "error", "detail": "RateLimitError: slow down", "usage": USAGE_20, "cost_usd": 0.002}
+
+    async def main():
+        st = make_state(rec)
+        await drain_events(stream_of(st, metered_twin(call(), RETRIEVAL, failed)))     # a call started, never reported
+
+    run(main)
+    assert rec.charges() == [("error", USAGE_20, BOUND_1200)]
+
+
+@pytest.mark.parametrize("calls,expected", [((call(),), BOUND_1200), ((), None)], ids=["after a paid call", "before any"])
+def test_a_twin_that_raises_is_settled_at_the_metered_cost_or_at_the_estimate_when_it_metered_nothing(
+        rec, calls, expected):
+    """With a started call the meter knows what the ask can cost. With none it says nothing about an ask that failed
+    (the twin broke before saying what it spent): the backend keeps the estimate, as it always did."""
+    async def twin(question, driver, embedder, *, meter=None, **kw):
+        for step in calls:
+            step(meter)
+        yield RETRIEVAL
+        raise RuntimeError("provider down")
+
+    async def main():
+        st = make_state(rec)
+        events = await drain_events(stream_of(st, twin))
+        assert events[-1]["event"] == "error"
+
+    run(main)
+    assert rec.charges() == [("error", None, expected)]
+
+
+def test_the_terminal_settle_closes_the_meter_so_a_later_call_is_flagged_and_never_charged(rec, caplog):
+    caplog.set_level("ERROR", logger="semigraph.serve.meter")
+
+    async def main():
+        st = make_state(rec)
+        stream = stream_of(st, metered_twin(call(usage=USAGE_20), RETRIEVAL, DONE))
+        gen = stream.events()
+        await gen.__anext__()
+        await gen.__anext__()                                           # the terminal event, settled before it was yielded
+        assert stream.meter.closed and len(rec.settled) == 1
+        late = start_call(stream.meter)                                 # a straggler that starts after the settlement
+        await gen.aclose()
+        await stream.finalize()
+        return stream, late
+
+    stream, late = run(main)
+    assert [c.late for c in stream.meter.calls] == [False, True] and late == 2
+    assert any("paid call after settlement" in r.getMessage() for r in caplog.records)
+    assert rec.charges() == [("done", DONE["usage"], 20)]
+    assert len(rec.backend.reconcile_calls) == 1                         # counted and logged, never settled again
+
+
+def test_a_paid_call_that_starts_after_an_abandoned_settle_is_counted_and_logged_but_the_row_stays_as_settled(rec, caplog):
+    caplog.set_level("ERROR", logger="semigraph.serve.meter")
+
+    async def main():
+        st = make_state(rec)
+        stream = stream_of(st, metered_twin(RETRIEVAL, then=anyio.sleep_forever))
+        await abandon(stream)
+        start_call(stream.meter)                                         # the planner thread outlived its join
+        return stream
+
+    stream = run(main)
+    assert [c.late for c in stream.meter.calls] == [True]
+    assert any("paid call after settlement" in r.getMessage() for r in caplog.records)
+    assert rec.charges() == [("abandoned", None, 0)] and len(rec.backend.reconcile_calls) == 1
+
+
+def test_a_terminal_settle_that_failed_is_retried_by_finalize_at_the_metered_cost(rec):
+    """Metered calls: the retry (finalize settles the lease as abandoned) is charged what the calls cost, not the
+    estimate. No metered calls but a terminal event was seen: the cost the event reported is lost with the failed settle
+    and a zero would be a free ask, so the retry keeps the estimate."""
+    attempts = []
+
+    def flaky(name):
+        if name == "reconcile":
+            attempts.append(1)
+            if len(attempts) % 2 == 1:
+                rec.backend.errors["reconcile"] = StateUnavailable("db down")
+            else:
+                rec.backend.errors.pop("reconcile", None)
+
+    rec.backend.on_call = flaky
+
+    async def main():
+        st = make_state(rec)
+        await drain_events(stream_of(st, metered_twin(call(usage=USAGE_20), RETRIEVAL, DONE)))
+        await drain_events(stream_of(st, metered_twin(RETRIEVAL, DONE)))
+
+    run(main)
+    assert len(attempts) == 4
+    assert rec.charges() == [("abandoned", None, 20), ("abandoned", None, None)]
+
+
+def test_a_metered_twin_that_breaks_the_contract_is_settled_at_what_its_meter_started(rec):
+    """The wiring mistake is not an error event (a TypeError), but the lease it held is still charged what the twin had
+    started before it returned the wrong thing."""
+    def not_an_async_generator(question, driver, embedder, *, meter=None, **kw):
+        start_call(meter)
+        return iter([RETRIEVAL])
+
+    async def main():
+        st = make_state(rec)
+        stream = stream_of(st, not_an_async_generator)
+        with pytest.raises(TwinContractError):
+            await drain_events(stream)
+        await stream.finalize()
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, BOUND_1200)]
+
+
+def test_a_stream_that_never_opened_its_twin_is_settled_at_zero_with_the_meter_closed(rec):
+    """A lease finalized before the twin ever ran has no meter wired to anything and could not have made a paid call: it
+    is settled at 0 and still counted, exactly as the route's own ``_abandon`` settles a lease that no stream took
+    (council 4 test (c): no paid call, so $0, but the ask still counts). Metered or not, the twin was never called."""
+    async def main():
+        st = make_state(rec)
+        stream = stream_of(st, metered_twin(RETRIEVAL))
+        await stream.finalize()
+        assert stream.meter.calls == () and stream.meter.closed
+        unmetered = stream_of(st, twin_of(RETRIEVAL))
+        await unmetered.finalize()
+        assert rec.backend.inflight == 0
+
+    run(main)
+    assert rec.charges() == [NEVER_RAN, NEVER_RAN] and len(rec.settled) == 2
+
+
+# ---------------------------------------------------------------- Wave 2 fix round F1: the money path
+# B1: a report above the estimate is what the provider billed (the ledger never records less than that). B2a: a meter that
+# cannot be READ is not a meter that is EMPTY. Consistency: a twin that was never called made no paid call.
+
+def test_a_done_ask_whose_reported_cost_is_above_its_estimate_is_settled_at_the_reported_cost(rec):
+    """B1 at the runtime level: the lease was reserved at 60,000; the provider billed 70,000. HEAD records 70,000 (the
+    event's cost); the capped meter recorded 60,000. The ledger gets what was billed."""
+    async def main():
+        st = make_state(rec)
+        await drain_events(stream_of(st, metered_twin(call(usage=USAGE_70K), RETRIEVAL, DONE)))
+
+    run(main)
+    assert rec.charges() == [("done", DONE["usage"], 70_000)]
+
+
+def test_an_abandoned_ask_with_a_report_above_its_estimate_is_charged_the_report(rec):
+    async def main():
+        st = make_state(rec)
+        await abandon(stream_of(st, metered_twin(call(usage=USAGE_70K), RETRIEVAL, then=anyio.sleep_forever)))
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, 70_000)]
+
+
+def test_the_ledger_the_days_spend_and_the_addresss_spend_hold_a_reported_cost_above_the_estimate(rec, monkeypatch):
+    """B1 at the ledger level, on the real in-process backend over a ledger in memory: the row, the day's spend and the
+    address's share all hold the 70,000 the provider billed against a 60,000 estimate. The share is 129,999
+    micro-dollars: an address that recorded 70,000 may not start another 60,000 ask (130,000), one that recorded only 60,000
+    may (120,000), so the second reserve tells the two apart."""
+    monkeypatch.setattr(store, "get_policy", lambda driver, key: None)                # the kill level reads off
+    clock, ledger = FakeClock(), InMemoryLedger()
+    settings = state_settings(paid_spend_share_per_ip_usd=0.129999)
+    real = make_backend(settings, StateDrivers(state=object()), ledger=ledger, wall=clock.wall, clock=clock.mono)
+    real.refresh_kill_level()
+
+    def reserve(ip):
+        return real.reserve(ip_hash=ip, strategy="hybrid", workspace=False, estimate_micro=60_000,
+                            now_wall=clock.wall(), now_mono=clock.mono())
+
+    async def main():
+        st = make_state(rec)
+        st.state = real
+        lease = reserve("a")
+        drain.DRAIN.enter()
+        stream = PaidStream(st, Q, "hybrid", "a", "snap-1", None, lease=lease,
+                            twin=metered_twin(call(usage=USAGE_70K), RETRIEVAL, DONE))
+        await drain_events(stream)
+        await stream.finalize()
+
+    run(main)
+    (row,) = ledger.rows.values()
+    assert (row["status"], row["outcome"], row["cost_micro"]) == ("settled", "done", 70_000)
+    assert real.snapshot()["spend_micro"] == 70_000 and real.snapshot()["inflight"] == 0
+    assert reserve("a") is Denied.IP_SPEND                       # 70,000 settled + 60,000 > 129,999: the share holds the report
+    assert isinstance(reserve("b"), Lease)                       # another address has its own share
+
+
+def unreadable_meter(monkeypatch, how: str) -> None:
+    """Make reading the meter raise: its charge, or the record list it is asked first."""
+    def boom(*args, **kwargs):
+        raise RuntimeError("the meter is broken")
+    if how == "charge":
+        monkeypatch.setattr(PaidMeter, "charge_micro", boom)
+    else:
+        monkeypatch.setattr(PaidMeter, "calls", property(boom))
+
+
+@pytest.mark.parametrize("how", ["charge", "calls"])
+def test_an_abandoned_ask_whose_meter_cannot_be_read_keeps_the_estimate_not_zero(rec, monkeypatch, caplog, how):
+    """B2a, the verifier's probe: a started call with a 1,200 bound and a meter whose ``charge_micro`` raised settled at 0
+    while the log said the estimate stays charged. 'Unreadable' is not 'empty': the backend keeps the estimate."""
+    caplog.set_level("ERROR", logger="semigraph.serve")
+    unreadable_meter(monkeypatch, how)
+
+    async def main():
+        st = make_state(rec)
+        await abandon(stream_of(st, metered_twin(call(), RETRIEVAL, then=anyio.sleep_forever)))
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, None)]
+    assert any("estimate stays charged" in r.getMessage() for r in caplog.records)
+
+
+def test_an_unreadable_meter_at_a_done_or_error_event_keeps_the_estimate_not_the_events_cost(rec, monkeypatch):
+    """The event's own cost (70 micro-dollars here, the sync writer's figure) is not what the meter would have said: when
+    the meter cannot be read the cost is unknown and the estimate stays charged, as the log says."""
+    failed = {"event": "error", "detail": "RateLimitError: slow down", "usage": USAGE_20, "cost_usd": 0.002}
+    unreadable_meter(monkeypatch, "charge")
+
+    async def main():
+        st = make_state(rec)
+        await drain_events(stream_of(st, metered_twin(call(usage=USAGE_20), RETRIEVAL, DONE)))
+        await drain_events(stream_of(st, metered_twin(call(), RETRIEVAL, failed)))
+
+    run(main)
+    assert rec.charges() == [("done", DONE["usage"], None), ("error", USAGE_20, None)]
+
+
+def test_an_unreadable_meter_when_the_twin_raises_keeps_the_estimate(rec, monkeypatch):
+    unreadable_meter(monkeypatch, "charge")
+
+    async def twin(question, driver, embedder, *, meter=None, **kw):
+        start_call(meter)
+        yield RETRIEVAL
+        raise RuntimeError("provider down")
+
+    async def main():
+        st = make_state(rec)
+        assert (await drain_events(stream_of(st, twin)))[-1]["event"] == "error"
+
+    run(main)
+    assert rec.charges() == [("error", None, None)]
+
+
+def test_an_empty_meter_is_still_zero_for_an_abandon_and_still_the_events_cost_for_a_done(rec):
+    """The other half of B2a: only an UNREADABLE meter changes. A readable meter with no record stays 'nothing was spent'
+    for an abandoned metered ask, and a done event without records keeps its own cost."""
+    async def main():
+        st = make_state(rec)
+        await abandon(stream_of(st, metered_twin(RETRIEVAL, then=anyio.sleep_forever)))
+        await drain_events(stream_of(st, metered_twin(RETRIEVAL, DONE)))
+
+    run(main)
+    assert rec.charges() == [("abandoned", None, 0), SPEND]
+
+
+def test_a_stream_whose_twin_could_not_even_be_chosen_made_no_paid_call_and_is_settled_at_zero(rec, monkeypatch):
+    """``select_twin`` imports the agent package on first use; if that fails the twin is never called. The ask ends in the
+    generic error event, and because no paid call was possible it is charged 0 (a counted, failed ask)."""
+    def no_agent(strategy, workspace=False):
+        raise ImportError("langgraph is not installed")
+    monkeypatch.setattr("semigraph.serve.stream_runtime.select_twin", no_agent)
+
+    async def main():
+        st = make_state(rec)
+        stream = stream_of(st, None, strategy="agent")
+        events = await drain_events(stream)
+        assert events[-1]["event"] == "error" and "ImportError" in events[-1]["detail"]
+
+    run(main)
+    assert rec.charges() == [("error", None, 0)]
+
+
+def test_the_twin_counts_as_called_from_the_moment_it_is_invoked_even_if_it_raises_there(rec):
+    """A twin that fails in the call itself (not later, in its generator) may have started a paid call before it raised:
+    it was called, so the unknown cost is the estimate, not zero."""
+    def exploding(question, driver, embedder, *, meter=None, **kw):
+        raise RuntimeError("raised while being called")
+
+    async def main():
+        st = make_state(rec)
+        events = await drain_events(stream_of(st, exploding))
+        assert events[-1]["event"] == "error"
+
+    run(main)
+    assert rec.charges() == [("error", None, None)]
+
+
+def test_accepts_meter_keys_on_a_parameter_named_meter_that_can_be_passed_by_keyword():
+    def positional(question, meter=None): ...
+    def keyword_only(question, *, meter=None): ...
+    def variadic(question, **kw): ...
+    def other_name(question, *, paid_meter=None): ...
+    def positional_only(meter, /): ...
+
+    assert accepts_meter(positional) and accepts_meter(keyword_only) and accepts_meter(metered_twin())
+    assert not (accepts_meter(variadic) or accepts_meter(other_name) or accepts_meter(positional_only))
+    assert not accepts_meter(print.__call__) and not accepts_meter(object())      # no signature, or none to read
+
+
+@pytest.mark.parametrize("module,name", [
+    ("semigraph.retrieval.answerer_async", "aanswer_stream"),
+    ("semigraph.retrieval.workspace_async", "astream_workspace_answer"),
+    ("semigraph.agent.stream_async", "aagent_answer_stream"),
+])
+def test_every_real_twin_declares_meter_by_that_exact_name_so_it_is_metered(module, name):
+    """Detection is by NAME: a twin that renamed the parameter, or hid it behind a decorator that drops the signature,
+    would silently run unmetered (its asks settled as before the meter existed). The agent twin needs langgraph: skipped
+    where the package is not installed (the serve image does not need it either)."""
+    twin = getattr(pytest.importorskip(module), name)
+    assert accepts_meter(twin), f"{module}.{name} must declare a keyword parameter named 'meter'"
 
 
 # ---------------------------------------------------------------- the twin selection

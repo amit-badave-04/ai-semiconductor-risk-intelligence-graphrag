@@ -37,13 +37,17 @@ from warnings import catch_warnings, simplefilter
 
 import anyio
 import pytest
+import test_answerer_async as writer_tests
 from agent_fakes import LUNA, FakeDriver, FakeEmbedder, ScriptedPlanner, make_settings, turn
 
 from semigraph.agent import stream as sync_stream
 from semigraph.agent import stream_async
+from semigraph.agent.planner import PLANNER_MAX_TOKENS
 from semigraph.agent.stream_async import aagent_answer_stream
+from semigraph.retrieval import answerer_async
 from semigraph.retrieval.answerer import usage_cost
 from semigraph.serve.limiters import Limiters, LoopLagMonitor
+from semigraph.serve.meter import PaidMeter
 
 DATA = Path(__file__).parent / "data"
 SRC = Path(__file__).resolve().parent.parent / "src"
@@ -356,12 +360,13 @@ def test_a_closed_stream_reports_only_the_planners_dollars_in_the_recorded_words
     assert got["observed"]["tracer_calls"][-1] == ["flush", None]
 
 
-def test_the_signature_is_the_sync_one_plus_a_required_limiters_keyword_and_no_workspace():
+def test_the_signature_is_the_sync_one_plus_a_required_limiters_keyword_an_optional_meter_and_no_workspace():
     sync, twin = inspect.signature(sync_stream.agent_answer_stream), inspect.signature(aagent_answer_stream)
     assert list(twin.parameters)[:4] == ["question", "driver", "embedder", "strategy"]
     assert twin.parameters["strategy"].default == "agent"
     keyword_only = {n: p.default for n, p in twin.parameters.items() if p.kind is inspect.Parameter.KEYWORD_ONLY}
     assert keyword_only.pop("limiters") is inspect.Parameter.empty
+    assert keyword_only.pop("meter") is None                 # the paid-call meter: off unless the route passes one
     assert keyword_only == {n: p.default for n, p in sync.parameters.items()
                             if p.kind is inspect.Parameter.KEYWORD_ONLY}
     assert not [n for n in twin.parameters if "workspace" in n or "upload" in n or "document" in n]
@@ -401,7 +406,8 @@ def test_the_writer_gets_the_timeout_and_the_other_keywords_the_sync_stream_give
     assert with_timeout["timeout"] == 7.5 and with_timeout["max_tokens"] == 1200
     assert "timeout" not in without
     assert not {"k_chunks", "hops"} & (set(with_timeout) | set(without))          # those go to the prefetch only
-    assert [set(call) - {"limiters"} for call in async_calls] == [set(call) for call in sync_calls]
+    assert [set(call) - {"limiters", "meter"} for call in async_calls] == [set(call) for call in sync_calls]
+    assert all(call["meter"] is None for call in async_calls)           # nobody is metering these asks
 
 
 # --- 2. the planning thread --------------------------------------------------------------------------------
@@ -1311,6 +1317,214 @@ def test_an_anyio_scope_cancelled_stream_still_flushes_off_the_loop_before_it_is
         run(main)
     assert seen == {"cancelled": True, "done": True, "flushes": 1}
     assert abandoned(warnings) == [abandoned_line(ONE_TURN_USD)]
+
+
+# --- 7b. the paid-call meter -----------------------------------------------------------------------------------------
+# Every planner call is a paid call. The planner runs on the planning thread, so the meter (thread-safe, synchronous) is
+# told from that thread: ``start`` immediately before the call, ``complete`` when it ends, whatever it ended with. The
+# wrapper sits INSIDE the stop guard (``_unless_stopped(_metered(planner))``): a call the guard refuses never happens,
+# so it must not be recorded; a call that gets past the guard is made and is recorded, whatever the consumer does next.
+
+class ThreadNotingMeter(PaidMeter):
+    """A real ``PaidMeter`` that notes the thread each of its methods is called from."""
+
+    def __init__(self, settings):
+        super().__init__(settings)
+        self.start_threads, self.complete_threads = [], []
+
+    def start(self, **kwargs):
+        self.start_threads.append(threading.get_ident())
+        return super().start(**kwargs)
+
+    def complete(self, call_id, usage):
+        self.complete_threads.append(threading.get_ident())
+        super().complete(call_id, usage)
+
+
+def planner_prompt_chars(call: dict) -> int:
+    """What the meter is told a planner prompt weighs: the characters of the messages and of the tool schemas, as JSON."""
+    return (len(json.dumps(call["messages"], ensure_ascii=False, default=str))
+            + len(json.dumps(call["tools"], ensure_ascii=False, default=str)))
+
+
+def test_every_planner_call_is_metered_from_the_planning_thread():
+    planner, meter, loop_thread = ProbePlanner(turn(FM_2026), turn(FM_2023), turn()), ThreadNotingMeter(
+        make_settings()), []
+
+    async def main():
+        loop_thread.append(threading.get_ident())
+        return await collect(open_stream(make_limiters(), planner, meter=meter))
+
+    events = run(main)
+    assert events[-1]["event"] == "done" and len(planner.calls) == 3
+    assert [(c.role, c.model) for c in meter.calls] == [("planner", LUNA)] * 3
+    assert [c.prompt_chars for c in meter.calls] == [planner_prompt_chars(call) for call in planner.calls]
+    assert meter.calls[0].prompt_chars < meter.calls[2].prompt_chars        # the prompt grows with the tool results
+    assert [c.bound_micro for c in meter.calls] == [writer_tests.bound_micro(LUNA, "planner", c.prompt_chars,
+                                                                              PLANNER_MAX_TOKENS) for c in meter.calls]
+    one_turn = writer_tests.reported_micro(LUNA, "planner", (500, 40))        # what ``turn()`` reports by default
+    assert [c.reported_micro for c in meter.calls] == [one_turn] * 3
+    assert meter.charge_micro(10**9) == 3 * one_turn and meter.faults == () and not any(c.late for c in meter.calls)
+    # from the planning thread, both ends of every call, and never the loop's: the meter has a lock for exactly this
+    assert set(meter.start_threads) == set(meter.complete_threads) == set(planner.idents)
+    assert len(meter.start_threads) == len(meter.complete_threads) == 3 and loop_thread[0] not in planner.idents
+
+
+def test_without_a_meter_the_planner_is_handed_to_run_agent_exactly_as_before(monkeypatch):
+    spy, planner = RunAgentSpy(monkeypatch), ProbePlanner(turn())
+    assert run(lambda: collect(open_stream(make_limiters(), planner)))[-1]["event"] == "done"
+    (handed,) = spy.planners
+    assert stream_async._metered(planner, None, LUNA) is planner         # no wrapper at all when nobody is metering
+    assert [(n, p.kind) for n, p in inspect.signature(handed).parameters.items()] == PLANNER_PARAMETERS
+
+
+def test_a_metered_stream_hands_run_agent_a_planner_signature_and_records_one_call_per_planner_call(monkeypatch):
+    spy, planner, meter = RunAgentSpy(monkeypatch), ProbePlanner(turn()), writer_tests.new_meter()
+    assert run(lambda: collect(open_stream(make_limiters(), planner, meter=meter)))[-1]["event"] == "done"
+    (handed,) = spy.planners
+    metered = stream_async._metered(planner, meter, LUNA)
+    for wrapper in (handed, metered):
+        assert [(n, p.kind) for n, p in inspect.signature(wrapper).parameters.items()] == PLANNER_PARAMETERS
+    assert len(meter.calls) == 1 and len(planner.calls) == 1
+
+
+def test_a_planner_call_refused_by_the_stop_guard_is_not_metered():
+    """The guard is outermost: once the stop flag is set a call is refused BEFORE the metered wrapper sees it, so a call
+    that never happened leaves no record (and the ask is not charged a bound for it)."""
+    planner, meter, stop = ScriptedPlanner(turn(FM_2026), turn()), writer_tests.new_meter(), threading.Event()
+    guarded = stream_async._unless_stopped(stream_async._metered(planner, meter, LUNA), stop)
+    messages, tools = [{"role": "user", "content": "q"}], [{"type": "function"}]
+    guarded(messages, tools, timeout=1.5)
+    assert len(meter.calls) == 1 and meter.calls[0].reported_micro == writer_tests.reported_micro(LUNA, "planner", (500, 40))
+    stop.set()
+    with pytest.raises(stream_async._PlanningStopped):
+        guarded(messages, tools, timeout=1.5)
+    assert len(planner.calls) == 1 and len(meter.calls) == 1               # the refused call: no planner call, no record
+
+
+@pytest.mark.parametrize("how", ["anyio_scope", "native_cancel"])
+def test_a_disconnect_during_the_prefetch_meters_nothing(how, monkeypatch):
+    """The whole stream, not the wrapper: the consumer leaves while the prefetch runs on the planning thread, so the
+    guard refuses planner call 1. Nothing was started, so the ask is charged nothing for the planner."""
+    planner, meter = ProbePlanner(turn(FM_2026), turn()), writer_tests.new_meter()
+    left = leave_during_the_prefetch(how, monkeypatch, planner, meter=meter)
+    assert planner.calls == [] and meter.calls == () and meter.charge_micro(10**9) == 0
+    wait_for_threads_to_end(left.before)
+
+
+def test_a_planner_call_in_flight_at_a_disconnect_is_metered_with_the_usage_it_reports():
+    """The documented limit: a call that began cannot be taken back. It is recorded when it starts and completed when it
+    returns, and the planning thread is joined before the stream is gone, so the record is final by then."""
+    planner, meter = ProbePlanner(turn(FM_2026), turn(FM_2023), turn(), delay=0.3, repeat=True), writer_tests.new_meter()
+    before = set(threading.enumerate())
+
+    async def main():
+        agen = open_stream(make_limiters(), planner, settings=make_settings(**LONG_PLAN), meter=meter)
+        task = asyncio.create_task(pull(agen))
+        await wait_until(lambda: len(planner.idents) == 1)            # planning is blocked inside the first planner call
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    with recorder.captured_warnings():
+        run(main)
+    (call,) = meter.calls
+    assert call.role == "planner" and call.reported_micro == writer_tests.reported_micro(LUNA, "planner", (500, 40))
+    assert len(planner.calls) == 1 and not call.late
+    wait_for_threads_to_end(before)
+
+
+def test_a_planner_call_that_starts_after_a_disconnect_is_counted():
+    """The settlement (``meter.close()``) follows the disconnect; a planner call that STARTS after it (the join of the
+    planning thread was cut short) is not refused here, only counted: recorded, marked late, logged at ERROR. The lease
+    is already settled and is not settled again (the runtime's rule), so what the meter can do is not hide it."""
+    meter = writer_tests.new_meter()
+    planner = ScriptedPlanner(turn(FM_2026), turn())
+    metered = stream_async._metered(planner, meter, LUNA)
+    metered([{"role": "user", "content": "q"}], [], timeout=1.0)
+    meter.close()
+    metered([{"role": "user", "content": "q"}], [], timeout=1.0)
+    first, second = meter.calls
+    assert (first.late, second.late) == (False, True) and second.reported_micro is not None
+
+
+def test_a_planner_call_that_starts_after_the_settlement_is_logged_at_error_through_the_whole_stream(caplog):
+    meter = writer_tests.new_meter()
+
+    class SettlingPlanner(ProbePlanner):
+        """Its first call settles the ask while it is in flight (as if the lease had been closed while the join of the
+        planning thread was cut short): the calls that START afterwards are late."""
+
+        def __call__(self, messages, tools, *, timeout):
+            if not self.calls:
+                meter.close()
+            return super().__call__(messages, tools, timeout=timeout)
+
+    planner = SettlingPlanner(turn(FM_2026), turn(FM_2023), turn())
+    caplog.set_level("ERROR", logger="semigraph.serve.meter")
+    assert run(lambda: collect(open_stream(make_limiters(), planner, meter=meter)))[-1]["event"] == "done"
+    assert [c.late for c in meter.calls] == [False, True, True]              # calls 2 and 3 started after the close
+    assert all(c.reported_micro is not None for c in meter.calls)            # and all three are counted in the charge
+    late_logs = [r.getMessage() for r in caplog.records if "paid call after settlement" in r.getMessage()]
+    assert len(late_logs) == 2
+
+
+def test_a_planner_that_raises_is_still_completed_with_its_bound_and_the_error_goes_on():
+    meter = writer_tests.new_meter()
+    planner = ScriptedPlanner(RuntimeError("provider down"))
+    metered = stream_async._metered(planner, meter, LUNA)
+    with pytest.raises(RuntimeError, match="provider down"):
+        metered([{"role": "user", "content": "q"}], [], timeout=1.0)
+    (call,) = meter.calls
+    assert call.reported_micro is None and call.bound_micro > 0 and meter.faults == ()    # started: the bound is kept
+    assert meter.charge_micro(10**9) == call.bound_micro
+
+
+def test_a_prompt_that_cannot_be_sized_is_a_fault_not_a_failed_planner_call():
+    """``json.dumps`` failing must not raise into ``run_agent`` (that would be silently turned into a ``planner_error``
+    fallback for a call that was never made): the planner is still called, the meter records a fault, and a faulty meter
+    charges the whole estimate."""
+    meter = writer_tests.new_meter()
+    planner = ScriptedPlanner(turn())
+    loop: list = []
+    loop.append(loop)                                                      # a list that contains itself
+    reply = stream_async._metered(planner, meter, LUNA)([{"role": "user", "content": loop}], [], timeout=1.0)
+    assert reply is planner.turns[0] and len(planner.calls) == 1
+    assert meter.faults == ("bad_prompt_chars",) and meter.charge_micro(123_456) == 123_456
+
+
+def test_the_meter_reaches_the_writer_as_its_own_keyword(monkeypatch):
+    seen, real = [], stream_async.astream_answer_for_context
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(stream_async, "astream_answer_for_context", spy)
+    meter = writer_tests.new_meter()
+    run(lambda: collect(open_stream(make_limiters(), ProbePlanner(turn()), meter=meter)))
+    (kwargs,) = seen
+    assert kwargs["meter"] is meter
+
+
+def test_the_default_writer_of_an_agent_ask_is_metered_after_the_planner(monkeypatch):
+    """No injected writer: the real ``AsyncTextStream`` against a scripted provider. The meter holds the planner calls,
+    then the draft, in the order they were started."""
+    wt = writer_tests
+    fake = wt.FakeAcompletion(wt.FakeUpstream(wt.answer_chunks(recorder.GOOD_PARTS, (12000, 300))))
+    monkeypatch.setattr(answerer_async, "acompletion", fake)
+    planner, meter = ProbePlanner(turn(FM_2026), turn()), wt.new_meter()
+
+    async def main():
+        agen = aagent_answer_stream(recorder.QUESTION, FakeDriver.world(), FakeEmbedder(), limiters=make_limiters(),
+                                    planner=planner, settings=make_settings(**recorder.AGENT_SETTINGS), meter=meter,
+                                    model=LUNA, max_tokens=2400)
+        return await collect(agen)
+
+    events = run(main)
+    assert events[-1]["event"] == "done" and len(fake.calls) == 1
+    assert [c.role for c in meter.calls] == ["planner", "planner", "strong"]      # sole answer model: the strong role
+    assert meter.calls[2].model == LUNA and meter.calls[2].reported_micro == wt.reported_micro(LUNA, "strong", (12000, 300))
 
 
 # --- 8. what the module may import --------------------------------------------------------------------------------

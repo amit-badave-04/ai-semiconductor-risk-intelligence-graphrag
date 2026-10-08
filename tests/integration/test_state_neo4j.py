@@ -34,7 +34,8 @@ THROWAWAY_URI = "bolt://127.0.0.1:7898"
 THROWAWAY_USER = "neo4j"
 THROWAWAY_PASSWORD = "itest-throwaway-only"  # gitleaks:allow
 _blocks = itertools.count()
-BASE_SETTINGS = dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=0, max_concurrent_answers=1000,
+BASE_SETTINGS = dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=0,
+                     paid_spend_share_per_ip_usd=0, max_concurrent_answers=1000,
                      kill_switch=False, kill_switch_refresh_s=10.0, kill_switch_stale_s=30.0, lease_ttl_s=60.0,
                      lease_renew_s=15.0, ip_hash_version=2)
 
@@ -255,6 +256,7 @@ def test_a_neo4j_backend_settles_a_row_the_in_process_backend_wrote(env):
     neo4j = env.backend("neo4j")
     assert neo4j.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1_000) is True
     assert env.rows()[0]["status"] == "settled" and env.counter(env.days[0]) == (0, 0)   # floored, never negative
+    assert ip_nodes(env, env.days[0]) == {}                  # and no address node was made up for a reserve it never saw
 
 
 # ------------------------------------------------------------------------------------------- concurrency
@@ -275,11 +277,68 @@ def test_forty_threads_of_one_ip_against_a_cap_of_20_grant_exactly_20(env):
     assert [r for r in results if not isinstance(r, Lease)] == [Denied.IP_DAILY] * 20
 
 
-def test_mixed_operations_from_two_instances_never_fail_and_leave_the_counters_equal_to_the_ledger(env):
+def ip_nodes(env, day):
+    """``{ip_hash: (paid, spend_micro)}`` of the day's ``SvcIpDay`` nodes."""
+    rows = ledger.run_read(env.admin, "MATCH (i:SvcIpDay {day: $d}) RETURN i.ip_hash AS ip, i.paid AS paid, "
+                           "i.spend_micro AS spend", timeout_s=30, d=day)
+    return {r["ip"]: (r["paid"], r["spend"]) for r in rows}
+
+
+def test_two_instances_racing_for_the_last_of_an_addresss_share_grant_exactly_one(env):
+    """One address, two machines, a share of settled + 1.5 estimates: either ask alone fits, both together do not. The
+    share is decided under the day and address locks of one transaction, so the second sees the first's estimate and is
+    told the address is busy (its settled spend plus its own estimate would have fitted)."""
+    estimate, settled = 600_000, 200_000
+    share = (settled + estimate * 3 // 2) / 1_000_000
+    first = env.backend(machine=env.machine + "-a", paid_spend_share_per_ip_usd=share)
+    second = env.backend(machine=env.machine + "-b", paid_spend_share_per_ip_usd=share)
+    for n in range(8):
+        ip = f"office-{n}"
+        lease = env.ask(first, ip=ip, estimate=settled)
+        assert first.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=settled) is True
+        results = threads(2, lambda i, ip=ip: env.ask(first if i == 0 else second, ip=ip, estimate=estimate))
+        assert sum(isinstance(r, Lease) for r in results) == 1, results
+        assert [r for r in results if not isinstance(r, Lease)] == [Denied.IP_SPEND_INFLIGHT]
+        assert ip_nodes(env, env.days[0])[ip] == (2, settled + estimate)
+
+
+def test_an_address_node_written_before_the_share_existed_reads_as_zero_spend(env):
+    """A node from a bfd7b71 image has ``paid`` and no ``spend_micro``: the reserve counts from zero and the settle moves
+    it by ``actual - estimate`` (floored at zero), neither failing on the missing property."""
+    day = env.days[0]
+    ledger.run_write(env.admin, "CREATE (:SvcIpDay {day: $d, ip_hash: 'old', paid: 2})", timeout_s=30, d=day)
+    backend = env.backend(paid_spend_share_per_ip_usd=1.0)
+    lease = env.ask(backend, ip="old", estimate=600_000)
+    assert isinstance(lease, Lease) and ip_nodes(env, day) == {"old": (3, 600_000)}
+    assert backend.reconcile(lease.lease_id, outcome="done", usage=None, cost_micro=1_000) is True
+    assert ip_nodes(env, day) == {"old": (3, 1_000)}
+    ledger.run_write(env.admin, "CREATE (:SvcIpDay {day: $d, ip_hash: 'older', paid: 1})", timeout_s=30, d=day)
+    other = env.ask(env.backend("inprocess"), ip="older", estimate=60_000)         # a row, but no spend on the node
+    assert backend.reconcile(other.lease_id, outcome="done", usage=None, cost_micro=5) is True
+    assert ip_nodes(env, day)["older"] == (1, 0)
+
+
+def test_the_boot_sync_writes_each_addresss_spend_and_zeroes_a_stale_node(env):
+    day = env.days[0]
+    for ip, cost in (("aa", 300_000), ("aa", 200_000), ("bb", 50_000)):
+        ledger.run_write(env.admin, "CREATE (q:SvcQuery $props)", timeout_s=30, props={
+            "id": str(uuid.uuid4()), "day": day, "cached": False, "status": "settled", "ts": env.wall, "ip_hash": ip,
+            "ip_hash_v": 2, "machine_id": "elsewhere", "estimate_micro": 60_000, "cost_micro": cost})
+    ledger.run_write(env.admin, "CREATE (:SvcIpDay {day: $d, ip_hash: 'ghost', paid: 3, spend_micro: 999})",
+                     timeout_s=30, d=day)
+    report = env.backend(wall=lambda: env.wall).rebuild_from_ledger()
+    assert report.counters_synced is True and dict(report.per_ip_spend) == {"aa": 500_000, "bb": 50_000}
+    assert ip_nodes(env, day) == {"aa": (2, 500_000), "bb": (1, 50_000), "ghost": (0, 0)}
+
+
+@pytest.mark.parametrize("share", [0, 0.25], ids=["share-off", "share-0.25-usd"])
+def test_mixed_operations_from_two_instances_never_fail_and_leave_the_counters_equal_to_the_ledger(env, share):
     """Reserves, reconciles (known cost, unknown cost, abandoned), renewals and sweeps at once: no deadlock may surface
-    as
-    an unavailable store, and every counter must end up equal to what the ledger says."""
-    backends = [env.backend(machine=f"{env.machine}-{n}", max_concurrent_answers=40, op_timeout=5.0) for n in "ab"]
+    as an unavailable store, and every counter must end up equal to what the ledger says: the day's, each address's ask
+    count and each address's spend (with a share of $0.25 the denial path, which reads the address's running leases, runs
+    as well, and the reserve, settle and sweep take the day, address and row locks in the one order)."""
+    backends = [env.backend(machine=f"{env.machine}-{n}", max_concurrent_answers=40, op_timeout=5.0,
+                            paid_spend_share_per_ip_usd=share) for n in "ab"]
     live, lock, unavailable = [], threading.Lock(), []
     deadline = time.monotonic() + 4.0
 
@@ -326,9 +385,13 @@ def test_mixed_operations_from_two_instances_never_fail_and_leave_the_counters_e
     for row in rows:
         per_ip[row["ip_hash"]] = per_ip.get(row["ip_hash"], 0) + 1
     assert env.counter(env.days[0]) == (len(rows), sum(r["cost_micro"] for r in rows))
-    stored = {r["ip"]: r["paid"] for r in ledger.run_read(
-        env.admin, "MATCH (i:SvcIpDay {day: $d}) RETURN i.ip_hash AS ip, i.paid AS paid", timeout_s=30, d=env.days[0])}
-    assert stored == per_ip
+    nodes = ledger.run_read(env.admin, "MATCH (i:SvcIpDay {day: $d}) RETURN i.ip_hash AS ip, i.paid AS paid, "
+                            "i.spend_micro AS spend", timeout_s=30, d=env.days[0])
+    assert {r["ip"]: r["paid"] for r in nodes} == per_ip
+    spend_by_ip: dict[str, int] = {}
+    for row in rows:
+        spend_by_ip[row["ip_hash"]] = spend_by_ip.get(row["ip_hash"], 0) + row["cost_micro"]
+    assert {r["ip"]: r["spend"] for r in nodes} == spend_by_ip
 
 
 # -------------------------------------------------------------------------- the bound, with a real server

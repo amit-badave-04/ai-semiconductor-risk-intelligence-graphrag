@@ -244,12 +244,22 @@ def validate_as_of(value: str | None) -> str | None:
 
 
 async def verify_turnstile(token: str | None, ip: str, secret: str, is_production: bool,
-                           required: bool = False) -> bool:
+                           required: bool = False, *, stub: bool = False) -> bool:
     """True when the Turnstile token is valid.
 
     Not configured: allowed (loudly logged in production) unless ``required``
     is set, in which case live questions fail CLOSED — the posture of the
-    reference deployment once the widget exists (docs/RUNBOOK.md)."""
+    reference deployment once the widget exists (docs/RUNBOOK.md).
+
+    ``stub`` (``TURNSTILE_STUB``, STAGING ONLY): any non-empty token passes and Cloudflare is never called, so a load
+    generator can pass the check; a missing token still fails. It comes before the secret test because the staging API
+    holds no secret and requires the check. Production refuses the setting at boot (``config.Settings``); this refuses it
+    again, so a process that skipped the validators still never passes a stubbed check."""
+    if stub:
+        if is_production:
+            logger.error("TURNSTILE_STUB is set in production — refusing every bot check")
+            return False
+        return bool(token)
     if not secret:
         if required:
             logger.error("TURNSTILE_REQUIRED is set but TURNSTILE_SECRET_KEY is empty — failing closed")

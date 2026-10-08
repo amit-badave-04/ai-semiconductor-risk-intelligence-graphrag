@@ -15,7 +15,14 @@ What the machine sees, and what this reads:
 * the secrets of ``.env.fly`` that ``scripts/push_fly_secrets.py`` pushes by default (its ``FLY_KEYS["semigraph"]``, and
   only non-empty values, as the push does). A key of the file outside that list never reaches the machine unless it is
   pushed with ``--only``, so it is not validated and is reported by name;
-* nothing else: not the shell's variables and not a ``.env`` in the working directory.
+* the four model base variables (``MODEL_BASE_VARIABLES``) wherever ``.env.fly`` holds a non-empty value, pushed by default
+  or not: production refuses them (LiteLLM would send every model call to that address), ``push_fly_secrets --only`` can send
+  any key of the file, and a green check followed by that push would boot a machine that refuses to start. Every other key
+  outside the push list is reported by name only;
+* nothing else: not the shell's variables and not a ``.env`` in the working directory. While ``Settings`` is built, the
+  names the production validators cover are also taken out of this process's environment and put back afterwards, so what a
+  developer shell or a gateway wrapper exports (Claude Code itself exports ``ANTHROPIC_BASE_URL``) can neither fail nor
+  satisfy the check.
 
 Assumption, not verified (Fly's documentation of secrets and ``[env]`` does not say which wins when both define a name):
 a secret is taken to override ``[env]``. A name in both is a warning; keep it in one place.
@@ -24,10 +31,12 @@ a secret is taken to override ``[env]``. A name in both is a warning; keep it in
 import argparse
 import codecs
 import importlib.util
+import os
 import re
 import sys
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,6 +47,9 @@ from semigraph.config import CHECKED_SETTINGS, Settings
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 APP_SECRETS = "semigraph"           # the key of FLY_KEYS the live API app takes its secrets from
+# LiteLLM reads these from the environment of the process to send a model call somewhere else; production refuses a value
+# (config.Settings). Judged wherever .env.fly holds one, even though the default push does not send them.
+MODEL_BASE_VARIABLES = ("OPENAI_BASE_URL", "OPENAI_API_BASE", "ANTHROPIC_API_BASE", "ANTHROPIC_BASE_URL")
 _NAME = re.compile(r"^([A-Z][A-Z0-9_]*) ")
 # The validators join their problems with "; " (a hint inside one problem may contain "; print(", so only a split before
 # the next SETTING NAME counts).
@@ -103,7 +115,20 @@ def explain(error: ValidationError) -> dict[str, str]:
     return reasons
 
 
-def _warnings(env_table: dict, file_values: dict[str, str], pushed: list[str], had_bom: bool) -> list[str]:
+@contextmanager
+def _without_the_shells_settings() -> Iterator[None]:
+    """Take every name the production validators cover out of this process's environment, and put back exactly what was
+    there (also on an error). ``LiveSettings`` already reads no environment; this keeps the check independent of the shell
+    even if a validator or a field one day reads ``os.environ`` itself. Names only: no value is read into a message."""
+    held = {name: os.environ.pop(name) for name in (*CHECKED_SETTINGS, *MODEL_BASE_VARIABLES) if name in os.environ}
+    try:
+        yield
+    finally:
+        os.environ.update(held)
+
+
+def _warnings(env_table: dict, file_values: dict[str, str], pushed: list[str], had_bom: bool,
+              judged: frozenset[str] = frozenset()) -> list[str]:
     warnings = []
     if had_bom:
         warnings.append("WARN  .env.fly starts with a UTF-8 BOM: read correctly here and by scripts/push_fly_secrets.py "
@@ -113,7 +138,7 @@ def _warnings(env_table: dict, file_values: dict[str, str], pushed: list[str], h
     if overlap:
         warnings.append("WARN  also set as a secret in .env.fly and in fly.toml [env] (the secret is assumed to win; "
                         f"keep each in one place): {', '.join(overlap)}")
-    unpushed = sorted(set(file_values) - set(pushed))
+    unpushed = sorted(set(file_values) - set(pushed) - judged)      # ``judged``: not pushed by default, but checked anyway
     if unpushed:
         warnings.append("WARN  in .env.fly but not pushed by scripts/push_fly_secrets.py by default (they reach the "
                         f"machine only with --only, so they are not checked): {', '.join(unpushed)}")
@@ -132,10 +157,12 @@ def check(env_path: Path, fly_toml_path: Path) -> Report:
     file_values, had_bom = read_env_file(env_path)
     pushed = list(_push_module().FLY_KEYS[APP_SECRETS])
     secrets = {key: file_values[key] for key in pushed if file_values.get(key)}
-    values = {key.lower(): value for key, value in {**env_table, **secrets}.items()}
-    warnings = _warnings(env_table, file_values, pushed, had_bom)
+    bases = {key: file_values[key] for key in MODEL_BASE_VARIABLES if file_values.get(key)}
+    values = {key.lower(): value for key, value in {**env_table, **secrets, **bases}.items()}
+    warnings = _warnings(env_table, file_values, pushed, had_bom, frozenset(bases))
     try:
-        LiveSettings(**values, fly_app_name=fly["app"])
+        with _without_the_shells_settings():
+            LiveSettings(**values, fly_app_name=fly["app"])
     except ValidationError as error:
         if any(item["loc"] for item in error.errors(include_input=False, include_url=False, include_context=False)):
             warnings.append("WARN  a setting could not be read as its type, so the checks across settings did not run: "

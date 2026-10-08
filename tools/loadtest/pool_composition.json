@@ -1,0 +1,140 @@
+{
+  "sha256": "66ffd9c7db6b2b94cfb476a6bb28dfa6d14ca451b7527787284e5dea47dc6947",
+  "sources": {
+    "benchmark": "bd2339a2bb9d4d5e8103a7324ca9fc5a9c1e013079af02c29001d3b10f9b738d",
+    "agent_benchmark": "d0dfb30da04143d3e1e43b0b8b8f193a932468315ecce0ba1e1ab81c5854aff1",
+    "examples": "86f1d262cc9026401253e56b669441cdf66097aa2fee2a059bf336ae8cae6bd4"
+  },
+  "total": 300,
+  "real_questions": 82,
+  "templated_questions": 218,
+  "by_source": {
+    "benchmark": 60,
+    "agent_benchmark": 22,
+    "template": 218
+  },
+  "by_type": {
+    "comparison": 21,
+    "dependency": 21,
+    "injection": 5,
+    "misattribution": 5,
+    "numeric": 121,
+    "numeric_change": 27,
+    "refusal": 4,
+    "regulatory": 3,
+    "risk": 51,
+    "temporal": 40,
+    "tool_discipline": 2
+  },
+  "templated_by_family": {
+    "numeric": 83,
+    "numeric_change": 27,
+    "risk": 48,
+    "temporal": 22,
+    "dependency": 17,
+    "comparison": 21
+  },
+  "routed": {
+    "cheap": 261,
+    "strong": 39
+  },
+  "agent_questions": 22,
+  "questions_naming_no_company": 1,
+  "companies_named": {
+    "AMD": 29,
+    "ASML": 22,
+    "Alphabet": 22,
+    "Amazon": 21,
+    "Apple": 22,
+    "Broadcom": 20,
+    "Intel": 25,
+    "Meta": 24,
+    "Micron": 28,
+    "Microsoft": 21,
+    "Nvidia": 49,
+    "Qualcomm": 20,
+    "SK Hynix": 1,
+    "Samsung": 1,
+    "TSMC": 20
+  },
+  "years_named": {
+    "2022": 1,
+    "2023": 55,
+    "2024": 103,
+    "2025": 67,
+    "2026": 5
+  },
+  "chars": {
+    "min": 43,
+    "max": 346,
+    "mean": 81.1,
+    "limit_for_salt": 486
+  },
+  "dropped_by_dedupe_or_length": {
+    "count": 53,
+    "by_source": {
+      "examples": 53
+    },
+    "items": [
+      "E:N1 (same cache key as B:N1)",
+      "E:N2 (same cache key as B:N2)",
+      "E:N3 (same cache key as B:N3)",
+      "E:N4 (same cache key as B:N4)",
+      "E:D1 (same cache key as B:D1)",
+      "E:D2 (same cache key as B:D2)",
+      "E:D3 (same cache key as B:D3)",
+      "E:D4 (same cache key as B:D4)",
+      "E:R1 (same cache key as B:R1)",
+      "E:R3 (same cache key as B:R3)",
+      "E:T1 (same cache key as B:T1)",
+      "E:Q1 (same cache key as B:Q1)",
+      "E:Q2 (same cache key as B:Q2)",
+      "E:Q3 (same cache key as B:Q3)",
+      "E:M1 (same cache key as B:M1)",
+      "E:U1 (same cache key as B:U1)",
+      "E:U2 (same cache key as B:U2)",
+      "E:NG01 (same cache key as B:NG01)",
+      "E:NG02 (same cache key as B:NG02)",
+      "E:NG03 (same cache key as B:NG03)",
+      "E:NG04 (same cache key as B:NG04)",
+      "E:NG05 (same cache key as B:NG05)",
+      "E:NG06 (same cache key as B:NG06)",
+      "E:NG07 (same cache key as B:NG07)",
+      "E:NG08 (same cache key as B:NG08)",
+      "E:NG09 (same cache key as B:NG09)",
+      "E:NG10 (same cache key as B:NG10)",
+      "E:NG11 (same cache key as B:NG11)",
+      "E:NG12 (same cache key as B:NG12)",
+      "E:NG13 (same cache key as B:NG13)",
+      "E:NG14 (same cache key as B:NG14)",
+      "E:NG15 (same cache key as B:NG15)",
+      "E:NG16 (same cache key as B:NG16)",
+      "E:NG17 (same cache key as B:NG17)",
+      "E:NG18 (same cache key as B:NG18)",
+      "E:NG19 (same cache key as B:NG19)",
+      "E:NG20 (same cache key as B:NG20)",
+      "E:NG21 (same cache key as B:NG21)",
+      "E:NG22 (same cache key as B:NG22)",
+      "E:NG23 (same cache key as B:NG23)",
+      "E:NG24 (same cache key as B:NG24)",
+      "E:X1 (same cache key as B:X1)",
+      "E:X2 (same cache key as B:X2)",
+      "E:X3 (same cache key as B:X3)",
+      "E:X4 (same cache key as B:X4)",
+      "E:T5 (same cache key as B:T5)",
+      "E:T7 (same cache key as B:T7)",
+      "E:T10 (same cache key as B:T10)",
+      "E:T11 (same cache key as B:T11)",
+      "E:T12 (same cache key as B:T12)",
+      "E:T13 (same cache key as B:T13)",
+      "E:T14 (same cache key as B:T14)",
+      "E:T15 (same cache key as B:T15)"
+    ]
+  },
+  "source_files": {
+    "benchmark": "artifacts\\benchmark.json",
+    "agent_benchmark": "artifacts\\agent_benchmark.json",
+    "examples": "src\\semigraph\\artifacts\\examples.json"
+  },
+  "note": "The real questions are the minority of the pool (the examples are a subset of the benchmark); the rest are templated company x metric x year, risk-theme, dependency, temporal and comparison questions. Every live ask is salted, so none of them repeats a cache key whatever the pool size."
+}

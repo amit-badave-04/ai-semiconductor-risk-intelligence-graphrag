@@ -1,0 +1,42 @@
+# Fly.io config - the STAGING Neo4j (semigraph-neo4j-stg), a clone of the live database's shape for spike S7 and the S2 gate run.
+# THROWAWAY: created for a test window by scripts/staging.py and destroyed (volume included) after it. Not the live database:
+# it is loaded from the repository's own baked dump (deploy/neo4j/seed/neo4j.dump), never from an export of live (live rows
+# carry address hashes), and its password is a per-window secret that scripts/staging.py generates and pushes.
+#
+# No services block on purpose: bolt is reachable only over the private network, as semigraph-neo4j-stg.internal:7687.
+# The settings below are the live ones (deploy/neo4j/fly.toml) so the measurement is of the database the site runs on:
+# shared-cpu-1x, 1 GB, a 400 MB heap and a 200 MB page cache.
+#
+# Deploy only through scripts/staging.py: the build context is deploy/neo4j (the Dockerfile copies the dump from there), so
+# the Dockerfile and the context are passed explicitly instead of through a [build] section.
+app = "semigraph-neo4j-stg"
+primary_region = "sin"
+swap_size_mb = 1024
+
+[env]
+  # Listen on IPv6 too: 6PN traffic from the API app arrives over IPv6.
+  NEO4J_server_default__listen__address = "::"
+  NEO4J_server_memory_heap_initial__size = "400m"
+  NEO4J_server_memory_heap_max__size = "400m"
+  NEO4J_server_memory_pagecache_size = "200m"
+  # The SDK's retrieval uses the Cypher 25 SEARCH clause (vector indexes).
+  NEO4J_db_query_default__language = "CYPHER_25"
+  NEO4J_server_directories_import = "/data/import"
+  # A state operation carries a server-side transaction timeout; the server checks it every 100 ms instead of every 2 s.
+  NEO4J_db_transaction_monitor_check_interval = "100ms"
+
+[[mounts]]
+  source = "neo4j_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+
+[checks]
+  [checks.bolt]
+    type = "tcp"
+    port = 7687
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "90s"

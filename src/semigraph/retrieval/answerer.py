@@ -43,7 +43,7 @@ from litellm import completion
 from ..artifacts import read_prompt
 from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
-from ..llm_shape import KNOWN_PRICES_PER_MTOK, completion_params
+from ..llm_shape import KNOWN_PRICES_PER_MTOK, MOCK_ALIASES, completion_params, provider_kwargs
 from . import ids as _ids
 from .context_layout import (  # noqa: F401 - re-exported: eval/bakeoff and the tests import these from here
     CONTEXT_HEADERS,
@@ -301,6 +301,7 @@ def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
             resp = completion(
                 model=model, messages=[{"role": "user", "content": prompt}],
                 **completion_params(model, budget, reasoning_effort=reasoning_effort), num_retries=2, **extra,
+                **provider_kwargs(model, get_settings()),
             )
         except TRANSIENT as e:
             wait = backoff[min(attempt, len(backoff) - 1)]
@@ -328,10 +329,14 @@ def usage_cost(usage: dict | None, model: str | None = None) -> float | None:
 
     Without ``model`` the configured list prices apply (the benchmarked Sonnet default). With a
     ``model`` its own price comes from LiteLLM's cost map, falling back to the configured prices
-    (with a warning) when the map does not know it — a wrong-but-loud cost beats a missing one."""
+    (with a warning) when the map does not know it — a wrong-but-loud cost beats a missing one.
+
+    A staging mock (``openai/mock-luna`` ...) costs what the real model it stands for costs (``llm_shape.MOCK_ALIASES``),
+    so a staging run is billed against the caps as live would be."""
     if not usage:
         return None
     prompt, completion_toks = usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+    model = MOCK_ALIASES.get(model, model) if model else model
     if model and model in KNOWN_PRICES_PER_MTOK:
         per_in, per_out = KNOWN_PRICES_PER_MTOK[model]
         return round(prompt * per_in / 1e6 + completion_toks * per_out / 1e6, 6)
@@ -376,6 +381,7 @@ class TextStream:
         resp = completion(
             model=self.model, messages=messages, **completion_params(self.model, self.max_tokens),
             num_retries=self.num_retries, stream=True, stream_options={"include_usage": True}, **extra,
+            **provider_kwargs(self.model, get_settings()),
         )
         for chunk in resp:
             chunks.append(chunk)

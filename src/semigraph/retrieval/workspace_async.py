@@ -86,6 +86,7 @@ from .workspace import (
 
 if TYPE_CHECKING:
     from ..serve.limiters import Limiters
+    from ..serve.meter import PaidMeter
 
 RETRIEVAL_COUNT_LAYERS = ("edges", "metrics", "risks", "temporal", "chunks")
 
@@ -117,12 +118,16 @@ async def astream_workspace_answer(question: str, driver, embedder, *, limiters:
                                    workspace_id: str, as_of: str | None = None, timeout: float | None = None,
                                    max_tokens: int | None = None, escalation_model: str | None = None,
                                    escalation_stream=None, llm_stream=None, k_chunks: int = 8, hops: int = 2,
-                                   k_doc_chunks: int = DEFAULT_K_DOC_CHUNKS,
+                                   k_doc_chunks: int = DEFAULT_K_DOC_CHUNKS, meter: "PaidMeter | None" = None,
                                    **stream_kwargs) -> AsyncIterator[dict]:
     """Async twin of :func:`workspace.stream_workspace_answer`: the same events for the same inputs, with every
     blocking hop off the event loop (see the module docstring). ``llm_stream`` and ``escalation_stream`` are
     injectable: ``callable(prompt) -> async iterable[str]``. A bad ``hops`` is the sync retrieval's ValueError on the
-    first ``__anext__``, before anything is embedded. Never the agent, never the answer cache."""
+    first ``__anext__``, before anything is embedded. Never the agent, never the answer cache.
+
+    ``meter`` (a :class:`semigraph.serve.meter.PaidMeter`, or None) is a keyword of its own, like ``limiters``: it goes
+    to the writer as its own argument and never through ``**stream_kwargs``, so it cannot reach an injected stream, which
+    is not metered. The embedding and the graph reads are not paid calls; only the model streams the writer builds are."""
     company_edges_query(hops)       # rejects a bad ``hops`` up front, as ``hybrid_retrieve`` does before any work
     # A workspace question is private: ``LimitedEmbedder.encode_query_private`` takes the same slot but never reads or
     # writes the vector cache. A plain embedder (no such method) embeds through ``encode_query``, as before.
@@ -143,7 +148,7 @@ async def astream_workspace_answer(question: str, driver, embedder, *, limiters:
     events = astream_answer_for_prompt(
         question, prompt, full_context, valid_ids, chunk_ids, strategy, sources=sources, llm_stream=llm_stream,
         escalation_model=escalation_model, escalation_stream=escalation_stream, postprocess=strip_links_images,
-        force_buffered=True, limiters=limiters, **optional, **stream_kwargs)
+        force_buffered=True, limiters=limiters, meter=meter, **optional, **stream_kwargs)
     async with aclosing(events) as inner:
         async for event in inner:
             if event["event"] == "done":

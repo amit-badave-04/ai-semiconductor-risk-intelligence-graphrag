@@ -1,0 +1,27 @@
+# S2 load generators on Fly (M5a I5). THROWAWAY: created for a test window by scripts/staging.py, destroyed after it. Not the live app.
+#
+# One image, three roles chosen per machine by LOADTEST_ROLE (master | worker | standalone, tools/loadtest/launch.py):
+#   master    runs the staged shape (ramp 10 / steady 20 / spike +500 for 3 / soak 60 / fault 10 minutes) and waits for the workers;
+#   worker    drives the virtual users; one per machine, each with its own LOADTEST_WORKER digit (the salt's worker digit, 0-9).
+# The machines carry NO secret here. LOADTEST_ORIGIN_AUTH (the X-Origin-Auth value) and the run id are given at machine creation
+# (`fly secrets` / `--env`), generated per window by scripts/staging.py. The target (LOADTEST_HOST) is the staging API's private
+# name; the generator itself refuses any host that is not loopback or a *-stg app (tools/loadtest/model.check_target_host).
+# Size: performance-1x 2 GB, in sin. Generators must stay under 70 % CPU or the run is VOID; add a worker if the pilot shows more than 40 %.
+# Build (from the repository root, so the context holds tools/ and deploy/; UNVERIFIED on this org until the pilot):
+#   fly deploy --config deploy/staging/fly.loadgen.toml --dockerfile deploy/staging/Dockerfile.loadgen --remote-only --no-public-ips
+app = "semigraph-loadgen-stg"
+primary_region = "sin"
+
+[env]
+  LOADTEST_OUT_DIR = "/out"
+  LOADTEST_ROLE = "worker"
+  LOADTEST_EXPECT_WORKERS = "2"
+  LOADTEST_READ_TIMEOUT_S = "60"
+  LOADTEST_STREAM_CAP_S = "180"
+
+# No [http_service] and no [[services]]: the generators accept no inbound traffic. The master and its workers talk over the
+# app's private network (Locust ports 5557 / 5558), never over the public edge.
+
+[[vm]]
+  size = "performance-1x"
+  memory = "2gb"

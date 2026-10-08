@@ -16,6 +16,11 @@ so the package works with a ``SimpleNamespace`` in tests):
 - ``max_queries_per_day``: paid asks per UTC day; 0 = off.
 - ``max_spend_usd_per_day``: estimate-based daily spend cap in dollars (whole micro-dollars inside); 0 = off.
 - ``paid_per_ip_per_day``: paid asks per address hash per UTC day; 0 = off.
+- ``paid_spend_share_per_ip_usd``: one address's share of the day's spend in dollars (production: 1.32, and
+  ``config.PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD`` has the two rules behind it): its settled
+  spend plus the estimates of its running asks plus the new ask's estimate may not pass it; 0 = off. Required (a settings
+  object without it is refused, never read as "off"). A refusal is ``Denied.IP_SPEND`` when the SETTLED spend plus the
+  estimate already passes the share, ``Denied.IP_SPEND_INFLIGHT`` when only its running asks push it over.
 - ``max_concurrent_answers``: leases in flight; 0 = nothing is allowed (the one cap where 0 is not "off").
 - ``kill_switch``: env override: when true the kill level is ``on`` whatever the database says.
 - ``kill_switch_refresh_s``: how often the maintenance thread re-reads the kill level (10).

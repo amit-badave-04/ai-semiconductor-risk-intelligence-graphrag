@@ -431,3 +431,311 @@ hold waits for the writer lock, a refused hold bumps the generation) were all ca
   the machines to be gone.
 - 2026-10-06 "Known gaps": `TURNSTILE_REQUIRED` is now in `fly.toml [env]`, and `scripts/check_env_fly.py` was written (22
   PASS, 1 FAIL on the real files today).
+
+## 2026-10-08 (wave 2) - The paid-call meter, the per-address spend share, the fp32 embedder path and the staging harness; the verifier's FAIL and the blockers fixed
+
+**Where things stand.** One uncommitted working tree on `v2` (HEAD 1e52772). Nothing is deployed and nothing was committed. No
+worker called Fly or a model provider. The verifier started a throwaway Neo4j on port 7898 for the state tests and stopped it
+(ports 7898, 7698, 7474 and 7687 closed, no java process left); the repository was byte-identical before and after its run
+(same `git status`, same sha256 for all 132 modified and untracked files). M5a spend is still < $0.01.
+
+**What was built.**
+1. **The paid-call meter** (`serve/meter.py`, `PaidMeter`; pure and thread-safe, no litellm and no state import). Every provider
+   call of an ask is recorded when it starts (role draft / strong / planner, model, prompt characters, maximum output tokens,
+   attempts) and completed with the provider's reported usage. `PaidStream` creates one meter per ask and hands it to a twin
+   that declares a keyword named exactly `meter` (all four real twins do; a guard test pins the name, because a rename would
+   silently un-meter a twin). The decisions taken (council 4, `docs/v2/research/m5-councils/council4/`):
+   - an abandoned ask is charged `min(estimate, metered charge)`, but never below what the provider reported (the B1 rule
+     below); it is charged 0 when a metered ask started no paid call; a twin that takes no meter, or a stream that never
+     opened its twin, still settles at the estimate;
+   - it fails closed to the estimate: a bad request, an unreadable price, an inconsistent record, or a meter that cannot be read
+     charges the full estimate (a meter that is merely empty is the 0 case, and the two are kept apart);
+   - it settles after the twin has stopped: close the twin, the tracer, the meter, then the abandoned settle, then the drain
+     count, the last two in nested `finally` clauses inside the shielded scope. A process killed during the close leaves the row
+     reserved and the next boot charges the estimate;
+   - a call that starts after the ask was settled is still counted, flagged late and logged at ERROR;
+   - the strong stream (the escalation, a question routed straight to the strong model, and the sole answer model of the
+     rollback configuration) makes NO provider retries (`num_retries=0`, as the draft never did): the stream's own attempts are
+     the retries and each is one metered call. A LiteLLM retry would be a billed call nobody could bound. The planner is
+     metered inside the stop guard. `done` and `error` events keep the sync writer's `usage` and `cost_usd`; the meter is a
+     separate record.
+2. **The per-address spend share** (`PAID_SPEND_SHARE_PER_IP_USD`, default 1.25, production 0 < x <= 1.25, 0 = off). One address
+   cannot spend more than the share of the day: `ip_spend + estimate <= share` is decided atomically after `IP_DAILY` and before
+   `INFLIGHT` (in process under one lock; in Neo4j in the same WHERE of the reserve statement, under the day counter and then
+   the address node). The settle adjusts the address spend; the boot rebuild restores it from the ledger rows. A denial is
+   `ip_spend` (429, `MSG_IP_SPEND`: settled spend plus the estimate passes the share) or `ip_spend_inflight` (429, `MSG_BUSY`:
+   only the address's running asks push it over). Eight addresses are needed to pause a $10 day. On the first boot after a
+   deploy the address spend is rebuilt from the ledger rows (no manual step); an image from before this ignores the field and
+   an address node written before it reads as zero, so a rollback is safe.
+3. **The fp32 embedder build path** (`scripts/predequantize_embedder.py`, Dockerfile `EMBEDDER_VARIANT=q8|fp32`). The default is
+   unchanged (q8; `ONNX_MODEL_PATH` resolves to the same string; `fly.toml` untouched). The fp32 gates: every new weight equals
+   ONNX Runtime's own dequantization (196 of 196 nodes bit-exact, maximum difference 0.0), the graph around the replaced nodes
+   is unchanged with no 8-bit node left, and the 53-question cosine gate against the q8 model passes. Parity on the local pair
+   (`artifacts/embedder_parity_fp32.json`): 60 of 60 top-1, top-8 overlap 1.0, all four gates. `/healthz` now carries
+   `embedder_variant` and `embedder_fidelity` (a few fidelity numbers and a 16-character prefix of the source model's hash; no
+   version, path or secret). This gives decision 14 a path that passes its pre-registered gate; nothing is switched.
+4. **The staging harness and the staging-only switches.** `deploy/staging/` (five apps, `windows.json` with the quotes),
+   `scripts/staging.py` (quote, create, seed, deploy, preflight, reset-ledger, snapshot, destroy; spending commands need
+   `--approve-quote` equal to the printed quote), `tools/mockllm`, `tools/s7` (the S7 replay and its report), `tools/probe`,
+   `tools/loadtest` and `scripts/loadtest_report.py` (VOID / FAIL / INCOMPLETE / PASS computed from the raw files). The switches:
+   `TURNSTILE_STUB`, `OPENAI_API_BASE` (every `openai/` call carries it through `llm_shape.provider_kwargs`), `ORIGIN_AUTH_SECRET`
+   (`OriginAuth` is wired in `create_app` only when it is set; the secret is wrapped so no printout shows it), and a staging
+   validator set that is an allowlist (the staging database host, no provider key, a `mock-` key, the mock on a `.internal`
+   host, `openai/mock-*` models, a secret of 32 bytes or more, no freshness monitor, a vouched client-address header). Production
+   refuses every switch, whatever its value, naming the setting and never the value.
+
+**The verifier's verdict: FAIL as the tree stood** (Opus, against this tree). Dev suite `uv run pytest -q --ignore=tests/test_loadtest_local_smoke.py`:
+4 failed, 9031 passed, 411 skipped, 2 xfailed (506 s). The serve-shipped selection, run in a clean venv of
+`deploy/requirements-serve.txt` (LiteLLM 1.100.0): 2 failed, 5642 passed, 200 skipped. UI `node --test`: 194 of 194. State tests
+against its throwaway Neo4j: 561 passed, 6 skipped (the six are in `test_null_legacy_ip_hashes_neo4j.py`: the instance held 311
+old ledger rows; a fresh CI service has none, which is a reading, not a measurement). Per area: money safety FAIL, per-address
+atomicity PASS, boot rebuild PASS, finalize order and shield PASS, rollback compatibility PASS (read, not run), staging switches
+PASS, secrets PASS, embedder PASS WITH CONDITIONS, harness PASS WITH CONDITIONS, test leaks FAIL, dev suite FAIL, serve-shipped
+FAIL. Of the 17 mutants it ran, the seven it reports for the money path were killed (strong retries restored, settle before the
+close, an unused lease settled at the estimate, an empty meter always 0, a fault not fail-closed, a late call not flagged, `done`
+ignoring the meter); the removal of the address spend from the Neo4j settle survived the race tests alone and was caught by the
+contract tests.
+
+**The four blockers, and how this pass closed them.**
+- **B1 (money).** A finished ask whose reported cost was above its estimate was recorded at the estimate (probe: reported 70,000
+  micro-dollars, estimate 60,000, ledger 60,000; HEAD and an unmetered twin record 70,000). That broke council 4's test (d), "at
+  least the provider-reported cost", and under-recorded the day and per-address counters. It was reachable through the Sonnet
+  ratio below. Fixed by the code workers of this pass; as read in the tree when this entry was written,
+  `PaidMeter.charge_micro` returns `max(reported, min(estimate, total))` (with a fault, `max(estimate, reported)`): the charge
+  is never below the sum of what the provider reported, the estimate caps only what is a bound, and a report above the estimate
+  is logged (`meter_over_estimate`). Pinned in `tests/test_serve_meter.py` (the 70,000-against-60,000 probe, at and around the
+  report) and in `tests/test_serve_stream_runtime.py` (a done and an abandoned ask both recorded at 70,000). The old test that
+  pinned the cap was replaced; the commit has the final names.
+- **B2a (money).** When reading the meter raised, `_abandoned_cost_micro` settled at 0 while the log said the estimate stays
+  charged. Fixed by the same workers: "unreadable" is kept apart from "empty" (the meter's reading has a state for each), and
+  an unreadable meter charges the estimate; `tests/test_serve_stream_runtime.py` has the unreadable-meter cases for the done,
+  error and abandoned settles.
+- **B3 (two tests leaked process state).** `LiveMock` builds `uvicorn.Config(log_level="error")`, which sets `uvicorn.error` to
+  ERROR (and installs handlers on `uvicorn` and `uvicorn.access`) for the whole process, so `test_serve_drain` failed after the
+  mock tests; and the `live` fixture left a cached `get_settings()` holding the first mock's `OPENAI_API_BASE`, so
+  `test_the_real_litellm_planner_gets_a_tool_call_from_the_mock` failed on its own. `tests/test_tools_mockllm.py` now has an
+  autouse guard that restores the four uvicorn loggers (level, handlers, propagation, disabled flag, filters) and empties the
+  settings cache before and after each test; `tests/test_latency_smoke.py` already had its own copy. Red then green:
+  `pytest tests/test_tools_mockllm.py tests/test_serve_drain.py` 2 failed, 120 passed -> 125 passed; `tests/test_tools_mockllm.py`
+  alone 1 failed -> 52 passed on each of two runs. The one place that would serve every user of the mock is `LiveMock` itself
+  (`tests/mockllm_fixtures.py`); the two copies are tidied there when it is next edited.
+- **B4 (four red tests).** All four came from the new staging validators, and each was the test's assumption that was out of
+  date, so each was made correct and not only green: the pepper test and the "caps may be raised or zeroed" test built a bare
+  `environment="staging"` and now use `"development"` (staging has its own allowlist, tested in
+  `tests/test_serve_config_staging.py`); `test_staging_tomls.py` reads the toml back with the two secrets a window generates
+  (a mock key, an origin secret) and first proves that the toml alone is refused naming both settings; the S7 test expected the
+  tools app to be an unknown app, but it is registered as staging now, so it proves that a `Settings` built from the tools
+  machine's own environment is refused, and that the staging database app (left out of `FLY_APP_ENVIRONMENTS` on purpose) is
+  refused by name.
+
+**Also changed in this pass.**
+- **`OPENAI_BASE_URL`** (verifier area 6, adjacent). LiteLLM reads it from the process environment BEFORE `OPENAI_API_BASE`
+  (`litellm/main.py`), and live calls pass no `api_base`, so a production process holding it would have sent every `openai/`
+  call (the cheap drafts) elsewhere with no validator noticing. It is a `Settings` field now (read from the environment, hidden
+  from the repr, since a base URL may carry credentials), refused in production by name only, and in the pre-deploy check
+  (`CHECKED_SETTINGS`). An exported-but-empty variable is not a base. **The same class is not covered:** LiteLLM also reads
+  `ANTHROPIC_API_BASE` and `ANTHROPIC_BASE_URL` for the Sonnet calls (`litellm/main.py`, twice each). Nothing sets them; not
+  refused yet.
+- **Quote labels** (verifier area 9). The L5-only row listed the whole window's phases (control, L10, L20 included) while it
+  prices 3.6 h: it now states its own hours (or an option's own `duration` text if the file has one). The four-worker option
+  printed "3 x loadgen" while its arithmetic and quote already paid for five: its machines column now merges the extra machines.
+  Both are pinned in `tests/test_staging_script.py`.
+- **CI.** The serve-shipped selection gains `tests/test_llm_provider_kwargs.py` (34), `tests/test_agent_seam.py` (8) and
+  `tests/test_embeddings_onnx_variant.py` (18 and 5 skipped for the developer-only `onnx`), each run in a clean venv of
+  `deploy/requirements-serve.txt` before it was added. `test_state_core_share.py`, `test_serve_meter.py`,
+  `test_serve_routes_share.py`, `test_serve_config_staging.py`, `test_serve_healthz_embedder.py` and `test_serve_origin_auth.py`
+  were already matched by `test_state_*` and `test_serve_*`.
+- Two stale docstrings (`asgi_middleware.py`: it IS wired in; `tools/mockllm/metrics.py`: the strong call runs with
+  `num_retries=0`).
+- Two wiring tests (`tests/test_serve_state_wiring.py`) followed the code and are not blockers: a lease whose twin was never
+  called now settles at 0 (as `routes._abandon` does) and the bound of a started Sonnet call is priced at the per-model ratio
+  (`estimate.tokens_for_chars`, so the test no longer hard-codes 1,000 tokens).
+
+**Characters per token (an owner condition, measured).** `scripts/check_chars_per_token.py` (artifact
+`artifacts/chars_per_token_check.json`) joins the recorded prompts to the billed prompt tokens. Sonnet's lowest ratio is 2.10
+characters per token and 7 of 20 hybrid prompts fall below the 2.5 the estimate assumed (vector prompts are fine, lowest 2.83);
+Luna holds at 3.02 or above over 20 rows. A started Sonnet call's bound therefore under-counts its input by up to 19% (about
+$0.01 at the largest recorded prompt, 64k characters; about $0.05 at the estimate's ceiling), and a draft plus an empty strong
+attempt plus a full strong attempt reaches about $0.66 against the $0.58 hybrid estimate. The 3.03 and 3.95 figures quoted in
+`estimate.py` could not be reproduced with the template the runs used. Decision: a per-model ratio, 2.0 for Sonnet (under the
+measured minimum). The estimates, the share arithmetic and their pins move with it: the table and the new numbers are in the
+commit (`tests/test_serve_estimate.py`), not repeated here. Not measured: the planner's, the workspace's and the deployed
+path's own prompts (no run saved them) and anything near the ceiling; `PaidMeter` logs `meter_ratio` at INFO for every
+completed call so the first preview run measures them. Sonnet's tokenizer is not available offline, so its rows rest on the
+baseline and the bake-off having used the same prompts.
+
+**Unverified.** No Docker image was built, so the first real deploy is the first run of the new `RUN` step of the Dockerfile
+(pin resolution on Linux, the builder's peak memory for the gate's 2.3 GB session, CRLF in the multi-line `RUN`). Linux RSS and
+Fly timing of either embedder are unmeasured; the timing window holds both models in one process (about 1.1 GB plus 1.8 GB).
+Every `flyctl` flag in `scripts/staging.py` is unverified against this org: `apps create --network`, `ips allocate-v4 --shared`,
+`secrets import --stage`, `deploy --ha=false --vm-size --vm-memory --no-public-ips --env --build-arg`, `machine list/stop/start
+--json`, `ssh console -C`, `proxy`, `config show`; `deploy --build-arg` takes an allowlist (`EMBEDDER_VARIANT=q8|fp32`,
+`KEEP_UNPATCHED=0|1`). The S7 Cypher, `dbms.queryJmx` on 2026.07.1 Community and the state statements of the replay have never
+run against a server (the opt-in `test_a_level_against_a_throwaway_neo4j` does that); `tools/s7/data/vectors.json` is not built.
+The local Locust smoke was not reproduced by the verifier (gevent's DLLs fail to load from its long scratch path), so its PASS
+rests on the report script alone. The rollback compatibility of the new ledger field was checked by reading the code, plus one
+forward-compatibility test. The mock-CPU > 50% VOID rule in `scripts/loadtest_report.py` is tagged `[pre-registered]`; the
+verifier found that it comes from the harness plan, not from council 5 (none of `M5_PLAN.md`, `M5_DECISIONS.md` and
+`M5A_BUILD_PLAN.md` states a 50% threshold, and the harness plan is not in the repository), so the tag is to be corrected
+there; doing so changes the count of pre-registered clauses and what `void_without_a_pre_registered_clause` means.
+
+**Still OPEN.**
+- **Owner:** the VOID / FAIL split of the harness verdict (and the clauses the harness added on top) needs sign-off before W4;
+  decision 14 (the embedder) now has a gate-passing fp32 path but needs the owner's choice and a timing / RSS window first
+  (switching means `ONNX_MODEL_PATH` in `fly.toml` and `fly.stg.toml`; an fp32 image built without `KEEP_UNPATCHED=1` has no
+  8-bit file and will not boot with today's `fly.toml`); the staging quotes (`--approve-quote`, W0 $0.05, W1 $0.08, W3 $0.45
+  or $0.25 for L5 only, W4 $1.25 or $1.60 with five generators); the go for the first deploy; the go for nulling the legacy
+  IP hashes.
+- **Engineering:** the fp32 Docker build has never run; Linux RSS and Fly timing are unmeasured; `KEEP_UNPATCHED` in the
+  Dockerfile means "keep the 8-bit model and ship the timing script", which differs from the I1 plan's meaning (pass
+  `--keep-unpatched` to the builder), so un-holding I1 collides with it; the live `Dockerfile` and `fly.toml` do not set
+  `LITELLM_LOCAL_MODEL_COST_MAP`, so LiteLLM tries to fetch its price table when the live API starts; `ANTHROPIC_API_BASE` and
+  `ANTHROPIC_BASE_URL` are not refused; on the Neo4j backend the boot rebuild is skipped while another machine holds leases, so
+  the address counter then starts that day at 0 (fails open, bounded by the $10 day cap); a stream that never ran settles at
+  the estimate in `PaidStream` but at 0 in `routes._abandon` (both safe); the `neo4j-state` CI job has still never run green
+  on GitHub.
+
+**Corrections to the entries above (append-only).** The 2026-10-08 entry's "Still OPEN" line saying the strong stream "still runs
+with `num_retries=2` (so the estimate is not a strict bound)" is stale: it runs with none now, and the bound of a started call is
+the open question of the ratio above. The same line's "a paid ask's cost is not accounted across its retry attempts" is closed
+by the meter, and "one address can still pause the day" by the per-address share, for asks the meter covers.
+
+## 2026-10-08 (wave 2b) - The share set to $1.40, the Anthropic base URLs refused, the mock restoring its own process state, the harness labels
+
+**Estimates, and why they moved.** Each model sizes the prompt at its own characters per token (Claude Sonnet 5 at 2.0, every other
+model at 2.5; "Characters per token" above), which raised every live estimate: hybrid $0.580089 -> **$0.709573**, vector $0.223389 ->
+**$0.265873**, agent $0.827661 -> **$1.015669**, workspace $0.600236 -> **$0.734632** (`tests/test_serve_estimate.py`, pinned in
+`tests/test_state_contract.py`). The ceiling prompts are 161,856 tokens on Sonnet and 129,485 on Luna for a hybrid ask, 167,998 for
+a workspace ask and 235,012 for the agent's Sonnet call, which is past the 200,000-token tier the estimate was first written to
+stay under. The 200,000-token concern was checked by the main session against Anthropic's pricing page (this pass did not fetch
+it): Sonnet 5 has no long-context premium.
+
+**The per-address share is $1.40** (`config.PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD`: the default, the production ceiling and the
+validator are the one constant). It applies council 4's own two requirements to the estimates above, and the arithmetic is in the
+comment beside the constant:
+- (i) pausing the day must need at least eight addresses: `7 x share < $10`, so `share < 10/7 = $1.4286`;
+- (ii) council test (b), 20 asks from one address with 3 escalations and 2 agent asks all admitted (the second agent ask arrives
+  with 15 x $0.002 + 3 x $0.04 + $0.15 = $0.30 settled): `share >= 0.30 + 1.015669 = $1.3157`.
+$1.25 (`$10 / 8`) fails (ii); $1.40 meets both. What it means for one address (a running ask counts at its estimate): a second
+concurrent hybrid ask is refused with the busy text while the first is in flight (2 x 0.709573 > 1.40); an agent ask is admitted
+while the address's settled spend is at most about $0.38, a hybrid ask while it is at most about $0.69; a vector ask fits beside a
+hybrid or an agent ask, an agent or a workspace ask beside a hybrid one does not. Pinned on the in-process backend in
+`tests/test_state_contract.py` (the same cases are written for the database-backed kinds, which run only with `RUN_NEO4J_TESTS=1`
+against the throwaway server on 7898 and were not run here: no Neo4j call was made), in `tests/test_serve_config_production.py` ((i)
+as `7 x 1.40 < 10`, the ceiling, the environment variable) and in the share-conversion tests (1.40 is stored as 1,400,000).
+**Noted for the owner, not changed:** seven full shares are $9.80 and leave $0.20 of the day, which is less than the cheapest
+estimate (the vector ask, $0.265873). So requirement (i) holds as written (seven addresses cannot reach $10) but the estimate-based
+day cap refuses every live ask a little before that: seven addresses that each used the whole of their share stop live asks for the
+day (cached answers still work). A share that kept room for a hybrid ask after seven full shares (`7 x share + 0.709573 <= 10`)
+would be at most $1.3272, for a vector ask at most $1.3906, and (ii) needs at least $1.3157. To leave less than a vector ask's
+estimate, seven addresses must average at least $1.3906 each, within about a cent of the share, which takes asks whose charges
+are tuned to land there (an ask is admitted only while settled spend plus its estimate fits the share); whether the gap matters
+is the owner's call. The B1 consequence stays: an address ends the day above its share by the excess of a provider
+report over its estimate.
+
+**`ANTHROPIC_API_BASE` and `ANTHROPIC_BASE_URL` are refused in production** (the same class as `OPENAI_BASE_URL`). LiteLLM 1.100.0
+reads both from the process environment for the Anthropic route (`litellm/main.py`) and a live Sonnet call passes no `api_base`, so
+a held value would have sent every escalation elsewhere. Both are `Settings` fields (read from the environment, hidden from the
+repr), refused by name only and never by value, listed in `CHECKED_SETTINGS` (so the pre-deploy check reports them), and
+documented in the RUNBOOK's refusal table and `.env.example`. An exported-but-empty variable is not a base; development may set
+them (a local gateway). Effect on a developer shell that exports one of them (a proxy or gateway setup does): a test that builds a
+production `Settings` without clearing the environment now fails locally; the tests of this pass clear every `Settings` field's
+variable, and the others are listed in the report of this pass.
+
+**`LiveMock` restores the process state itself.** `uvicorn.Config(log_level="error")` rewrites four loggers for the whole process;
+`LiveMock` now snapshots them before it builds its `Config` (in `__enter__`, so building one changes nothing) and puts them back on
+exit or on a failed start, and the `live` fixture empties `get_settings()` once the mock's variables are set and again when the
+test ends. The test-local autouse guard in `tests/test_tools_mockllm.py` is gone. Red with the guard removed and `LiveMock`
+unchanged: `pytest tests/test_tools_mockllm.py tests/test_serve_drain.py` 7 failed, 120 passed (6 failed alone); green after: 127
+passed together and 54 passed alone on each of two runs. `tests/test_latency_smoke.py` still has a copy of the old helper; it is
+harmless and was not touched.
+
+**Harness labels.** The L5-only option of W3 now carries its own `duration` ("seed 20 + baseline 15 + drain soak <=120 + L5 60
+min": 215 minutes, inside the 3.6 h it is priced at); the four-worker option of W4 is named "4 load workers + the master (5
+generator machines; ...)" because the plan's Locust master plus 4 workers is five machines, which the row, the arithmetic and the
+$1.60 quote already priced (the row prints "5 x"); both pinned in `tests/test_staging_script.py`. The mock-CPU > 50% VOID rule is
+kept but relabelled "harness rule (not pre-registered)": it is tagged `[harness-added]` in `scripts/loadtest_report.py`, a VOID
+that rests on it alone now reports `void_without_a_pre_registered_clause`, and the registered clauses are four (the offered rate,
+the generator's 70% CPU, the offline checks, the CPU-seconds per live ask); `tools/loadtest/model.py` has the label as a constant
+(`HARNESS_RULE_LABEL`), `tools/loadtest/README.md` and `tests/test_loadtest_report.py` agree.
+
+**Corrections to the entries above (append-only; the text above stays as written).**
+- 2026-10-06 "The anchor cap" (the bullets on cost against anchors and on which daily cap binds first) and the correction of
+  2026-10-08 after it: the estimates $0.580089, $1.565661 and $0.83, and the break-evens 6.32 and 6.16 cents, are all superseded by
+  the table above. The break-evens are now 6.24 cents (hybrid, 62,351 micro-dollars) and 6.03 cents (agent, 60,297); at the dearest
+  recorded ask (6.6 cents) the $10 cap refuses the 143rd hybrid ask, and at the dearest recorded agent ask (7.07 cents) the 129th.
+  The "129,485 tokens at 4 anchors" is Luna's prompt; Sonnet's is 161,856.
+- 2026-10-08 "The panel's fixes" item 4 (the page): "a disconnect settles the ask as `abandoned` at its whole estimate, $0.58 to
+  $0.83" is stale. An abandoned ask is charged what its meter says (0 before any paid call started, the bounds of the calls that
+  started, never less than the provider reported); only a stream that cannot meter, an unreadable meter and a restart charge the whole
+  estimate, now $0.71 to $1.02.
+- Wave 2 item 2 (the per-address share): "default 1.25, production 0 < x <= 1.25" and "Eight addresses are needed to pause a $10
+  day" are superseded: the default and the ceiling are 1.40 and the arithmetic is above.
+- Wave 2 blocker B3: the guard is no longer in `tests/test_tools_mockllm.py`; `LiveMock` and the `live` fixture restore the state
+  themselves (above), which is the tidy-up that entry promised.
+- Wave 2 "`OPENAI_BASE_URL`" and "Still OPEN" ("`ANTHROPIC_API_BASE` and `ANTHROPIC_BASE_URL` are not refused"): they are refused now.
+- Wave 2 "Unverified" (the mock-CPU rule tagged `[pre-registered]`): relabelled, above.
+- Wave 2 "Still OPEN", Engineering: "a stream that never ran settles at the estimate in `PaidStream` but at 0 in `routes._abandon`" is
+  stale: both settle at 0 now (a twin that was never called made no paid call). An unreadable meter still keeps the estimate.
+- Wave 2 "Quote labels": the four-worker option's name now says "+ the master (5 generator machines)", and the L5-only option has its own
+  `duration` text.
+
+**Still OPEN for the owner.**
+- The VOID / FAIL clarification of the harness verdict (and the clauses the harness added on top, the mock-CPU rule among them).
+- Decision 14 (the embedder): the fp32 path passes every parity gate; Fly timing and Linux RSS are not measured, and the fp32 Docker
+  build has never run.
+- The staging window quotes (`--approve-quote`: W0 $0.05, W1 $0.08, W3 $0.45 or $0.25 for L5 only, W4 $1.25 or $1.60 with five generators).
+- The go for the first deploy, and the go for nulling the legacy IP hashes.
+- Whether the $0.20 left by seven full shares at $1.40 matters (above).
+
+## 2026-10-08 (wave 2c) - The share set to $1.32, tests that no longer depend on the developer's shell, the pre-deploy check
+
+**The per-address share is $1.32** (`config.PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD`, the default and the production ceiling), set by
+two rules and no longer by one. The verifier showed that $1.40, which met only `7 x share < $10`, left $0.20 after seven full
+shares: less than every live estimate (the vector ask is $0.265873), so seven addresses could stop live asks for the day, and the
+eight-address test only passed because it probed the remainder with a synthetic 200,000 estimate. The rules, applied to the
+estimates of "wave 2b" (hybrid $0.709573, vector $0.265873, agent $1.015669, workspace $0.734632):
+- (i') pausing live asks needs at least eight addresses: `max_spend_usd_per_day - 7 x share >= hybrid estimate`
+  (`10 - 9.24 = 0.76 >= 0.709573`), so `share <= (10 - 0.709573) / 7 = $1.3272`;
+- (ii) council test (b), unchanged: `share >= 0.30 + 1.015669 = $1.3157`.
+The window is $1.3157 to $1.3272 and $1.32 is inside it (4,331 micro-dollars above the lower edge, 7,203 below the upper). What it
+means for one address: two concurrent hybrid asks do not fit (2 x 0.709573 > 1.32), so the second gets the busy text while the
+first runs; an agent ask is admitted while the address's settled spend is at most about $0.30, a hybrid ask while it is at most
+about $0.61, a workspace ask about $0.59, a vector ask about $1.05. Seven full shares are $9.24 and leave $0.76, which still holds a
+hybrid, a workspace and a vector ask (not an agent ask); the eighth address pauses live asks. The RUNBOOK (the section, the table,
+the demo arithmetic: about 305 asks at $0.002, 10 admitted and the 11th cut off at the dearest recorded $0.06578) and `.env.example`
+carry the new figures. This closes the open owner item "whether the $0.20 left by seven full shares at $1.40 matters": the share is
+lower and nothing is left to decide there.
+
+How it is held: `tests/test_serve_config_production.py` computes (i') and (ii) in micro-dollars from `serve.estimate` (the live
+configuration) and the production caps, not from the number, and checks that the share sits in the window and that the window is not
+empty; `tests/test_state_contract.py` runs the same rules through the state backends (its eight-address test fills seven shares
+synthetically and then probes with the service's own hybrid, vector, workspace and agent estimates). Mutations in this pass: a
+share of 1.33 fails (i') and the window, 1.31 fails (ii) and the window, and the contract tests at 1.40 fail on `200000 >= 709573`.
+Run in this pass: the in-process kind of the contract tests and every other state test. **Not re-run at $1.32:** the database-backed
+kinds (`inprocess-db`, `neo4j`) and `tests/integration/test_state_neo4j.py`, because this pass makes no Neo4j call; the verifier's
+runs against the throwaway server were at $1.40.
+
+**Tests no longer depend on the machine's environment.** `tests/conftest.py` clears `OPENAI_BASE_URL`, `OPENAI_API_BASE`,
+`ANTHROPIC_API_BASE` and `ANTHROPIC_BASE_URL` before every test (a test of the refusal sets the one it needs itself). Claude Code's own
+environment exports `ANTHROPIC_BASE_URL`, which made 8 tests in `tests/test_serve_guard_pepper.py` fail locally while CI was green; with
+`--noconftest` those 8 fail again, with the fixture none does. `scripts/check_env_fly.py` already built its `Settings` from the files only
+(`LiveSettings` has no environment source), and now also takes the names the production validators cover out of the process
+environment while it builds and puts them back (also on an error). It also judges the four base variables wherever `.env.fly` holds a
+non-empty value, although the default push does not send them (`push_fly_secrets --only` can send any key of the file, and a green
+check before that push would boot a machine that refuses to start); every other unpushed key is still only listed by name.
+
+**Corrections to the entries above (append-only; the text above stays as written).**
+- "Still OPEN" of 2026-10-08, first entry: "`CHARS_PER_TOKEN = 2.5` is an assumption, not a bound" is stale. The estimate sizes each
+  model's prompt at its own ratio (Sonnet 5 at 2.0, every other model at 2.5, `serve/estimate.py`), and `scripts/check_chars_per_token.py`
+  checks the ratios against the recorded prompts.
+- Wave 2b, "Pinned on the in-process backend ... and were not run here": the database-backed share tests have now been run, on every
+  backend, and passed (verifier, 2026-10-08, against the throwaway Neo4j on 7898; that was at $1.40, see above for $1.32).
+- Wave 2b, "The per-address share is $1.40", its `7 x 1.40 < 10`, "$0.38" and "$0.69", the stored 1,400,000 and the "Noted for the
+  owner" paragraph: superseded by the section above ($1.32, (i'), $0.30 and $0.61, 1,320,000).
+- Wave 2b, "this pass did not fetch it" (Sonnet 5 has no long-context premium): recorded now in `src/semigraph/llm_shape.py`. Anthropic's
+  pricing page (https://platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-08) gives Claude 4.6 and later models, Sonnet 5
+  included, the full 1M-token window at standard pricing. Luna's threshold is still unrecorded (not in LiteLLM's map).
+- `tools/loadtest/cpu_watch.py` no longer describes the mock-CPU rule as part of the pre-registered VOID rule, and
+  `deploy/staging/fly.stg.toml` no longer says the production-settings sub-run sets the share "back to 1.25".
+- The fake key `sk-ant-api03-not-a-real-key` in `tests/test_serve_config_staging.py` carries a `# gitleaks:allow` marker.

@@ -12,6 +12,13 @@ and charges its estimate.
 
 A day's counters are kept while any lease references the day: a stream that started at 23:59 holds its slot and settles
 into day D, while day D+1 starts at zero.
+
+Each address also has a SPEND counter next to its ask count (council 4, option C): the estimates of its running asks plus
+the cost its settled asks were charged, moved exactly as the day's spend is (plus the estimate at reserve, plus
+``actual - estimate`` at settle, back out on a failed row write). The share check ``spend + estimate <= share`` is made
+with the other caps under the same lock, so two concurrent asks from one address cannot both pass on the same remaining
+share. A refusal says whether the address is used up (its SETTLED spend plus this estimate passes the share) or only busy
+(its running asks' estimates push it over; it clears when they settle).
 """
 
 import logging
@@ -36,11 +43,16 @@ from .backend import (
 logger = logging.getLogger("semigraph.serve.state")
 
 
+_DAY_PAUSES = (Denied.DAILY_COUNT, Denied.DAILY_SPEND)       # the denials that pause the day for everyone
+
+
 @dataclass
 class _DayCounters:
     paid: int = 0
     spend_micro: int = 0
     per_ip: dict[str, int] = field(default_factory=dict)
+    # micro-dollars per address: its settled spend plus the estimates of its running asks (no entry: zero)
+    per_ip_spend: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -70,15 +82,21 @@ class InProcessBackend(StateCore):
         lease = Lease(str(uuid.uuid4()), day, ip_hash, strategy, workspace, estimate_micro,
                       now_mono + cfg.lease_ttl_s, cfg.machine_id)
         until_wall = now_wall + cfg.lease_ttl_s
+        paid = spend_micro = 0                       # the day's counters after a grant, for the half-way warning
         with self._lock:
-            denial = self._admit(day, ip_hash, estimate_micro)
-            if denial is not None:
-                return denial
-            counters = self._counters.setdefault(day, _DayCounters())
-            counters.paid += 1
-            counters.spend_micro += estimate_micro
-            counters.per_ip[ip_hash] = counters.per_ip.get(ip_hash, 0) + 1
-            self._leases[lease.lease_id] = _Entry(lease, until_wall)
+            denial = self._admit(day, ip_hash, estimate_micro, now_wall)
+            if denial is None:
+                counters = self._counters.setdefault(day, _DayCounters())
+                counters.paid += 1
+                counters.spend_micro += estimate_micro
+                counters.per_ip[ip_hash] = counters.per_ip.get(ip_hash, 0) + 1
+                counters.per_ip_spend[ip_hash] = counters.per_ip_spend.get(ip_hash, 0) + estimate_micro
+                self._leases[lease.lease_id] = _Entry(lease, until_wall)
+                paid, spend_micro = counters.paid, counters.spend_micro
+        if denial is not None:
+            if denial in _DAY_PAUSES:
+                self._note_pause(day, denial)
+            return denial
         try:
             self._call("reserve_row", self._ledger.reserve_row, self._driver, lease_id=lease.lease_id, day=day,
                        ip_hash=ip_hash, ip_hash_v=cfg.ip_hash_version, strategy=strategy, workspace=workspace,
@@ -90,9 +108,10 @@ class InProcessBackend(StateCore):
         except BaseException:
             self._roll_back(lease)
             raise
+        self._note_level(day, paid, spend_micro)
         return lease
 
-    def _admit(self, day: str, ip_hash: str, estimate_micro: int) -> Denied | None:
+    def _admit(self, day: str, ip_hash: str, estimate_micro: int, now_wall: float) -> Denied | None:
         """The caps, in the documented order. The caller holds the lock. 0 is off, except for concurrency."""
         cfg = self._cfg
         counters = self._counters.get(day) or _DayCounters()
@@ -102,9 +121,26 @@ class InProcessBackend(StateCore):
             return Denied.DAILY_SPEND
         if cfg.paid_per_ip_per_day and counters.per_ip.get(ip_hash, 0) + 1 > cfg.paid_per_ip_per_day:
             return Denied.IP_DAILY
+        share = self._share_denial(day, ip_hash, estimate_micro, counters, now_wall)
+        if share is not None:
+            return share
         if len(self._leases) >= cfg.max_concurrent_answers:
             return Denied.INFLIGHT
         return None
+
+    def _share_denial(self, day: str, ip_hash: str, estimate_micro: int, counters: _DayCounters,
+                      now_wall: float) -> Denied | None:
+        """The address's share of the day's spend: ``spend + estimate <= share``, where ``spend`` already holds the
+        estimates of its running asks. When it is over, tell 'used up' from 'busy': take off the running asks' estimates
+        (a lease past its expiry is not running, it will be charged its estimate) and see whether the SETTLED spend plus
+        this estimate would have fitted. The caller holds the lock."""
+        share = self._cfg.paid_spend_share_micro
+        spent = counters.per_ip_spend.get(ip_hash, 0)
+        if not share or spent + estimate_micro <= share:
+            return None
+        running = sum(e.lease.estimate_micro for e in self._leases.values()
+                      if e.lease.day == day and e.lease.ip_hash == ip_hash and e.until_wall > now_wall)
+        return Denied.IP_SPEND if spent - running + estimate_micro > share else Denied.IP_SPEND_INFLIGHT
 
     def _roll_back(self, lease: Lease) -> None:
         with self._lock:
@@ -118,7 +154,18 @@ class InProcessBackend(StateCore):
                 counters.per_ip[lease.ip_hash] = remaining
             else:
                 counters.per_ip.pop(lease.ip_hash, None)
+            self._move_ip_spend(counters, lease, -lease.estimate_micro)
             self._prune_days()
+
+    @staticmethod
+    def _move_ip_spend(counters: _DayCounters, lease: Lease, delta_micro: int) -> None:
+        """Add ``delta_micro`` to the lease's address, never below zero; a zero entry is dropped. The caller holds the
+        lock."""
+        spent = max(0, counters.per_ip_spend.get(lease.ip_hash, 0) + delta_micro)
+        if spent > 0:
+            counters.per_ip_spend[lease.ip_hash] = spent
+        else:
+            counters.per_ip_spend.pop(lease.ip_hash, None)
 
     def _prune_days(self) -> None:
         """Drop the counters of every day before today that no lease references. The caller holds the lock."""
@@ -147,11 +194,14 @@ class InProcessBackend(StateCore):
                                timeout_s=self._cfg.state_op_timeout_s))
 
     def reconcile(self, lease_id: str, *, outcome: str, usage: dict | None, cost_micro: int | None) -> bool:
-        """Charge the lease its actual cost (the estimate when unknown or abandoned) and settle its row. The lease is
-        popped under the lock first, so a double reconcile, or a reconcile racing a sweep, charges exactly once. The
-        counters are charged and the slot is free when this returns, even if the row write failed: that write is then
-        queued, retried by the maintenance thread, and charged at its estimate by the next boot if it never lands (see
-        :mod:`.settle_queue`). Nothing here waits for the database to recover. True iff the counters were charged."""
+        """Charge the lease its actual cost and settle its row: the cost given, whatever the outcome ('abandoned' too: the
+        runtime passes the metered charge of an ask whose client went away, 0 when no paid call started), or the
+        estimate when the cost is unknown (None). The day's spend and the lease's address's spend both move by
+        ``actual - estimate``. The lease is popped under the lock first, so a double reconcile, or a reconcile racing a
+        sweep, charges exactly once. The counters are charged and the slot is free when this returns, even if the row
+        write failed: that write is then queued, retried by the maintenance thread, and charged at its estimate by the
+        next boot if it never lands (see :mod:`.settle_queue`). Nothing here waits for the database to recover. True
+        iff the counters were charged."""
         with self._lock:
             entry = self._leases.pop(lease_id, None)
             if entry is None:
@@ -162,6 +212,7 @@ class InProcessBackend(StateCore):
             counters = self._counters.get(lease.day)
             if counters is not None:
                 counters.spend_micro = max(0, counters.spend_micro + actual - lease.estimate_micro)
+                self._move_ip_spend(counters, lease, actual - lease.estimate_micro)
             self._prune_days()
         self._settle_row(lease, outcome, usage, actual)
         return True
@@ -198,7 +249,8 @@ class InProcessBackend(StateCore):
         sums = self._call("day_sums", self._ledger.day_sums, self._driver, day=day, now_wall=now_wall,
                           machine_id=cfg.machine_id, ip_hash_v=cfg.ip_hash_version, timeout_s=BOOT_TIMEOUT_S)
         with self._lock:
-            self._counters = {day: _DayCounters(sums.paid, sums.spend_micro, dict(sums.per_ip))}
+            self._counters = {day: _DayCounters(sums.paid, sums.spend_micro, dict(sums.per_ip),
+                                                dict(getattr(sums, "per_ip_spend", None) or {}))}
         return self._boot_report(day=day, now_wall=now_wall, now_mono=now_mono, expired=expired, sums=sums,
                                  synced=None, delta=None)
 

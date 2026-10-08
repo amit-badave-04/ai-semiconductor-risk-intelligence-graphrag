@@ -15,19 +15,26 @@ The two rules every statement here follows, because the properties the backends 
    on a row is taken and removed again in the same statement (``SET q._lock = true REMOVE q._lock``): the lock lasts
    until the transaction ends, and no ``_lock`` property is left on a ledger row. The counters keep theirs, as
    ``SvcUploadDay`` does.
-2. **One lock order**, so two writers cannot deadlock: the day counter, then the per-IP counter or the ledger row.
+2. **One lock order**, so two writers cannot deadlock: the day counter, then the address's (per-IP) counter, then the
+   ledger row. A reserve takes the first two; a settle takes all three, in that order.
 
 Columns. A ledger row is a ``SvcQuery`` (the label ``store.log_query`` writes), so every existing reader keeps working
 (``store.ledger_summary``, ``paid_queries_today``): ``id, day, cached, strategy, workspace, ip_hash, ip_hash_v,
 prompt_tokens, completion_tokens, cost_usd, created_at`` keep their names. New columns: ``status`` (``reserved`` |
 ``settled``; absent on a row written before I4, which counts as settled), ``outcome``, ``estimate_micro``,
 ``cost_micro`` (integer micro-dollars: sums over them are exact), ``lease_until`` and ``ts`` / ``settled_at`` (epoch
-seconds, wall clock), ``machine_id``. ``SvcDayCounter {day, paid, spend_micro}`` and ``SvcIpDay {day, ip_hash, paid}``
-exist for the neo4j backend only.
+seconds, wall clock), ``machine_id``. ``SvcDayCounter {day, paid, spend_micro}`` and ``SvcIpDay {day, ip_hash, paid,
+spend_micro}`` exist for the neo4j backend only.
+
+``SvcIpDay.spend_micro`` is one address's share of the day's spend (council 4, option C) and moves exactly as the day
+counter's does: plus the estimate at reserve, plus ``actual - estimate`` at settle, never below zero. So it holds the
+address's settled spend plus the estimates of its running asks, and the admission ``spend_micro + estimate <= share``
+counts the running ones without a second query. A node written before the share existed has no such property: every
+statement reads it as zero (``coalesce``), and the boot rebuild writes it.
 """
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 
@@ -40,6 +47,9 @@ T = TypeVar("T")
 RESERVED, SETTLED = "reserved", "settled"
 DENIED_DAILY_COUNT, DENIED_DAILY_SPEND = "daily_count", "daily_spend"
 DENIED_IP_DAILY, DENIED_INFLIGHT = "ip_daily", "inflight"
+# The address's share of the day's spend: used up by its SETTLED spend, or only by its running asks (it clears when they
+# settle). The reason strings are the wire values of ``Denied.IP_SPEND`` / ``Denied.IP_SPEND_INFLIGHT``.
+DENIED_IP_SPEND, DENIED_IP_SPEND_INFLIGHT = "ip_spend", "ip_spend_inflight"
 LEASE_LIST_LIMIT = 100
 SWEEP_BATCH = 100
 
@@ -61,7 +71,7 @@ MERGE (c:SvcDayCounter {day: $day})
   ON CREATE SET c.paid = 0, c.spend_micro = 0
 SET c._lock = true
 MERGE (i:SvcIpDay {day: $day, ip_hash: $ip_hash})
-  ON CREATE SET i.paid = 0
+  ON CREATE SET i.paid = 0, i.spend_micro = 0
 SET i._lock = true
 WITH c, i
 OPTIONAL MATCH (r:SvcQuery {status: 'reserved'}) WHERE r.lease_until > $now
@@ -69,22 +79,29 @@ WITH c, i, count(r) AS inflight
 WHERE ($max_count = 0 OR c.paid < $max_count)
   AND ($max_spend = 0 OR c.spend_micro + $estimate <= $max_spend)
   AND ($max_ip = 0 OR i.paid < $max_ip)
+  AND ($max_share = 0 OR coalesce(i.spend_micro, 0) + $estimate <= $max_share)
   AND inflight < $max_inflight
 SET c.paid = c.paid + 1, c.spend_micro = c.spend_micro + $estimate, c.updated_at = $created_at,
-    i.paid = i.paid + 1
+    i.paid = i.paid + 1, i.spend_micro = coalesce(i.spend_micro, 0) + $estimate
 CREATE (q:SvcQuery {id: $id, day: $day, ts: $now, created_at: $created_at, status: 'reserved', cached: false,
                     strategy: $strategy, workspace: $workspace, ip_hash: $ip_hash, ip_hash_v: $ip_hash_v,
                     estimate_micro: $estimate, lease_until: $lease_until, machine_id: $machine_id})
-RETURN q.id AS id
+RETURN q.id AS id, c.paid AS paid, c.spend_micro AS spend_micro
 """
 
 # Read in the same transaction, after a denial, while the locks are still held: the counters it reads are the ones the
-# decision was made on.
+# decision was made on. The in-flight rows are counted first and aggregated before this address's own live leases are
+# summed: a second OPTIONAL MATCH in the same stage would multiply ``count(r)`` by the number of that address's leases.
+# ``ip_live_micro`` is the part of ``ip_spend_micro`` that is still running (its estimates; they are in the counter), so
+# the settled part is the difference. A lease past its expiry is not running: it will be charged its estimate.
 DENIAL_READ = """\
 MATCH (c:SvcDayCounter {day: $day})
 OPTIONAL MATCH (i:SvcIpDay {day: $day, ip_hash: $ip_hash})
 OPTIONAL MATCH (r:SvcQuery {status: 'reserved'}) WHERE r.lease_until > $now
-RETURN c.paid AS paid, c.spend_micro AS spend_micro, i.paid AS ip_paid, count(r) AS inflight
+WITH c, i, count(r) AS inflight
+OPTIONAL MATCH (p:SvcQuery {status: 'reserved', day: $day, ip_hash: $ip_hash}) WHERE p.lease_until > $now
+RETURN c.paid AS paid, c.spend_micro AS spend_micro, i.paid AS ip_paid, i.spend_micro AS ip_spend_micro,
+       inflight, coalesce(sum(p.estimate_micro), 0) AS ip_live_micro
 """
 
 # ---- the durable row alone (in-process backend) ----------------------------------------------------------------------
@@ -120,25 +137,33 @@ RETURN q.id AS id
 
 # ---- settle with the counters (neo4j backend) ------------------------------------------------------------------------
 
-# The day counter is locked first (the order every writer uses), then the row, THEN the status is checked: whoever gets
-# the locks second sees ``settled`` and matches nothing. The counter is adjusted by actual - estimate in integers and
-# never goes below zero. An unknown cost ($cost_micro null) keeps the estimate.
+# The day counter is locked first (the order every writer uses), then the address's counter, then the row, THEN the
+# status is checked: whoever gets the locks second sees ``settled`` and matches nothing. Both counters are adjusted by
+# actual - estimate in integers and never go below zero. An unknown cost ($cost_micro null) keeps the estimate.
+# The address's node is only MATCHED (OPTIONAL): a settle never creates a counter for a lease whose reserve did not (a row
+# the in-process backend wrote, after a rollback from one backend to the other), and a row without an address must not
+# make the statement fail (MERGE refuses a null property). ``SET`` on the null a missing node leaves does nothing.
 SETTLE_COUNTED = """\
 MATCH (q:SvcQuery {id: $id})
 MERGE (c:SvcDayCounter {day: q.day})
   ON CREATE SET c.paid = 0, c.spend_micro = 0
 SET c._lock = true
 WITH q, c
+OPTIONAL MATCH (i:SvcIpDay {day: q.day, ip_hash: q.ip_hash})
+SET i._lock = true
+WITH q, c, i
 SET q._lock = true
 REMOVE q._lock
-WITH q, c
+WITH q, c, i
 WHERE q.status = 'reserved'
-WITH q, c, coalesce($cost_micro, q.estimate_micro) AS actual
+WITH q, c, i, coalesce($cost_micro, q.estimate_micro) AS actual
 SET q.status = 'settled', q.outcome = $outcome, q.settled_at = $now, q.cost_micro = actual,
     q.cost_usd = toFloat(actual) / 1000000.0, q.prompt_tokens = $pt, q.completion_tokens = $ct,
     c.spend_micro = CASE WHEN c.spend_micro + actual - q.estimate_micro < 0 THEN 0
                          ELSE c.spend_micro + actual - q.estimate_micro END,
-    c.updated_at = $created_at
+    c.updated_at = $created_at,
+    i.spend_micro = CASE WHEN coalesce(i.spend_micro, 0) + actual - q.estimate_micro < 0 THEN 0
+                         ELSE coalesce(i.spend_micro, 0) + actual - q.estimate_micro END
 RETURN q.id AS id
 """
 
@@ -179,14 +204,17 @@ RETURN count(q) AS paid, coalesce(sum(micro), 0) AS spend_micro,
        sum(CASE WHEN q.status = 'reserved' AND q.machine_id <> $me THEN 1 ELSE 0 END) AS foreign
 """
 
-# Step 3. The per-IP counts and the timestamps that reseed the paid rate-limiter windows. Only rows made under the
-# CURRENT pepper: a hash made under another pepper (or nulled) can never equal what the routes compute now. A row
-# written by ``store.log_query`` before I4 has no ``ts``; its ISO ``created_at`` stands in.
+# Step 3. The per-IP counts and the timestamps that reseed the paid rate-limiter windows, and what each row counts for
+# in its address's spend (the same rule as ``DAY_SUMS``: a reserved row its estimate, any other its cost). Only rows made
+# under the CURRENT pepper: a hash made under another pepper (or nulled) can never equal what the routes compute now. A
+# row written by ``store.log_query`` before I4 has no ``ts``; its ISO ``created_at`` stands in.
 IP_ROWS = """\
 MATCH (q:SvcQuery {day: $day, cached: false})
 WHERE q.ip_hash IS NOT NULL AND q.ip_hash_v = $ip_hash_v
   AND (q.status IS NULL OR q.status = 'settled' OR (q.status = 'reserved' AND q.lease_until >= $now))
-RETURN q.ip_hash AS ip, coalesce(q.ts, toFloat(datetime(q.created_at).epochSeconds)) AS ts
+WITH q, CASE WHEN q.status = 'reserved' THEN coalesce(q.estimate_micro, 0)
+             ELSE coalesce(q.cost_micro, toInteger(round(coalesce(q.cost_usd, 0.0) * 1000000))) END AS micro
+RETURN q.ip_hash AS ip, coalesce(q.ts, toFloat(datetime(q.created_at).epochSeconds)) AS ts, micro
 """
 
 # neo4j backend: set the counters to the sums, in the transaction that holds the day counter's lock.
@@ -205,13 +233,13 @@ SET c.paid = $paid, c.spend_micro = $spend_micro, c.updated_at = $created_at
 WRITE_IP_DAYS = """\
 UNWIND $rows AS row
 MERGE (i:SvcIpDay {day: $day, ip_hash: row.ip})
-SET i._lock = true, i.paid = row.n
+SET i._lock = true, i.paid = row.n, i.spend_micro = row.spend
 """
 
 ZERO_OTHER_IP_DAYS = """\
 MATCH (i:SvcIpDay {day: $day})
 WHERE NOT i.ip_hash IN $ips
-SET i._lock = true, i.paid = 0
+SET i._lock = true, i.paid = 0, i.spend_micro = 0
 """
 
 # ---- snapshot ---------------------------------------------------------------------------------------------------
@@ -239,18 +267,26 @@ LIMIT $limit
 
 @dataclass(frozen=True)
 class Caps:
-    """The four admission limits of a reserve. 0 means off, EXCEPT ``max_inflight`` where 0 means nothing is allowed."""
+    """The admission limits of a reserve. 0 means off, EXCEPT ``max_inflight`` where 0 means nothing is allowed.
+    ``max_share_micro`` is one address's share of the day's spend (settled spend plus the estimates of its running asks
+    plus the new estimate may not pass it); it is last and defaulted so a caller that predates the share still works."""
 
     max_count: int
     max_spend_micro: int
     max_per_ip: int
     max_inflight: int
+    max_share_micro: int = 0
 
 
 @dataclass(frozen=True)
 class ReserveOutcome:
+    """The result of a reserve. ``paid`` and ``spend_micro`` are the day counters as they stand after a GRANTED reserve
+    (the warnings read them); they are information, not part of the verdict, so they do not take part in equality."""
+
     granted: bool
     reason: str | None          # one of the ``DENIED_*`` names when not granted
+    paid: int | None = field(default=None, compare=False)
+    spend_micro: int | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -260,6 +296,8 @@ class DaySums:
     foreign_leases: int                         # unexpired reserved rows of OTHER machines
     per_ip: Mapping[str, int]
     ip_events: tuple[tuple[str, float], ...]    # (ip_hash, wall-clock time)
+    # micro-dollars each address spent today, summed over the same rows as ``per_ip`` (a reserved row counts its estimate)
+    per_ip_spend: Mapping[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -324,26 +362,44 @@ def _denial_reason(read: Mapping[str, Any], caps: Caps, estimate_micro: int) -> 
         return DENIED_DAILY_SPEND
     if caps.max_per_ip and (read.get("ip_paid") or 0) >= caps.max_per_ip:
         return DENIED_IP_DAILY
+    share = _share_denial(read, caps, estimate_micro)
+    if share is not None:
+        return share
     if (read.get("inflight") or 0) >= caps.max_inflight:
         return DENIED_INFLIGHT
     return None
 
 
+def _share_denial(read: Mapping[str, Any], caps: Caps, estimate_micro: int) -> str | None:
+    """The address's share, if its spend plus the estimate passes it. The counter holds the address's settled spend AND the
+    estimates of its running asks, so the part still running (``ip_live_micro``) is taken off to tell the two refusals
+    apart: 'used up' when the settled spend plus this estimate already passes the share, 'busy' when it fits and only the
+    running asks push it over (it clears when they settle)."""
+    spent = read.get("ip_spend_micro") or 0
+    if not caps.max_share_micro or spent + estimate_micro <= caps.max_share_micro:
+        return None
+    settled = spent - (read.get("ip_live_micro") or 0)
+    return DENIED_IP_SPEND if settled + estimate_micro > caps.max_share_micro else DENIED_IP_SPEND_INFLIGHT
+
+
 def reserve_counted(driver: Any, *, lease_id: str, day: str, ip_hash: str, ip_hash_v: int | None, strategy: str,
                     workspace: bool, estimate_micro: int, now_wall: float, lease_until: float, machine_id: str,
                     caps: Caps, timeout_s: float) -> ReserveOutcome:
-    """Check all four caps against the counters and, if they all pass, increment them and create the ``reserved`` row,
-    all in ONE transaction. Zero rows back means a cap said no; the cap is then named by a read in the same
-    transaction, while the day counter is still locked. Returns ``ReserveOutcome(False, None)`` only if no cap
-    explains the denial (it cannot happen under the lock; the caller treats it as unavailable)."""
+    """Check every cap (the address's share of the day's spend included) against the counters and, if they all pass,
+    increment them and create the ``reserved`` row, all in ONE transaction. Zero rows back means a cap said no; the cap
+    is then named by a read in the same transaction, while both counters are still locked. Returns
+    ``ReserveOutcome(False, None)`` only if no cap explains the denial (it cannot happen under the lock; the caller
+    treats it as unavailable). A grant carries the day's counters as they stand after it."""
     params = {"id": lease_id, "day": day, "ip_hash": ip_hash, "ip_hash_v": ip_hash_v, "strategy": strategy,
               "workspace": workspace, "estimate": int(estimate_micro), "now": now_wall, "lease_until": lease_until,
               "machine_id": machine_id, "created_at": iso(now_wall), "max_count": caps.max_count,
-              "max_spend": caps.max_spend_micro, "max_ip": caps.max_per_ip, "max_inflight": caps.max_inflight}
+              "max_spend": caps.max_spend_micro, "max_ip": caps.max_per_ip, "max_share": caps.max_share_micro,
+              "max_inflight": caps.max_inflight}
 
     def work(tx: Any) -> ReserveOutcome:
-        if _rows(tx, RESERVE_COUNTED, params):
-            return ReserveOutcome(True, None)
+        granted = _rows(tx, RESERVE_COUNTED, params)
+        if granted:
+            return ReserveOutcome(True, None, paid=granted[0].get("paid"), spend_micro=granted[0].get("spend_micro"))
         read = _rows(tx, DENIAL_READ, params)
         return ReserveOutcome(False, _denial_reason(read[0] if read else {}, caps, int(estimate_micro)))
 
@@ -413,14 +469,17 @@ def _day_sums_in(tx: Any, *, day: str, now_wall: float, machine_id: str, ip_hash
     base = {"day": day, "now": now_wall, "me": machine_id}
     head = (_rows(tx, DAY_SUMS, base) or [{}])[0]
     per_ip: dict[str, int] = {}
+    per_ip_spend: dict[str, int] = {}
     events: list[tuple[str, float]] = []
     if ip_hash_v is not None:
         for row in _rows(tx, IP_ROWS, {**base, "ip_hash_v": ip_hash_v}):
             per_ip[row["ip"]] = per_ip.get(row["ip"], 0) + 1
+            per_ip_spend[row["ip"]] = per_ip_spend.get(row["ip"], 0) + int(row.get("micro") or 0)
             if row.get("ts") is not None:
                 events.append((row["ip"], float(row["ts"])))
     return DaySums(paid=int(head.get("paid") or 0), spend_micro=int(head.get("spend_micro") or 0),
-                   foreign_leases=int(head.get("foreign") or 0), per_ip=per_ip, ip_events=tuple(sorted(events)))
+                   foreign_leases=int(head.get("foreign") or 0), per_ip=per_ip, ip_events=tuple(sorted(events)),
+                   per_ip_spend=per_ip_spend)
 
 
 def day_sums(driver: Any, *, day: str, now_wall: float, machine_id: str, ip_hash_v: int | None,
@@ -447,7 +506,7 @@ def sync_day_counters(driver: Any, *, day: str, now_wall: float, machine_id: str
         _rows(tx, WRITE_DAY, {"day": day, "paid": sums.paid, "spend_micro": sums.spend_micro,
                               "created_at": iso(now_wall)})
         if ip_hash_v is not None:
-            rows = [{"ip": ip, "n": n} for ip, n in sorted(sums.per_ip.items())]
+            rows = [{"ip": ip, "n": n, "spend": sums.per_ip_spend.get(ip, 0)} for ip, n in sorted(sums.per_ip.items())]
             _rows(tx, WRITE_IP_DAYS, {"day": day, "rows": rows})
             _rows(tx, ZERO_OTHER_IP_DAYS, {"day": day, "ips": sorted(sums.per_ip)})
         return SyncResult(sums, True, None)

@@ -17,12 +17,15 @@ scenario is an ordinary sync test around ``asyncio.run`` with a hard timeout so 
 import ast
 import asyncio
 import gc
+import inspect
+import math
 import subprocess
 import sys
 import threading
 import time
 from contextlib import aclosing, contextmanager
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,6 +35,7 @@ import litellm
 import pytest
 from agent_fakes import FakeDriver, FakeEmbedder
 
+from semigraph.config import Settings
 from semigraph.retrieval import answerer, answerer_async
 from semigraph.retrieval.answerer import (
     CITE_RE,
@@ -43,9 +47,11 @@ from semigraph.retrieval.answerer import (
 )
 from semigraph.retrieval.answerer_async import AsyncTextStream
 from semigraph.retrieval.retriever import hybrid_retrieve, vector_retrieve
+from semigraph.serve.estimate import MICRO_PER_MTOK, resolve_price
 from semigraph.serve.limiters import LoopLagMonitor, make_limiters
+from semigraph.serve.meter import PaidMeter
 
-CHEAP, STRONG = "openai/gpt-6-luna", "anthropic/claude-sonnet-5"
+CHEAP, STRONG ="openai/gpt-6-luna", "anthropic/claude-sonnet-5"
 USAGE = {"prompt_tokens": 1200, "completion_tokens": 40}
 HARD_TIMEOUT_S = 20
 
@@ -581,12 +587,13 @@ def test_closing_the_outermost_generator_mid_escalated_answer_closes_both_upstre
 
     assert run(go) == ["retrieval", "escalated", "delta"]
     assert (draft.closed, strong.closed) == (1, 1)
-    # the default construction path: a short fuse for the draft, the full timeout and retries for the strong model
+    # the default construction path: a short fuse for the draft, the full timeout for the strong model, and no provider
+    # retries on either (the strong model's own attempts are the stream's, and each one is metered)
     draft_kw, strong_kw = fake.calls
     assert (draft_kw["model"], draft_kw["num_retries"], draft_kw["timeout"], draft_kw["max_completion_tokens"]) == (
         CHEAP, 0, answerer.DRAFT_TIMEOUT_S, 2400)
     assert (strong_kw["model"], strong_kw["num_retries"], strong_kw["timeout"], strong_kw["max_tokens"]) == (
-        STRONG, 2, 90, 2400)
+        STRONG, 0, 90, 2400)
 
 
 def test_cancelling_the_task_that_consumes_the_outermost_generator_closes_the_upstream(monkeypatch):
@@ -1036,8 +1043,11 @@ def test_the_draft_is_given_a_short_fuse_so_an_outage_does_not_delay_the_strong_
     assert draft_kw["timeout"] == answerer.DRAFT_TIMEOUT_S <= 30 and draft_kw["max_tokens"] == 2400
 
 
-def test_the_strong_model_keeps_the_full_timeout_and_retries(monkeypatch):
-    seen = []
+def test_the_strong_model_makes_no_provider_retries_and_the_meter_counts_its_attempts(monkeypatch):
+    """The strong model keeps the full timeout and its own two attempts (the stream's), but no provider retries: a
+    LiteLLM retry is a billed call the meter could not see, so each attempt is one provider call and each is metered. A
+    caller's own ``num_retries`` does not get through either (the draft's rule, ``_draft_kwargs``, is the same)."""
+    seen, meter = [], new_meter()
 
     class Recording(AsyncFake):
         def __init__(self, prompt, **kw):
@@ -1046,13 +1056,18 @@ def test_the_strong_model_keeps_the_full_timeout_and_retries(monkeypatch):
 
     monkeypatch.setattr(answerer_async, "AsyncTextStream", Recording)
 
-    async def go():
+    async def go(**extra):
         return await collect(answerer_async.astream_answer_for_prompt(
-            *prompt_args(Scenario("x", ())), sources=SOURCES, timeout=90, max_tokens=2400, **ESC))
+            *prompt_args(Scenario("x", ())), sources=SOURCES, timeout=90, max_tokens=2400, meter=meter, **ESC, **extra))
 
     run(go)
     assert seen[1]["model"] == STRONG and seen[1]["timeout"] == 90
-    assert "attempts" not in seen[1] and "num_retries" not in seen[1]
+    assert seen[1]["num_retries"] == 0 and "attempts" not in seen[1]       # the stream's two attempts stay its default
+    assert (seen[0]["role"], seen[1]["role"]) == ("draft", "strong")
+    assert seen[0]["meter"] is seen[1]["meter"] is meter                   # one meter for the ask, in both roles
+    seen.clear()
+    run(lambda: go(num_retries=2))                                         # a caller's retries cannot reopen it
+    assert seen[1]["num_retries"] == 0 and seen[0]["num_retries"] == 0
 
 
 # --- a cancellation while the draft is drained stays a cancellation ---------------------------------------------------
@@ -2064,3 +2079,384 @@ def test_the_async_answer_path_imports_nothing_heavy():
     run_ = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120, check=True)
     out = run_.stdout
     assert out.strip().splitlines()[-1] == "HEAVY []", out
+
+
+# --- the paid-call meter (Wave 2, council 4 option C) ------------------------------------------------------------------
+# Every model call the writer itself makes is recorded in the ask's ``PaidMeter`` as it STARTS (with the most it could
+# cost: its bound) and as it ENDS (with the usage the provider reported), so an ask whose visitor left is settled at what
+# was really started, not at its whole estimate. These tests drive the REAL ``AsyncTextStream`` against
+# ``FakeAcompletion``: an injected ``llm_stream`` / ``escalation_stream`` is never metered (the route injects none), so a
+# double there would test nothing. The expected numbers are derived here from the prices and the assumption of
+# ``serve.estimate``, never read back off the meter.
+
+METER_SETTINGS = Settings(_env_file=None)
+ANSWER_CAP = 2400
+
+
+def new_meter() -> PaidMeter:
+    return PaidMeter(METER_SETTINGS)
+
+
+def chars_per_token_of(model: str) -> Decimal:
+    """The characters per token the estimate assumes for ``model``, written here as literals (not read off the module):
+    Claude Sonnet 5 measured below 2.5, so it has its own 2.0; every other model keeps 2.5."""
+    return Decimal("2.0") if model == STRONG else Decimal("2.5")
+
+
+def bound_micro(model: str, role: str, prompt_chars: int, max_tokens: int, attempts: int = 1) -> int:
+    """The most ``attempts`` provider attempts can cost: the worst-case prompt at the model's characters per token plus
+    the output cap."""
+    price = resolve_price(model, role, METER_SETTINGS)
+    one_attempt = math.ceil(Decimal(prompt_chars) / chars_per_token_of(model)) * price.input + max_tokens * price.output
+    return -(-attempts * one_attempt // MICRO_PER_MTOK)
+
+
+def reported_micro(model: str, role: str, usage: tuple[int, int]) -> int:
+    price = resolve_price(model, role, METER_SETTINGS)
+    return -(-(usage[0] * price.input + usage[1] * price.output) // MICRO_PER_MTOK)
+
+
+def answer_chunks(parts, usage: tuple[int, int]) -> list:
+    """Text deltas, the finish, then the usage-only chunk a provider sends last."""
+    return [*[chunk(p) for p in parts[:-1]], chunk(parts[-1], "stop"), chunk(usage=usage, choices=False)]
+
+
+def cited_parts() -> tuple[str, ...]:
+    """An answer the checks release for ``Q_SEC`` over the fake world (it cites a chunk the retrieval returned)."""
+    return GOOD_C.with_id(WORLD_IDS["hybrid"]).parts
+
+
+def metered_run(monkeypatch, outcomes, question: str = Q_SEC, **kw):
+    """One ``aanswer_stream`` over the real model stream, escalation configured, with a fresh meter."""
+    fake = FakeAcompletion(*outcomes)
+    monkeypatch.setattr(answerer_async, "acompletion", fake)
+    meter = new_meter()
+    events = run(lambda: collect(answerer_async.aanswer_stream(
+        question, FakeDriver.world(), FakeEmbedder(), limiters=make_limiters_here(), meter=meter,
+        max_tokens=ANSWER_CAP, **{**ESC, **kw})))
+    return events, meter, fake
+
+
+def prompt_chars_of(fake: FakeAcompletion, call: int = 0) -> int:
+    return len(fake.calls[call]["messages"][0]["content"])
+
+
+def test_a_draft_only_answer_meters_one_draft_call_with_its_usage(monkeypatch):
+    events, meter, fake = metered_run(monkeypatch, [FakeUpstream(answer_chunks(cited_parts(), (1200, 40)))])
+    assert events[-1]["event"] == "done" and events[-1]["escalated"] is False
+    (call,) = meter.calls
+    chars = prompt_chars_of(fake)
+    assert (call.role, call.model, call.prompt_chars, call.late) == ("draft", CHEAP, chars, False)
+    assert call.bound_micro == bound_micro(CHEAP, "draft", chars, ANSWER_CAP)
+    assert call.reported_micro == reported_micro(CHEAP, "draft", (1200, 40))
+    assert meter.charge_micro(10**9) == call.reported_micro and meter.faults == ()
+
+
+def test_an_escalated_answer_meters_draft_then_strong(monkeypatch):
+    draft = FakeUpstream(answer_chunks(UNCITED_C.parts, (1000, 30)))
+    strong = FakeUpstream(answer_chunks(cited_parts(), (1100, 90)))
+    events, meter, fake = metered_run(monkeypatch, [draft, strong])
+    assert [e["event"] for e in events] == ["retrieval", "escalated", "delta", "delta", "done"]
+    chars = prompt_chars_of(fake)
+    assert prompt_chars_of(fake, 1) == chars                              # the same prompt goes to both models
+    assert [(c.role, c.model, c.prompt_chars) for c in meter.calls] == [("draft", CHEAP, chars),
+                                                                         ("strong", STRONG, chars)]
+    assert [c.bound_micro for c in meter.calls] == [bound_micro(CHEAP, "draft", chars, ANSWER_CAP),
+                                                    bound_micro(STRONG, "strong", chars, ANSWER_CAP)]   # one attempt each
+    assert [c.reported_micro for c in meter.calls] == [reported_micro(CHEAP, "draft", (1000, 30)),
+                                                       reported_micro(STRONG, "strong", (1100, 90))]
+    assert meter.charge_micro(10**9) == sum(c.reported_micro for c in meter.calls)
+
+
+def test_an_escalation_failing_before_usage_leaves_the_strong_bound(monkeypatch):
+    """The security review's M1: an escalated stream that fails before it reports usage used to leave only the draft's
+    cost in the ask's cost. The meter holds the strong call at its bound, so the lease is not settled below it."""
+    draft = FakeUpstream(answer_chunks(UNCITED_C.parts, (1000, 30)))
+    strong = FakeUpstream([chunk("Nvidia dep"), KeyError("boom")])
+    events, meter, fake = metered_run(monkeypatch, [draft, strong])
+    assert events[-1]["event"] == "error" and events[-1]["detail"] == "KeyError: 'boom'"
+    draft_call, strong_call = meter.calls
+    assert strong_call.reported_micro is None
+    assert strong_call.bound_micro == bound_micro(STRONG, "strong", prompt_chars_of(fake, 1), ANSWER_CAP)
+    assert meter.charge_micro(10**9) == draft_call.reported_micro + strong_call.bound_micro
+    # the event keeps the sync writer's figure (the draft's cost alone): the ledger charge comes from the meter
+    assert events[-1]["cost_usd"] == pytest.approx(draft_call.reported_micro / 1e6, abs=1.5e-6)
+    assert events[-1]["cost_usd"] * 1e6 < meter.charge_micro(10**9)
+
+
+def test_a_billed_empty_first_attempt_is_metered_separately_and_not_lost(monkeypatch):
+    """The review's M1, first half: ``usage`` is overwritten per attempt, so a first attempt that was billed and returned
+    no text (a reasoning model out of budget) vanished from the reported cost. Each attempt is its own metered call."""
+    first = FakeUpstream([chunk(None, "length"), chunk(usage=(5000, 2400), choices=False)])
+    second = FakeUpstream(answer_chunks(cited_parts(), (5000, 300)))
+    events, meter, fake = metered_run(monkeypatch, [first, second], question=Q_CHANGE)
+    assert events[-1]["event"] == "done" and events[-1]["routed"] == "strong" and len(fake.calls) == 2
+    assert [c.role for c in meter.calls] == ["strong", "strong"]
+    assert [c.reported_micro for c in meter.calls] == [reported_micro(STRONG, "strong", (5000, 2400)),
+                                                       reported_micro(STRONG, "strong", (5000, 300))]
+    assert events[-1]["usage"] == {"prompt_tokens": 5000, "completion_tokens": 300}     # the event: the last attempt's
+    assert meter.charge_micro(10**9) == sum(c.reported_micro for c in meter.calls) > reported_micro(
+        STRONG, "strong", (5000, 300))
+
+
+def sole_run(monkeypatch, outcomes, question: str = Q_SEC, **kw):
+    """One ``aanswer_stream`` with NO escalation model (the documented rollback shape): the answer model is the only call."""
+    fake = FakeAcompletion(*outcomes)
+    monkeypatch.setattr(answerer_async, "acompletion", fake)
+    meter = new_meter()
+    events = run(lambda: collect(answerer_async.aanswer_stream(
+        question, FakeDriver.world(), FakeEmbedder(), limiters=make_limiters_here(), meter=meter, model=CHEAP,
+        max_tokens=ANSWER_CAP, **kw)))
+    return events, meter, fake
+
+
+def test_the_sole_answer_stream_makes_no_provider_retries_and_meters_its_one_attempt_as_one_call(monkeypatch):
+    """No escalation model: the answer model is the only call, priced by the estimate in the strong role with the stream's
+    own two attempts (``STREAM_ATTEMPTS``). It used to keep LiteLLM's two provider retries as well, so one stream could
+    bill up to six calls against a reservation of two; now (like the escalation stream) it makes none, and each attempt it
+    makes itself is one metered call."""
+    events, meter, fake = sole_run(monkeypatch, [FakeUpstream(answer_chunks(cited_parts(), (1200, 40)))])
+    assert events[-1]["event"] == "done"
+    (call,) = meter.calls
+    assert call.role == "strong" and fake.calls[0]["num_retries"] == 0
+    assert call.bound_micro == bound_micro(CHEAP, "strong", prompt_chars_of(fake), ANSWER_CAP, attempts=1)
+    assert call.reported_micro == reported_micro(CHEAP, "strong", (1200, 40))
+
+
+def test_a_billed_empty_first_attempt_of_the_sole_answer_stream_is_a_second_metered_call_not_a_hidden_retry(monkeypatch):
+    first = FakeUpstream([chunk(None, "length"), chunk(usage=(5000, 2400), choices=False)])
+    second = FakeUpstream(answer_chunks(cited_parts(), (5000, 300)))
+    events, meter, fake = sole_run(monkeypatch, [first, second])
+    assert events[-1]["event"] == "done" and len(fake.calls) == 2
+    assert [c["num_retries"] for c in fake.calls] == [0, 0]
+    assert [c.role for c in meter.calls] == ["strong", "strong"]
+    chars = prompt_chars_of(fake)
+    assert [c.bound_micro for c in meter.calls] == [bound_micro(CHEAP, "strong", chars, ANSWER_CAP)] * 2   # one attempt each
+    assert [c.reported_micro for c in meter.calls] == [reported_micro(CHEAP, "strong", (5000, 2400)),
+                                                       reported_micro(CHEAP, "strong", (5000, 300))]
+    assert meter.charge_micro(10**9) == sum(c.reported_micro for c in meter.calls)
+
+
+def test_a_callers_num_retries_cannot_reopen_the_sole_answer_streams_provider_retries(monkeypatch):
+    _, meter, fake = sole_run(monkeypatch, [FakeUpstream(answer_chunks(cited_parts(), (1200, 40)))], num_retries=5)
+    assert fake.calls[0]["num_retries"] == 0
+    assert meter.calls[0].bound_micro == bound_micro(CHEAP, "strong", prompt_chars_of(fake), ANSWER_CAP, attempts=1)
+
+
+def test_the_sole_answer_stream_with_no_model_given_uses_the_configured_answer_model_and_no_retries(monkeypatch):
+    fake = FakeAcompletion(FakeUpstream(answer_chunks(cited_parts(), (1200, 40))))
+    monkeypatch.setattr(answerer_async, "acompletion", fake)
+    meter = new_meter()
+    run(lambda: collect(answerer_async.aanswer_stream(
+        Q_SEC, FakeDriver.world(), FakeEmbedder(), limiters=make_limiters_here(), meter=meter, max_tokens=ANSWER_CAP)))
+    (call,) = meter.calls
+    assert fake.calls[0]["model"] == call.model == METER_SETTINGS.answer_model and fake.calls[0]["num_retries"] == 0
+    assert call.role == "strong"
+
+
+def test_every_stream_the_writer_builds_makes_no_provider_retries_whatever_the_route(monkeypatch):
+    """The three strong-role shapes (the escalation, a question routed straight to the strong model, the sole answer
+    model) and the draft all pass ``num_retries=0``: a provider retry is a billed call nobody could bound."""
+    shapes = {"draft then escalation": (ESC, Q_SEC), "routed straight to the strong model": (ESC, Q_CHANGE),
+              "the sole answer model": ({"model": CHEAP}, Q_SEC)}
+    for shape, (kw, question) in shapes.items():
+        fake = FakeAcompletion(FakeUpstream(answer_chunks(UNCITED_C.parts, (1000, 30))),
+                               FakeUpstream(answer_chunks(cited_parts(), (1100, 90))))
+        monkeypatch.setattr(answerer_async, "acompletion", fake)
+        run(lambda kw=kw, question=question: collect(answerer_async.aanswer_stream(
+            question, FakeDriver.world(), FakeEmbedder(), limiters=make_limiters_here(), meter=new_meter(),
+            max_tokens=ANSWER_CAP, **kw)))
+        assert fake.calls and {c["num_retries"] for c in fake.calls} == {0}, shape
+
+
+def test_an_injected_stream_is_never_metered():
+    meter = new_meter()
+
+    async def go():
+        return await collect(answerer_async.astream_answer_for_prompt(
+            *prompt_args(Scenario("x", ())), sources=SOURCES, meter=meter,
+            llm_stream=lambda p: AsyncFake(Script(GOOD_PARTS, model=CHEAP)),
+            escalation_stream=lambda p: AsyncFake(Script(GOOD_PARTS, model=STRONG)), **ESC))
+
+    assert run(go)[-1]["event"] == "done"
+    assert meter.calls == () and meter.charge_micro(10**9) == 0
+
+
+@pytest.mark.parametrize("fn", [answerer_async.aanswer_stream, answerer_async.astream_answer_for_context,
+                                answerer_async.astream_answer_for_prompt])
+def test_the_meter_is_a_keyword_only_argument_of_every_writer_function_and_off_by_default(fn):
+    meter = inspect.signature(fn).parameters["meter"]
+    assert meter.kind is inspect.Parameter.KEYWORD_ONLY and meter.default is None
+
+
+def test_a_disconnect_before_any_call_meters_nothing(monkeypatch):
+    """The visitor leaves as the ``retrieval`` event is delivered: the model is asked next, and the checkpoint in front
+    of the call raises first. No provider call, no record, and the charge is zero."""
+    fake = FakeAcompletion()
+    monkeypatch.setattr(answerer_async, "acompletion", fake)
+    meter = new_meter()
+
+    async def go():
+        with anyio.CancelScope() as scope:
+            outer = answerer_async.aanswer_stream(Q_SEC, FakeDriver.world(), FakeEmbedder(),
+                                                  limiters=make_limiters_here(), meter=meter, **ESC)
+            async with aclosing(outer) as events:
+                async for event in events:
+                    if event["event"] == "retrieval":
+                        scope.cancel()
+        return scope.cancelled_caught
+
+    assert run(go) is True
+    assert fake.calls == [] and meter.calls == () and meter.charge_micro(10**9) == 0
+
+
+def test_a_disconnect_after_escalation_start_is_draft_actual_plus_strong_bound(monkeypatch):
+    """The visitor leaves while the strong model is writing: the draft is settled at what it reported, the strong call
+    (started, no usage yet) at its whole bound, and its upstream is released."""
+    draft = FakeUpstream(answer_chunks(UNCITED_C.parts, (1000, 30)))
+    strong = FakeUpstream([chunk("one "), chunk("two "), chunk("three", "stop"), chunk(usage=(1100, 90), choices=False)],
+                          pause=0.02)
+    fake = FakeAcompletion(draft, strong)
+    monkeypatch.setattr(answerer_async, "acompletion", fake)
+    meter = new_meter()
+
+    async def go():
+        with anyio.CancelScope() as scope:
+            outer = answerer_async.aanswer_stream(Q_SEC, FakeDriver.world(), FakeEmbedder(),
+                                                  limiters=make_limiters_here(), meter=meter, max_tokens=ANSWER_CAP,
+                                                  **ESC)
+            async with aclosing(outer) as events:
+                async for event in events:
+                    if event["event"] == "delta":                  # the first strong delta: the call is under way
+                        scope.cancel()
+        return scope.cancelled_caught
+
+    assert run(go) is True and strong.closed == 1
+    draft_call, strong_call = meter.calls
+    assert draft_call.reported_micro == reported_micro(CHEAP, "draft", (1000, 30))
+    assert strong_call.reported_micro is None
+    assert strong_call.bound_micro == bound_micro(STRONG, "strong", prompt_chars_of(fake, 1), ANSWER_CAP)
+    assert meter.charge_micro(10**9) == draft_call.reported_micro + strong_call.bound_micro
+
+
+# AsyncTextStream itself: when the meter is told, and what it is told ----------------------------------------------------
+
+class SpyMeter:
+    """Records, in order, what the stream tells its meter (``start`` returns the call id the stream must hand back)."""
+
+    def __init__(self, log: list):
+        self.log, self.next_id = log, 7
+
+    def start(self, **kw) -> int:
+        self.log.append(("start", kw))
+        self.next_id += 1
+        return self.next_id
+
+    def complete(self, call_id: int, usage) -> None:
+        self.log.append(("complete", call_id, usage))
+
+
+def test_the_stream_starts_its_meter_before_the_call_and_completes_it_after_the_close(monkeypatch):
+    log = []
+
+    class LoggedUpstream(FakeUpstream):
+        async def aclose(self):
+            await super().aclose()
+            log.append(("closed",))
+
+    class LoggedAcompletion(FakeAcompletion):
+        async def __call__(self, **kwargs):
+            log.append(("call",))
+            return await super().__call__(**kwargs)
+
+    monkeypatch.setattr(answerer_async, "acompletion", LoggedAcompletion(LoggedUpstream(plain())))
+    stream = AsyncTextStream("PROMPT", model=CHEAP, meter=SpyMeter(log), role="draft")
+
+    async def go():
+        return [d async for d in stream]
+
+    assert run(go) == ["Hello ", "world"]
+    assert [entry[0] for entry in log] == ["start", "call", "closed", "complete"]
+    assert log[0][1] == {"role": "draft", "model": CHEAP, "prompt_chars": len("PROMPT"), "max_output_tokens": 1200,
+                         "attempts": 1 + 2}                       # a call that may be retried by the provider twice
+    assert log[3][1:] == (8, {"prompt_tokens": 10, "completion_tokens": 2})
+
+
+def test_every_attempt_is_its_own_metered_call_and_a_call_that_raises_is_completed_without_usage(monkeypatch):
+    log = []
+    monkeypatch.setattr(answerer_async, "acompletion", FakeAcompletion(conn_error(), FakeUpstream(plain())))
+    stream = AsyncTextStream("PROMPT", model=CHEAP, meter=SpyMeter(log), backoff=(0,))
+
+    async def go():
+        return [d async for d in stream]
+
+    assert run(go) == ["Hello ", "world"]
+    assert [entry[0] for entry in log] == ["start", "complete", "start", "complete"]
+    assert log[1][1:] == (8, None) and log[3][1:] == (9, {"prompt_tokens": 10, "completion_tokens": 2})
+    assert stream.attempt_usages == [None, {"prompt_tokens": 10, "completion_tokens": 2}]
+
+
+def test_attempt_usages_keeps_each_attempts_usage_while_usage_keeps_the_last_attempts_value(monkeypatch):
+    """``usage`` keeps the sync stream's meaning (the parity tests compare it): the usage of the last attempt that
+    reported one. ``attempt_usages`` is the per-attempt record the meter is fed from."""
+    first_usage = {"prompt_tokens": 500, "completion_tokens": 2400}
+    empty_billed = [chunk(None, "length"), chunk(usage=(500, 2400), choices=False)]
+    stream, _ = make_stream(monkeypatch, FakeUpstream(empty_billed), FakeUpstream(plain()))
+    run(lambda: collect_text(stream))
+    assert stream.attempt_usages == [first_usage, {"prompt_tokens": 10, "completion_tokens": 2}]
+    assert stream.usage == {"prompt_tokens": 10, "completion_tokens": 2}
+    # a last attempt that reports nothing leaves ``usage`` at the earlier attempt's value (as the sync stream does)
+    quiet = [chunk("Hi "), chunk("there", "stop")]
+    stream, _ = make_stream(monkeypatch, FakeUpstream(empty_billed), FakeUpstream(quiet))
+    run(lambda: collect_text(stream))
+    assert stream.attempt_usages == [first_usage, None] and stream.usage == first_usage
+
+
+async def collect_text(stream) -> list[str]:
+    return [d async for d in stream]
+
+
+def test_the_meter_completes_with_the_reported_usage_even_when_a_second_native_cancel_cuts_the_close_short(monkeypatch):
+    """``aclose`` can be cut short by a second ``task.cancel()`` (the test above where the connection stays open): the
+    completion of the meter sits in an outer ``finally`` so a usage the provider had already reported is not lost."""
+    up = FakeUpstream([chunk(usage=(10, 2), choices=False), chunk("Hello "), chunk("world", "stop")], pause=0.05,
+                      close_delay=0.3)
+    meter = new_meter()
+    stream, _ = make_stream(monkeypatch, up, meter=meter)
+
+    async def go():
+        seen = asyncio.Event()
+
+        async def consume():
+            async for _ in stream:
+                seen.set()
+
+        task = asyncio.create_task(consume())
+        await seen.wait()
+        task.cancel()
+        while not up.aclose_calls:                                           # the close has begun and is waiting
+            await tick(0.005)
+        task.cancel()
+        await asyncio.wait({task})
+        return task
+
+    assert run(go).cancelled()
+    assert (up.aclose_calls, up.closed) == (1, 0)
+    (call,) = meter.calls
+    assert call.reported_micro == reported_micro(CHEAP, "strong", (10, 2)) and call.prompt_chars == len("PROMPT")
+
+
+def test_no_await_sits_between_the_meters_start_and_the_provider_call():
+    """The meter is started AFTER the checkpoint that makes a cancelled visitor miss the call, and immediately before the
+    call: an await between them would be a point where the visitor could leave with the call recorded but not made (or,
+    worse, made after the record was settled)."""
+    tree = ast.parse(Path(answerer_async.__file__).read_text(encoding="utf-8"))
+    attempt = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == "_attempt")
+    awaits = [n for n in ast.walk(attempt) if isinstance(n, ast.Await)]
+    provider = [n.lineno for n in awaits if isinstance(n.value, ast.Call) and getattr(n.value.func, "id", "") == "acompletion"]
+    checkpoint = [n.lineno for n in awaits if getattr(getattr(n.value, "func", None), "attr", "") == "checkpoint"]
+    starts = [n.lineno for n in ast.walk(attempt) if isinstance(n, ast.Call)
+              and getattr(n.func, "attr", "") == "_meter_start"]
+    assert len(provider) == len(checkpoint) == len(starts) == 1
+    assert checkpoint[0] < starts[0] < provider[0]
+    assert [a.lineno for a in awaits if starts[0] <= a.lineno < provider[0]] == []

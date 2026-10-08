@@ -15,13 +15,29 @@ The formula, per ask type (``hybrid``, ``vector``, ``agent``, ``workspace``), in
 where the answer tokens are ``llm_answer_max_tokens``.
 
 With no escalation model (or one equal to the answer model) the answer model is the only call and carries
-STREAM_ATTEMPTS. The prompt tokens are ``(template + question + context ceiling) / CHARS_PER_TOKEN`` rounded up; the
-context ceiling is the retrieval caps below. Prices are KNOWN_PRICES_PER_MTOK by model id; ``openai/mock-*`` staging
-models take the real models' prices (:data:`MOCK_ALIASES`, then the model of their role); any other model uses the
-configured list prices and is flagged.
+STREAM_ATTEMPTS. The prompt tokens are ``(template + question + context ceiling) / the model's characters per token``
+rounded up, PER MODEL (:func:`chars_per_token`: 2.0 for Claude Sonnet 5, 2.5 for every other model, so the strong
+call of a hybrid ask is 161,856 tokens and the draft 129,485 for the same 323,712 characters); the context ceiling is the
+retrieval caps below. Prices are KNOWN_PRICES_PER_MTOK by model id; ``openai/mock-*`` staging models take the real
+models' prices and characters per token (:func:`real_model`: :data:`MOCK_ALIASES`, then the model of their role); any
+other model uses the configured list prices and is flagged.
+
+LONG CONTEXT: no price tier is modelled, and for Claude Sonnet 5, which carries 97 to 98% of every estimate, none exists.
+Anthropic's pricing page (https://platform.claude.com/docs/en/about-claude/pricing, checked 2026-10-08) says Claude 4.6 and
+later models, Sonnet 5 included, have the full 1,000,000-token context window at standard pricing (a 900,000-token request
+is billed at the same per-token rate as a 9,000-token one), and LiteLLM 1.100.0's cost map for claude-sonnet-5 lists no
+above-200k price (its ``claude-sonnet-5`` entry has max_input_tokens 1,000,000 and no size-tiered key, read from the bundled
+JSON on 2026-10-08). So the flat Sonnet price in KNOWN_PRICES_PER_MTOK is the right price for every ceiling below, the agent's
+235,012-token strong call (past 200,000) included, and every Sonnet ceiling fits the window (tests/test_serve_estimate.py).
+GPT-6 Luna is the exception: the note on its price in ``llm_shape`` records a long-context tier (a probe that priced a 1M-token
+prompt returned twice the base input price). ``openai/gpt-6-luna`` is NOT listed in LiteLLM 1.100.0's bundled cost map (the
+similarly named ``gpt-5.6-luna``, another model with a base input price of $0.20 per million, doubles its price above 272,000
+tokens and has a 922,000-token window: the family's pattern, not a fact about gpt-6-luna), so its threshold and its window are
+not recorded anywhere here. The largest prompt Luna is priced at (188,010 tokens, the agent's draft) is held under 200,000 by a
+test as a tripwire, not as a verified threshold; Luna's share of an estimate is 2 to 3%.
 
 THE CONTEXT CEILING: what bounds the prompt, and what is still an allowance (``(template + question + context) /
-CHARS_PER_TOKEN``; the context ceiling is :func:`context_chars`).
+the model's characters per token``; the context ceiling is :func:`context_chars`).
 
 - CAPPED IN THE CODE: the excerpts (retrieval returns at most K_CHUNKS of at most CHUNK_TEXT_MAX_CHARS characters; the
   agent adds up to AGENT_MAX_CHUNKS), the companies a plain ask anchors (``retriever.MAX_ANCHORS``, read from the
@@ -35,10 +51,12 @@ CHARS_PER_TOKEN``; the context ceiling is :func:`context_chars`).
   (agent/merge.check_company_cap; the default company counts when none was detected), so an agent ask carries as many
   companies as a plain one and :func:`agent_company_blocks` reads that same cap. What its tools add per company is
   larger (every annual metric row, and filing pairs), priced at AGENT_GRAPH_CHARS_PER_COMPANY. Without the cap the
-  estimate had to price all 13 SEC filers: $1.57 and a prompt past the 200,000-token tier; with it, $0.83 and under it.
+  estimate had to price all 13 SEC filers: $1.57 and a 368,010-token prompt; with it, $0.83 and 188,010 tokens (at the
+  single 2.5 characters per token; at Sonnet's 2.0 the agent ceiling is $1.02 and 235,012 tokens on Sonnet, inside its
+  1,000,000-token window at its flat price: see LONG CONTEXT above).
 - CAPPED IN THE CODE, THE AGENT'S FILING PAIRS: those of one company. Each ``risk_changes`` call adds up to 2 pairs per
   company, so 4 calls could give one company 8 (66,410 characters, an agent prompt of 518,870 characters: about $0.91
-  and past the long-context tier) if the graph held 9 annual filings of it. ``agent.merge.merge_temporal`` now holds a
+  at the single 2.5 characters per token, $1.12 at Sonnet's 2.0) if the graph held 9 annual filings of it. ``agent.merge.merge_temporal`` now holds a
   company to MAX_PAIRS_HELD_PER_COMPANY (5) pairs in all, whatever the calls return and whatever the graph holds (today
   at most 5 annual filings of a company, AMD: four 10-Ks and a 10-K/A, so at most 4 consecutive comparisons), and
   AGENT_GRAPH_CHARS_PER_COMPANY covers exactly 5 (tests/test_serve_estimate.py offers 10 pairs of every company, the
@@ -46,12 +64,14 @@ CHARS_PER_TOKEN``; the context ceiling is :func:`context_chars`).
 - ALLOWANCES, NOT CAPS (measured, rounded up): the RELATIONSHIPS block (EDGE_LINES_ALLOWED lines: the code has no cap,
   the graph has 73 company relations), the earlier wording of a reworded item (542 characters at most in the corpus; the
   layout does not cut it), a rule title (234) and the note that names the companies a question named beyond the cap.
-- ASSUMPTIONS: CHARS_PER_TOKEN (below).
+- ASSUMPTIONS: the characters per token of each model (below).
 
-Other things the estimate does not count: provider-level retries after an error (LiteLLM ``num_retries``; that a
-provider does not bill a request that failed is an unverified assumption, a timeout after the provider started is the
-doubtful case) and a long-context price tier (above about 200,000 tokens, which only the agent's ceiling reaches;
-unverified for Sonnet 5).
+Other things the estimate does not count: that a provider does not bill a request that failed is an unverified
+assumption (a timeout after the provider started is the doubtful case), and a price tier for Luna (see LONG CONTEXT; no
+prompt it is priced at reaches 200,000 tokens). No model call on the answer path makes provider-level retries any more
+(LiteLLM ``num_retries``): the draft, the strong stream (the escalation, the question routed straight to the strong model
+and the sole answer model) and the planner all pass 0, and the attempts the strong stream makes itself are exactly
+STREAM_ATTEMPTS.
 
 Pure: constants and functions, no I/O at import, no litellm, no prompt files (tests pin the constants to the code they
 mirror; the retriever is imported when the anchor cap is read, because importing it loads the answerer).
@@ -63,7 +83,7 @@ from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal
 
 from ..config import Settings
-from ..llm_shape import KNOWN_PRICES_PER_MTOK
+from ..llm_shape import KNOWN_PRICES_PER_MTOK, MOCK_ALIASES, MOCK_MODEL_PREFIX
 
 logger = logging.getLogger("semigraph.serve.estimate")
 
@@ -71,12 +91,30 @@ ASK_TYPES = ("hybrid", "vector", "agent", "workspace")
 MICRO_PER_MTOK = 1_000_000      # tokens x (micro-dollars per million tokens) / 1e6 = micro-dollars
 
 # --- tokens ----------------------------------------------------------------------------------------------------------
-# The lowest ratio measured: 3.03 characters per token on Claude Sonnet 5 over the 40 recorded hybrid and vector
-# contexts (median 3.95), 3.8 on gpt-6-luna for one recorded workspace prompt (its tokenizer was not sampled further).
-# 2.5 is 17% below the lowest measurement, for dense tables and id lists. An ASSUMPTION, not a bound: a context denser
-# than any recorded one (chunk ids and numbers make up a large share of the worst-case blocks) costs more than its
-# estimate.
-CHARS_PER_TOKEN = Decimal("2.5")
+# Characters per token, PER MODEL: how many characters of prompt one billed input token stands for. An ASSUMPTION, never
+# a bound: a prompt denser than the figure (fewer characters per token: chunk ids, tables and numbers make up a large
+# share of the worst-case blocks) costs more than its estimate. What is measured is in
+# artifacts/chars_per_token_check.json: the recorded runs' prompts rebuilt and divided by the prompt tokens the
+# provider billed. It is a join of the runs' saved contexts and usages over the 20 benchmark questions (prompts of 11 to
+# 64 thousand characters), not a sample of what visitors ask and far below the 106 to 470 thousand characters of the
+# ceilings below, so no figure here is a proof:
+#   anthropic/claude-sonnet-5  lowest 2.0997 over 40 exact rows (hybrid 2.0997, vector 2.8318), 7 of the 20 hybrid
+#       rows below 2.5. So the old single figure (2.5) did NOT hold for it: SONNET_CHARS_PER_TOKEN is 2.0, about 5%
+#       below the lowest exact row. The three APPROXIMATE deployed rows (their prompts were never saved, the baseline's
+#       prompt of the same id stands in; left out of that verdict) go lower still (Sonnet 1.47 to 1.89, Luna's lowest
+#       1.99): they are not evidence of what was billed, and neither are they evidence that these figures hold.
+#   openai/gpt-6-luna  lowest 3.0224 over 20 rows (bake-off joins), none below 2.5: the default 2.5 is 17% below it.
+#   every other model  the default 2.5, unmeasured. THE PLANNER RUNS ON LUNA AND ITS PROMPTS WERE NEVER RECORDED (the system
+#       prompt, the tool schemas and the tool results are JSON, not prose): its 2.5 is Luna's prose figure carried over,
+#       not a measurement. Neither were workspace prompts or the prompts of today's template and context layout.
+# The PaidMeter logs ``meter_ratio`` (model, prompt characters, billed prompt tokens) for every completed call: a preview
+# run measures the real prompts, planner and workspace included. A mock model (``openai/mock-*``) is the real model it
+# stands for, first (:func:`real_model`), so a staging run exercises the live arithmetic.
+DEFAULT_CHARS_PER_TOKEN = Decimal("2.5")
+SONNET_CHARS_PER_TOKEN = Decimal("2.0")
+CHARS_PER_TOKEN_BY_MODEL = {"anthropic/claude-sonnet-5": SONNET_CHARS_PER_TOKEN}
+# There is no single CHARS_PER_TOKEN any more (the old alias of the default is gone: its last importers, the two scripts, now
+# go through chars_per_token(model, role)). The default is not every model's figure.
 
 # --- the prompt: templates, excerpts, graph blocks -------------------------------------------------------------------
 ANSWER_TEMPLATE_CHARS = 9_200          # prompts/answer.txt is 9,108 characters
@@ -134,11 +172,9 @@ DRAFT_ATTEMPTS = 1      # answerer._draft_kwargs forces one attempt on the cheap
 STREAM_ATTEMPTS = 2
 
 # --- staging ---------------------------------------------------------------------------------------------------------
-MOCK_MODEL_PREFIX = "openai/mock-"
-# A mock that names a real model is priced as that model; any other mock id is priced as the real model of its role, so
-# a staging run with the live shape (cheap draft, strong escalation, cheap planner) exercises the live cap arithmetic.
-MOCK_ALIASES = {"openai/mock-luna": "openai/gpt-6-luna", "openai/mock-sonnet": "anthropic/claude-sonnet-5",
-                "openai/mock-haiku": "anthropic/claude-haiku-4-5"}
+# A mock that names a real model (llm_shape.MOCK_ALIASES, also what answerer.usage_cost prices a settled call with) is
+# priced as that model; any other mock id is priced as the real model of its role, so a staging run with the live shape
+# (cheap draft, strong escalation, cheap planner) exercises the live cap arithmetic.
 MOCK_ROLE_MODELS = {"draft": "openai/gpt-6-luna", "strong": "anthropic/claude-sonnet-5", "planner": "openai/gpt-6-luna"}
 
 
@@ -208,8 +244,27 @@ def _ceil_div(numerator: int, denominator: int) -> int:
     return -(-numerator // denominator)
 
 
-def _tokens(chars: int) -> int:
-    return math.ceil(Decimal(chars) / CHARS_PER_TOKEN)
+def real_model(model: str, role: str | None = None) -> str:
+    """The model a name stands for: a mock alias (``openai/mock-sonnet``) is the real model it names, any other mock
+    (``openai/mock-anything``) is the real model of its ``role`` when the role is one of ``draft`` / ``strong`` /
+    ``planner``, and every other model (a mock of no known role included) is itself. Prices and characters per token
+    both go through this, so a mock can never be priced as one model and sized as another."""
+    if model.startswith(MOCK_MODEL_PREFIX):
+        return MOCK_ALIASES.get(model) or MOCK_ROLE_MODELS.get(role, model)
+    return model
+
+
+def chars_per_token(model: str, role: str | None = None) -> Decimal:
+    """The characters of prompt one input token stands for on ``model`` (in ``role``, which only decides what an unaliased
+    mock stands for): 2.0 for Claude Sonnet 5, 2.5 for every other model. An assumption below the lowest measurement, not
+    a bound; see the comment on :data:`SONNET_CHARS_PER_TOKEN` for what was measured and what was not."""
+    return CHARS_PER_TOKEN_BY_MODEL.get(real_model(model, role), DEFAULT_CHARS_PER_TOKEN)
+
+
+def tokens_for_chars(chars: int, model: str, role: str | None = None) -> int:
+    """The input tokens ``chars`` characters of prompt are priced at on ``model``: ``chars / chars_per_token``, rounded up.
+    The estimate and the meter's per-call bounds both come through here, so they cannot drift apart."""
+    return math.ceil(Decimal(chars) / chars_per_token(model, role))
 
 
 def _micro_per_mtok(usd_per_mtok: float) -> int:
@@ -276,17 +331,23 @@ def context_chars(ask_type: str, settings: Settings | None = None) -> int:
     return sec
 
 
-def prompt_tokens(ask_type: str, settings: Settings) -> int:
-    """The ceiling on one answering call's input tokens: (template + question + context) / CHARS_PER_TOKEN, up."""
+def prompt_chars(ask_type: str, settings: Settings) -> int:
+    """The ceiling on one answering call's prompt in characters: the template, the longest question and the context."""
     template = WORKSPACE_TEMPLATE_CHARS if ask_type == "workspace" else ANSWER_TEMPLATE_CHARS
-    return _tokens(template + settings.max_question_chars + context_chars(ask_type, settings))
+    return template + settings.max_question_chars + context_chars(ask_type, settings)
+
+
+def prompt_tokens(ask_type: str, settings: Settings, model: str, role: str | None = None) -> int:
+    """The ceiling on one answering call's input tokens ON ``model`` (``role`` decides what an unaliased mock stands
+    for): :func:`prompt_chars` over that model's characters per token, up. It is per model: the same prompt is 161,856
+    tokens on Claude Sonnet 5 (2.0 characters per token) and 129,485 on Luna (2.5)."""
+    return tokens_for_chars(prompt_chars(ask_type, settings), model, role)
 
 
 def resolve_price(model: str, role: str, settings: Settings) -> Price:
     """The price of ``model`` in ``role`` (``draft`` / ``strong`` / ``planner``): the listed price, the real model a
-    mock stands for, else the configured list prices (``listed`` False). Never a network call."""
-    if model.startswith(MOCK_MODEL_PREFIX):
-        model = MOCK_ALIASES.get(model) or MOCK_ROLE_MODELS[role]
+    mock stands for (:func:`real_model`), else the configured list prices (``listed`` False). Never a network call."""
+    model = real_model(model, role)
     if model in KNOWN_PRICES_PER_MTOK:
         per_in, per_out = KNOWN_PRICES_PER_MTOK[model]
         return Price(_micro_per_mtok(per_in), _micro_per_mtok(per_out), True)
@@ -294,34 +355,39 @@ def resolve_price(model: str, role: str, settings: Settings) -> Price:
                  _micro_per_mtok(settings.llm_output_price_per_mtok), False)
 
 
-def _component(name: str, model: str, role: str, calls: int, tokens_in: int, tokens_out: int,
+def _component(name: str, model: str, role: str, calls: int, chars_in: int, tokens_out: int,
                settings: Settings) -> Component:
+    """``calls`` billed calls on ``model`` of a prompt of ``chars_in`` characters (tokenised by THAT model's ratio)."""
     price = resolve_price(model, role, settings)
-    return Component(name, model, calls, tokens_in, tokens_out, price.input, price.output, price.listed)
+    return Component(name, model, calls, tokens_for_chars(chars_in, model, role), tokens_out, price.input, price.output,
+                     price.listed)
 
 
-def _answer_components(tokens_in: int, tokens_out: int, settings: Settings) -> list[Component]:
+def _answer_components(chars_in: int, tokens_out: int, settings: Settings) -> list[Component]:
     answer, escalation = settings.answer_model, settings.escalation_model
     if escalation and escalation != answer:      # an escalation equal to the answer model is one model in both roles
-        return [_component("draft", answer, "draft", DRAFT_ATTEMPTS, tokens_in, tokens_out, settings),
-                _component("strong", escalation, "strong", STREAM_ATTEMPTS, tokens_in, tokens_out, settings)]
-    return [_component("answer", answer, "strong", STREAM_ATTEMPTS, tokens_in, tokens_out, settings)]
+        return [_component("draft", answer, "draft", DRAFT_ATTEMPTS, chars_in, tokens_out, settings),
+                _component("strong", escalation, "strong", STREAM_ATTEMPTS, chars_in, tokens_out, settings)]
+    return [_component("answer", answer, "strong", STREAM_ATTEMPTS, chars_in, tokens_out, settings)]
 
 
 def _planner_component(settings: Settings) -> Component:
-    tokens_in = _tokens(PLANNER_FIXED_CHARS + settings.max_question_chars + PLANNER_GROWTH_CHARS)
+    chars_in = PLANNER_FIXED_CHARS + settings.max_question_chars + PLANNER_GROWTH_CHARS
     return _component("planner", settings.agent_planner_model, "planner", max(0, int(settings.agent_max_model_calls)),
-                      tokens_in, PLANNER_MAX_TOKENS, settings)
+                      chars_in, PLANNER_MAX_TOKENS, settings)
 
 
 def estimate(ask_type: str, settings: Settings) -> AskEstimate:
-    """The ceiling on what one ask of ``ask_type`` can cost on the configured models, with its components.
+    """The ceiling on what one ask of ``ask_type`` can cost on the configured models, with its components. Each
+    component tokenises the same prompt with ITS model's characters per token, so ``prompt_tokens`` of the result is the
+    largest input any answering call is priced at (the planner's own calls are in their component).
 
     Raises ``ValueError`` for an unknown ask type, a configured price that is negative or not finite, and an estimate
     that is not positive (zero would let the cap check admit asks without headroom and charge a dead lease nothing)."""
     _check_ask_type(ask_type)
-    tokens_in = prompt_tokens(ask_type, settings)
-    components = _answer_components(tokens_in, max(0, int(settings.llm_answer_max_tokens)), settings)
+    components = _answer_components(prompt_chars(ask_type, settings), max(0, int(settings.llm_answer_max_tokens)),
+                                    settings)
+    tokens_in = max(c.input_tokens for c in components)
     if ask_type == "agent":
         components.append(_planner_component(settings))
     result = AskEstimate(ask_type, tokens_in, context_chars(ask_type, settings), tuple(components),

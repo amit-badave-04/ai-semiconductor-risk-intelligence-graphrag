@@ -21,9 +21,10 @@ free slot) refuses, it never lets an ask through. The order, and what each gate 
 6. Turnstile (403 ``MSG_BOT``), then the paid per-address window (429 ``MSG_RATE``);
 7. the ask is counted on the drain (``DRAIN.try_enter``: 503 ``MSG_DRAINING``) and ``state.reserve`` takes a lease with
    the ask type's estimate: both daily caps (429 ``MSG_BUDGET``), the per-address daily cap (429 ``MSG_IP_BUDGET``), the
-   in-flight cap (429 ``MSG_BUSY``, a pre-stream refusal with no event stream), the kill level again (503
-   ``MSG_PAUSED``) and an unreachable state (503 ``MSG_STATE_UNAVAILABLE``). The lease, and the drain count, belong to
-   the :class:`PaidStream` from then on;
+   per-address share of the day's spend (429 ``MSG_IP_SPEND`` when that address's settled spend plus this ask's estimate
+   passes it, 429 ``MSG_BUSY`` when only its own running asks push it over), the in-flight cap (429 ``MSG_BUSY``, a
+   pre-stream refusal with no event stream), the kill level again (503 ``MSG_PAUSED``) and an unreachable state (503
+   ``MSG_STATE_UNAVAILABLE``). The lease, and the drain count, belong to the :class:`PaidStream` from then on;
 8. the event stream.
 
 A lease granted and then lost before the stream could take it (an exception, a cancelled request) is settled here as
@@ -79,6 +80,9 @@ MSG_STATE_UNAVAILABLE = "Live questions are temporarily unavailable — please t
 MSG_BUDGET = "The daily budget of live questions is used up — try an example, or come back tomorrow."
 MSG_IP_BUDGET = ("You have used today's live questions for your address — the example questions still work, "
                  "or come back tomorrow.")
+# The address's share of the day's spend is used up (its settled spend plus this ask's estimate passes it). Its own wording,
+# not MSG_PAUSED: the service is open for everyone else.
+MSG_IP_SPEND = "This network's live allowance for today is used — the cached examples still work."
 MSG_RETRIEVAL_ONLY = "Live questions are limited to cached answers right now — the example questions still work."
 MSG_DRAINING = "The service is restarting — please try again in a minute."
 MSG_BOT = "Bot check failed — reload the page and try again."
@@ -347,7 +351,8 @@ async def ask(body: AskRequest, request: Request):
     if level != KILL_OFF:
         raise HTTPException(status_code=503, detail=MSG_PAUSED)
     if not await guard.verify_turnstile(body.turnstile_token, ip, s.turnstile_secret_key,
-                                        s.is_production, required=s.turnstile_required):
+                                        s.is_production, required=s.turnstile_required,
+                                        stub=getattr(s, "turnstile_stub", False) is True):
         raise HTTPException(status_code=403, detail=MSG_BOT)
     if not st.rate_limiter.allow(iph):
         raise HTTPException(status_code=429, detail=MSG_RATE)
@@ -433,7 +438,8 @@ async def _log_cached_hit(st, s, iph: str, strategy: str) -> None:
 
 
 _DENIALS = {Denied.DAILY_COUNT: (429, MSG_BUDGET), Denied.DAILY_SPEND: (429, MSG_BUDGET),
-            Denied.IP_DAILY: (429, MSG_IP_BUDGET), Denied.INFLIGHT: (429, MSG_BUSY),
+            Denied.IP_DAILY: (429, MSG_IP_BUDGET), Denied.IP_SPEND: (429, MSG_IP_SPEND),
+            Denied.IP_SPEND_INFLIGHT: (429, MSG_BUSY), Denied.INFLIGHT: (429, MSG_BUSY),
             Denied.KILL: (503, MSG_PAUSED), Denied.UNAVAILABLE: (503, MSG_STATE_UNAVAILABLE)}
 
 
@@ -475,14 +481,15 @@ def _reserve_noting(backend, granted: list[Lease], **kwargs) -> Lease | Denied:
 
 
 async def _abandon(st, granted: list[Lease]) -> None:
-    """Settle a lease that no stream took (shielded; the failure is logged: the sweep charges the estimate then). It
-    waits for a state slot as long as it takes: a settle that gave up would leave the lease to the sweep, a minute
-    later."""
+    """Settle a lease that no stream took (shielded; the failure is logged: the sweep charges the estimate then). No
+    twin ran for it, so no paid call was started: it is settled at a cost of 0 (it still counts as a paid ask against the
+    daily count, the address's count and the paid window). It waits for a state slot as long as it takes: a settle that
+    gave up would leave the lease to the sweep, a minute later."""
     for lease in granted:
         with anyio.CancelScope(shield=True):
             try:
                 await settle_call(st, st.state.reconcile, lease.lease_id, outcome="abandoned", usage=None,
-                                  cost_micro=None)
+                                  cost_micro=0)
             except Exception as e:  # noqa: BLE001
                 logger.error("settling an unused lease failed (%s): its estimate stays charged", type(e).__name__)
 
