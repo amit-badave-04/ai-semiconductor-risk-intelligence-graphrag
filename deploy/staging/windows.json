@@ -77,7 +77,17 @@
       ],
       "quote_usd": 0.08,
       "cap_usd": 0.15,
-      "note": "Image built with KEEP_UNPATCHED=1; 60 interleaved rounds plus the salt-format set; the shared class twice (fresh, burst-drained). Remote-builder minutes are unpriced."
+      "note": "Image built with EMBEDDER_VARIANT=fp32 and KEEP_UNPATCHED=1 (both models, /srv/models/embedder_timing.py and /srv/models/embed_rss.py); 60 interleaved rounds plus the salt-format set; the shared class twice (fresh, burst-drained). Decides the embedder on memory as well as speed: embed_rss measures the resident memory the timing script cannot (it holds both models in one process). RISK, UNVERIFIED: the first fp32 Docker build runs the in-build gates (bit-exact dequantization, then the cosine gate with the 8-bit session and the 2.3 GB fp32 session alive: about 3 GB of models in memory) on Fly's remote builder, whose memory for this org is not known; if the build is killed it needs a larger builder or a local build (scripts/staging.py deploy always passes --remote-only, so a local build is by hand). Remote-builder minutes are unpriced.",
+      "steps": [
+        "scripts/staging.py quote W1, then create W1 --org <org> --approve-quote 0.08 (owner approval first).",
+        "Deploy to the first class: scripts/staging.py deploy W1 api --class shared-cpu-2x:4gb --build-arg EMBEDDER_VARIANT=fp32 --build-arg KEEP_UNPATCHED=1. The image holds both models, /srv/models/embedder_timing.py and /srv/models/embed_rss.py. For the second class run it again with --class performance-2x:4gb (a second build unless the builder's cache holds it).",
+        "UNVERIFIED: W1 has no database, so the serve process of that machine cannot become healthy. Do not measure next to it (it shares the 4 GB and the cores with the probe): stop it, or run each command below on a one-off machine of the same image and class (flyctl machine run), and destroy that machine after. Decide this before the window.",
+        "On each class, first (the shared class still holds its burst balance): python /srv/models/embedder_timing.py /srv/models/qwen3-embedding-0.6b-q8/model_q8.onnx /srv/models/qwen3-embedding-0.6b-fp32/model_fp32.onnx -n 60 --threads 1 --out /tmp/timing.json, then cat /tmp/timing.json (--out - writes a file named '-', it does not print). Repeat on the shared class once the balance is drained.",
+        "On performance-2x:4gb, in two separate processes, q8 first: python /srv/models/embed_rss.py /srv/models/qwen3-embedding-0.6b-q8/model_q8.onnx --out /tmp/rss_q8.json, then python /srv/models/embed_rss.py /srv/models/qwen3-embedding-0.6b-fp32/model_fp32.onnx --compare /tmp/rss_q8.json --out /tmp/rss_fp32.json. Each prints one JSON object. Memory does not depend on the CPU class and each run is about 4 minutes of full-core work, which would drain a shared core's burst balance: on shared-cpu-2x:4gb run them only after its timing, last, and do not read their times as gate evidence.",
+        "Read the fp32 JSON: gate_evidence must be true; verdict PASS or FAIL against 2,400,000 kB with margin_kb; rss_anon_kb and rss_file_kb at after_passages say whether the 2.3 GB data file is resident or private memory.",
+        "Record by hand (no script writes artifacts/m5_spikes.json; its owner merges): both timing JSONs under S6_fly_timing (one per class and run) and both embed_rss JSONs under S6_fly_rss. Neither JSON holds a secret or a path.",
+        "scripts/staging.py destroy W1 --yes."
+      ]
     },
     "W2": {
       "title": "S12 calibration (provider spend, no machine)",

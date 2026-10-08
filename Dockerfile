@@ -14,6 +14,9 @@
 #         scripts/embedder_timing.py as /srv/models/embedder_timing.py, for the Fly timing window:
 #         python /srv/models/embedder_timing.py /srv/models/qwen3-embedding-0.6b-q8/model_q8.onnx \
 #                /srv/models/qwen3-embedding-0.6b-fp32/model_fp32.onnx -n 60 --threads 1
+#         and tools/probe/embed_rss.py as /srv/models/embed_rss.py, the resident-memory probe (one model per process):
+#         python /srv/models/embed_rss.py /srv/models/qwen3-embedding-0.6b-q8/model_q8.onnx --out q8.json
+#         python /srv/models/embed_rss.py /srv/models/qwen3-embedding-0.6b-fp32/model_fp32.onnx --compare q8.json
 # The image ENV ONNX_MODEL_PATH follows the variant, but fly.toml's [env] ONNX_MODEL_PATH overrides it:
 # serving an fp32 image means changing that one line (a decision for after the timing/RSS window).
 # An fp32 image built WITHOUT KEEP_UNPATCHED has no 8-bit file, so with fly.toml unchanged it fails to boot.
@@ -38,6 +41,9 @@ RUN set -eu; \
       *) echo "EMBEDDER_VARIANT must be q8 or fp32, got '$EMBEDDER_VARIANT'" >&2; exit 1 ;; \
     esac; \
     if [ "$KEEP_UNPATCHED" = 1 ]; then cp scripts/embedder_timing.py /models/embedder_timing.py; fi
+# The memory probe comes in its own step AFTER the variant build, so editing it never re-runs the dequantization above.
+COPY tools/probe/embed_rss.py scripts/
+RUN if [ "$KEEP_UNPATCHED" = 1 ]; then cp scripts/embed_rss.py /models/embed_rss.py; fi
 
 FROM python:3.13-slim
 ARG EMBEDDER_VARIANT=q8

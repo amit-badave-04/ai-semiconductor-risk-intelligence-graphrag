@@ -90,6 +90,7 @@ def test_nothing_else_in_the_runtime_stage_changes_with_the_variant():
     text = "\n".join(RUNTIME)
 
     assert "predequantize" not in text and "embedder_timing" not in text and "KEEP_UNPATCHED" not in text
+    assert "embed_rss" not in text
     assert "COPY --from=model --chown=app:app /models /srv/models" in RUNTIME
 
 
@@ -191,3 +192,48 @@ def test_an_unknown_variant_fails_and_leaves_the_8_bit_model_alone(tmp_path):
 
     assert done.returncode == 1 and "EMBEDDER_VARIANT" in done.stderr and "int4" in done.stderr
     assert calls == [] and layout == {Q8_FILE}
+
+
+# ---------------------------------------------------------------- the memory probe (tools/probe/embed_rss.py)
+
+PROBE_COPY = "COPY tools/probe/embed_rss.py scripts/"
+PROBE_FILE = "embed_rss.py"
+
+
+def probe_instruction() -> str:
+    found = [step for step in MODEL if step.startswith("RUN ") and "embed_rss.py" in step]
+    assert len(found) == 1
+    return found[0]
+
+
+def test_the_probe_is_copied_in_its_own_step_after_the_variant_build_and_only_the_model_stage_knows_it():
+    """After the variant RUN, so editing the probe never invalidates the 2.3 GB dequantization layer (nor the 8-bit build)."""
+    assert PROBE_COPY in MODEL
+    assert MODEL.index(PROBE_COPY) > MODEL.index(variant_instruction())
+    assert MODEL.index(probe_instruction()) == MODEL.index(PROBE_COPY) + 1
+    assert "embed_rss" not in variant_instruction() and "embed_rss" not in "\n".join(RUNTIME)
+
+
+def test_the_probe_is_shipped_only_when_keep_unpatched_is_set_and_to_the_path_the_w1_steps_use():
+    run = probe_instruction()
+
+    assert run == 'RUN if [ "$KEEP_UNPATCHED" = 1 ]; then cp scripts/embed_rss.py /models/embed_rss.py; fi'
+    assert (ROOT / "tools" / "probe" / PROBE_FILE).is_file()
+    assert "tools" not in (ROOT / ".dockerignore").read_text(encoding="utf-8").split()      # the build context has it
+
+
+@pytest.mark.parametrize("keep, expected", [("0", set()), ("1", {PROBE_FILE})], ids=["default-image", "timing-window"])
+def test_the_probe_step_leaves_the_probe_in_models_only_for_the_timing_window(tmp_path, keep, expected):
+    sh = shutil.which("sh")
+    if sh is None:
+        pytest.skip("no POSIX sh on this machine")
+    root = tmp_path.as_posix()
+    (tmp_path / "build" / "scripts").mkdir(parents=True)
+    (tmp_path / "build" / "scripts" / PROBE_FILE).write_text("# probe\n", encoding="utf-8")
+    (tmp_path / "models").mkdir()
+    command = probe_instruction().removeprefix("RUN ").replace("/models", f"{root}/models")
+    done = subprocess.run([sh, "-c", "set -eu; " + command], cwd=tmp_path / "build", env={**os.environ, "KEEP_UNPATCHED": keep},
+                          capture_output=True, text=True, timeout=60)
+
+    assert done.returncode == 0, done.stderr
+    assert {p.name for p in (tmp_path / "models").iterdir()} == expected
