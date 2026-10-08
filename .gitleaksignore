@@ -1,3 +1,5 @@
 # Findings reviewed and accepted: a fake workspace-id canary in a test, committed in ec083e7 before it carried the
 # inline gitleaks:allow marker (the current file has it). Not a credential.
 ec083e73780c52e59e599c08eb098a2e1f1e68ab:tests/test_serve_workspace_stream_async.py:generic-api-key:910
+# fake sentinel value in a test that proves no config refusal prints a value (tests/test_serve_config_staging.py)
+076f242e9153314e5d68c7010261c077ff753133:tests/test_serve_config_staging.py:generic-api-key:370

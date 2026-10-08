@@ -367,7 +367,7 @@ SENTINELS = {
     "production": {"openai_api_base": "http://sentinel-base-137.example/v1", "openai_base_url": "http://sentinel-url-137.example/v1",
                    "origin_auth_secret": "sentinel-origin-137",
                    "answer_model": "openai/mock-sentinel-137", "neo4j_uri": "bolt://semigraph-neo4j-stg.internal:7687/sentinel-137"},
-    "staging": {"anthropic_api_key": "sentinel-anthropic-137", "openai_api_key": "sentinel-openai-137",
+    "staging": {"anthropic_api_key": "sentinel-anthropic-137", "openai_api_key": "sentinel-openai-137",  # gitleaks:allow
                 "openai_api_base": "http://sentinel-base-137.example/v1", "origin_auth_secret": "sentinel-origin-137",
                 "answer_model": "sentinel-model-137/x", "neo4j_uri": "bolt://sentinel-host-137.example:7687",
                 "client_ip_header": "sentinel-header-137"},
