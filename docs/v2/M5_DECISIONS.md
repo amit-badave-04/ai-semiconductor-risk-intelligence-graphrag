@@ -160,3 +160,42 @@ The owner replied: "approve A, go with recommendations for 10-13". Recorded as:
 
 Still decided per event, not now: a temporary scale-up for a buyer demo; Valkey if T1 or T2 fires; the live-class fallback if S2 fails (1.4 item 5). Each staging window is quoted to the owner before it runs.
 
+
+## 10. Update 2026-10-08: councils 4-6, what was built, and the owner decisions this adds
+
+The owner (2026-10-07): "continue with rest of m5a. for any most important decision utilize start llm counsil. once done with m5a ask me before starting m5b." Three more councils were run the same way as councils 1-3 (transcripts in `research/m5-councils/council4`-`council6`). Code for all of section 10 is committed on `v2` (`1e52772` panel fixes, `076f242` this wave); nothing is deployed; no money has been spent since section 9.
+
+### 10.1 One address could pause the paid day (council 4)
+**Finding (two independent reviewers, proven in tests):** an ask abandoned mid-stream was charged its full estimate, so one address could reserve and disconnect about 17 times (under its 20/day cap) and push recorded spend to the $10 cap, pausing live questions for everyone, while real provider spend stayed near $0. The money cap held; the "at least 8 addresses" reasoning behind decision 11 did not.
+**Council verdict: option C, built.** (a) A paid-call meter: every model call records, before it starts, an upper bound from its actual prompt, and its reported cost when it ends; an ask is charged max(reported, min(estimate, reported-or-bound)), $0 if no paid call started (still counted against every count cap), the full estimate if any record is untrustworthy. The full estimate is still reserved while the ask runs, so the $10 ceiling holds. (b) **A new per-address daily spend share.**
+**The share value (decided by the main session, not by a council, by applying council 4's own two rules to the corrected estimates in 10.4):** (i') after 7 addresses each spend a full share, the day must still admit a hybrid ask, so pausing needs at least 8 addresses: share <= (10 - 0.709573) / 7 = $1.3272; (ii) a one-office demo of 20 asks with 3 escalations and 2 agent asks must be admitted: share >= 0.30 + 1.015669 = $1.3157. **$1.32** is inside that window ($1.25 failed (ii) after the estimate correction; $1.40 failed (i'), found by the Opus verifier). The tests compute both rules from the live estimates, so any future estimate change that breaks either one turns CI red.
+**What a visitor sees:** a new 429, "This network's live allowance for today is used - the cached examples still work." Typical answers settle at about $0.002, so ordinary use never meets it; an office whose settled spend passes about $0.30 can no longer start an agent ask, and about $0.61 a hybrid one; two concurrent hybrid asks from one address get the existing busy message.
+
+### 10.2 S2's live-question pool (council 5, owner item P)
+**Verdict:** the load generator appends a unique, zero-padded reference to every live question (`(ref <worker><6 digits>)`), so neither the answer cache nor the query-embedding cache can make a live ask free; no server change. Offline checks prove the salt changes no routing, year or company detection.
+**Headline finding:** on today's embedder (about 1.2 s of one core per question) one performance-2x machine cannot embed 2.6 live asks/s (about 3.2 core-s/s needed, 2 cores available). **S2 on today's embedder is predicted to fail on capacity.**
+**Proposed clarification of the void rule (needs the owner's sign-off):** VOID only if the generator offered < 95% of 2.6 live asks/s, a generator exceeded 70% CPU, or an offline check failed; a shortfall the server causes (shedding, queueing, timeouts) is a FAIL, reported with the maximum sustained rate.
+
+### 10.3 Decision 14, the embedder (council 6, then a new measurement)
+**Council 6:** option (b): measure on Fly first (S6, under $0.10), then decide; rules R0-R5 written before any number is seen (R0: gate 1 stays FAILED for accuracy level 4; R1: run the paid benchmark only if the predicted S2 embed load is <= 1.1 core-s/s).
+**New fact (2026-10-08, local, free):** ONNX Runtime 1.29 dequantizes every 8-bit weight on every call at accuracy levels 0-3 (source read; levels 1-3 measured bit-identical to the shipped model). Dequantizing ONCE offline into float32 (`scripts/predequantize_embedder.py`, bit-exact against ORT's own dequantization on all 196 nodes) keeps retrieval identical to the shipped model: top-1 60/60, top-8 overlap 1.0, cosine 1.0, **all four pre-registered parity gates PASS** (`artifacts/embedder_parity_fp32.json`), so no gate exception is needed. Desktop, under load: 4.1x faster on one thread (0.35 s vs 1.44 s), 5.2x on two. Cost: a 2.3 GB model file (vs 1.04 GB) and about +640 MB resident memory on Windows. **Not measured:** Fly timing, Linux memory, and the first Docker build of this stage (the image default stays today's model; `EMBEDDER_VARIANT=fp32` builds the new one).
+**Proposed rule for adopting it (to ratify before W1 runs):** adopt fp32 if, in window W1, (a) its median beats today's model on both machine classes (gate 2 as pre-registered), (b) the predicted live process peak during a maximum-size upload stays under the 2.4 GB limit (M4 G4 measured 1.13 GB today), and (c) the image builds with its in-build gates passing. **The $2 paid benchmark (gate 3) is then recommended to be skipped:** retrieval is byte-identical, so it could only measure LLM and judge noise; decision 4 approved it as a gate, so skipping it is the owner's call.
+**S2 prediction with fp32 (derived, desktop):** about 0.35-0.45 s per salted question on one thread, about 0.9-1.2 core-s/s at 2.6 asks/s, against R1's 1.1 limit: borderline. W4 (S2) should run only if W1's Fly numbers predict a pass, or if the owner wants the honest FAIL on record.
+
+### 10.4 Estimates corrected
+The 2.5 characters-per-token assumption under every estimate was checked against recorded prompts: it holds for gpt-6-luna (lowest 3.02) and **fails for Claude Sonnet 5 (lowest 2.10, 7 of 40 prompts below 2.5)**. It is now per model (Sonnet 2.0, others 2.5). Worst-case estimates: hybrid $0.709573, vector $0.265873, agent $1.015669, workspace $0.734632 (were $0.58, $0.22, $0.83, $0.60). The agent ceiling (235k tokens) passes 200k; Anthropic's pricing page (checked 2026-10-08) bills Claude 4.6 and later, Sonnet 5 included, at standard rates across the 1M window, so there is no long-context premium. A test sanity bound on estimates moved from $1 to $2 (not a pre-registered gate).
+
+### 10.5 Other facts
+CI is green on `1e52772` (all five jobs, including the Neo4j state job with its no-skip rule). The new pre-deploy check (`scripts/check_env_fly.py`, prints names only) against today's `.env.fly` + `fly.toml`: everything passes except `IP_HASH_PEPPER`, which is not in `.env.fly` yet; `ESCALATION_MODEL` is set in both `.env.fly` and `fly.toml`. Production now also refuses every staging-only switch and the four LiteLLM base-URL environment variables.
+
+### 10.6 Owner decisions added (recommendations first)
+| # | Decision | Cost | Recommendation |
+|---|---|---|---|
+| 15 | The per-address daily spend share of $1.32 (10.1), a new user-visible limit, adjustable by a setting | none | yes |
+| 16 | The VOID/FAIL clarification for S2 (10.2) | none | yes |
+| 17 | Windows W0 (fresh-machine throttle probe, $0.05, cap $0.10) and W1 (embedder timing and memory on both machine classes, $0.08, cap $0.15; the first fp32 Docker build may need a larger builder) | about $0.13 | yes, first and on their own |
+| 18 | The fp32 adoption rule in 10.3 and skipping the $2 paid benchmark | saves up to $2 | yes |
+| 19 | After W1: W3 (S7 at the M5a level only, $0.25, cap $0.35; all levels $0.45) and W2 (S12 mock calibration, provider spend <= $0.50, reads the local graph only) | <= $0.85 | yes |
+| 20 | After W1: W4 (S2, $1.25, cap $2.00; $1.60 if 4 load workers are needed) | <= $2.35 | only if W1 predicts a pass, or to record the FAIL |
+| 21 | Deploy to live (I2-I4, the panel fixes, the meter and share, and the embedder if 18 passes) as one deploy, in this order: generate and stage the pepper; say which `ESCALATION_MODEL` is live (remove the other); set the Neo4j monitor interval and restart `semigraph-neo4j` (a short announced pause); `check_env_fly` green; deploy; the live checks of `M5A_BUILD_PLAN.md` rows I2-I4 | hosting unchanged | yes, after 18 |
+| 22 | Null the stored unsalted IP hashes (decision 12, irreversible) right after 21 | none | separate go at that moment |
