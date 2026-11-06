@@ -1,0 +1,68 @@
+{
+ "window": "W1d",
+ "verdict": "FAIL",
+ "problems": [],
+ "rerun_due": false,
+ "stopped": false,
+ "stop_rule": "an INVALID boot is re-run unchanged ONCE on a fresh machine; two INVALID boots end the window INCOMPLETE and nothing is amended",
+ "boots": [
+  {
+   "boot": 1,
+   "attempt": 1,
+   "machine_id": "7817d7dad16028",
+   "verdict": "FAIL",
+   "reasons": [
+    "the job ended timeout while valid: the 2100 s embed ceiling stopped a throttled upload"
+   ],
+   "job_state": "failed",
+   "job_id": "48280c1426dedf32",
+   "ready_s": null,
+   "end_s": 2132.0,
+   "embed_s": 2128.9,
+   "tokens": 14151,
+   "share": null,
+   "max_vmhwm_kb": 2284852,
+   "burn": {
+    "stopped_by": "burn_ended",
+    "elapsed_s": 661.9,
+    "onset_s": 116,
+    "sustained_fraction": 0.10079740088561662
+   }
+  }
+ ],
+ "attempts": [
+  {
+   "boot": 1,
+   "attempt": 1,
+   "machine_id": "7817d7dad16028",
+   "verdict": "FAIL",
+   "reasons": [
+    "the job ended timeout while valid: the 2100 s embed ceiling stopped a throttled upload"
+   ],
+   "job_state": "failed",
+   "job_id": "48280c1426dedf32",
+   "ready_s": null,
+   "end_s": 2132.0,
+   "embed_s": 2128.9,
+   "tokens": 14151,
+   "share": null,
+   "max_vmhwm_kb": 2284852,
+   "burn": {
+    "stopped_by": "burn_ended",
+    "elapsed_s": 661.9,
+    "onset_s": 116,
+    "sustained_fraction": 0.10079740088561662
+   }
+  }
+ ],
+ "rule": {
+  "share_limit": 0.15,
+  "embed_over_ready": 0.9,
+  "full_core_tok_s": 85.8,
+  "class_factor": 1.18,
+  "embed_ceiling_s": 2100,
+  "max_vmhwm_kb": 2400000,
+  "max_attempts": 2
+ },
+ "generated_at": "2026-11-06T16:40:39+00:00"
+}

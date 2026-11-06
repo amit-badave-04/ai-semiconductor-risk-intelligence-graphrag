@@ -493,5 +493,42 @@
     ],
     "W1c_verdict": "PASS",
     "note": "Upload readiness ranged 388-1,174 s against the 1,200 s embed timeout: boot 1 came within 26 s of it even with the paced load. The timeout on a throttled shared-cpu-2x is a separate finding (council 8: its own spec, one boot per embedder with no asks)."
+  },
+  "S6_w1d": {
+    "date": "2026-11-06",
+    "window": "W1d",
+    "verdict": "FAIL",
+    "evidence": "docs/v2/research/m5-spikes/fly-2026-11-06/w1d",
+    "machine": "fresh shared-cpu-2x 4gb sin, fp32 image with the 2,100 s ceiling",
+    "boot_to_healthy_s": 200.8,
+    "burn": {
+      "seconds": 600,
+      "onset_s": 116,
+      "sustained_fraction": 0.1008,
+      "steal_after_onset": 0.45
+    },
+    "upload": {
+      "chunks": 60,
+      "done": 50,
+      "tokens_total": 14151,
+      "tokens_done": 11798,
+      "embed_s": 2128.9,
+      "ended": "timeout at the 2,100 s ceiling",
+      "tok_per_s": 5.54,
+      "embed_share_f118": 0.0547,
+      "embed_share_f1": 0.0646
+    },
+    "projection_at_that_rate_s": {
+      "fixture_14151_tokens": 2553,
+      "cap_16000_tokens": 2887
+    },
+    "memory": {
+      "max_vmhwm_kb": 2284852,
+      "limit_kb": 2400000,
+      "oom": false
+    },
+    "spend_usd_machine_time_approx": 0.15,
+    "quote_usd": 0.15,
+    "cap_usd": 0.25
   }
 }
