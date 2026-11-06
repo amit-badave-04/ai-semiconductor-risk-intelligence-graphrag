@@ -32,7 +32,7 @@
       "judge_usd_per_vote": 0.01
     }
   },
-  "baseline": "C:\\Users\\amit1\\OneDrive\\Documents\\Projects\\ai-semiconductor-risk-intelligence-graphrag\\artifacts\\eval_report.v2d-deployed.json",
+  "baseline": "artifacts\\eval_report.v2d-deployed.json",
   "votes": 3,
   "rows": [
     {

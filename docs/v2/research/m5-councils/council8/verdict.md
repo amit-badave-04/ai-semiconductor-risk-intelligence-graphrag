@@ -46,4 +46,4 @@ Send the owner this status before creating any machine:
 
 "Boot 2 is INVALID twice. Both times the upload hit its 1,200 s timeout under about 150 asks. Memory held: peak 2,364,660 kB, 35 MB under the limit, no OOM. W1b is INCOMPLETE, so fp32 is not adopted. Nothing is running. Please choose W1c or R."
 
-Files read: docs/v2/research/m5-councils/council7/verdict.md, docs/v2/M5_DECISIONS.md, tools/probe/README.md, tools/probe/w1b.py, deploy/staging/fly.w1b.toml, src/semigraph/config.py, artifacts/m4_live_gates.json, artifacts/m5_spikes.json (all under C:\Users\amit1\OneDrive\Documents\Projects\ai-semiconductor-risk-intelligence-graphrag).
+Files read: docs/v2/research/m5-councils/council7/verdict.md, docs/v2/M5_DECISIONS.md, tools/probe/README.md, tools/probe/w1b.py, deploy/staging/fly.w1b.toml, src/semigraph/config.py, artifacts/m4_live_gates.json, artifacts/m5_spikes.json (all under <repo>).

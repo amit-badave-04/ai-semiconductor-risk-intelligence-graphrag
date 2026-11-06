@@ -177,4 +177,4 @@ Keep `chunk_id` positional so existing citations and benchmark answers stay vali
 
 **(b) Later:** the poller and admin "Check now", the upload and diff UI, badges and warnings, the intent classifier and recency prior, the prompt and post-check changes, targeted cache invalidation, SLO dashboards, transaction-time replay, Federal Register withdrawal detection, and 8-K Item 4.02 handling.
 
-**Scratch scripts:** `C:\Users\amit1\AppData\Local\Temp\claude\C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag\7e3d5304-3ec1-40b7-9bfd-29c48c46aa97\scratchpad`
+**Scratch scripts:** `<session-scratchpad>`

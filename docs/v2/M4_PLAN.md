@@ -442,7 +442,7 @@ absorbed by `not_compared_reason`); DOCX heading precision; workspace answer lat
 
 ## 11. Cleanup (before the "done" report)
 
-- Delete the research leftovers: `C:\Users\amit1\AppData\Local\Temp\m4bench\` and the session scratchpad `m4research\` folder (nothing in the repo references them).
+- Delete the research leftovers: `%TEMP%\m4bench\` and the session scratchpad `m4research\` folder (nothing in the repo references them).
 - Spike scripts either become `scripts/*.py` with a test (`freshness_parity.py`, `workspace_smoke.py`) or are deleted; their results
   live in `artifacts/m4_spikes.json`, `artifacts/freshness_parity.json`, `artifacts/workspace_smoke.json` (no bytes of any upload).
 - One-line pointers: top of `docs/v2/M4_UPLOAD_PLAN.md` ("superseded by M4_PLAN.md") and PLAN.md section 5 ("superseded by

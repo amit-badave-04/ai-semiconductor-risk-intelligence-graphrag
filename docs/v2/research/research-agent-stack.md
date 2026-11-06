@@ -167,4 +167,4 @@ Command: `uv run --no-project --python 3.13 --with "langchain[mcp]==1.4.2" --wit
   - langchain-tavily 0.2.18, mcp 2.2.0, openai 2.54.0, opentelemetry-sdk 1.45.0, psycopg 3.3.6
 - **Wider set: resolves only.** These resolve together with the core set but were not all import-tested (see section 4 for the ones that were): langchain-openai 1.6.6, langchain-anthropic 1.7.4, langchain-openrouter 0.2.9, langchain-google-genai 4.4.0, deepeval 4.2.6, ragas 0.4.3, trulens-core 2.14.0, openinference-instrumentation-langchain 0.1.76, arize-phoenix-otel 0.17.1.
 
-Scratch files, all outside the repo, in `C:\Users\amit1\AppData\Local\Temp\claude\C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag\7e3d5304-3ec1-40b7-9bfd-29c48c46aa97\scratchpad\`: `stack_smoke.py`, `stack_gaps.py`, `stack_reqs.in`, `stack_full.txt`.
+Scratch files, all outside the repo, in `<session-scratchpad>\`: `stack_smoke.py`, `stack_gaps.py`, `stack_reqs.in`, `stack_full.txt`.

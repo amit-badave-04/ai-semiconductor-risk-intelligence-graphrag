@@ -1,4 +1,4 @@
-**Facts only. Paths are relative to the repo root, `C:\Users\amit1\OneDrive\Documents\Projects\ai-semiconductor-risk-intelligence-graphrag`.**
+**Facts only. Paths are relative to the repo root, `<repo>`.**
 
 I had no Bash or parquet access. Filing dates come from filenames on disk. Per-filing chunk and token counts are not available; only the universe totals from notebook 12 output are.
 

@@ -1,4 +1,4 @@
-Facts only. Repo root: `C:\Users\amit1\OneDrive\Documents\Projects\ai-semiconductor-risk-intelligence-graphrag\src\semigraph\`. Paths below are relative to it.
+Facts only. Repo root: `<repo>\src\semigraph\`. Paths below are relative to it.
 
 ## 1. Graph schema
 Source of truth: `artifacts/schema.cypher`. It is applied by `graph/schema.py:22` `apply_schema`, which splits on `;` and runs each statement, all idempotent with `IF NOT EXISTS`. `serve/main.py:60` also calls it at startup.

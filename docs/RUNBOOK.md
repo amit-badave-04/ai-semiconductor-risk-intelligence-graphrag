@@ -14,7 +14,7 @@ PowerShell; `flyctl` must be logged in (`flyctl auth whoami`).
 ## ▶️ START (bring it online)
 
 ```
-cd "C:\Users\amit1\OneDrive\Documents\Projects\ai-semiconductor-risk-intelligence-graphrag"
+cd "<repo>"
 .\scripts\ops.ps1 start
 ```
 
@@ -35,7 +35,7 @@ equivalent is rebound (`kill_switch off`). Check: open https://semigraph.fly.dev
 ## ⏹️ STOP (take it offline, stop cost)
 
 ```
-cd "C:\Users\amit1\OneDrive\Documents\Projects\ai-semiconductor-risk-intelligence-graphrag"
+cd "<repo>"
 .\scripts\ops.ps1 stop
 ```
 

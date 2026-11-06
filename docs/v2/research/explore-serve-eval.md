@@ -1,6 +1,6 @@
 **Facts report (verified by reading the files; line numbers are as read).** Two items were not read: the semantics of the hardened `llm_json` (only symbols located in `llm.py:35-66`) and the Neo4j seed and Dockerfile under `deploy/neo4j`.
 
-All paths are under `C:\Users\amit1\OneDrive\Documents\Projects\ai-semiconductor-risk-intelligence-graphrag`.
+All paths are under `<repo>`.
 
 ## (1) Concurrency model
 

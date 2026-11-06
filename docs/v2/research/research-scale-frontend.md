@@ -94,7 +94,7 @@ I ran one uvicorn worker with FastAPI, LangGraph `astream` (messages + custom mo
 - **Capacity.** One fast core saturates at about 450–500 streams. Budget 150–200 per cloud vCPU (derating is [U]).
 - **Not included.** Provider SSE parsing, the LiteLLM wrapper, TLS, network, and the embedder.
 - **Embedder is unmeasured and probably the largest API CPU cost.** Order the pipeline as exact cache first, then embed.
-- **Scripts:** `C:\Users\amit1\AppData\Local\Temp\claude\C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag\7e3d5304-3ec1-40b7-9bfd-29c48c46aa97\scratchpad\bench_server.py` and `bench_client.py`.
+- **Scripts:** `<session-scratchpad>\bench_server.py` and `bench_client.py`.
 
 ## A6. Load-test plan
 

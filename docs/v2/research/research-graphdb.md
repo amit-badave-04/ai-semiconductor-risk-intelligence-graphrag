@@ -5,7 +5,7 @@
 **Read this first.**
 - **Neo4j is not the paid line item.** Community is GPL-3.0 and free (VERIFIED: https://github.com/neo4j/neo4j). Your Neo4j Fly VM is 1 GB shared-cpu-1x (`deploy/neo4j/fly.toml`), about $5.9/month by my arithmetic from https://docs.fly.io/about/pricing/. The WebFetch summary said $59, which is wrong by 10x. Sonnet is the real cost.
 - **What FalkorDB buys.** Free async read replicas, since Community has no clustering (search-result summary, UNVERIFIED against Neo4j docs), and a smaller footprint. It does not buy licence savings.
-- **Everything I measured ran on FalkorDB v4.18.3, not 4.20.7.** I used falkordblite 0.10.0 in WSL2 Ubuntu 24.04. Its commit "update FalkorDB server to v4.18.3" confirms the version, and `MODULE LIST` reported ver 41803. I did not download the 4.20.7 binary because that needs your consent. Scripts are in `C:\Users\amit1\AppData\Local\Temp\claude\C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag\7e3d5304-3ec1-40b7-9bfd-29c48c46aa97\scratchpad\spike*.py`.
+- **Everything I measured ran on FalkorDB v4.18.3, not 4.20.7.** I used falkordblite 0.10.0 in WSL2 Ubuntu 24.04. Its commit "update FalkorDB server to v4.18.3" confirms the version, and `MODULE LIST` reported ver 41803. I did not download the 4.20.7 binary because that needs your consent. Scripts are in `<session-scratchpad>\spike*.py`.
 - **The vector count is wrong in the brief.** The graph has 10,574 vectors (2,492 spans plus 8,082 risks), not about 3k.
 
 ## Verified facts
