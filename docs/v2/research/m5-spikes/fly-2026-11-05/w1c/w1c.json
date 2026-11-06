@@ -1,0 +1,109 @@
+{
+ "window": "W1c",
+ "verdict": "PASS",
+ "problems": [],
+ "rerun_due": [],
+ "stopped": [],
+ "stop_rule": "an INVALID boot is re-run unchanged ONCE; if still INVALID, W1c is INCOMPLETE and nothing else is amended; a memory FAIL is a FAIL",
+ "boots": [
+  {
+   "boot": 1,
+   "machine_id": "d8d1616f741428",
+   "verdict": "PASS",
+   "reasons": [],
+   "max_vmhwm_kb": 2322556,
+   "min_mem_available_kb": 1471596,
+   "max_swap_used_kb": 1548,
+   "boot_to_healthy_s": 147.8,
+   "job_ready_s": 1174.3,
+   "attempt": 1
+  },
+  {
+   "boot": 2,
+   "machine_id": "78102d9fd47758",
+   "verdict": "PASS",
+   "reasons": [],
+   "max_vmhwm_kb": 2318252,
+   "min_mem_available_kb": 1477476,
+   "max_swap_used_kb": 1548,
+   "boot_to_healthy_s": 170.3,
+   "job_ready_s": 682.0,
+   "attempt": 1
+  },
+  {
+   "boot": 3,
+   "machine_id": "e8265e0f639628",
+   "verdict": "PASS",
+   "reasons": [],
+   "max_vmhwm_kb": 2315528,
+   "min_mem_available_kb": 1478948,
+   "max_swap_used_kb": 1292,
+   "boot_to_healthy_s": 129.1,
+   "job_ready_s": 387.6,
+   "attempt": 1
+  }
+ ],
+ "attempts": [
+  {
+   "boot": 1,
+   "machine_id": "d8d1616f741428",
+   "verdict": "PASS",
+   "reasons": [],
+   "max_vmhwm_kb": 2322556,
+   "min_mem_available_kb": 1471596,
+   "max_swap_used_kb": 1548,
+   "boot_to_healthy_s": 147.8,
+   "job_ready_s": 1174.3,
+   "attempt": 1
+  },
+  {
+   "boot": 2,
+   "machine_id": "78102d9fd47758",
+   "verdict": "PASS",
+   "reasons": [],
+   "max_vmhwm_kb": 2318252,
+   "min_mem_available_kb": 1477476,
+   "max_swap_used_kb": 1548,
+   "boot_to_healthy_s": 170.3,
+   "job_ready_s": 682.0,
+   "attempt": 1
+  },
+  {
+   "boot": 3,
+   "machine_id": "e8265e0f639628",
+   "verdict": "PASS",
+   "reasons": [],
+   "max_vmhwm_kb": 2315528,
+   "min_mem_available_kb": 1478948,
+   "max_swap_used_kb": 1292,
+   "boot_to_healthy_s": 129.1,
+   "job_ready_s": 387.6,
+   "attempt": 1
+  }
+ ],
+ "rule": {
+  "max_vmhwm_kb": 2400000,
+  "boot_to_healthy_s": 180.0,
+  "no_oom_or_restart": true,
+  "workload": {
+   "interval_s": 30.0,
+   "max_in_flight": 2,
+   "tail_s": 30.0
+  }
+ },
+ "max_vmhwm_kb": {
+  "values": [
+   2322556,
+   2318252,
+   2315528
+  ],
+  "max": 2322556,
+  "min": 2315528,
+  "spread": 7028,
+  "margin_to_limit_kb": 77444
+ },
+ "min_mem_available_kb": 1471596,
+ "max_swap_used_kb": 1548,
+ "max_vmhwm_kb_all_attempts": 2322556,
+ "generated_at": "2026-11-06T01:56:12+00:00"
+}

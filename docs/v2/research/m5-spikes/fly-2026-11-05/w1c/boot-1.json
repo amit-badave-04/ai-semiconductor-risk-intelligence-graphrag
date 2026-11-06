@@ -1,0 +1,244 @@
+{
+ "window": "W1c",
+ "boot": 1,
+ "attempt": 1,
+ "workload": {
+  "mode": "paced",
+  "asks_cap": 14,
+  "interval_s": 30.0,
+  "max_in_flight": 2,
+  "tail_s": 30.0,
+  "derivation": {
+   "asks": 14,
+   "formula": "floor(day_cap_micro / hybrid_estimate_micro)",
+   "unrounded": 14.093,
+   "day_cap_usd": 10.0,
+   "day_cap_micro": 10000000,
+   "hybrid_estimate_usd": 0.709573,
+   "hybrid_estimate_micro": 709573,
+   "models": {
+    "answer": "openai/gpt-6-luna",
+    "escalation": "anthropic/claude-sonnet-5"
+   },
+   "inputs": "semigraph.config.PRODUCTION_MAX_SPEND_USD_PER_DAY; semigraph.serve.estimate.estimate_micro('hybrid') on the models and token cap of fly.toml [env]"
+  },
+  "stop_sending": "job ready plus tail_s: the count is a cap, not a target"
+ },
+ "machine": {
+  "id": "d8d1616f741428",
+  "created_at": "2026-11-06T01:05:53Z",
+  "state": "created",
+  "region": "sin",
+  "guest": {
+   "cpu_kind": "shared",
+   "cpus": 2,
+   "memory_mb": 4096
+  }
+ },
+ "boot_started_at": "2026-11-06T01:05:53+00:00",
+ "pdf": {
+  "sha256": "8c7890ac100e287d0d52428a834fb82d956c16850ff87ebfd82ba960b6f5b8df",
+  "bytes": 94456,
+  "pages": 30
+ },
+ "limits": {
+  "vmhwm_kb": 2400000,
+  "healthy_s": 180.0,
+  "ask_concurrency": 2,
+  "tail_s": 30.0
+ },
+ "healthz": {
+  "boot_to_healthy_s": 147.8,
+  "healthy_on_first_poll": false,
+  "polls": 20,
+  "first_poll_after_creation_s": 6.0,
+  "embedder": "onnx:model_fp32.onnx"
+ },
+ "kill_level": "off",
+ "job": {
+  "state": "ready",
+  "chunks_total": 60,
+  "error": null,
+  "ready_s": 1174.3
+ },
+ "asks": {
+  "sent": 14,
+  "done": 14,
+  "cached": 0,
+  "done_overlapping_job": 14,
+  "errors": {},
+  "planned_offsets_s": [
+   0.0,
+   30.0,
+   60.0,
+   90.0,
+   120.0,
+   150.0,
+   180.0,
+   210.0,
+   240.0,
+   270.0,
+   300.0,
+   330.0,
+   360.0,
+   390.0
+  ],
+  "schedule": [
+   {
+    "n": 0,
+    "planned_s": 0.0,
+    "sent_s": 0.0,
+    "delay_s": 0.0,
+    "end_s": 16.241,
+    "outcome": "done"
+   },
+   {
+    "n": 1,
+    "planned_s": 30.0,
+    "sent_s": 30.0,
+    "delay_s": 0.0,
+    "end_s": 34.912,
+    "outcome": "done"
+   },
+   {
+    "n": 2,
+    "planned_s": 60.0,
+    "sent_s": 60.0,
+    "delay_s": 0.0,
+    "end_s": 63.131,
+    "outcome": "done"
+   },
+   {
+    "n": 3,
+    "planned_s": 90.0,
+    "sent_s": 90.0,
+    "delay_s": 0.0,
+    "end_s": 93.061,
+    "outcome": "done"
+   },
+   {
+    "n": 4,
+    "planned_s": 120.0,
+    "sent_s": 120.0,
+    "delay_s": 0.0,
+    "end_s": 148.528,
+    "outcome": "done"
+   },
+   {
+    "n": 5,
+    "planned_s": 150.0,
+    "sent_s": 150.0,
+    "delay_s": 0.0,
+    "end_s": 180.468,
+    "outcome": "done"
+   },
+   {
+    "n": 6,
+    "planned_s": 180.0,
+    "sent_s": 180.0,
+    "delay_s": 0.0,
+    "end_s": 210.549,
+    "outcome": "done"
+   },
+   {
+    "n": 7,
+    "planned_s": 210.0,
+    "sent_s": 210.0,
+    "delay_s": 0.0,
+    "end_s": 233.518,
+    "outcome": "done"
+   },
+   {
+    "n": 8,
+    "planned_s": 240.0,
+    "sent_s": 240.0,
+    "delay_s": 0.0,
+    "end_s": 251.932,
+    "outcome": "done"
+   },
+   {
+    "n": 9,
+    "planned_s": 270.0,
+    "sent_s": 270.001,
+    "delay_s": 0.001,
+    "end_s": 284.935,
+    "outcome": "done"
+   },
+   {
+    "n": 10,
+    "planned_s": 300.0,
+    "sent_s": 300.0,
+    "delay_s": 0.0,
+    "end_s": 320.851,
+    "outcome": "done"
+   },
+   {
+    "n": 11,
+    "planned_s": 330.0,
+    "sent_s": 330.0,
+    "delay_s": 0.0,
+    "end_s": 363.917,
+    "outcome": "done"
+   },
+   {
+    "n": 12,
+    "planned_s": 360.0,
+    "sent_s": 360.0,
+    "delay_s": 0.0,
+    "end_s": 393.774,
+    "outcome": "done"
+   },
+   {
+    "n": 13,
+    "planned_s": 390.0,
+    "sent_s": 390.0,
+    "delay_s": 0.0,
+    "end_s": 420.332,
+    "outcome": "done"
+   }
+  ],
+  "unsent": 0,
+  "stopped_by": "cap",
+  "max_in_flight_seen": 2,
+  "distinct_addresses": 14
+ },
+ "workload_s": 1206.3,
+ "retries": 0,
+ "settings_evidence": {
+  "embed_slots": 1
+ },
+ "memory": {
+  "samples": 1188,
+  "span_s": 1226.3,
+  "pids": [
+   610
+  ],
+  "vanished_samples": 0,
+  "max_vmhwm_kb": 2322556,
+  "max_vmrss_kb": 2322556,
+  "min_mem_available_kb": 1471596,
+  "max_swap_used_kb": 1548,
+  "swap_total_kb": 1048572,
+  "mem_total_kb": 4013312,
+  "cpus": 2,
+  "oom_kill_delta": 0
+ },
+ "oom_or_restart": {
+  "detected": false,
+  "evidence": [],
+  "unreadable_sources": []
+ },
+ "max_vmhwm_kb": 2322556,
+ "min_mem_available_kb": 1471596,
+ "max_swap_used_kb": 1548,
+ "boot_to_healthy_s": 147.8,
+ "job_ready_s": 1174.3,
+ "verdict": "PASS",
+ "reasons": [],
+ "criteria": {
+  "vmhwm_within_limit": true,
+  "no_oom_or_restart": true,
+  "healthy_within_limit": true
+ },
+ "generated_at": "2026-11-06T01:29:10+00:00"
+}

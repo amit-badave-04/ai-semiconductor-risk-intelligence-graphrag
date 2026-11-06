@@ -438,5 +438,60 @@
     "sustained_median_cpu_share_after_300s": 0.188,
     "sustained_median_steal_frac_after_300s": 0.455,
     "reading": "Fly's documented 5 s initial burst balance was NOT what we saw: a fresh shared-cpu-2x ran one core at full speed for about 115 s, then held about 17% of it; 60 s of rest gave a short burst back. For the live site (ops.ps1 start creates a new machine): an embed takes about 1.2 s (q8) or 0.33 s (fp32) while the burst lasts and about 10 s (q8) or 2.8 s (fp32) once it is gone (W1)."
+  },
+  "W1b_W1c_fp32_live_memory": {
+    "W1b": "INCOMPLETE (council 8): boot 1 PASS (VmHWM 2,350,568 kB); boot 2 INVALID twice (the upload hit its 1,200 s embed timeout under ~150 saturating asks; VmHWM 2,364,488 / 2,364,660 kB, no OOM); raw boots in docs/v2/research/m5-spikes/fly-2026-11-05/w1b",
+    "W1c": "PASS, 2026-11-06: the real app with the fp32 image, 3 fresh shared-cpu-2x 4 GB boots, M4's 30-page upload plus 14 paced asks (one per 30 s, <= 2 in flight; workload pre-committed in d0adf8e)",
+    "W1c_rule": {
+      "max_vmhwm_kb": 2400000,
+      "boot_to_healthy_s": 180.0,
+      "no_oom_or_restart": true,
+      "workload": {
+        "interval_s": 30.0,
+        "max_in_flight": 2,
+        "tail_s": 30.0
+      }
+    },
+    "W1c_max_vmhwm_kb": {
+      "values": [
+        2322556,
+        2318252,
+        2315528
+      ],
+      "max": 2322556,
+      "min": 2315528,
+      "spread": 7028,
+      "margin_to_limit_kb": 77444
+    },
+    "W1c_min_mem_available_kb": 1471596,
+    "W1c_max_swap_used_kb": 1548,
+    "W1c_boots": [
+      {
+        "boot": 1,
+        "verdict": "PASS",
+        "max_vmhwm_kb": 2322556,
+        "boot_to_healthy_s": 147.8,
+        "job_ready_s": 1174.3,
+        "min_mem_available_kb": 1471596
+      },
+      {
+        "boot": 2,
+        "verdict": "PASS",
+        "max_vmhwm_kb": 2318252,
+        "boot_to_healthy_s": 170.3,
+        "job_ready_s": 682.0,
+        "min_mem_available_kb": 1477476
+      },
+      {
+        "boot": 3,
+        "verdict": "PASS",
+        "max_vmhwm_kb": 2315528,
+        "boot_to_healthy_s": 129.1,
+        "job_ready_s": 387.6,
+        "min_mem_available_kb": 1478948
+      }
+    ],
+    "W1c_verdict": "PASS",
+    "note": "Upload readiness ranged 388-1,174 s against the 1,200 s embed timeout: boot 1 came within 26 s of it even with the paced load. The timeout on a throttled shared-cpu-2x is a separate finding (council 8: its own spec, one boot per embedder with no asks)."
   }
 }

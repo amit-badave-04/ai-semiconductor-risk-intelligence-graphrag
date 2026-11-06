@@ -211,3 +211,12 @@ CI is green on `1e52772` (all five jobs, including the Neo4j state job with its 
 | 16 | The VOID/FAIL clarification for S2 (10.2) | **Signed** |
 | 18 | The fp32 adoption rule (10.3) and skipping the $2 paid benchmark | **Signed**; fp32 ships only if W1b passes (council 7) |
 | 20 | S2 (W4) | **Not run: option B chosen.** S2 is recorded as "not attempted: predicted FAIL on measured Fly numbers (embedding alone needs 1.39-1.77 core-s/s against 1.1 under R1 and 1.4 under S2's CPU gate)". The 1,000-user sentence is not used on any public surface; measured per-machine capacity is reported internally. T1 is not evaluated by S2; Valkey stays deferred |
+
+### 10.8 W1c result and what it unlocks (2026-11-06)
+
+| Item | Outcome |
+|---|---|
+| Council 8 (`research/m5-councils/council8`) | W1b recorded INCOMPLETE (not FAIL): its saturating ask load (~150 asks) starved the upload past the 1,200 s embed timeout; the owner chose W1c (approved 2026-11-06) |
+| W1c | **PASS.** W1b with only the ask workload changed, pre-committed in `d0adf8e` before it ran: 14 paced asks (10,000,000 // 709,573 micro-dollars, the live day cap's capacity at the hybrid estimate), one per 30 s, at most 2 in flight. Three fresh shared-cpu-2x 4 GB boots, all PASS on the first attempt: uvicorn VmHWM 2,322,556 / 2,318,252 / 2,315,528 kB (limit 2,400,000; margin 77,444 kB, 3.2%), creation to healthy 147.8 / 170.3 / 129.1 s (limit 180), no OOM or restart, lowest MemAvailable 1,471,596 kB, swap <= 1.5 MB. Raw boots: `research/m5-spikes/fly-2026-11-05/w1c` |
+| 18 | **Condition met:** fp32 qualifies for the decision-21 deploy (with the MemAvailable upload guard council 7 asked for, built spec-first with the deploy) |
+| Finding for the owner before any deploy | The 30-page upload became ready in 388-1,174 s on the throttled live class even with paced asks (boot 1 within 26 s of the 1,200 s embed timeout). This holds for both embedders (q8 is slower). Council 8: its own spec; one boot per embedder with no asks to find the cause |
