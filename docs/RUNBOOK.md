@@ -441,8 +441,8 @@ underscore in it). **Live since 2026-11-06**: applied in place with `flyctl mach
 `docs/v2/M5_DECISIONS.md` 10.9). A later redeploy of `deploy/neo4j` carries the same value from its `fly.toml`. The steps
 below are kept for a rebuilt machine.
 
-**Clean stop (`kill_signal = "SIGTERM"`, `kill_timeout = 120` in `deploy/neo4j/fly.toml`, `docs/specs/m5a-followups.md`): in
-the repo, not yet on the machine.** Fly's default (SIGINT, VM ended 5 s later) cut Neo4j off on 2026-11-06. Apply it with the
+**Clean stop (`kill_signal = "SIGTERM"`, `kill_timeout = 120` in `deploy/neo4j/fly.toml`, `docs/specs/m5a-followups.md`): live
+since 2026-11-06 12:51 UTC** (applied by the owner with the commands below; the machine's `stop_config` reads SIGTERM, 2m0s). Fly's default (SIGINT, VM ended 5 s later) cut Neo4j off on 2026-11-06. Apply it with the
 current image, so nothing is rebuilt and the seed is not reloaded; this one restart still stops the old way. The tag below is
 the machine's running image as read on 2026-11-06 (`flyctl image show -a semigraph-neo4j`: tag
 `deployment-01M3GEBHEVDJAKWAHDV3S2YEGF`, digest `sha256:cf8909b67126...`). Read it again first and deploy only if it still
