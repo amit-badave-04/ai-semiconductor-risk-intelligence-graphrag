@@ -12,10 +12,12 @@ staging database; NO mock LLM, since no ask is sent):
 ``boot`` does, for one freshly created machine (the pieces are W1b's: ``tools/probe/w1b.py``): finds it and polls ``/healthz`` from its creation;
 waits for the kill level ``off``; starts a ``flyctl logs`` STREAM of the api app into a file (secrets scrubbed before anything is written);
 starts the memory sampler; runs the BURN on the machine (``tools/probe/w1d_burn.py``: ``burn.py --burn-s 600`` shipped inside a ``python -c``
-command over ``flyctl ssh console``, stopped once at least 300 s have passed and ``report.py`` sees an onset, and confirmed stopped); only then
+command over ``flyctl ssh console``, left to run its whole 600 s and NEVER steered over ssh while it runs, since a full-core burn starves sshd: the driver
+waits locally for 630 s, then reads the whole samples file once and confirms the burn is over; the early stop on the onset is dropped); only then
 creates a workspace and uploads the 30-page max-size PDF exactly as the page does, and watches the job to its end; waits for the app's
 ``upload stages`` log line of that job (``jobs.py`` ``_log_stages``), falling back to a ``--no-tail`` snapshot taken as soon as the job ends; stops the sampler
-and the stream and prints ONE JSON object. The burn must have run its 300 s floor, and be confirmed stopped, before the upload is sent. The rules and the verdicts (PASS / FAIL / INVALID / INCONCLUSIVE, fail closed) are in ``tools/probe/w1d_judge.py``.
+and the stream and prints ONE JSON object. The burn must be confirmed over, and have run its full length (and so its 300 s floor), before the upload is sent.
+The rules and the verdicts (PASS / FAIL / INVALID / INCONCLUSIVE, fail closed) are in ``tools/probe/w1d_judge.py``.
 
 Secrets: the origin-header secret and the admin token are read from the state directory ``scripts/staging.py`` writes (outside the repository),
 used in request headers only, and scrubbed, with the workspace id and token, from everything printed or written, the log file included. Every
@@ -33,6 +35,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -185,10 +188,23 @@ def run_upload(ctx: Context, pdf: bytes, *, job_timeout_s: float) -> dict:
         accepted, job_id = ctx.now(), uploaded.json()["job_id"]
         result = w1b.watch_job(ctx, ws, token, job_id, ws_ip, deadline=accepted + job_timeout_s)
         ended = ctx.now()
-        return {**result, "job_id": job_id, "accepted_at": accepted, "end_s": round(ended - accepted, 1),
+        return {**result, "job_id": job_id, "accepted_at": accepted, "accepted_machine_at": machine_clock_at(uploaded), "end_s": round(ended - accepted, 1),
                 "ready_s": round(ended - accepted, 1) if result["state"] == "ready" else None}
     finally:
         ctx.request("DELETE", f"/api/workspace/{ws}", ws_ip, extra_headers={"X-Workspace-Token": token}, timeout=30.0)
+
+
+def machine_clock_at(response: httpx.Response) -> float | None:
+    """Epoch seconds on the MACHINE's clock at which the service sent ``response``: its ``Date`` header (the api runs on the machine that ran the burn),
+    one second of resolution. ``None`` when the header is missing or unreadable: the driver's own clock is never a substitute."""
+    header = response.headers.get("date")
+    if not header:
+        return None
+    try:
+        moment = parsedate_to_datetime(header)
+    except (TypeError, ValueError):
+        return None
+    return (moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)).timestamp()
 
 
 def read_embedder_variant(ctx: Context) -> str | None:
@@ -204,41 +220,45 @@ def read_embedder_variant(ctx: Context) -> str | None:
 
 def workload_plan(registry: dict, args: argparse.Namespace) -> dict:
     """What the boot will do, decided before anything is created or requested: only the upload-only workload the window registers (no ask, the burn of
-    300 to 600 s); ``--burn-s`` and ``--min-burn-s`` may not differ from it."""
+    600 s, at least 300 s of it); ``--burn-s`` and ``--min-burn-s`` may not differ from it."""
     registered = registry.get("workload") or {}
     if registered.get("mode") != "upload_only" or registered.get("asks") != 0:
         raise W1bError(f"windows.json does not register the upload-only workload for window {WINDOW}")
     burn_s = registered["burn_s"] if args.burn_s is None else args.burn_s
     min_s = registered["min_burn_s"] if args.min_burn_s is None else args.min_burn_s
     if (burn_s, min_s) != (registered["burn_s"], registered["min_burn_s"]):
-        raise W1bError(f"window {WINDOW} registers a burn of {registered['burn_s']} s, stopped from {registered['min_burn_s']} s: "
+        raise W1bError(f"window {WINDOW} registers a burn of {registered['burn_s']} s, with a floor of {registered['min_burn_s']} s: "
                        "--burn-s and --min-burn-s may not change them")
     return dict(registered)
 
 
 def measure(ctx: Context, fly: Fly, args: argparse.Namespace, plan: dict, pdf: bytes) -> dict:
-    """The burn, then the upload: the upload only after the burn has run at least its floor (``min_burn_s``) and is confirmed stopped (the quota is
-    pooled, a burn would take the embed's share; a burn that was cut short has not used the balance up)."""
+    """The burn, then the upload: the upload only after the burn is confirmed over and ran its full length (the quota is pooled, a burn would take
+    the embed's share; a burn that was cut short or died has not used the balance up). The burn is never steered over ssh while it runs
+    (``w1d_burn``): the confirmation comes after the wait, and the upload follows it at once."""
     started = ctx.now()
     burn_result = w1d_burn.run_burn_step(fly, now=ctx.now, sleep=ctx.sleep, log=ctx.log, burn_s=plan["burn_s"], min_s=plan["min_burn_s"])
+    ran = burn_result["burn_seconds"]
     if not burn_result["confirmed_stopped"]:
         job = _not_started("the burn could not be confirmed stopped: no upload was sent beside it")
-    elif burn_result["burn_seconds"] < plan["min_burn_s"]:
-        # stopped is not the same as run: reads that failed at the start, or a burn killed early, also end with a confirmed stop and a short burn
-        job = _not_started(f"the burn did not run its minimum {plan['min_burn_s']} s (it ran {burn_result['burn_seconds']} s): no upload was sent")
+    elif not burn_result["burn_complete"]:
+        # stopped is not the same as run: a burn that died, or started late and was stopped, also ends with a confirmed stop and a short burn
+        job = _not_started(f"the burn did not run its full {plan['burn_s']} s (it ran {ran} s): no upload was sent")
+    elif ran < plan["min_burn_s"]:
+        job = _not_started(f"the burn did not run its minimum {plan['min_burn_s']} s (it ran {ran} s): no upload was sent")
     else:
         job = run_upload(ctx, pdf, job_timeout_s=args.job_timeout_s)
         accepted = job.get("accepted_at")
         if accepted is not None:
-            # the idle gap the spec cares about (the balance refills during rest) starts at the stop request, not at the end of the
-            # confirmation reads that follow it; the machine's own clock gives it from the last sample the burn wrote
-            job["burn_stop_to_accept_s"] = round(accepted - burn_result["stop_requested_at"], 1)
-            job["burn_end_to_accept_s"] = round(accepted - burn_result["ended_at"], 1)
-            if burn_result.get("last_sample_wall") is not None:
-                job["burn_last_sample_to_accept_s"] = round(accepted - burn_result["last_sample_wall"], 1)
+            # the idle gap the spec cares about (the balance refills during rest), once per clock and never across them: the driver's clock from
+            # the end of the confirming read to the acceptance, and the machine's clock from its last sample to the Date header of the 202
+            job["burn_confirm_to_accept_local_s"] = round(accepted - burn_result["confirmed_at"], 1)
+            last, accepted_machine = burn_result.get("last_sample_wall_machine"), job.get("accepted_machine_at")
+            job["burn_last_sample_to_accept_machine_clock_s"] = (round(accepted_machine - last, 1) if accepted_machine is not None
+                                                                 and isinstance(last, int | float) else None)
     job.pop("accepted_at", None)
-    burn_result.pop("ended_at", None)
-    burn_result.pop("stop_requested_at", None)
+    job.pop("accepted_machine_at", None)
+    burn_result.pop("confirmed_at", None)
     return {"burn": burn_result, "job": job, "workload_s": round(ctx.now() - started, 1)}
 
 
@@ -312,7 +332,7 @@ def build_parser() -> argparse.ArgumentParser:
     boot.add_argument("--boot-started-at", default="auto", help="ISO time of the machine's creation; auto = created_at from flyctl")
     boot.add_argument("--state-dir", type=Path, default=None, help="where scripts/staging.py keeps the window's secrets")
     boot.add_argument("--burn-s", type=int, default=None, help="the burn's cap on the machine; the window registers it (600) and refuses another")
-    boot.add_argument("--min-burn-s", type=int, default=None, help="the burn runs at least this long before the onset can stop it (300, registered)")
+    boot.add_argument("--min-burn-s", type=int, default=None, help="the burn must have run at least this long before the upload (300, registered); no onset stops it early")
     boot.add_argument("--job-timeout-s", type=float, default=JOB_TIMEOUT_S)
     boot.add_argument("--pdf", type=Path, default=None, help="use this file instead of the max-size fixture")
     boot.add_argument("--windows", type=Path, default=w1b.WINDOWS_JSON)

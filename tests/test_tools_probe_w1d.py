@@ -2,12 +2,15 @@
 Nothing here touches Fly, a provider or a database.
 
 The service is an ``httpx.MockTransport``, flyctl is a stub runner, ``flyctl logs`` is a fake ``Popen``, the clock is VIRTUAL (a 50 minute boot runs
-in a fraction of a second) and ``subprocess.run`` / ``Popen`` are poisoned, so nothing can escape. What is pinned:
+in a fraction of a second) and ``subprocess.run`` / ``Popen`` are poisoned, so nothing can escape. The fake machine has a clock of its own (37 s ahead of the
+driver's by default) that stamps its samples and the ``Date`` header of the upload's 202. What is pinned:
 
-* the order, from one shared event log: the log stream starts first, then the sampler, then the burn, the burn is stopped and CONFIRMED stopped, and only
-  then is the workspace created and the PDF uploaded; no ask is ever sent;
-* a burn that cannot be confirmed stopped, never started or ran less than its 300 s floor (confirmed stopped, but short: failed first reads, a burn killed
-  early) ends the boot before any upload (INCONCLUSIVE): the burn never runs beside the upload and always runs its floor first;
+* the order, from one shared event log: the log stream starts first, then the sampler, then the burn, then (after the burn, with no flyctl call in between)
+  the burn is confirmed over, and only then is the workspace created and the PDF uploaded; no ask is ever sent; the burn is never steered while it runs;
+* a burn that cannot be confirmed over, never started, or did not run its full 600 s (it died, or is still running past the margin and does not obey the
+  stop file) ends the boot before any upload (INCONCLUSIVE): the burn never runs beside the upload, and reads that fail after the burn are retried first;
+* the idle gap before the upload is recorded once on the driver's clock (from the confirmation) and once on the machine's (last sample to the ``Date`` header
+  of the acceptance), whatever the offset between the two, and is null rather than mixed when the header is missing;
 * the stage line: read from the stream (a line that arrives late is waited for), else from a ``--no-tail`` snapshot taken as soon as the job ends (before the
   stream and the sampler are stopped), else the boot is INCONCLUSIVE; the stream is scrubbed before it is written, started with ``--machine`` and without it
   when the flag is rejected, and stopped exactly once, an error included;
@@ -21,12 +24,14 @@ import io
 import json
 import queue
 import re
+import shlex
 import subprocess
 import sys
 import threading
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime
+from email.utils import formatdate
 from pathlib import Path
 
 import httpx
@@ -97,15 +102,25 @@ class FakePopen:
 class World:
     """One virtual clock and one event log shared by the service, flyctl, the log stream and the burn on the machine."""
 
-    def __init__(self, *, onset=115, burn_s=600, job_s=1330.0, job_final="ready", error_code="timeout", stage=None, line_lag_s=0.0, in_stream=True,
+    def __init__(self, *, onset=115, burn_s=None, job_s=1330.0, job_final="ready", error_code="timeout", stage=None, line_lag_s=0.0, in_stream=True,
                  in_snapshot=False, burn_ignores_stop=False, burn_never_writes=False, hang_job=False, logs_flag_rejected=False, machines=1,
-                 sampler_ok=True, hwm=1_500_000, fail_burn_reads=(), stream_dies_when_job_ends=False, machine_age_s=5.0):
+                 sampler_ok=True, hwm=1_500_000, fail_burn_reads=(), stream_dies_when_job_ends=False, machine_age_s=5.0, machine_offset_s=37.0,
+                 date_header="machine", burn_late_s=0.0, burn_bucket_s=1.0):
+        """``burn_s``: how long the fake burn writes (None: the cap in its command line, 600 s); ``machine_offset_s``: how far the machine's clock is
+        ahead of the driver's (it stamps the samples and the ``Date`` header of the 202); ``date_header``: ``machine`` | ``none`` | ``garbage``;
+        ``burn_late_s``: the burn starts writing this long after its start command returned; ``burn_bucket_s``: how long one sample takes (1.0: no
+        drift; burn.py's seconds drift under throttling)."""
         self.__dict__.update(locals())
         self.clock, self.events, self.asks, self.scheduled, self.popens = EPOCH, [], [], [], []
         self.burn_reads, self.snapshot_clock, self.job_ended_at = 0, [], None
         self.burn_started = self.burn_stopped = self.accepted = None
+        self.burn_samples_path = self.burn_stop_path = self.burn_cap = None
+        self.fly_calls, self.burn_start_returned = [], None          # every flyctl call as (clock when it was issued, kind)
         self.uploads, self.sampler_started_at, self.job_served = [], None, False
         self.stage = stage if stage is not None else stage_text()
+
+    def machine_time(self, local=None):
+        return (self.clock if local is None else local) + self.machine_offset_s
 
     # -- the clock ---------------------------------------------------------------------------------------------------------------
     def now(self):
@@ -149,7 +164,8 @@ class World:
         if path == f"/api/workspace/{WS_ID}/documents":
             self.accepted = self.clock
             self.uploads.append(request.content)
-            return httpx.Response(202, json={"job_id": JOB_ID, "document_id": "d", "version": 1})
+            headers = {"machine": {"date": formatdate(self.machine_time(), usegmt=True)}, "none": {}, "garbage": {"date": "not a date"}}[self.date_header]
+            return httpx.Response(202, json={"job_id": JOB_ID, "document_id": "d", "version": 1}, headers=headers)
         if path == f"/api/workspace/{WS_ID}/jobs/{JOB_ID}":
             return self.job()
         if path == f"/api/workspace/{WS_ID}" and method == "DELETE":
@@ -185,13 +201,16 @@ class World:
         created = datetime.fromtimestamp(self.clock - self.machine_age_s, UTC).isoformat().replace("+00:00", "Z")
         return {"id": mid, "state": "started", "region": "sin", "created_at": created, "config": {"guest": dict(GUEST)}}
 
+    def burn_writing_since(self):
+        return self.burn_started + self.burn_late_s
+
     def burn_available(self):
         if self.burn_started is None or self.burn_never_writes:
             return 0
-        elapsed = int(self.clock - self.burn_started)
+        written = max(0, int((self.clock - self.burn_writing_since()) / self.burn_bucket_s))
         if self.burn_stopped is not None and not self.burn_ignores_stop:
-            elapsed = min(elapsed, int(self.burn_stopped - self.burn_started) + 1)
-        return min(elapsed, self.burn_s)
+            written = min(written, max(0, int((self.burn_stopped - self.burn_writing_since()) / self.burn_bucket_s)) + 1)
+        return min(written, self.burn_s if self.burn_s is not None else self.burn_cap)
 
     def sampler_jsonl(self, count=None):
         start = self.sampler_started_at or self.clock
@@ -204,6 +223,7 @@ class World:
     def __call__(self, args, timeout):
         words = args[1:]
         self.clock += 2.0                                       # an ssh connection costs a moment of the virtual clock
+        self.fly_calls.append((self.clock - 2.0, words[words.index("-C") + 1] if "-C" in words else " ".join(words[:2])))
         if words[:2] == ["machine", "list"]:
             return w1b.Result(0, json.dumps([self.machine_row(f"m{i}") if i else self.machine_row() for i in range(self.machines)]).encode(), b"")
         if words[:2] == ["machine", "status"]:
@@ -218,23 +238,29 @@ class World:
             self.events.append(("fly", "sampler-start"))
             self.sampler_started_at = self.clock
             return w1b.Result(0 if self.sampler_ok else 1, b"", b"")
-        if command.startswith("python -c") and w1d_burn.BURN_STOP in command:
+        if command.startswith("python -c") and "--stop-file" in command:
             self.events.append(("fly", "burn-start"))
-            self.burn_started = self.clock
+            burn_words = shlex.split(command)
+            self.burn_samples_path = burn_words[burn_words.index("--out") + 1] + "/samples.jsonl"
+            self.burn_stop_path = burn_words[burn_words.index("--stop-file") + 1]
+            self.burn_cap = int(burn_words[burn_words.index("--burn-s") + 1])
+            self.burn_started = self.burn_start_returned = self.clock
             return w1b.Result(0, b"", b"")
-        if command == f"touch {w1d_burn.BURN_STOP}":
+        if self.burn_stop_path is not None and command == f"touch {self.burn_stop_path}":
             self.events.append(("fly", "burn-stop"))
             self.burn_stopped = self.burn_stopped or self.clock
             return w1b.Result(0, b"", b"")
         if command.startswith("tail -n +"):
+            self.events.append(("fly", "burn-read"))
             self.burn_reads += 1
             if self.burn_reads in self.fail_burn_reads:
                 return w1b.Result(255, b"", b"ssh: connection reset")
-            if self.burn_started is None or self.burn_never_writes:
+            if self.burn_started is None or self.burn_never_writes or command.split()[3] != self.burn_samples_path:
                 return w1b.Result(1, b"", b"tail: cannot open: No such file or directory")
             first = int(command.split()[2].lstrip("+"))
             rate = lambda t: 1000.0 if self.onset is None or t < self.onset else 250.0  # noqa: E731
-            lines = "".join(json.dumps({"t": t, "phase": "burn", "iter_per_s": rate(t), "steal_frac": None, "wall": self.burn_started + t}) + "\n"
+            lines = "".join(json.dumps({"t": t, "phase": "burn", "iter_per_s": rate(t), "steal_frac": None,
+                                        "wall": self.machine_time(self.burn_writing_since() + t * self.burn_bucket_s)}) + "\n"
                             for t in range(first, self.burn_available() + 1))
             return w1b.Result(0, lines.encode(), b"")
         if command.startswith("tail"):
@@ -273,10 +299,11 @@ def test_a_throttled_boot_that_finishes_inside_the_ceiling_passes_and_carries_th
     code, report, out, err, world = drive(state_dir, tmp_path)
     assert code == 0 and report["verdict"] == "PASS" and report["reasons"] == [] and report["window"] == "W1d" and report["attempt"] == 1
     assert report["job"]["state"] == "ready" and report["job"]["job_id"] == JOB_ID and 1330 <= report["job"]["ready_s"] <= 1340
-    assert report["job"]["end_s"] == report["job"]["ready_s"] and 0 <= report["job"]["burn_end_to_accept_s"] < 60
+    assert report["job"]["end_s"] == report["job"]["ready_s"] and 0 <= report["job"]["burn_confirm_to_accept_local_s"] < 60
     assert report["stages"]["source"] == "stream" and report["stages"]["fields"]["embed_s"] == 1300.0 and report["stages"]["fields"]["tokens"] == 16000
-    assert report["burn"]["stopped_by"] == "criterion" and report["burn"]["confirmed_stopped"] is True and report["burn"]["onset_s"] == 115
-    assert 300 <= report["burn"]["samples"] <= 345 and len(report["burn"]["per_second"]) == report["burn"]["samples"]
+    assert report["burn"]["stopped_by"] == "burn_ended" and report["burn"]["confirmed_stopped"] is True and report["burn"]["burn_complete"] is True
+    assert report["burn"]["onset_s"] == 115 and report["burn"]["onset_after_floor"] is True and report["burn"]["samples"] == 600
+    assert len(report["burn"]["per_second"]) == 600 and report["burn"]["burn_seconds"] == 600 and report["burn"]["waited_s"] >= 630
     assert report["workload"]["asks"] == 0 and report["workload"]["burn_s"] == 600 and report["workload"]["min_burn_s"] == 300
     assert report["max_vmhwm_kb"] == 1_500_000 and report["oom_or_restart"]["detected"] is False and report["healthz"]["boot_to_healthy_s"] is not None
     assert report["criteria"]["share_within_limit"] is True and report["embedder_variant"] == "fp32"
@@ -284,15 +311,30 @@ def test_a_throttled_boot_that_finishes_inside_the_ceiling_passes_and_carries_th
     assert (tmp_path / "boot.logs.txt").read_text(encoding="utf-8").count("upload stages") == 1
 
 
-def test_the_idle_gap_between_the_burn_and_the_upload_is_measured_from_the_stop_request_not_from_the_end_of_the_confirmation(state_dir, tmp_path):
+def test_the_upload_follows_the_confirmation_at_once_and_the_gap_is_recorded_on_the_drivers_clock(state_dir, tmp_path):
     _, report, *_ = drive(state_dir, tmp_path)
     job, burn = report["job"], report["burn"]
-    # the stop request, then 3 s of settle and two reads (2 s of ssh each) and 3 s more: the confirmation alone is about 10 s of the gap
-    assert job["burn_end_to_accept_s"] == 0.0 and 10.0 <= job["burn_stop_to_accept_s"] <= 14.0
-    assert job["burn_stop_to_accept_s"] > job["burn_end_to_accept_s"]
-    # on the machine's own clock: the last sample it wrote, to the acceptance (the burn ends within a second of the stop request)
-    assert burn["last_sample_wall"] is not None and 8.0 <= job["burn_last_sample_to_accept_s"] <= job["burn_stop_to_accept_s"]
-    assert "stop_requested_at" not in burn and "ended_at" not in burn and "accepted_at" not in job
+    assert job["burn_confirm_to_accept_local_s"] == 0.0                                  # the driver's clock twice: the end of the confirming read, the acceptance
+    assert burn["last_sample_wall_machine"] is not None
+    assert "confirmed_at" not in burn and "accepted_at" not in job and "accepted_machine_at" not in job          # raw epochs of either clock are not reported
+    assert not {"burn_end_to_accept_s", "burn_stop_to_accept_s", "burn_last_sample_to_accept_s"} & set(job) and "last_sample_wall" not in burn
+
+
+@pytest.mark.parametrize("offset", [0.0, 37.0, -400.0])
+def test_the_gap_on_the_machines_clock_is_the_machines_last_sample_to_the_machines_date_header_whatever_the_offset_between_the_clocks(state_dir, tmp_path, offset):
+    code, report, _, _, world = drive(state_dir, tmp_path, World(machine_offset_s=offset))
+    job = report["job"]
+    # the burn started when its start command returned and wrote its last sample 600 s later; the 202 came after the wait, two reads and the gap
+    expected = world.accepted - (world.burn_started + 600)
+    assert expected > 30 and abs(job["burn_last_sample_to_accept_machine_clock_s"] - expected) <= 1.5       # the Date header has a resolution of one second
+    assert report["burn"]["last_sample_wall_machine"] == pytest.approx(world.machine_time(world.burn_started + 600))
+
+
+@pytest.mark.parametrize("header", ["none", "garbage"])
+def test_a_missing_or_unreadable_date_header_leaves_the_machine_clock_gap_null_and_never_borrows_the_drivers_clock(state_dir, tmp_path, header):
+    code, report, *_ = drive(state_dir, tmp_path, World(date_header=header))
+    assert report["job"]["state"] == "ready" and report["job"]["burn_last_sample_to_accept_machine_clock_s"] is None
+    assert report["job"]["burn_confirm_to_accept_local_s"] == 0.0                         # the driver's own gap is still there
 
 
 def test_no_ask_is_ever_sent_and_the_upload_is_the_only_load(state_dir, tmp_path):
@@ -301,15 +343,25 @@ def test_no_ask_is_ever_sent_and_the_upload_is_the_only_load(state_dir, tmp_path
     assert len(world.uploads) == 1
 
 
-def test_the_order_logs_then_sampler_then_burn_stopped_and_confirmed_and_only_then_the_upload(state_dir, tmp_path):
+def test_the_order_logs_then_sampler_then_burn_then_the_burn_is_read_and_confirmed_over_and_only_then_the_upload(state_dir, tmp_path):
     _, report, _, _, world = drive(state_dir, tmp_path)
     ev = world.events
     first = lambda e: ev.index(e)  # noqa: E731
-    assert first(("logs", "start")) < first(("fly", "sampler-start")) < first(("fly", "burn-start")) < first(("fly", "burn-stop"))
-    assert first(("fly", "burn-stop")) < first(("http", "POST", "/api/workspace")) < first(("http", "POST", f"/api/workspace/{WS_ID}/documents"))
+    assert first(("logs", "start")) < first(("fly", "sampler-start")) < first(("fly", "burn-start")) < first(("fly", "burn-read"))
+    assert first(("fly", "burn-read")) < first(("http", "POST", "/api/workspace")) < first(("http", "POST", f"/api/workspace/{WS_ID}/documents"))
     assert first(("http", "POST", f"/api/workspace/{WS_ID}/documents")) < first(("logs", "stop")) < first(("fly", "sampler-stop"))
-    assert ev.count(("fly", "burn-start")) == 1 and ev.count(("fly", "burn-stop")) == 1 and ev.count(("logs", "stop")) == 1
-    assert max(i for i, e in enumerate(ev) if e == ("fly", "burn-start")) < min(i for i, e in enumerate(ev) if e[:2] == ("http", "POST") and "/documents" in e[2])
+    assert ev.count(("fly", "burn-start")) == 1 and ev.count(("fly", "burn-stop")) == 0 and ev.count(("logs", "stop")) == 1       # nothing to stop: it ended itself
+    assert ev.count(("fly", "burn-read")) == 2                                                 # the whole file once, one read that finds nothing new
+    assert max(i for i, e in enumerate(ev) if e == ("fly", "burn-read")) < min(i for i, e in enumerate(ev) if e[:2] == ("http", "POST") and "/documents" in e[2])
+
+
+def test_no_flyctl_call_of_any_kind_is_made_while_the_burn_can_still_be_running(state_dir, tmp_path):
+    _, report, _, _, world = drive(state_dir, tmp_path)
+    quiet_from, quiet_until = world.burn_start_returned, world.burn_start_returned + 600 + w1d_burn.MARGIN_S
+    inside = [(at, command[:50]) for at, command in world.fly_calls if quiet_from <= at < quiet_until]
+    assert inside == [], inside                                                            # the machine starves sshd and hallpass while the burn runs: no ssh at all
+    after = [command for at, command in world.fly_calls if at >= quiet_until]
+    assert after and after[0].startswith("tail -n +1 ")                                    # the first thing after the wait is the read of the whole file
 
 
 def test_the_log_stream_is_flyctl_logs_of_the_registered_app_on_the_machine_and_is_stopped_once(state_dir, tmp_path):
@@ -394,39 +446,84 @@ def test_a_burn_that_finds_no_onset_still_sends_the_upload_and_the_rule_decides(
     assert report["verdict"] == "INVALID" and code == 2                                # not throttled: the validity rule says so, the burn does not decide
 
 
-# --- the burn must be over before the upload -------------------------------------------------------------------------------------------------------
+# --- the burn must be over, and have run its full length, before the upload ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("world", [World(burn_ignores_stop=True), World(burn_never_writes=True)], ids=["ignores-the-stop", "never-writes"])
-def test_a_burn_that_cannot_be_confirmed_stopped_ends_the_boot_before_any_upload(state_dir, tmp_path, world):
+def no_post(world):
+    return world.uploads == [] and not [e for e in world.events if e[:2] == ("http", "POST")]
+
+
+def test_a_complete_600_line_file_is_confirmed_and_the_upload_follows_with_no_stop_file(state_dir, tmp_path):
+    code, report, _, _, world = drive(state_dir, tmp_path)
+    assert code == 0 and len(world.uploads) == 1 and report["burn"]["burn_seconds"] == 600 and report["burn"]["read_failures"] == 0
+    assert world.events.count(("fly", "burn-stop")) == 0 and world.burn_stopped is None
+
+
+@pytest.mark.parametrize("length", [450, 301, 100])
+def test_a_short_file_the_burn_died_is_confirmed_stopped_but_incomplete_so_no_upload_and_the_boot_is_inconclusive(state_dir, tmp_path, length):
+    code, report, _, _, world = drive(state_dir, tmp_path, World(burn_s=length))          # 450 and 301 are above the 300 s floor: only the completeness rule stops these
+    assert code == 2 and report["verdict"] == "INCONCLUSIVE" and report["job"]["state"] == "not_started"
+    assert report["burn"]["confirmed_stopped"] is True and report["burn"]["burn_complete"] is False and report["burn"]["stopped_by"] == "burn_died"
+    assert report["burn"]["burn_seconds"] == length and "full 600 s" in report["job"]["error"] and str(length) in report["job"]["error"]
+    assert no_post(world) and world.popens[0].terminated == 1                              # the stream is stopped on this path too
+
+
+@pytest.mark.parametrize("ignores", [True, False], ids=["past-its-cap-and-the-stop-file-is-ignored", "far-behind-stopped-short-by-the-stop-file"])
+def test_a_file_still_growing_after_the_margin_and_the_extra_waits_gets_the_stop_file_and_if_that_fails_or_the_burn_is_short_no_upload_follows(state_dir, tmp_path, ignores):
+    world = World(burn_s=1500, burn_ignores_stop=True) if ignores else World(burn_bucket_s=2.0)
     code, report, _, _, world = drive(state_dir, tmp_path, world)
+    assert code == 2 and report["verdict"] == "INCONCLUSIVE" and report["job"]["state"] == "not_started" and report["burn"]["stopped_by"] == "stop_file"
+    assert report["burn"]["confirmed_stopped"] is (not ignores) and world.events.count(("fly", "burn-stop")) == 1 and no_post(world)
+    touch_at = next(at for at, command in world.fly_calls if command.startswith("touch /tmp/w1d-burn-"))
+    assert touch_at >= world.burn_start_returned + 600 + w1d_burn.MARGIN_S                  # the fallback comes after the margin, never while the burn runs
+
+
+def test_a_file_still_growing_past_the_margin_that_obeys_the_stop_file_has_run_its_full_length_so_the_upload_follows(state_dir, tmp_path):
+    code, report, _, _, world = drive(state_dir, tmp_path, World(burn_s=1500))
+    assert report["burn"]["stopped_by"] == "stop_file" and report["burn"]["confirmed_stopped"] is True and report["burn"]["burn_complete"] is True
+    assert len(world.uploads) == 1 and report["job"]["state"] == "ready" and code == 0
+
+
+def test_a_burn_whose_seconds_drift_is_waited_for_locally_and_the_upload_follows_with_no_stop_file(state_dir, tmp_path):
+    code, report, _, _, world = drive(state_dir, tmp_path, World(burn_bucket_s=1.10))     # 600 samples take 660 s: still writing when the 30 s margin ends
+    assert code == 0 and report["verdict"] == "PASS" and len(world.uploads) == 1
+    assert report["burn"]["stopped_by"] == "burn_ended" and report["burn"]["burn_seconds"] == 600 and world.events.count(("fly", "burn-stop")) == 0
+    reads = [at for at, command in world.fly_calls if command.startswith("tail -n +")]
+    assert len(reads) == 4 and not [c for at, c in world.fly_calls if reads[1] + 2.0 <= at < reads[2]]      # nothing between the read that saw it grow and the catch-up
+    assert abs(report["burn"]["burn_span_machine_s"] - 599 * 1.1) < 1e-6 and len(report["burn"]["reads"]) == 4
+    assert report["job"]["burn_last_sample_to_accept_machine_clock_s"] is not None and report["job"]["burn_confirm_to_accept_local_s"] == 0.0
+
+
+def test_a_burn_that_never_wrote_is_not_started_and_never_followed_by_an_upload(state_dir, tmp_path):
+    code, report, _, _, world = drive(state_dir, tmp_path, World(burn_never_writes=True))
     assert code == 2 and report["verdict"] == "INCONCLUSIVE" and report["job"]["state"] == "not_started"
-    assert "burn" in report["job"]["error"] and report["burn"]["confirmed_stopped"] is False
-    assert world.uploads == [] and not [e for e in world.events if e[:2] == ("http", "POST")]
-    assert world.popens[0].terminated == 1                                              # the stream is stopped on this path too
+    assert "burn" in report["job"]["error"] and report["burn"]["confirmed_stopped"] is False and report["burn"]["stopped_by"] == "not_started"
+    assert no_post(world) and world.popens[0].terminated == 1
 
 
-def test_a_burn_that_stopped_writing_far_short_of_the_floor_is_confirmed_stopped_but_never_followed_by_an_upload(state_dir, tmp_path):
-    code, report, _, _, world = drive(state_dir, tmp_path, World(burn_s=100))            # killed at second 100: the reads work, nothing new is written
-    assert code == 2 and report["verdict"] == "INCONCLUSIVE" and report["job"]["state"] == "not_started"
-    assert report["burn"]["confirmed_stopped"] is True and report["burn"]["burn_seconds"] == 100 and report["burn"]["stopped_by"] == "deadline"
-    assert "minimum 300 s" in report["job"]["error"] and "100" in report["job"]["error"]
-    assert world.uploads == [] and not [e for e in world.events if e[:2] == ("http", "POST")]
-    assert world.popens[0].terminated == 1
-
-
-def test_reads_that_fail_at_the_start_do_not_cut_the_burn_short_and_the_upload_follows_a_full_floor(state_dir, tmp_path):
+def test_reads_that_fail_after_the_burn_are_retried_and_the_upload_follows_once_one_works(state_dir, tmp_path):
     code, report, _, _, world = drive(state_dir, tmp_path, World(fail_burn_reads=(1, 2)))
     assert code == 0 and report["verdict"] == "PASS" and len(world.uploads) == 1
-    assert report["burn"]["stopped_by"] == "criterion" and report["burn"]["burn_seconds"] >= 300 and report["burn"]["read_failures"] == 2
-    assert world.events.count(("fly", "burn-start")) == 1 and world.events.count(("fly", "burn-stop")) == 1
+    assert report["burn"]["stopped_by"] == "burn_ended" and report["burn"]["burn_seconds"] == 600 and report["burn"]["read_failures"] == 2
+    assert world.events.count(("fly", "burn-start")) == 1 and world.events.count(("fly", "burn-stop")) == 0
 
 
-def test_the_floor_is_inclusive_at_300_s(state_dir, tmp_path):
-    # the boundary only: a burn whose last sample is second 300 has run the registered floor. (A burn that stalls between 300 and 599 s with no onset waits for the
-    # step's deadline, goes idle meanwhile and may then be followed by the upload: the validity rule judges that boot, and burn_last_sample_to_accept_s records the gap.)
-    code, report, _, _, world = drive(state_dir, tmp_path, World(burn_s=300, onset=None))
-    assert report["burn"]["burn_seconds"] == 300 and report["burn"]["confirmed_stopped"] is True
-    assert len(world.uploads) == 1 and report["job"]["state"] == "ready"                       # 300 s is the floor: inclusive
+def test_reads_that_keep_failing_after_the_burn_end_inconclusive_with_no_upload(state_dir, tmp_path):
+    code, report, _, _, world = drive(state_dir, tmp_path, World(fail_burn_reads=set(range(1, 1000))))
+    assert code == 2 and report["verdict"] == "INCONCLUSIVE" and report["job"]["state"] == "not_started"
+    assert report["burn"]["stopped_by"] == "read_failed" and report["burn"]["confirmed_stopped"] is False and report["burn"]["read_failures"] >= 10
+    assert "could not be confirmed stopped" in report["job"]["error"] and no_post(world) and world.popens[0].terminated == 1
+    assert world.events.count(("fly", "burn-stop")) == 0                                    # a failing ssh is not asked for a stop file; the burn ended at its own cap
+
+
+def test_the_minimum_of_300_s_is_still_checked_after_the_completeness_rule(state_dir, tmp_path, monkeypatch):
+    def claims_complete(fly, **kwargs):
+        return {"started": True, "stopped_by": "burn_ended", "confirmed_stopped": True, "burn_complete": True, "burn_seconds": 250, "confirmed_at": 1.0,
+                "last_sample_wall_machine": 2.0, "samples": 250, "elapsed_s": 1.0}
+
+    monkeypatch.setattr(w1d_burn, "run_burn_step", claims_complete)
+    code, report, _, _, world = drive(state_dir, tmp_path)
+    assert code == 2 and report["job"]["state"] == "not_started" and "minimum 300 s" in report["job"]["error"] and "250" in report["job"]["error"]
+    assert no_post(world)
 
 
 # --- the stage line: an early snapshot when the stream has nothing -----------------------------------------------------------------------------------
@@ -635,6 +732,30 @@ def test_the_readme_and_windows_json_state_the_pre_registered_rules_with_the_num
     assert "$0.15" in readme and "quote $0.15" in note and "cap $0.25" in note
 
 
+def test_the_readme_and_windows_json_state_that_the_burn_is_never_steered_over_ssh_and_that_the_early_stop_is_dropped_with_the_live_evidence():
+    readme = squash((ROOT / "tools" / "probe" / "README.md").read_text(encoding="utf-8"))
+    readme = readme[readme.index("## `w1d.py`"):]
+    note = squash(WINDOWS["windows"]["W1d"]["note"])
+    steps = squash(" ".join(WINDOWS["windows"]["W1d"]["steps"]))
+    needles = ("never steered over ssh", "starves sshd", "the early stop on the onset is DROPPED", "sample 223", "waits locally", "630 s", "the whole samples file",
+               "no new line", "fallback", "per-run", "an unconfirmed stop sends no upload", "Plan 2", "drift", "10 minutes")
+    for text in (readme, note):
+        for needle in needles:
+            assert needle in text, needle
+    for needle in ("burn_confirm_to_accept_local_s", "burn_last_sample_to_accept_machine_clock_s", "Date", "burn_span_machine_s", "burn.reads", "$canary.burn.stopped_by"):
+        assert needle in readme, needle
+    for needle in ("never steered over ssh", "630 s", "15 to 20 minutes", "$0.02", "up to about 65", "burn.stopped_by", "burn_ended", "burn.reads"):
+        assert needle in steps, needle
+    assert "fresh window" in note                                                          # the cost figure is end to end for a window created from scratch, not this window's balance
+    for needle in ("15 to 20 minutes", "$0.02", "up to about 65"):
+        assert needle in readme, needle
+    # the old early stop and the old durations are gone from every text the operator reads
+    for text in (readme, note, steps):
+        for stale in ("300 to 600 s", "10 to 15 minutes", "$0.015", "50 to 60 minutes", "is stopped early once", "creates the stop file, then READS"):
+            assert stale not in text, stale
+    assert "should_stop" not in readme and "criterion_met" not in readme
+
+
 def test_the_readme_and_windows_json_name_the_whole_w1d_sequence_and_deploy_no_mock_llm():
     readme = squash((ROOT / "tools" / "probe" / "README.md").read_text(encoding="utf-8"))
     steps = squash(" ".join(WINDOWS["windows"]["W1d"]["steps"]))
@@ -678,7 +799,7 @@ def test_the_canary_run_on_an_old_warm_up_machine_burns_its_floor_uploads_once_a
     code, report, _, _, world = drive(state_dir, tmp_path, small, argv=argv)
     assert code == 2 and report["verdict"] == "INVALID" and report["window"] == "W1d"                    # a 2-page job is not throttled: expected, not a result
     assert report["healthz"]["boot_to_healthy_s"] is not None and report["healthz"]["boot_to_healthy_s"] > 7000        # an old machine is healthy on the first poll
-    assert report["burn"]["burn_seconds"] >= 300 and report["burn"]["confirmed_stopped"] is True and len(world.uploads) == 1
+    assert report["burn"]["burn_seconds"] == 600 and report["burn"]["confirmed_stopped"] is True and len(world.uploads) == 1
     assert report["stages"]["source"] == "stream" and report["stages"]["fields"] is not None and report["stages"]["fields"]["tokens"] == 1400
     assert (tmp_path / "canary.json").is_file() and (tmp_path / "canary.logs.txt").is_file() and not (tmp_path / "boot-1.json").exists()
     import fnmatch
