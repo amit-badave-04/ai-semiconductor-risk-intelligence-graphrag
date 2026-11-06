@@ -762,8 +762,14 @@ Owner approvals this round: decision 21 ("approve 21, deploy it and ping me when
   `estimate_micro`, `ip_hash_v`, `machine_id`): no row carried them before the first ask under v15; they are notices, not errors.
   One `state_slow op=day_sums elapsed_ms=1550` during the boot rebuild. Examples X1 and T15 refused by the checks, as before (51
   cached examples).
-- **Not verified live:** a paid ask (needs a Turnstile token; the owner's first browser question is the check), the guard's
-  refusal, a mid-stream restart, the drain with a stream open.
+- **Not verified live:** everything that needs a paid ask (each needs a Turnstile token; the owner's first browser question is
+  the first check): the paid path, the meter and share in action, I2's killed-client single row and loop-lag over 5 asks, I4's
+  mid-stream restart and admin-state/ledger equality, the drain with a stream open. Also the guard's refusal, memory under an
+  upload, and the short-pepper refusal (held by the validator's tests).
+- **Neo4j's stop was not clean:** the VM exited 5 s after SIGTERM, before Neo4j logged "Stopped."; the next boot recovered the
+  journal and started normally. Follow-up: `kill_signal`/`kill_timeout` in `deploy/neo4j/fly.toml`.
+- `check_env_fly`: exit 0 (37 PASS, 0 FAIL) before the deploy, `RESULT: PASS` after. Decision 15 (the $1.32 share) shipped under
+  "approve 21"; the owner to confirm it explicitly. Command outputs: `research/deploy-2026-11-06/live_checks.md`.
 - **Still open:** decision 22 (38 unsalted rows; the owner's separate go), the `ESCALATION_MODEL` duplicate (same value in both
   places; the push script would restore the secret, so its clean-up is a small follow-up), the `.env.example` line, the
   upload-timeout spec, `/red-team` before a release tag, and the merge-time checks (`differential-review`, semgrep,

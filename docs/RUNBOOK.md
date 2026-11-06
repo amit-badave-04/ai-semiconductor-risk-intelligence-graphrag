@@ -122,8 +122,9 @@ the daily ceiling, and the kill switch. The database is never exposed publicly (
 
 ## M5a: paid-ask limits, kill levels, the state backend, the pepper and the drain
 
-The M5a image (branch `v2`, not deployed yet) changes how paid questions are admitted. Deploy it in this order; each
-step has its own section below.
+The M5a image (branch `v2`, live since release v15 on 2026-11-06, `docs/v2/M5_DECISIONS.md` 10.9) changes how paid
+questions are admitted. It was deployed in this order, which is also the order for a rebuilt app; each step has its own
+section below.
 
 1. **Pre-deploy check** (last section of this chapter, `uv run python -m scripts.check_env_fly`): `fly.toml [env]` plus
    `.env.fly` must pass the production validators, or the new image refuses to boot.
