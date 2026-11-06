@@ -600,6 +600,15 @@ def test_the_builder_fails_rather_than_return_a_short_pool(tmp_path):
         poolmod.build_pool(sources, size=5000)
 
 
+def test_the_composition_names_a_source_outside_the_repository_by_its_name_alone(tmp_path):
+    sources = _fake_sources(tmp_path, benchmark=["What was Nvidia's total revenue for fiscal 2024?"])
+    doc = poolmod.build_pool(sources, size=30)
+    assert doc["composition"]["source_files"] == {"benchmark": "b.json", "agent_benchmark": "a.json", "examples": "e.json"}
+    text = json.dumps(doc, ensure_ascii=False)                        # pool.json is committed: an absolute local path names its user
+    for form in (str(tmp_path), tmp_path.as_posix(), json.dumps(str(tmp_path))[1:-1]):
+        assert form not in text, form
+
+
 def test_is_stale_names_the_changed_source(tmp_path):
     sources = _fake_sources(tmp_path, benchmark=["What was Nvidia's total revenue for fiscal 2024?"])
     doc = poolmod.build_pool(sources, size=30)

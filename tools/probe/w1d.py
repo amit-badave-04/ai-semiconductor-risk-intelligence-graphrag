@@ -262,8 +262,9 @@ def measure(ctx: Context, fly: Fly, args: argparse.Namespace, plan: dict, pdf: b
     return {"burn": burn_result, "job": job, "workload_s": round(ctx.now() - started, 1)}
 
 
-def stage_record(line: dict | None, snapshots: Sequence[str | None], job_id: str | None, stream: LogStream) -> dict:
-    """The stage line of the job: the stream's, else the first of the snapshots (the early one, then the final one) that holds it."""
+def stage_record(line: dict | None, snapshots: Sequence[str | None], job_id: str | None, stream: LogStream, log_file: str) -> dict:
+    """The stage line of the job: the stream's, else the first of the snapshots (the early one, then the final one) that holds it.
+    ``log_file`` is the stream's file as the report names it (:func:`report_path`)."""
     source = "stream" if line is not None else None
     if line is None and job_id:
         for snapshot in snapshots:
@@ -271,7 +272,7 @@ def stage_record(line: dict | None, snapshots: Sequence[str | None], job_id: str
             if line is not None:
                 source = "snapshot"
                 break
-    return {"source": source, "fields": None if line is None else line["fields"], "job_id": job_id, "log_file": str(stream.path),
+    return {"source": source, "fields": None if line is None else line["fields"], "job_id": job_id, "log_file": log_file,
             "stream_error": stream.error}
 
 
@@ -311,7 +312,7 @@ def run_boot(args: argparse.Namespace, ctx: Context, fly: Fly, *, pdf: bytes, pl
     report["memory"] = summary or {}
     report["oom_or_restart"] = w1b.judge_oom_or_restart(summary, evidence, ctx.scrub)
     report["max_vmhwm_kb"] = report["memory"].get("max_vmhwm_kb")
-    report["stages"] = stage_record(line, (early, snapshot), (job or {}).get("job_id"), stream)
+    report["stages"] = stage_record(line, (early, snapshot), (job or {}).get("job_id"), stream, report_path(stream.path, args.out))
     report["verdict"], report["reasons"], report["criteria"] = w1d_judge.boot_verdict(report)
     report["generated_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     return report
@@ -349,6 +350,13 @@ def logs_path(args: argparse.Namespace) -> Path:
     if args.logs_out is not None:
         return args.logs_out
     return args.out.with_name(f"{args.out.stem}.logs.txt") if args.out is not None else Path(f"w1d-boot-{args.boot}-a{args.attempt}.logs.txt")
+
+
+def report_path(path: Path, out: Path | None) -> str:
+    """``path`` as the report names it: relative to the report's folder (the working folder without --out), else by its name alone. Never absolute
+    and never ``../``: the reports are committed as evidence, and a local path (or the climb out of the folder) names its user."""
+    folder, target = (out.parent if out is not None else Path()).resolve(), Path(path).resolve()
+    return target.relative_to(folder).as_posix() if target.is_relative_to(folder) else target.name
 
 
 def main(argv: Sequence[str] | None = None, *, runner: Callable[[list[str], float], w1b.Result] = w1b.run_subprocess,

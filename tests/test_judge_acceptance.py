@@ -360,6 +360,18 @@ def test_as_of_defaults_to_the_probes_file_and_can_be_overridden_by_an_iso_date(
 
 # --- the paid path (only with --go, and only through judge_open) -----------------------------------------------------------------
 
+def test_the_report_names_the_probes_file_relative_to_the_working_folder_never_by_an_absolute_local_path(setup, monkeypatch):
+    """The report is committed as evidence: a probes file outside the working folder is named alone, one inside it relative to it."""
+    assert ja.main([*setup.base, "--go"], judge=FakeJudge(correct=RIGHT)) == 0
+    text = setup.report.read_text(encoding="utf-8")
+    assert json.loads(text)["probes_file"] == "probes.json"
+    for form in (str(setup.tmp), setup.tmp.as_posix(), json.dumps(str(setup.tmp))[1:-1]):
+        assert form not in text, form
+    monkeypatch.chdir(setup.tmp.parent)
+    assert ja.main([*setup.base, "--go"], judge=FakeJudge(correct=RIGHT)) == 0
+    assert _report(setup)["probes_file"] == f"{setup.tmp.name}/probes.json"
+
+
 def test_the_oracle_judge_is_a_pass_and_the_report_records_the_instrument(setup, capsys):
     judge = FakeJudge(correct=RIGHT)
     assert ja.main([*setup.base, "--go"], judge=judge) == 0

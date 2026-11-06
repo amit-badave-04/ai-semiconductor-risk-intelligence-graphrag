@@ -287,11 +287,18 @@ def _print_result(verdict: str, results: dict, lenient: list[str], strict: list[
     print(f"\nacceptance: {verdict}: {meaning}" + ("" if pinned else " [probes NOT pinned: this is not an acceptance]"))
 
 
+def _report_path(path: Path) -> str:
+    """How the committed report names a file: relative to the working folder (the defaults' anchor), else by its name alone; never by an
+    absolute local path, which names its user."""
+    target, folder = Path(path).resolve(), Path.cwd().resolve()
+    return target.relative_to(folder).as_posix() if target.is_relative_to(folder) else target.name
+
+
 def _make_report(args, doc: dict, pinned: bool, as_of: str, model: str, items: list[dict], prompts: list[str], judged: dict,
                  results: dict, lenient: list[str], strict: list[str], verdict: str) -> dict:
     return {"verdict": verdict, "model": model, "votes": args.votes, "as_of": as_of,
             "judge_prompt_version": runner.JUDGE_PROMPT_VERSION, "prompt_sha256": _sha(runner.JUDGE_PROMPT),
-            "probes_file": str(args.probes), "probes_sha256": doc["sha256"], "probes_pinned": pinned, "notes_source": args.notes,
+            "probes_file": _report_path(args.probes), "probes_sha256": doc["sha256"], "probes_pinned": pinned, "notes_source": args.notes,
             "notes_sha256": {i["id"]: _sha(i["judge_notes"]) for i in items}, "n_probes": len(items),
             "leniency_failures": lenient, "strictness_failures": strict, "errors": judged["errors"], "results": results,
             "estimated_cost_usd": round(estimate_cost([len(p) for p in prompts], args.votes), 4)}

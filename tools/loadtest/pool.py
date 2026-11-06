@@ -276,7 +276,8 @@ def _composition(live, agent, dropped, quotas, retriever, sources) -> dict:
             "by_source": dict(Counter(d["source"] for d in dropped)),
             "items": [f"{d['id']} ({d['reason']})" for d in dropped],
         },
-        "source_files": {name: str(path.relative_to(REPO_ROOT)) if path.is_relative_to(REPO_ROOT) else str(path)
+        # pool.json is committed: a source outside the repository is named alone, never by its absolute local path (that names its user)
+        "source_files": {name: str(path.relative_to(REPO_ROOT)) if path.is_relative_to(REPO_ROOT) else path.name
                          for name, path in sources.items()},
         "note": ("The real questions are the minority of the pool (the examples are a subset of the benchmark); the rest are "
                  "templated company x metric x year, risk-theme, dependency, temporal and comparison questions. Every live "

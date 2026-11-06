@@ -290,6 +290,29 @@ def test_the_default_baseline_path_is_anchored_to_the_repository_not_the_cwd():
     assert cli._DEFAULT_AGENT_BASELINE.parent.name == "artifacts"
 
 
+def test_the_report_names_a_baseline_outside_the_repository_by_its_name_never_by_an_absolute_local_path(env):
+    """The report is committed as evidence (artifacts/eval_report.agent.json once carried the owner's user folder)."""
+    saved_runs(env)
+    result = runner.invoke(cli.app, ["eval-agent", "--benchmark", "bench.json", "--baseline", str(env / "baseline.json"), "--agent-only",
+                                     "--runs", "runs.jsonl"])
+    assert result.exit_code == 0, result.output
+    text = (env / "artifacts" / "eval_report.agent.json").read_text(encoding="utf-8")
+    assert json.loads(text)["baseline"] == "baseline.json"
+    for form in (str(env), env.as_posix(), json.dumps(str(env))[1:-1]):
+        assert form not in text, form
+
+
+def test_the_report_names_the_default_baseline_relative_to_the_repository(env, monkeypatch):
+    saved_runs(env)
+    (env / "artifacts").mkdir()
+    (env / "artifacts" / "deployed.json").write_text(json.dumps(BASELINE), encoding="utf-8")
+    monkeypatch.setattr(cli, "_REPO_ROOT", env)                       # the default is resolved, so absolute: the repository is the anchor
+    monkeypatch.setattr(cli, "_DEFAULT_AGENT_BASELINE", env / "artifacts" / "deployed.json")
+    result = runner.invoke(cli.app, ["eval-agent", "--benchmark", "bench.json", "--agent-only", "--runs", "runs.jsonl"])
+    assert result.exit_code == 0, result.output
+    assert json.loads((env / "artifacts" / "eval_report.agent.json").read_text(encoding="utf-8"))["baseline"] == "artifacts/deployed.json"
+
+
 def test_a_live_run_from_a_different_cwd_still_finds_the_default_baseline_and_estimates_first(env, monkeypatch):
     """The default --baseline path resolves relative to the repository (like agent_eval.AGENT_BENCHMARK_PATH), not the CWD: a
     live run started with no --baseline flag, from ``env``'s own temp CWD, must still find it and print an estimate before

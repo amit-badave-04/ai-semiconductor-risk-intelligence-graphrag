@@ -687,7 +687,14 @@ def _refuse(message: str) -> None:
 # Resolved relative to the repository, the same way agent_eval.AGENT_BENCHMARK_PATH is: a CWD-relative default silently loses the
 # baseline report (no cost estimate, comparison gates unevaluated) the moment `eval-agent` is run from anywhere else (M3 R3
 # review, MEDIUM finding 8). cli.py is one level above agent_eval.py, hence parents[2] here vs. its parents[3].
-_DEFAULT_AGENT_BASELINE = Path(__file__).resolve().parents[2] / "artifacts" / "eval_report.v2d-deployed.json"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_AGENT_BASELINE = _REPO_ROOT / "artifacts" / "eval_report.v2d-deployed.json"
+
+
+def _repo_relative(path: Path) -> str:
+    """How a committed report names a file: relative to the repository, else by its name alone (an absolute local path names its user)."""
+    target = path.resolve()
+    return target.relative_to(_REPO_ROOT).as_posix() if target.is_relative_to(_REPO_ROOT) else target.name
 
 
 @app.command("eval-agent")
@@ -763,7 +770,7 @@ def eval_agent_cmd(
         typer.echo(f"note: the fixed path also fails {result['baseline_also_fails']}")
     out = Path("artifacts") / report_name
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"estimate": estimate, "baseline": str(baseline) if base else None, "votes": votes, **result}, indent=2),
+    out.write_text(json.dumps({"estimate": estimate, "baseline": _repo_relative(baseline) if base else None, "votes": votes, **result}, indent=2),
                    encoding="utf-8")
     typer.echo(f"clears every gate: {result['clears_all_gates']}; report -> {out}")
     if any(g["passed"] is False for g in result["gates"].values()):

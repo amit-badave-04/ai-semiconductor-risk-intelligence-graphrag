@@ -577,6 +577,25 @@ def test_no_secret_reaches_stdout_stderr_the_files_or_any_flyctl_argument(state_
         assert not any(secret in word for call in seen for word in call) and not any(secret in " ".join(p.args) for p in world.popens)
 
 
+def test_the_report_names_its_log_file_beside_it_and_holds_no_absolute_local_path(state_dir, tmp_path):
+    _, report, out, _, _ = drive(state_dir, tmp_path)
+    assert report["stages"]["log_file"] == "boot.logs.txt"          # the evidence is committed: an absolute local path names its user
+    text = (tmp_path / "boot.json").read_text(encoding="utf-8") + out
+    for form in (str(tmp_path), tmp_path.as_posix(), json.dumps(str(tmp_path))[1:-1]):
+        assert form not in text, form
+
+
+def test_a_log_file_under_the_reports_folder_is_recorded_relative_to_it_and_one_elsewhere_by_its_name_alone(state_dir, tmp_path):
+    (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4 tiny")
+    for folder in ("reports", "reports/logs", "logs"):
+        (tmp_path / folder).mkdir()
+    base = ["boot", "--boot", "1", "--state-dir", str(state_dir), "--pdf", str(tmp_path / "doc.pdf"), "--out", str(tmp_path / "reports" / "boot.json")]
+    _, below, *_ = drive(state_dir, tmp_path, argv=[*base, "--logs-out", str(tmp_path / "reports" / "logs" / "x.logs.txt")])
+    _, beside, *_ = drive(state_dir, tmp_path, argv=[*base, "--logs-out", str(tmp_path / "logs" / "x.logs.txt")])
+    assert below["stages"]["log_file"] == "logs/x.logs.txt"
+    assert beside["stages"]["log_file"] == "x.logs.txt"               # never ../ : climbing out of the folder can name the user again
+
+
 def test_the_stream_is_stopped_once_even_when_the_boot_breaks_in_the_middle(state_dir, tmp_path):
     code, report, _, _, world = drive(state_dir, tmp_path, World(sampler_ok=False))
     assert code == 2 and report["job"]["state"] == "not_started" and "sampler" in report["job"]["error"]
