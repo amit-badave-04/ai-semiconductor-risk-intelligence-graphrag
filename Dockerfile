@@ -1,7 +1,9 @@
-# semigraph web service — two stages:
+# semigraph web service — three stages:
 #   1. model: quantize the public fp32 ONNX export of Qwen3-Embedding-0.6B to
 #      8-bit weight-only (scripts/build_onnx_embedder.py; ~1.1 GB, no torch)
-#   2. runtime: python:3.13-slim + the pinned serving deps + the semigraph wheel
+#   2. web: build the single-page app in web/ (Node 24.22.2, the lockfile, install scripts off); only the static
+#      files in /web/dist leave this stage (docs/specs/m5b-frontend.md R13)
+#   3. runtime: python:3.13-slim + the pinned serving deps + the semigraph wheel + the built app. No Node here.
 # No secrets are baked in (see .dockerignore); config comes from Fly secrets.
 #
 # Embedder variant (--build-arg EMBEDDER_VARIANT=q8|fp32, default q8 = the image that is live):
@@ -45,6 +47,17 @@ RUN set -eu; \
 COPY tools/probe/embed_rss.py scripts/
 RUN if [ "$KEEP_UNPATCHED" = 1 ]; then cp scripts/embed_rss.py /models/embed_rss.py; fi
 
+# Web stage. It sits BEFORE the runtime stage so the runtime stays the last (default) target. The tag is an exact version
+# pinned by digest (the multi-arch index), the same Node as web/.node-version and the CI web job (tests/test_web_pins.py). The
+# lockfile was created on Linux; `npm ci --ignore-scripts` installs exactly it. There is no build argument: one artifact,
+# its base path fixed in web/vite.config.ts, serves /v2/ and (once UI_V2 flips the root) /.
+FROM node:24.22.2-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json web/.npmrc ./
+RUN npm ci --ignore-scripts
+COPY web/ ./
+RUN npm run build
+
 FROM python:3.13-slim
 ARG EMBEDDER_VARIANT=q8
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 EMBEDDING_BACKEND=onnx \
@@ -60,6 +73,8 @@ RUN uv pip install --system --no-cache --no-deps .
 # copied with its final owner so no chown re-writes it as a second layer.
 RUN useradd --create-home --shell /usr/sbin/nologin app && chown -R app:app /srv
 COPY --from=model --chown=app:app /models /srv/models
+# The built app goes in AFTER the model layer, so a web change never invalidates the 1 GB model copy above.
+COPY --from=web --chown=app:app /web/dist /srv/web
 USER app
 EXPOSE 8080
 CMD ["python", "-m", "semigraph.serve.drain"]

@@ -13,6 +13,8 @@ data/
 notebooks/
 docs/
 dist/
+web/node_modules
+web/dist
 tests/
 models/
 deploy/neo4j/

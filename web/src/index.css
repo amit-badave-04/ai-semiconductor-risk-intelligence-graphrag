@@ -1,0 +1,97 @@
+@import "tailwindcss" source("./");
+@source not "./**/__tests__";
+@source not "./test";
+
+/*
+  Colours follow prefers-color-scheme (docs/specs/m5b-frontend.md R30): Tailwind's built-in dark: variant is that media query,
+  so there is no .dark class. The look follows the existing page's palette. System font stack only (R4: no @font-face; the
+  server's CSP has no font-src). Nothing moves (R30). Two imports that shadcn's init adds are NOT here: tw-animate-css
+  (animation utilities) and shadcn/tailwind.css (it ships a plain, always-emitted animated rule and keyframes; the seven
+  components in use need none of its variants). Tailwind scans only src, never tests (the `source` and `@source not` lines),
+  because it turns any word in a scanned file into a class.
+*/
+
+@theme inline {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: #f6f7f9;
+  --foreground: #1b1f24;
+  --card: #ffffff;
+  --card-foreground: #1b1f24;
+  --primary: #0b5fff;
+  --primary-foreground: #ffffff;
+  --secondary: #eef2f7;
+  --secondary-foreground: #1b1f24;
+  --muted: #eef2f7;
+  --muted-foreground: #5b6470;
+  --accent: #eef2f7;
+  --accent-foreground: #1b1f24;
+  --destructive: #b91c1c;
+  --border: #e2e6eb;
+  --input: #8791a0;
+  --ring: #0b5fff;
+  --radius: 0.625rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f1216;
+    --foreground: #e7eaee;
+    --card: #171b21;
+    --card-foreground: #e7eaee;
+    --primary: #5b8cff;
+    --primary-foreground: #0f1216;
+    --secondary: #222933;
+    --secondary-foreground: #e7eaee;
+    --muted: #222933;
+    --muted-foreground: #9aa4b1;
+    --accent: #222933;
+    --accent-foreground: #e7eaee;
+    --destructive: #f87171;
+    --border: #2a313b;
+    --input: #6b7685;
+    --ring: #5b8cff;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+  }
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-10 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:text-foreground focus:ring-2 focus:ring-ring;
+  }
+}

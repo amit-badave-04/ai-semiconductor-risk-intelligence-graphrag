@@ -1,0 +1,11 @@
+# Dependencies and build output (the root .gitignore already ignores dist/, listed here so web/ stands alone)
+node_modules/
+dist/
+
+# Test and tool output
+coverage/
+test-results/
+playwright-report/
+lighthouse-out/
+*.tsbuildinfo
+*.log

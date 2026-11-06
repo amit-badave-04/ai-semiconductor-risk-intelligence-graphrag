@@ -1,0 +1,154 @@
+{
+  "spec": "docs/specs/m5b-frontend.md R2 (the stack note's section 8 list, check 9 replaced), written at I1 part 3 (2026-11-06)",
+  "toolchain": {
+    "reference": "Node 24.22.2 linux-x64 (official tarball, sha256 below) with its bundled npm 11.19.1, inside WSL; lockfile created and every lint, typecheck, unit-test and build run there",
+    "e2e_axe_lighthouse": "Windows Node 26.13.0 / npm 12.2.1 from a copy of web/ outside the repository tree (`npm ci --ignore-scripts` from the same lockfile), Playwright's Chromium 158.0.8127.18, the fixture server on the repo's Windows .venv; CI runs the same on Ubuntu with Node 24.22.2",
+    "docker": "not available on this desktop: the Dockerfile web stage was NOT built here (CI's web job runs `docker build --target web`)",
+    "note": "the first Linux environment became unavailable mid-session after its outputs (lockfile, shadcn run, first vitest/lint/tsc/build runs) had been copied into the repository tree; the clean `npm ci`, `npm audit` and Node 24 corpus checks below were re-run in a second Linux environment with the same Node tarball (same sha256) in a directory of its own",
+    "lock_regeneration_2026_11_07": "the lockfile was regenerated on Linux after the shadcn CLI was dropped from devDependencies: Node 24.22.2 (the same tarball) with npm 11.19.1 in the Ubuntu WSL distro, in a fresh directory, `npm install --ignore-scripts`. Entries 535 -> 360 (root included): 175 removed, 0 added, no version, resolved or integrity value changed, no flag changed; only the root entry's devDependencies differ. The linux-x64-gnu entries of rolldown, lightningcss and @tailwindcss/oxide are still there. Docker is still unavailable"
+  },
+  "checks": [
+    {
+      "id": 1,
+      "check": "npm ci --ignore-scripts on Node 24.22.2 in a clean directory; native optional binaries present",
+      "result": "PASS",
+      "evidence": "added 438 packages in 7 s; lockfile byte-identical after the install; present on disk: @rolldown/binding-linux-x64-gnu, @tailwindcss/oxide-linux-x64-gnu, lightningcss-linux-x64-gnu, @oxlint/binding-linux-x64-gnu. Not a container: Docker is unavailable here",
+      "revised_2026_11_07": "after dropping the shadcn CLI from devDependencies: `npm ci --ignore-scripts` in a fresh directory on Node 24.22.2 / npm 11.19.1 added 263 packages in 4 s (was 438), the lockfile was byte-identical after the install, lint (0 warnings, 40 files), `tsc -b` and the build (the same two file hashes as before: index-SY5uFLoJ.css, index-zgf5jmG8.js) pass; `npm audit --audit-level=high` exit 0 with 0 vulnerabilities (was 6)"
+    },
+    {
+      "id": 2,
+      "check": "vite build, then no inline <script>, <style, style=, data: font in the output",
+      "result": "PASS",
+      "evidence": "vite 8.3.6 built 104 modules in about 160 ms; tests/test_dist_contract.py (real-dist leg) passes: no inline script or style, no style= attribute, no <base>, no robots meta, no data: font, no @font-face, no absolute URL, and no transition/animation/@keyframes declaration in the built CSS"
+    },
+    {
+      "id": 3,
+      "check": "dist served through the FastAPI app with the pinned headers; Playwright with a securitypolicyviolation listener over all five routes: zero violations",
+      "result": "PASS",
+      "evidence": "web/e2e/deeplink.spec.ts over the fixture server (real ui_v2 router, real routers over fakes): five pages under /v2/ and five at / (UI_V2), plus not-found views, zero console errors, zero page errors, zero securitypolicyviolation events, every request to the page's own origin, every response < 400, every asset 200. The watcher is shown not to be vacuous by web/e2e/watch.spec.ts and by a mutation (deleting the built stylesheet fails the spec with 'failed response: 404 .../assets/index-*.css'). The Turnstile script is not loaded at I1 (the widget is I3)"
+    },
+    {
+      "id": 4,
+      "check": "/v2/company/NVDA/ 200 with the headers; /v2/assets/<hash>.js immutable; /api/* JSON 404 stays JSON",
+      "result": "PASS",
+      "evidence": "probe of the real dist through the fixture server: /v2/company/NVDA/ 200 text/html no-cache X-Robots-Tag noindex + CSP; /v2/assets/index-*.js 200 'public, max-age=31536000, immutable'; /v2/assets/missing.js 404 JSON; /v2/index.html 404 JSON; /api/nope 404 JSON; /openapi.json 404; encoded traversal 404; / and /legacy 200 no-cache, no X-Robots-Tag; /api/config 200 no-store"
+    },
+    {
+      "id": 5,
+      "check": "tsc -b under TypeScript 7 with the shadcn alias and no baseUrl; shadcn init/add accepted",
+      "result": "PASS, with one finding",
+      "evidence": "typescript 7.0.2 `tsc -b` is clean with `paths` only. shadcn 4.23.0 did not reject a tsconfig without baseUrl, but it resolved `@/components` to a LITERAL `@` directory until `paths` was also set in the ROOT web/tsconfig.json (the file it reads; tsconfig.app.json alone is not enough). With paths in the root file `shadcn add` wrote src/components/ui/*. TS 7 needed no typescript@~6.0.3 fallback; oxlint 1.91.0 lints 40 files clean with the jsx-a11y and react plugins on",
+      "revised_2026_11_07": "shadcn is no longer a dependency of web/ (nothing imports it; components.json is its configuration only): it ran from node_modules at scaffold, and is now run only as `npx shadcn@4.23.0 add <component>` on the day a component is added. tests/test_web_pins.py fails if `shadcn` or `@shadcn/*` appears in package.json or the lockfile"
+    },
+    {
+      "id": 6,
+      "check": "Vitest 5.1 + jsdom 30.1.3: coverage >= 80% with the new include/exclude semantics; port chips/evidence/stream_cut tests",
+      "result": "PARTIAL: the stack probe PASSES; the port of the old tests is NOT done (I2 and I3)",
+      "evidence": "50 tests pass; v8 coverage 100% statements/branches/functions/lines over src with `include: ['src/**/*.{ts,tsx}']` and exclude of components/ui, *.generated.ts, tests and the setup file (the report lists no excluded file); thresholds 80 are set. Probe added 2026-11-07 after the I1 review: web/src/__tests__/smoke-check-6-stream-cut.test.ts, 18 tests, vitest 5.1.0 + jsdom 30.1.3 on Node 24.22.2 (lint and `tsc -b` clean; 75 tests in web/ in all). It runs the pure read-loop half of tests/ui/stream_cut.test.mjs against a stand-in for worker A's `sse.ts` built on the real parser (eventsource-parser 4.1.3): a read that rejects mid-answer, before the first byte and on a real ReadableStream whose second pull errors; a clean end with no done or error; a finished answer or a server error keeping its own status when the stream then ends by a reset or by closing; the ordinary answer; a page failure while an event is taken in (honest status, original error kept, `ended` only once shown); ping comments, unknown events, unknown fields and non-JSON data ignored; a multi-byte character split across chunks; a frame over `maxBufferSize` ends the stream as failed and the terminated parser is not fed again, its next `feed()` throws until `reset()` (confirmed), and without a limit it buffers 200,000 characters (the unbounded default, confirmed). Verdict: the stack hosts the port (TextDecoder, Uint8Array and ReadableStream work across jsdom's realm; the parser's callbacks behave as the types say). Five single-point breaks of the stand-in (no catch around read, no buffer limit, `ended` never set, a page failure reported as a cut, no `stream: true`) were each caught. NOT done: the DOM half of the old tests (statuses written into #status, the Ask button), the response-without-a-body case, and every chips and evidence test; the 16 tests of stream_cut.test.mjs are ported with `sse.ts` in I2 and the components in I3, and the stand-in here is not the shipped client"
+    },
+    {
+      "id": 7,
+      "check": "Turnstile double-mount under React StrictMode yields one live widget and a fresh token per use",
+      "result": "PASS as a probe of the stack; the shipped hook and widget are I3 and must re-run it",
+      "evidence": "web/src/__tests__/smoke-check-7-turnstile.test.tsx, 7 tests (React 19.3.1, @testing-library/react 16.3.3, jsdom 30.1.3, vitest 5.1.0 on Node 24.22.2; lint and `tsc -b` clean). A fake `window.turnstile` (render, remove, reset, solve, expire; typed in the test, no global declaration) and the smallest hook that follows R33(3): the widget is rendered in an effect with a cleanup that removes it, the token lives in a ref, `consume` clears it and resets the widget, `expired-callback` clears it. Under <StrictMode>: the effect runs twice (2 renders, 1 remove) and exactly one widget stays live, with one frame in the DOM; the same hook with no cleanup leaves two (so the probe is not vacuous); a page change below the shell neither renders nor removes the widget; unmounting leaves none and mounting again leaves one; a token is fresh per use (consume returns it once, clears it, resets the widget; the next solve gives a different token); an expiry clears the token; a late callback of the widget StrictMode discarded does not become the current token. Four single-point breaks (no stale-callback guard, consume keeps the token, expiry ignored, no reset) were each caught. Scope: Cloudflare's real script and the CSP were not exercised (the owner's B6 check), there is no router (a page prop stands in for a route change), and the hook lives in the test file: the shipped hook (src/lib/turnstile*, TurnstileWidget*, I3) must pass the same cases"
+    },
+    {
+      "id": 8,
+      "check": "@axe-core/playwright and lighthouse on the served app; keyboard scripts for chips, drawer, drop zone",
+      "result": "PASS for what exists; keyboard scripts NOT APPLICABLE yet",
+      "evidence": "axe (wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa): zero serious or critical on the five placeholder pages and the not-found view, light and dark scheme (11 of the 45 Playwright tests, all of which pass on the final tree). Lighthouse 13.6.0 on the five /v2/ pages x mobile and desktop: accessibility 1, best-practices 1, performance 1, SEO 0.5 (the page is noindex, by design), 4 requests per page; both gates (a11y >= 95, best-practices >= 90) pass. These are PLACEHOLDER pages: the numbers say nothing about the finished pages (I4 re-runs both). Keyboard flows implemented and tested: skip link, route-change focus on h1, document title, landmarks; chips, drawer and drop zone do not exist yet"
+    },
+    {
+      "id": 9,
+      "check": "(replaced) one artifact: the same dist at /v2/ and, flipped, at /",
+      "result": "PASS",
+      "evidence": "the preview server (UI_V2_PREVIEW) and the flipped server (UI_V2) serve the same web/dist; web/e2e/deeplink.spec.ts runs all five pages on both with zero errors and zero CSP violations; assets stay under /v2/assets/ after the flip; /v2/ stays an alias; /legacy stays the old page. Build time 160 ms. Image size delta: not measured (no Docker)"
+    }
+  ],
+  "findings": [
+    "shadcn 4.23.0 differs from the stack note's prediction: it installs `cn` 0.5.2 (shadcn's own package, MIT, no dependencies) and the components import `cn` from it, instead of clsx + tailwind-merge. clsx stays as a dependency of class-variance-authority; tailwind-merge is not installed. R1's list is completed from this lockfile",
+    "shadcn init also added `@fontsource-variable/inter` (OFL-1.1, a web font: out of scope, R4) and `tw-animate-css`; both were removed with `npm uninstall`. The generated `@import \"shadcn/tailwind.css\"` was dropped too: it ships a plain, always-emitted `.shimmer` rule with `animation` (found by the built-CSS scan) and keyframes, and none of the seven components needs its variants",
+    "Tailwind v4 turns every word of every scanned file into a candidate class: a code comment containing `transition` made it emit a `.transition` utility (found by the built-CSS scan). The CSS now scans only src (`@import \"tailwindcss\" source(\"./\")`) and not tests (`@source not`), and carries no such comment",
+    "shadcn's seven components (button, badge, card, input, label, table, textarea) had `transition-*` classes, one `translate-y-px` press nudge and a `use client` marker; all stripped (R30). `select` and `skeleton` were NOT installed (a native <select> is used for the strategy and upload-target controls; skeleton animates); `chart` is never installed (HTML sink)",
+    "the lockfile has 6 `inBundle` entries (the wasm fallback of @tailwindcss/oxide bundles its runtime) with no resolved/integrity of their own; tests/test_web_pins.py exempts exactly those and checks they sit under a parent entry",
+    "SUPERSEDED 2026-11-07 (see artifacts/m5b_licenses.json): LICENSES vs S10: all 23 runtime (non-dev) packages are MIT, ISC or Apache-2.0. Among the 511 dev packages three are outside S10's two allow-lists: `sentry` 0.45.0 is FSL-1.1-Apache-2.0 (Functional Source License, source-available, not OSI; pulled by lighthouse > @sentry/node > @sentry/bundler-plugins; never in the bundle), and @csstools/color-helpers and @csstools/css-syntax-patches-for-csstree are MIT-0 (permissive; pulled by jsdom). S10 fails as written until the owner amends the allow-list or the Lighthouse CLI is dropped After the shadcn drop the tree has 359 entries; the license report moved to artifacts/m5b_licenses.json and is checked by tests/test_web_licenses.py. Outside S10's literal lists, and awaiting the owner: FSL-1.1-Apache-2.0 (sentry, via lighthouse) and MIT-0 (two @csstools packages, via jsdom). CC0-1.0, BlueOak-1.0.0 and 0BSD are named by S10's build/test list and pass. S10's license gate is OPEN",
+    "SUPERSEDED 2026-11-07: npm audit --audit-level=high: exit 0, 0 high, 0 critical, 6 vulnerabilities (2 low, 4 moderate): minimatch via shadcn > ts-morph > @ts-morph/common, dev tooling only, not in the bundle; `npm audit fix --force` would install shadcn@1.0.0 (breaking), not taken. osv-scanner 2.7.0 on the lockfile exits 1 with 2 medium findings (deepmerge 4.3.1, no fixed version; minimatch 10.2.6, fixed in 11.0.1), both dev tooling: a stage-4 push blocker until fixed or recorded as accepted risks Both findings (and the six audit entries) arrived only through the `shadcn` devDependency; it was dropped and the lockfile regenerated on Linux: `osv-scanner scan --lockfile web/package-lock.json` now exits 0 (no issues found, 352 packages) and `npm audit --audit-level=high` exits 0 with 0 vulnerabilities. No accepted-risks entry is needed",
+    "2026-11-07: the Docker `web` stage and the runtime image are still NOT built (no Docker on this desktop), so `command -v node` in the image is unchecked, and CI has not run; both need the push (the CI `web` job runs `docker build --target web`)"
+  ],
+  "downloads": [
+    {
+      "what": "Node.js 24.22.2 linux-x64 tarball",
+      "source": "https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz",
+      "bytes": 32039312,
+      "sha256": "48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75",
+      "verified_against": "https://nodejs.org/dist/v24.22.2/SHASUMS256.txt (line matched, sha256sum -c OK); the SHASUMS file itself was not GPG-verified. Downloaded twice (two distros), same hash"
+    },
+    {
+      "what": "npm registry packages (438 installed)",
+      "source": "https://registry.npmjs.org/",
+      "integrity": "every entry of web/package-lock.json carries a sha512 integrity hash (tests/test_web_pins.py)",
+      "install_scripts": "off (web/.npmrc ignore-scripts=true and --ignore-scripts)",
+      "note_2026_11_07": "263 packages are installed by `npm ci` since the shadcn drop (438 before); every lockfile entry still carries a sha512 or is bundled in a parent that does"
+    },
+    {
+      "what": "shadcn CLI 4.23.0 (run from node_modules: `npx --no-install shadcn init -t vite -b base --preset vega`, then `add button badge card input label table textarea`)",
+      "source": "https://registry.npmjs.org/shadcn/-/shadcn-4.23.0.tgz",
+      "integrity": "sha512-lKgq7QPFgkV/6EOrMCwvEn7ZAw/YnM/grhxzJmK4cZdw3E4F3Ut2EmWvrn2E+vzJp1y/76mxU185OSkXo9Ff+Q==",
+      "also_fetched": "the component sources from the shadcn registry (ui.shadcn.com, style base-vega); the CLI's own npm install of cn 0.5.2, @fontsource-variable/inter 5.3.0 and tw-animate-css 1.4.0 (the last two removed again)",
+      "note_2026_11_07": "no longer a dependency; fetched on demand by `npx shadcn@4.23.0 add <component>` (D17)"
+    },
+    {
+      "what": "Playwright Chrome for Testing 158.0.8127.18 (chromium v1254)",
+      "source": "https://cdn.playwright.dev/builds/cft/158.0.8127.18/win64/chrome-win64.zip",
+      "checksum": "none published by the source"
+    },
+    {
+      "what": "Playwright Chrome Headless Shell 158.0.8127.18 (v1254), 123.2 MiB",
+      "source": "https://cdn.playwright.dev/builds/cft/158.0.8127.18/win64/chrome-headless-shell-win64.zip",
+      "checksum": "none published by the source"
+    },
+    {
+      "what": "Playwright FFmpeg v1013",
+      "source": "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1013/ffmpeg-win64.zip",
+      "checksum": "none published by the source"
+    },
+    {
+      "what": "Playwright Winldd v1007",
+      "source": "https://cdn.playwright.dev/dbazure/download/playwright/builds/winldd/1007/winldd-win64.zip",
+      "checksum": "none published by the source"
+    },
+    {
+      "what": "node:24.22.2-slim image digest (metadata only; no image was pulled)",
+      "source": "https://registry-1.docker.io/v2/library/node/manifests/24.22.2-slim (anonymous token; Docker-Content-Digest header) and hub.docker.com tags API",
+      "sha256": "01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9",
+      "note": "the OCI image index digest, last pushed 2026-11-05; both sources agree; pinned in the Dockerfile"
+    }
+  ],
+  "dist": {
+    "files_bytes": {
+      "assets/index-SY5uFLoJ.css": 26175,
+      "assets/index-zgf5jmG8.js": 260284,
+      "favicon.svg": 367,
+      "index.html": 522
+    },
+    "gzip_bytes": {
+      "assets/index-SY5uFLoJ.css": 5339,
+      "assets/index-zgf5jmG8.js": 81737
+    },
+    "requests_per_cold_load": 4
+  },
+  "packages": {
+    "moved_to": "artifacts/m5b_licenses.json (generated from web/package-lock.json by tests/test_web_licenses.py; S10, R6)",
+    "total_entries": 359,
+    "runtime_non_dev": 23,
+    "dev": 336,
+    "note": "this block held the license inventory of the first lockfile (534 entries, with the shadcn CLI); it described a tree that no longer exists, so it was replaced by the counts of the current lockfile and a pointer"
+  },
+  "review_fixes_2026_11_07": {
+    "spec": "docs/specs/m5b-frontend.md I1 row (the I1 review findings)",
+    "shadcn": "dropped from devDependencies; lockfile regenerated on Linux (see toolchain.lock_regeneration_2026_11_07); osv-scanner exit 1 -> 0; npm audit 6 -> 0 vulnerabilities",
+    "licenses": "split out to artifacts/m5b_licenses.json with a pytest gate; FSL-1.1-Apache-2.0 and MIT-0 are recorded as pending the owner, S10 is OPEN",
+    "checks_6_and_7": "run as probes now (see checks 6 and 7); check 6 is PARTIAL by design",
+    "not_done": "the Docker web stage and the runtime image were not built (no Docker); CI has not run"
+  }
+}

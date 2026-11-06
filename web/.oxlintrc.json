@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "jsx-a11y", "typescript", "oxc"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "react/no-danger": "error",
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-new-func": "error",
+    "no-script-url": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "jsx-a11y/label-has-associated-control": [
+      "error",
+      { "labelComponents": ["Label"], "controlComponents": ["Input", "Textarea"], "assert": "either" }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/routes.tsx"],
+      "rules": { "react/only-export-components": "off" }
+    },
+    {
+      "files": ["src/components/ui/**"],
+      "rules": { "react/only-export-components": "off", "jsx-a11y/label-has-associated-control": "off" }
+    }
+  ],
+  "ignorePatterns": ["dist", "coverage", "node_modules", "playwright-report", "test-results", "lighthouse-out"]
+}

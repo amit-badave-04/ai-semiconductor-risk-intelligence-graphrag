@@ -41,11 +41,12 @@ def instructions(text: str) -> list[str]:
 
 
 def stages() -> tuple[list[str], list[str]]:
-    """(model stage instructions, runtime stage instructions)."""
+    """(model stage instructions, runtime stage instructions). The stages are model, web (M5b: the single-page app build,
+    pinned by tests/test_dockerfile_web.py) and the runtime image, which stays the last."""
     steps = instructions(DOCKERFILE.read_text(encoding="utf-8"))
     froms = [i for i, step in enumerate(steps) if step.startswith("FROM ")]
-    assert len(froms) == 2 and steps[froms[0]].endswith(" AS model")
-    return steps[froms[0] + 1:froms[1]], steps[froms[1] + 1:]
+    assert len(froms) == 3 and steps[froms[0]].endswith(" AS model") and steps[froms[1]].endswith(" AS web")
+    return steps[froms[0] + 1:froms[1]], steps[froms[2] + 1:]
 
 
 MODEL, RUNTIME = stages()

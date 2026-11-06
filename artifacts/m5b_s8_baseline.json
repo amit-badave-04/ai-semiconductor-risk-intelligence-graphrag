@@ -1,0 +1,31 @@
+{
+  "spec": "docs/specs/m5b-frontend.md Acceptance (Lighthouse) and M5_PLAN.md S8: Lighthouse baseline of the CURRENT page, recorded, never gated",
+  "recorded": "2026-11-06 at I1 part 3",
+  "tool": "lighthouse 13.6.0 CLI (web/scripts/lighthouse.mjs --legacy), Playwright Chrome for Testing 158.0.8127.18 headless, Windows",
+  "target": "GET /legacy on the fixture server (tests/e2e/serve_fixture_app.py --ui-v2-preview), loopback, no Turnstile site key, fakes behind the API; the page is the same file as GET / (serve/static/index.html with the I0b accessibility fixes)",
+  "form_factors": {
+    "mobile": "Lighthouse default emulation (simulated slow 4G, 4x CPU slowdown)",
+    "desktop": "--preset=desktop"
+  },
+  "results": [
+    {
+      "formFactor": "mobile",
+      "performance": 0.8,
+      "accessibility": 0.96,
+      "best-practices": 0.96,
+      "seo": 0.9,
+      "requests": 5,
+      "transferBytes": 86907
+    },
+    {
+      "formFactor": "desktop",
+      "performance": 0.85,
+      "accessibility": 0.96,
+      "best-practices": 0.96,
+      "seo": 0.9,
+      "requests": 5,
+      "transferBytes": 86907
+    }
+  ],
+  "limits": "one run each (no median); loopback server, so network time is simulated by Lighthouse, not measured on Fly; the old page's status line, examples panel and stats come from fakes"
+}
