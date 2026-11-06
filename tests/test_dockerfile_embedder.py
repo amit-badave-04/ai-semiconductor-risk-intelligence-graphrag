@@ -77,13 +77,19 @@ def test_the_8_bit_build_instruction_is_unchanged_and_comes_before_the_arguments
     assert "COPY scripts/build_onnx_embedder.py scripts/" in MODEL
 
 
-def test_the_model_path_of_the_default_image_is_today_s_and_matches_fly_toml():
+def test_fly_toml_builds_the_fp32_variant_and_serves_the_model_that_variant_builds():
+    """Decision 18 met by W1c (M5_DECISIONS 10.8): live builds fp32; the Dockerfile default stays today's 8-bit image."""
+    import tomllib
+
     env = next(step for step in RUNTIME if step.startswith("ENV "))
     path = re.search(r"ONNX_MODEL_PATH=(\S+)", env).group(1)
-    fly = re.search(r'ONNX_MODEL_PATH\s*=\s*"([^"]+)"', (ROOT / "fly.toml").read_text(encoding="utf-8")).group(1)
+    fly_text = (ROOT / "fly.toml").read_text(encoding="utf-8")
+    fly_path = re.search(r'ONNX_MODEL_PATH\s*=\s*"([^"]+)"', fly_text).group(1)
+    variant = tomllib.loads(fly_text)["build"]["args"]["EMBEDDER_VARIANT"]
 
-    assert resolve(path, EMBEDDER_VARIANT="q8") == Q8_MODEL_PATH == fly
-    assert resolve(path, EMBEDDER_VARIANT="fp32") == FP32_MODEL_PATH       # a self-consistent fp32 image; fly.toml wins at run time
+    assert variant == "fp32"
+    assert resolve(path, EMBEDDER_VARIANT=variant) == FP32_MODEL_PATH == fly_path
+    assert resolve(path, EMBEDDER_VARIANT="q8") == Q8_MODEL_PATH       # the Dockerfile default is unchanged
 
 
 def test_nothing_else_in_the_runtime_stage_changes_with_the_variant():

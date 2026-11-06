@@ -16,11 +16,16 @@ kill_timeout = 300
 
 [build]
   dockerfile = "Dockerfile"
+  # M5 decision 18, condition met by window W1c (docs/v2/M5_DECISIONS.md 10.8): the query embedder is the 8-bit model
+  # dequantized once to float32 at build time (identical retrieval, about 3.6x faster, +1.26 GB). Back to today's 8-bit
+  # model: EMBEDDER_VARIANT = "q8" and the q8 ONNX_MODEL_PATH below, then redeploy (or redeploy the previous image).
+  [build.args]
+    EMBEDDER_VARIANT = "fp32"
 
 [env]
   ENVIRONMENT = "production"
   EMBEDDING_BACKEND = "onnx"
-  ONNX_MODEL_PATH = "/srv/models/qwen3-embedding-0.6b-q8/model_q8.onnx"
+  ONNX_MODEL_PATH = "/srv/models/qwen3-embedding-0.6b-fp32/model_fp32.onnx"
   ONNX_THREADS = "1"
   LLM_ANSWER_MAX_TOKENS = "2400"
   # Answering models (the code default for ANSWER_MODEL stays Sonnet so local runs are Sonnet; production is
