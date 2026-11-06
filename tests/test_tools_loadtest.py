@@ -1288,7 +1288,7 @@ def test_the_generator_files_never_name_a_pdf_library_a_provider_key_or_the_live
 def test_the_fly_toml_is_a_secretless_staging_generator_with_no_inbound_service():
     config = tomllib.loads((STAGING_DIR / "fly.loadgen.toml").read_text("utf-8"))
     assert config["app"] == "semigraph-loadgen-stg" and "stg" in config["app"].split("-") and config["primary_region"] == "sin"
-    assert config["vm"] == [{"size": "performance-1x", "memory": "2gb"}]
+    assert "vm" not in config and "compute" not in config      # the class (performance-1x / 2 GB) is windows.json's, passed by staging.py
     assert "http_service" not in config and "services" not in config and "mounts" not in config
     for key, value in config["env"].items():
         assert key.startswith("LOADTEST_") and not re.search(r"SECRET|TOKEN|PASSWORD|KEY|AUTH", key), key

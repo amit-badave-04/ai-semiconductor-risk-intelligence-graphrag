@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))      # scripts/ is not 
 from staging_quote import (  # noqa: E402,F401  (re-exported: the tests and other tools read them from here)
     REPO,
     UsageError,
+    check_build_args,
     derived_usd,
     has_option,
     hourly_rate,
@@ -50,6 +51,7 @@ from staging_quote import (  # noqa: E402,F401  (re-exported: the tests and othe
     parse_class,
     quote_lines,
     quote_usd,
+    toml_for,
 )
 
 MONEY_TOLERANCE = 0.005
@@ -417,7 +419,7 @@ class Staging:
         klass = klass or next(m["class"] for m in window["machines"] if m["app"] == app_key)
         size, memory = parse_class(klass)
         cwd = (self.repo / app["context"]).resolve()
-        config = os.path.relpath(self.repo / app["toml"], cwd).replace(os.sep, "/")
+        config = os.path.relpath(self.repo / toml_for(self.windows, key, app_key), cwd).replace(os.sep, "/")
         args = ["deploy", "--app", app["name"], "--config", config, "--dockerfile", app["dockerfile"], "--remote-only",
                 "--ha=false", "--vm-size", size, "--vm-memory", str(memory)]
         if not app.get("public"):
@@ -479,6 +481,7 @@ class Staging:
         builds = self._parse_build_args(build_args)
         if builds and app_key != "api":
             raise UsageError("--build-arg changes the API image only")
+        check_build_args(self.windows, key, app_key, builds)
         if app_key == "tools" and "neo4j" in window["apps"]:
             self._check_vectors()
         if klass is not None and klass not in self.windows["rates_30_day_usd"]:
@@ -494,11 +497,17 @@ class Staging:
         return self.bolt_factory(state) if self.bolt_factory else ProxyBolt(self, state)
 
     def _expected_examples(self) -> int:
+        """How many cached examples a correctly seeded database holds: the examples the serving code's own seeding rule
+        accepts (``semigraph.serve.store.refusal_reason``; it refuses one whose stored checks are missing or failed), NOT every
+        question in the file (53 questions, 51 cached: X1 and T15 are refused). Imported here so ``quote`` and ``--plan``
+        never need the package."""
         path = self.repo / "src" / "semigraph" / "artifacts" / "examples.json"
         try:
-            return max(1, len(json.loads(path.read_text(encoding="utf-8"))["examples"]))
+            examples = json.loads(path.read_text(encoding="utf-8"))["examples"]
         except (OSError, ValueError, KeyError):
             return 1
+        from semigraph.serve.store import refusal_reason
+        return max(1, sum(1 for example in examples if isinstance(example, dict) and refusal_reason(example) is None))
 
     @staticmethod
     def _n(rows: list[dict]) -> int:

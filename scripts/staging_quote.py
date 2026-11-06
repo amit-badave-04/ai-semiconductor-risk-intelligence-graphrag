@@ -7,11 +7,13 @@ and a test proves derived <= quote <= cap for every window.
 """
 
 import json
+import tomllib
 from collections.abc import Sequence
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 LIVE_APP_NAMES = frozenset({"semigraph", "semigraph-neo4j"})
+STAGING_TOML_DIR = "deploy/staging/"
 
 
 class UsageError(Exception):
@@ -27,7 +29,43 @@ def load_windows(path: Path | None = None) -> dict:
         for machine in [*window["machines"], *(m for o in window.get("options", ()) for m in o.get("extra_machines", ()))]:
             if machine["class"] not in doc["rates_30_day_usd"] or machine["app"] not in doc["apps"]:
                 raise ValueError(f"{key}: unknown class or app in {machine}")
+        _check_toml_overrides(doc, key, window)
     return doc
+
+
+def _check_toml_overrides(doc: dict, key: str, window: dict) -> None:
+    """A window may deploy an app from its own toml (``"toml_overrides": {"api": "deploy/staging/fly.w1b.toml"}``): the file
+    must exist under ``deploy/staging``, be a toml, and say ``app =`` the registered name of that very app, so an override can
+    never point a deploy at another app's definition or at the live ``fly.toml``."""
+    for app_key, rel in window.get("toml_overrides", {}).items():
+        problem = None
+        target = REPO / rel
+        if app_key not in window["apps"]:
+            problem = f"{app_key!r} is not an app of the window"
+        elif not rel.startswith(STAGING_TOML_DIR) or not rel.endswith(".toml") or ".." in Path(rel).parts:
+            problem = f"{rel!r} is not a toml under {STAGING_TOML_DIR}"
+        elif not target.is_file():
+            problem = f"{rel!r} does not exist"
+        elif tomllib.loads(target.read_text(encoding="utf-8")).get("app") != doc["apps"][app_key]["name"]:
+            problem = f"{rel!r} does not define the app {doc['apps'][app_key]['name']!r}"
+        if problem:
+            raise ValueError(f"{key}: toml_overrides: {problem}")
+
+
+def toml_for(windows: dict, key: str, app_key: str) -> str:
+    """The toml an app of a window is deployed from: the window's override, else the app's own."""
+    return windows["windows"][key].get("toml_overrides", {}).get(app_key, windows["apps"][app_key]["toml"])
+
+
+def check_build_args(windows: dict, key: str, app_key: str, builds: Sequence[str]) -> None:
+    """A window may fix the image an app is built as (``"build_args": {"api": {"require": [...], "refuse": [...]}}``): window W1b
+    measures the image that would ship, so it must be built as fp32 and without the unpatched model."""
+    policy = windows["windows"][key].get("build_args", {}).get(app_key, {})
+    missing = [b for b in policy.get("require", ()) if b not in builds]
+    refused = [b for b in policy.get("refuse", ()) if b in builds]
+    if missing or refused:
+        raise UsageError(f"window {key} builds the {app_key} image with --build-arg {' --build-arg '.join(policy.get('require', ()))} "
+                         f"and without {', '.join(policy.get('refuse', ())) or 'nothing'} (missing {missing}, refused {refused})")
 
 
 def hourly_rate(windows: dict, klass: str) -> float:

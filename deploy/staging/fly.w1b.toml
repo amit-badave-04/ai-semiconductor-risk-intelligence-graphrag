@@ -1,0 +1,84 @@
+# Fly.io config - the STAGING API for window W1b (semigraph-stg), the fp32 embedder memory confirmation (council 7, decision 1,
+# step 3: docs/v2/research/m5-councils/council7/verdict.md; deploy/staging/windows.json "W1b").
+# THROWAWAY: created for a test window by scripts/staging.py and destroyed after it. It is never the live app and it holds no
+# live data, no provider key and no real person's identity: the model is the mock LLM (deploy/staging/fly.mockllm.toml), the
+# bot check is stubbed, the graph is the staging Neo4j (deploy/staging/fly.neo4j-stg.toml) loaded from the repository's own
+# baked dump. Every secret is generated per window and pushed by scripts/staging.py; none is written in this file.
+#
+# A copy of deploy/staging/fly.stg.toml with the memory settings of the LIVE service (fly.toml and the code defaults of
+# src/semigraph/config.py), because this window measures the resident memory of the process the site runs, not a load model:
+#   - ONNX_MODEL_PATH is the fp32 model that `--build-arg EMBEDDER_VARIANT=fp32` builds into the image (Dockerfile:
+#     /srv/models/qwen3-embedding-0.6b-<variant>/model_<variant>.onnx). The image is built WITHOUT KEEP_UNPATCHED, as the
+#     image that would ship is, so there is no 8-bit file next to it.
+#   - EMBED_SLOTS = 1 and MAX_CONCURRENT_ANSWERS = 2: the live values (fly.toml sets neither; they are the code defaults).
+#   - no upload cap is set: the live caps are the code defaults (15 MiB, 30 pages, 16,000 tokens, 120 chunks, one upload at
+#     a time, 40 a day). Only UPLOADS_ENABLED is set, as in fly.toml.
+#   - swap_size_mb = 1024 and the drain budget, as live.
+#   - the proxy limits are the live soft/hard 20/40 (the S2 gate's 200/400 are for the gate's 120 streams).
+# What stays staging (as in fly.stg.toml): ENVIRONMENT = staging, the mock models and base URL, the staging database host, the
+# stubbed bot check, the client address from a header (so one ask per address never meets the per-address windows), no
+# freshness monitor (it would reach EDGAR), and the daily paid-ask caps off: they are admission caps, not memory, and the
+# global daily spend cap alone would refuse every ask after about fourteen of them.
+#
+# No [[vm]] block, on purpose: it would win over `flyctl deploy --vm-size / --vm-memory`. The class (shared-cpu-2x / 4 GB, the
+# live one) comes from windows.json through scripts/staging.py. tests/test_staging_tomls.py refuses a block.
+#
+# Build and deploy only through scripts/staging.py, which passes the Dockerfile, the build context and the build argument.
+app = "semigraph-stg"
+primary_region = "sin"
+swap_size_mb = 1024
+# Drain (src/semigraph/serve/drain.py): same budget as the live app.
+kill_signal = "SIGTERM"
+kill_timeout = 300
+
+[env]
+  ENVIRONMENT = "staging"
+  EMBEDDING_BACKEND = "onnx"
+  ONNX_MODEL_PATH = "/srv/models/qwen3-embedding-0.6b-fp32/model_fp32.onnx"
+  ONNX_THREADS = "1"
+  EMBED_SLOTS = "1"
+  LLM_ANSWER_MAX_TOKENS = "2400"
+  # The mock LLM. The service prices openai/mock-* as the real models (src/semigraph/serve/estimate.py), and every call is
+  # sent to OPENAI_API_BASE (the mock's private name), never to a provider.
+  ANSWER_MODEL = "openai/mock-luna"
+  ESCALATION_MODEL = "openai/mock-sonnet"
+  AGENT_PLANNER_MODEL = "openai/mock-luna"
+  OPENAI_API_BASE = "http://semigraph-mockllm.internal:8000/v1"
+  # The staging graph, over the private network. The password is a per-window secret.
+  NEO4J_URI = "bolt://semigraph-neo4j-stg.internal:7687"
+  # The driver (tools/probe/w1b.py) sets this header per request; the live app trusts only the Fly edge's header.
+  CLIENT_IP_HEADER = "x-test-client-ip"
+  # The bot check stays required and fails closed; the stub accepts any non-empty token. Live refuses the stub.
+  TURNSTILE_REQUIRED = "true"
+  TURNSTILE_STUB = "true"
+  AGENT_ENABLED = "true"
+  # No outside call at all: the freshness monitor would reach EDGAR and the Federal Register.
+  FRESHNESS_ENABLED = "false"
+  UPLOADS_ENABLED = "true"
+  STATE_BACKEND = "inprocess"
+  # In flight at once: the live value (the code default).
+  MAX_CONCURRENT_ANSWERS = "2"
+  MAX_QUERIES_PER_DAY = "0"
+  MAX_SPEND_USD_PER_DAY = "0"
+  PAID_PER_IP_PER_DAY = "0"
+  PAID_SPEND_SHARE_PER_IP_USD = "0"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 40
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8080
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "180s"

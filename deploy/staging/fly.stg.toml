@@ -9,7 +9,8 @@
 #   - ENVIRONMENT = staging. The production validators (src/semigraph/config.py) do not apply, and the staging ones refuse the
 #     live database host, any provider key and any model that is not a mock. The live app refuses a stubbed bot check and a
 #     raised cap in turn (tests/test_serve_config_production.py).
-#   - the performance-2x class and soft/hard 200/400: the fleet is sized from spike S2, and the proxy counts an SSE stream as a
+#   - soft/hard 200/400 (the machine class is the window's, from windows.json: performance-2x for the S2 gate): the fleet is
+#     sized from spike S2, and the proxy counts an SSE stream as a
 #     request for as long as it is open, so the live hard limit of 40 would refuse the 40+ concurrent streams of the gate.
 #   - the paid-ask caps are off (0) so the gate's roughly 9,000 asks per hour are not refused for being many. A separate
 #     sub-run sets them back to the production values (scripts/staging.py deploy --set ...).
@@ -72,9 +73,9 @@ kill_timeout = 300
     soft_limit = 200
     hard_limit = 400
 
-[[vm]]
-  size = "performance-2x"
-  memory = "4gb"
+# No [[vm]] block, on purpose: a block here would win over `flyctl deploy --vm-size / --vm-memory` and the window's machine
+# class (deploy/staging/windows.json, passed by scripts/staging.py) would silently not apply. tests/test_staging_tomls.py
+# refuses one.
 
 [checks]
   [checks.health]

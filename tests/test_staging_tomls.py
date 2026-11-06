@@ -11,7 +11,12 @@ checked as text AND as parsed data:
   defines, the staging database host naming the app that ``fly.neo4j-stg.toml`` defines, ``hard_limit`` above the 120
   concurrent streams of the gate (and above the soft limit), ``kill_signal`` / ``kill_timeout`` at the top level above the
   first table, and every key a real ``Settings`` field (``Settings`` ignores an unknown variable, so a typo would be silent);
-* the machine classes agree with ``deploy/staging/windows.json`` (the quote's arithmetic);
+* no staging toml carries a ``[[vm]]`` block (it would win over ``flyctl deploy --vm-size``): the machine class of every app
+  comes from ``deploy/staging/windows.json`` only (the quote's arithmetic and the deploy flags), and every app of every window
+  has a priced machine entry there;
+* ``fly.w1b.toml`` (window W1b): the stg API with the live memory settings (fp32 model path, ``EMBED_SLOTS`` and
+  ``MAX_CONCURRENT_ANSWERS`` equal to the code defaults that ``fly.toml`` does not override, no upload cap set, live swap, drain
+  budget and proxy limits), differing from ``fly.stg.toml`` in nothing else;
 * no PDF library in any staging file.
 """
 
@@ -201,23 +206,128 @@ def test_the_stg_env_builds_a_settings_that_reads_back_the_plan_values(monkeypat
     assert settings.freshness_enabled is False and settings.sec_user_agent == ""
 
 
-# --- machine classes agree with the quote's arithmetic -----------------------------------------------------------------------------
+# --- the W1b API: the staging API with the LIVE memory settings (council 7, decision 1, step 3) -----------------------------------
 
-def vm_class(toml_name: str) -> str:
-    vm = TOML_BY_NAME[toml_name]["vm"][0]
-    return f"{vm['size']}:{vm['memory']}"
+LIVE_TOML = tomllib.loads((ROOT / "fly.toml").read_text(encoding="utf-8"))
+W1B_ONLY = {"ONNX_MODEL_PATH", "EMBED_SLOTS", "MAX_CONCURRENT_ANSWERS", "MAX_UPLOADS_PER_DAY"}   # what differs from fly.stg.toml
+
+
+def _live_default(setting: str):
+    sys.path.insert(0, str(ROOT / "src"))
+    from semigraph.config import Settings
+    return Settings.model_fields[setting.lower()].default
+
+
+def _fp32_model_path_the_dockerfile_builds() -> str:
+    text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    pattern = re.search(r"ONNX_MODEL_PATH=(\S+)", text).group(1)
+    assert "${EMBEDDER_VARIANT}" in pattern
+    return pattern.replace("${EMBEDDER_VARIANT}", "fp32")
+
+
+def test_the_w1b_window_deploys_this_toml_for_its_api_and_no_other_window_does():
+    assert WINDOWS["windows"]["W1b"]["toml_overrides"] == {"api": "deploy/staging/fly.w1b.toml"}
+    assert [k for k, w in WINDOWS["windows"].items() if "toml_overrides" in w] == ["W1b"]
+    assert TOML_BY_NAME["fly.w1b.toml"]["app"] == WINDOWS["apps"]["api"]["name"] == "semigraph-stg"
+
+
+def test_the_w1b_api_serves_the_fp32_model_the_image_is_built_with():
+    path = env_of("fly.w1b.toml")["ONNX_MODEL_PATH"]
+    assert path == _fp32_model_path_the_dockerfile_builds() == "/srv/models/qwen3-embedding-0.6b-fp32/model_fp32.onnx"
+    assert "q8" not in path
+    assert WINDOWS["windows"]["W1b"]["build_args"]["api"] == {"require": ["EMBEDDER_VARIANT=fp32"], "refuse": ["KEEP_UNPATCHED=1"]}
+
+
+@pytest.mark.parametrize("setting", ["EMBED_SLOTS", "MAX_CONCURRENT_ANSWERS"])
+def test_the_w1b_concurrency_settings_are_the_live_ones_which_are_the_code_defaults(setting):
+    assert setting not in LIVE_TOML["env"], f"fly.toml now sets {setting}: W1b must follow it"
+    assert env_of("fly.w1b.toml")[setting] == str(_live_default(setting)) == {"EMBED_SLOTS": "1", "MAX_CONCURRENT_ANSWERS": "2"}[setting]
+    assert setting not in {k for k in env_of("fly.neo4j-stg.toml")}
+
+
+def test_the_w1b_api_sets_no_upload_cap_so_the_live_code_defaults_apply():
+    env, live = env_of("fly.w1b.toml"), LIVE_TOML["env"]
+    assert env["UPLOADS_ENABLED"] == live["UPLOADS_ENABLED"] == "true"
+    assert not {key for key in env if key.startswith("UPLOAD_") and key != "UPLOADS_ENABLED"}
+    assert "MAX_UPLOADS_PER_DAY" not in env and "MAX_UPLOADS_PER_DAY" not in live
+    sys.path.insert(0, str(ROOT / "src"))
+    from semigraph.config import Settings
+    assert _live_default("MAX_UPLOADS_PER_DAY") == 40 and Settings.model_fields["upload_max_pages"].default == 30
+
+
+def test_the_w1b_api_differs_from_the_stg_api_only_in_the_memory_settings():
+    stg, w1b = env_of("fly.stg.toml"), env_of("fly.w1b.toml")
+    differing = {key for key in {*stg, *w1b} if stg.get(key) != w1b.get(key)}
+    assert differing == W1B_ONLY, sorted(differing ^ W1B_ONLY)
+    for key in ("ENVIRONMENT", "OPENAI_API_BASE", "NEO4J_URI", "CLIENT_IP_HEADER", "TURNSTILE_STUB", "ANSWER_MODEL", "ESCALATION_MODEL",
+                "AGENT_PLANNER_MODEL", "FRESHNESS_ENABLED", "ONNX_THREADS", "LLM_ANSWER_MAX_TOKENS", "STATE_BACKEND", "AGENT_ENABLED"):
+        assert w1b[key] == stg[key], key
+    assert w1b["ONNX_THREADS"] == LIVE_TOML["env"]["ONNX_THREADS"] and w1b["LLM_ANSWER_MAX_TOKENS"] == LIVE_TOML["env"]["LLM_ANSWER_MAX_TOKENS"]
+    assert all(float(w1b[key]) == 0 for key in w1b if key.startswith(("MAX_QUERIES", "MAX_SPEND", "PAID_")))
+
+
+def test_the_w1b_api_has_the_live_swap_the_drain_budget_and_the_live_proxy_limits():
+    doc = TOML_BY_NAME["fly.w1b.toml"]
+    assert doc["swap_size_mb"] == LIVE_TOML["swap_size_mb"] == 1024
+    assert (doc["kill_signal"], doc["kill_timeout"]) == (LIVE_TOML["kill_signal"], LIVE_TOML["kill_timeout"]) == ("SIGTERM", 300)
+    assert doc["http_service"]["concurrency"] == LIVE_TOML["http_service"]["concurrency"] == {"type": "requests", "soft_limit": 20,
+                                                                                                "hard_limit": 40}
+    assert doc["checks"] == LIVE_TOML["checks"] and doc["primary_region"] == LIVE_TOML["primary_region"] == "sin"
+    raw = (STAGING / "fly.w1b.toml").read_text(encoding="utf-8")
+    first_table = min(m.start() for m in re.finditer(r"^\[", raw, re.MULTILINE))
+    assert raw.index("swap_size_mb") < first_table and raw.index("kill_signal") < first_table
+
+
+def test_every_w1b_env_key_is_a_settings_field_and_builds_the_live_shaped_settings(monkeypatch):
+    sys.path.insert(0, str(ROOT / "src"))
+    from semigraph.config import Settings
+    fields = {name.upper() for name in Settings.model_fields}
+    assert not set(env_of("fly.w1b.toml")) - fields
+    for key in list(os.environ):
+        if key.upper() in fields:
+            monkeypatch.delenv(key, raising=False)
+    for key, value in env_of("fly.w1b.toml").items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("FLY_APP_NAME", "semigraph-stg")
+    monkeypatch.setenv("OPENAI_API_KEY", MOCK_KEY)
+    monkeypatch.setenv("ORIGIN_AUTH_SECRET", ORIGIN_SECRET)
+    settings = Settings(_env_file=None)
+    assert settings.environment == "staging" and settings.turnstile_stub is True
+    assert settings.onnx_model_path.name == "model_fp32.onnx" and settings.onnx_threads == 1
+    assert (settings.embed_slots, settings.max_concurrent_answers) == (1, 2)
+    assert (settings.upload_max_bytes, settings.upload_max_pages, settings.upload_max_tokens, settings.upload_max_chunks,
+            settings.max_uploads_per_day) == (15 * 1024 * 1024, 30, 16000, 120, 40)
+    assert settings.neo4j_uri == "bolt://semigraph-neo4j-stg.internal:7687"
+    assert settings.openai_api_base == "http://semigraph-mockllm.internal:8000/v1"
+
+
+# --- the machine class of each app is windows.json's, never the toml's ----------------------------------------------------------------
+
+@pytest.mark.parametrize("path", TOMLS, ids=lambda p: p.name)
+def test_no_staging_toml_carries_a_machine_size_so_the_windows_class_always_applies(path):
+    """A ``[[vm]]`` block in the app's toml WINS over ``flyctl deploy --vm-size / --vm-memory`` (window W0 asked for
+    shared-cpu-2x / 4 GB and got the toml's performance-1x / 2 GB). The class of a machine therefore comes from
+    ``deploy/staging/windows.json`` only, through ``scripts/staging.py deploy``; the toml names no size. ``[[compute]]`` is
+    flyctl's older spelling of the same table."""
+    doc = TOML_BY_NAME[path.name]
+    assert "vm" not in doc and "compute" not in doc, f"{path.name} carries a machine size"
+    raw = path.read_text(encoding="utf-8")
+    assert not re.search(r"^\s*\[\[?\s*(vm|compute)\s*\]\]?", raw, re.MULTILINE | re.IGNORECASE), path.name
 
 
 @pytest.mark.parametrize("app_key, toml_name", [("api", "fly.stg.toml"), ("neo4j", "fly.neo4j-stg.toml"),
                                                 ("mockllm", "fly.mockllm.toml"), ("tools", "fly.tools.toml"),
                                                 ("loadgen", "fly.loadgen.toml")])
-def test_the_default_machine_class_of_each_app_is_the_one_the_gate_window_quotes(app_key, toml_name):
-    gate = WINDOWS["windows"]["W4"]
-    quoted = {m["app"]: m["class"] for m in gate["machines"]}
-    if app_key == "tools":
-        quoted = {m["app"]: m["class"] for m in WINDOWS["windows"]["W3"]["machines"]}
-    assert vm_class(toml_name) == quoted[app_key]
+def test_each_apps_toml_names_the_registered_app(app_key, toml_name):
     assert TOML_BY_NAME[toml_name]["app"] == WINDOWS["apps"][app_key]["name"]
+
+
+def test_every_app_of_every_window_has_a_priced_machine_entry_because_the_deploy_reads_its_class_from_there():
+    for key, window in WINDOWS["windows"].items():
+        machine_apps = {m["app"] for m in window["machines"]}
+        assert set(window["apps"]) <= machine_apps, f"{key}: an app without a machine class (deploy would not know its size)"
+        for machine in window["machines"]:
+            assert machine["class"] in WINDOWS["rates_30_day_usd"], (key, machine)
 
 
 def test_the_neo4j_stg_definition_has_the_live_database_settings_and_a_volume():

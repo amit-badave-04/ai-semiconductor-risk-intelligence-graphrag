@@ -5,7 +5,7 @@
 #
 # No services block on purpose: bolt is reachable only over the private network, as semigraph-neo4j-stg.internal:7687.
 # The settings below are the live ones (deploy/neo4j/fly.toml) so the measurement is of the database the site runs on:
-# shared-cpu-1x, 1 GB, a 400 MB heap and a 200 MB page cache.
+# a 400 MB heap and a 200 MB page cache (on the live class, shared-cpu-1x / 1 GB, which windows.json gives it).
 #
 # Deploy only through scripts/staging.py: the build context is deploy/neo4j (the Dockerfile copies the dump from there), so
 # the Dockerfile and the context are passed explicitly instead of through a [build] section.
@@ -29,9 +29,8 @@ swap_size_mb = 1024
   source = "neo4j_data"
   destination = "/data"
 
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "1gb"
+# No [[vm]] block: the class (shared-cpu-1x / 1 GB, as live) is the window's, from windows.json through scripts/staging.py; a
+# block here would win over the flags.
 
 [checks]
   [checks.bolt]

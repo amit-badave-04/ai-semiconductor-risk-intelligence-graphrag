@@ -89,6 +89,30 @@
         "scripts/staging.py destroy W1 --yes."
       ]
     },
+    "W1b": {
+      "title": "fp32 embedder memory confirmation: the real uvicorn, 3 fresh boots",
+      "duration": "3 fresh boots of about 10 min each (create to healthy, then one max-size upload with mock-LLM asks at the live caps)",
+      "apps": ["api", "neo4j", "mockllm"],
+      "toml_overrides": {"api": "deploy/staging/fly.w1b.toml"},
+      "build_args": {"api": {"require": ["EMBEDDER_VARIANT=fp32"], "refuse": ["KEEP_UNPATCHED=1"]}},
+      "machines": [
+        {"app": "api", "class": "shared-cpu-2x:4gb", "count": 1, "hours": 1.0},
+        {"app": "neo4j", "class": "shared-cpu-1x:1gb", "count": 1, "hours": 1.5},
+        {"app": "mockllm", "class": "shared-cpu-1x:1gb", "count": 1, "hours": 1.5}
+      ],
+      "volume_gb_hours": [{"app": "neo4j", "gb": 3, "hours": 1.5}],
+      "quote_usd": 0.10,
+      "cap_usd": 0.25,
+      "note": "Council 7, decision 1, step 3 (docs/v2/research/m5-councils/council7/verdict.md). The REAL service (python -m semigraph.serve.drain) on a fresh shared-cpu-2x / 4 GB machine in sin with the fp32 embedder image that would ship (EMBEDDER_VARIANT=fp32, NO KEEP_UNPATCHED: scripts/staging.py refuses the other combinations for this window), the staging database and the mock LLM. The api app uses deploy/staging/fly.w1b.toml: the staging environment with the live memory settings (fp32 model path, EMBED_SLOTS=1, MAX_CONCURRENT_ANSWERS=2, the code-default upload caps, swap_size_mb=1024). Load per boot (tools/probe/w1b.py): M4's max-size upload (tests/upload_fixtures.max_size_pdf(30, 2700)) plus salted mock-LLM asks, at most the live in-flight cap concurrently, from the upload's acceptance until the job is ready plus 30 s. PASS (pre-registered, do not change), on EVERY boot: max VmHWM of the uvicorn process <= 2,400,000 kB (inclusive), no OOM kill and no process restart, machine creation to /healthz 200 <= 180 s (inclusive). Reported besides: the spread of the three peaks, the lowest MemAvailable, the swap used. Memory, not latency, is measured, so the mock runs on the cheap class. The remote build of the api image is not priced here (builder minutes are not in the rates).",
+      "steps": [
+        "scripts/staging.py quote W1b, then create W1b --org <org> --approve-quote 0.10 (owner approval first), then seed W1b and deploy W1b mockllm.",
+        "scripts/staging.py deploy W1b api --build-arg EMBEDDER_VARIANT=fp32 (the tool refuses a missing EMBEDDER_VARIANT=fp32 and any KEEP_UNPATCHED=1 here), then preflight W1b. This first machine is a warm-up that proves the build and the deployed configuration: it is not a measured boot.",
+        "For each measured boot n = 1, 2, 3: flyctl machine list -a semigraph-stg --json, flyctl machine destroy <id> --force -a semigraph-stg for every machine that is not destroyed, then START the driver BEFORE the deploy (as a background job or in a second terminal): python -m tools.probe.w1b boot --boot n --wait-for-machine-s 2700 --out <dir>/boot-n.json, then scripts/staging.py deploy W1b api --build-arg EMBEDDER_VARIANT=fp32 (a fresh machine id and creation time), then wait for the driver. Started first, the driver polls /healthz from the new machine's creation; started after the deploy it would find the machine already healthy and could not time the boot (such a boot is INCONCLUSIVE when over 180 s).",
+        "python -m tools.probe.w1b aggregate <dir>/boot-1.json <dir>/boot-2.json <dir>/boot-3.json --out <dir>/w1b.json: PASS only if all three boots pass.",
+        "Record by hand (no script writes artifacts/m5_spikes.json; its owner merges): the aggregate under S6_w1b. It holds no secret.",
+        "scripts/staging.py snapshot W1b --out <dir>, then scripts/staging.py destroy W1b --yes."
+      ]
+    },
     "W2": {
       "title": "S12 calibration (provider spend, no machine)",
       "duration": "10 SEC + 2 agent streamed asks",

@@ -609,7 +609,10 @@ SECRETS_OK = json.dumps([{"Name": n} for n in ("IP_HASH_PEPPER", "ADMIN_TOKEN", 
                                                 "NEO4J_PASSWORD")]).encode()
 CONFIG_OK = json.dumps({"env": {"ENVIRONMENT": "staging", "NEO4J_URI": "bolt://semigraph-neo4j-stg.internal:7687",
                                 "OPENAI_API_BASE": "http://semigraph-mockllm.internal:8000/v1"}}).encode()
-EXAMPLES = len(json.loads((ROOT / "src" / "semigraph" / "artifacts" / "examples.json").read_text(encoding="utf-8"))["examples"])
+EXAMPLES_FILE = ROOT / "src" / "semigraph" / "artifacts" / "examples.json"
+# What the baked seed holds: the examples the serving code's seeding accepts (it refuses X1 and T15 on their stored checks, so
+# 51 of the file's 53), the count the M4 live gate recorded. NOT len(examples), which counts the two that are never cached.
+EXAMPLES = json.loads((ROOT / "artifacts" / "m4_live_gates.json").read_text(encoding="utf-8"))["G9_http"]["expected_example_count"]
 
 
 def healthy(cypher, params):
@@ -644,6 +647,42 @@ def test_preflight_fails_on_each_database_condition(world, name, handler):
     tool, _ = preflight_world(world, handler=handler)
     assert tool.preflight("W4") == 1
     assert f"FAIL {name}" in "\n".join(world.log.lines())
+
+
+def test_preflight_expects_the_examples_the_seeding_accepts_not_every_question_in_the_file(world):
+    """Seen on Fly 2026-11-05: ``examples: 51 cached examples, 53 expected`` on a correctly seeded window. The file holds 53
+    questions; the seeding refuses X1 and T15 (their stored checks fail), so the dump holds 51 and 51 is clean."""
+    from semigraph.serve.store import refusal_reason
+
+    in_file = json.loads(EXAMPLES_FILE.read_text(encoding="utf-8"))["examples"]
+    seeded = [e["id"] for e in in_file if refusal_reason(e) is None]
+    assert len(seeded) == EXAMPLES and len(in_file) > EXAMPLES, "the file must hold questions the seeding refuses (X1, T15)"
+    tool, _ = preflight_world(world)
+    assert tool._expected_examples() == EXAMPLES
+    assert tool.preflight("W4") == 0, "\n".join(world.log.lines())
+    assert f"PASS examples: {EXAMPLES} cached examples, {EXAMPLES} expected" in "\n".join(world.log.lines())
+
+
+def test_preflight_still_fails_when_a_seeded_example_is_missing(world):
+    tool, _ = preflight_world(world, handler=lambda c, p: [{"n": EXAMPLES - 1}] if c == staging.Q_EXAMPLES else healthy(c, p))
+    assert tool.preflight("W4") == 1
+    assert f"FAIL examples: {EXAMPLES - 1} cached examples, {EXAMPLES} expected" in "\n".join(world.log.lines())
+
+
+def _example(example_id, checks):
+    return {"id": example_id, "question": f"q {example_id}", "answer": "a", "citations": [], "hallucinated": False,
+            "checks": checks}
+
+
+def test_the_expected_examples_come_from_the_repositorys_own_seeding_rule(world, tmp_path):
+    clean = {"citations_retrieved": True, "numbers_grounded": True, "has_citation": True}
+    examples = [_example("A", clean), _example("B", {**clean, "numbers_grounded": False}), _example("C", {}),
+                _example("D", {"citations_retrieved": True}), {"id": "E", "question": "q E"}, _example("F", clean)]
+    repo = tmp_path / "repo"
+    (repo / "src" / "semigraph" / "artifacts").mkdir(parents=True)
+    (repo / "src" / "semigraph" / "artifacts" / "examples.json").write_text(json.dumps({"examples": examples}), encoding="utf-8")
+    tool = world.make(repo=repo, windows_path=ROOT / "deploy" / "staging" / "windows.json")
+    assert tool._expected_examples() == 2        # A and F: B fails a check, C/D have none/incomplete checks, E has none
 
 
 def test_a_kill_level_of_off_or_none_is_clean(world):
@@ -842,6 +881,117 @@ def test_main_plan_flag_works_before_and_after_the_command(world, tmp_path):
     for argv in (["--plan", "create", "W1", "--org", "o"], ["create", "W1", "--org", "o", "--plan"]):
         assert staging.main(argv, runner=world.runner, out=world.log.out, state_dir=tmp_path / "s") == 0
     assert world.runner.calls == [] and not (tmp_path / "s").exists()
+
+
+# --- every window's machine class reaches the deploy (a [[vm]] block in a toml used to win over the flags) ---------------------
+
+def _deploy_args_in_plan(world, key, app_key):
+    """The ``flyctl deploy`` argument list ``deploy`` / ``seed`` builds for one app of one window, captured without a call."""
+    tool, captured = world.make(plan=True), []
+    tool._fly = lambda args, **kwargs: captured.append(list(args))
+    tool.seed(key) if app_key == "neo4j" else tool.deploy(key, app_key, build_args=[
+        b for b in ("EMBEDDER_VARIANT=fp32",) if key == "W1b" and app_key == "api"])
+    return next(args for args in captured if args[0] == "deploy")
+
+
+@pytest.mark.parametrize("key, app_key", [(key, app_key) for key, window in WINDOWS["windows"].items() for app_key in window["apps"]])
+def test_every_app_of_every_window_is_deployed_with_that_windows_machine_class(world, key, app_key):
+    args = _deploy_args_in_plan(world, key, app_key)
+    size, memory = staging.parse_class(next(m["class"] for m in WINDOWS["windows"][key]["machines"] if m["app"] == app_key))
+    assert args[args.index("--vm-size") + 1] == size and args[args.index("--vm-memory") + 1] == str(memory)
+
+
+# --- window W1b: the quote, the per-window toml, the build-argument policy ---------------------------------------------------------
+
+def test_w1b_is_priced_from_the_same_rates_and_constants_and_has_no_load_generator():
+    w1b = WINDOWS["windows"]["W1b"]
+    assert w1b["apps"] == ["api", "neo4j", "mockllm"] and "loadgen" not in w1b["apps"]
+    assert {(m["app"], m["class"]) for m in w1b["machines"]} == {("api", "shared-cpu-2x:4gb"), ("neo4j", "shared-cpu-1x:1gb"),
+                                                                 ("mockllm", "shared-cpu-1x:1gb")}
+    assert w1b["volume_gb_hours"] == [{"app": "neo4j", "gb": 3, "hours": 1.5}]
+    windows = staging.load_windows()
+    quote, cap = staging.quote_usd(windows, "W1b")
+    assert (quote, cap) == (0.10, 0.25)
+    derived = staging.derived_usd(windows, "W1b")
+    assert derived == pytest.approx(1.0 * 0.044778 + 2 * 1.5 * 0.011806 + 3 * 1.5 * 0.15 / 720, abs=1e-3)
+    assert derived <= quote + 0.005 and quote <= cap
+
+
+def test_w1b_has_its_own_quote_row_and_the_w1_row_is_untouched(world):
+    world.make().quote(["W1", "W1b"])
+    rows = world.log.lines()
+    w1 = next(line for line in rows if line.startswith("W1 "))
+    w1b = next(line for line in rows if line.startswith("W1b "))
+    assert "$0.08 ($0.15)" in w1 and "$0.10 ($0.25)" in w1b
+    assert "1 x shared-cpu-2x 4gb (api)" in w1b and "(loadgen)" not in w1b
+
+
+def test_the_w1b_api_deploys_the_windows_own_toml_and_every_other_window_keeps_the_default(world):
+    for key, expected in (("W1b", "deploy/staging/fly.w1b.toml"), ("W1", "deploy/staging/fly.stg.toml"),
+                          ("W4", "deploy/staging/fly.stg.toml")):
+        args = _deploy_args_in_plan(world, key, "api")
+        assert args[args.index("--config") + 1] == expected
+    args = _deploy_args_in_plan(world, "W1b", "api")
+    assert args[args.index("--vm-size") + 1] == "shared-cpu-2x" and args[args.index("--vm-memory") + 1] == "4096"
+    assert "--remote-only" in args and "--ha=false" in args and "--no-public-ips" not in args
+
+
+def test_only_the_api_of_w1b_has_an_override_and_the_other_apps_of_w1b_keep_their_default_toml(world):
+    for app_key, expected in (("mockllm", "deploy/staging/fly.mockllm.toml"), ("neo4j", "../staging/fly.neo4j-stg.toml")):
+        args = _deploy_args_in_plan(world, "W1b", app_key)
+        assert args[args.index("--config") + 1] == expected
+
+
+def _windows_with(tmp_path, mutate):
+    doc = json.loads(json.dumps(WINDOWS))
+    mutate(doc)
+    path = tmp_path / "windows.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("override", [
+    {"loadgen": "deploy/staging/fly.loadgen.toml"},                     # an app the window does not have
+    {"api": "deploy/neo4j/fly.toml"},                                   # outside deploy/staging (and the live database's own)
+    {"api": "fly.toml"},                                                # the live app's config
+    {"api": "deploy/staging/../../fly.toml"},
+    {"api": "deploy/staging/missing.toml"},                             # a file that does not exist
+    {"api": "deploy/staging/fly.mockllm.toml"},                         # a staging toml of another app: the app = line disagrees
+    {"api": "deploy/staging/windows.json"},                             # not a toml
+])
+def test_a_toml_override_must_name_an_existing_staging_toml_of_that_very_app(tmp_path, override):
+    path = _windows_with(tmp_path, lambda doc: doc["windows"]["W1b"].update(toml_overrides=override))
+    with pytest.raises(ValueError, match="toml_overrides"):
+        staging.load_windows(path)
+
+
+@pytest.mark.parametrize("builds", [[], ["KEEP_UNPATCHED=1"], ["EMBEDDER_VARIANT=fp32", "KEEP_UNPATCHED=1"], ["EMBEDDER_VARIANT=q8"],
+                                    ["KEEP_UNPATCHED=0"]])
+def test_the_w1b_api_image_must_be_the_one_that_would_ship_fp32_without_the_unpatched_model(world, builds):
+    create_commands(world, "W1b")
+    world.runner.calls.clear()
+    with pytest.raises(staging.UsageError, match="W1b"):
+        world.make().deploy("W1b", "api", build_args=builds)
+    assert world.runner.calls == []
+
+
+def test_the_w1b_api_deploy_accepts_exactly_the_fp32_build_argument(world):
+    create_commands(world, "W1b")
+    world.runner.calls.clear()
+    world.make().deploy("W1b", "api", build_args=["EMBEDDER_VARIANT=fp32"])
+    args = next(c["args"] for c in world.runner.calls if c["args"][1] == "deploy")
+    assert [args[i + 1] for i, a in enumerate(args) if a == "--build-arg"] == ["EMBEDDER_VARIANT=fp32"]
+    assert args[args.index("--config") + 1] == "deploy/staging/fly.w1b.toml"
+    world.runner.calls.clear()
+    world.make().deploy("W1b", "mockllm")                                  # the policy names the api only
+    assert any(c["args"][1] == "deploy" for c in world.runner.calls)
+
+
+def test_the_w1b_window_is_created_with_its_three_apps_the_volume_and_no_generator_secret(world):
+    calls = create_commands(world, "W1b")
+    created = [c[3] for c in calls if c[1:3] == ["apps", "create"]]
+    assert created == ["semigraph-stg", "semigraph-neo4j-stg", "semigraph-mockllm"]
+    assert not any("loadgen" in " ".join(c) for c in calls)
 
 
 def test_the_script_names_no_live_app_and_no_pdf_library():

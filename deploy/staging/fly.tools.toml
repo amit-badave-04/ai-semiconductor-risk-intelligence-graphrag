@@ -5,7 +5,8 @@
 # replay reads it from the machine's environment; it is never written on a command line).
 #
 # The machine class is set per window by scripts/staging.py (windows.json): shared-cpu-2x / 4 GB for the throttle probe,
-# performance-1x / 2 GB for the S7 replay driver. The size below is the S7 one.
+# performance-1x / 2 GB for the S7 replay driver. This file carries NO [[vm]] block: it would win over the flags the tool
+# passes (window W0 asked for shared-cpu-2x / 4 GB and got this file's performance-1x / 2 GB).
 #
 # Deploy only through scripts/staging.py (the build context is the repository root; the Dockerfile is passed explicitly).
 app = "semigraph-tools-stg"
@@ -14,7 +15,3 @@ primary_region = "sin"
 [env]
   S7_OUT_DIR = "/out"
   PROBE_OUT_DIR = "/out"
-
-[[vm]]
-  size = "performance-1x"
-  memory = "2gb"

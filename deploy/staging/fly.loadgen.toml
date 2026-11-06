@@ -6,9 +6,11 @@
 # The machines carry NO secret here. LOADTEST_ORIGIN_AUTH (the X-Origin-Auth value) and the run id are given at machine creation
 # (`fly secrets` / `--env`), generated per window by scripts/staging.py. The target (LOADTEST_HOST) is the staging API's private
 # name; the generator itself refuses any host that is not loopback or a *-stg app (tools/loadtest/model.check_target_host).
-# Size: performance-1x 2 GB, in sin. Generators must stay under 70 % CPU or the run is VOID; add a worker if the pilot shows more than 40 %.
-# Build (from the repository root, so the context holds tools/ and deploy/; UNVERIFIED on this org until the pilot):
-#   fly deploy --config deploy/staging/fly.loadgen.toml --dockerfile deploy/staging/Dockerfile.loadgen --remote-only --no-public-ips
+# Size: performance-1x 2 GB, in sin, from windows.json through scripts/staging.py (this file has no [[vm]] block: it would win
+# over the flags). Generators must stay under 70 % CPU or the run is VOID; add a worker if the pilot shows more than 40 %.
+# Build and deploy ONLY through scripts/staging.py (`staging.py deploy W4 loadgen`): it passes the Dockerfile, the context, --no-public-ips
+# and the machine class (--vm-size / --vm-memory from windows.json). A bare `fly deploy --config ...` would give flyctl's default
+# size, because this file carries no [[vm]] block (UNVERIFIED on this org until the pilot).
 app = "semigraph-loadgen-stg"
 primary_region = "sin"
 
@@ -21,7 +23,3 @@ primary_region = "sin"
 
 # No [http_service] and no [[services]]: the generators accept no inbound traffic. The master and its workers talk over the
 # app's private network (Locust ports 5557 / 5558), never over the public edge.
-
-[[vm]]
-  size = "performance-1x"
-  memory = "2gb"

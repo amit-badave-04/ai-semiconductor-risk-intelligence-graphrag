@@ -5,7 +5,7 @@
 # scripts/staging.py.
 #
 # No services block: it is reachable only over the private network, as semigraph-mockllm.internal:8000. Its CPU is a validity
-# input of the run (the mock must stay under 50 %), so it gets its own dedicated-core machine.
+# input of the run (the mock must stay under 50 %), so the S2 gate window gives it its own dedicated-core machine (windows.json).
 #
 # Deploy only through scripts/staging.py (the build context is the repository root; the Dockerfile is passed explicitly).
 app = "semigraph-mockllm"
@@ -15,9 +15,7 @@ primary_region = "sin"
   MOCKLLM_PORT = "8000"
   MOCKLLM_TIME_SCALE = "1"
 
-[[vm]]
-  size = "performance-1x"
-  memory = "2gb"
+# No [[vm]] block: the class is the window's (windows.json, passed by scripts/staging.py); a block here would win over it.
 
 [checks]
   [checks.health]
