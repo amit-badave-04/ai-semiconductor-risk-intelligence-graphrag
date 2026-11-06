@@ -44,7 +44,7 @@ PINNED = ("ENVIRONMENT", "FLY_APP_NAME", "IP_HASH_PEPPER", "ADMIN_TOKEN", "TURNS
           "CLIENT_IP_HEADER", "MAX_QUERIES_PER_DAY", "MAX_SPEND_USD_PER_DAY", "PAID_SPEND_SHARE_PER_IP_USD",
           "PAID_PER_IP_PER_DAY", "MAX_CONCURRENT_ANSWERS", "RATE_LIMIT_QUESTIONS", "FREE_RATE_LIMIT_QUESTIONS",
           "READ_RATE_LIMIT_PER_MINUTE", "RATE_LIMIT_WINDOW_SECONDS", "WORKSPACE_CREATE_PER_DAY", "UPLOADS_PER_HOUR",
-          "CACHE_READ_BUDGET_PER_S", "KILL_SWITCH_STALE_S",
+          "UPLOAD_MIN_MEM_AVAILABLE_KB", "CACHE_READ_BUDGET_PER_S", "KILL_SWITCH_STALE_S",
           # the staging switches production refuses (tests/test_serve_config_staging.py pins each one)
           "TURNSTILE_STUB", "OPENAI_API_BASE", "OPENAI_BASE_URL", "ANTHROPIC_API_BASE", "ANTHROPIC_BASE_URL",
           "ORIGIN_AUTH_SECRET", "NEO4J_URI", "LLM_MODEL", "ANSWER_MODEL",
@@ -430,3 +430,43 @@ def test_the_tie_reads_the_fly_app_name_environment_variable(monkeypatch):
     kwargs = staging_kwargs()
     del kwargs["fly_app_name"]
     assert Settings(_env_file=None, **kwargs).fly_app_name == "semigraph-stg"
+
+
+# ---------------------------------------------------------------- the upload memory guard's threshold (docs/specs/upload-memory-guard.md)
+
+def test_the_upload_memory_threshold_default_is_the_spec_value_and_the_live_shape_boots_inside_the_bounds():
+    low, high = config.PRODUCTION_UPLOAD_MIN_MEM_AVAILABLE_KB
+    assert (low, high) == (500_000, 2_000_000)
+    assert Settings.model_fields["upload_min_mem_available_kb"].default == 1_250_000
+    assert low <= live().upload_min_mem_available_kb <= high
+
+
+@pytest.mark.parametrize("value,boots", [(499_999, False), (500_000, True), (1_250_000, True), (2_000_000, True),
+                                         (2_000_001, False), (0, False)])
+def test_production_requires_the_upload_memory_threshold_inside_its_bounds(value, boots):
+    if boots:
+        assert live(upload_min_mem_available_kb=value).upload_min_mem_available_kb == value
+        return
+    with pytest.raises(ValidationError) as refused:
+        live(upload_min_mem_available_kb=value)
+    assert named(refused) == ["UPLOAD_MIN_MEM_AVAILABLE_KB"]
+
+
+def test_zero_turns_the_upload_memory_guard_off_outside_production_only():
+    assert Settings(_env_file=None, environment="development", upload_min_mem_available_kb=0).upload_min_mem_available_kb == 0
+    assert staging(upload_min_mem_available_kb=0).upload_min_mem_available_kb == 0
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, environment="development", upload_min_mem_available_kb=-1)       # off is 0, never negative
+
+
+def test_the_upload_memory_threshold_is_read_from_its_environment_variable(monkeypatch):
+    monkeypatch.setenv("UPLOAD_MIN_MEM_AVAILABLE_KB", "900000")
+    assert Settings(_env_file=None).upload_min_mem_available_kb == 900_000
+
+
+@pytest.mark.parametrize("value", [4_321_987, 17_654, -4_321_987])
+def test_a_refused_upload_memory_threshold_is_never_echoed(value):
+    with pytest.raises(ValidationError) as refused:
+        live(upload_min_mem_available_kb=value)
+    text = str(refused.value)
+    assert "input_value" not in text and str(abs(value)) not in text

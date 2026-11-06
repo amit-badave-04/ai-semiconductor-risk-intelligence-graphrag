@@ -26,6 +26,16 @@ The bot-check token travels in the ``X-Turnstile-Token`` HEADER, verified BEFORE
 window -> streamed size cap -> byte gate -> quota -> slot -> daily budget) now holds exactly, since the token no
 longer has to be parsed out of the multipart body first.
 
+M5a decision 21 (docs/specs/upload-memory-guard.md): the one memory-aware gate, ``serve.memguard.check_upload``, now sits
+after the slot and before the daily budget: UPLOADS_ENABLED -> workspace token -> kill switch -> Turnstile -> per-address
+window -> streamed size cap -> byte gate -> quota -> slot -> MEMORY GUARD -> daily budget. A new upload is refused with
+503 ``MSG_UPLOAD_BUSY`` (``Retry-After: 120``, no figure in the body) while ``MemAvailable`` is below
+``upload_min_mem_available_kb``; it comes after every gate that refuses on its own account (so it can never be an oracle
+before Turnstile or the workspace token, and an unchanged re-upload or a quota refusal never meets it) and BEFORE the daily
+budget, which is the one gate that charges (``store.reserve_daily_upload`` has no refund, so a refusal after it would spend
+an upload no job used). The refusal raises inside the slot's try block, so the slot goes back through the existing
+``except``. Asks, cached answers and every read route never consult it.
+
 M5a I4 (docs/v2/M5_DECISIONS.md 2.2): while the process drains (``serve.drain``) workspace creation and an upload are
 refused with 503 ``MSG_DRAINING`` BEFORE any window is consumed, and every other route here (reads, the job stream, the
 evidence drawer) is served; an upload counts on the drain from the moment it takes the one upload slot until the job
@@ -54,7 +64,7 @@ from ..retrieval.ids import DOC_ID_RE, DOCUMENT_ID_RE
 from ..uploads import jobs, new_document_id, repo
 from ..uploads.gate import GateError, check_bytes, sniff
 from ..uploads.versions import next_version
-from . import drain, guard, routes, store
+from . import drain, guard, memguard, routes, store
 from .state.backend import KILL_OFF
 
 logger = logging.getLogger("semigraph.serve.workspace_routes")
@@ -77,6 +87,8 @@ MSG_BOT = "Bot check failed — reload the page and try again."
 MSG_UPLOAD_RATE = "Too many requests from your address — please wait a while and try again."
 MSG_READ_RATE = "Too many requests from your address — please wait a while and try again."
 MSG_BUSY = "The service is busy processing another upload — try again in a moment."
+MSG_UPLOAD_BUSY = "Uploads are busy right now. Please try again in a few minutes."      # memory guard: no figure, ever
+UPLOAD_BUSY_RETRY_AFTER_S = 120
 MSG_TOO_MANY_WATCHERS = "Too many viewers are already watching this upload — try again in a moment."
 MSG_FILE_REQUIRED = "a file is required"
 MSG_TITLE_TOO_LONG = f"title is limited to {MAX_TITLE_CHARS} characters"
@@ -131,6 +143,12 @@ def _require_uploads_enabled(request: Request) -> None:
 
 def _draining_refusal() -> HTTPException:
     return HTTPException(status_code=503, detail=routes.MSG_DRAINING, headers={**NO_STORE, **routes.DRAINING_HEADERS})
+
+
+def _upload_busy_refusal() -> HTTPException:
+    """503 while the machine is short of memory (``serve.memguard``): the message alone, and when to come back."""
+    return HTTPException(status_code=503, detail=MSG_UPLOAD_BUSY,
+                         headers={**NO_STORE, "Retry-After": str(UPLOAD_BUSY_RETRY_AFTER_S)})
 
 
 def _refuse_while_draining() -> None:
@@ -356,7 +374,7 @@ async def _read_and_gate_body(request: Request, ws: str, s):
 async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data: bytes, kind: str,
                            title: str | None):
     """Resolves the target document, short-circuits an unchanged re-upload, checks quotas, then takes the upload
-    slot and the daily budget (in that order) and starts the job.
+    slot, asks the memory guard and takes the daily budget (in that order) and starts the job.
 
     Findings 5/17/23: EVERY path from a successful ``upload_slots.acquire()`` up to a successfully STARTED job is
     wrapped in try/except, so the slot is released on any exception in between (a transient Neo4j error from
@@ -389,6 +407,9 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
     if not taken:
         return JSONResponse({"detail": MSG_BUSY, "code": "busy"}, status_code=429, headers=NO_STORE)
     try:
+        # M5a decision 21: short of memory -> 503 before anything is charged or started (the except below frees the slot)
+        if await run_in_threadpool(memguard.check_upload, s.upload_min_mem_available_kb):
+            raise _upload_busy_refusal()
         reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day)
         if not reserved:
             st.upload_slots.release()
@@ -413,7 +434,7 @@ async def upload_document(ws: str, request: Request):
     ``X-Turnstile-Token`` header, so it no longer needs the body read first; 16: every workspace route takes the
     in-memory read-rate window before its database lookup): uploads-available -> draining (503) -> read-rate window ->
     workspace token (404) -> kill level -> Turnstile -> per-address upload window -> streamed size cap (declared,
-    then live) -> byte gate -> quota -> slot -> daily budget."""
+    then live) -> byte gate -> quota -> slot -> memory guard (503, M5a decision 21) -> daily budget."""
     st, s = request.app.state, request.app.state.settings
     _require_uploads_enabled(request)
     _refuse_while_draining()

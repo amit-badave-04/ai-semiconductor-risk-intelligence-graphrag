@@ -46,6 +46,7 @@ class FakeSettings:
     upload_max_pages = 30
     upload_max_tokens = 16000
     upload_max_workspace_tokens = 48000
+    upload_min_mem_available_kb = 0         # the memory guard is off here; tests/test_serve_memguard.py arms it
 
 
 class FakeRepo:

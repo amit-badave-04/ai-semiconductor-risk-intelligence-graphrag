@@ -163,6 +163,18 @@ def test_a_problem_is_attributed_to_its_own_setting_not_to_one_that_contains_its
     assert "FREE_RATE_LIMIT_QUESTIONS" in names_of(out, "PASS")
 
 
+def test_an_upload_memory_threshold_outside_the_production_bounds_fails_naming_it(tmp_path, capsys):
+    """Zero turns the upload memory guard off, which only a non-production process may do (docs/specs/upload-memory-guard.md)."""
+    off = tmp_path / "fly.toml"
+    off.write_text(FLY_TOML.read_text(encoding="utf-8").replace("[env]\n", '[env]\n  UPLOAD_MIN_MEM_AVAILABLE_KB = "0"\n'),
+                   encoding="utf-8")
+
+    code, out = run(env_file(tmp_path), off, capsys=capsys)
+
+    assert code == 1 and names_of(out, "FAIL") == ["UPLOAD_MIN_MEM_AVAILABLE_KB"]
+    assert "UPLOAD_MIN_MEM_AVAILABLE_KB" in config.CHECKED_SETTINGS
+
+
 def test_an_environment_that_is_not_production_fails_as_it_would_on_the_live_app(tmp_path, capsys):
     """FLY_APP_NAME comes from fly.toml's app: a [env] without ENVIRONMENT would boot the live app as development."""
     no_environment = tmp_path / "fly.toml"

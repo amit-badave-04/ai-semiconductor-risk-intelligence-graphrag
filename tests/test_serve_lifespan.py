@@ -50,13 +50,13 @@ class FakeBackend:
 
 
 class FakeMaintenance:
-    """``MaintenanceThread(backend, settings)``: records its start and stop."""
+    """``MaintenanceThread(backend, settings, memory_log=...)``: records its start and stop."""
 
     boot = None
     start_error = None
 
-    def __init__(self, backend, settings):
-        self.backend, self.settings = backend, settings
+    def __init__(self, backend, settings, memory_log=None):
+        self.backend, self.settings, self.memory_log = backend, settings, memory_log
 
     def start(self):
         type(self).boot.note_state("maintenance.start")
@@ -614,6 +614,35 @@ def test_the_process_is_hardened_before_anything_else_boots(monkeypatch, boot):
     with TestClient(main.create_app()):
         pass
     assert boot.order[:2] == ["harden", "bootstrap"]
+
+
+# ---------------------------------------------------------------- the upload memory guard (docs/specs/upload-memory-guard.md)
+
+def test_the_maintenance_thread_is_given_the_memory_log_line_to_write(monkeypatch, boot):
+    use_settings(monkeypatch)
+    with TestClient(main.create_app()) as client:
+        assert client.app.state.maintenance.memory_log is main.memguard.log_memory
+
+
+def test_a_host_without_proc_meminfo_gets_one_boot_warning_that_the_guard_is_off(monkeypatch, boot, caplog, tmp_path):
+    use_settings(monkeypatch)
+    monkeypatch.setattr(main.memguard, "MEMINFO_PATH", str(tmp_path / "no-such-meminfo"))
+    with caplog.at_level("WARNING", logger="semigraph.serve.memguard"):
+        with TestClient(main.create_app()):
+            pass
+    off = [r.getMessage() for r in caplog.records if r.name == "semigraph.serve.memguard"]
+    assert off == ["upload memory guard is OFF: /proc/meminfo is not available on this host"]
+
+
+def test_a_host_with_proc_meminfo_boots_without_a_guard_warning(monkeypatch, boot, caplog, tmp_path):
+    use_settings(monkeypatch)
+    present = tmp_path / "meminfo"
+    present.write_text("MemAvailable: 2000000 kB\n", encoding="utf-8")
+    monkeypatch.setattr(main.memguard, "MEMINFO_PATH", str(present))
+    with caplog.at_level("WARNING", logger="semigraph.serve.memguard"):
+        with TestClient(main.create_app()):
+            pass
+    assert [r for r in caplog.records if r.name == "semigraph.serve.memguard"] == []
 
 
 # ---------------------------------------------------------------- sse-starlette logs every event at DEBUG: pinned off

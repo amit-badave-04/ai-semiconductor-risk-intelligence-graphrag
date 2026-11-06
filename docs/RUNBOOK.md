@@ -183,6 +183,7 @@ The page shows the `detail` text of any refusal. Other refusals, all 503:
 | Kill level `retrieval_only` | "Live questions are limited to cached answers right now — the example questions still work." |
 | The process is draining | "The service is restarting — please try again in a minute." (with `Retry-After: 30`) |
 | An upload while the kill level is not `off` (or while uploads are off) | "Uploaded documents are not available right now." |
+| A new upload while the machine's `MemAvailable` is below `UPLOAD_MIN_MEM_AVAILABLE_KB` (see "Upload workspaces") | "Uploads are busy right now. Please try again in a few minutes." (with `Retry-After: 120`; asks are not affected) |
 
 **Failing closed.** When Neo4j is unreachable, or a state operation takes more than 1 s (`STATE_OP_TIMEOUT_S`), paid
 questions are refused with the "temporarily unavailable" text (the "paused" text is the kill switch's alone), cached
@@ -482,6 +483,7 @@ The production validators in `src/semigraph/config.py` stop a production process
 | `NEO4J_URI` | the host is the staging database, `semigraph-neo4j-stg.internal` |
 | `RATE_LIMIT_QUESTIONS` / `FREE_RATE_LIMIT_QUESTIONS` / `READ_RATE_LIMIT_PER_MINUTE` | not 1 to 5 / 1 to 30 / 1 to 120 (`fly.toml` sets none of them: the live value is the code default) |
 | `WORKSPACE_CREATE_PER_DAY` / `UPLOADS_PER_HOUR` | not 1 to 3 / 1 to 10 |
+| `UPLOAD_MIN_MEM_AVAILABLE_KB` | not 500000 to 2000000 (0 turns the upload memory guard off: outside production only; the default is 1250000) |
 | `RATE_LIMIT_WINDOW_SECONDS` | under 600 (a window of 0 never holds an event) |
 | `CACHE_READ_BUDGET_PER_S` / `KILL_SWITCH_STALE_S` | above 10 / above 30 |
 | `DRAIN_TIMEOUT_S` (any environment) | not 1 to 254 |
@@ -697,9 +699,25 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
 | `WORKSPACE_TTL_HOURS` | a workspace and everything in it is deleted after this | `24` |
 | `UPLOAD_MAX_PAGES` / `UPLOAD_MAX_TOKENS` | per version (the embedding time sets them; see docs/v2/M4_PLAN.md section 3) | `30` / `16000` |
 | `UPLOAD_MAX_WORKSPACE_TOKENS` / `MAX_UPLOADS_PER_DAY` | embedding budget per workspace / uploads per day, all visitors | `48000` / `40` |
+| `UPLOAD_MIN_MEM_AVAILABLE_KB` | a NEW upload is refused while the machine's `MemAvailable` is below this (kB); 0 = off, outside production only | `1250000` (code default; production accepts 500000 to 2000000) |
 
 - **Machine:** `shared-cpu-2x`, 4 GB (`fly.toml [[vm]]`): one upload embeds on one core while live questions use the other.
   Uploads embed locally with the same ONNX model as queries; no document leaves the deployment.
+- **Memory guard** (`serve/memguard.py`, docs/specs/upload-memory-guard.md): after every other gate and before the daily
+  upload count is charged, a new upload reads `MemAvailable` from `/proc/meminfo`. Below `UPLOAD_MIN_MEM_AVAILABLE_KB` it is
+  refused: 503 "Uploads are busy right now. Please try again in a few minutes.", `Retry-After: 120`, no figure in the body;
+  no job, nothing stored, the daily count not charged, the upload slot given back. Equal to the threshold is accepted. The
+  default 1,250,000 kB is the parse child's 1 GiB address-space limit plus a margin (window W1c's lowest reading under the
+  heaviest measured load was 1,471,596 kB). Asks, cached answers and reads never consult it. It is a safeguard and fails
+  open: with no `/proc/meminfo` (not Linux) it is off and the boot log says `upload memory guard is OFF`; a read error accepts
+  the upload with `upload memory guard unavailable for this request (<ErrorType>)`.
+  In `flyctl logs -a semigraph` look for `upload refused: memory mem_available_kb=<n> threshold_kb=<n>` (one WARNING per
+  refusal) and for the memory line the maintenance thread writes at boot and then every 60 s:
+  `memory vmrss_kb=<n> vmhwm_kb=<n> mem_available_kb=<n> swap_used_kb=<n>` (this process's resident and peak resident kB,
+  the machine's available memory, swap in use). Repeated refusals with a healthy `mem_available_kb` trend mean the threshold
+  is too high; `mem_available_kb` falling toward the threshold between refusals is the OOM warning the line exists for. To
+  change the threshold set `UPLOAD_MIN_MEM_AVAILABLE_KB` in `fly.toml [env]` and redeploy; the lowest value production
+  accepts is 500000, and 0 (off) is refused there.
 - **Isolation:** workspace data lives only in `User*` nodes keyed by `workspace_id`; the token is shown once and only its
   sha256 is stored; an unknown workspace and a wrong token both answer 404. Workspace answers are never cached, never use the
   agent, and are logged as counts only; the access log shows `<ws:hash>`.
@@ -741,7 +759,8 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
 - `flyctl logs -a semigraph` — every answered question logs strategy, citation count, hallucinated
   count and cost.
 - Out-of-memory on the API machine → the embedder needs ~1.3 GB resident and an upload adds up to ~0.4 GB while it embeds;
-  keep `memory = "4gb"` while uploads are enabled.
+  keep `memory = "4gb"` while uploads are enabled. The `memory vmrss_kb=...` log line (every 60 s) shows how close it is, and
+  the upload memory guard (see "Upload workspaces") refuses a new upload before it gets there.
 - Restoring a dump by hand: `flyctl ssh console -a semigraph-neo4j -C "mkdir -p /data/import"`, copy
   the dump to `/data/import/neo4j.dump` (an sftp client over `flyctl ssh sftp shell`), then
   `flyctl machine restart` — the entrypoint loads it before Neo4j starts.

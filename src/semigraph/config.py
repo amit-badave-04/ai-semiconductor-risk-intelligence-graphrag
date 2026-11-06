@@ -59,6 +59,11 @@ PRODUCTION_MIN_RATE_LIMIT_WINDOW_S = 600
 # read to more load; a longer staleness lets a cached "off" outlive a database that can no longer confirm it.
 PRODUCTION_MAX_CACHE_READ_BUDGET_PER_S = 10
 PRODUCTION_MAX_KILL_SWITCH_STALE_S = 30
+# The upload memory guard's threshold, in kB of MemAvailable (docs/specs/upload-memory-guard.md): a NEW upload is refused while
+# the machine has less than this left. Production allows 500,000 to 2,000,000: below the floor the guard protects nothing (the
+# parse child alone may map 1 GiB), above the ceiling it would refuse uploads on a healthy 4 GB machine (W1c's lowest reading
+# under the heaviest measured load was 1,471,596). 0 means "off" and is for outside production only.
+PRODUCTION_UPLOAD_MIN_MEM_AVAILABLE_KB = (500_000, 2_000_000)
 # The Fly app each environment runs on. FLY_APP_NAME is set by Fly on every machine, so a machine that is the live app
 # cannot be started as anything but production (an unset or mistyped ENVIRONMENT would leave every validator off).
 # The staging window (deploy/staging, docs/v2/M5_DECISIONS.md 2.1) is the API and the apps around it that run this code's
@@ -87,7 +92,7 @@ CHECKED_SETTINGS = (
     "ENVIRONMENT", "FLY_APP_NAME", "IP_HASH_PEPPER", "ADMIN_TOKEN", "TURNSTILE_REQUIRED", "TURNSTILE_SECRET_KEY",
     "CLIENT_IP_HEADER", *(name.upper() for name in PRODUCTION_COUNT_CEILINGS), "MAX_SPEND_USD_PER_DAY",
     "PAID_SPEND_SHARE_PER_IP_USD", "RATE_LIMIT_WINDOW_SECONDS", "CACHE_READ_BUDGET_PER_S", "KILL_SWITCH_STALE_S",
-    "KILL_SWITCH_REFRESH_S", "LEASE_TTL_S", "LEASE_RENEW_S", "DRAIN_TIMEOUT_S",
+    "KILL_SWITCH_REFRESH_S", "LEASE_TTL_S", "LEASE_RENEW_S", "DRAIN_TIMEOUT_S", "UPLOAD_MIN_MEM_AVAILABLE_KB",
     # the staging switches production refuses (a live deployment must not run any of them)
     "TURNSTILE_STUB", "OPENAI_API_BASE", "OPENAI_BASE_URL", "ANTHROPIC_API_BASE", "ANTHROPIC_BASE_URL", "ORIGIN_AUTH_SECRET",
     "NEO4J_URI", *(name.upper() for name in LLM_MODEL_SETTINGS))
@@ -298,6 +303,11 @@ class Settings(BaseSettings):
     max_uploads_per_day: int = 40             # global; 40 x ~190 CPU-s stays under the shared-cpu-2x baseline
     workspace_create_per_day: int = 3         # per client IP
     uploads_per_hour: int = 10                # per client IP
+    # Upload memory guard (docs/specs/upload-memory-guard.md, M5a decision 21): a NEW upload is refused (503, nothing started,
+    # stored or charged) while MemAvailable in /proc/meminfo is below this many kB. The default is the upload-parse child's
+    # 1 GiB RLIMIT_AS plus a margin (window W1c's lowest reading under the heaviest measured load was 1,471,596). Production
+    # allows PRODUCTION_UPLOAD_MIN_MEM_AVAILABLE_KB only; 0 = off, outside production only. A refusal never echoes the value.
+    upload_min_mem_available_kb: int = Field(1_250_000, ge=0)
 
     @property
     def is_production(self) -> bool:
@@ -434,6 +444,10 @@ class Settings(BaseSettings):
             problems.append(f"CACHE_READ_BUDGET_PER_S must be at most {PRODUCTION_MAX_CACHE_READ_BUDGET_PER_S} in production")
         if self.kill_switch_stale_s > PRODUCTION_MAX_KILL_SWITCH_STALE_S:
             problems.append(f"KILL_SWITCH_STALE_S must be at most {PRODUCTION_MAX_KILL_SWITCH_STALE_S} in production")
+        low_kb, high_kb = PRODUCTION_UPLOAD_MIN_MEM_AVAILABLE_KB
+        if not low_kb <= self.upload_min_mem_available_kb <= high_kb:
+            problems.append(f"UPLOAD_MIN_MEM_AVAILABLE_KB must be {low_kb} to {high_kb} in production (0 turns the upload "
+                            "memory guard off, which is for outside production only)")
         return problems
 
     # --- Data lake root (git-ignored, rebuildable) ---

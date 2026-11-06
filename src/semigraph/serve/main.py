@@ -42,7 +42,8 @@ from .routes import router
 from .state import StateDrivers, StateUnavailable, make_backend
 from .state.backend import BoundedDriver
 from .state.maintenance import MaintenanceThread
-from . import dossier_routes, drain, estimate, hardening, monitor, monitor_routes, routes, store, tracing, workspace_routes
+from . import (dossier_routes, drain, estimate, hardening, memguard, monitor, monitor_routes, routes, store, tracing,
+               workspace_routes)
 
 SECONDS_PER_DAY = 86_400
 SECONDS_PER_HOUR = 3_600
@@ -283,6 +284,7 @@ async def lifespan(app: FastAPI):
     if settings.agent_enabled:
         require_agent_package()
     log_bot_check_posture(settings)
+    memguard.log_boot_posture()          # one WARNING where /proc/meminfo is missing: the upload memory guard is then off
     driver, embedder, stats, snapshot, example_ids = await run_in_threadpool(bootstrap, settings)
     state_driver = None                               # set once start_state has built it (it closes it itself on failure)
     try:
@@ -342,7 +344,7 @@ async def start_state(app: FastAPI, settings) -> DatabaseDriver:
         seeded = seed_paid_windows(app.state.rate_limiter, report, settings.rate_limit_window_seconds)
         logger.info("state rebuilt: %d paid asks today (%d micro-dollars), %d closed after the last stop, "
                     "%d address windows seeded", report.paid, report.spend_micro, report.expired, seeded)
-        maintenance = MaintenanceThread(backend, settings)
+        maintenance = MaintenanceThread(backend, settings, memory_log=memguard.log_memory)   # + the 60 s memory line
         await run_in_threadpool(maintenance.start)      # reads the kill level once before it returns
     except BaseException:
         state_driver.close()

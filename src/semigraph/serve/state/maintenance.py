@@ -9,6 +9,11 @@
 - The settles that failed are retried on every tick (``backend.drain_settles``), and while any are queued the thread
   comes back every ``settle_queue.RETRY_INTERVAL_S`` instead of waiting out the longer periods above. ``stop()``
   flushes what it can within ``FLUSH_BUDGET_S``.
+- When a ``memory_log`` callable is given (``serve.main`` passes ``serve.memguard.log_memory``), it is called at the first
+  tick and then every ``MEMORY_LOG_EVERY_S`` (60 s): one INFO line with the serving process's memory, so the live margin of the
+  4 GB machine is visible in the logs. The callable is injected, not imported: this package imports nothing from the serve
+  routes. It runs after the kill-level, lease and sweep tasks and before the settle retries, and its failure is logged like
+  any other task's.
 
 It is unconditional: not tied to the upload sweeper or to any route. It has a thread of its own because the backend
 calls are synchronous and bounded by the driver, and the event loop must never wait for them.
@@ -32,6 +37,7 @@ logger = logging.getLogger("semigraph.serve.state")
 
 STOP_TIMEOUT_S = 5.0
 FLUSH_BUDGET_S = 3.0       # what stop() spends writing the queued settles (bounded by this plus one operation)
+MEMORY_LOG_EVERY_S = 60.0  # the process memory line (serve.memguard.log_memory), when a memory_log is given
 
 
 def _interval(settings: Any, name: str) -> float:
@@ -49,11 +55,12 @@ class MaintenanceThread(threading.Thread):
     ``sweep`` (both concrete backends have them); ``registry`` is the set of started leases (default: the backend's
     own).
     ``clock`` (monotonic, schedules the tasks) and ``wall`` (epoch seconds, handed to ``renew`` and ``sweep``) are
-    injectable; so is ``wait(seconds) -> bool`` (True means stop), which defaults to waiting on the stop event."""
+    injectable; so is ``wait(seconds) -> bool`` (True means stop), which defaults to waiting on the stop event.
+    ``memory_log`` (default None: no memory line) is called with no arguments every ``MEMORY_LOG_EVERY_S``."""
 
     def __init__(self, backend: Any, settings: Any, registry: Any = None, *,
                  clock: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time,
-                 wait: Callable[[float], bool] | None = None):
+                 wait: Callable[[float], bool] | None = None, memory_log: Callable[[], None] | None = None):
         super().__init__(name="state-maintenance", daemon=True)
         self._backend = backend
         self._registry = registry if registry is not None else backend.registry
@@ -63,6 +70,8 @@ class MaintenanceThread(threading.Thread):
         self._stop_event = threading.Event()
         self._wait = wait if wait is not None else self._stop_event.wait
         self._next_kill = self._next_lease = 0.0
+        self._memory_log = memory_log
+        self._next_memory = 0.0                # due at the first tick: a baseline line right after boot
         self._flushed = False
 
     # ---- the tasks -----------------------------------------------------------------------------------------------
@@ -119,8 +128,14 @@ class MaintenanceThread(threading.Thread):
             self._renew_leases()
             self._sweep()
             self._next_lease = self._clock() + self._lease_every
+        if self._memory_log is not None and now >= self._next_memory:
+            self._guarded("memory_log", self._memory_log)
+            self._next_memory = self._clock() + MEMORY_LOG_EVERY_S
         self._drain_settles()
-        wait = max(0.0, min(self._next_kill, self._next_lease) - self._clock())
+        due = [self._next_kill, self._next_lease]
+        if self._memory_log is not None:
+            due.append(self._next_memory)
+        wait = max(0.0, min(due) - self._clock())
         return min(wait, RETRY_INTERVAL_S) if self._settles_pending() else wait
 
     def start(self) -> None:
