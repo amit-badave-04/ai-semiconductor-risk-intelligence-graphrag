@@ -113,6 +113,39 @@
         "scripts/staging.py snapshot W1b --out <dir>, then scripts/staging.py destroy W1b --yes."
       ]
     },
+    "W1c": {
+      "title": "fp32 embedder memory confirmation, paced ask load: the real uvicorn, 3 fresh boots",
+      "duration": "3 fresh boots of about 10 to 25 min each (create to healthy, then one max-size upload with up to 14 paced mock-LLM asks, one per 30 s), plus at most one unchanged re-run of each INVALID boot",
+      "apps": ["api", "neo4j", "mockllm"],
+      "toml_overrides": {"api": "deploy/staging/fly.w1b.toml"},
+      "build_args": {"api": {"require": ["EMBEDDER_VARIANT=fp32"], "refuse": ["KEEP_UNPATCHED=1"]}},
+      "workload": {
+        "mode": "paced",
+        "asks": 14,
+        "interval_s": 30,
+        "max_in_flight": 2,
+        "tail_s": 30,
+        "derivation": "floor(production max_spend_usd_per_day / the live hybrid estimate) = floor(10 / 0.709573) = floor(14.09) = 14"
+      },
+      "machines": [
+        {"app": "api", "class": "shared-cpu-2x:4gb", "count": 1, "hours": 1.0},
+        {"app": "neo4j", "class": "shared-cpu-1x:1gb", "count": 1, "hours": 1.5},
+        {"app": "mockllm", "class": "shared-cpu-1x:1gb", "count": 1, "hours": 1.5}
+      ],
+      "volume_gb_hours": [{"app": "neo4j", "gb": 3, "hours": 1.5}],
+      "quote_usd": 0.10,
+      "cap_usd": 0.25,
+      "note": "Council 8, 'The Recommendation' 2, W1c (docs/v2/research/m5-councils/council8/verdict.md). W1c is window W1b with ONE change, the ask workload: the same apps (api, neo4j, mockllm), the same api toml (deploy/staging/fly.w1b.toml), the same build-argument policy (EMBEDDER_VARIANT=fp32 required, KEEP_UNPATCHED=1 refused), the same machines, classes and hours, 3 FRESH boots, the same PASS thresholds and the same INVALID rule. Reason: W1b's saturating ask load (~150 asks) starved the upload past its 1,200 s embed timeout on the throttled machine (boot 2 INVALID twice, memory within limits each time); council 8 chose a paced load anchored to the live day cap; the memory thresholds are unchanged. Workload per boot (tools/probe/w1b.py --window W1c, tools/probe/paced_asks.py): at most 14 salted mock-LLM asks (the cap). 14 = floor(production max_spend_usd_per_day / the live hybrid estimate) = floor(10 / 0.709573) = floor(14.09) = 14, computed in code from semigraph.config.PRODUCTION_MAX_SPEND_USD_PER_DAY and semigraph.serve.estimate for the fly.toml models (the driver refuses to run when the workload.asks registered here is not the count it derives). Pacing: one ask every 30 s from upload accept (the first ask at upload accept, so 14 asks span 390 s), each ask from a different X-Test-Client-IP, at most 2 in flight (when two are still in flight at the moment the next is due, the next waits and the delay is recorded, not skipped); sending stops at job ready plus 30 s, so the 14 is a cap and not a target (the boot records how many went out); measurement runs until the upload job is ready plus 30 s. The boot JSON records the window, the workload mode, the schedule (planned against actual send times) and the derivation. PASS (pre-registered, unchanged from W1b), on EVERY boot: max VmHWM of the uvicorn process <= 2,400,000 kB (inclusive), no OOM kill and no process restart, machine creation to /healthz 200 <= 180 s (inclusive); the aggregate passes only for exactly three boots on three different machines that all pass. INVALID (unchanged): the upload job did not reach ready, or no ask finished while it ran. Stop rule: an INVALID boot is re-run unchanged ONCE; if still INVALID, W1c is INCOMPLETE and nothing else is amended; a memory FAIL is a FAIL. (An INCONCLUSIVE boot is not re-run by this rule.) W1b's apps must be destroyed first: the app names are shared. The remote build of the api image is not priced here (builder minutes are not in the rates).",
+      "steps": [
+        "scripts/staging.py quote W1c, then create W1c --org <org> --approve-quote 0.10 (owner approval first; W1b's window must be destroyed before: scripts/staging.py destroy W1b --yes, the app names are shared), then seed W1c and deploy W1c mockllm.",
+        "scripts/staging.py deploy W1c api --build-arg EMBEDDER_VARIANT=fp32 (the tool refuses a missing EMBEDDER_VARIANT=fp32 and any KEEP_UNPATCHED=1 here), then preflight W1c. This first machine is a warm-up that proves the build and the deployed configuration: it is not a measured boot.",
+        "For each measured boot n = 1, 2, 3: flyctl machine list -a semigraph-stg --json, flyctl machine destroy <id> --force -a semigraph-stg for every machine that is not destroyed, then START the driver BEFORE the deploy (as a background job or in a second terminal): python -m tools.probe.w1b boot --window W1c --boot n --wait-for-machine-s 2700 --out <dir>/boot-n.json, then scripts/staging.py deploy W1c api --build-arg EMBEDDER_VARIANT=fp32 (a fresh machine id and creation time), then wait for the driver. The driver reads the window's secrets from the W1c state file and the workload from this entry; it refuses a --tail-s or --concurrency that differs from it.",
+        "Only a boot whose JSON verdict is INVALID, and only if it has no attempt-2 file yet, is re-run ONCE, unchanged: the same commands with the same --boot n and --attempt 2 (python -m tools.probe.w1b boot --window W1c --boot n --attempt 2 --wait-for-machine-s 2700 --out <dir>/boot-n-a2.json), on a freshly created machine again (the README loop reads each boot-n.json and decides by its verdict). Keep the attempt-1 file. No other boot is re-run, and an INCONCLUSIVE one is not re-run by this rule.",
+        "python -m tools.probe.w1b aggregate with EVERY boot file of <dir> (boot-*.json: the three attempt-1 files and every boot-n-a2.json, so no attempt can be left out) --out <dir>/w1c.json: PASS only if the three deciding boots pass; INCOMPLETE if a boot is INVALID twice (stop, amend nothing) or still has no re-run (rerun_due); FAIL if any attempt fails.",
+        "Record by hand (no script writes artifacts/m5_spikes.json; its owner merges): the aggregate under S6_w1c, with W1b's INCOMPLETE record and its four boots kept as stress data. It holds no secret.",
+        "scripts/staging.py snapshot W1c --out <dir>, then scripts/staging.py destroy W1c --yes."
+      ]
+    },
     "W2": {
       "title": "S12 calibration (provider spend, no machine)",
       "duration": "10 SEC + 2 agent streamed asks",

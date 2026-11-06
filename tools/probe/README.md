@@ -144,6 +144,102 @@ Each boot takes about 10 to 12 minutes (boot, a job of about 190 CPU-seconds, 30
 * `created_at` is Fly's clock and the polling is local: a skew of a second or two is inside `boot_to_healthy_s`. The first look at `/healthz`
   is reported (`healthy_on_first_poll`, `first_poll_after_creation_s`) so that a late start is visible.
 
+## `paced_asks.py` and `w1b.py --window W1c`: the same measurement under a paced ask load (window W1c)
+
+Council 8 (`docs/v2/research/m5-councils/council8/verdict.md`, "The Recommendation" 2) closed window W1b as INCOMPLETE (boot 2 was INVALID
+twice; fp32 is not adopted) and the owner approved **W1c**: window W1b with ONE change, the ask workload.
+
+Recorded reason: W1b's saturating ask load (~150 asks) starved the upload past its 1,200 s embed timeout on the throttled machine (boot 2 INVALID twice, memory within limits each time); council 8 chose a paced load anchored to the live day cap; the memory thresholds are unchanged.
+
+**Unchanged from W1b:** the apps (api, neo4j, mockllm), the api toml (`deploy/staging/fly.w1b.toml`), the build-argument policy
+(`EMBEDDER_VARIANT=fp32` required, `KEEP_UNPATCHED=1` refused), the machines and classes (shared-cpu-2x / 4 GB api in sin, quote `$0.10`, cap
+`$0.25`), 3 FRESH boots, the PASS thresholds (every boot: max uvicorn `VmHWM <= 2,400,000 kB`, no OOM kill and no restart, machine creation to
+`/healthz` 200 `<= 180 s`; the aggregate passes only for exactly three boots on three different machines that all pass) and the INVALID rule (the
+upload job must reach ready; at least one ask done while the job runs). `w1b_judge.boot_verdict` is the same function for both windows.
+
+**The one change, the workload (registered in `deploy/staging/windows.json`, W1c `workload`, and recorded in every boot's JSON):**
+
+* **At most 14 salted asks (the cap).** 14 = floor(production max_spend_usd_per_day / the live hybrid estimate) = floor(10 / 0.709573) = floor(14.09) = 14. It is
+  computed in code, `paced_asks.derive_ask_count()`: `semigraph.config.PRODUCTION_MAX_SPEND_USD_PER_DAY` over `semigraph.serve.estimate` for the
+  models and token cap of `fly.toml`, in whole micro-dollars (10,000,000 // 709,573), and the driver refuses to run when the count registered in
+  `windows.json` is not the one it derives (a test recomputes it and checks that it follows its inputs).
+* **Pacing:** one ask every 30 s from upload accept (the first ask at upload accept; 14 asks span 390 s), each ask from a different X-Test-Client-IP,
+  at most 2 in flight. When two are still in flight at the moment the next is due, the next waits and the delay is recorded; it is not skipped and the
+  schedule is not shifted (every ask is planned at accept + 30 s x n).
+* **Measurement:** until the upload job is ready plus 30 s. Sending stops at job ready plus 30 s: the 14 is a cap, not a target. An upload that is ready
+  early gets fewer asks, one that outlasts the schedule gets no more after the 14th, and the boot records how many were sent (`asks.sent`, `asks.unsent`,
+  `asks.stopped_by`).
+* **The boot JSON records** `window`, `attempt`, `workload` (mode `paced`, `asks_cap`, `interval_s`, `max_in_flight`, `tail_s` and the `derivation`:
+  day cap and estimate in micro-dollars, the models) and `asks.schedule` (for each ask sent: `planned_s`, `sent_s`, `delay_s`, `end_s`, `outcome`, in
+  seconds after accept), `asks.planned_offsets_s`, `asks.max_in_flight_seen` and `asks.distinct_addresses`.
+* `--window` also picks the registry entry and the state file (`W1c.json`, written by `staging.py create W1c`): W1b's saturating loop is unchanged and
+  W1c cannot run it. The window fixes the workload, so `--tail-s` and `--concurrency` are refused when they differ from it. The aggregate refuses to
+  pass a boot that did not record the registered workload (30 s, 2 in flight, a 30 s tail, a count that is the one derived from the cap and the
+  estimate it recorded), so a test-sized run can never be mistaken for the window.
+
+**Stop rule (encoded in `aggregate`, window W1c):** an INVALID boot is re-run unchanged ONCE; if still INVALID, W1c is INCOMPLETE and nothing else is amended; a memory FAIL is a FAIL.
+
+* The re-run is `--attempt 2` of the same `--boot` on a freshly created machine; the attempt-1 file is kept and both are reported (`attempts`). The boot's
+  last attempt decides it. An attempt 2 is legal only after an INVALID attempt 1: a re-run of a PASS or an INCONCLUSIVE boot, a third attempt, a gap
+  and a machine used twice are `problems` that keep the window from passing. A boot that is INVALID with no re-run yet is `rerun_due`; one that is INVALID
+  twice is `stopped`. Both give INCOMPLETE (never INVALID, which W1b's aggregate would say). A FAIL in ANY attempt is a FAIL.
+* Open: an INCONCLUSIVE boot (evidence unreadable) is not re-run by this rule; the window is then INCONCLUSIVE and the owner decides.
+
+### Sequence (PowerShell, from the repository root)
+
+```powershell
+# 0. the owner approves the quote first; W1b's window must be destroyed (the app names are shared)
+uv run python scripts/staging.py destroy W1b --yes                   # only if its apps still exist
+uv run python scripts/staging.py quote W1c
+uv run python scripts/staging.py create W1c --org <org> --approve-quote 0.10
+uv run python scripts/staging.py seed W1c
+uv run python scripts/staging.py deploy W1c mockllm
+uv run python scripts/staging.py deploy W1c api --build-arg EMBEDDER_VARIANT=fp32    # NOT KEEP_UNPATCHED=1: the tool refuses it
+uv run python scripts/staging.py preflight W1c       # this first machine is a warm-up: it proves the build and the deployed config
+
+# 1. three measured boots, each on a freshly created machine (the driver starts BEFORE the deploy)
+$dir = "$env:TEMP\w1c"; New-Item -ItemType Directory -Force $dir | Out-Null
+foreach ($n in 1, 2, 3) {
+    foreach ($m in @(flyctl machine list -a semigraph-stg --json | ConvertFrom-Json)) {
+        if ($m.state -ne "destroyed") { flyctl machine destroy $m.id --force -a semigraph-stg }
+    }
+    $job = Start-Job -ArgumentList (Get-Location).Path, $n, $dir -ScriptBlock {
+        param($repo, $n, $dir); Set-Location $repo
+        uv run python -m tools.probe.w1b boot --window W1c --boot $n --wait-for-machine-s 2700 --out "$dir\boot-$n.json"
+    }
+    uv run python scripts/staging.py deploy W1c api --build-arg EMBEDDER_VARIANT=fp32     # a new machine id and creation time
+    Receive-Job $job -Wait -AutoRemoveJob
+}
+
+# 2. the stop rule: ONLY a boot whose JSON says INVALID is re-run, ONCE, unchanged, on a freshly created machine (boot-$n.json is kept)
+foreach ($n in 1, 2, 3) {
+    $first = Get-Content "$dir\boot-$n.json" -Raw | ConvertFrom-Json
+    if ($first.verdict -ne "INVALID" -or (Test-Path "$dir\boot-$n-a2.json")) { continue }     # not INVALID, or its one re-run exists
+    foreach ($m in @(flyctl machine list -a semigraph-stg --json | ConvertFrom-Json)) {
+        if ($m.state -ne "destroyed") { flyctl machine destroy $m.id --force -a semigraph-stg }
+    }
+    $job = Start-Job -ArgumentList (Get-Location).Path, $n, $dir -ScriptBlock {
+        param($repo, $n, $dir); Set-Location $repo
+        uv run python -m tools.probe.w1b boot --window W1c --boot $n --attempt 2 --wait-for-machine-s 2700 --out "$dir\boot-$n-a2.json"
+    }
+    uv run python scripts/staging.py deploy W1c api --build-arg EMBEDDER_VARIANT=fp32
+    Receive-Job $job -Wait -AutoRemoveJob
+}
+
+# 3. the window's verdict from EVERY boot file in the directory, so no attempt can be left out (INVALID twice: INCOMPLETE, stop; a memory FAIL: FAIL)
+$files = (Get-ChildItem "$dir\boot-*.json").FullName
+uv run python -m tools.probe.w1b aggregate $files --out "$dir\w1c.json"
+
+# 4. evidence, then teardown (verified gone)
+uv run python scripts/staging.py snapshot W1c --out "$dir\snapshot"
+uv run python scripts/staging.py destroy W1c --yes
+```
+
+Everything else of W1b's sequence applies (the first machine is a warm-up; destroy EVERY machine of the app before each boot; the same `UNVERIFIED`
+list). Each boot takes about 10 to 25 minutes (boot, a job of about 190 CPU-seconds that may be throttled, 30 s of tail, collection). The result is
+recorded by hand under `S6_w1c` in `artifacts/m5_spikes.json` (its owner merges); W1b's INCOMPLETE record and its four boots stay as stress data.
+
 Tests: `tests/test_tools_probe_memsample.py` (fake `/proc`), `tests/test_tools_probe_w1b.py` (the verdicts at their boundaries, the
-aggregate, the workload against an `httpx.MockTransport`, flyctl stubbed), `tests/test_staging_script.py` and
-`tests/test_staging_tomls.py` (the window, its toml and the build-argument policy).
+aggregate, the workload against an `httpx.MockTransport`, flyctl stubbed; for W1c: the derived count and that it follows its inputs, the pacing
+decision on a fake clock, the sender, a paced boot end to end, the stop rule, the registered-workload check, the docs), `tests/test_staging_script.py` and
+`tests/test_staging_tomls.py` (the windows, their toml and the build-argument policy).

@@ -889,9 +889,14 @@ def _deploy_args_in_plan(world, key, app_key):
     """The ``flyctl deploy`` argument list ``deploy`` / ``seed`` builds for one app of one window, captured without a call."""
     tool, captured = world.make(plan=True), []
     tool._fly = lambda args, **kwargs: captured.append(list(args))
-    tool.seed(key) if app_key == "neo4j" else tool.deploy(key, app_key, build_args=[
-        b for b in ("EMBEDDER_VARIANT=fp32",) if key == "W1b" and app_key == "api"])
+    tool.seed(key) if app_key == "neo4j" else tool.deploy(key, app_key, build_args=_required_builds(key, app_key))
     return next(args for args in captured if args[0] == "deploy")
+
+
+def _required_builds(key, app_key):
+    """The ``--build-arg`` values a window's own policy requires of one app's image (none for a window without a policy): W1b and W1c
+    both require the fp32 embedder for the api, so a window with that policy deploys without naming it here."""
+    return list(WINDOWS["windows"][key].get("build_args", {}).get(app_key, {}).get("require", ()))
 
 
 @pytest.mark.parametrize("key, app_key", [(key, app_key) for key, window in WINDOWS["windows"].items() for app_key in window["apps"]])
@@ -992,6 +997,51 @@ def test_the_w1b_window_is_created_with_its_three_apps_the_volume_and_no_generat
     created = [c[3] for c in calls if c[1:3] == ["apps", "create"]]
     assert created == ["semigraph-stg", "semigraph-neo4j-stg", "semigraph-mockllm"]
     assert not any("loadgen" in " ".join(c) for c in calls)
+
+
+# --- window W1c: W1b's apps, toml, image policy, machines and quote; only the ask workload differs ----------------------------------
+
+def test_w1c_is_priced_exactly_like_w1b_and_has_no_load_generator():
+    w1c = WINDOWS["windows"]["W1c"]
+    assert w1c["apps"] == ["api", "neo4j", "mockllm"] and "loadgen" not in w1c["apps"]
+    windows = staging.load_windows()
+    assert staging.quote_usd(windows, "W1c") == staging.quote_usd(windows, "W1b") == (0.10, 0.25)
+    assert staging.derived_usd(windows, "W1c") == staging.derived_usd(windows, "W1b") <= 0.10 + 0.005
+
+
+def test_w1c_has_its_own_quote_row_and_the_w1b_row_is_untouched(world):
+    world.make().quote(["W1b", "W1c"])
+    rows = world.log.lines()
+    w1b_row, w1c_row = (next(line for line in rows if line.startswith(f"{key} ")) for key in ("W1b", "W1c"))
+    assert "$0.10 ($0.25)" in w1b_row and "$0.10 ($0.25)" in w1c_row
+    assert "1 x shared-cpu-2x 4gb (api)" in w1c_row and "(loadgen)" not in w1c_row
+
+
+def test_the_w1c_api_deploys_the_w1b_toml_on_the_live_class_and_the_other_apps_keep_their_default_toml(world):
+    args = _deploy_args_in_plan(world, "W1c", "api")
+    assert args[args.index("--config") + 1] == "deploy/staging/fly.w1b.toml"
+    assert args[args.index("--vm-size") + 1] == "shared-cpu-2x" and args[args.index("--vm-memory") + 1] == "4096"
+    assert [b for i, b in enumerate(args) if i and args[i - 1] == "--build-arg"] == ["EMBEDDER_VARIANT=fp32"]
+    for app_key, expected in (("mockllm", "deploy/staging/fly.mockllm.toml"), ("neo4j", "../staging/fly.neo4j-stg.toml")):
+        assert _deploy_args_in_plan(world, "W1c", app_key)[_deploy_args_in_plan(world, "W1c", app_key).index("--config") + 1] == expected
+
+
+@pytest.mark.parametrize("builds", [[], ["KEEP_UNPATCHED=1"], ["EMBEDDER_VARIANT=fp32", "KEEP_UNPATCHED=1"], ["EMBEDDER_VARIANT=q8"]])
+def test_the_w1c_api_image_must_be_the_one_that_would_ship_fp32_without_the_unpatched_model(world, builds):
+    create_commands(world, "W1c")
+    world.runner.calls.clear()
+    with pytest.raises(staging.UsageError, match="W1c"):
+        world.make().deploy("W1c", "api", build_args=builds)
+    assert world.runner.calls == []
+    world.make().deploy("W1c", "api", build_args=["EMBEDDER_VARIANT=fp32"])
+    assert any(c["args"][1] == "deploy" for c in world.runner.calls)
+
+
+def test_the_w1c_window_is_created_with_its_three_apps_the_volume_and_no_generator_secret(world):
+    calls = create_commands(world, "W1c")
+    assert [c[3] for c in calls if c[1:3] == ["apps", "create"]] == ["semigraph-stg", "semigraph-neo4j-stg", "semigraph-mockllm"]
+    assert not any("loadgen" in " ".join(c) for c in calls)
+    assert (world.state_dir / "W1c.json").is_file()                     # the file the driver reads its secrets from (tools.probe.w1b --window W1c)
 
 
 def test_the_script_names_no_live_app_and_no_pdf_library():

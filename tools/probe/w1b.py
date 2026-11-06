@@ -17,6 +17,14 @@ machine's events and logs for an OOM kill or a restart; prints ONE JSON object.
 
 The pre-registered rule and the verdicts (FAIL / INVALID / INCONCLUSIVE / PASS, fail closed) are in ``tools/probe/w1b_judge.py``.
 
+Window W1c (council 8) is W1b with ONE change, the ask workload: ``--window W1c`` (default W1b) reads its state file, its registry entry
+and its WORKLOAD from the window, so W1b's saturating loop above is unchanged and W1c can never run it. W1c sends the registered paced
+load (``tools/probe/paced_asks.py``: a count derived from the live day cap and the live hybrid estimate, one ask every 30 s from the
+upload's acceptance, each from its own address, at most 2 in flight, sending stopped at the job's end plus 30 s) and records the
+schedule, planned against actual. ``--attempt 2`` is the one unchanged re-run of an INVALID W1c boot (the stop rule of ``aggregate``):
+
+    python -m tools.probe.w1b boot --window W1c --boot 1 --wait-for-machine-s 2700 --out boot-1.json
+
 Secrets: the origin-header secret and the admin token are read from the state directory ``scripts/staging.py`` writes (outside
 the repository), used in request headers only, and scrubbed, with the workspace id and token, from everything printed or written.
 Every flyctl call is an argument list that must name the registered staging API app; the target URL must be that app or loopback.
@@ -39,7 +47,6 @@ import sys
 import threading
 import time
 import zlib
-from collections import Counter
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -52,13 +59,14 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.probe import memsample  # noqa: E402
+from tools.probe import memsample, paced_asks  # noqa: E402
 from tools.probe.w1b_judge import (  # noqa: E402,F401  (re-exported: the tests and the aggregate read them from here)
     COVERAGE_SLACK_S,
     EXPECTED_EMBED_SLOTS,
     EXPECTED_GUEST,
     HEALTHY_LIMIT_S,
     VMHWM_LIMIT_KB,
+    W1C,
     WINDOW,
     Scrub,
     aggregate,
@@ -160,23 +168,44 @@ class Result(NamedTuple):
 
 # ---- registry, secrets, target ------------------------------------------------------------------------------------------------
 
-def load_registry(windows_path: Path = WINDOWS_JSON) -> dict:
+def load_registry(windows_path: Path = WINDOWS_JSON, window: str = WINDOW) -> dict:
+    """The window's staging API app and, when the window registers one, its ``workload`` (W1c); W1b registers none."""
     doc = json.loads(Path(windows_path).read_text(encoding="utf-8"))
-    name = doc["apps"]["api"]["name"]
-    if name in LIVE_APPS or "api" not in doc["windows"][WINDOW]["apps"]:
-        raise W1bError("windows.json does not register a staging API for window W1b")
-    return {"api_app": name}
+    name, entry = doc["apps"]["api"]["name"], doc["windows"].get(window)
+    if entry is None or name in LIVE_APPS or "api" not in entry["apps"]:
+        raise W1bError(f"windows.json does not register a staging API for window {window}")
+    return {"api_app": name, **({"workload": entry["workload"]} if "workload" in entry else {})}
 
 
-def load_secrets(state_dir: Path | None, scrub: Scrub) -> tuple[str, str]:
+def workload_plan(registry: dict, window: str, args: argparse.Namespace) -> dict:
+    """What the boot will send, decided before anything is created or requested. A window with no registered workload (W1b) keeps the
+    saturating loop. A window that registers one (W1c) runs ONLY that: the registered ask count must be the one the code derives from
+    the live day cap and the live hybrid estimate (otherwise the workload could drift between boots), and ``--tail-s`` and
+    ``--concurrency`` may not differ from the registered tail and asks in flight."""
+    registered = registry.get("workload")
+    if registered is None:
+        return {"mode": "saturating", "concurrency": args.concurrency, "tail_s": args.tail_s}
+    derived = paced_asks.derive_ask_count()
+    if registered.get("mode") != paced_asks.PACED_MODE or registered.get("asks") != derived["asks"]:
+        raise W1bError(f"window {window} registers {registered.get('asks')!r} asks (mode {registered.get('mode')!r}) but the count derived from the "
+                       f"live day cap and the live hybrid estimate is {derived['asks']} ({derived['formula']}): refusing to run")
+    if args.tail_s != registered["tail_s"] or args.concurrency != registered["max_in_flight"]:
+        raise W1bError(f"window {window} registers a tail of {registered['tail_s']} s and {registered['max_in_flight']} asks in flight: "
+                       "--tail-s and --concurrency may not change them")
+    return {"mode": registered["mode"], "asks_cap": derived["asks"], "interval_s": float(registered["interval_s"]),
+            "max_in_flight": registered["max_in_flight"], "tail_s": float(registered["tail_s"]), "derivation": derived,
+            "stop_sending": "job ready plus tail_s: the count is a cap, not a target"}
+
+
+def load_secrets(state_dir: Path | None, scrub: Scrub, window: str = WINDOW) -> tuple[str, str]:
     """``(origin-header secret, admin token)`` of the window's API from the state file ``scripts/staging.py create`` wrote."""
     directory = Path(state_dir or os.environ.get("STAGING_STATE_DIR") or Path.home() / ".semigraph-staging")
-    path = directory / f"{WINDOW}.json"
+    path = directory / f"{window}.json"
     try:
         api = json.loads(path.read_text(encoding="utf-8"))["secrets"]["api"]
         origin, admin = api["ORIGIN_AUTH_SECRET"], api["ADMIN_TOKEN"]
     except (OSError, ValueError, KeyError, TypeError):
-        raise W1bError(f"the window's state file {path} is missing or has no API secrets: run `staging.py create {WINDOW}` first") from None
+        raise W1bError(f"the window's state file {path} is missing or has no API secrets: run `staging.py create {window}` first") from None
     scrub.add(origin, admin)
     return origin, admin
 
@@ -486,10 +515,7 @@ class AskLoop:
     def summary(self, job_start: float, job_end: float) -> dict:
         with self._lock:
             records = list(self.records)
-        outcomes = Counter(r["outcome"] for r in records)
-        overlap = sum(1 for r in records if r["outcome"] == "done" and r["start"] < job_end and r["end"] > job_start)
-        return {"sent": len(records), "done": outcomes["done"], "cached": outcomes["done_cached"], "done_overlapping_job": overlap,
-                "errors": {k: v for k, v in sorted(outcomes.items()) if k not in ("done", "done_cached")}}
+        return paced_asks.summarize_records(records, job_start, job_end)
 
 
 def watch_job(ctx: Context, ws: str, token: str, job_id: str, ip: str, *, deadline: float) -> dict:
@@ -524,10 +550,24 @@ def _not_started(why: str, retries: int) -> dict:
     return {"job": {"state": "not_started", "error": why}, "asks": {}, "workload_s": 0.0, "retries": retries}
 
 
+def make_ask_loop(ctx: Context, questions: list[str], *, concurrency: int, salt_start: int, paced: dict | None, accepted: float):
+    """W1b's saturating loop (``paced`` None), or W1c's paced sender: the same salted question and per-ask address for ask ``n``, sent
+    on the registered schedule from ``accepted`` (the upload's acceptance)."""
+    if paced is None:
+        return AskLoop(ctx, questions, concurrency, salt_start)
+
+    def ask(n: int) -> str:
+        return ask_once(ctx, apply_salt(questions[n % len(questions)], ctx.boot, salt_start + n), ask_ip(ctx.boot, n))
+
+    return paced_asks.PacedSender(ask=ask, now=ctx.now, sleep=ctx.sleep, t0=accepted, count=paced["asks_cap"], interval_s=paced["interval_s"],
+                                  max_in_flight=paced["max_in_flight"])
+
+
 def run_workload(ctx: Context, pdf: bytes, questions: list[str], *, concurrency: int, tail_s: float, job_timeout_s: float,
-                 salt_start: int) -> dict:
-    """Create a workspace, upload the PDF, ask while the job embeds, and keep asking for ``tail_s`` after it is ready. The workspace
-    id and token live in this function only."""
+                 salt_start: int, paced: dict | None = None) -> dict:
+    """Create a workspace, upload the PDF, ask while the job embeds, and keep asking for ``tail_s`` after it is ready (saturating), or
+    until the job's end plus ``tail_s`` on the registered schedule (``paced``: W1c's plan). The workspace id and token live in this
+    function only."""
     ws_ip = f"172.16.{ctx.boot}.{int(ctx.now()) % 250 + 1}"
     started = ctx.now()
     created, retries = ctx.retrying("POST", "/api/workspace", ws_ip, ok=(201,), json={"turnstile_token": STUB_TURNSTILE}, timeout=30.0)
@@ -545,16 +585,21 @@ def run_workload(ctx: Context, pdf: bytes, questions: list[str], *, concurrency:
         if uploaded is None or uploaded.status_code != 202:
             return _not_started(f"upload answered {getattr(uploaded, 'status_code', None)}", retries)
         accepted = ctx.now()
-        loop = AskLoop(ctx, questions, concurrency, salt_start)
+        loop = make_ask_loop(ctx, questions, concurrency=concurrency, salt_start=salt_start, paced=paced, accepted=accepted)
         loop.start()
         try:
             result = watch_job(ctx, ws, token, uploaded.json()["job_id"], ws_ip, deadline=accepted + job_timeout_s)
             ready_at = ctx.now()
+            if paced is not None:
+                loop.stop_sending_at(ready_at + tail_s)
             ctx.sleep(tail_s)
         finally:
             loop.finish()
         job = {**result, "ready_s": round(ready_at - accepted, 1) if result["state"] == "ready" else None}
-        return {"job": job, "asks": loop.summary(accepted, ready_at), "workload_s": round(ctx.now() - started, 1), "retries": retries}
+        asks = loop.summary(accepted, ready_at)
+        if paced is not None:
+            asks["distinct_addresses"] = len({ask_ip(ctx.boot, entry["n"]) for entry in asks["schedule"]})
+        return {"job": job, "asks": asks, "workload_s": round(ctx.now() - started, 1), "retries": retries}
     finally:
         ctx.request("DELETE", f"/api/workspace/{ws}", ws_ip, extra_headers={"X-Workspace-Token": token}, timeout=30.0)
 
@@ -571,11 +616,11 @@ def read_settings_evidence(ctx: Context) -> dict:
 
 # ---- one boot --------------------------------------------------------------------------------------------------------------------------
 
-def run_boot(args: argparse.Namespace, ctx: Context, fly: Fly, *, pdf: bytes, questions: list[str]) -> dict:
+def run_boot(args: argparse.Namespace, ctx: Context, fly: Fly, *, pdf: bytes, questions: list[str], plan: dict) -> dict:
     machine = wait_for_machine(fly, args.machine_id, wait_s=args.wait_for_machine_s, not_before=ctx.now() - MACHINE_AGE_SLACK_S,
                                now=ctx.now, sleep=ctx.sleep)
     started_at = parse_time(args.boot_started_at if args.boot_started_at != "auto" else machine["created_at"] or "")
-    report: dict = {"window": WINDOW, "boot": args.boot, "machine": machine,
+    report: dict = {"window": args.window, "boot": args.boot, "attempt": args.attempt, "workload": plan, "machine": machine,
                     "boot_started_at": datetime.fromtimestamp(started_at, UTC).isoformat(timespec="seconds"),
                     "pdf": {"sha256": hashlib.sha256(pdf).hexdigest(), "bytes": len(pdf), "pages": PDF_PAGES},
                     "limits": {"vmhwm_kb": VMHWM_LIMIT_KB, "healthy_s": HEALTHY_LIMIT_S, "ask_concurrency": args.concurrency,
@@ -587,8 +632,8 @@ def run_boot(args: argparse.Namespace, ctx: Context, fly: Fly, *, pdf: bytes, qu
         try:
             sampler_started = True                    # even a start that failed half way gets a stop and a read below
             start_sampler(fly, sleep=ctx.sleep, log=ctx.log, duration_s=sampler_duration_s(args.job_timeout_s, args.tail_s))
-            workload = run_workload(ctx, pdf, questions, concurrency=args.concurrency, tail_s=args.tail_s,
-                                    job_timeout_s=args.job_timeout_s, salt_start=args.salt_start)
+            workload = run_workload(ctx, pdf, questions, concurrency=args.concurrency, tail_s=args.tail_s, job_timeout_s=args.job_timeout_s,
+                                    salt_start=args.salt_start, paced=plan if plan["mode"] == paced_asks.PACED_MODE else None)
         except Exception as exc:  # noqa: BLE001  a boot that cannot be measured is reported (INVALID), never lost to a traceback
             workload = _not_started(ctx.scrub(f"{type(exc).__name__}: {exc}"), 0)
         report.update(workload)
@@ -610,6 +655,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="w1b", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     boot = sub.add_parser("boot", help="measure ONE freshly created machine and print its JSON")
+    boot.add_argument("--window", default=WINDOW, choices=(WINDOW, W1C),
+                      help="W1b (default: the saturating ask load) or W1c (the registered paced load); also picks the state file")
+    boot.add_argument("--attempt", type=int, default=1, choices=(1, 2),
+                      help="2 = the one unchanged re-run of an INVALID boot (window W1c's stop rule); recorded in the boot's JSON")
     boot.add_argument("--boot", type=int, required=True, choices=range(1, 10), help="1, 2, 3: also the salt's worker digit")
     boot.add_argument("--base-url", default=None, help="default: the window's staging API; only that or loopback is accepted")
     boot.add_argument("--machine-id", default=None)
@@ -652,8 +701,11 @@ def main(argv: Sequence[str] | None = None, *, runner: Callable[[list[str], floa
             result = aggregate([json.loads(Path(p).read_text(encoding="utf-8")) for p in args.files])
             emit(result, args.out, scrub)
             return exit_code(result["verdict"])
-        registry = load_registry(args.windows)
-        origin, admin = load_secrets(args.state_dir, scrub)
+        if args.attempt > 1 and args.window != W1C:
+            raise W1bError("--attempt 2 is the one re-run of an INVALID boot under window W1c's stop rule: window W1b has none")
+        registry = load_registry(args.windows, args.window)
+        plan = workload_plan(registry, args.window, args)
+        origin, admin = load_secrets(args.state_dir, scrub, args.window)
         base = check_target(args.base_url or f"https://{registry['api_app']}.fly.dev", registry["api_app"])
         if args.salt_start is None:
             args.salt_start = int(now()) % 900_000
@@ -661,7 +713,7 @@ def main(argv: Sequence[str] | None = None, *, runner: Callable[[list[str], floa
         log = lambda line: print(f"w1b: {scrub(line)}", file=sys.stderr)  # noqa: E731
         with client or httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0)) as http:
             ctx = Context(http, base, origin, admin, scrub, boot=args.boot, now=now, sleep=sleep, log=log)
-            report = run_boot(args, ctx, fly, pdf=load_pdf(args.pdf), questions=load_questions())
+            report = run_boot(args, ctx, fly, pdf=load_pdf(args.pdf), questions=load_questions(), plan=plan)
         emit(report, args.out, scrub)
         return exit_code(report["verdict"])
     except (W1bError, OSError, ValueError, KeyError) as exc:
