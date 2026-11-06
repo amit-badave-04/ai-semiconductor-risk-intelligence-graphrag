@@ -298,13 +298,14 @@ def test_a_stop_file_that_exists_ends_the_real_loop_after_its_first_second(tmp_p
 
 
 def test_the_stop_file_is_looked_at_while_the_burn_runs_so_a_file_made_later_ends_it(tmp_path, monkeypatch):
-    stop, seen = tmp_path / "burn.stop", []
+    stop, checks = tmp_path / "burn.stop", []
     real_exists = os.path.exists
 
     def exists(path):
-        seen.append(str(path))
-        if str(path) == str(stop) and len(seen) == 2:
-            stop.write_text("", encoding="utf-8")                 # the driver touches the file during the second second
+        if str(path) == str(stop):        # count only the burn's checks: on Linux argparse's gettext also calls exists (.mo files)
+            checks.append(path)
+            if len(checks) == 2:
+                stop.write_text("", encoding="utf-8")             # the driver touches the file during the second second
         return real_exists(path)
 
     monkeypatch.setattr(os.path, "exists", exists)
