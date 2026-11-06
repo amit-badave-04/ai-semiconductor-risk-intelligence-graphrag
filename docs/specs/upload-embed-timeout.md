@@ -1,6 +1,6 @@
 # Upload embed timeout sized from the measured CPU throttle (M5a follow-up to decision 21)
 
-Status: DRAFT for the owner's approval (SDD stage 1 gate), revised 2026-11-06 after two adversarial Opus reviews (see
+Status: **APPROVED by the owner 2026-11-06** (decisions 1 and 3-6 as recommended: ceiling 2,100 s, the confirmation boot after stage 6, keep shared-cpu-2x, defer H and B), revised 2026-11-06 after two adversarial Opus reviews (see
 "Review disposition"). Path: full (changes a resource limit on the upload job loop and the upload sweeper's age rule, both on the sensitive
 list: input handling and the upload pipeline).
 
@@ -432,7 +432,7 @@ rule if it is ever persisted.
 
 | Stage | Gate | Evidence |
 |---|---|---|
-| 1 Spec | owner approves | **Pending.** Drafted and revised 2026-11-06 (two Opus reviews applied); passed a final Opus check on 2026-11-06 (READY_FOR_OWNER) with its minor leftovers applied; waits for decisions 1 and 3 to 6 (2 is closed) |
+| 1 Spec | owner approves | **APPROVED by the owner 2026-11-06**: "Approve + run the boot" (decision 1 as written; decision 3 yes, after stage 6, quoted first; decision 4 keep shared-cpu-2x; decisions 5-6 deferred). Drafted and revised 2026-11-06 (two Opus reviews applied); passed a final Opus check on 2026-11-06 (READY_FOR_OWNER) with its minor leftovers applied; waits for decisions 1 and 3 to 6 (2 is closed) |
 | 2 Dev (TDD) | tests red then green; reviews clean | Pending |
 | 3 Regression | full suite green | Pending |
 | 4 Security | /security-review, gitleaks before push | Pending |

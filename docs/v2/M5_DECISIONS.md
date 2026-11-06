@@ -242,3 +242,12 @@ choice, recorded here; it stays owed before a release tag); the upload memory gu
 | `ESCALATION_MODEL` | Both sources hold the same value and live reports `anthropic/claude-sonnet-5`. The Fly secret is not removed yet: `scripts/push_fly_secrets.py` pushes it from `.env.fly` by default and would put it back; the clean-up (drop it from that list and from `.env.fly`, then `flyctl secrets unset ESCALATION_MODEL --stage`) is a small follow-up |
 | Decision 22 | **Run 2026-11-06 on the owner's go ("go on 22"). IRREVERSIBLE.** On the serve machine, with the installed package's `store.count_legacy_ip_hashes` / `store.null_legacy_ip_hashes(batch=5000)` (the calls `scripts/null_legacy_ip_hashes.py --yes` makes; copying the script onto the machine was refused by the session's permission policy): legacy before 38, nulled 38, **legacy remaining 0** (the RUNBOOK check). Rows after: 38 with `ip_hash_v = 0` and no hash, 1 with `ip_hash_v = 2` (untouched). `/healthz` ok and the ledger counts unchanged (29 paid, 10 cached, $0.0462) |
 | Open, not blocking | `.env.example` lacks the `UPLOAD_MIN_MEM_AVAILABLE_KB` line (the file is read-denied in the agent session); the upload-timeout finding of 10.8 needs its own spec |
+
+### 10.10 Owner approvals after the deploy (2026-11-06)
+
+| Item | Outcome |
+|---|---|
+| M5b spec (`../specs/m5b-frontend.md`) | **Approved** with every recommendation D1-D18 ("Approve all recommended"): including D17 (download and run the npm packages, the shadcn CLI and Playwright's browser; install scripts off; lockfile built on Linux) and D18a (a live rollback drill at I4, three timed deploys). M5b stage 2 starts with I0b (the live page's remaining accessibility fixes), then I1 |
+| Upload timeout spec (`../specs/upload-embed-timeout.md`) | **Approved** ("Approve + run the boot"): ceiling 2,100 s with its production check, the stage-timing line, the sweeper default; the fp32 confirmation boot after stage 6 (quoted first, about $0.08, cap $0.25); keep shared-cpu-2x; defer H, B and hang protection |
+| Deploy | **Go** ("Deploy now"): the `/openapi.json` fix (`568d7fa`) and the staged removal of the duplicate `ESCALATION_MODEL` secret |
+| Neo4j clean stop | The owner runs the RUNBOOK command ("Clean stop") |

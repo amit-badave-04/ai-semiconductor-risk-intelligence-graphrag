@@ -1,6 +1,6 @@
 # M5b: frontend parity and core pages (Vite + React SPA at /v2/, then /)
 
-Status: DRAFT for the owner's approval (SDD stage 1 gate). Path: full (a new feature on the sensitive list: input handling
+Status: **APPROVED by the owner 2026-11-06** ("Approve all recommended": D1-D18 as recommended, including D17 and D18a's live rollback drill). Path: full (a new feature on the sensitive list: input handling
 (the SSE parser, the answer renderer, the upload UI), external calls (Turnstile, the same-origin API), display of LLM output
 and of uploaded text; plus a new Docker stage and a new npm dependency tree). Written 2026-11-06, revised the same day after
 an adversarial Opus review and again after a second Opus re-review of that revision (Appendix C lists every finding and what
@@ -840,7 +840,7 @@ the review; each fix was re-checked against the repo (file:line in the Done colu
 
 | Stage | Gate | Evidence |
 |---|---|---|
-| 1 Spec | owner approves; plan via `fable-architect` | pending the owner's answers to D1-D18. Done: the plan was produced by the `fable-architect` agent (workflow run `wf_cfa13512-55f`, agent "M5b plan (architect)", per the orchestrator's record; the run was not re-read for this revision). DRAFT written 2026-11-06 and revised the same day after an adversarial Opus review and a second Opus re-review of that revision (Appendix C, round 2). The round-2 fixes were re-checked by a final Opus pass on 2026-11-06: all six addressed, verdict READY_FOR_OWNER, minor leftovers fixed or listed. The spec passed that final Opus check on 2026-11-06 (READY_FOR_OWNER) with its minor leftovers applied (Appendix C, round 3). Nothing was run to revise it beyond reads of the repo, the installed Python sources and public registry and source pages |
+| 1 Spec | owner approves; plan via `fable-architect` | **APPROVED by the owner 2026-11-06**: every decision D1-D18 answered with its recommendation (D17 downloads and executes the listed npm packages, the shadcn CLI and Playwright's browser with install scripts off and a Linux-built lockfile; D18a the live rollback drill at I4). Done: the plan was produced by the `fable-architect` agent (workflow run `wf_cfa13512-55f`, agent "M5b plan (architect)", per the orchestrator's record; the run was not re-read for this revision). DRAFT written 2026-11-06 and revised the same day after an adversarial Opus review and a second Opus re-review of that revision (Appendix C, round 2). The round-2 fixes were re-checked by a final Opus pass on 2026-11-06: all six addressed, verdict READY_FOR_OWNER, minor leftovers fixed or listed. The spec passed that final Opus check on 2026-11-06 (READY_FOR_OWNER) with its minor leftovers applied (Appendix C, round 3). Nothing was run to revise it beyond reads of the repo, the installed Python sources and public registry and source pages |
 | M5a gate A4, `/openapi.json` 404 | M5_PLAN.md:160 | PASS in code (568d7fa), not checked live; live after the I4 deploy |
 | 2 Dev (TDD) | tests red then green; reviews clean | pending |
 | 3 Regression | full suite green, coverage >= 80%, evals at threshold | pending (pytest, vitest, Playwright, axe, Lighthouse B3) |
