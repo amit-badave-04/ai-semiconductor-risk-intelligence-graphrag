@@ -738,6 +738,26 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
   is too high; `mem_available_kb` falling toward the threshold between refusals is the OOM warning the line exists for. To
   change the threshold set `UPLOAD_MIN_MEM_AVAILABLE_KB` in `fly.toml [env]` and redeploy; the lowest value production
   accepts is 500000, and 0 (off) is refused there.
+- **Embed ceiling** (`UPLOAD_EMBED_TIMEOUT_S`, docs/specs/upload-embed-timeout.md): the wall budget of one job's embedding
+  loop, **2,100 s** (the code default; `fly.toml` sets none), checked after each chunk and only while chunks remain, from the
+  start of the loop: a job that has embedded its last chunk is never failed. A stop ends the job `failed`, code `timeout`
+  ("processing took too long and was stopped"), with nothing stored and the slot released. Derivation: a shared-cpu-2x is
+  throttled to a sustained share of one core once its burst is spent (measured 17% down to 12%), and the cap job (16,000
+  tokens) needs 16,000 / (85.8 tokens/s x 1.18 class factor x share): 1,317 s at 12%, so the ceiling is 1.5 x that, 1,975 s,
+  rounded up to 2,100 s (a cap job still finishes down to a 7.5% share; the old 1,200 s failed it below about a 13% share at the 1.18 factor). Production
+  refuses a value under 600 s (a zero or a unit slip) and one whose product with `MAX_UPLOADS_PER_DAY` passes 86,400 s (2,160 s
+  at 40 a day); the refusal names only `UPLOAD_EMBED_TIMEOUT_S` and says the daily upload count is part of the cause. **The
+  validator does not enforce the 1.5x rule**: a ceiling under about 1,975 s boots and can fail throttled uploads, which is
+  tuning, judged against the `upload stages` line below. The interrupted-job sweeper's age follows it (90 + ceiling + 600 =
+  2,790 s). To change it set `UPLOAD_EMBED_TIMEOUT_S` in `fly.toml [env]` and redeploy; a higher ceiling also lengthens how long
+  one job can hold the one upload slot. **Reading the `upload stages` line** (`flyctl logs -a semigraph`, one INFO line for
+  every job that got past the parse stage, `ready` or any failure after it; none for a parse failure, `too_many_pages`,
+  `too_many_tokens` or the page-quota refusal): `upload stages ws_hash=<h> job_id=<id> parse_s=<s> chunk_s=<s> embed_s=<s>
+  compare_s=<s> index_s=<s> chunks=<n> fresh=<n> done=<n> tokens=<n>`, a stage the job never reached left out. `fresh` is the
+  chunks to embed (not reused), `done` how many were embedded when the loop ended: `done` below `fresh` is a stop inside the
+  loop, and the `upload job failed ... job_id=<id> code=<code>` line with the same `job_id` names the exit. `tokens` is the
+  PLANNED freshly embedded tokens, also on a `timeout`, so compute the sustained share from a `ready` line only:
+  `tokens` / (85.8 x 1.18 x `embed_s`), and compare it with the 12% the ceiling was sized for. Nothing here reaches a client.
 - **Isolation:** workspace data lives only in `User*` nodes keyed by `workspace_id`; the token is shown once and only its
   sha256 is stored; an unknown workspace and a wrong token both answer 404. Workspace answers are never cached, never use the
   agent, and are logged as counts only; the access log shows `<ws:hash>`.

@@ -148,9 +148,9 @@ _JOB_TERMINAL_STATES = ("ready", "failed")
 # uploads.jobs.JOB_ERROR_MESSAGES["interrupted"], duplicated for the same reason: an exact fixed string, never a
 # raw exception message (docs/v2/M4_PLAN.md 5) — kept in sync with jobs.py by tests/test_serve_upload_repo.py.
 _INTERRUPTED_ERROR_MESSAGE = "processing was interrupted and could not finish"
-# At least a ~90 s parse plus the 1,200 s embed budget, with generous slack: a job that has not moved in this long
+# At least a ~90 s parse plus the 2,100 s embed budget, with generous slack: a job that has not moved in this long
 # was abandoned by a dead process, not merely slow.
-FAIL_INTERRUPTED_AFTER_S = 35 * 60   # default only: above parse (90 s) + embed (1,200 s) + a 10 min margin
+FAIL_INTERRUPTED_AFTER_S = 50 * 60   # default only: above parse (90 s) + embed (2,100 s) + a 10 min margin (2,790 s)
 
 
 def create_workspace(driver, ttl_hours: int) -> tuple[str, str, str]:

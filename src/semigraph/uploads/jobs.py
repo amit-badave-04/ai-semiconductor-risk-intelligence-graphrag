@@ -24,6 +24,7 @@ last known event from Neo4j.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import secrets
@@ -308,6 +309,35 @@ def _lower_priority() -> None:
         logger.debug("setpriority(nice 10) failed; continuing at the default priority")
 
 
+# The fields of the one ``upload stages`` line, in the order it prints them; a stage a job never reached has no entry in its
+# stage record and is left out (docs/specs/upload-embed-timeout.md requirement 3).
+_STAGE_FIELDS = (("parse_s", "%.3f"), ("chunk_s", "%.3f"), ("embed_s", "%.3f"), ("compare_s", "%.3f"),
+                 ("index_s", "%.3f"), ("chunks", "%d"), ("fresh", "%d"), ("done", "%d"), ("tokens", "%d"))
+
+
+@contextlib.contextmanager
+def _timed(stages: dict, key: str, clock):
+    """Writes the duration of the block into ``stages[key]`` on every exit, a raise included."""
+    started = clock()
+    try:
+        yield
+    finally:
+        stages[key] = clock() - started
+
+
+def _log_stages(ws: str, job_id: str, stages: dict) -> None:
+    """One INFO line per job that got past the parse stage: what each stage reached and how long it took. ``ws_hash``,
+    ``job_id`` and numbers only (the same fields as the failure lines), never a client event or a persisted payload.
+    Never raises: it runs in the ``finally`` of ``_process``, after ``emit("ready")``, so a raise would add a second
+    terminal event to a job whose version is already stored (S4)."""
+    try:
+        fields = "".join(f" {name}={fmt % stages[name]}" for name, fmt in _STAGE_FIELDS if name in stages)
+        logger.info("upload stages ws_hash=%s job_id=%s%s", _ws_hash(ws), job_id, fields)
+    except Exception as exc:  # noqa: BLE001 — a log line must never turn a ready job into internal_error
+        # No ws_hash here: building it may be what raised, and this handler must not raise in turn.
+        logger.warning("upload stages line failed job_id=%s: %s", job_id, type(exc).__name__)
+
+
 def _parse_or_fail(driver, ws, reg, job_id, document_id, version, data, kind, settings):
     from .parse import ParseError, parse_document
 
@@ -334,30 +364,42 @@ def _build_units_and_chunks(text: str, blocks, kind: str, embedder, settings):
     return units, chunks, unit_dicts
 
 
-def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit):
+def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit, *,
+                  clock=time.monotonic, stages=None):
     """Embeds only the chunks whose text_hash is not already embedded for this document. Returns
     ``{"vectors": {index: [float, ...]}, "already": {text_hash: embedding}}``; ``None`` if the workspace's
-    embedded-token budget would be exceeded; the string ``"timeout"`` if the wall budget ran out first."""
+    embedded-token budget would be exceeded; the string ``"timeout"`` if the wall budget ran out first.
+
+    ``clock`` times the loop (the ceiling and ``embed_s``); ``stages`` (default: a local record) receives what this stage
+    reached, on every exit: ``fresh`` and ``tokens`` (the plan: the chunks to embed and their tokens) once known, ``done``
+    after each chunk, ``embed_s`` when the loop ends, however it ends."""
     from . import repo
 
+    stages = {} if stages is None else stages
     already = repo.embedded_chunks(driver, ws, document_id)
     to_embed = [i for i, h in enumerate(chunk_hashes) if h not in already]
     new_tokens = sum(chunks[i].tokens for i in to_embed)
+    stages["fresh"], stages["tokens"] = len(to_embed), new_tokens
     current_tokens = repo.quota(driver, ws).get("embedded_tokens", 0)
     if to_embed and current_tokens + new_tokens > settings.upload_max_workspace_tokens:
         return None
     _lower_priority()
     vectors: dict[int, list[float]] = {}
-    started = time.monotonic()
-    for done, i in enumerate(to_embed, start=1):
-        vectors[i] = [float(x) for x in embedder.encode_passages([chunk_texts[i]])[0]]
-        elapsed = time.monotonic() - started
-        remaining = len(to_embed) - done
-        eta = round(elapsed / done * remaining, 1) if done else 0.0
-        emit("embedding", progress={"done": done, "total": len(to_embed), "eta_s": eta})
-        if elapsed > settings.upload_embed_timeout_s and remaining:
-            return "timeout"
-    wall_s = round(time.monotonic() - started, 3)
+    stages["done"] = 0
+    started = clock()
+    try:
+        for done, i in enumerate(to_embed, start=1):
+            vectors[i] = [float(x) for x in embedder.encode_passages([chunk_texts[i]])[0]]
+            stages["done"] = done
+            elapsed = clock() - started
+            remaining = len(to_embed) - done
+            eta = round(elapsed / done * remaining, 1) if done else 0.0
+            emit("embedding", progress={"done": done, "total": len(to_embed), "eta_s": eta})
+            if elapsed > settings.upload_embed_timeout_s and remaining:
+                return "timeout"
+    finally:
+        stages["embed_s"] = clock() - started
+    wall_s = round(stages["embed_s"], 3)
     logger.info("upload embed ws_hash=%s document_id=%s tokens=%d wall_s=%.3f tokens_per_s=%.1f",
                _ws_hash(ws), document_id, new_tokens, wall_s, (new_tokens / wall_s) if wall_s > 0 else 0.0)
     return {"vectors": vectors, "already": already}
@@ -439,13 +481,17 @@ def _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, sett
 
 
 def _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder, settings,
-                           emit):
+                           emit, *, clock=time.monotonic, stages=None):
     """Chunks, then embeds the new chunks. Returns ``(units, unit_dicts, chunk_rows)``, or ``None`` once a failure
-    event has already been emitted (``too_many_chunks``, ``workspace_quota`` or ``timeout``)."""
+    event has already been emitted (``too_many_chunks``, ``workspace_quota`` or ``timeout``). ``clock`` and ``stages``
+    (default: a local record) are :func:`_embed_chunks`' own; this stage adds ``chunk_s`` and ``chunks`` to the record."""
     from ..hashing import content_hash
     from ..retrieval.ids import doc_id as make_doc_id
 
-    units, chunks, unit_dicts = _build_units_and_chunks(text, parsed.blocks, kind, embedder, settings)
+    stages = {} if stages is None else stages
+    with _timed(stages, "chunk_s", clock):
+        units, chunks, unit_dicts = _build_units_and_chunks(text, parsed.blocks, kind, embedder, settings)
+    stages["chunks"] = len(chunks)
     if len(chunks) > settings.upload_max_chunks:
         # Enforced right after chunking, BEFORE any embedding (docs/v2/M4_PLAN.md 15.8 / finding 8): a
         # whitespace-heavy or short-paragraph-heavy document can produce hundreds of chunks well under the
@@ -455,7 +501,8 @@ def _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, 
     chunk_texts = [text[c.char_start:c.char_end] for c in chunks]
     chunk_hashes = [content_hash(t) for t in chunk_texts]
     emit("embedding", progress={"done": 0, "total": len(chunks), "eta_s": None})
-    embedded = _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit)
+    embedded = _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit,
+                             clock=clock, stages=stages)
     if embedded is None or embedded == "timeout":
         _fail(driver, ws, reg, job_id, document_id, version, "workspace_quota" if embedded is None else "timeout")
         return None
@@ -467,7 +514,10 @@ def _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, 
     return units, unit_dicts, chunk_rows
 
 
-def _process(driver, embedder, settings, ws, job_id, document_id, title, data, kind, content_hash_hex, reg) -> None:
+def _process(driver, embedder, settings, ws, job_id, document_id, title, data, kind, content_hash_hex, reg, *,
+             clock=time.monotonic) -> None:
+    """Runs one job. ``clock`` times every stage (production passes nothing; a test passes a fake). From the moment the parse
+    stage returns a result, whatever the exit (``ready`` or any failure), the stage record is written as one log line."""
     from ..retrieval.workspace import looks_suspicious
     from . import repo
     from .versions import next_version
@@ -481,43 +531,52 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
     version = next_version([latest["version"]] if latest else [])
     emit("validating", version=version)
 
+    stages: dict = {}       # what each stage reached, filled in by the stages themselves; written by the `finally` below
     emit("parsing", version=version)
-    parsed_result = _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, settings, embedder)
+    with _timed(stages, "parse_s", clock):
+        parsed_result = _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, settings, embedder)
     if parsed_result is None:
         return
     parsed, text = parsed_result
 
-    emit("chunking", version=version)
-    chunked = _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder,
-                                     settings, lambda state, **kw: emit(state, version=version, **kw))
-    if chunked is None:
-        return
-    units, unit_dicts, chunk_rows = chunked
-
-    emit("comparing", version=version)
-    change_report = _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed,
-                                           settings)
-    # Defence in depth on top of the linear-time regex fix (docs/v2/M4_PLAN.md 15.12): collapsing whitespace runs
-    # first means even a pathological pattern this heuristic does not yet anticipate stays bounded by the
-    # (already-capped) token count rather than the raw character count of an upload.
-    suspicious = looks_suspicious(" ".join(text.split()))
-
-    emit("indexing", version=version)
-    workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
     try:
-        repo.put_version(driver, ws, document_id=document_id, title=title, version=version,
-                         content_hash=content_hash_hex, method=parsed.method, pages=parsed.pages, chars=len(text),
-                         chars_per_page=parsed.chars_per_page, text=text, units=unit_dicts, chunks=chunk_rows,
-                         change_report=change_report, suspicious=suspicious, now=datetime.now(UTC), job_id=job_id)
-    except workspace_gone:
-        # The workspace was deleted (or TTL-swept) while this job ran (docs/v2/M4_PLAN.md 15.4): put_version wrote
-        # NOTHING (it locks the UserWorkspace node first and refuses otherwise), so nothing here may write further
-        # either — not even this failure event, which goes to the live log only, never to Neo4j.
-        _fail(driver, ws, reg, job_id, document_id, version, "workspace_deleted", persist=False)
-        return
-    emit("ready", version=version, chunks=len(chunk_rows), units=len(unit_dicts),
-        items_compared=change_report["items_compared"], not_compared_reason=change_report["not_compared_reason"],
-        suspicious=suspicious)
+        emit("chunking", version=version)
+        chunked = _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder,
+                                         settings, lambda state, **kw: emit(state, version=version, **kw), clock=clock,
+                                         stages=stages)
+        if chunked is None:
+            return
+        units, unit_dicts, chunk_rows = chunked
+
+        emit("comparing", version=version)
+        with _timed(stages, "compare_s", clock):
+            change_report = _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed,
+                                                   settings)
+        # Defence in depth on top of the linear-time regex fix (docs/v2/M4_PLAN.md 15.12): collapsing whitespace runs
+        # first means even a pathological pattern this heuristic does not yet anticipate stays bounded by the
+        # (already-capped) token count rather than the raw character count of an upload.
+        suspicious = looks_suspicious(" ".join(text.split()))
+
+        emit("indexing", version=version)
+        workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
+        try:
+            with _timed(stages, "index_s", clock):
+                repo.put_version(driver, ws, document_id=document_id, title=title, version=version,
+                                 content_hash=content_hash_hex, method=parsed.method, pages=parsed.pages,
+                                 chars=len(text), chars_per_page=parsed.chars_per_page, text=text, units=unit_dicts,
+                                 chunks=chunk_rows, change_report=change_report, suspicious=suspicious,
+                                 now=datetime.now(UTC), job_id=job_id)
+        except workspace_gone:
+            # The workspace was deleted (or TTL-swept) while this job ran (docs/v2/M4_PLAN.md 15.4): put_version wrote
+            # NOTHING (it locks the UserWorkspace node first and refuses otherwise), so nothing here may write further
+            # either — not even this failure event, which goes to the live log only, never to Neo4j.
+            _fail(driver, ws, reg, job_id, document_id, version, "workspace_deleted", persist=False)
+            return
+        emit("ready", version=version, chunks=len(chunk_rows), units=len(unit_dicts),
+            items_compared=change_report["items_compared"], not_compared_reason=change_report["not_compared_reason"],
+            suspicious=suspicious)
+    finally:
+        _log_stages(ws, job_id, stages)
 
 
 def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data: bytes, kind: str,
@@ -592,12 +651,17 @@ def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | Non
 # for, on top of settings.upload_parse_timeout_s + settings.upload_embed_timeout_s, before the interrupted-job
 # sweep's age threshold (docs/v2/M4_PLAN.md 15.4, finding 27, C3 item 2). Arithmetic: `_embed_chunks` only checks
 # its wall budget BETWEEN chunks, so one slow chunk can carry the embed stage past upload_embed_timeout_s before
-# that check fires; then `comparing` and `put_version`'s own transaction still have to run before the NEXT progress
+# that check fires (about 70 s for the largest legal chunk at the 2,100 s ceiling's design floor of a 7.5% share:
+# docs/specs/upload-embed-timeout.md requirement 4; unbounded only if a native call hangs, which nothing here bounds);
+# then `comparing` and `put_version`'s own transaction still have to run before the NEXT progress
 # write lands. `comparing` now HAS its own settings-backed timeout (`upload_compare_timeout_s`, default 120s —
 # M4_PLAN.md 4.2 section 1/16 extension: the alignment itself runs in a sandboxed subprocess, not in-process, so a
 # pathological document can no longer run unbounded), but `_fail_interrupted_older_than_s` deliberately does not
-# add it to the arithmetic below: this fixed 600s margin already comfortably covers it (120s < 600s) with headroom
-# left over for `put_version`'s own transaction, which still has no settings-backed bound of its own.
+# add it to the arithmetic below: this fixed 600s margin already comfortably covers it (70s + 120s < 600s) with headroom
+# left over for `put_version`'s own transaction, which still has no settings-backed bound of its own. With the 2,100 s
+# default the threshold is 90 + 2,100 + 600 = 2,790 s. It is a consistency rule, not a safety property: the age compared
+# is the time since the job's last put_job write, this process's own open jobs are excluded and the sweeper's start pass
+# uses age 0, so on one machine the threshold applies to another process's jobs only.
 FAIL_INTERRUPTED_STAGE_MARGIN_S = 10 * 60
 
 
@@ -637,7 +701,7 @@ class _Sweeper:
     (``docs/v2/M4_PLAN.md``: one Fly machine, rolling redeploys), that job can only belong to the process this one
     replaced, which is no longer running: there is nothing else it could still be. Without this, a job the previous
     process left non-terminal would replay its stale state for a further :data:`SWEEP_INTERVAL_S` plus the age
-    threshold (31-46 minutes) before the first PERIODIC pass finally caught it.
+    threshold (46-61 minutes at the 2,790 s default) before the first PERIODIC pass finally caught it.
 
     MULTI-MACHINE WARNING: this reasoning breaks the moment more than one API machine can run this sweeper at once
     (or a rolling deploy overlaps the old machine still finishing a job with the new machine's sweeper already

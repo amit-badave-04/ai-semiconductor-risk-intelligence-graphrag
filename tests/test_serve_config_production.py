@@ -44,7 +44,7 @@ PINNED = ("ENVIRONMENT", "FLY_APP_NAME", "IP_HASH_PEPPER", "ADMIN_TOKEN", "TURNS
           "CLIENT_IP_HEADER", "MAX_QUERIES_PER_DAY", "MAX_SPEND_USD_PER_DAY", "PAID_SPEND_SHARE_PER_IP_USD",
           "PAID_PER_IP_PER_DAY", "MAX_CONCURRENT_ANSWERS", "RATE_LIMIT_QUESTIONS", "FREE_RATE_LIMIT_QUESTIONS",
           "READ_RATE_LIMIT_PER_MINUTE", "RATE_LIMIT_WINDOW_SECONDS", "WORKSPACE_CREATE_PER_DAY", "UPLOADS_PER_HOUR",
-          "UPLOAD_MIN_MEM_AVAILABLE_KB", "CACHE_READ_BUDGET_PER_S", "KILL_SWITCH_STALE_S",
+          "UPLOAD_MIN_MEM_AVAILABLE_KB", "UPLOAD_EMBED_TIMEOUT_S", "CACHE_READ_BUDGET_PER_S", "KILL_SWITCH_STALE_S",
           # the staging switches production refuses (tests/test_serve_config_staging.py pins each one)
           "TURNSTILE_STUB", "OPENAI_API_BASE", "OPENAI_BASE_URL", "ANTHROPIC_API_BASE", "ANTHROPIC_BASE_URL",
           "ORIGIN_AUTH_SECRET", "NEO4J_URI", "LLM_MODEL", "ANSWER_MODEL",
@@ -470,3 +470,80 @@ def test_a_refused_upload_memory_threshold_is_never_echoed(value):
         live(upload_min_mem_available_kb=value)
     text = str(refused.value)
     assert "input_value" not in text and str(abs(value)) not in text
+
+
+# ---------------------------------------------------------------- the upload embed ceiling (docs/specs/upload-embed-timeout.md)
+
+EMBED_TIMEOUT = "UPLOAD_EMBED_TIMEOUT_S"
+
+
+def test_the_embed_ceiling_default_is_the_spec_value_and_is_what_the_live_machine_runs():
+    """fly.toml sets none of it, so what runs today is the code default, and it sits inside the production bounds."""
+    assert EMBED_TIMEOUT not in FLY["env"] and "MAX_UPLOADS_PER_DAY" not in FLY["env"]
+    assert Settings.model_fields["upload_embed_timeout_s"].default == live().upload_embed_timeout_s == 2100
+    assert (config.PRODUCTION_MIN_UPLOAD_EMBED_TIMEOUT_S, config.SECONDS_PER_DAY) == (600, 86_400)
+    assert live().upload_embed_timeout_s * live().max_uploads_per_day <= config.SECONDS_PER_DAY
+
+
+@pytest.mark.parametrize("ceiling,per_day,boots", [
+    (599, 40, False), (600, 40, True),            # the floor: a zero, a near-zero value or a unit slip cannot boot
+    (0, 40, False), (-1, 40, False), (35, 40, False),
+    (1000, 40, True),                              # the floor is a guard, not a throttle margin: a value that fails a cap job boots
+    (2100, 40, True), (2160, 40, True), (2161, 40, False),      # the product rule at 40 a day: 86,400 s and one past it
+    (2100, 41, True), (2100, 42, False),           # 86,100 s boots, 88,200 s does not: a raised daily count refuses too
+    (600, 144, True), (600, 145, False)])
+def test_production_requires_the_embed_ceiling_above_the_floor_and_its_daily_product_within_a_day(ceiling, per_day, boots):
+    if boots:
+        s = live(upload_embed_timeout_s=ceiling, max_uploads_per_day=per_day)
+        assert (s.upload_embed_timeout_s, s.max_uploads_per_day) == (ceiling, per_day)
+        return
+    with pytest.raises(ValidationError) as refused:
+        live(upload_embed_timeout_s=ceiling, max_uploads_per_day=per_day)
+    assert named(refused) == [EMBED_TIMEOUT] and "MAX_UPLOADS_PER_DAY" not in str(refused.value)
+
+
+def test_the_product_rule_names_the_ceiling_first_and_says_in_words_that_the_daily_count_is_part_of_the_cause():
+    """scripts/check_env_fly.py names a problem by its FIRST word, so an operator who raised the daily count sees a FAIL that
+    names the ceiling: the text must say why."""
+    with pytest.raises(ValidationError) as refused:
+        live(max_uploads_per_day=42)
+    message = refused.value.errors()[0]["msg"].removeprefix("Value error, ")
+    assert message.startswith(EMBED_TIMEOUT + " ") and "daily upload count" in message and "; " not in message
+
+
+@pytest.mark.parametrize("changes,sentinels", [
+    ({"upload_embed_timeout_s": 599}, ("599",)),
+    ({"upload_embed_timeout_s": 2161}, ("2161",)),
+    ({"max_uploads_per_day": 42}, ("2100", "2,100", "88200", "88,200")),
+], ids=["floor", "product", "count"])
+def test_a_refused_embed_ceiling_never_prints_a_value_or_the_daily_count_setting(changes, sentinels):
+    with pytest.raises(ValidationError) as refused:
+        live(**changes)
+    text = str(refused.value)
+    assert "input_value" not in text and "MAX_UPLOADS_PER_DAY" not in text
+    assert [value for value in sentinels if value in text] == []
+
+
+def test_outside_production_any_embed_ceiling_and_daily_count_boot():
+    """Tests need tiny ceilings (tests/integration/test_workspace_leak_neo4j.py builds a real Settings with 60), and the
+    staging window runs 1,000 uploads a day (deploy/staging/fly.stg.toml) at the default ceiling."""
+    for kwargs in ({"upload_embed_timeout_s": 1}, {"upload_embed_timeout_s": 5, "max_uploads_per_day": 100_000},
+                   {"upload_embed_timeout_s": 10**6, "max_uploads_per_day": 10**6}):
+        assert Settings(_env_file=None, environment="development", **kwargs).upload_embed_timeout_s == kwargs["upload_embed_timeout_s"]
+    s = staging()
+    assert s.upload_embed_timeout_s * s.max_uploads_per_day > config.SECONDS_PER_DAY
+    assert staging(upload_embed_timeout_s=5).upload_embed_timeout_s == 5
+
+
+def test_the_embed_ceiling_is_read_from_its_environment_variable_and_production_judges_that_value(monkeypatch):
+    monkeypatch.setenv(EMBED_TIMEOUT, "1500")
+    assert Settings(_env_file=None).upload_embed_timeout_s == live().upload_embed_timeout_s == 1500
+    monkeypatch.setenv(EMBED_TIMEOUT, "599")
+    with pytest.raises(ValidationError) as refused:
+        live()
+    assert named(refused) == [EMBED_TIMEOUT]
+
+
+def test_the_embed_ceiling_is_listed_for_the_pre_deploy_check_after_the_memory_threshold():
+    names = config.CHECKED_SETTINGS
+    assert names.index(EMBED_TIMEOUT) == names.index("UPLOAD_MIN_MEM_AVAILABLE_KB") + 1

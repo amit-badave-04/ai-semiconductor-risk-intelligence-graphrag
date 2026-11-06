@@ -31,7 +31,7 @@ class FakeSettings:
     upload_max_chunks = 120
     upload_max_workspace_tokens = 48000
     upload_max_workspace_pages = 120
-    upload_embed_timeout_s = 1200
+    upload_embed_timeout_s = 2100
     upload_compare_timeout_s = 30     # the "comparing" stage now runs in a real sandboxed subprocess (uploads.compare)
     uploads_enabled = True
 

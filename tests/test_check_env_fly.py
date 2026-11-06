@@ -175,6 +175,33 @@ def test_an_upload_memory_threshold_outside_the_production_bounds_fails_naming_i
     assert "UPLOAD_MIN_MEM_AVAILABLE_KB" in config.CHECKED_SETTINGS
 
 
+def test_an_upload_embed_ceiling_under_the_floor_fails_naming_it(tmp_path, capsys):
+    """A unit slip (35 meaning minutes) or a zero would fail every upload: production refuses it (docs/specs/upload-embed-timeout.md)."""
+    slip = tmp_path / "fly.toml"
+    slip.write_text(FLY_TOML.read_text(encoding="utf-8").replace("[env]\n", '[env]\n  UPLOAD_EMBED_TIMEOUT_S = "599"\n'),
+                    encoding="utf-8")
+
+    code, out = run(env_file(tmp_path), slip, capsys=capsys)
+
+    assert code == 1 and names_of(out, "FAIL") == ["UPLOAD_EMBED_TIMEOUT_S"]
+    assert "UPLOAD_EMBED_TIMEOUT_S" in config.CHECKED_SETTINGS
+    assert_no_value_printed(out, ("599",))
+
+
+def test_a_raised_daily_upload_count_fails_naming_the_ceiling_and_says_why(tmp_path, capsys):
+    """The check names a problem by its first word: the count that breaks the ceiling's one-day product is not a checked
+    setting of its own, so the FAIL names UPLOAD_EMBED_TIMEOUT_S and its text says the daily upload count is part of the cause."""
+    raised = tmp_path / "fly.toml"
+    raised.write_text(FLY_TOML.read_text(encoding="utf-8").replace("[env]\n", '[env]\n  MAX_UPLOADS_PER_DAY = "42"\n'),
+                      encoding="utf-8")
+
+    code, out = run(env_file(tmp_path), raised, capsys=capsys)
+
+    assert code == 1 and names_of(out, "FAIL") == ["UPLOAD_EMBED_TIMEOUT_S"]
+    assert "MAX_UPLOADS_PER_DAY" not in out and "daily upload count" in " ".join(lines_of(out, "FAIL"))
+    assert_no_value_printed(out, ("88200", "88,200"))
+
+
 def test_an_environment_that_is_not_production_fails_as_it_would_on_the_live_app(tmp_path, capsys):
     """FLY_APP_NAME comes from fly.toml's app: a [env] without ENVIRONMENT would boot the live app as development."""
     no_environment = tmp_path / "fly.toml"
