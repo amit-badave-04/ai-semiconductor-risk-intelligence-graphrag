@@ -37,3 +37,6 @@ data/backups/
 
 # DeepEval (evaluated in an isolated environment, see docs/v2/M3_AGENT_PLAN.md) writes this in the working directory
 .deepeval/
+
+# Claude Code per-user permission file: local paths and rules, never committed
+.claude/settings.local.json

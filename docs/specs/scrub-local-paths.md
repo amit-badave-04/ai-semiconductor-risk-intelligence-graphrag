@@ -33,12 +33,20 @@ a source outside the repository).
 - The guard reads tracked files only (no local ignored output can fail it), skips binaries and itself, and names
   `file:line` in its failure, never the matched text.
 
+## Owner decisions (2026-11-07)
+
+- **`.claude/settings.local.json` untracked.** It was tracked and held the paths as live permission rules (a placeholder
+  would break them). The owner chose to untrack it: `git rm --cached` plus a `.gitignore` entry; the guard's PENDING entry
+  is gone, so it now scans every tracked text file with no exception. A checkout that pulls this deletes its local copy:
+  back it up before the pull and copy it back after (it is then ignored).
+- **differential-review waived** by the owner for this fix: the Opus verifier and the Opus security review both covered the
+  diff and found no HIGH or MEDIUM code issue.
+- **Push approved** (fast-forward of `v2`).
+
 ## Not done (owner's call)
 
 - **History.** 16 commits on `v2` (the oldest 2026-07-02) still hold the paths; `master` holds them in 4 files
   (`.claude/settings.local.json`, `docs/RUNBOOK.md`, notebooks 00 and 01). A rewrite is the owner's decision.
-- **`.claude/settings.local.json`** is tracked and holds the paths as live permission rules. The guard lists it as PENDING;
-  the fix is to untrack it (`git rm --cached` plus a `.gitignore` entry), not to edit it.
 - The `SEC_USER_AGENT` name and email in notebooks 00, 01, 02 and 12 (the SEC's required identity; already public as the
   commit author).
 
@@ -46,8 +54,9 @@ a source outside the repository).
 
 | Stage | Gate | Evidence |
 |---|---|---|
-| 2 Dev (TDD) | red then green | Guard RED before the scrub (16 lines, 14 files), GREEN after (13 passed). Writers: 6 new tests RED on the old code (absolute tmp paths; one `AttributeError` for the new `_REPO_ROOT` seam), GREEN after. Widened guard RED on exactly `.claude/settings.local.json` (3 lines), GREEN with it PENDING. |
+| 2 Dev (TDD) | red then green | Guard RED before the scrub (16 lines, 14 files), GREEN after (13 passed). Writers: 6 new tests RED on the old code (absolute tmp paths; one `AttributeError` for the new `_REPO_ROOT` seam), GREEN after. Widened guard RED on exactly `.claude/settings.local.json` (3 lines), GREEN with it PENDING, then GREEN with no exception once it was untracked. |
 | 3 Regression | full suite green | `pytest -q -p no:cacheprovider` with `PYTHONPATH=src` on `ea907c7`: **9787 passed, 473 skipped, 1 failed**. The failure is `test_the_new_text_files_are_ascii_with_lf_line_ends`, an artifact of a fresh worktree under a system `core.autocrlf=true` (CRLF working copies, untouched files too); the committed blobs of every file it names are ASCII with LF (checked with `git show HEAD:<file>`). |
 | 4 Security | gitleaks, /security-review, semgrep | `gitleaks git --log-opts=origin/v2..HEAD`: no leaks (3 commits). `semgrep scan --config p/python --config p/security-audit --baseline-commit origin/v2 --error`: 0 new findings, exit 0. /security-review (Opus) over `origin/v2..HEAD` (`a554ed4`, `ea907c7`, `ac8c008`): no HIGH or MEDIUM finding; every added line and commit message is free of the user folder, slug and session id; the helpers only build strings for JSON output (nothing opens a computed path). Below the bar: a run anchored at a drive root would record `Users/<name>/...`, which the guard does not match (an odd, trusted CLI choice). No lockfile or IaC change. Commit messages and the two `.docx` files: no user folder or session id. |
-| 6 Verifier | Opus | PASS WITH CONDITIONS. Scrub keeps meaning; notebooks and the artifact stay valid JSON; no writer can emit an absolute path or `../`; the new tests fail on the old code. Findings: HIGH `.claude/settings.local.json` (owner's call, above); MEDIUM guard scope too narrow (fixed in `ac8c008`); LOW backslash vs `/` separators in old artifacts (a one-line diff at the next regeneration); LOW `judge_acceptance` names a probes file outside the working folder by its name alone (identity stays pinned by `probes_sha256`). |
-| 7 Push, CI | owner approves | PENDING |
+| 6 Verifier | Opus | PASS WITH CONDITIONS. Scrub keeps meaning; notebooks and the artifact stay valid JSON; no writer can emit an absolute path or `../`; the new tests fail on the old code. Findings: HIGH `.claude/settings.local.json` (untracked at the owner's decision, above); MEDIUM guard scope too narrow (fixed in `ac8c008`); LOW backslash vs `/` separators in old artifacts (a one-line diff at the next regeneration); LOW `judge_acceptance` names a probes file outside the working folder by its name alone (identity stays pinned by `probes_sha256`). |
+| 4 Merge checks | differential-review, semgrep | semgrep above; differential-review waived by the owner (2026-11-07, above). |
+| 7 Push, CI | owner approves | Approved by the owner (2026-11-07); fast-forward push of `v2`. CI: see the run for the pushed head. |

@@ -13,9 +13,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SELF = Path(__file__).resolve().relative_to(ROOT).as_posix()      # its examples below are the forms it looks for
-# PENDING the owner's decision: Claude Code's per-user permission file was committed; its paths are live rules (a placeholder would break them),
-# so the fix is to untrack it, not to edit it. Drop this entry when it is untracked.
-PENDING = {".claude/settings.local.json"}
 # a user folder by drive letter (C:\Users\NAME, JSON-escaped too), as Git Bash writes it (/c/Users/NAME), or inside the slug of a Claude
 # project folder (C--Users-NAME-...); a placeholder (C:\Users\<you>) is not a leak
 LOCAL_PATH = re.compile(r"[A-Za-z]:[\\/]+Users[\\/]+[^\\/<\s\"'`]|/[A-Za-z]/Users/[^/<\s]|\b[A-Za-z]--Users-[^\s<-]", re.IGNORECASE)
@@ -25,7 +22,7 @@ def tracked_files() -> list[Path]:
     if shutil.which("git") is None or not (ROOT / ".git").exists():
         pytest.skip("needs a git checkout to list the tracked files")
     listed = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True).stdout
-    return [ROOT / name for name in listed.decode("utf-8").split("\0") if name and name != SELF and name not in PENDING]
+    return [ROOT / name for name in listed.decode("utf-8").split("\0") if name and name != SELF]
 
 
 @pytest.mark.parametrize("text", [r"C:\Users\someone\repo", r"c:\\Users\\someone\\repo", "C:/Users/someone/repo", "/c/Users/someone/repo",
