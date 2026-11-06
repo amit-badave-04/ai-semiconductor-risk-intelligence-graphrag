@@ -3135,7 +3135,7 @@
    "tokens": 943
   },
   "job_id": "4d37249f66238a86",
-  "log_file": "C:\\Users\\amit1\\AppData\\Local\\Temp\\claude\\C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag\\7e3d5304-3ec1-40b7-9bfd-29c48c46aa97\\scratchpad\\w1d\\canary2.logs.txt",
+  "log_file": "<session-scratchpad>/w1d\\canary2.logs.txt",
   "stream_error": null
  },
  "verdict": "INVALID",

@@ -1202,7 +1202,7 @@
   "source": null,
   "fields": null,
   "job_id": null,
-  "log_file": "C:\\Users\\amit1\\AppData\\Local\\Temp\\claude\\C--Users-amit1-OneDrive-Documents-Projects-ai-semiconductor-risk-intelligence-graphrag\\7e3d5304-3ec1-40b7-9bfd-29c48c46aa97\\scratchpad\\w1d\\canary.logs.txt",
+  "log_file": "<session-scratchpad>/w1d\\canary.logs.txt",
   "stream_error": null
  },
  "verdict": "INCONCLUSIVE",
