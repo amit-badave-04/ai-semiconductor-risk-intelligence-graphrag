@@ -442,7 +442,7 @@ def create_app() -> FastAPI:
     secret is read here, and ``app = create_app()`` below runs at import, so the gate is wired for the process that sets it;
     settings without the attribute (a test double) wire nothing."""
     app = FastAPI(title="semigraph", version=__version__, lifespan=lifespan,
-                  docs_url=None, redoc_url=None)
+                  docs_url=None, redoc_url=None, openapi_url=None)        # M5a gate A4: no public API schema
     origin_secret = getattr(get_settings(), "origin_auth_secret", "")
     if isinstance(origin_secret, str) and origin_secret:
         app.add_middleware(OriginAuth, secret=Concealed(origin_secret))

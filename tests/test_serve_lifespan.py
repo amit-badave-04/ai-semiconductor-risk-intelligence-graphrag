@@ -547,6 +547,20 @@ def test_the_m4_routers_are_mounted():
         assert methods <= set(paths[path]), (path, set(paths[path]))
 
 
+def test_the_api_schema_and_the_docs_pages_are_not_served():
+    """M5a gate A4 (docs/v2/M5_PLAN.md: "`/openapi.json` 404"): the schema route was still served on release v15 (found by
+    the M5b spec review, 2026-11-06). ``openapi()`` above still builds the schema in-process; only the route goes."""
+    from fastapi.testclient import TestClient
+
+    app = main.create_app()
+    assert app.openapi_url is None and app.docs_url is None and app.redoc_url is None
+    served = {getattr(route, "path", None) for route in app.routes}
+    assert not served & {"/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"}
+    client = TestClient(app)                     # no ``with``: the lifespan (database, embedder) does not start
+    for path in ("/openapi.json", "/docs", "/redoc"):
+        assert client.get(path).status_code == 404, path
+
+
 # ---------------------------------------------------------------- review of M4 build: no raw workspace id in the access log
 
 @pytest.mark.parametrize("path,expected", [
