@@ -1,0 +1,113 @@
+{
+  "probe": "embed_rss",
+  "version": 1,
+  "platform": {
+    "system": "linux",
+    "is_linux": true,
+    "python": "3.13.18",
+    "onnxruntime": "1.29.0",
+    "cpu_count": 2,
+    "mem_total_kb": 4013312
+  },
+  "memory_source": "linux_proc_status",
+  "memory_source_label": "VmRSS and VmHWM from the Linux proc status file",
+  "model": {
+    "file": "model_fp32.onnx",
+    "variant": "fp32",
+    "threads": 1
+  },
+  "workload": {
+    "query_calls": 60,
+    "query_questions": 30,
+    "passage_tokens_requested": 15849,
+    "passage_tokens_embedded": 15849,
+    "passage_chunks": 54,
+    "largest_chunk_tokens": 461
+  },
+  "memory_kb": {
+    "baseline": {
+      "vmrss_kb": 108536,
+      "vmhwm_kb": 108536,
+      "rss_anon_kb": 74224,
+      "rss_file_kb": 34312,
+      "rss_shmem_kb": 0,
+      "vm_swap_kb": 0
+    },
+    "constructed": {
+      "vmrss_kb": 1903048,
+      "vmhwm_kb": 1915212,
+      "rss_anon_kb": 1858104,
+      "rss_file_kb": 44944,
+      "rss_shmem_kb": 0,
+      "vm_swap_kb": 0
+    },
+    "after_load": {
+      "vmrss_kb": 1913660,
+      "vmhwm_kb": 1915212,
+      "rss_anon_kb": 1865836,
+      "rss_file_kb": 47824,
+      "rss_shmem_kb": 0,
+      "vm_swap_kb": 0
+    },
+    "after_queries": {
+      "vmrss_kb": 1950628,
+      "vmhwm_kb": 1950628,
+      "rss_anon_kb": 1893508,
+      "rss_file_kb": 57120,
+      "rss_shmem_kb": 0,
+      "vm_swap_kb": 0
+    },
+    "after_passages": {
+      "vmrss_kb": 2126660,
+      "vmhwm_kb": 2126660,
+      "rss_anon_kb": 2060052,
+      "rss_file_kb": 66608,
+      "rss_shmem_kb": 0,
+      "vm_swap_kb": 0
+    }
+  },
+  "peak_kb": 2126660,
+  "timing": {
+    "load_s": 10.951,
+    "warmup_query_s": 0.39,
+    "queries_plain": {
+      "n": 30,
+      "median_s": 0.55566,
+      "p90_s": 0.74085,
+      "min_s": 0.37456,
+      "max_s": 1.00045,
+      "total_s": 17.6071
+    },
+    "queries_salted": {
+      "n": 30,
+      "median_s": 0.68158,
+      "p90_s": 0.86916,
+      "min_s": 0.49152,
+      "max_s": 1.16955,
+      "total_s": 21.2449
+    },
+    "salt_delta_pct": 22.7,
+    "passages": {
+      "n": 54,
+      "median_s": 3.30222,
+      "p90_s": 4.6127,
+      "min_s": 1.39785,
+      "max_s": 5.59348,
+      "total_s": 184.7745,
+      "tokens_per_s": 85.8
+    }
+  },
+  "gate_evidence": true,
+  "not_gate_evidence_because": [],
+  "predicted_uvicorn_vmhwm_kb": 2385128,
+  "limit_kb": 2400000,
+  "margin_kb": 14872,
+  "verdict": "PASS",
+  "prediction": {
+    "live_g4_vmhwm_kb": 1125116,
+    "this_peak_kb": 2126660,
+    "q8_reference_peak_kb": 866648,
+    "delta_kb": 1260012,
+    "margin_pct_of_limit": 0.6
+  }
+}

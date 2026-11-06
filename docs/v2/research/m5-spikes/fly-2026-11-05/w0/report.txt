@@ -1,0 +1,1 @@
+Throttled from second 115: the throughput stayed below 90% of the baseline 6,599,376 iterations/s; it sustained 1,114,317 iterations/s, 17% of the baseline. An idle pulse was back to 90% of the baseline after 60 s of rest.

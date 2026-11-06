@@ -1,0 +1,92 @@
+{
+ "window": "W1b",
+ "boot": 2,
+ "machine": {
+  "id": "78113ddc12d008",
+  "created_at": "2026-11-05T20:28:34Z",
+  "state": "started",
+  "region": "sin",
+  "guest": {
+   "cpu_kind": "shared",
+   "cpus": 2,
+   "memory_mb": 4096
+  }
+ },
+ "boot_started_at": "2026-11-05T20:28:34+00:00",
+ "pdf": {
+  "sha256": "8c7890ac100e287d0d52428a834fb82d956c16850ff87ebfd82ba960b6f5b8df",
+  "bytes": 94456,
+  "pages": 30
+ },
+ "limits": {
+  "vmhwm_kb": 2400000,
+  "healthy_s": 180.0,
+  "ask_concurrency": 2,
+  "tail_s": 30.0
+ },
+ "healthz": {
+  "boot_to_healthy_s": 124.7,
+  "healthy_on_first_poll": false,
+  "polls": 17,
+  "first_poll_after_creation_s": 5.2,
+  "embedder": "onnx:model_fp32.onnx"
+ },
+ "kill_level": "off",
+ "job": {
+  "state": "failed",
+  "chunks_total": 60,
+  "error": {
+   "code": "timeout",
+   "message": "processing took too long and was stopped"
+  },
+  "ready_s": null
+ },
+ "asks": {
+  "sent": 154,
+  "done": 154,
+  "cached": 0,
+  "done_overlapping_job": 150,
+  "errors": {}
+ },
+ "workload_s": 1291.6,
+ "retries": 0,
+ "settings_evidence": {
+  "embed_slots": 1
+ },
+ "memory": {
+  "samples": 1261,
+  "span_s": 1310.5,
+  "pids": [
+   615
+  ],
+  "vanished_samples": 0,
+  "max_vmhwm_kb": 2364660,
+  "max_vmrss_kb": 2364660,
+  "min_mem_available_kb": 1440248,
+  "max_swap_used_kb": 1804,
+  "swap_total_kb": 1048572,
+  "mem_total_kb": 4013312,
+  "cpus": 2,
+  "oom_kill_delta": 0
+ },
+ "oom_or_restart": {
+  "detected": false,
+  "evidence": [],
+  "unreadable_sources": []
+ },
+ "max_vmhwm_kb": 2364660,
+ "min_mem_available_kb": 1440248,
+ "max_swap_used_kb": 1804,
+ "boot_to_healthy_s": 124.7,
+ "job_ready_s": null,
+ "verdict": "INVALID",
+ "reasons": [
+  "the upload job did not reach ready (state 'failed')"
+ ],
+ "criteria": {
+  "vmhwm_within_limit": true,
+  "no_oom_or_restart": true,
+  "healthy_within_limit": true
+ },
+ "generated_at": "2026-11-05T20:53:04+00:00"
+}

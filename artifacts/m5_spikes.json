@@ -1,5 +1,5 @@
 {
-  "_about": "M5 spike results measured so far (2026-10-03). Raw outputs and the scripts that produced them are in docs/v2/research/m5-spikes/. Everything here was measured on a local desktop with onnxruntime 1.29.0 (the production pin); nothing here was measured on Fly hardware yet.",
+  "_about": "M5 spike results measured so far (2026-10-03). Raw outputs and the scripts that produced them are in docs/v2/research/m5-spikes/. Everything here was measured on a local desktop with onnxruntime 1.29.0 (the production pin); nothing here was measured on Fly hardware yet. Added 2026-11-05: S6_fly_timing and S6_fly_rss, measured on Fly (window W1, sin, one-off machines of image registry.fly.io/semigraph-stg:w1fp32 built with EMBEDDER_VARIANT=fp32 KEEP_UNPATCHED=1; the machines were destroyed after).",
   "S6_local_query_embedding": {
     "model": "Qwen3-Embedding-0.6B, 8-bit MatMulNBits (block 128, symmetric), model_q8.onnx as built by scripts/build_onnx_embedder.py",
     "input": "constant 17-token instruction prefix + a question; median 32.5 tokens in the timing set (6 realistic questions)",
@@ -73,8 +73,22 @@
       "result": "FAIL: the pre-registered top-1 gate is not met. Held pending the owner's decision (docs/v2/M5_DECISIONS.md section 1.4 item 12, section 7 decision 14).",
       "against_fp32_reference": {
         "source_file": "docs/v2/research/m5-spikes/fp32_reference.json (same 60 questions and corpus; evidence only, not a redefinition of the gate)",
-        "shipped_q8": {"top1_agreement": 0.9833, "top1_disagreements": 1, "mean_top8_overlap": 0.9646, "cosine_mean": 0.99927, "cosine_min": 0.99904, "max_score_regret": 0.001737},
-        "patched_accuracy_level_4": {"top1_agreement": 0.95, "top1_disagreements": 3, "mean_top8_overlap": 0.9688, "cosine_mean": 0.99799, "cosine_min": 0.99701, "max_score_regret": 0.006465},
+        "shipped_q8": {
+          "top1_agreement": 0.9833,
+          "top1_disagreements": 1,
+          "mean_top8_overlap": 0.9646,
+          "cosine_mean": 0.99927,
+          "cosine_min": 0.99904,
+          "max_score_regret": 0.001737
+        },
+        "patched_accuracy_level_4": {
+          "top1_agreement": 0.95,
+          "top1_disagreements": 3,
+          "mean_top8_overlap": 0.9688,
+          "cosine_mean": 0.99799,
+          "cosine_min": 0.99701,
+          "max_score_regret": 0.006465
+        },
         "reading": "unfavourable to the patched model on top-1, cosine and worst-case regret; marginally favourable on mean top-8 overlap"
       },
       "patched_model_provenance": "the shipped model_q8.onnx with accuracy_level=4 set on its 196 MatMulNBits nodes by docs/v2/research/m5-spikes/make_patched_copy.py (same weights, no re-quantization); its in-build gate output is docs/v2/research/m5-spikes/patch_gate_report.json (cosine mean 0.99877, min 0.99825: passed)",
@@ -95,5 +109,334 @@
     ],
     "note_on_noise": "repeat runs of the same baseline differ by about 1-2% (for example 2 threads: 0.891, 0.901, 0.914 s)"
   },
-  "derived_load_note": "with the patch, one question embed is about 0.31 s of a desktop core (about 0.37 s assuming a Fly core 19% slower; UNVERIFIED). At 2.6 live asks/s that is about 1.0 core-s/s when every embed is cold and about 0.33 core-s/s warm, versus 3.9 and 1.3 before. A shared-cpu-2x sustains 12.5% of one core (Fly docs), so it still cannot meet a 70%-of-sustained CPU criterion at the gate load; the gate is proven on a performance-class staging fleet instead."
+  "derived_load_note": "with the patch, one question embed is about 0.31 s of a desktop core (about 0.37 s assuming a Fly core 19% slower; UNVERIFIED). At 2.6 live asks/s that is about 1.0 core-s/s when every embed is cold and about 0.33 core-s/s warm, versus 3.9 and 1.3 before. A shared-cpu-2x sustains 12.5% of one core (Fly docs), so it still cannot meet a 70%-of-sustained CPU criterion at the gate load; the gate is proven on a performance-class staging fleet instead.",
+  "S6_fly_timing": {
+    "window": "W1, 2026-11-05, Fly sin, scripts/embedder_timing.py -n 60 --threads 1 (interleaved), q8 = shipped model, fp32 = pre-dequantized",
+    "gate_2_preregistered": "candidate median < baseline median on shared-cpu-2x AND performance-2x over >= 50 interleaved calls",
+    "gate_2_result": "PASS",
+    "shared_cpu_2x_4gb_fresh_burst": {
+      "n": 60,
+      "baseline": {
+        "median_s": 1.1922302454999993,
+        "p90_s": 1.3413716914999754,
+        "mean_s": 1.22532248971667,
+        "min_s": 1.1318668320000143,
+        "max_s": 1.4409474119999857
+      },
+      "candidate": {
+        "median_s": 0.33373162199998774,
+        "p90_s": 0.455240403300013,
+        "mean_s": 0.3710985516833328,
+        "min_s": 0.2981096020000109,
+        "max_s": 0.5740738169999986
+      },
+      "speedup_median": 3.572422170710701,
+      "candidate_faster": true,
+      "meets_gate_minimum_calls": true,
+      "baseline_model": "model_q8.onnx",
+      "candidate_model": "model_fp32.onnx",
+      "threads": 1,
+      "warmup": 2,
+      "onnxruntime": "1.29.0"
+    },
+    "shared_cpu_2x_4gb_after_burst_drained": {
+      "n": 60,
+      "baseline": {
+        "median_s": 9.95765179350002,
+        "p90_s": 11.438046391400121,
+        "mean_s": 9.574476994233338,
+        "min_s": 1.1536141279999583,
+        "max_s": 13.035507466000126
+      },
+      "candidate": {
+        "median_s": 2.7587378365000177,
+        "p90_s": 3.694631484000036,
+        "mean_s": 2.8123478280499987,
+        "min_s": 0.32902513299995917,
+        "max_s": 5.522044446999871
+      },
+      "speedup_median": 3.6094954952780833,
+      "candidate_faster": true,
+      "meets_gate_minimum_calls": true,
+      "baseline_model": "model_q8.onnx",
+      "candidate_model": "model_fp32.onnx",
+      "threads": 1,
+      "warmup": 2,
+      "onnxruntime": "1.29.0"
+    },
+    "performance_2x_4gb": {
+      "n": 60,
+      "baseline": {
+        "median_s": 1.4087759949999992,
+        "p90_s": 1.5477801650000012,
+        "mean_s": 1.4365873440666674,
+        "min_s": 1.3236160139999953,
+        "max_s": 1.6680260520000019
+      },
+      "candidate": {
+        "median_s": 0.43658075449999956,
+        "p90_s": 0.5641104957000032,
+        "mean_s": 0.4716819532333331,
+        "min_s": 0.38147629899999913,
+        "max_s": 0.7022187459999998
+      },
+      "speedup_median": 3.226839434581628,
+      "candidate_faster": true,
+      "meets_gate_minimum_calls": true,
+      "baseline_model": "model_q8.onnx",
+      "candidate_model": "model_fp32.onnx",
+      "threads": 1,
+      "warmup": 2,
+      "onnxruntime": "1.29.0"
+    }
+  },
+  "S6_fly_rss": {
+    "window": "W1, 2026-11-05, performance-2x 4gb (memory does not depend on the CPU class), tools/probe/embed_rss.py, one model per fresh process",
+    "rule_proposed_in_M5_DECISIONS_10.3": "predicted live uvicorn VmHWM during a max-size upload < 2,400,000 kB (M4 G4 limit)",
+    "q8": {
+      "probe": "embed_rss",
+      "version": 1,
+      "platform": {
+        "system": "linux",
+        "is_linux": true,
+        "python": "3.13.18",
+        "onnxruntime": "1.29.0",
+        "cpu_count": 2,
+        "mem_total_kb": 4013312
+      },
+      "memory_source": "linux_proc_status",
+      "memory_source_label": "VmRSS and VmHWM from the Linux proc status file",
+      "model": {
+        "file": "model_q8.onnx",
+        "variant": "q8",
+        "threads": 1
+      },
+      "workload": {
+        "query_calls": 60,
+        "query_questions": 30,
+        "passage_tokens_requested": 15849,
+        "passage_tokens_embedded": 15849,
+        "passage_chunks": 54,
+        "largest_chunk_tokens": 461
+      },
+      "memory_kb": {
+        "baseline": {
+          "vmrss_kb": 108264,
+          "vmhwm_kb": 108264,
+          "rss_anon_kb": 74148,
+          "rss_file_kb": 34116,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        },
+        "constructed": {
+          "vmrss_kb": 217028,
+          "vmhwm_kb": 231924,
+          "rss_anon_kb": 172956,
+          "rss_file_kb": 44072,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        },
+        "after_load": {
+          "vmrss_kb": 663860,
+          "vmhwm_kb": 663860,
+          "rss_anon_kb": 172968,
+          "rss_file_kb": 490892,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        },
+        "after_queries": {
+          "vmrss_kb": 694512,
+          "vmhwm_kb": 694512,
+          "rss_anon_kb": 193588,
+          "rss_file_kb": 500924,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        },
+        "after_passages": {
+          "vmrss_kb": 866648,
+          "vmhwm_kb": 866648,
+          "rss_anon_kb": 355988,
+          "rss_file_kb": 510660,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        }
+      },
+      "peak_kb": 866648,
+      "timing": {
+        "load_s": 0.722,
+        "warmup_query_s": 1.443,
+        "queries_plain": {
+          "n": 30,
+          "median_s": 1.54631,
+          "p90_s": 1.74948,
+          "min_s": 1.35659,
+          "max_s": 2.12305,
+          "total_s": 47.1533
+        },
+        "queries_salted": {
+          "n": 30,
+          "median_s": 1.64888,
+          "p90_s": 1.81765,
+          "min_s": 1.50009,
+          "max_s": 2.16566,
+          "total_s": 50.7519
+        },
+        "salt_delta_pct": 6.6,
+        "passages": {
+          "n": 54,
+          "median_s": 4.44079,
+          "p90_s": 5.66105,
+          "min_s": 2.43185,
+          "max_s": 6.64682,
+          "total_s": 242.0424,
+          "tokens_per_s": 65.5
+        }
+      },
+      "gate_evidence": true,
+      "not_gate_evidence_because": [],
+      "predicted_uvicorn_vmhwm_kb": null,
+      "limit_kb": 2400000,
+      "margin_kb": null,
+      "verdict": "NO_REFERENCE",
+      "prediction": {
+        "live_g4_vmhwm_kb": 1125116,
+        "reason": "no --compare: there is no q8 peak from this machine to subtract"
+      }
+    },
+    "fp32": {
+      "probe": "embed_rss",
+      "version": 1,
+      "platform": {
+        "system": "linux",
+        "is_linux": true,
+        "python": "3.13.18",
+        "onnxruntime": "1.29.0",
+        "cpu_count": 2,
+        "mem_total_kb": 4013312
+      },
+      "memory_source": "linux_proc_status",
+      "memory_source_label": "VmRSS and VmHWM from the Linux proc status file",
+      "model": {
+        "file": "model_fp32.onnx",
+        "variant": "fp32",
+        "threads": 1
+      },
+      "workload": {
+        "query_calls": 60,
+        "query_questions": 30,
+        "passage_tokens_requested": 15849,
+        "passage_tokens_embedded": 15849,
+        "passage_chunks": 54,
+        "largest_chunk_tokens": 461
+      },
+      "memory_kb": {
+        "baseline": {
+          "vmrss_kb": 108536,
+          "vmhwm_kb": 108536,
+          "rss_anon_kb": 74224,
+          "rss_file_kb": 34312,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        },
+        "constructed": {
+          "vmrss_kb": 1903048,
+          "vmhwm_kb": 1915212,
+          "rss_anon_kb": 1858104,
+          "rss_file_kb": 44944,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        },
+        "after_load": {
+          "vmrss_kb": 1913660,
+          "vmhwm_kb": 1915212,
+          "rss_anon_kb": 1865836,
+          "rss_file_kb": 47824,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        },
+        "after_queries": {
+          "vmrss_kb": 1950628,
+          "vmhwm_kb": 1950628,
+          "rss_anon_kb": 1893508,
+          "rss_file_kb": 57120,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        },
+        "after_passages": {
+          "vmrss_kb": 2126660,
+          "vmhwm_kb": 2126660,
+          "rss_anon_kb": 2060052,
+          "rss_file_kb": 66608,
+          "rss_shmem_kb": 0,
+          "vm_swap_kb": 0
+        }
+      },
+      "peak_kb": 2126660,
+      "timing": {
+        "load_s": 10.951,
+        "warmup_query_s": 0.39,
+        "queries_plain": {
+          "n": 30,
+          "median_s": 0.55566,
+          "p90_s": 0.74085,
+          "min_s": 0.37456,
+          "max_s": 1.00045,
+          "total_s": 17.6071
+        },
+        "queries_salted": {
+          "n": 30,
+          "median_s": 0.68158,
+          "p90_s": 0.86916,
+          "min_s": 0.49152,
+          "max_s": 1.16955,
+          "total_s": 21.2449
+        },
+        "salt_delta_pct": 22.7,
+        "passages": {
+          "n": 54,
+          "median_s": 3.30222,
+          "p90_s": 4.6127,
+          "min_s": 1.39785,
+          "max_s": 5.59348,
+          "total_s": 184.7745,
+          "tokens_per_s": 85.8
+        }
+      },
+      "gate_evidence": true,
+      "not_gate_evidence_because": [],
+      "predicted_uvicorn_vmhwm_kb": 2385128,
+      "limit_kb": 2400000,
+      "margin_kb": 14872,
+      "verdict": "PASS",
+      "prediction": {
+        "live_g4_vmhwm_kb": 1125116,
+        "this_peak_kb": 2126660,
+        "q8_reference_peak_kb": 866648,
+        "delta_kb": 1260012,
+        "margin_pct_of_limit": 0.6
+      }
+    },
+    "reading": "PASS by 14,872 kB (0.6% of the limit). The fp32 weights are private anonymous memory on Linux (+1.26 GB vs q8), not a shared file mapping. M4's total budget was 2.8 GB with the upload-parse child capped at 1 GiB (measured child peak 41 MB)."
+  },
+  "R1_council6": {
+    "rule": "predicted S2 embed load on performance-2x at 2.6 live asks/s with salted questions <= 1.1 core-s/s",
+    "fp32_salted_median_s_embed_rss": 0.68158,
+    "predicted_core_s_per_s_embed_rss": 1.77,
+    "predicted_core_s_per_s_timing_script_x_salt": 1.39,
+    "result": "FAIL (both estimates above 1.1)"
+  },
+  "W0_fresh_machine_throttle": {
+    "window": "W0, 2026-11-05 17:21Z-18:51Z, Fly sin, a NEW shared-cpu-2x 4 GB machine (flyctl machine run; the harness deploy path gave a performance-1x because fly.tools.toml's [[vm]] overrode --vm-size: harness bug, fixed with W1b)",
+    "tool": "tools/probe/burn.py --burn-s 3600 --idle-s 1800, tools/probe/report.py",
+    "report": "Throttled from second 115: the throughput stayed below 90% of the baseline 6,599,376 iterations/s; it sustained 1,114,317 iterations/s, 17% of the baseline. An idle pulse was back to 90% of the baseline after 60 s of rest.",
+    "samples": 3630,
+    "burn_samples": 3600,
+    "idle_samples": 30,
+    "baseline_iter_per_s_first_10s": 6599376,
+    "throttle_onset_s": 115,
+    "sustained_median_share_of_baseline_after_300s": 0.146,
+    "sustained_median_cpu_share_after_300s": 0.188,
+    "sustained_median_steal_frac_after_300s": 0.455,
+    "reading": "Fly's documented 5 s initial burst balance was NOT what we saw: a fresh shared-cpu-2x ran one core at full speed for about 115 s, then held about 17% of it; 60 s of rest gave a short burst back. For the live site (ops.ps1 start creates a new machine): an embed takes about 1.2 s (q8) or 0.33 s (fp32) while the burst lasts and about 10 s (q8) or 2.8 s (fp32) once it is gone (W1)."
+  }
 }

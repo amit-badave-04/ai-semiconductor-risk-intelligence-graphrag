@@ -199,3 +199,15 @@ CI is green on `1e52772` (all five jobs, including the Neo4j state job with its 
 | 20 | After W1: W4 (S2, $1.25, cap $2.00; $1.60 if 4 load workers are needed) | <= $2.35 | only if W1 predicts a pass, or to record the FAIL |
 | 21 | Deploy to live (I2-I4, the panel fixes, the meter and share, and the embedder if 18 passes) as one deploy, in this order: generate and stage the pepper; say which `ESCALATION_MODEL` is live (remove the other); set the Neo4j monitor interval and restart `semigraph-neo4j` (a short announced pause); `check_env_fly` green; deploy; the live checks of `M5A_BUILD_PLAN.md` rows I2-I4 | hosting unchanged | yes, after 18 |
 | 22 | Null the stored unsalted IP hashes (decision 12, irreversible) right after 21 | none | separate go at that moment |
+
+### 10.7 Owner approval record (2026-11-05)
+
+| # | Decision | Outcome |
+|---|---|---|
+| 17 | Windows W0 (fresh-machine throttle probe) and W1 (embedder timing and memory on Fly) | **Approved** ("approve 17, run W0 and W1"); run 2026-11-05, results in `../../artifacts/m5_spikes.json` (S6_fly_timing, S6_fly_rss, R1_council6) |
+| W1 result | Gate 2 (timing) | **PASS** on both classes: shared-cpu-2x fresh 1.19 s -> 0.33 s, drained 9.96 s -> 2.76 s; performance-2x 1.41 s -> 0.44 s. Memory rule (10.3 b) passed as a PREDICTION only: fp32 process peak 2,127 MB vs q8 867 MB (+1.26 GB, private memory on Linux), predicted live uvicorn peak 2,385,128 kB vs 2,400,000 kB (margin 0.6%). Council 6's R1: FAIL (1.39-1.77 core-s/s vs 1.1), so S2 is predicted to fail on one performance-2x even with fp32. Linux builder: 196/196 nodes bit-exact, cosine to q8 1.000000000 (mean and min, 53 questions) |
+| Council 7 | After W1 (`research/m5-councils/council7`) | Adopt fp32 only after a confirmation run W1b of the real app (the 0.6% margin is a prediction); do not run S2 on performance-2x; the owner chooses A (pre-register S2 on a bigger class) or B (drop the 1,000-user claim) |
+| W1b | Confirmation run: the real app with the fp32 image on fresh shared-cpu-2x 4 GB machines, staging Neo4j and mock LLM, M4's 30-page upload plus asks at live concurrency, 3 fresh boots; PASS = every boot max uvicorn VmHWM <= 2,400,000 kB, no OOM or restart, machine creation to healthy <= 180 s | **Approved** ("approve W1b"), about $0.15, cap $0.25 |
+| 16 | The VOID/FAIL clarification for S2 (10.2) | **Signed** |
+| 18 | The fp32 adoption rule (10.3) and skipping the $2 paid benchmark | **Signed**; fp32 ships only if W1b passes (council 7) |
+| 20 | S2 (W4) | **Not run: option B chosen.** S2 is recorded as "not attempted: predicted FAIL on measured Fly numbers (embedding alone needs 1.39-1.77 core-s/s against 1.1 under R1 and 1.4 under S2's CPU gate)". The 1,000-user sentence is not used on any public surface; measured per-machine capacity is reported internally. T1 is not evaluated by S2; Valkey stays deferred |
