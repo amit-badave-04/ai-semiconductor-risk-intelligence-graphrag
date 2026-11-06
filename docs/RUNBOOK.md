@@ -443,8 +443,13 @@ below are kept for a rebuilt machine.
 
 **Clean stop (`kill_signal = "SIGTERM"`, `kill_timeout = 120` in `deploy/neo4j/fly.toml`, `docs/specs/m5a-followups.md`): in
 the repo, not yet on the machine.** Fly's default (SIGINT, VM ended 5 s later) cut Neo4j off on 2026-11-06. Apply it with the
-current image, so nothing is rebuilt and the seed is not reloaded; this one restart still stops the old way:
+current image, so nothing is rebuilt and the seed is not reloaded; this one restart still stops the old way. The tag below is
+the machine's running image as read on 2026-11-06 (`flyctl image show -a semigraph-neo4j`: tag
+`deployment-01M3GEBHEVDJAKWAHDV3S2YEGF`, digest `sha256:cf8909b67126...`). Read it again first and deploy only if it still
+matches; if it differs, use the tag shown (any image built from this repo carries the same dump, so the seed check passes, but
+confirm `cat /data/.seeded` against the dump hash as above):
 ```
+flyctl image show -a semigraph-neo4j                                                                   # tag must match below
 & ".\.venv\Scripts\python.exe" -m scripts.kill_switch on
 flyctl deploy -c deploy\neo4j\fly.toml -a semigraph-neo4j --image registry.fly.io/semigraph-neo4j:deployment-01M3GEBHEVDJAKWAHDV3S2YEGF --ha=false --yes
 curl.exe -s https://semigraph.fly.dev/healthz                                                          # db: true
