@@ -739,3 +739,32 @@ check before that push would boot a machine that refuses to start); every other 
 - `tools/loadtest/cpu_watch.py` no longer describes the mock-CPU rule as part of the pre-registered VOID rule, and
   `deploy/staging/fly.stg.toml` no longer says the production-settings sub-run sets the share "back to 1.25".
 - The fake key `sk-ant-api03-not-a-real-key` in `tests/test_serve_config_staging.py` carries a `# gitleaks:allow` marker.
+
+## 2026-11-06 - Decision 21 deployed: release v15 (I2-I4, the meter and share, the fp32 embedder, the upload memory guard)
+
+Owner approvals this round: decision 21 ("approve 21, deploy it and ping me when done"), the upload memory guard spec, and
+`/red-team` "Skip for this deploy". The full record is `M5_DECISIONS.md` 10.9; the live evidence is
+`research/deploy-2026-11-06` (healthz and stats before and after, the G9 check, the memory lines).
+
+- **Upload memory guard** (council 7's safeguard for fp32), commit `03429a2`, built spec-first with TDD by a Sonnet worker, then
+  code-reviewer (APPROVE), security-reviewer (0 CRITICAL/HIGH/MEDIUM, S1-S6 PASS) and the Opus verifier (PASS WITH CONDITIONS:
+  30 mutations, every one caught; a WSL run of the real-`/proc` path). It runs after every gate that refuses on its own account
+  and before the daily charge; the spec was amended to say so (the spec had listed the daily cap among the earlier gates, which
+  contradicted "a refusal charges nothing").
+- **fp32** in `fly.toml`, commit `2afdd6e`. The image was built and pushed (`--build-only --push`, label `m5a-d21-2afdd6e`) while CI
+  ran, so the paid-ask pause covered only the Neo4j restart and the machine swap (kill switch `on` 04:59:55 to about 05:07 UTC).
+- **Order run:** kill `on` -> Neo4j monitor interval in place (100ms, same image, no seed reload) -> `flyctl deploy --image` (v15,
+  4 min 5 s) -> live checks -> kill round trip ending `off`.
+- **Live:** fp32 embedder with its fidelity block in `/healthz`; both daily caps and the per-address cap in `/api/stats`; G9 13 of
+  13; kill round trip correct at all three levels; first new ledger row `ip_hash_v = 2`; the memory line every 60 s (MemAvailable
+  about 1.64 GB idle against the 1.25 GB guard threshold).
+- **Boot log notes:** Neo4j "property key does not exist" notices for the M5 ledger fields (`lease_until`, `cost_micro`,
+  `estimate_micro`, `ip_hash_v`, `machine_id`): no row carried them before the first ask under v15; they are notices, not errors.
+  One `state_slow op=day_sums elapsed_ms=1550` during the boot rebuild. Examples X1 and T15 refused by the checks, as before (51
+  cached examples).
+- **Not verified live:** a paid ask (needs a Turnstile token; the owner's first browser question is the check), the guard's
+  refusal, a mid-stream restart, the drain with a stream open.
+- **Still open:** decision 22 (38 unsalted rows; the owner's separate go), the `ESCALATION_MODEL` duplicate (same value in both
+  places; the push script would restore the secret, so its clean-up is a small follow-up), the `.env.example` line, the
+  upload-timeout spec, `/red-team` before a release tag, and the merge-time checks (`differential-review`, semgrep,
+  `spec-to-code-compliance`) when v2 merges.

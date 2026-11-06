@@ -1,0 +1,1 @@
+{"status":"ok","db":true,"embedder":"onnx:model_fp32.onnx","embedder_variant":"fp32","embedder_fidelity":{"nodes":196,"max_node_abs_diff":0.0,"cosine_min":0.9999999999975266,"cosine_mean":0.9999999999986365,"source_sha256":"361490444cc0085b"}}

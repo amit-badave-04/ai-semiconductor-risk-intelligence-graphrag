@@ -435,7 +435,10 @@ deploy of this `fly.toml`; `flyctl`'s own default for `machine stop` is SIGINT, 
 Every state operation carries a 1 s server-side transaction timeout, but the server enforces it only when its transaction
 monitor next looks: every `db.transaction.monitor.check.interval`, 2 s by default. `deploy/neo4j/fly.toml` now sets
 `NEO4J_db_transaction_monitor_check_interval = "100ms"` (one underscore between every word: the setting name has no
-underscore in it). **It is not live yet**: the `semigraph-neo4j` machine has to be redeployed once.
+underscore in it). **Live since 2026-11-06**: applied in place with `flyctl machine update 2879170f3e5228 -a semigraph-neo4j
+--env NEO4J_db_transaction_monitor_check_interval=100ms --yes` (same image, so no seed reload; kill switch `on` around it;
+`docs/v2/M5_DECISIONS.md` 10.9). A later redeploy of `deploy/neo4j` carries the same value from its `fly.toml`. The steps
+below are kept for a rebuilt machine.
 
 - **Symptom while it is missing:** an operation blocked on a lock (two asks racing for the day counter, a held lock) comes
   back after about 2 s instead of 1.1 s (measured: 1.99 s median, 2.01 s worst, against 1.04 s and 1.09 s with 100 ms), and
