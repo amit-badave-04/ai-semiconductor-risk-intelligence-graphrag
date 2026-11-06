@@ -52,3 +52,19 @@ legacy (unsalted, no ip_hash_v): 38     <- decision 22, not run
   restart in the log window; Neo4j 100ms). Note: Neo4j's stop before the restart was not clean (VM exited 5 s after SIGTERM, journal
   recovered on boot).
 - Record audit: PASS_WITH_NOTES; its corrections are applied in 10.9, the M5a log, the spec and the RUNBOOK.
+
+## Decision 22: the IP-hash null (owner's go "go on 22", IRREVERSIBLE)
+
+Run on the serve machine with the installed package's own functions (`store.count_legacy_ip_hashes`,
+`store.null_legacy_ip_hashes(batch=5000)`), after v15 (the only writer, which sets `ip_hash_v`) was live:
+
+```
+before: ip_hash_v=2 has_hash=True rows=1; ip_hash_v=None has_hash=True rows=38
+legacy before: 38
+nulled: 38
+legacy remaining: 0
+after:  ip_hash_v=0 has_hash=False rows=38; ip_hash_v=2 has_hash=True rows=1
+```
+
+Afterwards `/healthz` ok; `/api/stats` ledger unchanged: today paid 0 / cached 1; all time paid 29 / cached 10, $0.0462.
+Decision 15 (the $1.32 share) confirmed by the owner the same day ("confirm 15").

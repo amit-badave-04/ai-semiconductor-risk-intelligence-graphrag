@@ -774,3 +774,11 @@ Owner approvals this round: decision 21 ("approve 21, deploy it and ping me when
   places; the push script would restore the secret, so its clean-up is a small follow-up), the `.env.example` line, the
   upload-timeout spec, `/red-team` before a release tag, and the merge-time checks (`differential-review`, semgrep,
   `spec-to-code-compliance`) when v2 merges.
+
+## 2026-11-06 (later) - Decision 15 confirmed; decision 22 run (the unsalted IP hashes nulled)
+
+The owner: "confirm 15, go on 22". Decision 15 (the $1.32 per-address share, live since v15) is confirmed. Decision 22 ran on
+the serve machine with the package's own `store.null_legacy_ip_hashes` (the calls of `scripts/null_legacy_ip_hashes.py --yes`):
+38 legacy rows nulled (`ip_hash = null`, `ip_hash_v = 0`), 0 remaining, the one `ip_hash_v = 2` row untouched, ledger counts
+unchanged. Irreversible by design. Rollback note stands: rolling back to v14 would write unsalted hashes again, so re-run the
+null after rolling forward. Outputs: `research/deploy-2026-11-06/live_checks.md`.
