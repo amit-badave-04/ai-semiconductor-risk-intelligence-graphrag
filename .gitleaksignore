@@ -3,3 +3,6 @@
 ec083e73780c52e59e599c08eb098a2e1f1e68ab:tests/test_serve_workspace_stream_async.py:generic-api-key:910
 # fake sentinel value in a test that proves no config refusal prints a value (tests/test_serve_config_staging.py)
 076f242e9153314e5d68c7010261c077ff753133:tests/test_serve_config_staging.py:generic-api-key:370
+# sha256 of the embedder tokenizer file (a file hash, not a key): artifacts/upload_embed_local_timing.json, upload-timeout Plan 0
+fcc3fb40e03a0a78f402ad293096bae0149e689b:artifacts/upload_embed_local_timing.json:generic-api-key:29
+fcc3fb40e03a0a78f402ad293096bae0149e689b:artifacts/upload_embed_local_timing.json:generic-api-key:41
