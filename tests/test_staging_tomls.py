@@ -339,6 +339,15 @@ def test_the_neo4j_stg_definition_has_the_live_database_settings_and_a_volume():
     assert "services" not in TOML_BY_NAME["fly.neo4j-stg.toml"] and "http_service" not in TOML_BY_NAME["fly.neo4j-stg.toml"]
 
 
+@pytest.mark.parametrize("path", ["deploy/neo4j/fly.toml", "deploy/staging/fly.neo4j-stg.toml"])
+def test_the_neo4j_definitions_give_the_database_time_to_stop_cleanly(path):
+    """Fly's default stop (SIGINT, then the VM ends 5 s later) cut Neo4j off before "Stopped." on 2026-11-06, and the next
+    boot had to recover the volume's journal (M5_DECISIONS 10.9): SIGTERM and a long enough kill timeout let it shut down."""
+    config = tomllib.loads((ROOT / path).read_text("utf-8"))
+    assert config.get("kill_signal") == "SIGTERM"
+    assert 60 <= int(str(config.get("kill_timeout", "0")).rstrip("s")) <= 300
+
+
 def test_the_mock_and_tools_apps_expose_nothing_publicly():
     for name in ("fly.mockllm.toml", "fly.tools.toml"):
         assert "services" not in TOML_BY_NAME[name] and "http_service" not in TOML_BY_NAME[name]

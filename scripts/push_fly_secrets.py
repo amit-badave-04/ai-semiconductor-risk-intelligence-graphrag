@@ -19,7 +19,8 @@ from pathlib import Path
 # Keys that belong on each app. Anything else in .env.fly stays local.
 FLY_KEYS = {
     "semigraph": [
-        "ANTHROPIC_API_KEY", "LLM_MODEL", "ESCALATION_MODEL", "CRITIC_MODEL",
+        # ESCALATION_MODEL is not pushed: fly.toml [env] pins it (and ANSWER_MODEL), one source of truth (M5_DECISIONS 10.9).
+        "ANTHROPIC_API_KEY", "LLM_MODEL", "CRITIC_MODEL",
         "OPENAI_API_KEY",   # the answering provider; push another with --only (for example GEMINI_API_KEY) if it is ever used
         "NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD",
         "ADMIN_TOKEN", "APP_BASE_URL", "MAX_QUERIES_PER_DAY",

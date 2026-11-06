@@ -72,3 +72,11 @@ def test_the_push_sends_the_first_key_of_a_bom_file_and_prints_only_names(push, 
     out = capsys.readouterr().out
     assert FIRST_KEY in out and "first-fixture-value" not in out and "quoted-fixture-value" not in out
     assert "skipping" not in out                                       # the first key was found, not reported as absent
+
+
+def test_no_key_the_default_push_sends_is_also_pinned_in_fly_toml_env(push):
+    """A name in both places is two sources of truth, and which wins on Fly is not documented: the default push must not
+    send what fly.toml [env] already pins (ESCALATION_MODEL was in both, M5_DECISIONS 10.9)."""
+    import tomllib
+    pinned = set(tomllib.loads((ROOT / "fly.toml").read_text(encoding="utf-8"))["env"])
+    assert pinned and set(push.FLY_KEYS["semigraph"]).isdisjoint(pinned)

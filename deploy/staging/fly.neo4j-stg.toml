@@ -12,6 +12,10 @@
 app = "semigraph-neo4j-stg"
 primary_region = "sin"
 swap_size_mb = 1024
+# Fly's default stop (SIGINT, the VM ends 5 s later) cut Neo4j off before it logged "Stopped." on 2026-11-06 and the next
+# boot recovered the volume's journal (docs/v2/M5_DECISIONS.md 10.9). SIGTERM starts its graceful shutdown; 120 s lets it end.
+kill_signal = "SIGTERM"
+kill_timeout = 120
 
 [env]
   # Listen on IPv6 too: 6PN traffic from the API app arrives over IPv6.

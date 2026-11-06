@@ -441,6 +441,16 @@ underscore in it). **Live since 2026-11-06**: applied in place with `flyctl mach
 `docs/v2/M5_DECISIONS.md` 10.9). A later redeploy of `deploy/neo4j` carries the same value from its `fly.toml`. The steps
 below are kept for a rebuilt machine.
 
+**Clean stop (`kill_signal = "SIGTERM"`, `kill_timeout = 120` in `deploy/neo4j/fly.toml`, `docs/specs/m5a-followups.md`): in
+the repo, not yet on the machine.** Fly's default (SIGINT, VM ended 5 s later) cut Neo4j off on 2026-11-06. Apply it with the
+current image, so nothing is rebuilt and the seed is not reloaded; this one restart still stops the old way:
+```
+& ".\.venv\Scripts\python.exe" -m scripts.kill_switch on
+flyctl deploy -c deploy\neo4j\fly.toml -a semigraph-neo4j --image registry.fly.io/semigraph-neo4j:deployment-01M3GEBHEVDJAKWAHDV3S2YEGF --ha=false --yes
+curl.exe -s https://semigraph.fly.dev/healthz                                                          # db: true
+& ".\.venv\Scripts\python.exe" -m scripts.kill_switch off
+```
+
 - **Symptom while it is missing:** an operation blocked on a lock (two asks racing for the day counter, a held lock) comes
   back after about 2 s instead of 1.1 s (measured: 1.99 s median, 2.01 s worst, against 1.04 s and 1.09 s with 100 ms), and
   the paid question that waited is refused with the "paused" text. Nothing is lost or wrong; it is only slower to fail.
@@ -619,9 +629,10 @@ buffered until it passes, so the first token appears after generation. Provider 
 **Before the first deploy of this configuration**, check what the running machine will see:
 `flyctl ssh console -a semigraph -C "printenv ANSWER_MODEL ESCALATION_MODEL LLM_MODEL"`. The v1.2 deployment staged
 `LLM_MODEL=openai/gpt-6-luna` and `ESCALATION_MODEL` as Fly *secrets*; after this change `LLM_MODEL` no longer affects
-answering, and `ESCALATION_MODEL` is now set in two places (same value). To keep one source of truth, run
-`flyctl secrets unset ESCALATION_MODEL -a semigraph` once the deploy shows the right values (which of a secret and an
-`[env]` entry wins when both are set was not verified here; do not rely on it).
+answering. `ESCALATION_MODEL` was set in two places (same value) until 2026-11-06: `scripts/push_fly_secrets.py` no longer
+pushes it, and `flyctl secrets unset ESCALATION_MODEL -a semigraph --stage` removes the secret at the next deploy, leaving
+`fly.toml [env]` as its one source (which of a secret and an `[env]` entry wins when both are set is not documented by Fly;
+do not rely on it). A copy left in `.env.fly` is harmless (not pushed) and can be deleted.
 
 **Revert to Sonnet only:** in `fly.toml` set `ANSWER_MODEL = "anthropic/claude-sonnet-5"` and `ESCALATION_MODEL = ""`
 (with an empty escalation model, or the same model in both roles, Sonnet streams every answer live and nothing is

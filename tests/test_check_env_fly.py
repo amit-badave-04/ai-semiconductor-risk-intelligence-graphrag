@@ -196,12 +196,28 @@ def test_every_problem_is_listed_at_once(tmp_path, capsys):
 # ---------------------------------------------------------------- what is merged, and what is warned about
 
 def test_a_secret_that_is_also_in_fly_toml_env_is_a_warning_naming_it(tmp_path, capsys):
-    code, out = run(env_file(tmp_path, extra="ESCALATION_MODEL=anthropic/claude-sonnet-5\n"), capsys=capsys)
+    """The live fly.toml pins no pushed key (tests/test_push_fly_secrets.py), so the overlap is made here: LLM_MODEL is
+    pushed, and this fly.toml also pins it."""
+    pinned = tmp_path / "fly.toml"
+    pinned.write_text(FLY_TOML.read_text(encoding="utf-8").replace("[env]\n", '[env]\n  LLM_MODEL = "sentinel-model-137"\n'),
+                      encoding="utf-8")
+
+    code, out = run(env_file(tmp_path, extra="LLM_MODEL=sentinel-model-138\n"), pinned, capsys=capsys)
 
     assert code == 0
-    warning = next(line for line in lines_of(out, "WARN") if "ESCALATION_MODEL" in line)
-    assert "[env]" in warning and "secret" in warning
-    assert "anthropic/claude-sonnet-5" not in out
+    warning = next(line for line in lines_of(out, "WARN") if "LLM_MODEL" in line and "[env]" in line)
+    assert "secret" in warning
+    assert "sentinel-model-137" not in out and "sentinel-model-138" not in out
+
+
+def test_escalation_model_in_the_secrets_file_is_no_longer_pushed_and_is_listed_as_such(tmp_path, capsys):
+    """fly.toml [env] is its one source (M5_DECISIONS 10.9): a copy left in .env.fly reaches the machine only with --only."""
+    code, out = run(env_file(tmp_path, extra="ESCALATION_MODEL=sentinel-model-139\n"), capsys=capsys)
+
+    assert code == 0
+    assert not any("ESCALATION_MODEL" in line and "[env]" in line for line in lines_of(out, "WARN"))
+    assert "ESCALATION_MODEL" in next(line for line in lines_of(out, "WARN") if "not pushed" in line)
+    assert "sentinel-model-139" not in out
 
 
 def test_a_key_the_default_push_would_not_send_never_reaches_validation_and_is_listed(tmp_path, capsys):
