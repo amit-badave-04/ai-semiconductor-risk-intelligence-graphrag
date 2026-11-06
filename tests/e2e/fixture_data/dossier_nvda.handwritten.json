@@ -1,0 +1,15 @@
+{
+  "company": {"ticker": "NVDA", "name": "Nvidia", "cik": 1045810},
+  "data_as_of": "2026-09-30",
+  "filings": [
+    {"accession_no": "0001045810-26-000021", "form": "10-K", "filing_date": "2026-02-25", "is_current": true,
+     "status": "current", "superseded_by": null}
+  ],
+  "metrics": [],
+  "active_risks": [
+    {"risk_id": "fixture-risk-1", "summary": "Fixture risk summary: a stand-in for a disclosed supply risk.",
+     "category": "supply", "last_evidenced_at": "2026-02-25"}
+  ],
+  "edges": [],
+  "rules": []
+}

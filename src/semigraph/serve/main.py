@@ -43,7 +43,7 @@ from .state import StateDrivers, StateUnavailable, make_backend
 from .state.backend import BoundedDriver
 from .state.maintenance import MaintenanceThread
 from . import (dossier_routes, drain, estimate, hardening, memguard, monitor, monitor_routes, routes, store, tracing,
-               workspace_routes)
+               ui_v2, workspace_routes)
 
 SECONDS_PER_DAY = 86_400
 SECONDS_PER_HOUR = 3_600
@@ -443,13 +443,15 @@ def create_app() -> FastAPI:
     settings without the attribute (a test double) wire nothing."""
     app = FastAPI(title="semigraph", version=__version__, lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)        # M5a gate A4: no public API schema
-    origin_secret = getattr(get_settings(), "origin_auth_secret", "")
+    settings = get_settings()
+    origin_secret = getattr(settings, "origin_auth_secret", "")
     if isinstance(origin_secret, str) and origin_secret:
         app.add_middleware(OriginAuth, secret=Concealed(origin_secret))
     app.include_router(health_router)         # before ``router``: the first route that matches GET /healthz answers
     app.include_router(router)
     for extra in (monitor_routes.router, dossier_routes.router, workspace_routes.router):   # M4
         app.include_router(extra)
+    ui_v2.install(app, settings)               # M5b: last, so no page route can shadow an API route
     return app
 
 

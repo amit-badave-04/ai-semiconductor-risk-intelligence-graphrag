@@ -273,6 +273,13 @@ class Settings(BaseSettings):
     drain_timeout_s: float = Field(240, ge=1, le=DRAIN_TIMEOUT_CEILING_S, allow_inf_nan=False)
     machine_id: str = Field(default_factory=_default_machine_id, min_length=1)
 
+    # --- Frontend (docs/specs/m5b-frontend.md R7; serve/ui_v2.py). Non-secrets, set in fly.toml [env]; both off = the old page only ---
+    ui_v2_preview: bool = False               # true = the new single-page app at /v2/ (noindex) and the old page also at /legacy
+    ui_v2: bool = False                       # true = the new app at / and its pages (the old page stays at /legacy, /v2/ still works)
+    # The built app (``web/dist``, copied to this path by the image). Absent, or without index.html: the flags do nothing and
+    # the old page keeps serving (a frontend fault must never take the service down).
+    ui_dist_dir: Path = Path("/srv/web")
+
     # --- Agent (semigraph.agent, docs/v2/M3_AGENT_PLAN.md): OPT-IN retrieval planner, strategy=agent; off = never imported by serve ---
     agent_enabled: bool = False
     agent_planner_model: str = "openai/gpt-6-luna"   # plans the tool calls only; the answer still goes through answer_model/escalation

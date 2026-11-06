@@ -39,7 +39,6 @@ import secrets
 import time
 from collections.abc import AsyncIterator
 from functools import partial
-from pathlib import Path
 from typing import Literal
 
 import anyio
@@ -170,9 +169,10 @@ def _read_gate(request: Request) -> None:
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
-    page = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
-    page = page.replace("__TURNSTILE_SITE_KEY__", request.app.state.settings.turnstile_site_key)
-    return HTMLResponse(page, headers=SECURITY_HEADERS)
+    """``GET /``: the old single page, or the new app once ``UI_V2`` flips the root (``serve.ui_v2``, M5b R11). The import is
+    inside the function because ``ui_v2`` imports this module for ``SECURITY_HEADERS``."""
+    from . import ui_v2
+    return ui_v2.index_response(request)
 
 
 @router.get("/healthz")
