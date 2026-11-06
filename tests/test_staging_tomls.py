@@ -225,11 +225,13 @@ def _fp32_model_path_the_dockerfile_builds() -> str:
     return pattern.replace("${EMBEDDER_VARIANT}", "fp32")
 
 
-def test_the_w1b_and_w1c_windows_deploy_this_toml_for_their_api_and_no_other_window_does():
-    """W1c is W1b with only the ask workload changed (council 8), so it deploys the same api config."""
+def test_the_w1b_w1c_and_w1d_windows_deploy_this_toml_for_their_api_and_no_other_window_does():
+    """W1c is W1b with only the ask workload changed (council 8), so it deploys the same api config; W1d (the upload-ceiling
+    confirmation) is W1c with no asks and no mock LLM, and deploys it too: it sets no UPLOAD_* so the code default ceiling applies."""
     assert WINDOWS["windows"]["W1b"]["toml_overrides"] == {"api": "deploy/staging/fly.w1b.toml"}
-    assert [k for k, w in WINDOWS["windows"].items() if "toml_overrides" in w] == ["W1b", "W1c"]
+    assert [k for k, w in WINDOWS["windows"].items() if "toml_overrides" in w] == ["W1b", "W1c", "W1d"]
     assert WINDOWS["windows"]["W1c"]["toml_overrides"] == WINDOWS["windows"]["W1b"]["toml_overrides"]
+    assert WINDOWS["windows"]["W1d"]["toml_overrides"] == WINDOWS["windows"]["W1b"]["toml_overrides"]
     assert TOML_BY_NAME["fly.w1b.toml"]["app"] == WINDOWS["apps"]["api"]["name"] == "semigraph-stg"
 
 

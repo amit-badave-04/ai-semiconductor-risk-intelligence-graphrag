@@ -1044,6 +1044,88 @@ def test_the_w1c_window_is_created_with_its_three_apps_the_volume_and_no_generat
     assert (world.state_dir / "W1c.json").is_file()                     # the file the driver reads its secrets from (tools.probe.w1b --window W1c)
 
 
+# --- window W1d: the upload-ceiling confirmation (docs/specs/upload-embed-timeout.md, Plan 2): the api and the database, NO mock LLM -----------
+
+def test_w1d_is_the_api_and_the_database_only_with_no_mock_llm_and_no_load_generator():
+    w1d = WINDOWS["windows"]["W1d"]
+    assert w1d["apps"] == ["api", "neo4j"] and "mockllm" not in w1d["apps"] and "loadgen" not in w1d["apps"]
+    assert {(m["app"], m["class"]) for m in w1d["machines"]} == {("api", "shared-cpu-2x:4gb"), ("neo4j", "shared-cpu-1x:1gb")}
+    assert w1d["volume_gb_hours"] == [{"app": "neo4j", "gb": 3, "hours": 2.5}]
+    for key in ("toml_overrides", "build_args"):                                       # the image and the api config of W1c: only the workload differs
+        assert w1d[key] == WINDOWS["windows"]["W1c"][key]
+    assert w1d["workload"]["asks"] == 0 and (w1d["workload"]["burn_s"], w1d["workload"]["min_burn_s"]) == (600, 300)
+
+
+def test_the_w1d_quote_comes_from_the_quote_command_and_is_at_most_the_cap_and_prices_no_mock_machine():
+    printed = []
+    assert staging.main(["quote", "W1d"], out=printed.append) == 0
+    row = next(line for line in printed if line.startswith("W1d "))
+    quote, cap = (float(x) for x in re.search(r"\$(\d+\.\d\d) \(\$(\d+\.\d\d)\)$", row).groups())
+    assert "(mockllm)" not in row and "(loadgen)" not in row and "1 x shared-cpu-2x 4gb (api)" in row and "1 x shared-cpu-1x 1gb (neo4j)" in row
+    assert (quote, cap) == (0.15, 0.25) and quote <= cap
+    assert printed[-1] == f"Machine time: ${quote:.2f} (cap ${cap:.2f})"
+    windows = staging.load_windows()
+    assert staging.quote_usd(windows, "W1d") == (quote, cap)
+    derived = staging.derived_usd(windows, "W1d")
+    api, neo4j = (staging.hourly_rate(windows, k) for k in ("shared-cpu-2x:4gb", "shared-cpu-1x:1gb"))
+    volume = 3 * 0.15 / 720
+    # 2.5 api hours (the Opus verifier: warm-up, canary and two boots of 50 to 60 min come to about 2.1 to 2.3 h)
+    assert derived == pytest.approx(2.5 * api + 2.5 * neo4j + 2.5 * volume, abs=1e-6) and derived <= quote + 0.005
+    one_boot = 1.0 * api + 1.5 * neo4j + 1.5 * volume                                  # the spec's single boot, without the mock LLM
+    assert one_boot == pytest.approx(0.0634, abs=5e-4) and one_boot < derived          # the quote prices the one re-run too
+    assert derived + one_boot <= cap + 0.005                                            # even one boot beyond the priced hours stays near the cap
+
+
+def test_w1d_has_its_own_quote_row_and_the_w1c_row_is_untouched(world):
+    world.make().quote(["W1c", "W1d"])
+    rows = world.log.lines()
+    w1c_row, w1d_row = (next(line for line in rows if line.startswith(f"{key} ")) for key in ("W1c", "W1d"))
+    assert "$0.10 ($0.25)" in w1c_row and "(mockllm)" in w1c_row and "$0.15 ($0.25)" in w1d_row and "(mockllm)" not in w1d_row
+
+
+def test_the_w1d_api_deploys_the_w1b_toml_on_the_live_class_and_the_database_keeps_its_default_toml(world):
+    args = _deploy_args_in_plan(world, "W1d", "api")
+    assert args[args.index("--config") + 1] == "deploy/staging/fly.w1b.toml"
+    assert args[args.index("--vm-size") + 1] == "shared-cpu-2x" and args[args.index("--vm-memory") + 1] == "4096"
+    assert [b for i, b in enumerate(args) if i and args[i - 1] == "--build-arg"] == ["EMBEDDER_VARIANT=fp32"]
+    args = _deploy_args_in_plan(world, "W1d", "neo4j")
+    assert args[args.index("--config") + 1] == "../staging/fly.neo4j-stg.toml"
+
+
+@pytest.mark.parametrize("builds", [[], ["KEEP_UNPATCHED=1"], ["EMBEDDER_VARIANT=fp32", "KEEP_UNPATCHED=1"], ["EMBEDDER_VARIANT=q8"]])
+def test_the_w1d_api_image_must_be_the_one_that_would_ship_fp32_without_the_unpatched_model(world, builds):
+    create_commands(world, "W1d")
+    world.runner.calls.clear()
+    with pytest.raises(staging.UsageError, match="W1d"):
+        world.make().deploy("W1d", "api", build_args=builds)
+    assert world.runner.calls == []
+    world.make().deploy("W1d", "api", build_args=["EMBEDDER_VARIANT=fp32"])
+    assert any(c["args"][1] == "deploy" for c in world.runner.calls)
+
+
+def test_the_w1d_window_has_no_mock_llm_to_deploy_and_none_is_created_or_given_a_secret(world):
+    calls = create_commands(world, "W1d")
+    assert [c[3] for c in calls if c[1:3] == ["apps", "create"]] == ["semigraph-stg", "semigraph-neo4j-stg"]
+    assert {c[c.index("--app") + 1] for c in calls if c[1:3] == ["secrets", "import"]} == {"semigraph-stg", "semigraph-neo4j-stg"}
+    assert not any("mockllm" in " ".join(c) or "loadgen" in " ".join(c) for c in calls)
+    assert (world.state_dir / "W1d.json").is_file()                        # the file the driver reads its secrets from (tools.probe.w1d)
+    world.runner.calls.clear()
+    with pytest.raises(staging.UsageError, match="no app 'mockllm'"):
+        world.make().deploy("W1d", "mockllm")
+    assert world.runner.calls == []
+
+
+def test_preflight_passes_on_a_clean_w1d_without_a_mock_llm_app(world):
+    """The staging validators check the SHAPE of OPENAI_API_BASE (a ``.internal`` host), and preflight compares the deployed host with the
+    registered mock's name; neither needs the mock app to exist."""
+    create_commands(world, "W1d")
+    world.runner.calls.clear()
+    tool = world.make(responses=[(["flyctl", "secrets", "list"], SECRETS_OK), (["flyctl", "config", "show"], CONFIG_OK)], bolt=FakeBolt(healthy))
+    assert tool.preflight("W1d") == 0
+    assert "preflight: PASS" in "\n".join(world.log.lines())
+    assert all(call["args"][1] in ("secrets", "config") for call in world.runner.calls)
+
+
 def test_the_script_names_no_live_app_and_no_pdf_library():
     text = (ROOT / "scripts" / "staging.py").read_text(encoding="utf-8")
     assert "pymupdf" not in text.lower() and "PyMuPDF" not in text

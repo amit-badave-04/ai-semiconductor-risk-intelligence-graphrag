@@ -10,6 +10,11 @@ Output (one directory): ``samples.jsonl``, one JSON object per second (flushed a
 measured) and ``meta.json`` (machine id, region, cpu count, the arguments; the environment is NOT copied). ``report.py`` analyses them.
 
 Stdlib only. Clock, work, ``/proc/stat`` reader and sleep are parameters so the tests run in microseconds and on any platform.
+
+Window W1d runs this loop on the api machine itself (the driver ships the text inside a ``python -c`` command over
+``flyctl ssh console``, as it does ``memsample.py``), so two options let the driver end it early: ``--stop-file PATH`` (the
+loop looks for the file once per second and ends after that second's sample) and ``--daemon`` (detach with a double fork so
+the starting ssh command returns). Both default to off: window W0's use of this file is unchanged.
 """
 
 import argparse
@@ -120,9 +125,12 @@ def _sample(phase: str, t: int, *, wall: float, elapsed: float, iterations: int,
 def run_burn(duration_s: float, *, chunk: int = DEFAULT_CHUNK, work: Callable[[], object] | None = None,
              clock: Callable[[], float] = time.monotonic, wall: Callable[[], float] = time.time,
              cpu_time: Callable[[], float] = time.process_time,
-             read_stat: Callable[[], StatSnapshot | None] = read_proc_stat, sink: Callable[[dict], object]) -> int:
+             read_stat: Callable[[], StatSnapshot | None] = read_proc_stat, sink: Callable[[dict], object],
+             should_stop: Callable[[], bool] = lambda: False) -> int:
     """Spin for ``int(duration_s)`` seconds, giving ``sink`` one sample per second (``t`` = 1, 2, ...). Returns how many.
-    A second's bucket ends at the first chunk that completes at or after it, so ``elapsed_s`` is the real length."""
+    A second's bucket ends at the first chunk that completes at or after it, so ``elapsed_s`` is the real length.
+    ``should_stop`` is asked once per second, after that second's sample: when true the burn ends there (the samples so far
+    were already given to ``sink``)."""
     _check(duration_s, chunk)
     work = work if work is not None else (lambda: _spin(chunk))
     seconds = int(duration_s)
@@ -139,6 +147,8 @@ def run_burn(duration_s: float, *, chunk: int = DEFAULT_CHUNK, work: Callable[[]
         sink(_sample("burn", t, wall=wall(), elapsed=now - bucket_start, iterations=count, cpu_seconds=cpu_now - cpu,
                      before=snap, after=after))
         bucket_start, snap, cpu, count = now, after, cpu_now, 0
+        if should_stop():
+            break
     return t
 
 
@@ -168,6 +178,19 @@ def run_pulses(idle_s: float, *, every_s: float = DEFAULT_PULSE_EVERY_S, pulse_s
     return pulses
 
 
+def daemonize() -> None:
+    """Detach from the ssh session that started this process: double fork, new session, standard streams on /dev/null
+    (the same detach ``memsample.py`` uses)."""
+    if os.fork() > 0:
+        os._exit(0)
+    os.setsid()
+    if os.fork() > 0:
+        os._exit(0)
+    null = os.open(os.devnull, os.O_RDWR)
+    for descriptor in (0, 1, 2):
+        os.dup2(null, descriptor)
+
+
 def _meta(args: argparse.Namespace) -> dict:
     return {"machine_id": os.environ.get("FLY_MACHINE_ID") or socket.gethostname(), "region": os.environ.get("FLY_REGION", ""),
             "cpu_count": os.cpu_count() or 1, "python": platform.python_version(), "platform": sys.platform,
@@ -183,6 +206,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--pulse-s", type=int, default=DEFAULT_PULSE_S)
     parser.add_argument("--chunk", type=int, default=DEFAULT_CHUNK, help="iterations per unit of work")
     parser.add_argument("--out", type=Path, default=Path(os.environ.get("PROBE_OUT_DIR", "probe_out")))
+    parser.add_argument("--stop-file", default=None, help="the burn ends after the second in which this file exists (checked each second)")
+    parser.add_argument("--daemon", action="store_true", help="detach (double fork) so the starting ssh command can return")
     return parser.parse_args(argv)
 
 
@@ -190,13 +215,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "meta.json").write_text(json.dumps(_meta(args), indent=1), encoding="utf-8")
+    if args.daemon:                                       # after the checks above, so a bad directory is an error, not a silent child
+        daemonize()
+    should_stop = (lambda: os.path.exists(args.stop_file)) if args.stop_file else (lambda: False)
     with (args.out / "samples.jsonl").open("w", encoding="utf-8", buffering=1) as handle:
         def sink(row: dict) -> None:
             handle.write(json.dumps(row) + "\n")
             handle.flush()
 
-        run_burn(args.burn_s, chunk=args.chunk, sink=sink)
-        if args.idle_s:
+        burned = run_burn(args.burn_s, chunk=args.chunk, sink=sink, should_stop=should_stop)
+        if args.idle_s and burned >= int(args.burn_s):          # a stopped burn is over: no idle stretch after it
             run_pulses(args.idle_s, every_s=args.pulse_every_s, pulse_s=args.pulse_s, chunk=args.chunk, sink=sink)
     return 0
 

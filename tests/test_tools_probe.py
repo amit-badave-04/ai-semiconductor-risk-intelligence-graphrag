@@ -13,6 +13,7 @@ by the pulses; the report refuses to claim a throttle from too little data; the 
 
 import ast
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -256,6 +257,102 @@ def test_a_torn_last_line_from_a_killed_run_is_skipped_not_fatal(tmp_path):
     good = "\n".join(json.dumps(r) for r in series([1000] * 20))
     (tmp_path / "samples.jsonl").write_text(good + '\n{"t": 21, "phase": "bu', encoding="utf-8")
     assert len(report.load_samples(tmp_path / "samples.jsonl")) == 20
+
+
+# --- stop early and detach (window W1d runs the burn on the api machine, then stops it once the throttle shows) ----------------
+
+def test_a_stop_request_ends_the_burn_at_the_next_second_boundary_and_keeps_the_samples_so_far():
+    clock, rows = Clock(), []
+    n = burn.run_burn(10, chunk=250, work=slowing_work(clock, at=99), clock=clock, wall=lambda: 0.0, cpu_time=lambda: 0.0,
+                      read_stat=lambda: None, sink=rows.append, should_stop=lambda: len(rows) >= 3)
+    assert n == 3 and [r["t"] for r in rows] == [1, 2, 3]
+
+
+def test_without_a_stop_request_the_burn_runs_its_whole_duration_as_before():
+    clock, rows = Clock(), []
+    n = burn.run_burn(4, chunk=250, work=slowing_work(clock, at=99), clock=clock, wall=lambda: 0.0, cpu_time=lambda: 0.0,
+                      read_stat=lambda: None, sink=rows.append)
+    assert n == 4 and [r["t"] for r in rows] == [1, 2, 3, 4]
+
+
+def test_the_stop_request_is_asked_once_per_second_not_once_per_chunk():
+    clock, rows, asked = Clock(), [], []
+    burn.run_burn(3, chunk=250, work=slowing_work(clock, at=99), clock=clock, wall=lambda: 0.0, cpu_time=lambda: 0.0,
+                  read_stat=lambda: None, sink=rows.append, should_stop=lambda: asked.append(len(rows)) or False)
+    assert asked == [1, 2, 3]
+
+
+def test_the_new_options_default_to_the_old_behaviour():
+    args = burn.parse_args([])
+    assert args.stop_file is None and args.daemon is False and args.burn_s == 3600 and args.idle_s == 0
+    args = burn.parse_args(["--stop-file", "/tmp/x.stop", "--daemon", "--burn-s", "600"])
+    assert args.stop_file == "/tmp/x.stop" and args.daemon is True and args.burn_s == 600
+
+
+def test_a_stop_file_that_exists_ends_the_real_loop_after_its_first_second(tmp_path):
+    stop = tmp_path / "burn.stop"
+    stop.write_text("", encoding="utf-8")
+    assert burn.main(["--burn-s", "30", "--out", str(tmp_path / "out"), "--stop-file", str(stop)]) == 0
+    lines = (tmp_path / "out" / "samples.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["t"] for line in lines] == [1]
+
+
+def test_the_stop_file_is_looked_at_while_the_burn_runs_so_a_file_made_later_ends_it(tmp_path, monkeypatch):
+    stop, seen = tmp_path / "burn.stop", []
+    real_exists = os.path.exists
+
+    def exists(path):
+        seen.append(str(path))
+        if str(path) == str(stop) and len(seen) == 2:
+            stop.write_text("", encoding="utf-8")                 # the driver touches the file during the second second
+        return real_exists(path)
+
+    monkeypatch.setattr(os.path, "exists", exists)
+    assert burn.main(["--burn-s", "30", "--out", str(tmp_path / "out"), "--stop-file", str(stop)]) == 0
+    assert len((tmp_path / "out" / "samples.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_a_burn_ended_by_the_stop_file_does_not_go_on_to_the_idle_pulses(tmp_path, monkeypatch):
+    monkeypatch.setattr(burn, "run_burn", lambda *a, **k: 3)                       # stopped after 3 of 30 seconds
+    monkeypatch.setattr(burn, "run_pulses", lambda *a, **k: pytest.fail("the idle stretch ran after a stop"))
+    assert burn.main(["--burn-s", "30", "--idle-s", "120", "--out", str(tmp_path / "o"), "--stop-file", str(tmp_path / "s")]) == 0
+
+
+def test_daemon_mode_detaches_with_a_double_fork_a_new_session_and_the_streams_on_dev_null(monkeypatch):
+    calls, forks = [], iter([1234, 0, 5678, 0])
+
+    class Exited(BaseException):
+        pass
+
+    def fake_fork():
+        pid = next(forks)
+        calls.append(("fork", pid))
+        return pid
+
+    def fake_exit(code):
+        calls.append(("exit", code))
+        raise Exited()
+
+    monkeypatch.setattr(os, "fork", fake_fork, raising=False)
+    monkeypatch.setattr(os, "setsid", lambda: calls.append(("setsid",)), raising=False)
+    monkeypatch.setattr(os, "dup2", lambda a, b: calls.append(("dup2", b)))
+    monkeypatch.setattr(os, "_exit", fake_exit)
+    with pytest.raises(Exited):                                    # the first parent leaves at once: the ssh command can return
+        burn.daemonize()
+    assert calls == [("fork", 1234), ("exit", 0)]
+    calls.clear()
+    forks = iter([0, 0])
+    burn.daemonize()
+    assert calls[:3] == [("fork", 0), ("setsid",), ("fork", 0)]
+    assert [c for c in calls if c[0] == "dup2"] == [("dup2", 0), ("dup2", 1), ("dup2", 2)]
+
+
+def test_daemon_mode_writes_meta_before_it_detaches_so_a_bad_directory_is_reported_not_lost(tmp_path, monkeypatch):
+    order = []
+    monkeypatch.setattr(burn, "daemonize", lambda: order.append("daemonize"))
+    monkeypatch.setattr(burn, "run_burn", lambda *a, **k: order.append("burn") or 0)
+    assert burn.main(["--burn-s", "5", "--out", str(tmp_path / "o"), "--daemon"]) == 0
+    assert order == ["daemonize", "burn"] and (tmp_path / "o" / "meta.json").is_file()
 
 
 # --- packaging -------------------------------------------------------------------------------------------------------------

@@ -243,3 +243,120 @@ Tests: `tests/test_tools_probe_memsample.py` (fake `/proc`), `tests/test_tools_p
 aggregate, the workload against an `httpx.MockTransport`, flyctl stubbed; for W1c: the derived count and that it follows its inputs, the pacing
 decision on a fake clock, the sender, a paced boot end to end, the stop rule, the registered-workload check, the docs), `tests/test_staging_script.py` and
 `tests/test_staging_tomls.py` (the windows, their toml and the build-argument policy).
+
+## `w1d.py`, `w1d_burn.py`, `w1d_judge.py`: does a cap-size upload finish inside the 2,100 s ceiling on a throttled machine? (window W1d)
+
+`docs/specs/upload-embed-timeout.md` (Plan 2, owner decision 3, approved 2026-11-06) raises the upload embed ceiling from 1,200 s to 2,100 s
+because a cap-size job (16,000 tokens, 186.5 s of one performance-class core) needs about 1,140 to 1,320 s of a shared core once its burst balance
+is spent. Window **W1d** is the one optional boot that checks it on a real machine: a fresh shared-cpu-2x / 4 GB api (the fp32 image with the change,
+`deploy/staging/fly.w1b.toml`, the staging Neo4j), a **burn** that uses up the burst balance, ONE max-size upload (`tests/upload_fixtures.max_size_pdf(30, 2700)`),
+**no asks and no mock LLM** (the staging validators only check that `OPENAI_API_BASE` is a `.internal` URL; nothing at boot or during an upload calls
+it, so the `mockllm` app is neither created nor priced). Quote **$0.15** (cap **$0.25**): the quote prices the worst case, the warm-up machine, one boot
+and the one re-run (api 2.5 h, neo4j and its 3 GB volume 2.5 h = $0.1431); a single boot is $0.0634.
+
+**The rules (pre-registered in `w1d_judge.py` and in the window's `note`; do not change):**
+
+* **share** = `tokens` / (85.8 x 1.18 x `embed_s`), from the app's `upload stages` line of a job that reached `ready` ONLY (on a `timeout` line `tokens=` is the plan);
+* **INVALID** (not a pass) if the share is above **0.15** or `embed_s` is under **0.9** x the harness's `ready_s` (exactly 0.15 and exactly 0.9 x are valid; the arithmetic is exact);
+* **PASS**: valid, the job reaches `ready`, uvicorn `VmHWM` <= 2,400,000 kB (inclusive), no OOM kill or restart;
+* **FAIL**: the job ends with code `timeout` while valid (the embed loop stopped at the 2,100 s ceiling: `done` below `fresh`, `embed_s` >= 2,100), or the memory limit is exceeded;
+* **INCONCLUSIVE**: no usable stage line, the harness deadline (2,680 s) reached first, any unreadable evidence. Never a pass; the stop rule does not re-run it;
+* **stop rule:** an INVALID boot is re-run unchanged ONCE on a fresh machine (`--attempt 2`); two INVALID boots end the window INCOMPLETE and nothing is amended.
+
+**The burn step (`w1d_burn.py`)** runs ON the api machine, because the CPU quota is the machine's and is pooled across its vCPUs (a burn beside the upload would take the embed's
+share). No file is uploaded to it: `burn.py` is shipped as text inside a `python -c` command over `flyctl ssh console -C`, the way `w1b.py` ships `memsample.py`. That path
+already ran on Fly in windows W1b and W1c, needs no stdin and no second app; the tools image would be another machine with its own quota. The command detaches the burn (`--daemon`),
+caps it at `--burn-s 600` on the machine itself (it ends there even if the driver dies) and gives it a stop file (`--stop-file /tmp/w1d-burn.stop`, looked at once a second). The driver reads the samples
+(`tail -n +K`, by line number), applies the spec's rule with `report.py` (`should_stop`: at least **300 s** of burn AND an onset, below 90% of the baseline for 5 s in a row) and
+creates the stop file, then READS to the end and checks that nothing more is written: **a burn that cannot be confirmed stopped ends the boot (INCONCLUSIVE) before anything is uploaded, and so does a burn that ran under its 300 s floor** (a confirmed stop says nothing about how long the burn ran: failed first reads or a burn killed early also end in one). If no onset shows,
+the burn ends at its 600 s cap and the upload is sent anyway (the validity rule decides, not the burn). Every per-second sample, the `report.py` analysis and the gap from the end
+of the burn to the upload's acceptance are in the boot JSON (`burn`, `job.burn_end_to_accept_s`). `burn.py` gained `--stop-file` and `--daemon` for this (both default off; window W0 is unchanged).
+
+**The stage line (`jobs.py` `_log_stages`):** `upload stages ws_hash=... job_id=... parse_s=... chunk_s=... embed_s=... compare_s=... index_s=... chunks=... fresh=... done=... tokens=...`.
+`w1d.py` starts a `flyctl logs` STREAM of the api app (with `--machine <id>`; for the whole app if this flyctl rejects the flag) BEFORE the burn, writes it to `NAME.logs.txt` beside `--out`
+(each line scrubbed before it is written, and the whole file once more when the stream stops), waits up to 60 s after the job ends for the line whose `job_id` is the upload's, and falls back to one
+`flyctl logs --no-tail` snapshot taken as soon as the job ends, while the stream and the sampler still run (the snapshot is a short window, so it is not left to the end; the final snapshot, for the evidence, comes later and is a second try). The harness's `ready_s` (from the upload's acceptance to the ready event) is in the boot JSON beside it. No line anywhere: INCONCLUSIVE.
+
+### Sequence (PowerShell, from the repository root)
+
+```powershell
+# 0. the owner approves the quote first; W1c's window must be destroyed (the app names are shared)
+uv run python scripts/staging.py destroy W1c --yes                   # only if its apps still exist
+uv run python scripts/staging.py quote W1d
+uv run python scripts/staging.py create W1d --org <org> --approve-quote 0.15
+uv run python scripts/staging.py seed W1d
+uv run python scripts/staging.py deploy W1d api --build-arg EMBEDDER_VARIANT=fp32    # NOT KEEP_UNPATCHED=1: the tool refuses it; there is no mockllm to deploy
+uv run python scripts/staging.py preflight W1d       # this first machine is a warm-up: it proves the build and the deployed config without a mock LLM
+
+# 0b. the CANARY (mandatory), on the warm-up machine while it is the only machine: a 2-page upload through the same driver proves, for about $0.015 (10 to 15 minutes of the api and Neo4j machines at the quote's rates; inside the $0.15 quote (2.5 api hours cover the warm-up, the canary and two boots)), what the measured
+#     boot would meet for the first time (the burn's start, `tail -n +K` and stop file over ssh, the `flyctl logs` stream, the `upload stages` line). Its verdict is INVALID
+#     (a 2-page job is not throttled) and its exit code is 2: expected, it is not a result. It is written as canary.json, which the aggregate's boot-*.json glob never matches.
+$dir = "$env:TEMP\w1d"; New-Item -ItemType Directory -Force $dir | Out-Null
+uv run python -c "import sys; import tests.upload_fixtures as f; open(sys.argv[1], 'wb').write(f.max_size_pdf(n_pages=2, chars_per_page=2700))" "$dir\small.pdf"
+uv run python -m tools.probe.w1d boot --boot 1 --pdf "$dir\small.pdf" --out "$dir\canary.json"
+$canary = Get-Content "$dir\canary.json" -Raw | ConvertFrom-Json
+if ($canary.stages.source -notin @("stream", "snapshot") -or $null -eq $canary.stages.fields) {
+    throw "canary: no 'upload stages' line reached the log stream or the snapshot: STOP, do not start the measured boot (read canary.json and canary.logs.txt)"
+}
+
+# 1. the measured boot, on a freshly created machine (the driver starts BEFORE the deploy)
+$dir = "$env:TEMP\w1d"; New-Item -ItemType Directory -Force $dir | Out-Null
+foreach ($m in @(flyctl machine list -a semigraph-stg --json | ConvertFrom-Json)) {
+    if ($m.state -ne "destroyed") { flyctl machine destroy $m.id --force -a semigraph-stg }
+}
+$job = Start-Job -ArgumentList (Get-Location).Path, $dir -ScriptBlock {
+    param($repo, $dir); Set-Location $repo
+    uv run python -m tools.probe.w1d boot --boot 1 --wait-for-machine-s 2700 --out "$dir\boot-1.json"
+}
+uv run python scripts/staging.py deploy W1d api --build-arg EMBEDDER_VARIANT=fp32     # a new machine id and creation time
+Receive-Job $job -Wait -AutoRemoveJob        # about 50 to 60 minutes: boot, the burn (300 to 600 s), the upload (up to about 2,300 s), collection
+
+# 2. the stop rule: ONLY a boot whose JSON says INVALID is re-run, ONCE, unchanged, on a freshly created machine (boot-1.json is kept)
+$first = Get-Content "$dir\boot-1.json" -Raw | ConvertFrom-Json
+if ($first.verdict -eq "INVALID" -and -not (Test-Path "$dir\boot-1-a2.json")) {
+    foreach ($m in @(flyctl machine list -a semigraph-stg --json | ConvertFrom-Json)) {
+        if ($m.state -ne "destroyed") { flyctl machine destroy $m.id --force -a semigraph-stg }
+    }
+    $job = Start-Job -ArgumentList (Get-Location).Path, $dir -ScriptBlock {
+        param($repo, $dir); Set-Location $repo
+        uv run python -m tools.probe.w1d boot --boot 1 --attempt 2 --wait-for-machine-s 2700 --out "$dir\boot-1-a2.json"
+    }
+    uv run python scripts/staging.py deploy W1d api --build-arg EMBEDDER_VARIANT=fp32
+    Receive-Job $job -Wait -AutoRemoveJob
+}
+
+# 3. the window's verdict from EVERY boot file in the directory, so no attempt can be left out (INVALID twice: INCOMPLETE, stop; a FAIL anywhere: FAIL)
+$files = (Get-ChildItem "$dir\boot-*.json").FullName
+uv run python -m tools.probe.w1d aggregate $files --out "$dir\w1d.json"
+
+# 4. evidence, then teardown (verified gone)
+uv run python scripts/staging.py snapshot W1d --out "$dir\snapshot"
+uv run python scripts/staging.py destroy W1d --yes
+```
+
+The driver reads the window's secrets from the state file `staging.py create W1d` writes, refuses a `--burn-s` or `--min-burn-s` that differs from the window's entry (600 and 300),
+and exits 0 on PASS, 1 on FAIL, 2 on anything else. Destroy EVERY machine of the app before each boot: the driver refuses to measure while a second one exists. The result is recorded by hand under
+`S6_w1d` in `artifacts/m5_spikes.json` (its owner merges): the aggregate, `burn.summary` and `burn.sustained_fraction`, and the stage line (`stages.fields`).
+
+### UNVERIFIED (not run against this organisation or this flyctl; each fails closed, never into a PASS)
+
+* The same list as W1b's: `flyctl machine list --json` carries `created_at` and `config.guest`; `python` is on the PATH of an ssh session; `-C` hands the one quoted `python -c '...'` word through intact;
+  a process detached by a double fork survives the end of that ssh session. New here: `burn.py` (the same detach as `memsample.py`) is started that way and writes `/tmp/w1d-burn/samples.jsonl`;
+  `not_started` is the machine answering a read (exit 0, or `tail` saying there is no such file) with no sample 45 s after the start, while reads that merely fail (a cold ssh start, a timeout) are polled on until the deadline; `touch /tmp/w1d-burn.stop` ends it within a second;
+  `tail -n +K FILE` works in the machine's shell. Whatever the reads did, no upload follows a burn that ran under 300 s. The mandatory canary (below) runs all of these once on the warm-up machine first.
+* `flyctl logs -a semigraph-stg --machine <id>` streams (the flag may be unknown to this flyctl: the driver then streams the whole app) and the `semigraph.uploads.jobs` INFO line reaches it. What is
+  recorded: a W1c app log taken with `--no-tail` (`2026-11-06T05:03:24Z app[2862626a6e2d48] sin [info]2026-11-06 05:03:24,825 INFO semigraph.graph.schema ...`) carries INFO lines of the app's own
+  `semigraph.*` loggers in the prefix and format the parser reads (a test uses them), written by the same `logging.basicConfig(level=INFO)` the upload job's logger uses. What is NOT recorded: any
+  `semigraph.uploads.jobs` line (no upload ran in it, and the stage line is new in this change). That snapshot held exactly 100 lines, so the `--no-tail` fallback may be a short window and the
+  stream is the real source. A missing line is INCONCLUSIVE, never a PASS, and costs the boot (about 40 to 55 minutes), so the runbook has a mandatory **canary** (step 0b): a 2-page upload to the warm-up machine through
+  this same driver (`--pdf small.pdf --out canary.json`, 10 to 15 minutes of the api and Neo4j machines, about $0.015: inside the $0.15 quote and the $0.25 cap), BEFORE the measured boot. `canary.json` must say `stages.source` is `stream` or `snapshot` and `stages.fields` is not null; its
+  verdict is INVALID, which is expected. It exercises the log stream and the stage line, and the burn's start, `tail -n +K` and stop file over ssh, which are otherwise first run in the measured boot. A `flyctl logs` stream that
+  dies in the middle of a run is not restarted: the driver takes the `--no-tail` snapshot as soon as the job ends instead (the snapshot may be a short window, and a stream with the line is the better source).
+* Without a mock LLM the api is expected to become healthy and to take an upload: nothing in the boot path or the upload job calls it. The warm-up machine and `preflight W1d` show it before the measured boot; if it fails,
+  stop and report (a W1c-style window with the mock app is the fallback; its quote is $0.10 per three boots).
+* A fresh machine's burst balance is not arranged by the harness (the Fly page says 5 s, W0 saw about 115 s, W1c's three boots differed three-fold): the burn and the validity rule exist for that.
+
+Tests: `tests/test_tools_probe_w1d_judge.py` (the stage-line reader, the rules at their boundaries with exact arithmetic, the aggregate and its stop rule),
+`tests/test_tools_probe_w1d_burn.py` (the command and a real `exec` of it, the stop decision, the step against a fake machine on a virtual clock),
+`tests/test_tools_probe_w1d.py` (a whole boot against a fake service, fake flyctl and fake log stream on a virtual clock: the order, the burn gate, the stage line, scrubbing, the guards),
+`tests/test_tools_probe.py` (`burn.py`'s stop file and detach), `tests/test_staging_script.py` and `tests/test_staging_tomls.py` (the window, its quote and its image policy).
