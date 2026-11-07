@@ -722,7 +722,7 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
 |---|---|---|
 | `UPLOADS_ENABLED` | every workspace route and workspace ask; off = 503 | `true` (`fly.toml [env]`) |
 | `WORKSPACE_TTL_HOURS` | a workspace and everything in it is deleted after this | `24` |
-| `UPLOAD_MAX_PAGES` / `UPLOAD_MAX_TOKENS` | per version (the embedding time sets them; see docs/v2/M4_PLAN.md section 3) | `30` / `16000` |
+| `UPLOAD_MAX_PAGES` / `UPLOAD_MAX_TOKENS` | per version (the embed ceiling sets the token cap; see below and docs/specs/upload-cap-and-abort.md) | `30` / `10000` |
 | `UPLOAD_MAX_WORKSPACE_TOKENS` / `MAX_UPLOADS_PER_DAY` | embedding budget per workspace / uploads per day, all visitors | `48000` / `40` |
 | `UPLOAD_MIN_MEM_AVAILABLE_KB` | a NEW upload is refused while the machine's `MemAvailable` is below this (kB); 0 = off, outside production only | `1250000` (code default; production accepts 500000 to 2000000) |
 
@@ -747,22 +747,42 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
   loop, **2,100 s** (the code default; `fly.toml` sets none), checked after each chunk and only while chunks remain, from the
   start of the loop: a job that has embedded its last chunk is never failed. A stop ends the job `failed`, code `timeout`
   ("processing took too long and was stopped"), with nothing stored and the slot released. Derivation: a shared-cpu-2x is
-  throttled to a sustained share of one core once its burst is spent (measured 17% down to 12%), and the cap job (16,000
-  tokens) needs 16,000 / (85.8 tokens/s x 1.18 class factor x share): 1,317 s at 12%, so the ceiling is 1.5 x that, 1,975 s,
-  rounded up to 2,100 s (a cap job still finishes down to a 7.5% share; the old 1,200 s failed it below about a 13% share at the 1.18 factor). Production
-  refuses a value under 600 s (a zero or a unit slip) and one whose product with `MAX_UPLOADS_PER_DAY` passes 86,400 s (2,160 s
-  at 40 a day); the refusal names only `UPLOAD_EMBED_TIMEOUT_S` and says the daily upload count is part of the cause. **The
-  validator does not enforce the 1.5x rule**: a ceiling under about 1,975 s boots and can fail throttled uploads, which is
-  tuning, judged against the `upload stages` line below. The interrupted-job sweeper's age follows it (90 + ceiling + 600 =
+  throttled to a sustained share of one core once its burst is spent, and W1d measured the worst rate, 5.54 tokens/s. Since
+  docs/specs/upload-cap-and-abort.md the derivation runs from the ceiling: the 2,100 s ceiling stays (and the 40-a-day rule:
+  2,100 x 40 = 84,000 s <= 86,400 s) and `UPLOAD_MAX_TOKENS` is sized from it, 2,100 x 5.54 = 11,634 >= 10,000, so a
+  10,000-token upload embeds in about 1,805 s at the worst measured rate. (At 5.54 tokens/s the old 16,000-token cap needs
+  2,887 s, more than any ceiling 40 a day allows.) Production
+  refuses a value under 600 s (a zero or a unit slip), one whose product with `MAX_UPLOADS_PER_DAY` passes 86,400 s (2,160 s
+  at 40 a day), and one that does not cover a token cap above 10,000 at the worst rate (a `UPLOAD_MAX_TOKENS` above 10,000
+  needs `UPLOAD_EMBED_TIMEOUT_S` x 5.54 to reach it: at 2,100 s a cap above 11,634 is refused; a cap of 10,000 or less is not
+  checked by this rule); each refusal names only
+  `UPLOAD_EMBED_TIMEOUT_S` and says in words that the daily upload count or the cap is part of the cause. **The validator does
+  not judge any other margin**: a ceiling that covers the cap at 5.54 tokens/s boots even if a throttled machine is slower,
+  which is tuning, judged against the `upload stages` line below. A later cap raise needs a matching ceiling and its own
+  evidence. The interrupted-job sweeper's age follows it (90 + ceiling + 600 =
   2,790 s). To change it set `UPLOAD_EMBED_TIMEOUT_S` in `fly.toml [env]` and redeploy; a higher ceiling also lengthens how long
-  one job can hold the one upload slot. **Reading the `upload stages` line** (`flyctl logs -a semigraph`, one INFO line for
+  one job can hold the one upload slot. **Projected-finish abort** (`too_slow`): after each embedded chunk, from the third
+  embedded chunk on, the job projects its finish, `elapsed_embed + remaining_tokens / (embedded_tokens / elapsed_embed)`, from
+  its own measured rate only; above the ceiling (strictly) it stops at once, ends `failed` with code `too_slow` ("Uploads are
+  slow right now. Please try again in a few minutes, or upload a shorter PDF."), nothing stored, the slot released, and the
+  visitor's daily upload count is **given back once** (`store.release_daily_upload(day, job_id)`: idempotent per job, never
+  below zero, the day the upload was charged even if the job ends after midnight). A `timeout` and every other failure keep
+  the charge; the per-address 10-an-hour window is never refunded. The client sees the fixed text only, no rate or projection;
+  the log line `upload refund job_id=<id> refunded=<True|False>` records the give-back (False: already given back or the day
+  had nothing to give). **Reading the `upload stages` line** (`flyctl logs -a semigraph`, one INFO line for
   every job that got past the parse stage, `ready` or any failure after it; none for a parse failure, `too_many_pages`,
   `too_many_tokens` or the page-quota refusal): `upload stages ws_hash=<h> job_id=<id> parse_s=<s> chunk_s=<s> embed_s=<s>
-  compare_s=<s> index_s=<s> chunks=<n> fresh=<n> done=<n> tokens=<n>`, a stage the job never reached left out. `fresh` is the
+  compare_s=<s> index_s=<s> chunks=<n> fresh=<n> done=<n> tokens=<n> projected_s=<s> aborted=too_slow cpu_usage_usec_start=<n>
+  cpu_nr_throttled_start=<n> cpu_throttled_usec_start=<n> cpu_usage_usec_end=<n> cpu_nr_throttled_end=<n> cpu_throttled_usec_end=<n>`,
+  a stage the job never reached left out. `projected_s` is the last projection of the abort rule (absent before the third chunk),
+  `aborted=too_slow` is present only when it fired; the `cpu_*` fields are the cgroup counters read from
+  `/sys/fs/cgroup/cpu.stat` at the embed's start and end (microseconds and counts; `nr_throttled` and `throttled_usec` rising
+  between the two show the machine's CPU throttle), each left out when the kernel does not offer it, never guessed. `fresh` is the
   chunks to embed (not reused), `done` how many were embedded when the loop ended: `done` below `fresh` is a stop inside the
   loop, and the `upload job failed ... job_id=<id> code=<code>` line with the same `job_id` names the exit. `tokens` is the
-  PLANNED freshly embedded tokens, also on a `timeout`, so compute the sustained share from a `ready` line only:
-  `tokens` / (85.8 x 1.18 x `embed_s`), and compare it with the 12% the ceiling was sized for. Nothing here reaches a client.
+  PLANNED freshly embedded tokens, also on a `timeout` or `too_slow`, so compute the sustained share from a `ready` line only:
+  `tokens` / `embed_s` (tokens a second), and compare it with the 5.54 tokens/s W1d measured as the worst rate that the cap was
+  sized for (the same rate as W1d's 10.1% burn share, which is measured differently and is not comparable to this line). Nothing here reaches a client.
 - **Isolation:** workspace data lives only in `User*` nodes keyed by `workspace_id`; the token is shown once and only its
   sha256 is stored; an unknown workspace and a wrong token both answer 404. Workspace answers are never cached, never use the
   agent, and are logged as counts only; the access log shows `<ws:hash>`.
