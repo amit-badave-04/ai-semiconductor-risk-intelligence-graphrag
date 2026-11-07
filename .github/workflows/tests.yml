@@ -31,15 +31,25 @@ on:
     branches: [master, main, v2]
   pull_request:
 
+# Least privilege: the token every job gets can only read the repository. A job that needs more states it and says why.
+# Every action is pinned to a full commit SHA with its release in a trailing `# vX.Y.Z` comment (a tag can be moved), and every
+# checkout sets persist-credentials: false (tests/test_web_pins.py pins all three). To bump one, resolve the new tag's commit with
+# `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` (dereference an annotated tag through git/tags/<sha>) and change every job's line.
+permissions:
+  contents: read
+
 jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
-      - uses: actions/setup-node@v7        # the page's pure functions are tested with `node --test` (no npm install)
+      # the page's pure functions are tested with `node --test` (no npm install)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.22.2"          # one Node everywhere: web/.node-version, the Dockerfile, the web job (tests/test_web_pins.py)
       - run: uv python install 3.13
@@ -54,8 +64,10 @@ jobs:
       DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
       DEEPEVAL_DISABLE_DOTENV: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
       - run: uv python install 3.13
@@ -67,13 +79,15 @@ jobs:
   serve-shipped:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: deploy/requirements-serve.txt
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.22.2"
       - name: Install the API image's pinned dependencies, pytest, and the package without its dependencies
@@ -109,14 +123,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.node-version
           cache: npm
           cache-dependency-path: web/package-lock.json
       # The fixture server is Python (the real serve routers over fakes), so this job sets Python up as the unit job does.
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
       - run: uv python install 3.13
@@ -192,8 +208,10 @@ jobs:
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: itest-throwaway-only  # gitleaks:allow
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
       - run: uv python install 3.13
@@ -218,11 +236,16 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
+    # Job-level scopes replace the workflow's: gitleaks-action lists a pull request's commits on pull_request events.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
       - name: Dependency vulnerability audit (advisory)
@@ -231,6 +254,6 @@ jobs:
           pip install pip-audit
           pip-audit -r deploy/requirements-serve.txt
       - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

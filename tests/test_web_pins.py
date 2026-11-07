@@ -35,6 +35,10 @@ REQUIRED = {
 LINUX_NATIVE = (r"(^|/)@rolldown/binding-linux-x64-gnu$", r"(^|/)lightningcss-linux-x64-gnu$",
                 r"(^|/)@tailwindcss/oxide-linux-x64-gnu$")
 REGISTRY = "https://registry.npmjs.org/"
+WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
+USES_LINE = re.compile(r"^\s*(?:-\s+)?uses:\s*(?P<ref>\S+)(?P<rest>.*)$")
+SHA_PIN = re.compile(r"^[\w.-]+/[\w.-]+(?:/[\w./-]+)?@[0-9a-f]{40}$")
+VERSION_COMMENT = re.compile(r"^\s+#\s*v\d+\.\d+\.\d+\s*$")
 
 
 @pytest.fixture(scope="module")
@@ -49,7 +53,7 @@ def lock() -> dict:
 
 @pytest.fixture(scope="module")
 def workflow() -> dict:
-    return yaml.safe_load((ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"))
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
 
 
 def npmrc() -> dict[str, str]:
@@ -190,10 +194,12 @@ def test_the_five_places_that_name_a_node_version_agree(workflow):
 
 # ---------------------------------------------------------------- the CI web job
 
-def test_no_job_still_uses_setup_node_v4(workflow):
-    uses = [str(s.get("uses", "")) for job in workflow["jobs"].values() for s in job["steps"]]
-    assert [u for u in uses if u.startswith("actions/setup-node@")]
-    assert not [u for u in uses if u == "actions/setup-node@v4"]
+def test_no_job_still_uses_setup_node_v4():
+    """Every ``uses:`` is a commit SHA now, so the version is read from its ``# vX.Y.Z`` comment."""
+    nodes = [m for m in uses_lines() if m["ref"].startswith("actions/setup-node@")]
+    assert len(nodes) == 3, [m["ref"] for m in nodes]                      # the unit, serve-shipped and web jobs
+    assert "actions/setup-node@v4" not in [m["ref"] for m in nodes]
+    assert all(int(re.match(r"\s*#\s*v(\d+)\.", m["rest"]).group(1)) >= 7 for m in nodes), [m["rest"] for m in nodes]
 
 
 def web_steps(workflow) -> list[dict]:
@@ -230,11 +236,11 @@ def test_the_web_job_never_lets_the_dist_contract_skip(workflow):
 
 def test_the_web_job_has_the_python_setup_the_fixture_server_needs(workflow):
     steps = web_steps(workflow)
-    uses = [str(s.get("uses", "")) for s in steps]
-    assert "astral-sh/setup-uv@v5" in uses
+    setup_uv = [i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("astral-sh/setup-uv@")]
+    assert len(setup_uv) == 1, setup_uv
     text = run_text(workflow)
     assert "uv python install 3.13" in text and "uv sync --extra serve --extra agent" in text
-    assert uses.index("astral-sh/setup-uv@v5") < max(i for i, s in enumerate(steps) if "uv sync" in str(s.get("run", "")))
+    assert setup_uv[0] < max(i for i, s in enumerate(steps) if "uv sync" in str(s.get("run", "")))
 
 
 def test_the_web_job_runs_on_the_same_triggers_and_is_not_gated_by_another_job(workflow):
@@ -244,3 +250,55 @@ def test_the_web_job_runs_on_the_same_triggers_and_is_not_gated_by_another_job(w
 
 def test_the_job_names_in_the_workflow_still_hold_the_existing_jobs(workflow):
     assert {"unit", "deepeval-wrapper", "serve-shipped", "neo4j-state", "security-scan", "web"} <= set(workflow["jobs"])
+
+
+# ---------------------------------------------------------------- workflow hardening (I1 security review: S10, S13)
+
+def uses_lines() -> list[re.Match[str]]:
+    """Each ``uses:`` line of the workflow file as text (the YAML parser drops the trailing comment this needs)."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    return [m for line in text.splitlines() if (m := USES_LINE.match(line))]
+
+
+def test_every_action_is_pinned_to_a_full_commit_sha_with_a_version_comment(workflow):
+    """A tag is a movable pointer: a compromised or force-moved ``v4`` would run attacker code in a job that holds the
+    token. The 40-hex commit cannot move, and ``# vX.Y.Z`` is what a reviewer (and the next bump) reads it as."""
+    found = uses_lines()
+    parsed = [str(s["uses"]) for job in workflow["jobs"].values() for s in job["steps"] if "uses" in s]
+    assert len(parsed) >= 16, "the workflow lost an action step"
+    assert [m["ref"] for m in found] == parsed, "a `uses:` line the text scan and the YAML parse disagree on"
+    for m in found:
+        assert SHA_PIN.match(m["ref"]), f"{m['ref']}: pin it to a full 40-hex commit SHA, not a tag or branch"
+        assert VERSION_COMMENT.match(m["rest"]), f"{m['ref']}: add a trailing `# vX.Y.Z` comment, got {m['rest']!r}"
+
+
+def test_one_action_has_the_same_pin_in_every_job():
+    pins: dict[str, set[tuple[str, str]]] = {}
+    for m in uses_lines():
+        action, sha = m["ref"].split("@")
+        pins.setdefault(action, set()).add((sha, m["rest"].strip()))
+    assert pins, "no `uses:` line found"
+    assert {action: sorted(p) for action, p in pins.items() if len(p) > 1} == {}
+
+
+def test_the_workflow_token_is_read_only(workflow):
+    assert workflow.get("permissions") == {"contents": "read"}, workflow.get("permissions")
+    widened = {name: job["permissions"] for name, job in workflow["jobs"].items() if "write" in str(job.get("permissions", ""))}
+    assert widened == {}, "a job that needs a write scope states it and says why"
+
+
+def test_every_checkout_leaves_no_token_in_the_git_config(workflow):
+    checkouts = [(name, step) for name, job in workflow["jobs"].items() for step in job["steps"]
+                 if str(step.get("uses", "")).startswith("actions/checkout@")]
+    assert len(checkouts) >= 6, [name for name, _ in checkouts]
+    for name, step in checkouts:
+        assert step.get("with", {}).get("persist-credentials") is False, name
+
+
+def test_playwright_never_reuses_a_server_that_is_already_on_the_port():
+    """S13: a server already listening there (a developer's real-settings app) must never stand in for the guarded fixture
+    server, locally or in CI, so both web servers state ``reuseExistingServer: false`` (no ``!process.env.CI`` either)."""
+    lines = (WEB / "playwright.config.ts").read_text(encoding="utf-8").splitlines()
+    code = "\n".join(line for line in lines if not line.lstrip().startswith("//"))
+    assert len(re.findall(r"\bcommand:", code)) == 2, "a web server was added: it needs the same pin"
+    assert re.findall(r"\breuseExistingServer:\s*([^,}\s]+)", code) == ["false", "false"]

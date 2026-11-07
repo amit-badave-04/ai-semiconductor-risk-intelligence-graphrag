@@ -19,8 +19,10 @@ export default defineConfig({
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: { baseURL: PREVIEW, trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // Never reuse a server that is already on the port (locally or in CI): it could be the real-settings app, and the tests
+  // must only ever talk to the guarded fixture server started here. Playwright then fails fast if the port is taken.
   webServer: [
-    { command: serve(PREVIEW_PORT, "--ui-v2-preview"), cwd: repoRoot, url: `${PREVIEW}/api/config`, reuseExistingServer: !process.env.CI, timeout: 180_000 },
-    { command: serve(FLIPPED_PORT, "--ui-v2"), cwd: repoRoot, url: `${FLIPPED}/api/config`, reuseExistingServer: !process.env.CI, timeout: 180_000 },
+    { command: serve(PREVIEW_PORT, "--ui-v2-preview"), cwd: repoRoot, url: `${PREVIEW}/api/config`, reuseExistingServer: false, timeout: 180_000 },
+    { command: serve(FLIPPED_PORT, "--ui-v2"), cwd: repoRoot, url: `${FLIPPED}/api/config`, reuseExistingServer: false, timeout: 180_000 },
   ],
 });
