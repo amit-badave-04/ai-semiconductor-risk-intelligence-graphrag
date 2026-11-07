@@ -210,12 +210,12 @@ def ledger_summary(driver: Driver) -> dict:
     and cached by the stats endpoint) counts + estimated spend."""
     out = {"today": {"paid": 0, "cached": 0, "cost_usd": 0.0},
            "all_time": {"paid": 0, "cached": 0, "cost_usd": 0.0}}
-    today = run_cypher(driver, """MATCH (q:SvcQuery {day: $day})
+    today_rows = run_cypher(driver, """MATCH (q:SvcQuery {day: $day})
         RETURN q.cached AS cached, count(q) AS n, sum(coalesce(q.cost_usd, 0.0)) AS cost""",
-                       day=today())
-    all_time = run_cypher(driver, """MATCH (q:SvcQuery)
+                            day=today())
+    all_time_rows = run_cypher(driver, """MATCH (q:SvcQuery)
         RETURN q.cached AS cached, count(q) AS n, sum(coalesce(q.cost_usd, 0.0)) AS cost""")
-    for scope, rows in (("today", today), ("all_time", all_time)):
+    for scope, rows in (("today", today_rows), ("all_time", all_time_rows)):
         for r in rows:
             out[scope]["cached" if r["cached"] else "paid"] += r["n"]
             out[scope]["cost_usd"] = round(out[scope]["cost_usd"] + (r["cost"] or 0.0), 4)

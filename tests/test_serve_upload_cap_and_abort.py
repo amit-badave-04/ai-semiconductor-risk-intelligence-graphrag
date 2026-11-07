@@ -897,3 +897,41 @@ def test_today_is_the_utc_day_not_the_local_day(monkeypatch):
     monkeypatch.setattr(store, "datetime", LocalAheadDatetime)
     monkeypatch.setattr(store, "date", LocalAheadDate)
     assert store.today() == DAY
+
+
+def test_the_ledger_summary_counts_today_and_all_time_rows(monkeypatch):
+    """Regression (CI neo4j-state, 2026-11-08): after ``store._today`` became ``store.today``, a local named ``today`` in
+    ``ledger_summary`` shadowed it and the summary raised UnboundLocalError. Only the real-Neo4j job reached it."""
+    calls = []
+
+    def fake_run_cypher(driver, query, **params):
+        calls.append(params)
+        if "day" in params:
+            return [{"cached": False, "n": 2, "cost": 0.5}, {"cached": True, "n": 1, "cost": None}]
+        return [{"cached": False, "n": 5, "cost": 1.25}]
+
+    monkeypatch.setattr(store, "run_cypher", fake_run_cypher)
+    monkeypatch.setattr(store, "today", lambda: DAY)
+    assert store.ledger_summary(object()) == {"today": {"paid": 2, "cached": 1, "cost_usd": 0.5},
+                                              "all_time": {"paid": 5, "cached": 0, "cost_usd": 1.25}}
+    assert calls[0] == {"day": DAY} and len(calls) == 2
+
+
+def test_no_function_binds_a_local_today_while_calling_today():
+    """The class of the bug above, anywhere in the package: a function that assigns a name ``today`` and calls a bare
+    ``today()`` makes that call reach the unassigned local (UnboundLocalError)."""
+    import ast
+    import pathlib
+
+    package = pathlib.Path(store.__file__).resolve().parents[1]
+    hits = []
+    for path in sorted(package.rglob("*.py")):
+        for fn in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            nodes = list(ast.walk(fn))
+            binds = any(isinstance(n, ast.Name) and n.id == "today" and isinstance(n.ctx, ast.Store) for n in nodes)
+            calls = any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "today" for n in nodes)
+            if binds and calls:
+                hits.append(f"{path.name}:{fn.lineno} {fn.name}")
+    assert hits == []
