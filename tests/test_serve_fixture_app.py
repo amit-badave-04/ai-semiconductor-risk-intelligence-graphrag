@@ -34,7 +34,7 @@ def clean_environment(monkeypatch):
     """A variable left in the developer's shell (or a CI job) must neither set nor clear what these tests build."""
     for name in Settings.model_fields:
         monkeypatch.delenv(name.upper(), raising=False)
-    monkeypatch.setenv("LITELLM_MODE", "DEV")      # main() forces PRODUCTION in this process; this makes teardown put it back
+    monkeypatch.setenv("LITELLM_MODE", "PRODUCTION")  # as tests/conftest.py forces; main() forces it too, teardown restores it
 
 SCRIPT = Path(__file__).parent / "e2e" / "serve_fixture_app.py"
 INDEX_HTML = '<!doctype html><html><head><title>dist</title></head><body><div id="root"></div></body></html>'

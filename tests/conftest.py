@@ -1,6 +1,11 @@
-"""Fixtures every test gets. Only ``pytest`` is imported here: this file is loaded by the serve-shipped CI selection too."""
+"""Fixtures every test gets. Only ``os`` and ``pytest`` are imported here: this file is loaded by the serve-shipped CI selection too."""
 
-import pytest
+import os
+
+# litellm loads the owner's .env on import unless LITELLM_MODE is not DEV (it would put every key in os.environ): force it, first.
+os.environ["LITELLM_MODE"] = "PRODUCTION"
+
+import pytest  # noqa: E402 - after the assignment above, on purpose
 
 # The four variables LiteLLM reads from the process environment to send a model call somewhere else. Production REFUSES to
 # boot while one is set (``config.Settings``), and a developer shell or a gateway wrapper may export one of them (Claude
