@@ -361,12 +361,17 @@ new image stores an HMAC-SHA-256 under a secret pepper, and writes the pepper's 
    `(q:SvcQuery)` is then run as a command.)
 6. **Only on the owner's explicit go**, null the old hashes. This is **IRREVERSIBLE**: those rows lose their address hash
    for good. The script (`scripts/null_legacy_ip_hashes.py`) runs on the API machine, against its own Neo4j; the runtime
-   image carries only the installed package, so put the script there first:
+   image carries only the installed package, so put the script there first, in a directory only root can use. Not in `/tmp`,
+   which is writable by everyone. Ad-hoc operator scripts run isolated (`python -I`: the script's own directory, the working
+   directory and the user site stay off the import path and every `PYTHON*` variable is ignored; the app's settings are not
+   `PYTHON*` variables, so they still come from the machine's environment) from that root-only directory. The run changes
+   into it first, so it does not depend on the ssh session's working directory:
    ```
+   flyctl ssh console -a semigraph -C "mkdir -m 700 -p /root/ops"
    flyctl ssh sftp shell -a semigraph
-       put scripts/null_legacy_ip_hashes.py /tmp/null_legacy_ip_hashes.py
-   flyctl ssh console -a semigraph -C "python /tmp/null_legacy_ip_hashes.py"        # dry run: counts, changes nothing
-   flyctl ssh console -a semigraph -C "python /tmp/null_legacy_ip_hashes.py --yes"  # the IRREVERSIBLE null
+       put scripts/null_legacy_ip_hashes.py /root/ops/null_legacy_ip_hashes.py
+   flyctl ssh console -a semigraph -C "sh -c 'cd /root/ops && python -I null_legacy_ip_hashes.py'"        # dry run: counts, changes nothing
+   flyctl ssh console -a semigraph -C "sh -c 'cd /root/ops && python -I null_legacy_ip_hashes.py --yes'"  # the IRREVERSIBLE null
    ```
    The dry run prints which database it would act on (host and port, never a password). The script builds the app's
    settings from the machine's environment, so the production validators run in the ssh session too: if the session has
@@ -643,7 +648,7 @@ do not rely on it). A copy left in `.env.fly` is harmless (not pushed) and can b
 (with an empty escalation model, or the same model in both roles, Sonnet streams every answer live and nothing is
 buffered), then `flyctl deploy --ha=false --remote-only --yes`. Without editing the repo (a secret change restarts the machines): `flyctl secrets set ANSWER_MODEL=anthropic/claude-sonnet-5`
 and `flyctl secrets unset ESCALATION_MODEL` (subject to the caveat above). Check the models from inside the container without
-the bot gate: `flyctl ssh console -a semigraph -C "python -c ..."` calling `litellm.completion(**completion_params(model, n))`.
+the bot gate: `flyctl ssh console -a semigraph -C "python -I -c ..."` calling `litellm.completion(**completion_params(model, n))`.
 
 **What the page's answer badge means** (from the `done` event; it never says more than what happened): *routed* = a
 change-over-time question went straight to `ESCALATION_MODEL` with no cheap draft; *escalated after a failed check (reasons)* =
@@ -764,9 +769,8 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
 - **Turnstile** is mandatory for creating a workspace and for each upload (`X-Turnstile-Token` header, checked before the body
   is read). Without `TURNSTILE_SECRET_KEY` in production these routes answer 503.
 - **Parsing** runs in a separate process with a 1 GiB address-space limit, a 90 s timeout and no secrets in its environment;
-  only the parsed text comes back. The API process marks itself non-dumpable at boot, so that child cannot read the API's
-  secrets through `/proc` either (the boot log says "process marked non-dumpable"). `flyctl ssh console` runs as root and
-  still reads `/proc/<pid>/status` for memory checks.
+  only the parsed text comes back. The API process marks itself non-dumpable at boot (the boot log says "process marked
+  non-dumpable"). `flyctl ssh console` runs as root and still reads `/proc/<pid>/status` for memory checks.
 - **Deletion:** `DELETE /api/workspace/{id}` removes everything at once; a sweeper deletes expired workspaces every 15 minutes
   (it runs even when `UPLOADS_ENABLED` is off). A dump swap of the database (see "Updating the graph") also deletes every live
   workspace.

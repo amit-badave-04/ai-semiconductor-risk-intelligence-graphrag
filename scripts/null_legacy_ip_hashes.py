@@ -13,12 +13,16 @@ Run it once, at the cutover, on the owner's go, after the image that writes ``ip
 pepper would keep adding legacy rows). It must run on the serve machine against its own Neo4j (the database is private
 on Fly) and reads its connection settings from that machine's environment. The runtime image ships only the installed
 package, so put the script on the machine first (production refuses to start without IP_HASH_PEPPER, so the machine's
-environment must carry it), then run it there:
+environment must carry it), then run it there. Stage it in a directory only root can use, never in /tmp (which is writable by
+everyone): ad-hoc operator scripts run isolated (python -I, which leaves out the script's directory, the working directory, the
+user site and every PYTHON* variable; the app's settings are none of those) from that root-only directory. The run changes into
+it first, so it does not depend on the ssh session's working directory:
 
+    flyctl ssh console -a semigraph -C "mkdir -m 700 -p /root/ops"
     flyctl ssh sftp shell -a semigraph
-        put scripts/null_legacy_ip_hashes.py /tmp/null_legacy_ip_hashes.py
-    flyctl ssh console -a semigraph -C "python /tmp/null_legacy_ip_hashes.py"        # dry run: counts, changes nothing
-    flyctl ssh console -a semigraph -C "python /tmp/null_legacy_ip_hashes.py --yes"  # the IRREVERSIBLE null
+        put scripts/null_legacy_ip_hashes.py /root/ops/null_legacy_ip_hashes.py
+    flyctl ssh console -a semigraph -C "sh -c 'cd /root/ops && python -I null_legacy_ip_hashes.py'"        # dry run: counts, changes nothing
+    flyctl ssh console -a semigraph -C "sh -c 'cd /root/ops && python -I null_legacy_ip_hashes.py --yes'"  # the IRREVERSIBLE null
 
 Check afterwards:  MATCH (q:SvcQuery) WHERE q.ip_hash IS NOT NULL AND q.ip_hash_v IS NULL RETURN count(q)  ->  0.
 Exit status: 0 on success (or a dry run); 1 when it could not connect, a query failed, or legacy rows remain. Only the
