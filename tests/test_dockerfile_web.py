@@ -3,7 +3,11 @@
 Docker is not available to these tests, so they pin the file itself: the stage order (the runtime image stays the LAST stage, so
 it stays the default target), the digest-pinned Node base, the lockfile-only install with scripts off, the copy of the built app
 into the runtime stage AFTER the 1 GB model layer (a web change must not invalidate it), and that no Node, npm or build output
-leaks into the runtime stage. The model stage is covered by ``test_dockerfile_embedder.py`` and is not touched here.
+leaks into the runtime stage. The working directory is root-owned (H1, owner-approved 2026-11-07): ``/srv`` and the models
+under it stay root-owned (no ``chown`` of ``/srv``, no ``--chown`` on the model copy), so the serving user can write nothing on
+the import path or under ``/srv``; ``PYTHONSAFEPATH=1`` keeps the working directory off ``sys.path`` and ``PYTHONNOUSERSITE=1``
+keeps the user site of ``/home/app`` off it. The model stage is covered by ``test_dockerfile_embedder.py`` and is not touched
+here.
 """
 
 import re
@@ -13,6 +17,16 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "Dockerfile"
 DOCKERIGNORE = ROOT / ".dockerignore"
 WEB_FROM = re.compile(r"^FROM node:24\.22\.2-slim@sha256:[0-9a-f]{64} AS web$")
+MODEL_COPY = "COPY --from=model /models /srv/models"    # no --chown: models are root-owned and read-only to the serving user
+WEB_COPY = "COPY --from=web --chown=app:app /web/dist /srv/web"
+# The build fails here, not the first boot, when the serving user could not read what the root-owned copy brought in: the files
+# keep the mode they had in the model stage (reasoned 0644 and 0755; nothing measured, no Docker on this desktop).
+MODEL_READABLE = ('RUN test -f "$ONNX_MODEL_PATH" && test -z "$(find /srv/models ! -name \'*.py\' '
+                  r'\( \( -type f ! -perm -004 \) -o \( -type d ! -perm -005 \) \) -print -quit)"')
+WORKDIR_SRV = "WORKDIR /srv"
+USERADD = "RUN useradd --create-home --shell /usr/sbin/nologin app"
+SAFE_PATH = "PYTHONSAFEPATH=1"
+NO_USER_SITE = "PYTHONNOUSERSITE=1"
 
 
 def instructions(text: str) -> list[str]:
@@ -73,10 +87,56 @@ def test_the_web_stage_installs_from_the_lockfile_with_scripts_off_and_builds_on
 
 def test_the_runtime_stage_gets_the_built_app_after_the_model_layer():
     runtime = STAGES["runtime"]
-    model_copy = "COPY --from=model --chown=app:app /models /srv/models"
-    web_copy = "COPY --from=web --chown=app:app /web/dist /srv/web"
-    assert model_copy in runtime and web_copy in runtime
-    assert runtime.index(model_copy) < runtime.index(web_copy) < runtime.index("USER app")
+    assert MODEL_COPY in runtime and WEB_COPY in runtime
+    assert runtime.index(MODEL_COPY) < runtime.index(WEB_COPY) < runtime.index("USER app")
+
+
+# ---------------------------------------------------------------- the working directory and the models (H1, 2026-11-07)
+
+def test_nothing_under_srv_is_handed_to_the_serving_user():
+    """``/srv`` is the working directory of the server and of every upload worker. The user is created without a ``chown`` of it
+    and the model layer is copied without ``--chown``, so the serving user can write nothing on the import path or under ``/srv``
+    but the built app, which the web copy hands over at this step (it moves in the next commit). The only ``chown`` left in the
+    runtime stage is that one ``--chown`` on the web copy. Docker is not available to these tests: this pins the file, so the
+    ownership itself is not measured in an image."""
+    runtime = STAGES["runtime"]
+    assert USERADD in runtime
+    assert [step for step in runtime if "chown" in step] == [WEB_COPY]
+    assert MODEL_COPY in runtime and "--chown" not in MODEL_COPY
+
+
+def test_the_server_starts_in_srv_which_the_image_creates_as_root():
+    """The working directory of ``CMD`` (and so of every child the server starts: none sets ``cwd=``) is the last ``WORKDIR``
+    before the user switch. ``WORKDIR`` makes the directory as root, and no step hands it on (the test above)."""
+    runtime = STAGES["runtime"]
+    before_user = runtime[: runtime.index("USER app")]
+    assert [step for step in before_user if step.startswith("WORKDIR ")][-1] == WORKDIR_SRV
+    assert runtime[-1].startswith("CMD ") and runtime.index("USER app") < len(runtime) - 1
+
+
+def test_the_runtime_stage_takes_the_working_directory_and_the_user_site_off_the_import_path():
+    """``PYTHONSAFEPATH=1`` (Python 3.11+) for the server (``python -m ...`` puts the working directory first on ``sys.path``)
+    and ``PYTHONNOUSERSITE=1`` for the one directory the serving user owns (``/home/app``). The sandboxed workers do not inherit
+    them (their environment is an allowlist), so they carry ``-P`` and ``-s`` on their own argv
+    (``tests/test_sandbox_safe_path.py``). Both are set before the user switch, in an ``ENV`` of their own after the first one,
+    which the embedder test reads for ``ONNX_MODEL_PATH``."""
+    runtime = STAGES["runtime"]
+    envs = [step for step in runtime if step.startswith("ENV ")]
+    for setting in (SAFE_PATH, NO_USER_SITE):
+        assert any(setting in step.split() for step in envs), (setting, envs)
+        assert runtime.index(next(step for step in envs if setting in step.split())) < runtime.index("USER app"), setting
+        assert not any(setting in step for name in ("model", "web") for step in STAGES[name])   # those stages run no Python for the app
+
+
+def test_the_model_files_are_checked_readable_by_the_serving_user_at_build_time():
+    """Without ``--chown`` the model files keep the owner and mode they had in the model stage. A mode that left them
+    unreadable to ``app`` would otherwise show only at the first boot; this step fails the image build instead. It covers every
+    model directory under ``/srv/models`` (a ``KEEP_UNPATCHED`` image holds the 8-bit model beside the fp32 one, and a staging
+    app may serve either), not only the default model's, and skips the ``*.py`` probe scripts, which root runs. It sits right
+    after the model copy and before the user switch, so it runs as root against exactly the files that were copied."""
+    runtime = STAGES["runtime"]
+    assert MODEL_READABLE in runtime
+    assert runtime.index(MODEL_COPY) < runtime.index(MODEL_READABLE) < runtime.index("USER app")
 
 
 def test_the_dist_lands_where_the_settings_default_looks_for_it():

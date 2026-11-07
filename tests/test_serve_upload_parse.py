@@ -392,7 +392,7 @@ def test_parse_error_carries_no_exc_type_by_default():
 def test_worker_command_invokes_the_real_module():
     cmd = parse._worker_command("pdf", 30)
     assert cmd[0] == sys.executable
-    assert cmd[1:] == ["-m", "semigraph.uploads.parse_worker", "pdf", "30"]
+    assert cmd[1:] == ["-s", "-P", "-m", "semigraph.uploads.parse_worker", "pdf", "30"]      # -s -P: no user site, no cwd on sys.path (test_sandbox_safe_path.py)
 
 
 def test_parse_error_rejects_unknown_code():

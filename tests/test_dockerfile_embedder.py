@@ -98,7 +98,7 @@ def test_nothing_else_in_the_runtime_stage_changes_with_the_variant():
 
     assert "predequantize" not in text and "embedder_timing" not in text and "KEEP_UNPATCHED" not in text
     assert "embed_rss" not in text
-    assert "COPY --from=model --chown=app:app /models /srv/models" in RUNTIME
+    assert "COPY --from=model /models /srv/models" in RUNTIME        # root-owned since the 2026-11-07 review (test_dockerfile_web.py)
 
 
 def test_pymupdf_is_in_no_stage():

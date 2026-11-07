@@ -69,12 +69,27 @@ RUN uv pip install --system --no-cache -r deploy/requirements-serve.txt
 COPY pyproject.toml README.md ./
 COPY src/ src/
 RUN uv pip install --system --no-cache --no-deps .
-# Never run as root; port 8080 needs no privileges. The 1 GB model layer is
-# copied with its final owner so no chown re-writes it as a second layer.
-RUN useradd --create-home --shell /usr/sbin/nologin app && chown -R app:app /srv
-COPY --from=model --chown=app:app /models /srv/models
+# Never run as root; port 8080 needs no privileges. Nothing under /srv is handed to that user: /srv (the working directory of the
+# server and of every upload worker it starts) and everything under it stay root-owned, so the serving user can write nothing on
+# the import path or under /srv. The serving code writes nothing under /srv (state is in the database, temporary files go to
+# /tmp). The one directory app does own is its home, /home/app (--create-home); PYTHONNOUSERSITE below keeps that user site off
+# the import path.
+RUN useradd --create-home --shell /usr/sbin/nologin app
+# The model layer is copied WITHOUT --chown (root-owned, like everything else here): models are root-owned and read-only to the
+# serving user. The files keep the mode they had in the model stage, so the next step fails the BUILD (not the first boot) if app
+# could not read one: the default model file must exist, and every model directory under /srv/models (a KEEP_UNPATCHED image
+# holds the 8-bit one next to the fp32 one, and a staging app may point at either) must be world-readable, apart from the *.py
+# probe scripts, which root runs.
+COPY --from=model /models /srv/models
+RUN test -f "$ONNX_MODEL_PATH" \
+ && test -z "$(find /srv/models ! -name '*.py' \( \( -type f ! -perm -004 \) -o \( -type d ! -perm -005 \) \) -print -quit)"
 # The built app goes in AFTER the model layer, so a web change never invalidates the 1 GB model copy above.
 COPY --from=web --chown=app:app /web/dist /srv/web
+# PYTHONSAFEPATH=1 (Python 3.11+) keeps the working directory off sys.path for the server (`python -m ...`), and
+# PYTHONNOUSERSITE=1 keeps the user site of /home/app off it, for the server and for anything that inherits them. The sandboxed
+# upload workers get an allowlisted environment instead, so they start with -s -P on their own command line (uploads/sandbox.py
+# module_command). Set after the build steps above.
+ENV PYTHONSAFEPATH=1 PYTHONNOUSERSITE=1
 USER app
 EXPOSE 8080
 CMD ["python", "-m", "semigraph.serve.drain"]

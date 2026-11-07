@@ -1,6 +1,6 @@
 """Runs the upload parser in a sandboxed subprocess and returns its result (M4_PLAN.md 4.2, 5, 14.2).
 
-``parse_document`` launches ``python -m semigraph.uploads.parse_worker <kind> <max_pages>`` through the SHARED
+``parse_document`` launches ``python -s -P -m semigraph.uploads.parse_worker <kind> <max_pages>`` through the SHARED
 sandbox runner (:mod:`semigraph.uploads.sandbox`, extracted for reuse by the comparison worker — section 1 of the
 plan's revision 6), writes the raw document bytes to its stdin, reads its stdout capped at :data:`MAX_OUTPUT_BYTES`,
 and enforces the wall timeout (the worker sets its OWN ``RLIMIT_AS`` / ``RLIMIT_CPU`` on Linux, before importing any
@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from dataclasses import dataclass
 
 from . import sandbox
@@ -25,7 +24,7 @@ DEFAULT_TIMEOUT_S = 90
 DEFAULT_MAX_PAGES = 30
 _ALLOWED_KIND_HINTS = frozenset({"heading_style", "heading_md", "heading_html", "table", "paragraph"})
 # exception classes serious enough (a broken native dependency, an exhausted resource) to log at ERROR rather than
-# WARNING: a parser RCE / broken build is otherwise indistinguishable from an ordinary bad upload (finding #28).
+# WARNING: a broken build is otherwise indistinguishable from an ordinary bad upload (finding #28).
 _SEVERE_EXC_TYPES = frozenset({"ImportError", "ModuleNotFoundError", "OSError", "MemoryError"})
 
 logger = logging.getLogger("semigraph.uploads.parse")
@@ -70,7 +69,7 @@ class ParsedDoc:
 def _worker_command(kind: str, max_pages: int) -> list[str]:
     """The child argv; a module-level function so tests can monkeypatch it to a fixture worker (e.g. one that
     sleeps, to exercise the timeout path) without an importable fake module."""
-    return [sys.executable, "-m", "semigraph.uploads.parse_worker", kind, str(max_pages)]
+    return sandbox.module_command("semigraph.uploads.parse_worker", kind, str(max_pages))
 
 
 def _child_env() -> dict[str, str]:

@@ -13,7 +13,8 @@ Three things live here:
 - :func:`run_sandboxed_command` — the actual Popen/timeout/kill/output-cap machinery, taking an already-built
   ``cmd`` (so a test can substitute an arbitrary command, e.g. a fixture worker that sleeps, without needing a
   second importable module) — and :func:`run_sandboxed`, a convenience wrapper that builds
-  ``python -m <module> <args...>``.
+  ``python -s -P -m <module> <args...>`` (:func:`module_command`: ``-P`` keeps the working directory and ``-s`` the user site
+  off ``sys.path``).
 - :func:`apply_sandbox_limits` — moved here from ``parse_worker.py`` unchanged (docs/v2/M4_PLAN.md 14.2): lowers
   ``RLIMIT_AS`` (1 GiB) and ``RLIMIT_CPU`` (120 s) for THIS process on Linux only, called by a worker's ``__main__``
   guard as its FIRST statement — before importing any parser or the aligner and before reading stdin — and NEVER
@@ -64,9 +65,9 @@ class SandboxResult:
 
 
 def child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
-    """An ALLOWLISTED environment for a sandboxed child, never a copy of the parent's (finding #6): a parser or
-    aligner RCE on untrusted bytes must not be able to read ``ANTHROPIC_API_KEY`` / ``ADMIN_TOKEN`` /
-    ``TURNSTILE_SECRET_KEY`` / the Neo4j password, or reach the Neo4j network with them. ``extra`` (e.g.
+    """An ALLOWLISTED environment for a sandboxed child, never a copy of the parent's (finding #6): a worker
+    handling untrusted bytes gets only the variables it needs and none of ``ANTHROPIC_API_KEY`` / ``ADMIN_TOKEN`` /
+    ``TURNSTILE_SECRET_KEY`` / the Neo4j password (least privilege). ``extra`` (e.g.
     :data:`SCIPY_BLAS_THREAD_ENV`) is merged in on top of the base allowlist for callers that need additional,
     still-fixed, non-secret variables."""
     src_dir = str(Path(semigraph.__file__).resolve().parent.parent)
@@ -168,11 +169,22 @@ def run_sandboxed_command(cmd: list[str], stdin: bytes, *, timeout_s: int, max_o
     return SandboxResult(stdout=stdout_bytes, returncode=proc.returncode)
 
 
+def module_command(module: str, *args: str) -> list[str]:
+    """The argv of a sandboxed worker: ``python -s -P -m <module> <args...>``. EVERY worker command is built here (the parse
+    worker's in ``uploads.parse`` too). A worker imports only from the image's own install and ``PYTHONPATH``: ``-P`` (Python
+    3.11+) keeps the working directory off ``sys.path`` (``-m`` would otherwise put it first) and ``-s`` keeps the user site
+    directory off it (it is found through the passwd entry even when the child's environment has no ``HOME``). They are argv flags
+    and not ``PYTHONSAFEPATH`` / ``PYTHONNOUSERSITE`` in :func:`child_env`, because that environment is an exact allowlist and a flag
+    does not depend on what the parent's environment holds. Not ``-I``: it implies ``-E``, which would drop the ``PYTHONPATH`` the
+    child needs."""
+    return [sys.executable, "-s", "-P", "-m", module, *args]
+
+
 def run_sandboxed(module: str, args: list[str], stdin: bytes, *, timeout_s: int, max_output_bytes: int,
                   env_extra: dict[str, str] | None = None) -> SandboxResult:
-    """Convenience wrapper: runs ``python -m <module> <args...>`` with the allowlisted child environment
-    (:func:`child_env`, plus ``env_extra`` when given)."""
-    cmd = [sys.executable, "-m", module, *args]
+    """Convenience wrapper: runs ``python -s -P -m <module> <args...>`` (:func:`module_command`) with the allowlisted child
+    environment (:func:`child_env`, plus ``env_extra`` when given)."""
+    cmd = module_command(module, *args)
     return run_sandboxed_command(cmd, stdin, timeout_s=timeout_s, max_output_bytes=max_output_bytes,
                                  env=child_env(env_extra))
 
