@@ -15,6 +15,7 @@ import builtins
 import dataclasses
 import inspect
 import json
+import random
 import re
 
 import pytest
@@ -127,15 +128,16 @@ def test_the_worst_measured_rate_completes_a_cap_job(world, refunds):
 
 
 def test_a_projection_exactly_at_the_ceiling_does_not_abort(world, refunds):
-    """Exact binary steps: 10 chunks of 8 tokens at 4 s each, so every projection from the third chunk on is exactly 40 s."""
-    world.document(chunk_texts(10, 8))
+    """Exact binary steps: 10 chunks of 400 tokens at 4 s each, so every projection from the third chunk on (1,200 tokens, over the
+    1,024 floor) is exactly 40 s."""
+    world.document(chunk_texts(10, 400))
     events = world.run(steps(world.clock, 4), ceiling=40, charged_day=DAY)
 
     assert last_event(events)["state"] == "ready" and refunds == []
 
 
 def test_a_projection_one_tick_over_the_ceiling_aborts(world, refunds):
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     embedder = steps(world.clock, 4)
     events = world.run(embedder, ceiling=39, charged_day=DAY)
 
@@ -143,8 +145,9 @@ def test_a_projection_one_tick_over_the_ceiling_aborts(world, refunds):
 
 
 def test_the_first_two_chunks_never_abort(world, refunds):
-    """Chunk 1 projects 400 s against a 200 s ceiling, chunk 2 the same: neither stops the job; the third does."""
-    world.document(chunk_texts(10, 5))
+    """Chunks of 600 tokens: after chunk 2 the 1,200 embedded tokens are over the floor and the projection is 400 s against a 200 s
+    ceiling, but fewer than three chunks never abort; the third does."""
+    world.document(chunk_texts(10, 600))
     embedder = steps(world.clock, 40)
     events = world.run(embedder, ceiling=200, charged_day=DAY)
 
@@ -152,8 +155,9 @@ def test_the_first_two_chunks_never_abort(world, refunds):
 
 
 def test_a_three_chunk_job_whose_early_projections_are_over_the_ceiling_still_completes(world, refunds):
-    """Chunks 1 and 2 project 120 s against 100 s and are skipped; chunk 3 is the last, so no projection is made."""
-    world.document(chunk_texts(3, 5))
+    """Chunks of 600 tokens: chunk 2 (floor met) projects 120 s against 100 s and is skipped (two chunks); chunk 3 is the last, so
+    no projection is made."""
+    world.document(chunk_texts(3, 600))
     embedder = steps(world.clock, 40)
     events = world.run(embedder, ceiling=100, charged_day=DAY)
 
@@ -161,15 +165,41 @@ def test_a_three_chunk_job_whose_early_projections_are_over_the_ceiling_still_co
 
 
 def test_the_projection_counts_the_fresh_chunks_of_this_job_only(world, refunds):
-    """A re-upload with 3 of 10 chunks already embedded plans 7 chunks (56 tokens): after 3 fresh chunks (12 s) the projection is
-    12 x 56 / 24 = 28 s, under a 30 s ceiling, so it completes; counting all 10 chunks (80 tokens) it would be 40 s and abort."""
-    texts = chunk_texts(10, 8)
+    """A re-upload with 3 of 10 chunks already embedded plans 7 chunks (2,800 tokens): after 3 fresh chunks (12 s) the projection
+    is 12 x 2,800 / 1,200 = 28 s, under a 30 s ceiling, so it completes; counting all 10 chunks (4,000 tokens) it would be 40 s."""
+    texts = chunk_texts(10, 400)
     world.document(texts)
     world.repo.embedded[DOC] = {content_hash(t): [0.1] for t in texts[:3]}
     embedder = steps(world.clock, 4)
     events = world.run(embedder, ceiling=30, charged_day=DAY)
 
     assert last_event(events)["state"] == "ready" and embedder.calls == 7 and refunds == []
+
+
+def test_the_chunk_projection_counts_the_total_of_fresh_chunks_only(world, refunds):
+    """A re-upload: 6 chunks already embedded, then 9 one-token and five 400-token fresh chunks (fixed 10 s a call plus 0.1 s a
+    token, ceiling 400 s; true finish 351 s). At fresh chunk 12 the token projection is 400.3 s (past) and the chunk projection
+    is 240.9 x 14 / 12 = 281 s (not past); counting the 6 embedded chunks in the total it would be 240.9 x 20 / 12 = 401.5 s and
+    the job would be aborted."""
+    old = texts_of([400] * 6)
+    world.document(old + [f"t{i}" for i in range(9)] + chunk_texts(5, 400))
+    world.repo.embedded[DOC] = {content_hash(t): [0.1] for t in old}
+    embedder = fixed_cost(world.clock, 10.0, 0.1)
+    events = world.run(embedder, ceiling=400, charged_day=DAY)
+
+    assert last_event(events)["state"] == "ready" and embedder.calls == 14 and refunds == []
+
+
+def test_the_chunk_projection_counts_the_done_fresh_chunks_only(world, refunds):
+    """A slow re-upload: 3 of 10 chunks already embedded, 7 fresh at 10 s each, ceiling 60 s: after 3 fresh chunks both projections
+    are 70 s, so it aborts there; counting the 3 embedded chunks as done the chunk projection would be 30 x 10 / 6 = 50 s."""
+    texts = chunk_texts(10, 400)
+    world.document(texts)
+    world.repo.embedded[DOC] = {content_hash(t): [0.1] for t in texts[:3]}
+    embedder = steps(world.clock, 10)
+    events = world.run(embedder, ceiling=60, charged_day=DAY)
+
+    assert last_event(events) == FAILED_TOO_SLOW_EVENT and embedder.calls == 3 and refunds == [(DAY, "job1")]
 
 
 def test_a_stop_past_the_ceiling_stays_a_timeout_and_keeps_the_charge(world, refunds):
@@ -188,7 +218,7 @@ def test_a_stop_past_the_ceiling_stays_a_timeout_and_keeps_the_charge(world, ref
 def test_a_stalled_clock_never_aborts(world, refunds):
     """A clock that never moves projects a finish of zero seconds: the job runs to the end (the projection is multiplied out, so no
     division by the elapsed time exists to fail)."""
-    world.document(chunk_texts(10, 5))
+    world.document(chunk_texts(10, 400))
     events = world.run(steps(world.clock, 0.0), ceiling=10, charged_day=DAY)
 
     assert last_event(events)["state"] == "ready" and refunds == []
@@ -196,9 +226,9 @@ def test_a_stalled_clock_never_aborts(world, refunds):
 
 def test_chunks_with_no_tokens_never_abort_and_never_divide_by_zero(world, refunds):
     """The first three chunks carry no tokens (so ``embedded_tokens`` is 0 at the third) while the clock has moved: the guard
-    ``embedded_tokens > 0`` skips the decision. From the fourth chunk the rate is a fair 4 s for 5 tokens, projecting 112 s,
-    inside the 200 s ceiling."""
-    chunks = world.document(chunk_texts(10, 5))
+    ``embedded_tokens > 0`` skips the decision. From the fourth chunk the rate is a fair 4 s for 400 tokens, projecting 56 s once
+    the floor is met, inside the 200 s ceiling."""
+    chunks = world.document(chunk_texts(10, 400))
     chunks[:3] = [dataclasses.replace(c, tokens=0) for c in chunks[:3]]
     embedder = steps(world.clock, 4)
     events = world.run(embedder, ceiling=200, charged_day=DAY)
@@ -206,22 +236,182 @@ def test_chunks_with_no_tokens_never_abort_and_never_divide_by_zero(world, refun
     assert last_event(events)["state"] == "ready" and embedder.calls == 10 and refunds == []
 
 
-@pytest.mark.parametrize("elapsed,total,embedded,ceiling,past", [
-    (12, 80, 24, 40, False),     # 12 x 80 = 960 = 40 x 24: a projection exactly at the ceiling is not past it
-    (13, 80, 24, 40, True),      # a second more elapsed
-    (12, 81, 24, 40, True),      # a token more to embed
-    (12, 80, 24, 39, True),      # a ceiling a second shorter
-    (12, 80, 25, 40, False),     # a token more embedded already
-    (12, 80, 24, 41, False)])
-def test_the_abort_decision_is_strict_at_the_projected_ceiling(elapsed, total, embedded, ceiling, past):
-    assert jobs._projects_past_ceiling(elapsed, total, embedded, ceiling) is past
+@pytest.mark.parametrize("elapsed,total_tokens,embedded,total_chunks,done,ceiling,past", [
+    (12, 80, 24, 10, 3, 40, False),    # tokens 12 x 80 = 960 = 40 x 24 and chunks 12 x 10 = 120 = 40 x 3: both at the ceiling
+    (12, 81, 24, 10, 3, 40, False),    # tokens one above, chunks at: no abort
+    (12, 80, 24, 11, 3, 40, False),    # tokens at, chunks one above: no abort
+    (12, 81, 24, 11, 3, 40, True),     # both one above: abort
+    (13, 80, 24, 10, 3, 40, True),     # a second more elapsed lifts both
+    (12, 80, 24, 10, 3, 39, True),     # a ceiling a second shorter puts both above
+    (12, 80, 24, 10, 3, 41, False),
+    (12, 80, 25, 10, 3, 40, False),    # a token more embedded already: the token form is under, so no abort
+    (12, 80, 24, 10, 4, 40, False),    # a chunk more done already: the chunk form is under, so no abort
+    (12, 200, 24, 10, 3, 40, False),   # tokens far over (tiny leading chunks) but chunks exactly at the ceiling: no abort
+    (12, 80, 24, 40, 3, 40, False)])   # chunks far over (a few huge chunks then many small) but tokens at the ceiling: no abort
+def test_the_abort_decision_needs_both_projections_strictly_past_the_ceiling(elapsed, total_tokens, embedded, total_chunks, done,
+                                                                             ceiling, past):
+    assert jobs._projects_past_ceiling(elapsed, total_tokens, embedded, total_chunks, done, ceiling) is past
+
+
+@pytest.mark.parametrize("total_tokens,total_chunks,projected", [
+    (80, 10, 40.0),     # both 40 s
+    (100, 10, 40.0),    # tokens 50 s, chunks 40 s: the smaller
+    (80, 20, 40.0)])    # tokens 40 s, chunks 80 s: the smaller
+def test_the_deciding_projection_is_the_smaller_of_the_two(total_tokens, total_chunks, projected):
+    assert jobs._deciding_projection(12, total_tokens, 24, total_chunks, 3) == projected
+
+
+@pytest.mark.parametrize("done,embedded,max_chunk,may", [
+    (3, 1024, 512, True),        # exactly at the floor (2 x 512) with three chunks: projects
+    (3, 1023, 512, False),       # one token below the floor: does not
+    (3, 1025, 512, True),
+    (2, 5000, 512, False),       # fewer than three chunks never project, whatever the tokens
+    (1, 5000, 512, False),
+    (4, 1023, 512, False),       # the floor counts tokens, not chunks
+    (3, 200, 100, True),         # the floor follows the setting: 2 x 100
+    (3, 199, 100, False),
+    (3, 0, 0, False)])           # no tokens: never (a floor of 0 does not let an empty run project)
+def test_the_projection_starts_at_three_chunks_and_two_chunk_sizes_of_tokens(done, embedded, max_chunk, may):
+    assert jobs._may_project(done, embedded, max_chunk) is may
+
+
+def test_the_floor_is_two_max_chunks_of_the_setting_and_1024_at_the_default():
+    assert JobSettings.upload_max_chunk_tokens == 512 == Settings.model_fields["upload_max_chunk_tokens"].default
+    assert jobs.MIN_CHUNKS_BEFORE_ABORT == 3 and jobs.MIN_CHUNKS_WORTH_OF_TOKENS_BEFORE_ABORT * 512 == 1024
+
+
+def texts_of(sizes) -> list[str]:
+    """One distinct text per size, each ``size`` words (the embedder double and the chunk table both count words)."""
+    return [f"s{i}x " + " ".join(["w"] * (n - 1)) for i, n in enumerate(sizes)]
+
+
+@pytest.mark.parametrize("sizes,calls", [
+    ([400, 400, 224] + [400] * 7, 3),      # 1,024 tokens at chunk 3: exactly the floor, aborts there
+    ([400, 400, 223] + [400] * 7, 4),      # 1,023: one below, the decision waits for chunk 4
+    ([300] * 10, 4),                       # 900 at chunk 3, 1,200 at chunk 4
+    ([341] * 10, 4),                       # 1,023 at chunk 3
+    ([342] * 10, 3),                       # 1,026 at chunk 3
+    ([600] * 10, 3)])                      # floor met at chunk 2, three chunks still required
+def test_a_slow_rate_with_large_chunks_aborts_as_soon_as_the_floor_is_reached(world, refunds, sizes, calls):
+    """10 s a chunk against a 60 s ceiling: every projection is far over it, so the abort lands on the first allowed chunk."""
+    world.document(texts_of(sizes))
+    embedder = steps(world.clock, 10)
+    events = world.run(embedder, ceiling=60, charged_day=DAY)
+
+    assert last_event(events) == FAILED_TOO_SLOW_EVENT and embedder.calls == calls and refunds == [(DAY, "job1")]
+
+
+def fixed_cost(clock, call_s: float, token_s: float) -> FakeEmbedder:
+    """An embedder double whose every encoder call costs ``call_s`` seconds plus ``token_s`` a token (a real encoder has a fixed
+    per-call cost, which makes a run of tiny chunks look slow)."""
+    return FakeEmbedder(clock, lambda text: call_s + len(text.split()) * token_s)
+
+
+def test_tiny_leading_fresh_chunks_with_a_fixed_per_call_cost_do_not_abort_a_normal_rate(world, refunds):
+    """The finding: 6 one-token chunks (10.1 s each), then 5 chunks of 400 tokens (50 s each) at a rate that finishes in 310.6 s,
+    well inside the 400 s ceiling. Token-weighted from the third chunk the job looked like 3 tokens in 30 s (a projection of
+    about 20,000 s) and was aborted as too_slow; with the 1,024-token floor it is not projected until 3 large chunks are in."""
+    world.document([f"t{i}" for i in range(6)] + chunk_texts(5, 400))
+    embedder = fixed_cost(world.clock, 10.0, 0.1)
+    events = world.run(embedder, ceiling=400, charged_day=DAY)
+
+    assert last_event(events)["state"] == "ready" and refunds == []
+    assert embedder.calls == 11 and world.clock.now == pytest.approx(310.6)
+
+
+@pytest.mark.parametrize("tiny", range(9, 16))
+def test_n_tiny_leading_fresh_chunks_then_five_large_ones_finish_ready_with_no_refund(world, refunds, tiny):
+    """The verifier's reproduction of the residual false abort (token-weighted rule plus the floor only): ``tiny`` 1-token fresh
+    chunks (10.1 s each), then five 400-token chunks (50 s each), 10 s a call plus 0.1 s a token, ceiling 400 s. The true finish
+    is 10 x (tiny + 5) + 0.1 x (tiny + 2,000) = 250 + 10.1 x tiny s: under 400 s up to N = 14 (401.5 s at N = 15, still ready: the timeout is
+    only checked while chunks remain). The token-weighted
+    projection alone aborted it as too_slow for N = 9..15 (the chunk-weighted projection does not)."""
+    world.document([f"t{i}" for i in range(tiny)] + chunk_texts(5, 400))
+    embedder = fixed_cost(world.clock, 10.0, 0.1)
+    events = world.run(embedder, ceiling=400, charged_day=DAY)
+
+    assert last_event(events)["state"] == "ready" and refunds == []
+    assert embedder.calls == tiny + 5 and world.clock.now == pytest.approx(250 + 10.1 * tiny)
+
+
+# The property over the model ``time = c x calls + t x tokens`` (c per encoder call, t per token), whole numbers so every
+# projection is exact. Chunk-size sequences: tiny-first, large-first, mixed (seeded) and uniform.
+PROPERTY_MAX_CHUNK = 512
+PROPERTY_COSTS = [(c, t) for c in (0, 1, 3, 10, 50, 200) for t in (0, 1, 2, 3, 7)]
+
+
+def size_sequences() -> list[list[int]]:
+    rng = random.Random(20261108)
+    tiny_first = [[1] * a + [400] * b for a in (0, 1, 3, 9, 15, 40) for b in (3, 5, 8)]
+    large_first = [[400] * b + [1] * a for a in (1, 3, 9, 15, 40) for b in (3, 5, 8)]
+    mixed = [[rng.choice((0, 1, 2, 5, 50, 200, 400, 512)) for _ in range(rng.randint(4, 30))] for _ in range(60)]
+    uniform = [[s] * n for s in (1, 100, 400, 512) for n in (4, 10, 25)]
+    return tiny_first + large_first + mixed + uniform
+
+
+def decisions(sizes: list[int], c: int, t: int, ceiling: int, *, token_only=False, chunk_only=False) -> list[tuple[int, bool]]:
+    """``(chunks done, would the job stop)`` at every projection point the floor gate allows, under the model."""
+    total_tokens, total_chunks, out, embedded = sum(sizes), len(sizes), [], 0
+    for done in range(1, total_chunks):                                     # the last chunk has nothing remaining
+        embedded += sizes[done - 1]
+        if not jobs._may_project(done, embedded, PROPERTY_MAX_CHUNK):
+            continue
+        elapsed = c * done + t * embedded
+        if token_only:
+            fired = elapsed * total_tokens > ceiling * embedded
+        elif chunk_only:
+            fired = elapsed * total_chunks > ceiling * done
+        else:
+            fired = jobs._projects_past_ceiling(elapsed, total_tokens, embedded, total_chunks, done, ceiling)
+        out.append((done, fired))
+    return out
+
+
+def test_property_the_abort_never_fires_when_the_true_finish_is_within_the_ceiling():
+    cases = points = 0
+    for sizes in size_sequences():
+        for c, t in PROPERTY_COSTS:
+            finish = c * len(sizes) + t * sum(sizes)
+            for ceiling in (finish, finish + 1, finish + finish // 2 + 1, finish * 2 + 5):
+                cases += 1
+                for done, fired in decisions(sizes, c, t, ceiling):
+                    points += 1
+                    assert not fired, (sizes, c, t, ceiling, done)
+    assert cases > 10_000 and points > 50_000
+
+
+def test_property_each_projection_alone_does_fire_falsely_so_both_are_needed():
+    """The grid is not vacuous: each single form would stop a job that finishes within the ceiling (token form: tiny chunks
+    first; chunk form: large chunks first), and the pair never does."""
+    token_false = chunk_false = 0
+    for sizes in size_sequences():
+        for c, t in PROPERTY_COSTS:
+            finish = c * len(sizes) + t * sum(sizes)
+            token_false += any(f for _, f in decisions(sizes, c, t, finish, token_only=True))
+            chunk_false += any(f for _, f in decisions(sizes, c, t, finish, chunk_only=True))
+    assert token_false > 100 and chunk_false > 100
+
+
+@pytest.mark.parametrize("size", [400, 512, 600])
+def test_property_uniform_chunks_whose_true_finish_is_past_the_ceiling_stop_at_the_first_allowed_point(size):
+    stops = 0
+    for c, t in PROPERTY_COSTS:
+        sizes = [size] * 20
+        finish = c * 20 + t * 20 * size
+        if finish == 0:
+            continue
+        for ceiling in (finish - 1, finish // 2, finish // 10):
+            points = decisions(sizes, c, t, ceiling)
+            assert points[0] == (3, True), (size, c, t, ceiling)            # three chunks, over 1,024 tokens: the first point
+            stops += 1
+    assert stops == 3 * (len(PROPERTY_COSTS) - 1)
 
 
 # ---------------------------------------------------------------- 3. the refund
 
 
 def test_a_too_slow_job_refunds_the_charged_day_once(world, refunds):
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     events = world.run(steps(world.clock, 4), ceiling=39, charged_day=DAY)
 
     assert last_event(events) == FAILED_TOO_SLOW_EVENT
@@ -230,7 +420,7 @@ def test_a_too_slow_job_refunds_the_charged_day_once(world, refunds):
 
 def test_a_job_charged_before_midnight_that_aborts_after_it_refunds_the_day_it_was_charged(world, refunds):
     """``store.today`` says NEXT_DAY (the fixture): the refund still names DAY, the day the route charged."""
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     world.run(steps(world.clock, 4), ceiling=39, charged_day=DAY)
 
     assert [day for day, _ in refunds] == [DAY] and store.today() == NEXT_DAY
@@ -271,7 +461,7 @@ def test_a_refund_that_raises_never_changes_how_the_job_ends(world, monkeypatch,
         raise RuntimeError("neo4j is down")
 
     monkeypatch.setattr(store, "release_daily_upload", explode, raising=False)
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
         events = world.run(steps(world.clock, 4), ceiling=39, charged_day=DAY)
 
@@ -281,7 +471,7 @@ def test_a_refund_that_raises_never_changes_how_the_job_ends(world, monkeypatch,
 
 
 def test_a_job_without_a_charged_day_asks_for_no_refund_and_still_ends_too_slow(world, refunds):
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     events = world.run(steps(world.clock, 4), ceiling=39)                  # no charged_day: a caller that never charged
 
     assert last_event(events) == FAILED_TOO_SLOW_EVENT and refunds == []
@@ -295,7 +485,7 @@ def test_the_refund_is_made_even_when_the_workspace_vanishes_during_the_failure_
             raise repo.WorkspaceGone(ws)
 
     monkeypatch.setattr(repo, "put_job", gone_on_failed)
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     events = world.run(steps(world.clock, 4), ceiling=39, charged_day=DAY)
 
     assert last_event(events)["error"]["code"] == "workspace_deleted"
@@ -586,8 +776,19 @@ def test_s3_a_job_opens_no_file_but_the_one_constant(world, monkeypatch, tmp_pat
     assert opened and set(opened) == {jobs.CGROUP_CPU_STAT_PATH}
 
 
+def test_the_stage_line_projection_is_the_smaller_of_the_two(world, caplog):
+    """9 one-token chunks then five of 400 at 10 s a call plus 0.1 s a token, ceiling 400 s: the last projection (after chunk 13,
+    290.9 s) is 363.2 s token-weighted (2,009 of 1,609 tokens) and 313.3 s chunk-weighted (14 of 13 chunks): the line shows 313.3."""
+    world.document([f"t{i}" for i in range(9)] + chunk_texts(5, 400))
+    with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
+        events = world.run(fixed_cost(world.clock, 10.0, 0.1), ceiling=400)
+
+    fields = fields_of(stage_lines(caplog)[0])
+    assert last_event(events)["state"] == "ready" and "aborted" not in fields and fields["projected_s"] == "313.3"
+
+
 def test_the_abort_is_written_on_the_line_with_its_last_projection(world, caplog, refunds):
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
         world.run(steps(world.clock, 4), ceiling=39, charged_day=DAY)
 
@@ -598,7 +799,7 @@ def test_the_abort_is_written_on_the_line_with_its_last_projection(world, caplog
 
 
 def test_a_job_that_was_not_aborted_has_no_aborted_field_and_a_short_job_no_projection(world, caplog):
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
         world.run(steps(world.clock, 4), ceiling=40)
     ready_fields = fields_of(stage_lines(caplog)[0])
@@ -606,7 +807,7 @@ def test_a_job_that_was_not_aborted_has_no_aborted_field_and_a_short_job_no_proj
 
     caplog.clear()
     world2 = World(world.monkeypatch)
-    world2.document(chunk_texts(2, 8))
+    world2.document(chunk_texts(2, 600))
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
         world2.run(steps(world2.clock, 4))
     assert "projected_s" not in fields_of(stage_lines(caplog)[0])
@@ -620,7 +821,7 @@ def test_the_too_slow_text_is_the_specs_and_is_the_only_text_for_the_code():
 
 
 def test_s5_no_event_and_no_persisted_job_carries_a_rate_a_projection_or_a_limit(world, refunds):
-    world.document(chunk_texts(10, 8), parse_s=7.0, chunk_s=3.0)
+    world.document(chunk_texts(10, 400), parse_s=7.0, chunk_s=3.0)
     events = world.run(steps(world.clock, 4), ceiling=39, charged_day=DAY)
     dump = json.dumps([*events, *world.persisted()])
 
@@ -632,7 +833,7 @@ def test_s5_no_event_and_no_persisted_job_carries_a_rate_a_projection_or_a_limit
 
 
 def test_s4_the_abort_frees_the_slot_once_and_leaves_nothing_behind(world, refunds, fresh_drain):
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     world.run(steps(world.clock, 4), ceiling=39, charged_day=DAY)
 
     assert world.repo.put_version_calls == [] and world.repo.workspace_tokens == 0 and world.repo.embedded == {}
@@ -643,10 +844,10 @@ def test_s4_the_abort_frees_the_slot_once_and_leaves_nothing_behind(world, refun
 
 def test_s1_one_visitors_abort_changes_nothing_for_the_next_job(world, refunds):
     """The decision reads the job's own clock and tokens: a job that was aborted leaves no state a later job reads."""
-    world.document(chunk_texts(10, 8))
+    world.document(chunk_texts(10, 400))
     first = world.run(steps(world.clock, 4), ceiling=39, job_id="jobA", charged_day=DAY)
     world2 = World(world.monkeypatch)
-    world2.document(chunk_texts(10, 8))
+    world2.document(chunk_texts(10, 400))
     second = world2.run(steps(world2.clock, 4), ceiling=40, job_id="jobB", charged_day=DAY)
 
     assert last_event(first)["error"]["code"] == "too_slow" and last_event(second)["state"] == "ready"
@@ -655,23 +856,23 @@ def test_s1_one_visitors_abort_changes_nothing_for_the_next_job(world, refunds):
 
 def test_s2_the_refund_arguments_are_the_servers_day_and_job_id_only(world, refunds):
     """The only inputs of the refund are the charged day (the route's own clock) and the job id (``secrets.token_hex``)."""
-    world.document(chunk_texts(10, 8), )
+    world.document(chunk_texts(10, 400), )
     world.run(steps(world.clock, 4), ceiling=39, job_id="0123456789abcdef", charged_day=DAY, title="DROP ALL ' OR 1=1")
 
     assert refunds == [(DAY, "0123456789abcdef")]
 
 
 def test_embed_chunks_records_the_decision_on_a_too_slow_exit(world):
-    texts = chunk_texts(10, 8)
+    texts = chunk_texts(10, 400)
     hashes = [content_hash(t) for t in texts]
-    chunks = [Chunk(seq=i, char_start=0, char_end=1, tokens=8) for i in range(10)]
+    chunks = [Chunk(seq=i, char_start=0, char_end=1, tokens=400) for i in range(10)]
     stages: dict = {}
 
     outcome = jobs._embed_chunks(object(), WS, DOC, texts, hashes, chunks, steps(world.clock, 4), JobSettings(39),
                                  lambda *a, **kw: None, clock=world.clock, stages=stages)
 
     assert outcome == "too_slow"
-    assert stages == {"fresh": 10, "tokens": 80, "done": 3, "embed_s": 12.0, "projected_s": 40.0, "aborted": "too_slow"}
+    assert stages == {"fresh": 10, "tokens": 4000, "done": 3, "embed_s": 12.0, "projected_s": 40.0, "aborted": "too_slow"}
 
 
 def test_today_is_the_utc_day_not_the_local_day(monkeypatch):

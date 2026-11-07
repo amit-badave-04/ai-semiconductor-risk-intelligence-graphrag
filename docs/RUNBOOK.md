@@ -761,9 +761,14 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
   which is tuning, judged against the `upload stages` line below. A later cap raise needs a matching ceiling and its own
   evidence. The interrupted-job sweeper's age follows it (90 + ceiling + 600 =
   2,790 s). To change it set `UPLOAD_EMBED_TIMEOUT_S` in `fly.toml [env]` and redeploy; a higher ceiling also lengthens how long
-  one job can hold the one upload slot. **Projected-finish abort** (`too_slow`): after each embedded chunk, from the third
-  embedded chunk on, the job projects its finish, `elapsed_embed + remaining_tokens / (embedded_tokens / elapsed_embed)`, from
-  its own measured rate only; above the ceiling (strictly) it stops at once, ends `failed` with code `too_slow` ("Uploads are
+  one job can hold the one upload slot. **Projected-finish abort** (`too_slow`): after each embedded chunk, once at least three
+  chunks and 2 x `upload_max_chunk_tokens` tokens (1,024 at the default 512) are embedded (a fixed per-call cost makes small
+  chunks look slow), the job projects its finish two ways from its own measured rate only: token-weighted,
+  `elapsed_embed + remaining_tokens / (embedded_tokens / elapsed_embed)`, and chunk-weighted, `elapsed_embed + remaining_chunks /
+  (done_chunks / elapsed_embed)` (fresh chunks and tokens only, as the tokens already were). Only when BOTH are above the ceiling
+  (each strictly) does it stop at once: the smaller of the two cannot exceed the true finish when an embed costs a fixed amount per
+  call plus an amount per token, so a run of tiny chunks no longer aborts a job that would finish. A slow job this rule misses
+  still meets the ceiling `timeout`, which keeps the charge. It ends `failed` with code `too_slow` ("Uploads are
   slow right now. Please try again in a few minutes, or upload a shorter PDF."), nothing stored, the slot released, and the
   visitor's daily upload count is **given back once** (`store.release_daily_upload(day, job_id)`: idempotent per job, never
   below zero, the day the upload was charged even if the job ends after midnight). A `timeout` and every other failure keep
@@ -774,7 +779,8 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
   `too_many_tokens` or the page-quota refusal): `upload stages ws_hash=<h> job_id=<id> parse_s=<s> chunk_s=<s> embed_s=<s>
   compare_s=<s> index_s=<s> chunks=<n> fresh=<n> done=<n> tokens=<n> projected_s=<s> aborted=too_slow cpu_usage_usec_start=<n>
   cpu_nr_throttled_start=<n> cpu_throttled_usec_start=<n> cpu_usage_usec_end=<n> cpu_nr_throttled_end=<n> cpu_throttled_usec_end=<n>`,
-  a stage the job never reached left out. `projected_s` is the last projection of the abort rule (absent before the third chunk),
+  a stage the job never reached left out. `projected_s` is the last projection of the abort rule, the SMALLER of the token-weighted and chunk-weighted projections, which
+  is the one that decides (absent until three chunks and 1,024 tokens are embedded),
   `aborted=too_slow` is present only when it fired; the `cpu_*` fields are the cgroup counters read from
   `/sys/fs/cgroup/cpu.stat` at the embed's start and end (microseconds and counts; `nr_throttled` and `throttled_usec` rising
   between the two show the machine's CPU throttle), each left out when the kernel does not offer it, never guessed. `fresh` is the

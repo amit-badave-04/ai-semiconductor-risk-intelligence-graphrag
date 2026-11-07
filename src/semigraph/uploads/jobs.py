@@ -325,6 +325,9 @@ _CPU_COUNTERS = ("usage_usec", "nr_throttled", "throttled_usec")
 
 # The projected-finish abort starts at this embedded chunk: the rate of the first two is noise (requirement 2).
 MIN_CHUNKS_BEFORE_ABORT = 3
+# ... and once this many maximum-size chunks of tokens are embedded: every encoder call has a fixed cost, so a run of tiny chunks
+# looks slow, and by 2 x upload_max_chunk_tokens the per-call cost is negligible next to the token time (requirement 2).
+MIN_CHUNKS_WORTH_OF_TOKENS_BEFORE_ABORT = 2
 
 
 def _read_cpu_stat() -> dict[str, int]:
@@ -397,11 +400,42 @@ def _build_units_and_chunks(text: str, blocks, kind: str, embedder, settings):
     return units, chunks, unit_dicts
 
 
-def _projects_past_ceiling(elapsed: float, total_tokens: int, embedded_tokens: int, ceiling: float) -> bool:
-    """True when the job's own measured rate projects its finish strictly past ``ceiling``: ``elapsed + remaining / (embedded /
-    elapsed) > ceiling``, which is ``elapsed * total_tokens / embedded_tokens > ceiling``. Multiplied out, so the boundary is exact
-    (no division, no rounding). ``embedded_tokens`` must be above 0 (the caller's guard)."""
-    return elapsed * total_tokens > ceiling * embedded_tokens
+def _may_project(done: int, embedded_tokens: int, max_chunk_tokens: int) -> bool:
+    """True once the job may project its finish (and so abort): at least ``MIN_CHUNKS_BEFORE_ABORT`` chunks are embedded AND at
+    least ``MIN_CHUNKS_WORTH_OF_TOKENS_BEFORE_ABORT x max_chunk_tokens`` tokens are (1,024 at the default 512); never with no tokens."""
+    floor = MIN_CHUNKS_WORTH_OF_TOKENS_BEFORE_ABORT * max_chunk_tokens
+    return done >= MIN_CHUNKS_BEFORE_ABORT and embedded_tokens >= floor and embedded_tokens > 0
+
+
+def _projects_past_ceiling(elapsed: float, total_tokens: int, embedded_tokens: int, total_chunks: int, done_chunks: int,
+                           ceiling: float) -> bool:
+    """True when BOTH of the job's own measured-rate projections are strictly past ``ceiling``: the token-weighted
+    ``elapsed * total_tokens > ceiling * embedded_tokens`` and the chunk-weighted ``elapsed * total_chunks > ceiling *
+    done_chunks``. All counts are of this job's FRESH chunks and tokens. If an embed costs ``c`` a call plus ``t`` a token, the
+    token form overstates the true finish when the embedded chunks are smaller than average and the chunk form when they are
+    larger, so the smaller never exceeds it. Multiplied out, so each boundary is exact (no division, no rounding)."""
+    token_past = elapsed * total_tokens > ceiling * embedded_tokens
+    chunk_past = elapsed * total_chunks > ceiling * done_chunks
+    return token_past and chunk_past
+
+
+def _deciding_projection(elapsed: float, total_tokens: int, embedded_tokens: int, total_chunks: int, done_chunks: int) -> float:
+    """The smaller of the token-weighted and the chunk-weighted projected finish: the one that decides (the stage line's
+    ``projected_s``). The caller's gate guarantees ``embedded_tokens`` and ``done_chunks`` are above 0."""
+    return min(elapsed * total_tokens / embedded_tokens, elapsed * total_chunks / done_chunks)
+
+
+def _projected_too_slow(stages: dict, elapsed: float, done: int, total: int, embedded_tokens: int, total_tokens: int,
+                        ceiling: float, max_chunk_tokens: int) -> bool:
+    """Once :func:`_may_project` allows: records the deciding projection in ``stages`` and, when both projections are past the
+    ceiling, ``aborted=too_slow``, and returns True."""
+    if not _may_project(done, embedded_tokens, max_chunk_tokens):
+        return False
+    stages["projected_s"] = _deciding_projection(elapsed, total_tokens, embedded_tokens, total, done)
+    if not _projects_past_ceiling(elapsed, total_tokens, embedded_tokens, total, done, ceiling):
+        return False
+    stages["aborted"] = "too_slow"
+    return True
 
 
 def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit, *,
@@ -409,10 +443,11 @@ def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, em
     """Embeds only the chunks whose text_hash is not already embedded for this document. Returns
     ``{"vectors": {index: [float, ...]}, "already": {text_hash: embedding}}``; ``None`` if the workspace's
     embedded-token budget would be exceeded; the string ``"timeout"`` if the wall budget ran out first; the string
-    ``"too_slow"`` if, from the third embedded chunk on, the job's own measured rate projects its finish past the ceiling
-    (:func:`_projects_past_ceiling`; docs/specs/upload-cap-and-abort.md requirement 2), reading this job's own clock and token
-    counts only (S1). ``clock`` times the loop; ``stages`` (default: a local record) receives, on every exit, ``fresh`` and
-    ``tokens`` once known, ``done`` after each chunk, and ``embed_s`` when the loop ends."""
+    ``"too_slow"`` if, once :func:`_may_project` allows (3 chunks and 2 x ``upload_max_chunk_tokens`` tokens embedded), the job's
+    own rate projects its finish past the ceiling by both the token and the chunk count (:func:`_projects_past_ceiling`;
+    docs/specs/upload-cap-and-abort.md requirement 2), reading its own clock and counts only (S1). ``clock`` times the loop;
+    ``stages`` (default: a local record) receives, on every exit, ``fresh`` and ``tokens`` once known, ``done`` after each
+    chunk, and ``embed_s`` at the end."""
     from . import repo
 
     stages = {} if stages is None else stages
@@ -441,11 +476,9 @@ def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, em
             ceiling = settings.upload_embed_timeout_s
             if elapsed > ceiling and remaining:
                 return "timeout"
-            if done >= MIN_CHUNKS_BEFORE_ABORT and remaining and embedded_tokens > 0:
-                stages["projected_s"] = elapsed * new_tokens / embedded_tokens
-                if _projects_past_ceiling(elapsed, new_tokens, embedded_tokens, ceiling):
-                    stages["aborted"] = "too_slow"
-                    return "too_slow"
+            if remaining and _projected_too_slow(stages, elapsed, done, len(to_embed), embedded_tokens, new_tokens, ceiling,
+                                                 settings.upload_max_chunk_tokens):
+                return "too_slow"
     finally:
         stages["embed_s"] = clock() - started
         _record_cpu(stages, "end")
