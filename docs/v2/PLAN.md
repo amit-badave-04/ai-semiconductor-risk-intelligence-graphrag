@@ -9,7 +9,7 @@ Date: 2026-09-25. Supersedes revisions 1–2. Evidence: 14 discovery reports in 
 | Graph store | **Stay on Neo4j Community.** FalkorDB evaluated and rejected (saves no money, SSPL, no in-index filtering; Neo4j has native filtered vector search). |
 | Observability / stack | LangChain 1.x + LangGraph 1.x + **Langfuse** ("langfloe" = Langfuse) + DeepEval; Ragas optional and pinned. |
 | Scale target | **1,000 concurrent users**, provable by a load test (10,000 dropped). |
-| Frontend | Next.js static + Vercel AI SDK on Cloudflare Pages. |
+| Frontend | Next.js static + Vercel AI SDK on Cloudflare Pages. [Amended 2026-11-07 in M5b I1; docs/specs/m5b-frontend.md Appendix B: F2 (M5_DECISIONS.md decision 10): Vite + React served same origin by the FastAPI app, no AI SDK, no stream encoder] |
 | LLMs | Any vendor; open-weight models only via **US hosts**. GPT-6 Luna (released 2026-09-22) and the newest Haiku are eligible bake-off candidates. Cheap default + escalate. |
 | Audience | **A demo to a potential buyer**: best-of-best capabilities, including document upload (with updated versions) and explicit chunk freshness/staleness handling. |
 | Budget | API spend ≤ ~$30; stop and ask before any step > $1. Then: "finalize, then go for M1" (this document is the finalization). |
@@ -35,7 +35,7 @@ Working rules: `v1-final` tagged, work on branch `v2`, v1 stays deployable until
 **Uploads (research, VERIFIED unless noted).** Parser: **Docling 2.130.0 (MIT)** primary (1.18 s/page warm, 30/30 tables recovered, ≈ 1 GB steady / 2.1 GB peak, ≈ 500 MB models, does not fit the 2 GB API machine → separate parse app), MarkItDown fallback; **exclude PyMuPDF (AGPL), marker (weights license), pypdf for untrusted input (10 advisories)**. Community has no multi-tenancy ⇒ app-level isolation via separate labels (`User*`) + mandatory `workspace_id` through one repository, own vector index, CI leak-test harness; RQ + Valkey queue; R2 transient storage with lifecycle; prompt-injection defences (untrusted-content block, no tool-calls from upload text, strip image markdown, "user-provided" labelling).
 
 ## 2. Target shape
-
+[Amended 2026-11-07 in M5b I1; docs/specs/m5b-frontend.md Appendix B: the first two lines of the diagram below are superseded: the UI is the Vite + React SPA served same origin by the FastAPI app (F2), not a Next.js build on Cloudflare Pages, and the SSE is the existing `/api/ask` grammar, not an AI SDK UI-message-stream encoded by FastAPI]
 ```
 Cloudflare Pages (static Next.js UI) ─► Cloudflare edge (Turnstile/Access, WAF, origin-auth header)
       │ SSE (AI SDK UI-message-stream encoded by our FastAPI)
@@ -96,7 +96,7 @@ Done/underway: foundation refactor (`universe.py`, `snapshot.py`, `versions.py`)
 
 **M2 — Search upgrade (M).** Full-text BM25 (quoted IDs), RRF in Python, in-index filters, rerank + adaptive k, edge cap/rank, freshness labels in the prompt + stale-citation check, block token instrumentation; one batched ablation on the grown benchmark (20 → ~60–100 graph-verified questions).
 
-**M3 — Agent + evals (L).** LangGraph (deterministic router first; fixed path; bounded tool loop; structured claims `{text, cite_ids}`; deterministic verifier; single fallback layer via LiteLLM Router; buffer-verify-release with live step timeline), read-only async Cypher tools, Langfuse, AI SDK stream encoder + contract test, web-search tool (Tavily, ≤ 2 calls, labelled non-filing, injection-hardened, off in benchmark); DeepEval T0 (every PR, $0) / T1 (rescore saved runs) / T2 (weekly Langfuse experiment); live probes per model.
+**M3 — Agent + evals (L).** LangGraph (deterministic router first; fixed path; bounded tool loop; structured claims `{text, cite_ids}`; deterministic verifier; single fallback layer via LiteLLM Router; buffer-verify-release with live step timeline), read-only async Cypher tools, Langfuse, AI SDK stream encoder + contract test, web-search tool (Tavily, ≤ 2 calls, labelled non-filing, injection-hardened, off in benchmark); DeepEval T0 (every PR, $0) / T1 (rescore saved runs) / T2 (weekly Langfuse experiment); live probes per model. [Amended 2026-11-07 in M5b I1; docs/specs/m5b-frontend.md Appendix B: the AI SDK stream encoder and its contract test are dropped by F2 (M5_DECISIONS.md decision 10); the stream contract is the recorded SSE fixtures of the spec, R15-R18]
 
 **M4 — Freshness + documents (L).** Poller + admin "Check now" + dashboard + banners + badges; upload workspace (§5) with version diff and what-changed report; risk-change delta and company dossier data.
 
@@ -134,7 +134,7 @@ LangChain docs+reference MCP; `langchain-skills` subset; Langfuse skill + docs M
 
 ## 13. Risks
 
-Filtered-search `WHERE` and full-text behaviour on Community 2026.07.1 unverified until the tarball probe; dev/prod version skew; brand-new models (Luna 3 days old) and Haiku retirement; escalation rate above the ceiling would erase the cost win; AI SDK protocol churn (pin the major + contract test); Ragas breakage; LiteLLM supply chain; prompt injection via filings, web search, uploads and traces; upload parser CVE surface (pin ≥ fixed versions); Docling does not fit the API machine; Langfuse Hobby unit budget (sample); false-split in risk delta; single-writer Neo4j makes uploads/ledger a replication problem (kept out of scope by using Valkey and one writer).
+Filtered-search `WHERE` and full-text behaviour on Community 2026.07.1 unverified until the tarball probe; dev/prod version skew; brand-new models (Luna 3 days old) and Haiku retirement; escalation rate above the ceiling would erase the cost win; AI SDK protocol churn (pin the major + contract test); Ragas breakage; LiteLLM supply chain; prompt injection via filings, web search, uploads and traces; upload parser CVE surface (pin ≥ fixed versions); Docling does not fit the API machine; Langfuse Hobby unit budget (sample); false-split in risk delta; single-writer Neo4j makes uploads/ledger a replication problem (kept out of scope by using Valkey and one writer). [Amended 2026-11-07 in M5b I1; docs/specs/m5b-frontend.md Appendix B: the AI SDK protocol churn risk no longer applies: F2 has no AI SDK and no encoder]
 
 ## 14. Audit trail
 

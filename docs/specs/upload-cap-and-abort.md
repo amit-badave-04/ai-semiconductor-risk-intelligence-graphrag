@@ -2,6 +2,8 @@
 
 Status: **APPROVED by the owner 2026-11-06** ("Approve council 9"). Path: full (upload input handling, the daily count in the
 state store). Amends `docs/specs/upload-embed-timeout.md`, whose 2,100 s ceiling and 40-a-day rule stay.
+Deploy (owner, 2026-11-07): held until the M5b I4 preview deploy, which ships this together with M5b I1; the live 1,200 s
+upload ceiling stays until then. The build itself goes ahead once M5b I1 is pushed.
 
 ## Why
 
@@ -63,16 +65,21 @@ One Sonnet worker (TDD) after M5b I1 lands (both touch `config.py`): `src/semigr
 `src/semigraph/serve/store.py` (refund) and its state backends if the refund lives there, `src/semigraph/serve/static/index.html`
 (copy), tests, `docs/RUNBOOK.md`. Then `ecc:code-reviewer` (sonnet), `ecc:security-reviewer` (opus), the full suite, the Opus
 verifier, pre-push `/security-review` and gitleaks. Then one deploy (the owner's approval of council 9 covers it: "then deployed
-with the 2,100 s ceiling"): the image built first, the kill switch around it, live checks including `/api/workspace/limits`
-showing `max_tokens_per_version` 10,000 in the workspace limits.
+with the 2,100 s ceiling"), held until the M5b I4 preview deploy (owner, 2026-11-07), which ships it together with M5b I1:
+there is no separate deploy before then, and the live 1,200 s upload ceiling stays until then. The build itself goes ahead
+once M5b I1 is pushed. The I4 deploy carries the 2,100 s ceiling (live on staging only until then, `docs/v2/M5_DECISIONS.md`
+10.11): the image built first, the kill switch around it, live checks that are this spec's, including
+`/api/workspace/limits` showing `max_tokens_per_version` 10,000 in the workspace limits, plus M5b's (`docs/specs/m5b-frontend.md`,
+Acceptance, live checks). The I4 deploy also carries M5b I1's upload-sandbox hardening (commit 6, round 5): the compare wall
+timeout is 110 s, below the 120 s CPU cap, and its Linux-only checks are in the same Acceptance list.
 
 ## Status
 
 | Stage | Gate | Evidence |
 |---|---|---|
 | 1 Spec | owner approves | **Approved 2026-11-06** ("Approve council 9") |
-| 2 Dev (TDD) | red then green; reviews | pending (after M5b I1) |
+| 2 Dev (TDD) | red then green; reviews | pending (after M5b I1 is pushed) |
 | 3 Regression | full suite | pending |
 | 4 Security | /security-review, gitleaks | pending |
 | 6 Verifier | Opus | pending |
-| 7 Push, CI, deploy | green; live checks | pending |
+| 7 Push, CI, deploy | green; live checks | pending: push and CI after the build; the deploy is held until the M5b I4 preview deploy, which ships it with M5b I1 (owner, 2026-11-07), and the live 1,200 s ceiling stays until then; the live checks are this spec's plus M5b's |
