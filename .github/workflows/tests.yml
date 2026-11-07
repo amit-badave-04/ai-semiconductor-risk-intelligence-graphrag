@@ -118,6 +118,31 @@ jobs:
           pytest -q -s -rs
           "tests/test_serve_upload_compare.py::test_max_size_pair_compares_under_rlimit_as_and_reports_child_rss"
           | tee s4.log && grep -q "1 passed" s4.log
+      # The upload workers' sandbox (src/semigraph/uploads/sandbox.py): no new process or thread, no added privilege on exec, a
+      # process group that is cleaned up. Each test below skips itself off Linux or when the runner is exempt from RLIMIT_NPROC
+      # (root, CAP_SYS_RESOURCE, CAP_SYS_ADMIN), and a skip would be vacuous here: any SKIPPED line fails the step (pytest -rs prints
+      # each one), a renamed test fails it (pytest exits 4 on an unknown node id), and the explicit bash keeps pytest's own status
+      # through the tee (-eo pipefail). The sg pair also needs the system sg helper (root-owned, privileged) and CAP_SYS_RESOURCE or CAP_SYS_ADMIN in
+      # the bounding set, which the hosted ubuntu runner is expected to have; if the runner image changes, this step says so by failing.
+      - name: Upload workers under RLIMIT_NPROC 0 (Linux-only, no skips allowed)
+        shell: bash
+        run: |
+          id -u; grep -E '^Cap(Prm|Eff|Bnd):' /proc/self/status
+          pytest -q -rs -p no:cacheprovider \
+            "tests/test_serve_sandbox_limits.py::test_after_the_limits_a_worker_can_start_no_process_and_no_thread_and_cannot_raise_a_limit" \
+            "tests/test_serve_sandbox_limits.py::test_after_the_limits_a_worker_gains_no_privilege_on_exec_and_is_not_dumpable" \
+            "tests/test_serve_sandbox_limits.py::test_the_control_without_the_limits_the_same_probe_forks_and_starts_threads" \
+            "tests/test_serve_sandbox_limits.py::test_a_process_left_in_the_workers_group_ends_with_the_job" \
+            "tests/test_serve_sandbox_limits.py::test_a_worker_still_running_when_the_server_process_exits_is_killed_by_the_exit_handler" \
+            "tests/test_serve_sandbox_limits.py::test_the_control_sg_runs_a_command_for_this_account_without_a_password" \
+            "tests/test_serve_sandbox_limits.py::test_a_limited_worker_gains_no_added_privilege_on_exec_through_sg" \
+            "tests/test_serve_sandbox_limits.py::test_a_real_parse_of_each_binary_kind_and_a_real_comparison_succeed_under_the_limits" \
+            "tests/test_serve_sandbox_limits.py::test_the_parse_worker_loads_no_numpy_and_starts_no_thread" \
+            "tests/test_serve_upload_parse.py::test_importing_the_worker_never_changes_the_importing_process_limits" \
+            "tests/test_serve_upload_parse.py::test_parse_document_sparse_pdf_is_scanned" \
+            "tests/test_serve_upload_parse.py::test_parse_document_blank_pdf_is_empty" \
+            | tee nproc.log
+          ! grep -E "^SKIPPED" nproc.log
 
   web:
     runs-on: ubuntu-latest

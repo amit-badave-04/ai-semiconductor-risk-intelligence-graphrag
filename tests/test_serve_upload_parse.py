@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import json
 import re
 import subprocess
@@ -295,13 +296,18 @@ def test_child_env_is_an_allowlist_not_a_copy_of_the_parent(monkeypatch):
     assert "PATH" in env
 
 
+BLAS_PINS = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
+
+
 def test_child_env_allowlist_is_exactly_the_documented_set(monkeypatch):
+    """Exact, not a subset: the five base names and the three one-thread BLAS pins (the same environment the comparison worker
+    gets), plus the Windows start-up names only where the parent has them."""
     monkeypatch.setenv("SYSTEMROOT", r"C:\Windows")
     env = parse._child_env()
-    allowed = {"PATH", "PYTHONPATH", "MALLOC_ARENA_MAX", "PYTHONDONTWRITEBYTECODE", "LANG"}
-    if sys.platform.startswith("win"):
-        allowed |= {"SYSTEMROOT", "TEMP", "TMP"} & set(env)          # only the ones actually needed to start
-    assert set(env) <= allowed
+    expected = {"PATH", "PYTHONPATH", "MALLOC_ARENA_MAX", "PYTHONDONTWRITEBYTECODE", "LANG", *BLAS_PINS}
+    windows_only = {"SYSTEMROOT", "TEMP", "TMP"} if sys.platform.startswith("win") else set()
+    assert expected <= set(env) <= expected | windows_only
+    assert {name: env[name] for name in BLAS_PINS} == dict.fromkeys(BLAS_PINS, "1")
 
 
 def test_child_subprocess_never_actually_receives_secret_env_vars(monkeypatch, tmp_path):
@@ -323,6 +329,7 @@ def test_child_subprocess_never_actually_receives_secret_env_vars(monkeypatch, t
     assert "ANTHROPIC_API_KEY" not in child_env
     assert "NEO4J_PASSWORD" not in child_env
     assert not any(_SECRET_LEAK_RE.search(name) for name in child_env), child_env.keys()
+    assert {name: child_env.get(name) for name in BLAS_PINS} == dict.fromkeys(BLAS_PINS, "1")
 
 
 # --------------------------------------------------------------------------
@@ -376,13 +383,46 @@ def test_parse_document_logs_code_and_exc_type_never_the_message(monkeypatch, ca
     assert secret_marker not in logged                       # the child's own "message" field is never logged
 
 
-def test_parse_document_logs_severe_exc_types_at_error_level(monkeypatch, caplog):
-    script = "import json, sys; sys.stdout.write(json.dumps({'error': 'parse_failed', 'exc_type': 'ImportError'}))"
+@pytest.mark.parametrize("exc_type", ["ImportError", "BlockingIOError"])
+def test_parse_document_logs_severe_exc_types_at_error_level(monkeypatch, caplog, exc_type):
+    """``BlockingIOError`` is what a refused process or thread start raises (EAGAIN): a class of its own, not an ``OSError`` by name."""
+    script = f"import json, sys; sys.stdout.write(json.dumps({{'error': 'parse_failed', 'exc_type': {exc_type!r}}}))"
     monkeypatch.setattr(parse, "_worker_command", lambda kind, max_pages: [sys.executable, "-c", script])
     with caplog.at_level("WARNING", logger="semigraph.uploads.parse"):
         with pytest.raises(parse.ParseError):
             parse.parse_document(b"irrelevant", "pdf", timeout_s=30)
     assert any(r.levelname == "ERROR" for r in caplog.records)
+
+
+def _run_parse_worker_main(monkeypatch, failure):
+    """``parse_worker.main`` with ``_parse`` raising ``failure``: (return code, parsed stdout)."""
+    import io
+
+    from semigraph.uploads import parse_worker
+
+    def raises(kind, data, max_pages):
+        raise failure
+
+    monkeypatch.setattr(parse_worker, "_parse", raises)
+    monkeypatch.setattr(sys, "stdin", type("S", (), {"buffer": io.BytesIO(b"irrelevant bytes")})())
+    out = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", type("S", (), {"buffer": out})())
+    rc = parse_worker.main(["parse_worker", "pdf", "30"])
+    return rc, json.loads(out.getvalue())
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt(), BlockingIOError(11, "SECRET_DOCUMENT_TEXT_MUST_NEVER_LEAK")])
+def test_worker_main_reports_the_class_name_of_an_interrupt_or_a_refused_start_too(monkeypatch, failure):
+    """A native library whose thread start is refused can end in ``KeyboardInterrupt`` (a ``BaseException``): it is reported by class
+    name like every other failure, instead of the worker dying with an empty stdout the parent cannot tell from a crash."""
+    rc, payload = _run_parse_worker_main(monkeypatch, failure)
+    assert rc == 1
+    assert payload == {"error": "parse_failed", "exc_type": type(failure).__name__}
+
+
+def test_worker_main_lets_a_deliberate_exit_through(monkeypatch):
+    with pytest.raises(SystemExit):
+        _run_parse_worker_main(monkeypatch, SystemExit(3))
 
 
 def test_parse_error_carries_no_exc_type_by_default():
@@ -432,27 +472,91 @@ def test_max_size_pdf_parses_under_rlimit_as_and_reports_child_rss(tmp_path):
 # Importing parse_worker used to lower RLIMIT_AS / RLIMIT_CPU of the IMPORTING process on Linux: pytest collection capped
 # the whole test run at 1 GiB and it crashed (exit 139). The limits are applied by the subprocess entry point only.
 
-class _FakeResource:
-    RLIMIT_AS, RLIMIT_CPU, RLIM_INFINITY = 9, 0, -1
+PR_SET_DUMPABLE, PR_SET_NO_NEW_PRIVS = 4, 38
+GIB = 1024 ** 3
 
-    def __init__(self):
+
+class _FakeResource:
+    RLIMIT_AS, RLIMIT_CPU, RLIMIT_NPROC, RLIM_INFINITY = 9, 0, 6, -1
+
+    def __init__(self, hard=None, order=None):
         self.calls = []
+        self.hard = hard or {}          # kind -> the hard limit the process starts with; absent means unlimited
+        self.order = order if order is not None else []          # one log shared with a fake libc: the order across both
 
     def getrlimit(self, kind):
-        return (self.RLIM_INFINITY, self.RLIM_INFINITY)
+        hard = self.hard.get(kind, self.RLIM_INFINITY)
+        return (hard, hard)
 
     def setrlimit(self, kind, limits):
         self.calls.append((kind, limits))
+        self.order.append(("setrlimit", kind, limits))
+
+
+class _FakeLibc:
+    """``prctl`` recorded as ``("prctl", (option, arg2, arg3, arg4, arg5))``. Every argument must be a ``c_ulong``: a plain Python
+    int goes through a variadic call as a 32-bit value and the kernel rejects a ``PR_SET_NO_NEW_PRIVS`` whose last three are not zero."""
+
+    def __init__(self, order=None, failing=()):
+        self.order = order if order is not None else []
+        self.failing = set(failing)
+
+    def prctl(self, *args):
+        assert len(args) == 5 and all(isinstance(a, ctypes.c_ulong) for a in args), args
+        values = tuple(a.value for a in args)
+        self.order.append(("prctl", values))
+        return -1 if values[0] in self.failing else 0
 
 
 def test_the_sandbox_limits_are_applied_on_linux_only_and_to_the_documented_values():
+    """NPROC (0, 0), then AS 1 GiB and CPU 120 s with the hard limit pulled down to the cap too: a limit that stayed raisable would
+    leave the process limit open to a later ``setrlimit``."""
     from semigraph.uploads import parse_worker
 
-    fake = _FakeResource()
-    assert parse_worker.apply_sandbox_limits("linux", fake) is True
-    assert fake.calls == [(9, (1024 ** 3, -1)), (0, (120, -1))]
-    other = _FakeResource()
-    assert parse_worker.apply_sandbox_limits("win32", other) is False and other.calls == []
+    fake, libc = _FakeResource(), _FakeLibc()
+    assert parse_worker.apply_sandbox_limits("linux", fake, libc) is True
+    assert fake.calls == [(6, (0, 0)), (9, (GIB, GIB)), (0, (120, 120))]
+    other, other_libc = _FakeResource(), _FakeLibc()
+    assert parse_worker.apply_sandbox_limits("win32", other, other_libc) is False
+    assert other.calls == [] and other_libc.order == []
+
+
+def test_no_new_privileges_is_the_first_step_then_non_dumpable_then_the_process_limit():
+    """The first step is ``prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)``: from then on no exec adds privilege, so the limits that follow
+    mean what they say. ``PR_SET_DUMPABLE 0`` is second, the process limit third, the memory and CPU limits last."""
+    from semigraph.uploads import sandbox
+
+    order = []
+    sandbox.apply_sandbox_limits("linux", _FakeResource(order=order), _FakeLibc(order))
+    assert order[:3] == [("prctl", (PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)), ("prctl", (PR_SET_DUMPABLE, 0, 0, 0, 0)),
+                         ("setrlimit", 6, (0, 0))]
+    assert [entry[1] for entry in order[3:]] == [9, 0]
+
+
+@pytest.mark.parametrize("failing", [PR_SET_NO_NEW_PRIVS, PR_SET_DUMPABLE])
+def test_a_refused_prctl_stops_the_worker_before_any_limit_is_set(failing):
+    """Fail closed: the call raises, so the worker exits before it reads stdin and the job is recorded as failed."""
+    from semigraph.uploads import sandbox
+
+    order = []
+    with pytest.raises(OSError, match="prctl"):
+        sandbox.apply_sandbox_limits("linux", _FakeResource(order=order), _FakeLibc(order, failing=[failing]))
+    assert not any(entry[0] == "setrlimit" for entry in order)
+    attempted = [entry[1][0] for entry in order if entry[0] == "prctl"]
+    assert attempted == ([PR_SET_NO_NEW_PRIVS] if failing == PR_SET_NO_NEW_PRIVS else [PR_SET_NO_NEW_PRIVS, PR_SET_DUMPABLE])
+
+
+@pytest.mark.parametrize("hard,expected", [
+    pytest.param({}, {9: (1024 ** 3, 1024 ** 3), 0: (120, 120)}, id="unlimited-hard-limits"),
+    pytest.param({9: 8 * 1024 ** 3, 0: 3600}, {9: (1024 ** 3, 1024 ** 3), 0: (120, 120)}, id="higher-hard-limits"),
+    pytest.param({9: 512 * 1024 ** 2, 0: 30}, {9: (512 * 1024 ** 2, 512 * 1024 ** 2), 0: (30, 30)}, id="lower-hard-limits-kept"),
+])
+def test_the_hard_limits_come_down_to_the_cap_so_the_worker_cannot_raise_them_again(hard, expected):
+    from semigraph.uploads import sandbox
+
+    fake = _FakeResource(hard)
+    sandbox.apply_sandbox_limits("linux", fake, _FakeLibc())
+    assert {kind: limits for kind, limits in fake.calls if kind in expected} == expected
 
 
 def test_the_entry_point_applies_the_limits_before_anything_else_runs():
@@ -472,9 +576,10 @@ def test_the_entry_point_applies_the_limits_before_anything_else_runs():
 def test_importing_the_worker_never_changes_the_importing_process_limits():
     import subprocess
 
-    code = ("import resource; before = resource.getrlimit(resource.RLIMIT_AS), resource.getrlimit(resource.RLIMIT_CPU); "
+    kinds = "(resource.RLIMIT_AS, resource.RLIMIT_CPU, resource.RLIMIT_NPROC)"
+    code = (f"import resource; before = [resource.getrlimit(k) for k in {kinds}]; "
             "import semigraph.uploads.parse_worker; "
-            "after = resource.getrlimit(resource.RLIMIT_AS), resource.getrlimit(resource.RLIMIT_CPU); "
+            f"after = [resource.getrlimit(k) for k in {kinds}]; "
             "assert before == after, (before, after)")
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr

@@ -1,5 +1,5 @@
-"""The API process is non-dumpable on Linux, so a compromised upload parser (same uid) cannot read its secrets through
-/proc (second Opus review of M4, security finding S1; docs/v2/M4_PLAN.md section 5)."""
+"""The API process is non-dumpable on Linux, so its /proc entries are root-owned and its secrets stay private to it
+(second Opus review of M4, security finding S1; docs/v2/M4_PLAN.md section 5)."""
 
 import os
 import subprocess

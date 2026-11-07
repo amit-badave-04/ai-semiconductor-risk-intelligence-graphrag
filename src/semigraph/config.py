@@ -319,7 +319,11 @@ class Settings(BaseSettings):
     upload_max_workspace_pages: int = 120
     upload_max_workspace_tokens: int = 48000  # tokens actually embedded (after hash-keyed reuse), per workspace
     upload_parse_timeout_s: int = 90          # the parse subprocess is killed after this
-    upload_compare_timeout_s: int = 120       # the what-changed comparison runs in a subprocess killed after this
+    # The what-changed comparison runs in a subprocess killed after this. 110 s, 10 s under the worker's 120 s CPU cap
+    # (``uploads.sandbox._RLIMIT_CPU_SECONDS``): one thread cannot use more CPU seconds than wall seconds, so at equal values the
+    # cap's SIGKILL and this timeout race and a CPU-bound comparison reports a failure instead of a timeout; the margin covers
+    # scheduling jitter and the kill itself, so the wall timeout fires first and the job reports ``comparison_timeout``.
+    upload_compare_timeout_s: int = 110
     # The embed loop's wall budget in seconds (env UPLOAD_EMBED_TIMEOUT_S; docs/specs/upload-embed-timeout.md). Checked after each
     # chunk and only while chunks remain, from the start of the loop: a job that has embedded its last chunk is never failed.
     # A shared-cpu-2x is throttled to a sustained share of one core once its burst balance is spent (W0, W1, W1c, Fly's CPU page),

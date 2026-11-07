@@ -364,3 +364,20 @@ def test_max_size_pair_compares_under_rlimit_as_and_reports_child_rss(tmp_path):
     assert out["items_compared"] is True, (out["not_compared_reason"], result.stderr)
     # Self-chosen sanity bound (see docstring), not a task requirement: the task asks only to print ru_maxrss.
     assert out["ru_maxrss_kb"] < 300 * 1024, "the child exceeded this test's own 300 MB acceptance margin"
+
+
+@pytest.mark.parametrize("returncode, level", [(-9, "ERROR"), (1, "WARNING")])
+def test_a_compare_worker_ended_by_a_signal_is_logged_at_error_with_no_document_data(monkeypatch, caplog, returncode, level):
+    """A negative return code means a signal ended the worker (the CPU cap, a kill), which a plain failure is not: it is
+    logged at ERROR, with the class or return code only. An ordinary failed exit stays a WARNING."""
+    def ended(module, args, stdin, *, timeout_s, max_output_bytes, env_extra=None):
+        return subprocess.CompletedProcess([], returncode, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(compare.sandbox, "run_sandboxed", ended)
+    older = _view_dict(fx.MD_V1)
+    with caplog.at_level("WARNING", logger="semigraph.uploads.compare"):
+        report = compare.compare_in_subprocess(older, _view_dict(fx.MD_V2), timeout_s=1)
+    assert report["not_compared_reason"] == "comparison_failed"
+    records = [r for r in caplog.records if r.name == "semigraph.uploads.compare"]
+    assert [r.levelname for r in records] == [level]
+    assert f"returncode={returncode}" in records[0].getMessage()

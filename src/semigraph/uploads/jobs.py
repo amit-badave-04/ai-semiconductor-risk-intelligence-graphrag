@@ -654,10 +654,10 @@ def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | Non
 # that check fires (about 70 s for the largest legal chunk at the 2,100 s ceiling's design floor of a 7.5% share:
 # docs/specs/upload-embed-timeout.md requirement 4; unbounded only if a native call hangs, which nothing here bounds);
 # then `comparing` and `put_version`'s own transaction still have to run before the NEXT progress
-# write lands. `comparing` now HAS its own settings-backed timeout (`upload_compare_timeout_s`, default 120s —
+# write lands. `comparing` now HAS its own settings-backed timeout (`upload_compare_timeout_s`, default 110s —
 # M4_PLAN.md 4.2 section 1/16 extension: the alignment itself runs in a sandboxed subprocess, not in-process, so a
 # pathological document can no longer run unbounded), but `_fail_interrupted_older_than_s` deliberately does not
-# add it to the arithmetic below: this fixed 600s margin already comfortably covers it (70s + 120s < 600s) with headroom
+# add it to the arithmetic below: this fixed 600s margin already comfortably covers it (70s + 110s < 600s) with headroom
 # left over for `put_version`'s own transaction, which still has no settings-backed bound of its own. With the 2,100 s
 # default the threshold is 90 + 2,100 + 600 = 2,790 s. It is a consistency rule, not a safety property: the age compared
 # is the time since the job's last put_job write, this process's own open jobs are excluded and the sweeper's start pass

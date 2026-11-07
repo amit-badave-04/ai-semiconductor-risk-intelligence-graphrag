@@ -62,7 +62,10 @@ def main(argv: list[str]) -> int:
         older = _version_view_from_dict(payload["older"])
         newer = _version_view_from_dict(payload["newer"])
         report = compare_versions(older, newer)
-    except Exception as exc:  # noqa: BLE001 — the child must always report SOMETHING, never crash silently
+    except SystemExit:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - the child must always report SOMETHING, never crash silently (KeyboardInterrupt
+        # too: a refused thread start inside a native library can end in one, and its class name is the triage signal)
         # never logs the uploaded text, only that the comparison failed; the parent discards stderr in production
         # (stderr=DEVNULL) — this is for local debugging only. The exception CLASS NAME (never its message, which
         # can quote document text) is reported to the parent.

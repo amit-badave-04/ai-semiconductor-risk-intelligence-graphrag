@@ -3,8 +3,8 @@
 ``parse_document`` launches ``python -s -P -m semigraph.uploads.parse_worker <kind> <max_pages>`` through the SHARED
 sandbox runner (:mod:`semigraph.uploads.sandbox`, extracted for reuse by the comparison worker — section 1 of the
 plan's revision 6), writes the raw document bytes to its stdin, reads its stdout capped at :data:`MAX_OUTPUT_BYTES`,
-and enforces the wall timeout (the worker sets its OWN ``RLIMIT_AS`` / ``RLIMIT_CPU`` on Linux, before importing any
-parser — see ``parse_worker.py``). The worker's stdout is parsed with ``json.loads`` only and every field is
+and enforces the wall timeout (the worker sets its OWN ``RLIMIT_NPROC`` (no new process or thread), ``RLIMIT_AS`` and
+``RLIMIT_CPU`` on Linux, before importing any parser — see ``sandbox.apply_sandbox_limits``). The worker's stdout is parsed with ``json.loads`` only and every field is
 validated before it becomes a :class:`Block`; malformed output is never trusted, it becomes
 ``ParseError("parse_failed")``. Behavior is UNCHANGED from before the extraction — every test in
 ``tests/test_serve_upload_parse.py`` and ``tests/test_serve_upload_gate.py`` still passes unmodified.
@@ -24,8 +24,9 @@ DEFAULT_TIMEOUT_S = 90
 DEFAULT_MAX_PAGES = 30
 _ALLOWED_KIND_HINTS = frozenset({"heading_style", "heading_md", "heading_html", "table", "paragraph"})
 # exception classes serious enough (a broken native dependency, an exhausted resource) to log at ERROR rather than
-# WARNING: a broken build is otherwise indistinguishable from an ordinary bad upload (finding #28).
-_SEVERE_EXC_TYPES = frozenset({"ImportError", "ModuleNotFoundError", "OSError", "MemoryError"})
+# WARNING: a broken build is otherwise indistinguishable from an ordinary bad upload (finding #28). BlockingIOError is what a
+# refused process or thread start raises (EAGAIN under RLIMIT_NPROC); the match is by class name, so it is listed by itself.
+_SEVERE_EXC_TYPES = frozenset({"ImportError", "ModuleNotFoundError", "OSError", "BlockingIOError", "MemoryError"})
 
 logger = logging.getLogger("semigraph.uploads.parse")
 
@@ -73,10 +74,10 @@ def _worker_command(kind: str, max_pages: int) -> list[str]:
 
 
 def _child_env() -> dict[str, str]:
-    """The allowlisted child environment (finding #6, M4_PLAN.md 15.7), unchanged from before the extraction into
-    :mod:`semigraph.uploads.sandbox`: no BLAS-thread additions here (those are for the comparison worker only —
-    parsing never touches scipy/rapidfuzz)."""
-    return sandbox.child_env()
+    """The allowlisted child environment (finding #6, M4_PLAN.md 15.7) plus the one-thread BLAS pins, the same environment the
+    comparison worker gets. Parsing imports no numpy today; under ``RLIMIT_NPROC`` (0, 0) a BLAS thread pool could not start, so the
+    pin is the second line of defence (``tests/test_serve_sandbox_limits.py`` guards the first)."""
+    return sandbox.child_env(sandbox.SCIPY_BLAS_THREAD_ENV)
 
 
 def _validate_block(raw: object) -> Block:

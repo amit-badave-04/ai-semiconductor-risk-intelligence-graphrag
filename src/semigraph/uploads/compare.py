@@ -91,5 +91,7 @@ def compare_in_subprocess(older: dict, newer: dict, *, timeout_s: int) -> dict:
 def _log_not_compared(code: str, *, exc_type: str | None, returncode: int | None) -> None:
     """Logs ``code`` and ``exc_type`` (the sandboxed child's own exception CLASS NAME, when known) only — never any
     message text, which can quote uploaded document content (M4_PLAN.md 5, finding #28's same reasoning)."""
-    logger.warning("comparison subprocess not_compared_reason=%s exc_type=%s returncode=%s", code, exc_type,
-                   returncode)
+    # A negative return code is a signal that ended the worker (the CPU cap, a kill): worth an ERROR, unlike a plain failure.
+    level = logging.ERROR if returncode is not None and returncode < 0 else logging.WARNING
+    logger.log(level, "comparison subprocess not_compared_reason=%s exc_type=%s returncode=%s", code, exc_type,
+               returncode)

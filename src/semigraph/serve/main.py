@@ -276,8 +276,8 @@ def log_bot_check_posture(settings) -> None:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    # FIRST, before any thread or the upload parse subprocess exists: a same-uid child must not be able to read this
-    # process's secrets through /proc (docs/v2/M4_PLAN.md 5; a no-op off Linux).
+    # FIRST, before any thread or the upload parse subprocess exists: the process keeps its secrets private to itself, with
+    # its /proc entries root-owned (docs/v2/M4_PLAN.md 5; a no-op off Linux).
     if hardening.make_process_non_dumpable():
         logger.info("process marked non-dumpable (its /proc entries are root-only)")
     settings = get_settings()

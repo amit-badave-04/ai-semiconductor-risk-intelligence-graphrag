@@ -528,7 +528,9 @@ def main(argv: list[str]) -> int:
     except _ParseWorkerError as exc:
         _write({"error": exc.code})
         return 1
-    except Exception as exc:
+    except SystemExit:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - KeyboardInterrupt too: a refused thread start inside a native library can end in one
         # never logs the document text/bytes, only that parsing failed; the parent discards stderr in production
         # (stderr=DEVNULL) — this is for local debugging only. The exception CLASS NAME (never its message, which
         # can quote document text) is reported to the parent so a broken parser dependency is not indistinguishable

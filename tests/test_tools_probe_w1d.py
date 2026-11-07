@@ -644,7 +644,7 @@ def test_the_harness_deadline_follows_the_jobs_own_budgets_from_the_code_default
     sys.path.insert(0, str(ROOT / "src"))
     from semigraph.config import Settings
     parse, embed, compare = (Settings.model_fields[f"upload_{k}_timeout_s"].default for k in ("parse", "embed", "compare"))
-    assert (parse, embed, compare) == (90, 2100, 120) and embed == w1d_judge.EMBED_CEILING_S
+    assert (parse, embed, compare) == (90, 2100, 110) and embed == w1d_judge.EMBED_CEILING_S
     assert w1d.JOB_TIMEOUT_S >= parse + embed + w1d.LAST_CHUNK_S + compare and w1d.JOB_TIMEOUT_S == 2680
     assert w1d.JOB_TIMEOUT_S > w1b.JOB_TIMEOUT_S                                          # W1b's 1,470 s would end the watch in the middle of a valid job
 
