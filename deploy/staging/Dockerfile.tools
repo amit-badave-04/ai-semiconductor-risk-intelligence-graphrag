@@ -15,10 +15,14 @@ FROM ${PYTHON_IMAGE}
 # LiteLLM (imported through the service's store module) fetches its price table at import unless told to use its bundled copy:
 # the tools machine makes no call it was not asked to make.
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 LITELLM_LOCAL_MODEL_COST_MAP=True
+# PYTHONSAFEPATH=1 keeps the working directory off sys.path and PYTHONNOUSERSITE=1 keeps the user site off it; the code is
+# found through the explicit PYTHONPATH below instead. The code directory stays root-owned and read-only to the serving user
+# (the mode step sets that, whatever mode the build context had).
+ENV PYTHONSAFEPATH=1 PYTHONNOUSERSITE=1 PYTHONPATH=/srv
 COPY --from=ghcr.io/astral-sh/uv:0.11.20 /uv /bin/uv
 WORKDIR /srv
 COPY deploy/requirements-serve.txt deploy/
-RUN uv pip install --system --no-cache -r deploy/requirements-serve.txt
+RUN uv pip install --system --no-cache --require-hashes -r deploy/requirements-serve.txt
 COPY pyproject.toml README.md ./
 COPY src/ src/
 RUN uv pip install --system --no-cache --no-deps .
@@ -26,8 +30,10 @@ COPY tools/__init__.py tools/__init__.py
 COPY tools/s7 tools/s7
 COPY tools/probe tools/probe
 COPY tools/loadtest/pool.json tools/loadtest/pool.json
-# Never run as root; /out is where the runs write their raw files.
-RUN useradd --create-home --shell /usr/sbin/nologin app && mkdir -p /out && chown -R app:app /srv /out
+# Never run as root; /out is where the runs write their raw files, and the one directory handed to that user: /srv stays
+# root-owned.
+RUN chmod -R u=rwX,go=rX /srv
+RUN useradd --create-home --shell /usr/sbin/nologin app && mkdir -p /out && chown app:app /out
 USER app
 # Idle until a run is started with `flyctl ssh console -C "python -m tools.s7.replay ..."` (or tools.probe.burn).
 CMD ["sleep", "infinity"]

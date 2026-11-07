@@ -13,6 +13,10 @@
 ARG PYTHON_IMAGE=python:3.13-slim
 FROM ${PYTHON_IMAGE}
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
+# PYTHONSAFEPATH=1 keeps the working directory off sys.path and PYTHONNOUSERSITE=1 keeps the user site off it; the code is
+# found through the explicit PYTHONPATH below instead. The code directory stays root-owned and read-only to the serving user
+# (the mode step sets that, whatever mode the build context had).
+ENV PYTHONSAFEPATH=1 PYTHONNOUSERSITE=1 PYTHONPATH=/srv
 COPY --from=ghcr.io/astral-sh/uv:0.11.20 /uv /bin/uv
 WORKDIR /srv
 COPY deploy/staging/requirements-mockllm.txt deploy/staging/
@@ -20,8 +24,10 @@ RUN uv pip install --system --no-cache --require-hashes -r deploy/staging/requir
 COPY src/semigraph/retrieval/ids.py src/semigraph/retrieval/ids.py
 COPY tools/__init__.py tools/__init__.py
 COPY tools/mockllm tools/mockllm
-# Never run as root; port 8000 needs no privileges.
-RUN useradd --create-home --shell /usr/sbin/nologin app && chown -R app:app /srv
+# Never run as root; port 8000 needs no privileges. Nothing is handed to that user: /srv stays root-owned and the mock writes
+# nothing (its state is in memory).
+RUN useradd --create-home --shell /usr/sbin/nologin app
+RUN chmod -R u=rwX,go=rX /srv
 USER app
 # MOCKLLM_HOST is left unset on purpose: the mock binds "::" (dual-stack) when the machine has IPv6, which Fly's
 # <app>.internal names need (they resolve to IPv6 only), else 0.0.0.0. Set it to override.

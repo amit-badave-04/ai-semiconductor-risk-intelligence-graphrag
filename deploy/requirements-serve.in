@@ -1,6 +1,10 @@
 # Direct dependencies of the web service ONLY (no torch / sentence-transformers /
 # edgartools / sec-parser / pandas — those are pipeline-time). Pinned by:
-#   uv pip compile deploy/requirements-serve.in -o deploy/requirements-serve.txt
+#   uv pip compile deploy/requirements-serve.in -o deploy/requirements-serve.txt --python-version 3.13 --python-platform x86_64-manylinux_2_28 --generate-hashes
+# The image is Linux: the lock is resolved for Linux (--python-platform), not for the host that compiles it, so Linux-only
+# packages of uvicorn[standard] (uvloop) are pinned and hashed and host-only ones (colorama) are not.
+# uvloop is named below only to hold it at the version the staging mock image resolves (tests/test_tools_mockllm_calibrate.py
+# keeps the two locks equal); it is a dependency of uvicorn[standard] on Linux either way.
 # The semigraph package itself is installed with --no-deps on top of this file.
 fastapi>=0.141
 uvicorn[standard]>=0.52
@@ -26,3 +30,4 @@ python-docx>=1.2
 puremagic>=2.2
 rapidfuzz>=3.14
 scipy>=1.18
+uvloop==0.22.1

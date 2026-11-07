@@ -5,6 +5,9 @@
 #      files in /web/dist leave this stage (docs/specs/m5b-frontend.md R13)
 #   3. runtime: python:3.13-slim + the pinned serving deps + the semigraph wheel + the built app. No Node here.
 # No secrets are baked in (see .dockerignore); config comes from Fly secrets.
+# The python base image (both python stages) and the uv image are pinned by digest (the multi-arch index): a tag can move, a
+# digest cannot. To move to a newer base, resolve the new index digest of the tag and change it here (one value for both python
+# stages, tests/test_dockerfile_web.py); the serving requirements are hash-locked as well (deploy/requirements-serve.txt).
 #
 # Embedder variant (--build-arg EMBEDDER_VARIANT=q8|fp32, default q8 = the image that is live):
 #   q8    the 8-bit model above, untouched; ONNX Runtime dequantizes every weight on every call.
@@ -22,7 +25,7 @@
 # The image ENV ONNX_MODEL_PATH follows the variant, but fly.toml's [env] ONNX_MODEL_PATH overrides it:
 # serving an fp32 image means changing that one line (a decision for after the timing/RSS window).
 # An fp32 image built WITHOUT KEEP_UNPATCHED has no 8-bit file, so with fly.toml unchanged it fails to boot.
-FROM python:3.13-slim AS model
+FROM python:3.13-slim@sha256:09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc AS model
 ENV PIP_NO_CACHE_DIR=1 HF_HUB_DISABLE_PROGRESS_BARS=1 HF_HOME=/hf
 RUN pip install "onnx>=1.17" "onnxruntime>=1.29" "onnx-ir>=1.0" "huggingface_hub>=1.0" "numpy>=2"
 WORKDIR /build
@@ -63,31 +66,36 @@ RUN npm run build
 # Owner rwX; group and others read (and enter directories) and never write.
 RUN chmod -R u=rwX,go=rX /web/dist
 
-FROM python:3.13-slim
+FROM python:3.13-slim@sha256:09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc
 ARG EMBEDDER_VARIANT=q8
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 EMBEDDING_BACKEND=onnx \
     ONNX_MODEL_PATH=/srv/models/qwen3-embedding-0.6b-${EMBEDDER_VARIANT}/model_${EMBEDDER_VARIANT}.onnx
-COPY --from=ghcr.io/astral-sh/uv:0.11.20 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.20@sha256:eaa5f1a3305307aaf9e67fe2bbba1d85ebbb2d8a63bce23af21797bfafbe0f8b /uv /bin/uv
 WORKDIR /srv
 COPY deploy/requirements-serve.txt deploy/
-RUN uv pip install --system --no-cache -r deploy/requirements-serve.txt
+# --require-hashes: every package of the file must carry a pinned hash that matches (deploy/requirements-serve.txt is generated
+# with --generate-hashes), so an index that serves a different file fails the build.
+RUN uv pip install --system --no-cache --require-hashes -r deploy/requirements-serve.txt
 COPY pyproject.toml README.md ./
 COPY src/ src/
 RUN uv pip install --system --no-cache --no-deps .
 # Never run as root; port 8080 needs no privileges. Nothing under /srv is handed to that user: /srv (the working directory of the
 # server and of every upload worker it starts) and everything under it stay root-owned, so the serving user can write nothing on
 # the import path or under /srv. The serving code writes nothing under /srv (state is in the database, temporary files go to
-# /tmp). The one directory app does own is its home, /home/app (--create-home); PYTHONNOUSERSITE below keeps that user site off
-# the import path.
-RUN useradd --create-home --shell /usr/sbin/nologin app
+# /tmp). The serving user has no home directory (--no-create-home, /nonexistent), so there is none to write; caches go to /tmp
+# (XDG_CACHE_HOME below), and PYTHONNOUSERSITE below keeps the user site off the import path as a second layer.
+RUN useradd --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin app
 # The model layer is copied WITHOUT --chown (root-owned, like everything else here): models are root-owned and read-only to the
 # serving user. The files keep the mode they had in the model stage, so the next step fails the BUILD (not the first boot) if app
 # could not read one: the default model file must exist, and every model directory under /srv/models (a KEEP_UNPATCHED image
 # holds the 8-bit one next to the fp32 one, and a staging app may point at either) must be world-readable, apart from the *.py
-# probe scripts, which root runs.
+# probe scripts, which root runs. The same step refuses a symlink, any group- or world-writable entry and any owner but root
+# anywhere under /srv/models. `find` runs inside an assignment, so a failing `find` stops the build; its output is tested after.
 COPY --from=model /models /srv/models
-RUN test -f "$ONNX_MODEL_PATH" \
- && test -z "$(find /srv/models ! -name '*.py' \( \( -type f ! -perm -004 \) -o \( -type d ! -perm -005 \) \) -print -quit)"
+RUN set -eu; \
+    test -f "$ONNX_MODEL_PATH"; \
+    bad="$(find /srv/models \( -type l -o -perm /022 -o ! -user root -o \( ! -name '*.py' \( \( -type f ! -perm -004 \) -o \( -type d ! -perm -005 \) \) \) \) -print -quit)"; \
+    test -z "$bad" || { echo "unsafe model tree entry: $bad" >&2; exit 1; }
 # The built app goes in AFTER the model layer, so a web change never invalidates the 1 GB model copy above. It is copied WITHOUT
 # --chown on purpose (docs/specs/m5b-frontend.md R13): the files stay root-owned and world-readable, so the serving user reads the
 # app it serves and cannot rewrite it. It is NOT under /srv, where it began: owner decision 5 (2026-11-07) put the dist at
@@ -98,8 +106,28 @@ COPY --from=web /web/dist /opt/semigraph/web
 # PYTHONSAFEPATH=1 (Python 3.11+) keeps the working directory off sys.path for the server (`python -m ...`), and
 # PYTHONNOUSERSITE=1 keeps the user site of /home/app off it, for the server and for anything that inherits them. The sandboxed
 # upload workers get an allowlisted environment instead, so they start with -s -P on their own command line (uploads/sandbox.py
-# module_command). Set after the build steps above.
-ENV PYTHONSAFEPATH=1 PYTHONNOUSERSITE=1
+# module_command). Set after the build steps above. XDG_CACHE_HOME sends library caches to /tmp (the serving user has no home).
+# Setuid and setgid bits come off every file of the image before the user switch, and the step fails if one is left: nothing the
+# serving user starts gains privilege on exec (the workers also set no-new-privileges themselves).
+RUN set -eu; \
+    find / -xdev -perm /6000 -type f -exec chmod a-s {} +; \
+    bad="$(find / -xdev -perm /6000 -type f -print -quit)"; \
+    test -z "$bad"
+ENV PYTHONSAFEPATH=1 PYTHONNOUSERSITE=1 XDG_CACHE_HOME=/tmp/.cache
 USER app
+# The build fails here if the serving user can write anything on the import path, under /srv or under /opt/semigraph, or any
+# parent directory of those (it runs as that user, so `-w` and `find -writable` answer for it). Each path list is assigned first,
+# so a failing `python` stops the step.
+RUN set -eu; \
+    paths="$(python -c 'import sys; print(*sys.path)')"; \
+    for p in $paths /srv /opt/semigraph; do \
+        [ -e "$p" ] || continue; \
+        found="$(find "$p" -writable -print -quit)"; \
+        [ -z "$found" ] || { echo "writable by the serving user: $found" >&2; exit 1; }; \
+        while [ "$p" != / ]; do \
+            if [ -w "$p" ]; then echo "writable by the serving user: $p" >&2; exit 1; fi; \
+            p="$(dirname "$p")"; \
+        done; \
+    done
 EXPOSE 8080
 CMD ["python", "-m", "semigraph.serve.drain"]

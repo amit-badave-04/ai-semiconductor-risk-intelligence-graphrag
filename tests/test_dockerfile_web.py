@@ -9,12 +9,18 @@ stage), so the serving user can read the app and cannot rewrite it (R13 amendmen
 (no step chowns or chmods them). ``/srv`` is root-owned as well (H1, owner-approved 2026-11-07): ``/srv`` and the models under it
 stay root-owned (no ``chown`` of ``/srv``, no ``--chown`` on the model copy), because the server and every upload worker start
 in ``/srv``, so the serving user can write nothing on the import path or under ``/srv``. ``PYTHONSAFEPATH=1`` keeps the working
-directory off ``sys.path`` and ``PYTHONNOUSERSITE=1`` keeps the user site of ``/home/app``, the one directory the serving user
-still owns, off it (I1 security review, 2026-11-07). No ``RUN`` may use a heredoc: the scans below do not read its body
-(``heredoc_runs``). The model stage is covered by ``test_dockerfile_embedder.py`` and is not touched here.
+directory off ``sys.path`` and ``PYTHONNOUSERSITE=1`` keeps the user site off it (I1 security review, 2026-11-07). No
+instruction (``RUN``, ``COPY`` or ``ADD``) may use a heredoc: the scans below do not read its body (``heredoc_steps``).
+Image hardening (commit 8, owner-approved 2026-11-07; the I4 image build is the proof, nothing here builds an image): the
+Python base image and the ``uv`` image are pinned by digest, the serving requirements install with ``--require-hashes``, the
+model tree is checked at build time (root-owned, no symlink, nothing group- or world-writable, readable), setuid and setgid
+bits are stripped before the user switch, the serving user has no home directory, and a build step run as that user fails
+if it can write anything on the import path, under ``/srv`` or under ``/opt/semigraph``. The model stage is covered by
+``test_dockerfile_embedder.py`` and is not touched here.
 """
 
 
+import json
 import posixpath
 import re
 from pathlib import Path, PurePosixPath
@@ -26,21 +32,43 @@ DOCKERFILE = ROOT / "Dockerfile"
 DOCKERIGNORE = ROOT / ".dockerignore"
 WEB_FROM = re.compile(r"^FROM node:24\.22\.2-slim@sha256:[0-9a-f]{64} AS web$")
 MODEL_COPY = "COPY --from=model /models /srv/models"    # no --chown: root-owned, read-only to the serving user
-# The build fails here, not the first boot, when the serving user could not read what the root-owned copy brought in: the files
-# keep the mode they had in the model stage (reasoned 0644 and 0755; nothing measured, no Docker on this desktop).
-MODEL_READABLE = ('RUN test -f "$ONNX_MODEL_PATH" && test -z "$(find /srv/models ! -name \'*.py\' '
-                  r'\( \( -type f ! -perm -004 \) -o \( -type d ! -perm -005 \) \) -print -quit)"')
+PYTHON_FROM = re.compile(r"^FROM python:3\.13-slim@sha256:([0-9a-f]{64})(?: AS model)?$")
+UV_IMAGE = re.compile(r"^ghcr\.io/astral-sh/uv:[\d.]+@sha256:[0-9a-f]{64}$")
+# The build fails here, not the first boot, when the model tree is not what the serving user needs: the default model file must
+# exist; no entry may be a symlink, group- or world-writable or owned by anyone but root; and every entry (but the *.py probe
+# scripts, which root runs) must be readable (files by others, directories also enterable). ``find`` runs in an assignment, so
+# its own failure stops the build; the result is tested afterwards (``test -z "$(find ...)"`` would ignore a failing ``find``).
+MODEL_READABLE = r"""RUN set -eu; test -f "$ONNX_MODEL_PATH"; bad="$(find /srv/models \( -type l -o -perm /022 -o ! -user root -o \( ! -name '*.py' \( \( -type f ! -perm -004 \) -o \( -type d ! -perm -005 \) \) \) \) -print -quit)"; test -z "$bad" || { echo "unsafe model tree entry: $bad" >&2; exit 1; }"""
+# Run AS the serving user, after the user switch: the build fails if that user can write the import path (every sys.path entry
+# and every parent of one), /srv or /opt/semigraph (each tree and every parent of it).
+IMPORT_PATH_CHECK = r"""RUN set -eu; paths="$(python -c 'import sys; print(*sys.path)')"; for p in $paths /srv /opt/semigraph; do [ -e "$p" ] || continue; found="$(find "$p" -writable -print -quit)"; [ -z "$found" ] || { echo "writable by the serving user: $found" >&2; exit 1; }; while [ "$p" != / ]; do if [ -w "$p" ]; then echo "writable by the serving user: $p" >&2; exit 1; fi; p="$(dirname "$p")"; done; done"""
+# Setuid and setgid bits come off every file of the image's root filesystem (the build fails if one is left); it only removes bits.
+STRIP_SETID = """RUN set -eu; find / -xdev -perm /6000 -type f -exec chmod a-s {} +; bad="$(find / -xdev -perm /6000 -type f -print -quit)"; test -z "$bad\""""
+USERADD = "RUN useradd --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin app"
+SERVE_INSTALL = "RUN uv pip install --system --no-cache --require-hashes -r deploy/requirements-serve.txt"
 WORKDIR_SRV = "WORKDIR /srv"
 SAFE_PATH = "PYTHONSAFEPATH=1"
 NO_USER_SITE = "PYTHONNOUSERSITE=1"
+CACHE_HOME = "XDG_CACHE_HOME=/tmp/.cache"        # the serving user has no home to cache in: caches go to /tmp
+SCAN_EXEMPT = {STRIP_SETID}                      # the one step the ownership scans read as a hit (it names ``/``) and that only removes bits
 DIST_TARGET = "/opt/semigraph/web"        # /opt and /opt/semigraph are root-owned and nothing chowns them (R13, owner decision 5)
 WEB_COPY = f"COPY --from=web /web/dist {DIST_TARGET}"  # no --chown: root-owned, the app user cannot write it (R13)
 WEB_COPY_TARGET = re.compile(r"^COPY --from=web /web/dist (\S+)$")
 MODE_STEP = "RUN chmod -R u=rwX,go=rX /web/dist"       # owner rwX; group and others read (and enter directories), never write
 
 
+KEYWORDS = {"FROM", "RUN", "COPY", "ADD", "USER", "WORKDIR", "ENV", "ARG", "CMD", "ENTRYPOINT", "EXPOSE", "LABEL", "VOLUME", "SHELL",
+            "HEALTHCHECK", "STOPSIGNAL", "ONBUILD", "MAINTAINER"}
+
+
+def keyword_upper(step: str) -> str:
+    """The instruction keyword in upper case (Docker reads ``run`` and ``RUN`` alike); the rest of the line is left as written."""
+    word, space, rest = step.partition(" ")
+    return word.upper() + space + rest if word.upper() in KEYWORDS else step
+
+
 def instructions(text: str) -> list[str]:
-    """Dockerfile instructions with continuation lines joined and comments dropped."""
+    """Dockerfile instructions with continuation lines joined, comments dropped and the keyword in upper case."""
     out, current = [], ""
     for raw in text.splitlines():
         line = raw.strip()
@@ -50,7 +78,7 @@ def instructions(text: str) -> list[str]:
             continue
         current += (" " if current else "") + line.removesuffix("\\").strip()
         if not line.endswith("\\"):
-            out.append(current)
+            out.append(keyword_upper(current))
             current = ""
     return out
 
@@ -73,7 +101,7 @@ STAGES = stages()
 
 def test_the_stages_are_model_then_web_then_the_runtime_image_last():
     assert list(STAGES) == ["model", "web", "runtime"]
-    assert STAGES["runtime"][0] == "FROM python:3.13-slim"          # the last stage: the default build target, unchanged
+    assert PYTHON_FROM.match(STAGES["runtime"][0]), STAGES["runtime"][0]      # the last stage: the default build target
 
 
 def test_the_web_stage_is_a_digest_pinned_exact_node_tag():
@@ -116,7 +144,7 @@ def test_the_built_app_is_copied_without_chown_so_the_serving_user_cannot_rewrit
     assert MODEL_COPY in runtime and "--chown" not in MODEL_COPY                 # the model layer stays root's as well
     assert [step for step in runtime if "chown" in step] == []
     web_copy = runtime.index(WEB_COPY)
-    assert [step for step in runtime[web_copy + 1:] if "chown" in step or "chmod" in step] == []
+    assert [step for step in runtime[web_copy + 1:] if ("chown" in step or "chmod" in step) and step not in SCAN_EXEMPT] == []
 
 
 # ---------------------------------------------------------------- the dist location (R13 residual, owner decision 5)
@@ -133,18 +161,36 @@ def web_copy_target() -> str:
     return targets[0]
 
 
+def exec_form(body: str) -> list[str] | None:
+    """The argv of an exec-form ``RUN ["cmd", "arg"]`` body (a JSON array of strings), or None when it is not one."""
+    try:
+        argv = json.loads(body)
+    except ValueError:
+        return None
+    return argv if isinstance(argv, list) and all(isinstance(word, str) for word in argv) else None
+
+
 def ownership_paths(step: str) -> list[str]:
     """The absolute (or escaping) paths one instruction hands to a command that changes owner, group, mode or ACL, or that
     creates a user's home directory: a ``COPY``/``ADD`` carrying ``--chown``/``--chmod`` (its destination), and every
-    path-like word of a ``RUN`` segment that names such a command (``find /opt -exec chown ...`` included). A word with a glob
-    character, a variable or a ``..`` is returned as well: reading the file cannot say where it points."""
+    path-like word of a ``RUN`` segment that names such a command (``find /opt -exec chown ...`` included). The keyword is read
+    in any case, and an exec-form ``RUN [...]`` is read as its argv joined (one that is not valid JSON is returned as
+    unreadable). A word with a glob character, a variable or a ``..`` is returned as well: reading the file cannot say where it
+    points."""
     words = step.split()
-    if step.startswith(("COPY ", "ADD ")):
-        return [words[-1]] if any(w.startswith(("--chown", "--chmod")) for w in words) else []
-    if not step.startswith("RUN "):
+    keyword = words[0].upper() if words else ""
+    if keyword in ("COPY", "ADD"):
+        return [words[-1]] if any(w.lower().startswith(("--chown", "--chmod")) for w in words) else []
+    if keyword != "RUN":
         return []
+    body = step.split(None, 1)[1] if len(words) > 1 else ""
+    if body.startswith("["):
+        argv = exec_form(body)
+        if argv is None:
+            return ["$unreadable"]
+        body = " ".join(argv)
     out: list[str] = []
-    for segment in SEGMENT_BREAKS.split(step.removeprefix("RUN ")):
+    for segment in SEGMENT_BREAKS.split(body):
         tokens = [w.strip("'\"()") for w in segment.split()]
         # ``install`` counts only as the command of a segment (``pip install`` is not the coreutils one)
         if tokens[:1] == ["install"] or any(w.rsplit("/", 1)[-1] in OWNERSHIP_COMMANDS for w in tokens):
@@ -169,14 +215,14 @@ def reaches_the_dist(path: str, target: str) -> bool:
 
 
 HEREDOC = "<<"
-RUN_STEP = re.compile(r"run\s", re.IGNORECASE)
+HEREDOC_STEP = re.compile(r"(?:run|copy|add)\s", re.IGNORECASE)
 
 
-def heredoc_runs(text: str) -> list[str]:
-    """The ``RUN`` instructions of a Dockerfile text that open a heredoc: ``<<`` anywhere in the instruction (``RUN <<EOF``,
-    ``RUN <<-EOT``, ``RUN cat <<'EOF' > file``). The keyword is read in any case, as Docker does. A ``<<`` inside quotes or
-    arithmetic is flagged as well: the guard fails closed."""
-    return [step for step in instructions(text) if RUN_STEP.match(step) and HEREDOC in step]
+def heredoc_steps(text: str) -> list[str]:
+    """The ``RUN``, ``COPY`` and ``ADD`` instructions of a Dockerfile text that open a heredoc: ``<<`` anywhere in the
+    instruction (``RUN <<EOF``, ``RUN <<-EOT``, ``RUN cat <<'EOF' > file``, ``COPY <<EOF /dest``). The keyword is read in any
+    case, as Docker does. A ``<<`` inside quotes or arithmetic is flagged as well: the guard fails closed."""
+    return [step for step in instructions(text) if HEREDOC_STEP.match(step) and HEREDOC in step]
 
 
 def test_the_dist_is_outside_srv_under_parents_that_nothing_hands_to_the_app_user():
@@ -189,17 +235,18 @@ def test_the_dist_is_outside_srv_under_parents_that_nothing_hands_to_the_app_use
     assert target == DIST_TARGET == "/opt/semigraph/web"
     assert WEB_COPY in STAGES["runtime"]
     assert PurePosixPath("/srv") not in [PurePosixPath(target), *PurePosixPath(target).parents]
-    # no instruction in the whole file (any stage, any position) but the web copy so much as names that tree
-    assert [step for steps in STAGES.values() for step in steps if "/opt" in step] == [WEB_COPY]
+    # no instruction in the whole file (any stage, any position) but the web copy, and the build step that checks the serving user
+    # cannot write that tree, so much as names it
+    assert [step for steps in STAGES.values() for step in steps if "/opt" in step] == [WEB_COPY, IMPORT_PATH_CHECK]
 
 
 def test_no_step_before_or_after_gives_the_app_user_write_access_to_the_dist_or_its_parents():
-    """Every stage, every position. Since H1 (owner-approved 2026-11-07) no step of the runtime stage chowns anything: the one
-    command the scan reads there is ``useradd --create-home`` (it makes ``/home/app``; its only path-like word is the login
-    shell ``/usr/sbin/nologin``), and it reaches none of ``/``, ``/opt``, ``/opt/semigraph`` or the dist; the web stage's mode
-    step touches only ``/web/dist``."""
+    """Every stage, every position. Since H1 (owner-approved 2026-11-07) no step of the runtime stage chowns anything: the
+    commands the scan reads there are ``useradd`` (it creates no home directory; its path-like words are ``/nonexistent`` and the
+    login shell ``/usr/sbin/nologin``) and the setuid strip (exempt by exact text, ``test_the_setid_strip_...``), and neither
+    reaches ``/opt``, ``/opt/semigraph`` or the dist; the web stage's mode step touches only ``/web/dist``."""
     target = web_copy_target()
-    reaching = [(name, step) for name, steps in STAGES.items() for step in steps
+    reaching = [(name, step) for name, steps in STAGES.items() for step in steps if step not in SCAN_EXEMPT
                 if any(reaches_the_dist(path, target) for path in ownership_paths(step))]
     assert reaching == []
 
@@ -221,6 +268,13 @@ def test_no_step_before_or_after_gives_the_app_user_write_access_to_the_dist_or_
     "RUN useradd -m -d /opt/semigraph app",
     "COPY --chown=app:app x /opt/semigraph/",
     "ADD --chmod=777 x /opt/semigraph/web",
+    "run chown -R app:app /opt/semigraph",
+    "Run chmod -R 777 /opt",
+    "copy --chown=app:app x /opt/semigraph/",
+    "add --chmod=777 x /opt/semigraph/web",
+    'RUN ["chown", "-R", "app:app", "/opt/semigraph"]',
+    'RUN ["sh", "-c", "chmod -R 777 /opt"]',
+    "RUN [chown, -R, app, /opt]",
 ])
 def test_the_ownership_scan_catches_every_way_of_reaching_the_dist_or_its_parents(step):
     """The scan is only trustworthy if it flags what it exists for, so pin it on its own."""
@@ -231,6 +285,7 @@ OLD_USERADD = "RUN useradd --create-home --shell /usr/sbin/nologin app && chown 
 
 
 @pytest.mark.parametrize("step", [
+    USERADD,
     "RUN useradd --create-home --shell /usr/sbin/nologin app",
     OLD_USERADD,                      # no longer in the file; it never reached the dist at its new place
     "RUN chmod -R u=rwX,go=rX /web/dist",
@@ -250,18 +305,18 @@ def test_the_scan_is_what_rules_out_the_old_location():
     assert not any(reaches_the_dist(path, DIST_TARGET) for path in ownership_paths(OLD_USERADD))
 
 
-# ---------------------------------------------------------------- RUN heredocs (round-3 review, INFO)
+# ---------------------------------------------------------------- heredocs in RUN, COPY and ADD (round-3 review, INFO; round 5)
 
 HEREDOC_BODY = "chown -R app:app /"          # a body line the ownership scan would have to see
 
 
-def test_no_run_instruction_uses_a_heredoc():
-    """``instructions()`` joins continuation lines and does not read a ``RUN <<EOF`` body: each body line becomes an entry of
+def test_no_instruction_uses_a_heredoc():
+    """``instructions()`` joins continuation lines and does not read a ``RUN <<EOF`` (or ``COPY <<EOF``) body: each body line becomes an entry of
     its own that does not start with ``RUN``, and ``ownership_paths`` returns nothing for it, so a body line such as ``chown -R
     app:app /`` would escape every ownership scan in this file (``test_a_heredoc_body_escapes_the_ownership_scan_...`` shows it).
     Reading heredoc bodies would be new code to trust, so the file fails closed instead: the Dockerfile has no heredoc today, and
     one added later fails here, where its author learns that the scans do not look inside it (round-3 review, 2026-11-07, INFO)."""
-    assert heredoc_runs(DOCKERFILE.read_text(encoding="utf-8")) == []
+    assert heredoc_steps(DOCKERFILE.read_text(encoding="utf-8")) == []
 
 
 @pytest.mark.parametrize("text", [
@@ -271,10 +326,14 @@ def test_no_run_instruction_uses_a_heredoc():
     pytest.param(f"RUN cat <<EOF > /etc/motd\n{HEREDOC_BODY}\nEOF\n", id="heredoc-after-a-command"),
     pytest.param(f"RUN set -e \\\n && cat <<EOF > /etc/motd\n{HEREDOC_BODY}\nEOF\n", id="heredoc-on-a-continuation-line"),
     pytest.param(f"run <<EOF\n{HEREDOC_BODY}\nEOF\n", id="lowercase-keyword"),
+    pytest.param(f"COPY <<EOF /srv/x\n{HEREDOC_BODY}\nEOF\n", id="copy-heredoc"),
+    pytest.param(f"COPY --chmod=0755 <<'EOF' /usr/local/bin/x\n{HEREDOC_BODY}\nEOF\n", id="copy-heredoc-with-flags"),
+    pytest.param(f"ADD <<EOF /srv/x\n{HEREDOC_BODY}\nEOF\n", id="add-heredoc"),
+    pytest.param(f"copy <<EOF /srv/x\n{HEREDOC_BODY}\nEOF\n", id="lowercase-copy-heredoc"),
 ])
-def test_the_heredoc_guard_flags_a_run_heredoc(text):
+def test_the_heredoc_guard_flags_a_heredoc_instruction(text):
     """The guard reads the Dockerfile text through ``instructions()`` (the joiner the real test uses), not a single step."""
-    assert len(heredoc_runs(text)) == 1, text
+    assert len(heredoc_steps(text)) == 1, text
 
 
 @pytest.mark.parametrize("text", [
@@ -282,12 +341,13 @@ def test_the_heredoc_guard_flags_a_run_heredoc(text):
     pytest.param("RUN uv pip install --system --no-cache -r deploy/requirements-serve.txt\n", id="ordinary-run"),
     pytest.param(f"{MODEL_READABLE}\n", id="the-model-readability-step"),
     pytest.param("RUN set -e \\\n && echo ok\n", id="continuation-lines"),
-    pytest.param("COPY src/ src/\n", id="not-a-run"),
+    pytest.param("COPY src/ src/\n", id="ordinary-copy"),
+    pytest.param("ADD --chown=app x /opt/y\n", id="ordinary-add"),
     pytest.param("LABEL note=\"1 << 3\"\n", id="not-a-run-even-with-a-shift"),
     pytest.param("# RUN <<EOF\nRUN true\n", id="a-comment"),
 ])
-def test_the_heredoc_guard_does_not_flag_an_ordinary_run(text):
-    assert heredoc_runs(text) == [], text
+def test_the_heredoc_guard_does_not_flag_an_ordinary_instruction(text):
+    assert heredoc_steps(text) == [], text
 
 
 def test_a_heredoc_body_escapes_the_ownership_scan_which_is_why_the_guard_exists():
@@ -295,7 +355,7 @@ def test_a_heredoc_body_escapes_the_ownership_scan_which_is_why_the_guard_exists
     steps = instructions(text)
     assert HEREDOC_BODY in steps                                                   # the body line is an entry of its own ...
     assert [path for step in steps for path in ownership_paths(step)] == []        # ... that no scan reads
-    assert heredoc_runs(text) == ["RUN <<EOF"]                                     # the guard sees the opener
+    assert heredoc_steps(text) == ["RUN <<EOF"]                                     # the guard sees the opener
     assert any(reaches_path(path, "/srv") for path in ownership_paths(f"RUN {HEREDOC_BODY}"))   # one line: the scan catches it
 
 
@@ -317,6 +377,11 @@ def test_a_heredoc_body_escapes_the_ownership_scan_which_is_why_the_guard_exists
     "COPY --from=model --chown=app:app /models /srv/models",
     "COPY --chown=app:app src/ /srv/src/",
     "ADD --chmod=777 x /srv/x",
+    "run chown -R app:app /srv",
+    "copy --from=model --chown=app:app /models /srv/models",
+    'RUN ["chown", "-R", "app:app", "/srv"]',
+    'RUN ["sh", "-c", "chown -R app /srv/models"]',
+    "RUN [chown, -R, app, /srv]",
     OLD_USERADD,
 ])
 def test_the_srv_scan_catches_every_way_of_handing_the_working_directory_or_the_models_to_a_user(step):
@@ -324,6 +389,7 @@ def test_the_srv_scan_catches_every_way_of_handing_the_working_directory_or_the_
 
 
 @pytest.mark.parametrize("step", [
+    USERADD,
     "RUN useradd --create-home --shell /usr/sbin/nologin app",
     MODEL_COPY,
     "COPY src/ src/",
@@ -342,7 +408,7 @@ def test_no_step_gives_the_app_user_write_access_to_the_working_directory_or_the
     no ``chown`` of ``/srv`` and no ``--chown`` on the model copy. The serving code writes nothing under ``/srv`` (it keeps its
     state in the database and its temporary files in ``/tmp``), so nothing needs to stay writable: no step of any stage reaches
     ``/srv``, its parents or anything below it."""
-    reaching = [(name, step) for name, steps in STAGES.items() for step in steps
+    reaching = [(name, step) for name, steps in STAGES.items() for step in steps if step not in SCAN_EXEMPT
                 if any(reaches_path(path, "/srv") for path in ownership_paths(step))]
     assert reaching == []
 
@@ -358,8 +424,8 @@ def test_the_server_starts_in_srv_which_the_image_creates_as_root():
 
 def test_the_runtime_stage_takes_the_working_directory_and_the_user_site_off_the_import_path():
     """``PYTHONSAFEPATH=1`` (Python 3.11+) keeps the working directory off ``sys.path`` for the server (``python -m ...`` puts the
-    cwd first on it) and ``PYTHONNOUSERSITE=1`` keeps the user site of ``/home/app``, the one directory the serving user owns, off
-    it. The sandboxed workers do not inherit them (their environment is an allowlist), so they carry ``-P`` and ``-s`` on their
+    cwd first on it) and ``PYTHONNOUSERSITE=1`` keeps the user site off it (the serving user has no home directory since commit 8;
+    the setting stays as a second layer). The sandboxed workers do not inherit them (their environment is an allowlist), so they carry ``-P`` and ``-s`` on their
     own argv (``tests/test_sandbox_safe_path.py``). Both are in an ``ENV`` instruction of their own, after the first one, which
     the embedder test reads for ``ONNX_MODEL_PATH``."""
     runtime = STAGES["runtime"]
@@ -370,15 +436,106 @@ def test_the_runtime_stage_takes_the_working_directory_and_the_user_site_off_the
         assert not any(setting in step for name in ("model", "web") for step in STAGES[name])   # those stages run no Python for the app
 
 
-def test_the_model_files_are_checked_readable_by_the_serving_user_at_build_time():
+def test_the_model_tree_is_checked_at_build_time():
     """Without ``--chown`` the model files keep the owner and mode they had in the model stage. A mode that left them
-    unreadable to ``app`` would otherwise show only at the first boot; this step fails the image build instead. It covers every
-    model directory under ``/srv/models`` (a ``KEEP_UNPATCHED`` image holds the 8-bit model beside the fp32 one, and a staging
-    app may serve either), not only the default model's, and skips the ``*.py`` probe scripts, which root runs. It sits right
-    after the model copy and before the user switch, so it runs as root against exactly the files that were copied."""
+    unreadable to ``app`` would otherwise show only at the first boot, and a symlink or a group- or world-writable entry would
+    leave the models open to change: this step fails the image build instead. It covers every model directory under
+    ``/srv/models`` (a ``KEEP_UNPATCHED`` image holds the 8-bit model beside the fp32 one, and a staging app may serve either),
+    not only the default model's, and skips only the readability test of the ``*.py`` probe scripts, which root runs. It sits
+    right after the model copy and before the user switch, so it runs as root against exactly the files that were copied."""
     runtime = STAGES["runtime"]
     assert MODEL_READABLE in runtime
     assert runtime.index(MODEL_COPY) < runtime.index(MODEL_READABLE) < runtime.index("USER app")
+
+
+def test_the_model_check_tests_the_find_result_after_assigning_it_and_refuses_links_and_writable_entries():
+    """``test -z "$(find ...)"`` is true when ``find`` itself fails (an unreadable directory, a missing path), so the check
+    would pass on an error. The output is assigned first (an assignment carries ``find``'s exit status, and ``set -e`` stops on
+    it) and tested afterwards. The expression refuses a symlink, any group- or world-writable entry and any owner but root."""
+    check = MODEL_READABLE
+    assert check.startswith("RUN set -eu;") and 'bad="$(find /srv/models ' in check and 'test -z "$bad"' in check
+    assert 'test -z "$(find' not in check
+    for refused in ("-type l", "-perm /022", "! -user root"):
+        assert refused in check, refused
+    assert re.search(r"\) -print -quit\)\"", check), "-print -quit must apply to the whole OR group"
+    assert 'test -f "$ONNX_MODEL_PATH"' in check and check.index("test -f") < check.index("bad=")
+
+
+def test_a_build_step_run_by_the_serving_user_checks_the_import_path_and_the_trees_it_serves_from():
+    """After ``USER app`` (so ``-w`` and ``find -writable`` answer for the serving user, not for root) the build fails if that user
+    can write any ``sys.path`` entry, ``/srv`` or ``/opt/semigraph``, or any parent directory of one of them. The path list is
+    assigned first so a failing ``python`` stops the step. Not measured here: no Docker, so the I4 image build is the proof."""
+    runtime = STAGES["runtime"]
+    assert IMPORT_PATH_CHECK in runtime
+    assert runtime.index("USER app") < runtime.index(IMPORT_PATH_CHECK) < runtime.index(runtime[-1])
+    assert runtime[-1].startswith("CMD ")
+    for needed in ("sys.path", "/srv", "/opt/semigraph", "-writable", '[ -w "$p" ]', 'dirname "$p"', "exit 1"):
+        assert needed in IMPORT_PATH_CHECK, needed
+    assert IMPORT_PATH_CHECK.index('paths="$(python') < IMPORT_PATH_CHECK.index("for p in")
+
+
+def test_the_setid_strip_runs_before_the_user_switch_and_only_removes_bits():
+    """Setuid and setgid bits come off every file of the root filesystem after the last thing is installed or copied, and the
+    step fails if one is left. It names ``/`` and ``chmod``, so the ownership scans read it as a hit; they skip it by its exact
+    text, which only removes bits (``a-s``): the variants below are not skipped and are flagged."""
+    runtime = STAGES["runtime"]
+    assert STRIP_SETID in runtime
+    installs = [i for i, step in enumerate(runtime) if step.startswith(("COPY ", "RUN uv pip install"))]
+    assert max(installs) < runtime.index(STRIP_SETID) < runtime.index("USER app")
+    assert "chmod a-s " in STRIP_SETID and "-perm /6000" in STRIP_SETID and "-xdev" in STRIP_SETID
+    for variant in (STRIP_SETID.replace("a-s", "a+rwx"), STRIP_SETID.replace("a-s", "u+s"), STRIP_SETID.replace("chmod a-s", "chown app")):
+        assert variant not in SCAN_EXEMPT
+        assert any(reaches_path(path, "/srv") for path in ownership_paths(variant)), variant
+    assert any(reaches_path(path, "/srv") for path in ownership_paths(STRIP_SETID))     # the scan does read it; the exemption is by text
+
+
+def test_the_serving_user_has_no_home_directory_and_its_caches_go_to_tmp():
+    """The user is created without a home (``/nonexistent``), so there is no home directory to write; caches are sent to ``/tmp``
+    by ``XDG_CACHE_HOME``, which sits in the ``ENV`` before the user switch."""
+    runtime = STAGES["runtime"]
+    assert USERADD in runtime and "--create-home" not in "\n".join(runtime)
+    env = next(step for step in runtime if CACHE_HOME in step.split())
+    assert env.startswith("ENV ") and runtime.index(env) < runtime.index("USER app")
+    assert not any(CACHE_HOME in step for name in ("model", "web") for step in STAGES[name])
+
+
+def workdirs_after_user(steps: list[str]) -> list[str]:
+    """The ``WORKDIR`` instructions after the first ``USER``: Docker makes such a directory owned by the user that is current
+    then, so it would hand a directory to the serving user."""
+    users = [i for i, step in enumerate(steps) if step.startswith("USER ")]
+    return [step for step in steps[users[0] + 1:] if step.startswith("WORKDIR ")] if users else []
+
+
+@pytest.mark.parametrize("text, expected", [
+    pytest.param("USER app\nWORKDIR /srv\n", ["WORKDIR /srv"], id="workdir-after-user"),
+    pytest.param("USER app\nRUN true\nworkdir /x\n", ["WORKDIR /x"], id="lowercase-workdir-after-user"),
+    pytest.param("WORKDIR /srv\nUSER app\nCMD [\"x\"]\n", [], id="workdir-before-user"),
+    pytest.param("WORKDIR /srv\nCMD [\"x\"]\n", [], id="no-user"),
+])
+def test_the_workdir_scan_flags_a_workdir_after_the_user_switch(text, expected):
+    assert workdirs_after_user(instructions(text)) == expected
+
+
+def test_no_workdir_follows_the_user_switch():
+    assert workdirs_after_user(STAGES["runtime"]) == []
+
+
+def test_the_base_images_are_pinned_by_digest_and_the_serving_requirements_install_with_hashes():
+    """The model stage and the runtime stage start from the same ``python:3.13-slim`` index digest, and ``uv`` is copied from an
+    image pinned by digest (a tag can move). The requirements file is hash-locked (``tests/test_deploy_hashes.py``) and the
+    install states ``--require-hashes`` on its own command line, so a package without a pinned hash fails the build."""
+    model, runtime = PYTHON_FROM.match(STAGES["model"][0]), PYTHON_FROM.match(STAGES["runtime"][0])
+    assert model and runtime and model.group(1) == runtime.group(1)
+    assert SERVE_INSTALL in STAGES["runtime"]
+    assert not [step for step in STAGES["runtime"] if "uv pip install" in step and "--require-hashes" not in step and "--no-deps ." not in step]
+    uv_copies = [step for step in STAGES["runtime"] if step.startswith("COPY --from=ghcr.io/")]
+    assert len(uv_copies) == 1 and UV_IMAGE.fullmatch(uv_copies[0].split()[1].removeprefix("--from="))
+
+
+def test_the_lowercase_and_exec_form_steps_are_read_by_the_instruction_parser():
+    steps = instructions("from python:3.13-slim\nrun chown -R app /srv\nRUN [\"chown\", \"app\", \"/srv\"]\nuser app\n")
+    assert steps[:2] == ["FROM python:3.13-slim", "RUN chown -R app /srv"] and steps[-1] == "USER app"
+    assert [any(reaches_path(path, "/srv") for path in ownership_paths(step)) for step in steps[1:3]] == [True, True]
 
 
 def test_the_web_stage_sets_the_dist_modes_after_the_build_and_never_chowns_it():
@@ -397,7 +554,7 @@ def test_the_runtime_stage_has_no_node_binary_step():
     particular nothing copies a Node binary (or anything but ``/web/dist``) out of the web stage."""
     runtime = "\n".join(STAGES["runtime"])
     uv, *rest = sorted(re.findall(r"--from=(\S+)", runtime))      # the order is pinned above; any uv version, so a bump stays green
-    assert re.fullmatch(r"ghcr\.io/astral-sh/uv:[\d.]+", uv) and rest == ["model", "web"]
+    assert UV_IMAGE.fullmatch(uv) and rest == ["model", "web"]
     assert re.findall(r"--from=web (\S+) ", runtime) == ["/web/dist"]
     assert not re.search(r"/(?:usr/(?:local/)?)?bin/node\b|\bnode(?:js)?\b", runtime, re.IGNORECASE)
 
