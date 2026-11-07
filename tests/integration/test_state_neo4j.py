@@ -105,7 +105,7 @@ class Env:
         return (rows[0]["paid"], rows[0]["spend"]) if rows else None
 
     def close(self):
-        ledger.run_write(self.admin, "MATCH (n) WHERE (n:SvcQuery OR n:SvcDayCounter OR n:SvcIpDay) AND n.day IN $days "
+        ledger.run_write(self.admin, "MATCH (n) WHERE (n:SvcQuery OR n:SvcDayCounter OR n:SvcIpDay OR n:SvcUploadDay) AND n.day IN $days "
                          "DETACH DELETE n", timeout_s=30, days=self.days)
         ledger.run_write(self.admin, "MATCH (q:SvcQuery) WHERE q.machine_id = $m DETACH DELETE q", timeout_s=30,
                          m=self.machine)
@@ -611,3 +611,79 @@ def test_a_pooled_connection_whose_server_went_silent_fails_the_next_operation_w
         assert results["reserve"][0] == "returned" and results["reserve"][1] < DEAD_MANAGED_BOUND_S
     finally:
         forwarder.close()
+
+
+# ---------------------------------------------------------------- the daily upload count: reserve and release (docs/specs/upload-cap-and-abort.md)
+
+
+def upload_count(env, day):
+    rows = store.run_cypher(env.admin, "MATCH (c:SvcUploadDay {day: $d}) RETURN c.n AS n", d=day)
+    return rows[0]["n"] if rows else None
+
+
+def test_a_released_upload_is_given_back_once_per_job(env):
+    store.ensure_indexes(env.admin)
+    day = env.days[0]
+    for _ in range(3):
+        assert store.reserve_daily_upload(env.admin, 40, day=day) is True
+    assert upload_count(env, day) == 3
+    assert store.release_daily_upload(env.admin, day, "job-a") is True and upload_count(env, day) == 2
+    assert store.release_daily_upload(env.admin, day, "job-a") is False and upload_count(env, day) == 2   # a second call: a no-op
+    assert store.release_daily_upload(env.admin, day, "job-b") is True and upload_count(env, day) == 1
+
+
+def test_a_release_never_takes_a_day_below_zero(env):
+    store.ensure_indexes(env.admin)
+    day = env.days[0]
+    assert store.reserve_daily_upload(env.admin, 40, day=day) is True
+    assert store.release_daily_upload(env.admin, day, "job-a") is True and upload_count(env, day) == 0
+    assert store.release_daily_upload(env.admin, day, "job-b") is False and upload_count(env, day) == 0
+
+
+def test_a_release_for_a_day_with_no_counter_creates_nothing(env):
+    store.ensure_indexes(env.admin)
+    assert store.release_daily_upload(env.admin, env.days[1], "job-a") is False
+    assert upload_count(env, env.days[1]) is None
+
+
+def test_a_release_gives_back_the_charged_day_and_touches_no_other(env):
+    """A job charged on day D that aborts after midnight refunds D; D+1's count (taken by another upload) is unchanged."""
+    store.ensure_indexes(env.admin)
+    charged, later = env.days[0], env.days[1]
+    store.reserve_daily_upload(env.admin, 40, day=charged)
+    store.reserve_daily_upload(env.admin, 40, day=later)
+    assert store.release_daily_upload(env.admin, charged, "job-a") is True
+    assert (upload_count(env, charged), upload_count(env, later)) == (0, 1)
+
+
+def test_ten_threads_releasing_one_job_give_back_exactly_one(env):
+    store.ensure_indexes(env.admin)
+    day = env.days[0]
+    for _ in range(5):
+        store.reserve_daily_upload(env.admin, 40, day=day)
+    results = []
+
+    def release():
+        results.append(store.release_daily_upload(env.admin, day, "job-a"))
+
+    threads = [threading.Thread(target=release) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    assert sorted(results) == [False] * 9 + [True] and upload_count(env, day) == 4
+
+
+def test_ten_jobs_releasing_a_count_of_five_stop_at_zero(env):
+    store.ensure_indexes(env.admin)
+    day = env.days[0]
+    for _ in range(5):
+        store.reserve_daily_upload(env.admin, 40, day=day)
+    results = []
+    threads = [threading.Thread(target=lambda n=n: results.append(store.release_daily_upload(env.admin, day, f"job-{n}")))
+               for n in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+    assert results.count(True) == 5 and upload_count(env, day) == 0

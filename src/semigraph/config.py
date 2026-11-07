@@ -7,6 +7,7 @@ reading os.environ directly; the notebooks' PROJECT_ROOT convention becomes
 
 import os
 import socket
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -69,6 +70,14 @@ PRODUCTION_UPLOAD_MIN_MEM_AVAILABLE_KB = (500_000, 2_000_000)
 # product with the daily upload count at most one day. The product counts the embed ceiling alone: parse and the last chunk add
 # about 160 s a job, which the one-at-a-time upload slot absorbs.
 PRODUCTION_MIN_UPLOAD_EMBED_TIMEOUT_S = 600
+# The worst embed rate measured on the shared-cpu-2x, in tokens a second (W1d, docs/v2/M5_DECISIONS.md 10.11). Production refuses an
+# upload cap ABOVE PRODUCTION_UPLOAD_CAP_UNCHECKED_TOKENS that the ceiling does not cover at this rate: refused when
+# upload_max_tokens > floor(upload_embed_timeout_s x 5.54) (an exact fraction, so the boundary is exact;
+# docs/specs/upload-cap-and-abort.md requirement 1, owner decision 2026-11-07).
+PRODUCTION_WORST_EMBED_TOKENS_PER_S = Fraction("5.54")
+# A cap at or below this is not checked against the ceiling (the Settings default, pinned by a test): the spec words the rule
+# for a cap ABOVE 10,000 only.
+PRODUCTION_UPLOAD_CAP_UNCHECKED_TOKENS = 10_000
 SECONDS_PER_DAY = 86_400
 # The Fly app each environment runs on. FLY_APP_NAME is set by Fly on every machine, so a machine that is the live app
 # cannot be started as anything but production (an unset or mistyped ENVIRONMENT would leave every validator off).
@@ -311,7 +320,7 @@ class Settings(BaseSettings):
     workspace_ttl_hours: int = 24             # a workspace and everything in it is deleted after this
     upload_max_bytes: int = 15 * 1024 * 1024
     upload_max_pages: int = 30                # per version, checked after parsing
-    upload_max_tokens: int = 16000            # per version, whole text, the embedder's own tokenizer
+    upload_max_tokens: int = 10000            # per version, whole text, the embedder's own tokenizer (sized from the ceiling below)
     upload_max_chunk_tokens: int = 512        # per embedded chunk (memory stays flat below ~1k tokens, S1b)
     upload_max_chunks: int = 120              # per version
     upload_max_documents: int = 3             # per workspace
@@ -324,30 +333,21 @@ class Settings(BaseSettings):
     # cap's SIGKILL and this timeout race and a CPU-bound comparison reports a failure instead of a timeout; the margin covers
     # scheduling jitter and the kill itself, so the wall timeout fires first and the job reports ``comparison_timeout``.
     upload_compare_timeout_s: int = 110
-    # The embed loop's wall budget in seconds (env UPLOAD_EMBED_TIMEOUT_S; docs/specs/upload-embed-timeout.md). Checked after each
-    # chunk and only while chunks remain, from the start of the loop: a job that has embedded its last chunk is never failed.
-    # A shared-cpu-2x is throttled to a sustained share of one core once its burst balance is spent (W0, W1, W1c, Fly's CPU page),
-    # so the budget is sized from what the CAP job (upload_max_tokens, 16,000) needs at that share:
-    #   seconds = tokens / (full-core tokens per second x class factor x sustained share)
-    # with 85.8 tokens/s on one performance-class core (w1/rss_fp32.json), a class factor f of 1.18 to 1.31 (a fresh shared
-    # core ran the embedder faster than that core did; 1.18 is the conservative end, f = 1 an upper bound that is not a case)
-    # and sustained shares measured at 17%, 14.6%, 12.5% and 12.0%. The cap job, in seconds:
-    #   share      f = 1     f = 1.18   f = 1.31
-    #   17%        1,097       930        837
-    #   14.6%      1,277     1,082        975
-    #   12.5%      1,492     1,264      1,139
-    #   12.0%      1,554     1,317      1,186
-    #   10%        1,865     1,580      1,424
-    #   8%         2,331     1,975      1,779
-    #   6%         3,108     2,634      2,373
-    #   share at which 2,100 s just suffices: 8.9% / 7.5% / 6.8%
-    # The old 1,200 s was set without that share in the sum (docs/v2/M4_PLAN.md risk 13): a cap job at 12% to 12.5% needs 1,139 to
-    # 1,317 s. The rule: at least 1.5 x the cap job at the lowest measured share (12%), and in proportion to the day,
-    #   16,000 / (85.8 x 1.18 x 0.12) x 1.5 = 1,975 s, rounded up to 2,100 s (a cap job still finishes down to a 7.5% share),
+    # The embed loop's wall budget in seconds (env UPLOAD_EMBED_TIMEOUT_S; docs/specs/upload-embed-timeout.md, amended by
+    # docs/specs/upload-cap-and-abort.md). Checked after each chunk and only while chunks remain, from the start of the loop: a
+    # job that has embedded its last chunk is never failed. The ceiling is the fixed point and the cap is sized FROM it:
+    #   upload_max_tokens <= ceiling x worst measured rate = 2,100 s x 5.54 tokens/s = 11,634 tokens; the cap is 10,000
+    # 5.54 tokens/s is the worst rate measured (W1d, docs/v2/M5_DECISIONS.md 10.11: a fresh shared-cpu-2x sustained a 10.1% burn
+    # share after its burst). At that rate a 10,000-token upload embeds in 10,000 / 5.54 = 1,805 s, inside the ceiling. The
+    # derivation used to run the other way (the ceiling from a 16,000-token cap); at 5.54 tokens/s that cap needs 2,887 s,
+    # more than any ceiling the day rule allows at 40 uploads a day (86,400 / 40 = 2,160 s), so the cap moved and the ceiling
+    # stayed. A job whose own measured rate projects past the ceiling is stopped as soon as it is clear (``too_slow``,
+    # uploads/jobs.py), not run to it. The ceiling in proportion to the day:
     #   2,100 x max_uploads_per_day (40) = 84,000 s <= 86,400 s (the embed ceilings of a day's uploads; see below).
-    # Production refuses a value under 600 s (a zero, a near-zero value or a unit slip) and a ceiling whose product with
-    # max_uploads_per_day passes one day (_upload_embed_timeout_problems). It does NOT enforce the 1.5x rule: a value under about
-    # 1,975 s is accepted and can fail a throttled cap job; only the machine's share can judge that (docs/RUNBOOK.md).
+    # Production refuses a value under 600 s (a zero, a near-zero value or a unit slip), a ceiling whose product with
+    # max_uploads_per_day passes one day, and a ceiling that does not cover an upload_max_tokens above 10,000 at 5.54 tokens/s
+    # (_upload_embed_timeout_problems; a cap of 10,000 or less is not checked). It does NOT judge the margin of the ceiling over
+    # the cap beyond that rate; only the machine's share can (docs/RUNBOOK.md).
     upload_embed_timeout_s: int = 2100
     # Global. 40 x ~190 CPU-s stays under the shared-cpu-2x baseline: CPU-seconds per completed job do not change, but the
     # slot's WALL time does. A job holds the one upload slot for its whole run, so 40 jobs that all ran to the embed ceiling hold it
@@ -507,17 +507,22 @@ class Settings(BaseSettings):
 
     def _upload_embed_timeout_problems(self) -> list[str]:
         """The embed ceiling (docs/specs/upload-embed-timeout.md requirement 5): a floor that stops a zero, a near-zero value
-        and a unit slip, then its product with the daily upload count within one day. It is NOT a throttle margin (any value
-        from the floor up is accepted, whether or not it lets a throttled cap job finish; the setting's comment has the
-        arithmetic). Both texts start with the ceiling's name, which is how the pre-deploy check files a problem
-        (scripts/check_env_fly.py), so the product rule says in words that the daily upload count is part of the cause
-        instead of naming it. Neither text carries a value."""
+        and a unit slip, then its product with the daily upload count within one day, then (docs/specs/upload-cap-and-abort.md
+        requirement 1) cover for an upload token cap above 10,000 at the worst measured rate (5.54 tokens a second, a constant
+        of this module, not a setting). Each text starts with the ceiling's name, which is how the pre-deploy check files a
+        problem (scripts/check_env_fly.py), so the product rule says in words that the daily upload count is part of the
+        cause instead of naming it. No text prints a configured value (the 5.54 rate is the one number it states)."""
         if self.upload_embed_timeout_s < PRODUCTION_MIN_UPLOAD_EMBED_TIMEOUT_S:
             return [f"UPLOAD_EMBED_TIMEOUT_S must be at least {PRODUCTION_MIN_UPLOAD_EMBED_TIMEOUT_S} in production (a zero, a "
                     "near-zero value or a unit slip would fail every upload)"]
         if self.upload_embed_timeout_s * self.max_uploads_per_day > SECONDS_PER_DAY:
             return [f"UPLOAD_EMBED_TIMEOUT_S times the daily upload count must be at most one day ({SECONDS_PER_DAY} seconds) in "
                     "production (the daily upload count is part of the cause: lower the ceiling or the count)"]
+        if (self.upload_max_tokens > PRODUCTION_UPLOAD_CAP_UNCHECKED_TOKENS
+                and self.upload_max_tokens > self.upload_embed_timeout_s * PRODUCTION_WORST_EMBED_TOKENS_PER_S):
+            return ["UPLOAD_EMBED_TIMEOUT_S must cover the upload token cap at the worst measured embed rate of "
+                    f"{float(PRODUCTION_WORST_EMBED_TOKENS_PER_S)} tokens a second in production (the cap is part of the cause: "
+                    "raise the ceiling or lower the cap)"]
         return []
 
     # --- Data lake root (git-ignored, rebuildable) ---

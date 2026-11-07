@@ -19,7 +19,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from neo4j import Driver
 
@@ -65,7 +65,8 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _today() -> str:
+def today() -> str:
+    """The current UTC day as ``YYYY-MM-DD``: the key of the daily counters (a route reads it once and passes it on)."""
     return datetime.now(UTC).date().isoformat()
 
 
@@ -100,7 +101,7 @@ def kill_switch_on(driver: Driver, env_flag: bool) -> bool:
 
 def paid_queries_today(driver: Driver) -> int:
     rows = run_cypher(driver, "MATCH (q:SvcQuery {day: $day, cached: false}) RETURN count(q) AS n",
-                      day=_today())
+                      day=today())
     return rows[0]["n"]
 
 
@@ -115,7 +116,7 @@ def log_query(driver: Driver, *, ip_hash: str, strategy: str, cached: bool,
     query = """CREATE (q:SvcQuery {id: $id, day: $day, ip_hash: $ip, strategy: $strategy,
                cached: $cached, prompt_tokens: $pt, completion_tokens: $ct, cost_usd: $cost,
                workspace: $workspace, created_at: $ts})"""
-    params = dict(id=str(uuid.uuid4()), day=_today(), ip=ip_hash, strategy=strategy, cached=cached,
+    params = dict(id=str(uuid.uuid4()), day=today(), ip=ip_hash, strategy=strategy, cached=cached,
                   pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, workspace=workspace,
                   ts=_now())
     if ip_hash_v is not None:
@@ -156,8 +157,11 @@ def null_legacy_ip_hashes(driver: Driver, batch: int = 5000) -> int:
     return max(before - count_legacy_ip_hashes(driver), 0)
 
 
-def reserve_daily_upload(driver: Driver, limit: int) -> bool:
-    """Take one of today's ``limit`` upload slots (global, every workspace); False when the day is already full.
+def reserve_daily_upload(driver: Driver, limit: int, day: str | None = None) -> bool:
+    """Take one of the day's ``limit`` upload slots (global, every workspace); False when the day is already full.
+
+    ``day`` defaults to today (UTC). The upload route reads the clock once and passes the same day here and to the job, so
+    :func:`release_daily_upload` names the day that was charged even if the job ends after midnight.
 
     Atomic under concurrency: the first ``SET`` takes the counter node's write lock BEFORE ``c.n`` is read, so two uploads
     racing for the last slot cannot both see ``n < limit`` (the lost-update pattern). ``SvcUploadDay.day`` is unique
@@ -168,7 +172,36 @@ def reserve_daily_upload(driver: Driver, limit: int) -> bool:
         SET c._lock = true
         WITH c WHERE c.n < $limit
         SET c.n = c.n + 1, c.updated_at = $ts
-        RETURN c.n AS n""", day=_today(), limit=limit, ts=_now())
+        RETURN c.n AS n""", day=today() if day is None else day, limit=limit, ts=_now())
+    return bool(rows)
+
+
+def _is_iso_day(day) -> bool:
+    """True only for a real calendar date written exactly ``YYYY-MM-DD`` (zero-padded; no week or basic format)."""
+    try:
+        return isinstance(day, str) and date.fromisoformat(day).isoformat() == day
+    except ValueError:
+        return False
+
+
+def release_daily_upload(driver: Driver, day: str, job_id: str) -> bool:
+    """Give back the upload slot a job took on ``day`` (docs/specs/upload-cap-and-abort.md requirement 3); True when it did.
+
+    Called only for a job that stopped itself as ``too_slow``, with the day the route charged and the job id the server made
+    (``secrets.token_hex``): no client input reaches it. Idempotent PER JOB: the job id is recorded on the day's counter in
+    the same statement that decrements it, so a second call for the same job finds it there and does nothing. It never takes
+    a day below zero, and it only matches a counter that exists (no ``MERGE``: a missing day stays missing). Same
+    lock-before-read pattern as :func:`reserve_daily_upload`, so two releases (or a release and a reserve) cannot both act
+    on a stale ``c.n``. ``ValueError`` for a ``day`` that is not ``YYYY-MM-DD`` or an empty ``job_id``, before any query."""
+    if not _is_iso_day(day):
+        raise ValueError("day must be a real YYYY-MM-DD calendar date")
+    if not isinstance(job_id, str) or not job_id:
+        raise ValueError("job_id must be a non-empty string")
+    rows = run_cypher(driver, """MATCH (c:SvcUploadDay {day: $day})
+        SET c._lock = true
+        WITH c WHERE c.n > 0 AND NOT $job_id IN coalesce(c.refunded, [])
+        SET c.n = c.n - 1, c.refunded = coalesce(c.refunded, []) + $job_id, c.updated_at = $ts
+        RETURN c.n AS n""", day=day, job_id=job_id, ts=_now())
     return bool(rows)
 
 
@@ -179,7 +212,7 @@ def ledger_summary(driver: Driver) -> dict:
            "all_time": {"paid": 0, "cached": 0, "cost_usd": 0.0}}
     today = run_cypher(driver, """MATCH (q:SvcQuery {day: $day})
         RETURN q.cached AS cached, count(q) AS n, sum(coalesce(q.cost_usd, 0.0)) AS cost""",
-                       day=_today())
+                       day=today())
     all_time = run_cypher(driver, """MATCH (q:SvcQuery)
         RETURN q.cached AS cached, count(q) AS n, sum(coalesce(q.cost_usd, 0.0)) AS cost""")
     for scope, rows in (("today", today), ("all_time", all_time)):

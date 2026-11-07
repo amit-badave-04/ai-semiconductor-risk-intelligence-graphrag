@@ -540,7 +540,7 @@ def test_s5_the_guard_runs_after_the_token_turnstile_and_slot_and_before_the_dai
             order.append("slot")
             return super().acquire(blocking, timeout)
 
-    def reserve(driver, limit):
+    def reserve(driver, limit, day=None):
         order.append("daily budget")
         return True
 

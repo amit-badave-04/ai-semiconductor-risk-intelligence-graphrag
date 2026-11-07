@@ -5,11 +5,14 @@ embedder whose ``encode_passages([text])`` advances that clock by ``core_seconds
 ``tokens / (85.8 x 1.18)`` (the conservative class factor: 1.18 gives the longer time) and ``share(now)`` is a constant sustained
 share, or 1.0 until the burst ends (115 s, ``w0/report.txt``) and a constant after. The clock is handed to
 ``jobs._process(..., clock=fake)`` (worker-level tests wrap ``_process`` with ``functools.partial``): the global
-``time.monotonic`` is never patched, and a 1,580 s job runs in milliseconds on any OS. The cap job is 16,000 tokens as 40 chunks
+``time.monotonic`` is never patched, and a 1,580 s job runs in milliseconds on any OS. The cap job is 10,000 tokens as 25 chunks
 of 400 tokens (``jobs._build_units_and_chunks`` is the one seam replaced, as in tests/test_serve_upload_jobs.py).
 
 Covered: the ceiling's boundary and last-chunk rules, the failure event (S2), the exits through ``_worker`` (S4), the
-``upload stages`` log line (S7), and the sweeper age. The production validator is pinned in
+``upload stages`` log line (S7), and the sweeper age. Since docs/specs/upload-cap-and-abort.md a job whose own rate projects past
+the ceiling stops at its third chunk as ``too_slow`` (tests/test_serve_upload_cap_and_abort.py), so a plain ``timeout`` here is a
+job whose elapsed time passes the ceiling on chunks 1 or 2, or at once on the third: the ``steps`` doubles below use 1,050 s a
+chunk (2,100 s after two chunks: not over; 3,150 s after three: over). The production validator is pinned in
 tests/test_serve_config_production.py and tests/test_check_env_fly.py. Imports: ``semigraph`` modules (including
 ``serve.workspace_routes``, for the real upload slot) and ``tests/serve_state_fakes.py`` (the drain fixture); all of them are in
 the serve-shipped CI job, which runs this file.
@@ -20,6 +23,7 @@ from __future__ import annotations
 import builtins
 import functools
 import json
+import math
 import re
 
 import pytest
@@ -38,9 +42,11 @@ TITLE = "confidential-roadmap.pdf"
 FULL_CORE_TOKENS_PER_S = 85.8            # w1/rss_fp32.json: one performance-class core
 CLASS_FACTOR = 1.18                      # the conservative end of the shared-core / performance-core range (1.18 to 1.31)
 BURST_END_S = 115.0                      # w0/report.txt: the throttle sets in at about this second on a fresh machine
-CAP_CHUNKS, CHUNK_TOKENS = 40, 400       # 16,000 tokens: the cap (upload_max_tokens)
+CAP_CHUNKS, CHUNK_TOKENS = 25, 400       # 10,000 tokens: the cap (upload_max_tokens)
 CAP_TOKENS = CAP_CHUNKS * CHUNK_TOKENS
 DEFAULT_CEILING = Settings.model_fields["upload_embed_timeout_s"].default
+DEFAULT_CAP = Settings.model_fields["upload_max_tokens"].default
+WORST_RATE = 5.54                        # tokens a second: the worst rate measured (W1d, docs/v2/M5_DECISIONS.md 10.11)
 MAX_UPLOADS_PER_DAY = Settings.model_fields["max_uploads_per_day"].default
 SECONDS_PER_DAY = 86_400
 FAILED_TIMEOUT_EVENT = {"job_id": "job1", "state": "failed", "document_id": DOC, "version": 1,
@@ -59,6 +65,14 @@ def clean_environment(monkeypatch):
     """A variable left in the developer's shell must not change a default these tests read."""
     for name in Settings.model_fields:
         monkeypatch.delenv(name.upper(), raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_cgroup_file(monkeypatch, tmp_path):
+    """The stage line reads the kernel's cgroup counters: a Linux runner has a real file, this machine may not. Every test here
+    sees none unless it writes its own (the cgroup tests in tests/test_serve_upload_cap_and_abort.py)."""
+    if hasattr(jobs, "CGROUP_CPU_STAT_PATH"):
+        monkeypatch.setattr(jobs, "CGROUP_CPU_STAT_PATH", str(tmp_path / "absent" / "cpu.stat"))
 
 
 # ---------------------------------------------------------------- the doubles
@@ -117,7 +131,7 @@ def steps(clock: FakeClock, seconds: float, **kwargs) -> FakeEmbedder:
 class JobSettings:
     upload_parse_timeout_s = 90
     upload_max_pages = 30
-    upload_max_tokens = 16000
+    upload_max_tokens = 10000
     upload_max_chunk_tokens = 512
     upload_max_chunks = 120
     upload_max_workspace_tokens = 48000
@@ -227,7 +241,8 @@ class World:
         self.monkeypatch.setattr(jobs, "_build_units_and_chunks", build_units_and_chunks)
         return chunks
 
-    def run(self, embedder, *, ceiling=DEFAULT_CEILING, job_id="job1", slots=None, title=TITLE) -> list[dict]:
+    def run(self, embedder, *, ceiling=DEFAULT_CEILING, job_id="job1", slots=None, title=TITLE,
+            charged_day=None) -> list[dict]:
         """Runs one job through ``_worker`` (the thread body, called directly) on this world's clock; returns the live
         event log of the job."""
         slots = slots or CountingSlot()
@@ -236,7 +251,8 @@ class World:
         reg = jobs.registry(self.app)
         reg.create(WS, job_id)
         slots.acquire(blocking=False)                                  # the route's acquire; the job's finally releases
-        jobs._worker(self.app, WS, job_id, DOC, title, b"raw bytes", "txt", "h" * 64)
+        extra = {} if charged_day is None else {"charged_day": charged_day}
+        jobs._worker(self.app, WS, job_id, DOC, title, b"raw bytes", "txt", "h" * 64, **extra)
         self.slots, self.reg = slots, reg
         return reg.events_from(WS, job_id, 0)[0]
 
@@ -266,7 +282,9 @@ def fields_of(line: str) -> dict[str, str]:
 STAGE_LINE = re.compile(
     r"^upload stages ws_hash=[0-9a-f]{12} job_id=[0-9a-z]+(?: parse_s=\d+\.\d+)?(?: chunk_s=\d+\.\d+)?"
     r"(?: embed_s=\d+\.\d+)?(?: compare_s=\d+\.\d+)?(?: index_s=\d+\.\d+)?(?: chunks=\d+)?(?: fresh=\d+)?"
-    r"(?: done=\d+)?(?: tokens=\d+)?$")
+    r"(?: done=\d+)?(?: tokens=\d+)?(?: projected_s=\d+\.\d)?(?: aborted=too_slow)?"
+    r"(?: cpu_usage_usec_start=\d+)?(?: cpu_nr_throttled_start=\d+)?(?: cpu_throttled_usec_start=\d+)?"
+    r"(?: cpu_usage_usec_end=\d+)?(?: cpu_nr_throttled_end=\d+)?(?: cpu_throttled_usec_end=\d+)?$")
 
 
 def last_event(events: list[dict]) -> dict:
@@ -288,59 +306,74 @@ def test_a_cap_job_reaches_ready_under_the_default_ceiling_from_the_start_of_the
     assert float(fields_of(stage_lines(caplog)[0])["embed_s"]) == pytest.approx(cap_job_seconds(share), abs=1e-3)
 
 
-def test_a_cap_job_at_6_percent_is_stopped_by_the_ceiling_with_chunks_remaining(world, caplog):
-    """Below the design floor (the ceiling suffices down to a 7.5% share): 2,634 s of embedding, stopped at the ceiling."""
+def test_a_cap_job_at_4_percent_is_stopped_early_as_too_slow_not_run_to_the_ceiling(world, caplog):
+    """A 4% share needs 2,469 s for the cap job, over the ceiling: since the cap moved to 10,000 tokens the job stops at its third
+    chunk (about 300 s in) with ``too_slow``, where it used to run to the ceiling and fail as ``timeout``."""
     world.document(chunk_texts())
-    embedder = throttled(world.clock, constant_share(0.06))
+    embedder = throttled(world.clock, constant_share(0.04))
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
         events = world.run(embedder)
 
-    assert last_event(events) == FAILED_TIMEOUT_EVENT
-    assert 0 < embedder.calls < CAP_CHUNKS                              # stopped with chunks remaining
+    assert last_event(events)["error"]["code"] == "too_slow"
+    assert embedder.calls == 3 and world.clock.now < DEFAULT_CEILING / 2     # stopped with chunks remaining, long before the ceiling
     assert world.repo.put_version_calls == []
 
 
-def test_a_cap_job_at_10_percent_times_out_under_the_old_1200_s_ceiling(world):
-    """The contrast case: the old behaviour. 10% needs 1,424 to 1,580 s under either class factor (12% flips with it)."""
+def test_a_cap_job_at_6_percent_reaches_ready_now_that_the_cap_is_10000(world):
+    """1,646 s of embedding: what the 16,000-token cap could not do below a 7.5% share, the 10,000-token cap does."""
     world.document(chunk_texts())
-    events = world.run(throttled(world.clock, constant_share(0.10)), ceiling=1200)
-
-    assert last_event(events) == FAILED_TIMEOUT_EVENT
+    assert last_event(world.run(throttled(world.clock, constant_share(0.06))))["state"] == "ready"
 
 
-def test_a_burst_before_the_throttle_shortens_the_job_but_not_the_verdict(world, caplog):
-    """The shape W0 measured: a full core until second 115, then 12%."""
+def test_a_cap_job_at_10_percent_is_stopped_early_under_a_ceiling_below_its_need(world):
+    """The cap job needs 988 s at a 10% share: under a 900 s ceiling it is stopped as ``too_slow`` at its third chunk."""
     world.document(chunk_texts())
+    embedder = throttled(world.clock, constant_share(0.10))
+    events = world.run(embedder, ceiling=900)
+
+    assert last_event(events)["error"]["code"] == "too_slow" and embedder.calls == 3
+
+
+def test_a_burst_before_the_throttle_shortens_the_job_but_not_the_verdict(world, caplog, monkeypatch):
+    """The shape W0 measured: a full core until second 115, then 12%. A 10,000-token job ends inside the 115 s burst, so this
+    models a 16,000-token job (the cap raised for the test) to put the throttle in the middle of the run."""
+    monkeypatch.setattr(JobSettings, "upload_max_tokens", 16000)
+    world.document(chunk_texts(40))
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
         events = world.run(throttled(world.clock, burst_then(0.12)))
 
     embed_s = float(fields_of(stage_lines(caplog)[0])["embed_s"])
-    assert last_event(events)["state"] == "ready" and BURST_END_S < embed_s < cap_job_seconds(0.12)
+    assert last_event(events)["state"] == "ready"
+    assert BURST_END_S < embed_s < 16000 / (FULL_CORE_TOKENS_PER_S * CLASS_FACTOR * 0.12)
 
 
-def test_the_default_ceiling_keeps_one_and_a_half_times_the_cap_job_at_the_lowest_measured_share():
-    """The derivation in config.py: 16,000 / (85.8 x 1.18 x 0.12) x 1.5 = 1,975 s, rounded up; and the embed ceilings of a
-    day's uploads stay in proportion to the day (ceiling x 40 <= 86,400 s)."""
-    assert cap_job_seconds(0.12) * 1.5 == pytest.approx(1975, abs=1)
-    assert DEFAULT_CEILING >= cap_job_seconds(0.12) * 1.5
+def test_the_default_cap_is_sized_from_the_kept_ceiling_at_the_worst_measured_rate():
+    """The derivation in config.py, now run from the ceiling: 2,100 s x 5.54 tokens/s = 11,634 >= the 10,000-token cap, which a
+    steady 5.54 tokens/s embeds in 1,805 s; the embed ceilings of a day's uploads stay in proportion to the day (2,100 x 40 <=
+    86,400 s)."""
+    assert DEFAULT_CEILING == 2100 and DEFAULT_CAP == CAP_TOKENS == 10000
+    assert math.floor(DEFAULT_CEILING * WORST_RATE) == 11_634 >= DEFAULT_CAP
+    assert DEFAULT_CAP / WORST_RATE == pytest.approx(1805, abs=1)
+    assert DEFAULT_CAP / WORST_RATE < DEFAULT_CEILING
     assert DEFAULT_CEILING * MAX_UPLOADS_PER_DAY <= SECONDS_PER_DAY
-    assert DEFAULT_CEILING == 2100
+    assert cap_job_seconds(0.12) * 1.5 < DEFAULT_CEILING                  # the share-based margin only grew with the smaller cap
 
 
 # ---------------------------------------------------------------- 2 and 3. the boundary and the last chunk
 
 
 def test_a_chunk_that_lands_exactly_on_the_ceiling_does_not_stop_the_job_but_the_next_one_does(world):
-    """Integer steps (exactly representable): three chunks of 700 s make 2,100 s, equal to the ceiling, and the job goes on
-    (strict ``>``); after the fourth the elapsed time is 2,800 s and it stops with chunks remaining."""
+    """Integer steps (exactly representable): two chunks of 1,050 s make 2,100 s, equal to the ceiling, and the job goes on
+    (strict ``>``; the projection never stops chunks 1 and 2); after the third the elapsed time is 3,150 s and it stops with
+    chunks remaining, as ``timeout`` (checked before the projection)."""
     world.document(chunk_texts(10, 5))
-    embedder = steps(world.clock, 700)
+    embedder = steps(world.clock, 1050)
     events = world.run(embedder, ceiling=2100)
 
-    assert embedder.calls == 4
+    assert embedder.calls == 3
     assert last_event(events) == FAILED_TIMEOUT_EVENT
     progress = [e["progress"] for e in events if e["state"] == "embedding" and e["progress"]["done"]]
-    assert [p["done"] for p in progress] == [1, 2, 3, 4] and {p["total"] for p in progress} == {10}
+    assert [p["done"] for p in progress] == [1, 2, 3] and {p["total"] for p in progress} == {10}
 
 
 def test_a_final_chunk_that_crosses_the_ceiling_still_completes(world):
@@ -357,7 +390,7 @@ def test_a_final_chunk_that_crosses_the_ceiling_still_completes(world):
 
 def test_the_ceiling_failure_event_is_one_constant_and_every_progress_event_has_exactly_three_keys(world):
     world.document(chunk_texts(10, 5))
-    events = world.run(steps(world.clock, 700), ceiling=2100)
+    events = world.run(steps(world.clock, 1050), ceiling=2100)
 
     assert last_event(events) == FAILED_TIMEOUT_EVENT
     assert world.persisted()[-1] == FAILED_TIMEOUT_EVENT
@@ -392,7 +425,7 @@ def test_no_event_and_no_persisted_job_carries_a_stage_time_a_limit_or_a_cause(w
 
 def test_a_ceiling_stop_writes_nothing_stores_nothing_and_releases_the_slot_once(world):
     world.document(chunk_texts(10, 5))
-    events = world.run(steps(world.clock, 700), ceiling=2100)
+    events = world.run(steps(world.clock, 1050), ceiling=2100)
 
     assert last_event(events) == FAILED_TIMEOUT_EVENT
     assert world.repo.put_version_calls == [] and world.repo.workspace_tokens == 0
@@ -404,7 +437,7 @@ def test_a_ceiling_stop_writes_nothing_stores_nothing_and_releases_the_slot_once
 
 def test_the_drain_count_is_back_to_zero_after_a_ceiling_stop(world, fresh_drain):
     world.document(chunk_texts(10, 5))
-    world.run(steps(world.clock, 700), ceiling=2100)
+    world.run(steps(world.clock, 1050), ceiling=2100)
 
     assert fresh_drain.active == 0
 
@@ -454,13 +487,13 @@ def test_a_second_version_that_reuses_chunks_logs_the_fresh_tokens_only(world, c
     world.document(chunk_texts())
     world.run(steps(world.clock, 1.0), job_id="job0")
     world.monkeypatch.setattr(jobs, "_compare_with_previous", lambda *a, **kw: NOT_COMPARED)
-    world.document(chunk_texts(changed=range(10)))                      # 10 of the 40 chunks are new text
+    world.document(chunk_texts(changed=range(10)))                      # 10 of the 25 chunks are new text
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
         events = world.run(steps(world.clock, 1.0), job_id="job1")
 
     fields = fields_of(stage_lines(caplog)[-1])
     assert last_event(events)["state"] == "ready"
-    assert (fields["chunks"], fields["fresh"], fields["done"], fields["tokens"]) == ("40", "10", "10", "4000")
+    assert (fields["chunks"], fields["fresh"], fields["done"], fields["tokens"]) == (str(CAP_CHUNKS), "10", "10", "4000")
 
 
 def test_a_comparison_that_takes_time_shows_in_compare_s(world, caplog):
@@ -473,7 +506,7 @@ def test_a_comparison_that_takes_time_shows_in_compare_s(world, caplog):
     assert float(fields_of(stage_lines(caplog)[0])["compare_s"]) == 11.0
 
 
-def test_a_ceiling_stop_after_two_of_forty_chunks_keeps_embed_s_and_logs_the_plan_not_the_embedded_tokens(world, caplog):
+def test_a_ceiling_stop_after_two_chunks_keeps_embed_s_and_logs_the_plan_not_the_embedded_tokens(world, caplog):
     world.document(chunk_texts(), chunk_s=2.0)
     embedder = steps(world.clock, 1100)                                 # 2,200 s after the second chunk: over 2,100
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
@@ -483,7 +516,8 @@ def test_a_ceiling_stop_after_two_of_forty_chunks_keeps_embed_s_and_logs_the_pla
     fields = fields_of(line)
     assert last_event(events) == FAILED_TIMEOUT_EVENT and STAGE_LINE.match(line)
     assert float(fields["embed_s"]) == 2200.0 and float(fields["chunk_s"]) == 2.0
-    assert (fields["chunks"], fields["fresh"], fields["done"], fields["tokens"]) == ("40", "40", "2", str(CAP_TOKENS))
+    assert (fields["chunks"], fields["fresh"], fields["done"], fields["tokens"]) == (
+        str(CAP_CHUNKS), str(CAP_CHUNKS), "2", str(CAP_TOKENS))
     assert "compare_s" not in fields and "index_s" not in fields
 
 
@@ -516,7 +550,7 @@ def test_too_many_chunks_keeps_chunk_s_and_has_no_embed_s(world, caplog):
 
 def test_the_embedded_token_budget_exit_writes_a_line_without_embed_s(world, caplog):
     world.document(chunk_texts())
-    world.repo.workspace_tokens = 40_000                               # 40,000 + 16,000 planned > 48,000
+    world.repo.workspace_tokens = 40_000                               # 40,000 + 10,000 planned > 48,000
     embedder = steps(world.clock, 1.0)
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"):
         events = world.run(embedder)
@@ -524,7 +558,7 @@ def test_the_embedded_token_budget_exit_writes_a_line_without_embed_s(world, cap
     [line] = stage_lines(caplog)
     fields = fields_of(line)
     assert last_event(events)["error"]["code"] == "workspace_quota" and embedder.calls == 0 and STAGE_LINE.match(line)
-    assert (fields["chunks"], fields["fresh"], fields["tokens"]) == ("40", "40", str(CAP_TOKENS))
+    assert (fields["chunks"], fields["fresh"], fields["tokens"]) == (str(CAP_CHUNKS), str(CAP_CHUNKS), str(CAP_TOKENS))
     assert "embed_s" not in fields and "index_s" not in fields
 
 
@@ -564,7 +598,7 @@ def _parse_crash(*args, **kwargs):
 def test_a_job_that_does_not_get_past_the_parse_stage_writes_no_stage_line(world, caplog, case):
     """A parse failure, ``too_many_pages``, ``too_many_tokens``, the PAGE quota (``workspace_quota`` from the parse stage) and
     an exception inside the parse stage write only the failure lines that exist today."""
-    texts = chunk_texts(41) if case == "too_many_tokens" else chunk_texts(3, 5)    # 16,400 words: over the 16,000 cap
+    texts = chunk_texts(CAP_CHUNKS + 1) if case == "too_many_tokens" else chunk_texts(3, 5)    # 10,400 words: over the 10,000 cap
     world.document(texts, pages=31 if case == "too_many_pages" else 5,
                    parse={"parse_failed": _parse_error, "parse_raises": _parse_crash}.get(case))
     if case == "page_quota":
@@ -595,17 +629,17 @@ def test_embed_chunks_writes_what_it_reached_into_the_record_on_every_exit(world
     chunks = [Chunk(seq=i, char_start=0, char_end=1, tokens=5) for i in range(5)]
     stages: dict = {}
 
-    outcome = jobs._embed_chunks(object(), WS, DOC, texts, hashes, chunks, steps(world.clock, 700), JobSettings(2100),
+    outcome = jobs._embed_chunks(object(), WS, DOC, texts, hashes, chunks, steps(world.clock, 1050), JobSettings(2100),
                                  lambda *a, **kw: None, clock=world.clock, stages=stages)
 
     assert outcome == "timeout"                                          # the bare string still travels through the return
-    assert stages == {"fresh": 5, "tokens": 25, "done": 4, "embed_s": 2800.0}
+    assert stages == {"fresh": 5, "tokens": 25, "done": 3, "embed_s": 3150.0}
 
 
 # ---------------------------------------------------------------- S1: no file I/O
 
 
-def test_the_embed_loop_and_the_stage_line_open_no_file(world, caplog):
+def test_the_embed_loop_and_the_stage_line_open_no_file_but_the_cgroup_constant(world, caplog):
     import semigraph.retrieval.ids  # noqa: F401 - what a job imports lazily, loaded BEFORE open() is patched
     import semigraph.retrieval.workspace  # noqa: F401
     import semigraph.uploads.versions  # noqa: F401
@@ -614,14 +648,16 @@ def test_the_embed_loop_and_the_stage_line_open_no_file(world, caplog):
     opened: list[tuple] = []
 
     def refuse(*args, **kwargs):
-        opened.append(args)
+        opened.append(args[0])
         raise OSError("this path must open no file")
 
     with caplog.at_level("INFO", logger="semigraph.uploads.jobs"), pytest.MonkeyPatch.context() as scoped:
         scoped.setattr(builtins, "open", refuse)
-        events = world.run(steps(world.clock, 700), ceiling=2100)
+        events = world.run(steps(world.clock, 1050), ceiling=2100)
 
-    assert last_event(events) == FAILED_TIMEOUT_EVENT and len(stage_lines(caplog)) == 1 and opened == []
+    # S3 (docs/specs/upload-cap-and-abort.md): the only open() is the cgroup counter path (twice: start and end), which fails here
+    assert last_event(events) == FAILED_TIMEOUT_EVENT and len(stage_lines(caplog)) == 1
+    assert set(opened) == {jobs.CGROUP_CPU_STAT_PATH} and "cpu_" not in stage_lines(caplog)[0]
 
 
 # ---------------------------------------------------------------- 7. the sweeper age

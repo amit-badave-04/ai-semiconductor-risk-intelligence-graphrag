@@ -26,7 +26,7 @@ DOC = "0123456789ab"
 class FakeSettings:
     upload_parse_timeout_s = 5
     upload_max_pages = 30
-    upload_max_tokens = 16000
+    upload_max_tokens = 10000
     upload_max_chunk_tokens = 512
     upload_max_chunks = 120
     upload_max_workspace_tokens = 48000

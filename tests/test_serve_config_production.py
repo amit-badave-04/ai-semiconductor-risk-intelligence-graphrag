@@ -493,12 +493,14 @@ def test_the_embed_ceiling_default_is_the_spec_value_and_is_what_the_live_machin
     (2100, 41, True), (2100, 42, False),           # 86,100 s boots, 88,200 s does not: a raised daily count refuses too
     (600, 144, True), (600, 145, False)])
 def test_production_requires_the_embed_ceiling_above_the_floor_and_its_daily_product_within_a_day(ceiling, per_day, boots):
+    # A 3,000-token cap is at or below 10,000, so the cap rule never checks it and these cases test the ceiling alone; the cap
+    # rule has its own tests (tests/test_serve_upload_cap_and_abort.py).
     if boots:
-        s = live(upload_embed_timeout_s=ceiling, max_uploads_per_day=per_day)
+        s = live(upload_embed_timeout_s=ceiling, max_uploads_per_day=per_day, upload_max_tokens=3000)
         assert (s.upload_embed_timeout_s, s.max_uploads_per_day) == (ceiling, per_day)
         return
     with pytest.raises(ValidationError) as refused:
-        live(upload_embed_timeout_s=ceiling, max_uploads_per_day=per_day)
+        live(upload_embed_timeout_s=ceiling, max_uploads_per_day=per_day, upload_max_tokens=3000)
     assert named(refused) == [EMBED_TIMEOUT] and "MAX_UPLOADS_PER_DAY" not in str(refused.value)
 
 
@@ -537,6 +539,7 @@ def test_outside_production_any_embed_ceiling_and_daily_count_boot():
 
 def test_the_embed_ceiling_is_read_from_its_environment_variable_and_production_judges_that_value(monkeypatch):
     monkeypatch.setenv(EMBED_TIMEOUT, "1500")
+    monkeypatch.setenv("UPLOAD_MAX_TOKENS", "8000")                  # at or below 10,000: the cap rule does not check it
     assert Settings(_env_file=None).upload_embed_timeout_s == live().upload_embed_timeout_s == 1500
     monkeypatch.setenv(EMBED_TIMEOUT, "599")
     with pytest.raises(ValidationError) as refused:

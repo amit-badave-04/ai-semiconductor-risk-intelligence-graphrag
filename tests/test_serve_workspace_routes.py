@@ -44,7 +44,7 @@ class FakeSettings:
     upload_max_versions = 5
     upload_max_workspace_pages = 120
     upload_max_pages = 30
-    upload_max_tokens = 16000
+    upload_max_tokens = 10000
     upload_max_workspace_tokens = 48000
     upload_min_mem_available_kb = 0         # the memory guard is off here; tests/test_serve_memguard.py arms it
 
@@ -114,8 +114,9 @@ def fake_repo(monkeypatch):
 def fake_store(monkeypatch):
     calls = {"reserved": True, "reserve_calls": 0}
 
-    def reserve_daily_upload(driver, limit):
+    def reserve_daily_upload(driver, limit, day=None):
         calls["reserve_calls"] += 1
+        calls["day"] = day
         return calls["reserved"]
 
     monkeypatch.setattr(store, "reserve_daily_upload", reserve_daily_upload)
@@ -212,6 +213,7 @@ def test_create_workspace_succeeds_without_turnstile_configured_outside_producti
     body = r.json()
     assert body["workspace_id"] == "b" * 32 and body["token"] == "new-token"
     assert body["limits"]["max_documents"] == 3
+    assert body["limits"]["max_tokens_per_version"] == 10000          # follows upload_max_tokens (the cap, spec requirement 1/5)
     assert r.headers["cache-control"] == "no-store"
 
 
@@ -421,6 +423,13 @@ def test_a_bad_turnstile_token_on_upload_is_403_and_never_reaches_the_gate_or_th
     assert fake_jobs == []
 
 
+def test_the_day_the_route_charges_is_the_day_the_job_is_told_it_was_charged(client, fake_store, fake_jobs):
+    """One reading of the clock (spec requirement 3): a job that aborts after midnight refunds the day it was charged."""
+    r = _upload(client)
+    assert r.status_code == 202
+    assert fake_store["day"] is not None and fake_store["day"] == fake_jobs[0]["charged_day"] == store.today()
+
+
 def test_junk_files_never_spend_the_daily_upload_budget(client, fake_store):
     r = _upload(client, filename="a.bin", content=b"\x00\x01binary", content_type="application/octet-stream")
     assert r.status_code == 415
@@ -431,7 +440,7 @@ def test_junk_files_never_spend_the_daily_upload_budget(client, fake_store):
 
 
 def test_the_upload_slot_is_released_when_reserve_daily_upload_raises(client, monkeypatch):
-    def boom(driver, limit):
+    def boom(driver, limit, day=None):
         raise RuntimeError("simulated transient Neo4j error")
 
     monkeypatch.setattr(store, "reserve_daily_upload", boom)
@@ -456,7 +465,7 @@ def test_a_second_upload_after_a_reserve_failure_is_not_permanently_busy(client,
     into a permanent 429 busy until the process restarts."""
     calls = {"n": 0}
 
-    def flaky(driver, limit):
+    def flaky(driver, limit, day=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("simulated transient Neo4j error")

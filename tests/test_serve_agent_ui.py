@@ -153,7 +153,7 @@ def test_the_upload_drop_zone_is_a_focusable_button_with_a_visible_focus_style_a
     zone = re.search(r'<div id="wsDrop".*?</div>', page, re.S).group(0)
     assert "<input" not in zone and 'type="file"' in open_tag(page, "wsFile") and 'accept="' in open_tag(page, "wsFile")
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", zone)).strip()
-    assert text == "Drag a PDF, DOCX, Markdown, TXT or HTML file here, or click to choose one (up to 30 pages)."
+    assert text == "Drag a PDF, DOCX, Markdown, TXT or HTML file here, or click to choose one (up to about 20 pages)."
     assert "outline" in css_rule(page, ".drop:focus-visible")
     script = script_of(page)
     assert re.search(r'drop\.addEventListener\("keydown"', script) and '"Enter"' in script and '" "' in script

@@ -70,6 +70,7 @@ JOB_ERROR_MESSAGES = {
     "empty": "the file is empty",
     "parse_failed": "the document could not be parsed",
     "timeout": "processing took too long and was stopped",
+    "too_slow": "Uploads are slow right now. Please try again in a few minutes, or upload a shorter PDF.",
     "scanned": "the document appears to be scanned; no extractable text was found",
     "too_many_pages": "the document has more pages than this workspace allows",
     "too_many_tokens": "the document is larger than this workspace allows",
@@ -312,7 +313,39 @@ def _lower_priority() -> None:
 # The fields of the one ``upload stages`` line, in the order it prints them; a stage a job never reached has no entry in its
 # stage record and is left out (docs/specs/upload-embed-timeout.md requirement 3).
 _STAGE_FIELDS = (("parse_s", "%.3f"), ("chunk_s", "%.3f"), ("embed_s", "%.3f"), ("compare_s", "%.3f"),
-                 ("index_s", "%.3f"), ("chunks", "%d"), ("fresh", "%d"), ("done", "%d"), ("tokens", "%d"))
+                 ("index_s", "%.3f"), ("chunks", "%d"), ("fresh", "%d"), ("done", "%d"), ("tokens", "%d"),
+                 ("projected_s", "%.1f"), ("aborted", "%s"),
+                 ("cpu_usage_usec_start", "%d"), ("cpu_nr_throttled_start", "%d"), ("cpu_throttled_usec_start", "%d"),
+                 ("cpu_usage_usec_end", "%d"), ("cpu_nr_throttled_end", "%d"), ("cpu_throttled_usec_end", "%d"))
+
+# The one file the stage line reads for CPU counters (docs/specs/upload-cap-and-abort.md requirement 4, S3): a fixed path, never
+# built from anything a request carries. A module constant so a test can point it at a temp file.
+CGROUP_CPU_STAT_PATH = "/sys/fs/cgroup/cpu.stat"
+_CPU_COUNTERS = ("usage_usec", "nr_throttled", "throttled_usec")
+
+# The projected-finish abort starts at this embedded chunk: the rate of the first two is noise (requirement 2).
+MIN_CHUNKS_BEFORE_ABORT = 3
+
+
+def _read_cpu_stat() -> dict[str, int]:
+    """The cgroup counters this stage line names, read from :data:`CGROUP_CPU_STAT_PATH` (takes no argument: S3). A field the
+    file lacks or garbles is left out, never guessed; a missing or unreadable file gives ``{}``. Never raises."""
+    try:
+        with open(CGROUP_CPU_STAT_PATH, encoding="ascii") as handle:
+            text = handle.read(65536)
+    except Exception:  # noqa: BLE001 - absent on Windows and in a container without the file; a diagnostic only
+        return {}
+    counters: dict[str, int] = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] in _CPU_COUNTERS and parts[1].isascii() and parts[1].isdigit():
+            counters[parts[0]] = int(parts[1])
+    return counters
+
+
+def _record_cpu(stages: dict, edge: str) -> None:
+    for name, value in _read_cpu_stat().items():
+        stages[f"cpu_{name}_{edge}"] = value
 
 
 @contextlib.contextmanager
@@ -364,15 +397,22 @@ def _build_units_and_chunks(text: str, blocks, kind: str, embedder, settings):
     return units, chunks, unit_dicts
 
 
+def _projects_past_ceiling(elapsed: float, total_tokens: int, embedded_tokens: int, ceiling: float) -> bool:
+    """True when the job's own measured rate projects its finish strictly past ``ceiling``: ``elapsed + remaining / (embedded /
+    elapsed) > ceiling``, which is ``elapsed * total_tokens / embedded_tokens > ceiling``. Multiplied out, so the boundary is exact
+    (no division, no rounding). ``embedded_tokens`` must be above 0 (the caller's guard)."""
+    return elapsed * total_tokens > ceiling * embedded_tokens
+
+
 def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit, *,
                   clock=time.monotonic, stages=None):
     """Embeds only the chunks whose text_hash is not already embedded for this document. Returns
     ``{"vectors": {index: [float, ...]}, "already": {text_hash: embedding}}``; ``None`` if the workspace's
-    embedded-token budget would be exceeded; the string ``"timeout"`` if the wall budget ran out first.
-
-    ``clock`` times the loop (the ceiling and ``embed_s``); ``stages`` (default: a local record) receives what this stage
-    reached, on every exit: ``fresh`` and ``tokens`` (the plan: the chunks to embed and their tokens) once known, ``done``
-    after each chunk, ``embed_s`` when the loop ends, however it ends."""
+    embedded-token budget would be exceeded; the string ``"timeout"`` if the wall budget ran out first; the string
+    ``"too_slow"`` if, from the third embedded chunk on, the job's own measured rate projects its finish past the ceiling
+    (:func:`_projects_past_ceiling`; docs/specs/upload-cap-and-abort.md requirement 2), reading this job's own clock and token
+    counts only (S1). ``clock`` times the loop; ``stages`` (default: a local record) receives, on every exit, ``fresh`` and
+    ``tokens`` once known, ``done`` after each chunk, and ``embed_s`` when the loop ends."""
     from . import repo
 
     stages = {} if stages is None else stages
@@ -386,19 +426,29 @@ def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, em
     _lower_priority()
     vectors: dict[int, list[float]] = {}
     stages["done"] = 0
+    _record_cpu(stages, "start")
+    embedded_tokens = 0
     started = clock()
     try:
         for done, i in enumerate(to_embed, start=1):
             vectors[i] = [float(x) for x in embedder.encode_passages([chunk_texts[i]])[0]]
             stages["done"] = done
+            embedded_tokens += chunks[i].tokens
             elapsed = clock() - started
             remaining = len(to_embed) - done
-            eta = round(elapsed / done * remaining, 1) if done else 0.0
+            eta = round(elapsed / done * remaining, 1)
             emit("embedding", progress={"done": done, "total": len(to_embed), "eta_s": eta})
-            if elapsed > settings.upload_embed_timeout_s and remaining:
+            ceiling = settings.upload_embed_timeout_s
+            if elapsed > ceiling and remaining:
                 return "timeout"
+            if done >= MIN_CHUNKS_BEFORE_ABORT and remaining and embedded_tokens > 0:
+                stages["projected_s"] = elapsed * new_tokens / embedded_tokens
+                if _projects_past_ceiling(elapsed, new_tokens, embedded_tokens, ceiling):
+                    stages["aborted"] = "too_slow"
+                    return "too_slow"
     finally:
         stages["embed_s"] = clock() - started
+        _record_cpu(stages, "end")
     wall_s = round(stages["embed_s"], 3)
     logger.info("upload embed ws_hash=%s document_id=%s tokens=%d wall_s=%.3f tokens_per_s=%.1f",
                _ws_hash(ws), document_id, new_tokens, wall_s, (new_tokens / wall_s) if wall_s > 0 else 0.0)
@@ -480,10 +530,26 @@ def _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, sett
     return parsed, text
 
 
+def _refund_daily_upload(driver, charged_day: str | None, job_id: str) -> None:
+    """Give the visitor's daily upload count back for a ``too_slow`` job (requirement 3), on the day the route charged. Best
+    effort: it never raises (a raise would turn the job's one terminal event into ``internal_error``) and logs the exception
+    class only. Without a charged day (a caller that never charged) nothing is refunded."""
+    if charged_day is None:
+        return
+    try:
+        from ..serve import store
+
+        gave_back = store.release_daily_upload(driver, charged_day, job_id)
+        logger.info("upload refund job_id=%s refunded=%s", job_id, bool(gave_back))
+    except Exception as exc:  # noqa: BLE001 - the job's ending must not depend on the refund
+        logger.warning("upload refund failed job_id=%s: %s", job_id, type(exc).__name__)
+
+
 def _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder, settings,
-                           emit, *, clock=time.monotonic, stages=None):
+                           emit, *, clock=time.monotonic, stages=None, charged_day=None):
     """Chunks, then embeds the new chunks. Returns ``(units, unit_dicts, chunk_rows)``, or ``None`` once a failure
-    event has already been emitted (``too_many_chunks``, ``workspace_quota`` or ``timeout``). ``clock`` and ``stages``
+    event has already been emitted (``too_many_chunks``, ``workspace_quota``, ``timeout`` or ``too_slow``; only the last gives
+    the daily count back, on ``charged_day``). ``clock`` and ``stages``
     (default: a local record) are :func:`_embed_chunks`' own; this stage adds ``chunk_s`` and ``chunks`` to the record."""
     from ..hashing import content_hash
     from ..retrieval.ids import doc_id as make_doc_id
@@ -503,6 +569,11 @@ def _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, 
     emit("embedding", progress={"done": 0, "total": len(chunks), "eta_s": None})
     embedded = _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit,
                              clock=clock, stages=stages)
+    if embedded == "too_slow":
+        # Refund BEFORE the failure write: that write can raise WorkspaceGone, which must not skip the refund.
+        _refund_daily_upload(driver, charged_day, job_id)
+        _fail(driver, ws, reg, job_id, document_id, version, "too_slow")
+        return None
     if embedded is None or embedded == "timeout":
         _fail(driver, ws, reg, job_id, document_id, version, "workspace_quota" if embedded is None else "timeout")
         return None
@@ -515,7 +586,7 @@ def _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, 
 
 
 def _process(driver, embedder, settings, ws, job_id, document_id, title, data, kind, content_hash_hex, reg, *,
-             clock=time.monotonic) -> None:
+             clock=time.monotonic, charged_day=None) -> None:
     """Runs one job. ``clock`` times every stage (production passes nothing; a test passes a fake). From the moment the parse
     stage returns a result, whatever the exit (``ready`` or any failure), the stage record is written as one log line."""
     from ..retrieval.workspace import looks_suspicious
@@ -543,7 +614,7 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
         emit("chunking", version=version)
         chunked = _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder,
                                          settings, lambda state, **kw: emit(state, version=version, **kw), clock=clock,
-                                         stages=stages)
+                                         stages=stages, charged_day=charged_day)
         if chunked is None:
             return
         units, unit_dicts, chunk_rows = chunked
@@ -580,7 +651,7 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
 
 
 def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data: bytes, kind: str,
-           content_hash_hex: str) -> None:
+           content_hash_hex: str, *, charged_day: str | None = None) -> None:
     """Ends in ready/failed on every path (never a silently dead thread) and always releases the upload slot.
     The job's registry entry is NOT discarded here: :class:`JobRegistry` keeps a finished job's log for
     :data:`REGISTRY_GRACE_PERIOD_S` (pruned lazily on the next access) so a watcher that reconnects moments after
@@ -610,7 +681,7 @@ def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data
     workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
     try:
         _process(st.driver, st.embedder, st.settings, ws, job_id, document_id, title, data, kind,
-                 content_hash_hex, reg)
+                 content_hash_hex, reg, charged_day=charged_day)
     except workspace_gone:
         _fail(st.driver, ws, reg, job_id, document_id, None, "workspace_deleted", persist=False)
     except Exception:  # noqa: BLE001 — a job must always end in ready/failed, never a silently dead thread
@@ -624,9 +695,10 @@ def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data
 
 
 def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | None, data: bytes, kind: str,
-                   content_hash_hex: str) -> str:
+                   content_hash_hex: str, charged_day: str | None = None) -> str:
     """Starts the worker thread and returns its job id immediately. The caller must already hold
-    ``app.state.upload_slots`` (acquired non-blocking) and have reserved today's upload budget.
+    ``app.state.upload_slots`` (acquired non-blocking) and have reserved the upload budget of ``charged_day`` (the day the
+    route charged; a ``too_slow`` job gives that day back).
 
     Once the thread has actually started, IT owns the upload slot's release (every path through :func:`_worker`
     releases it exactly once) — a ``BoundedSemaphore`` raises on a double release, so this function must never
@@ -638,7 +710,8 @@ def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | Non
     reg = registry(app)
     reg.create(workspace_id, job_id)
     thread = threading.Thread(target=_worker, name=f"upload-{job_id}", daemon=True,
-                              args=(app, workspace_id, job_id, document_id, title, data, kind, content_hash_hex))
+                              args=(app, workspace_id, job_id, document_id, title, data, kind, content_hash_hex),
+                              kwargs={"charged_day": charged_day})
     try:
         thread.start()
     except BaseException:

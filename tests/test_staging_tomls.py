@@ -300,7 +300,7 @@ def test_every_w1b_env_key_is_a_settings_field_and_builds_the_live_shaped_settin
     assert settings.onnx_model_path.name == "model_fp32.onnx" and settings.onnx_threads == 1
     assert (settings.embed_slots, settings.max_concurrent_answers) == (1, 2)
     assert (settings.upload_max_bytes, settings.upload_max_pages, settings.upload_max_tokens, settings.upload_max_chunks,
-            settings.max_uploads_per_day) == (15 * 1024 * 1024, 30, 16000, 120, 40)
+            settings.max_uploads_per_day) == (15 * 1024 * 1024, 30, 10000, 120, 40)
     assert settings.neo4j_uri == "bolt://semigraph-neo4j-stg.internal:7687"
     assert settings.openai_api_base == "http://semigraph-mockllm.internal:8000/v1"
 

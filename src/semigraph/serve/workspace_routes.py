@@ -32,9 +32,9 @@ window -> streamed size cap -> byte gate -> quota -> slot -> MEMORY GUARD -> dai
 503 ``MSG_UPLOAD_BUSY`` (``Retry-After: 120``, no figure in the body) while ``MemAvailable`` is below
 ``upload_min_mem_available_kb``; it comes after every gate that refuses on its own account (so it can never be an oracle
 before Turnstile or the workspace token, and an unchanged re-upload or a quota refusal never meets it) and BEFORE the daily
-budget, which is the one gate that charges (``store.reserve_daily_upload`` has no refund, so a refusal after it would spend
-an upload no job used). The refusal raises inside the slot's try block, so the slot goes back through the existing
-``except``. Asks, cached answers and every read route never consult it.
+budget, which is the one gate that charges (the only give-back is ``store.release_daily_upload``, made for a ``too_slow`` job
+alone, so a refusal after it would spend an upload no job used). The refusal raises inside the slot's try block, so the slot
+goes back through the existing ``except``. Asks, cached answers and every read route never consult it.
 
 M5a I4 (docs/v2/M5_DECISIONS.md 2.2): while the process drains (``serve.drain``) workspace creation and an upload are
 refused with 503 ``MSG_DRAINING`` BEFORE any window is consumed, and every other route here (reads, the job stream, the
@@ -410,7 +410,8 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
         # M5a decision 21: short of memory -> 503 before anything is charged or started (the except below frees the slot)
         if await run_in_threadpool(memguard.check_upload, s.upload_min_mem_available_kb):
             raise _upload_busy_refusal()
-        reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day)
+        charged_day = store.today()      # read once: the day charged here is the day a too_slow job gives back
+        reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day, charged_day)
         if not reserved:
             st.upload_slots.release()
             return JSONResponse({"detail": "the daily upload limit has been reached", "code": "daily_limit"},
@@ -418,7 +419,7 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
 
         version = next_version([latest["version"]] if latest else [])
         job_id = jobs.run_upload_job(request.app, workspace_id=ws, document_id=document_id, title=title, data=data,
-                                     kind=kind, content_hash_hex=content_hash_hex)
+                                     kind=kind, content_hash_hex=content_hash_hex, charged_day=charged_day)
     except BaseException:
         st.upload_slots.release()
         raise

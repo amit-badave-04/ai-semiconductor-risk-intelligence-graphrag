@@ -24,7 +24,7 @@ def test_a_slot_is_taken_only_while_the_day_is_below_the_limit(monkeypatch, rows
     monkeypatch.setattr(store, "run_cypher", fake)
     assert store.reserve_daily_upload(object(), 40) is taken
     (query, params), = fake.calls
-    assert params["limit"] == 40 and params["day"] == store._today()
+    assert params["limit"] == 40 and params["day"] == store.today()
     assert "MERGE (c:SvcUploadDay {day: $day})" in query
 
 
@@ -51,7 +51,7 @@ def test_m4_settings_default_off_with_the_pre_registered_caps():
     assert (s.freshness_poll_hours, s.freshness_boot_delay_s) == (6, 300)
     assert s.workspace_ttl_hours == 24
     assert s.upload_max_bytes == 15 * 1024 * 1024
-    assert (s.upload_max_pages, s.upload_max_tokens, s.upload_max_chunk_tokens, s.upload_max_chunks) == (30, 16000, 512, 120)
+    assert (s.upload_max_pages, s.upload_max_tokens, s.upload_max_chunk_tokens, s.upload_max_chunks) == (30, 10000, 512, 120)
     assert (s.upload_max_documents, s.upload_max_versions) == (3, 5)
     assert (s.upload_max_workspace_pages, s.upload_max_workspace_tokens) == (120, 48000)
     assert (s.upload_parse_timeout_s, s.upload_embed_timeout_s, s.upload_compare_timeout_s) == (90, 2100, 110)
