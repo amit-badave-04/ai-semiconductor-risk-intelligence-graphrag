@@ -16,7 +16,8 @@
 # test_latency_smoke, test_check_chars_per_token) cover files the image does not ship and run in `unit` only.
 # Reproduce it on a developer machine (a throwaway venv outside the repo, then the pytest command of the step below):
 #   uv venv <tmp>/sv --python 3.13
-#   uv pip install --python <tmp>/sv/Scripts/python.exe -r deploy/requirements-serve.txt pytest    (bin/python on Linux/macOS)
+#   uv pip install --python <tmp>/sv/Scripts/python.exe -r deploy/requirements-serve.txt    (bin/python on Linux/macOS)
+#   uv pip install --python <tmp>/sv/Scripts/python.exe pytest    (separate: the lock now carries hashes, so pytest cannot share that install)
 #   uv pip install --python <tmp>/sv/Scripts/python.exe --no-deps -e .
 # On GitHub Actions typer renders CLI errors as a wrapped, coloured box; CLI tests assert on tests/cliout.plain(result.output).
 #
@@ -93,7 +94,8 @@ jobs:
       - name: Install the API image's pinned dependencies, pytest, and the package without its dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r deploy/requirements-serve.txt pytest
+          pip install -r deploy/requirements-serve.txt
+          pip install pytest
           pip install --no-deps -e .
           python -c "import importlib.metadata as m; print('litellm', m.version('litellm'))"
       - name: Serving-side tests against the shipped dependency set

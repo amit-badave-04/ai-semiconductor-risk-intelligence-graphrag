@@ -64,7 +64,10 @@ def test_a_same_named_package_in_the_working_directory_is_not_imported_by_a_sand
     package never runs."""
     write_a_same_named_package(tmp_path)
     monkeypatch.chdir(tmp_path)
-    result = sandbox.run_sandboxed("semigraph.uploads.compare_worker", [], b"{}", timeout_s=60, max_output_bytes=1024 * 1024)
+    # env_extra mirrors compare.py's own call: under ``RLIMIT_NPROC`` (0, 0) on Linux the BLAS thread pins keep the real
+    # compare worker single-threaded, so ``scipy`` imports without trying to start a thread pool that the limit would refuse.
+    result = sandbox.run_sandboxed("semigraph.uploads.compare_worker", [], b"{}", timeout_s=60, max_output_bytes=1024 * 1024,
+                                   env_extra=sandbox.SCIPY_BLAS_THREAD_ENV)
     assert MARKER.encode() not in result.stdout
     assert json.loads(result.stdout)["error"] == "comparison_failed"
 
