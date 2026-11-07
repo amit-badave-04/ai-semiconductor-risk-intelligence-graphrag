@@ -1,15 +1,15 @@
 """The S10 license gate of web/ (docs/specs/m5b-frontend.md S10 and R6): ``artifacts/m5b_licenses.json`` is generated from
 ``web/package-lock.json`` and a pytest check fails on any license outside the two allow-lists.
 
-S10's two lists, read literally: the SHIPPED RUNTIME bundle allows MIT, ISC, BSD and Apache-2.0; build and test tools also allow
-MPL-2.0 (lightningcss, axe-core), CC-BY-4.0, CC0-1.0, BlueOak-1.0.0 and 0BSD. A lockfile entry not flagged ``dev`` (this
-includes ``devOptional``) is counted as runtime, so the runtime list is the superset of what could ship.
+S10's two lists: the SHIPPED RUNTIME bundle allows MIT, ISC, BSD and Apache-2.0; build and test tools also allow MPL-2.0
+(lightningcss, axe-core), CC-BY-4.0, 0BSD and, by the owner's decision of 2026-11-07, FSL-1.1-Apache-2.0, MIT-0, BlueOak-1.0.0
+and CC0-1.0. A lockfile entry not flagged ``dev`` (this includes ``devOptional``) is counted as runtime, so the runtime list is
+the superset of what could ship.
 
-Two licenses are in the tree and in NEITHER list: FSL-1.1-Apache-2.0 (``sentry``, pulled in by ``lighthouse``, never bundled)
-and MIT-0 (two ``@csstools`` packages, pulled in by ``jsdom``). Whether to amend S10 for them, or to drop the Lighthouse CLI,
-is the owner's decision, so it is recorded here and NOT made: ``PENDING_OWNER_DECISION`` lists them exactly (a new license, or
-one that stops being needed, is red) and the report says the gate is OPEN. ``test_s10_is_closed`` is a strict ``xfail`` that
-turns red the day the set is empty, so the marker and the constant are removed together with the decision.
+The owner's decision of 2026-11-07 amended S10 for build and test tooling only. FSL-1.1-Apache-2.0 is carried by ``sentry``
+(pulled in by the Lighthouse CLI, never bundled) and MIT-0 by two ``@csstools`` packages (pulled in by ``jsdom``); neither is
+allowed in the runtime list, so a shipped package with either license fails the gate. The gate is CLOSED: any license outside
+its scope's list is red, and the report says OPEN until it is fixed or the owner decides again.
 
 Regenerate the artifact with ``RECORD_LICENSES=1 uv run pytest tests/test_web_licenses.py``; the default mode compares, so a
 lockfile change without a refreshed report is red.
@@ -29,17 +29,20 @@ REPORT = ROOT / "artifacts" / "m5b_licenses.json"
 RECORD = os.environ.get("RECORD_LICENSES") == "1"
 
 RUNTIME_ALLOWED = ("MIT", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0")
-BUILD_TEST_ALLOWED = (*RUNTIME_ALLOWED, "MPL-2.0", "CC-BY-4.0", "CC0-1.0", "BlueOak-1.0.0", "0BSD")
+BUILD_TEST_ALLOWED = (
+    *RUNTIME_ALLOWED, "MPL-2.0", "CC-BY-4.0", "0BSD",
+    # The owner's decision of 2026-11-07 (S10 amended, build and test tooling only): these four are NOT in RUNTIME_ALLOWED.
+    "FSL-1.1-Apache-2.0", "MIT-0", "BlueOak-1.0.0", "CC0-1.0",
+)
 ALLOWED = {"runtime": RUNTIME_ALLOWED, "build_test": BUILD_TEST_ALLOWED}
-# (package name, license): not named by S10, awaiting the owner. Keyed without the version, so a patch bump does not matter.
-PENDING_OWNER_DECISION = {
-    ("sentry", "FSL-1.1-Apache-2.0"),
-    ("@csstools/color-helpers", "MIT-0"),
-    ("@csstools/css-syntax-patches-for-csstree", "MIT-0"),
-}
-PENDING_REASON = {
-    "FSL-1.1-Apache-2.0": "not named by S10; dev tool only (never bundled); options: amend S10's build/test list, or drop the lighthouse dependency",
-    "MIT-0": "not named by S10; permissive; dev tool only (never bundled); option: amend S10's build/test list",
+OWNER_DECISION = {
+    "date": "2026-11-07",
+    "by": "the owner",
+    "summary": "S10 amended for build and test tooling only: FSL-1.1-Apache-2.0 (sentry, pulled in by the Lighthouse CLI, never "
+               "bundled) is allowed, and MIT-0, BlueOak-1.0.0 and CC0-1.0 are on the build/test allow-list. The runtime "
+               "allow-list is unchanged.",
+    "build_test_added": ["FSL-1.1-Apache-2.0", "MIT-0", "BlueOak-1.0.0", "CC0-1.0"],
+    "runtime_allow_list": "unchanged",
 }
 
 
@@ -143,12 +146,8 @@ def dependents(lock: dict) -> dict[str, list[str]]:
 
 
 def violations(rows: list[dict]) -> list[dict]:
-    """Rows outside their scope's allow-list, whether or not the owner's pending decision covers them."""
+    """Rows outside their own scope's allow-list: a tools-only license on a runtime row is one."""
     return [r for r in rows if not is_allowed(r["license"], ALLOWED[r["scope"]])]
-
-
-def pending(rows: list[dict]) -> set[tuple[str, str]]:
-    return {(r["name"], str(r["license"])) for r in violations(rows)}
 
 
 def build_report(lock: dict) -> dict:
@@ -163,12 +162,10 @@ def build_report(lock: dict) -> dict:
         "scope_rule": "an entry not flagged dev in the lockfile (devOptional included) is runtime; the rest is build and test tools",
         "totals": {"packages": len(rows), **{scope: sum(by_scope[scope].values()) for scope in ALLOWED}},
         "by_license": {scope: dict(sorted(counts.items())) for scope, counts in by_scope.items()},
-        "outside_allow_lists": [{**r, "required_by": owners.get(r["name"], []),
-                                 "decision": "PENDING_OWNER: " + PENDING_REASON.get(str(r["license"]), "no reason recorded")
-                                 if (r["name"], str(r["license"])) in PENDING_OWNER_DECISION else "NOT ALLOWED"}
-                                for r in outside],
-        "s10_license_gate": "OPEN: awaiting the owner's decision on " + ", ".join(sorted({lic for _, lic in pending(rows)}))
-        if outside else "PASS: every license is inside its allow-list",
+        "owner_decision": OWNER_DECISION,
+        "outside_allow_lists": [{**r, "required_by": owners.get(r["name"], []), "decision": "NOT ALLOWED"} for r in outside],
+        "s10_license_gate": "OPEN: outside the allow-lists: " + ", ".join(sorted({str(r["license"]) for r in outside}))
+        if outside else "CLOSED: every license is inside its allow-list (S10 as amended by the owner's decision of 2026-11-07)",
         "packages": rows,
     }
 
@@ -200,8 +197,17 @@ def rows(lock) -> list[dict]:
     ("MIT AND ISC", RUNTIME_ALLOWED, True),
     ("(MIT AND (ISC OR GPL-3.0-only))", RUNTIME_ALLOWED, True),
     ("(MIT AND (GPL-3.0-only OR AGPL-3.0-only))", RUNTIME_ALLOWED, False),
-    ("MIT-0", BUILD_TEST_ALLOWED, False),                                # not named by S10
-    ("FSL-1.1-Apache-2.0", BUILD_TEST_ALLOWED, False),
+    ("MIT-0", BUILD_TEST_ALLOWED, True),                                 # the owner's decision of 2026-11-07: tools only
+    ("MIT-0", RUNTIME_ALLOWED, False),
+    ("FSL-1.1-Apache-2.0", BUILD_TEST_ALLOWED, True),
+    ("FSL-1.1-Apache-2.0", RUNTIME_ALLOWED, False),
+    ("FSL-1.1-MIT", BUILD_TEST_ALLOWED, False),                          # only the Apache variant was decided
+    ("BlueOak-1.0.0", BUILD_TEST_ALLOWED, True),
+    ("BlueOak-1.0.0", RUNTIME_ALLOWED, False),
+    ("CC0-1.0", BUILD_TEST_ALLOWED, True),
+    ("CC0-1.0", RUNTIME_ALLOWED, False),
+    ("MIT-0 AND MIT", RUNTIME_ALLOWED, False),                           # one tool-only term keeps an AND out of the runtime list
+    ("MIT-0 OR MIT", RUNTIME_ALLOWED, True),                             # but an OR with an allowed term is fine
     ("Apache-2.0 WITH LLVM-exception", BUILD_TEST_ALLOWED, False),       # exceptions are not modelled
     ("mit", RUNTIME_ALLOWED, False),                                     # strict: the canonical SPDX spelling only
     ("MIT OR", RUNTIME_ALLOWED, False),
@@ -250,6 +256,43 @@ def test_the_checker_catches_a_license_outside_both_lists_and_a_runtime_license_
     assert [r["decision"] for r in report["outside_allow_lists"]] == ["NOT ALLOWED"] * 3
 
 
+# ---------------------------------------------------------------- the owner's decision of 2026-11-07
+
+# Allowed for build and test tools only; the runtime list gains none of them. Written out here, apart from BUILD_TEST_ALLOWED, so
+# that widening the runtime list (or dropping one of these from the tools list) is a visible edit to a test.
+DECIDED_FOR_TOOLS_ONLY = ("FSL-1.1-Apache-2.0", "MIT-0", "BlueOak-1.0.0", "CC0-1.0")
+
+
+def lock_with(license_id: str, **flags: bool) -> dict:
+    return {"packages": {"": {"name": "x"}, "node_modules/pkg": {"version": "1.0.0", "license": license_id, **flags}}}
+
+
+def test_the_owner_decision_widens_the_build_test_list_and_leaves_the_runtime_list_as_it_was():
+    assert set(DECIDED_FOR_TOOLS_ONLY) <= set(BUILD_TEST_ALLOWED)
+    assert set(DECIDED_FOR_TOOLS_ONLY).isdisjoint(RUNTIME_ALLOWED)
+    assert RUNTIME_ALLOWED == ("MIT", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0")
+    assert set(RUNTIME_ALLOWED) < set(BUILD_TEST_ALLOWED)
+
+
+@pytest.mark.parametrize("license_id", ["FSL-1.1-Apache-2.0", "MIT-0"])
+@pytest.mark.parametrize("flags", [{}, {"devOptional": True}, {"optional": True}], ids=["runtime", "devOptional", "optional"])
+def test_a_runtime_package_with_a_tools_only_license_fails_the_gate(license_id, flags):
+    """A hypothetical shipped package (anything the lockfile does not flag ``dev``) with either license is refused."""
+    synthetic = lock_with(license_id, **flags)
+    assert [r["name"] for r in violations(inventory(synthetic))] == ["pkg"]
+    report = build_report(synthetic)
+    assert report["s10_license_gate"].startswith("OPEN") and license_id in report["s10_license_gate"]
+    assert [(r["name"], r["scope"], r["decision"]) for r in report["outside_allow_lists"]] == [("pkg", "runtime", "NOT ALLOWED")]
+
+
+@pytest.mark.parametrize("license_id", DECIDED_FOR_TOOLS_ONLY)
+def test_a_dev_package_with_a_decided_license_passes_the_gate(license_id):
+    synthetic = lock_with(license_id, dev=True)
+    assert violations(inventory(synthetic)) == []
+    report = build_report(synthetic)
+    assert report["s10_license_gate"].startswith("CLOSED") and report["outside_allow_lists"] == []
+
+
 # ---------------------------------------------------------------- the real lockfile
 
 def test_the_lockfile_is_the_dependency_tree_the_report_covers(lock, rows):
@@ -263,22 +306,9 @@ def test_every_runtime_license_is_inside_the_runtime_allow_list_with_no_exceptio
     assert [r for r in shipped if not is_allowed(r["license"], RUNTIME_ALLOWED)] == []
 
 
-def test_every_license_is_inside_its_allow_list_or_is_pending_the_owner(rows):
-    unexplained = [r for r in violations(rows) if (r["name"], str(r["license"])) not in PENDING_OWNER_DECISION]
-    assert unexplained == [], "a license that S10 does not name and the owner has not been asked about"
-
-
-def test_the_pending_set_is_exactly_what_the_tree_holds(rows):
-    """A pending entry whose package left the tree (or whose license S10 now names) is stale and must go; a new one is the
-    test above. So the constant can only shrink by a decision."""
-    assert pending(rows) == PENDING_OWNER_DECISION
-
-
-@pytest.mark.xfail(strict=True, reason="S10 license gate OPEN: FSL-1.1-Apache-2.0 (sentry) and MIT-0 (@csstools) are not in S10's "
-                                       "allow-lists; the owner amends S10 or drops lighthouse, then this marker and the "
-                                       "PENDING_OWNER_DECISION constant go")
 def test_s10_is_closed(rows):
-    assert pending(rows) == set()
+    outside = [f"{r['name']}@{r['version']} {r['license']} ({r['scope']})" for r in violations(rows)]
+    assert outside == [], "a license outside both allow-lists (the owner's decision of 2026-11-07 is the last amendment)"
 
 
 # ---------------------------------------------------------------- the artifact
@@ -291,11 +321,17 @@ def test_the_report_is_what_the_lockfile_says(lock):
     assert json.loads(REPORT.read_text(encoding="utf-8")) == expected
 
 
-def test_the_report_states_both_allow_lists_and_says_the_gate_is_open_while_a_decision_is_pending(lock):
+def test_the_report_states_both_allow_lists_says_the_gate_is_closed_and_records_the_owner_decision(lock):
     report = build_report(lock)
     assert report["allow_lists"]["runtime"] == list(RUNTIME_ALLOWED)
-    assert set(RUNTIME_ALLOWED) < set(report["allow_lists"]["build_test"])
-    assert report["s10_license_gate"].startswith("OPEN") and "MIT-0" in report["s10_license_gate"]
-    assert {(r["name"], r["license"]) for r in report["outside_allow_lists"]} == PENDING_OWNER_DECISION
-    assert all(r["decision"].startswith("PENDING_OWNER") and r["required_by"] for r in report["outside_allow_lists"])
+    assert report["allow_lists"]["build_test"] == list(BUILD_TEST_ALLOWED)
+    assert set(DECIDED_FOR_TOOLS_ONLY) <= set(report["allow_lists"]["build_test"])
+    assert set(DECIDED_FOR_TOOLS_ONLY).isdisjoint(report["allow_lists"]["runtime"])
+    assert report["s10_license_gate"].startswith("CLOSED")
+    assert report["outside_allow_lists"] == []
+    assert "PENDING" not in json.dumps(report) and "OPEN" not in report["s10_license_gate"]
+    decision = report["owner_decision"]
+    assert decision["date"] == "2026-11-07" and decision["by"] == "the owner"
+    assert sorted(decision["build_test_added"]) == sorted(DECIDED_FOR_TOOLS_ONLY)
+    assert decision["runtime_allow_list"] == "unchanged"
     assert report["totals"]["packages"] == len(report["packages"]) == sum(report["totals"][s] for s in ALLOWED)

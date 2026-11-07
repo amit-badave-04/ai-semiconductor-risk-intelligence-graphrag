@@ -93,6 +93,10 @@ SERVE_MODEL_SETTINGS = ("answer_model", "escalation_model", "agent_planner_model
 # margin must fit Fly's kill_timeout. 300 - 10 (SHUTDOWN_MARGIN_S) - 35 (LIFESPAN_SHUTDOWN_BUDGET_S) - 1 (MIN_SHUTDOWN_S);
 # tests/test_serve_drain.py derives the same number from those constants and pins the two together.
 DRAIN_TIMEOUT_CEILING_S = 254
+# Where the image keeps the built single-page app: the one place this path is written in Python. ``Settings.ui_dist_dir`` takes
+# it as its default and ``serve.ui_v2`` as its fallback (they are this object, not two copies of the text); only the
+# Dockerfile's web COPY target repeats it, and tests/test_dockerfile_web.py compares that one against this.
+UI_DIST_DIR_DEFAULT = Path("/opt/semigraph/web")
 # Every setting a refusal of Settings can name, in the order the pre-deploy check (scripts/check_env_fly.py) lists them.
 CHECKED_SETTINGS = (
     "ENVIRONMENT", "FLY_APP_NAME", "IP_HASH_PEPPER", "ADMIN_TOKEN", "TURNSTILE_REQUIRED", "TURNSTILE_SECRET_KEY",
@@ -277,8 +281,11 @@ class Settings(BaseSettings):
     ui_v2_preview: bool = False               # true = the new single-page app at /v2/ (noindex) and the old page also at /legacy
     ui_v2: bool = False                       # true = the new app at / and its pages (the old page stays at /legacy, /v2/ still works)
     # The built app (``web/dist``, copied to this path by the image). Absent, or without index.html: the flags do nothing and
-    # the old page keeps serving (a frontend fault must never take the service down).
-    ui_dist_dir: Path = Path("/srv/web")
+    # the old page keeps serving (a frontend fault must never take the service down). Not under /srv: owner decision 5
+    # (2026-11-07) moved it out of /srv; /srv is root-owned as well (H1, owner-approved 2026-11-07). /opt/semigraph and /opt are
+    # root-owned and read-only to the serving user, so the built app is fixed at image build (R13). The
+    # Dockerfile's web COPY target is this same path (UI_DIST_DIR_DEFAULT above; tests/test_dockerfile_web.py compares the two).
+    ui_dist_dir: Path = UI_DIST_DIR_DEFAULT
 
     # --- Agent (semigraph.agent, docs/v2/M3_AGENT_PLAN.md): OPT-IN retrieval planner, strategy=agent; off = never imported by serve ---
     agent_enabled: bool = False

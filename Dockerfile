@@ -57,6 +57,11 @@ COPY web/package.json web/package-lock.json web/.npmrc ./
 RUN npm ci --ignore-scripts
 COPY web/ ./
 RUN npm run build
+# The dist leaves this stage root-owned (the stage runs as root) and the runtime copies it WITHOUT --chown, so it stays root's
+# (R13). Vite keeps the mode a web/public file has in the build context, and a context made under a restrictive umask (a local
+# `fly deploy`) would give a root-owned 0600 file the app user cannot read: so the modes are set here, not left to the umask.
+# Owner rwX; group and others read (and enter directories) and never write.
+RUN chmod -R u=rwX,go=rX /web/dist
 
 FROM python:3.13-slim
 ARG EMBEDDER_VARIANT=q8
@@ -83,8 +88,13 @@ RUN useradd --create-home --shell /usr/sbin/nologin app
 COPY --from=model /models /srv/models
 RUN test -f "$ONNX_MODEL_PATH" \
  && test -z "$(find /srv/models ! -name '*.py' \( \( -type f ! -perm -004 \) -o \( -type d ! -perm -005 \) \) -print -quit)"
-# The built app goes in AFTER the model layer, so a web change never invalidates the 1 GB model copy above.
-COPY --from=web --chown=app:app /web/dist /srv/web
+# The built app goes in AFTER the model layer, so a web change never invalidates the 1 GB model copy above. It is copied WITHOUT
+# --chown on purpose (docs/specs/m5b-frontend.md R13): the files stay root-owned and world-readable, so the serving user reads the
+# app it serves and cannot rewrite it. It is NOT under /srv, where it began: owner decision 5 (2026-11-07) put the dist at
+# /opt/semigraph/web, under parents that are root's, and that stands now that /srv is root's as well. The COPY creates
+# /opt/semigraph as root (the base image's /opt is root's) and nothing chowns or chmods /opt or anything under it, before or
+# after this line (tests/test_dockerfile_web.py). Settings.ui_dist_dir defaults to this same path.
+COPY --from=web /web/dist /opt/semigraph/web
 # PYTHONSAFEPATH=1 (Python 3.11+) keeps the working directory off sys.path for the server (`python -m ...`), and
 # PYTHONNOUSERSITE=1 keeps the user site of /home/app off it, for the server and for anything that inherits them. The sandboxed
 # upload workers get an allowlisted environment instead, so they start with -s -P on their own command line (uploads/sandbox.py

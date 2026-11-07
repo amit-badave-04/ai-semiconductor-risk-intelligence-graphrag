@@ -17,9 +17,11 @@
       "Apache-2.0",
       "MPL-2.0",
       "CC-BY-4.0",
-      "CC0-1.0",
+      "0BSD",
+      "FSL-1.1-Apache-2.0",
+      "MIT-0",
       "BlueOak-1.0.0",
-      "0BSD"
+      "CC0-1.0"
     ]
   },
   "scope_rule": "an entry not flagged dev in the lockfile (devOptional included) is runtime; the rest is build and test tools",
@@ -49,39 +51,20 @@
       "MPL-2.0": 14
     }
   },
-  "outside_allow_lists": [
-    {
-      "name": "@csstools/color-helpers",
-      "version": "6.1.2",
-      "license": "MIT-0",
-      "scope": "build_test",
-      "required_by": [
-        "@csstools/css-color-parser"
-      ],
-      "decision": "PENDING_OWNER: not named by S10; permissive; dev tool only (never bundled); option: amend S10's build/test list"
-    },
-    {
-      "name": "@csstools/css-syntax-patches-for-csstree",
-      "version": "1.1.16",
-      "license": "MIT-0",
-      "scope": "build_test",
-      "required_by": [
-        "jsdom"
-      ],
-      "decision": "PENDING_OWNER: not named by S10; permissive; dev tool only (never bundled); option: amend S10's build/test list"
-    },
-    {
-      "name": "sentry",
-      "version": "0.45.0",
-      "license": "FSL-1.1-Apache-2.0",
-      "scope": "build_test",
-      "required_by": [
-        "@sentry/bundler-plugins"
-      ],
-      "decision": "PENDING_OWNER: not named by S10; dev tool only (never bundled); options: amend S10's build/test list, or drop the lighthouse dependency"
-    }
-  ],
-  "s10_license_gate": "OPEN: awaiting the owner's decision on FSL-1.1-Apache-2.0, MIT-0",
+  "owner_decision": {
+    "date": "2026-11-07",
+    "by": "the owner",
+    "summary": "S10 amended for build and test tooling only: FSL-1.1-Apache-2.0 (sentry, pulled in by the Lighthouse CLI, never bundled) is allowed, and MIT-0, BlueOak-1.0.0 and CC0-1.0 are on the build/test allow-list. The runtime allow-list is unchanged.",
+    "build_test_added": [
+      "FSL-1.1-Apache-2.0",
+      "MIT-0",
+      "BlueOak-1.0.0",
+      "CC0-1.0"
+    ],
+    "runtime_allow_list": "unchanged"
+  },
+  "outside_allow_lists": [],
+  "s10_license_gate": "CLOSED: every license is inside its allow-list (S10 as amended by the owner's decision of 2026-11-07)",
   "packages": [
     {
       "name": "@adobe/css-tools",

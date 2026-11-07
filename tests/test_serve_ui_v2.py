@@ -7,7 +7,9 @@ database, embedder or model is touched. ``app.state.settings`` is set by hand, w
 The CSP is pinned here as a LITERAL (not ``routes.CSP``, which would make the comparison tautological).
 """
 
+import ast
 import asyncio
+import errno
 import json
 import logging
 import os
@@ -26,6 +28,8 @@ from semigraph.serve import main, routes, ui_v2
 CSP_LITERAL = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; "
                "style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src https://challenges.cloudflare.com; "
                "img-src 'self' data:; base-uri 'none'; form-action 'none'")
+# What every file response of the dist carries except a JavaScript one (ui_v2.FILE_CSP, pinned here as a literal too).
+FILE_CSP_LITERAL = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 OTHER_SECURITY_HEADERS = {"x-content-type-options": "nosniff", "x-frame-options": "DENY",
                           "referrer-policy": "no-referrer",
                           "strict-transport-security": "max-age=31536000; includeSubDomains"}
@@ -134,7 +138,43 @@ def asgi_get(app, decoded_path: str) -> tuple[int, dict, bytes]:
 def test_the_flags_default_off_and_the_dist_directory_defaults_to_the_image_path():
     settings = Settings(_env_file=None)
     assert settings.ui_v2_preview is False and settings.ui_v2 is False
-    assert settings.ui_dist_dir == Path("/srv/web")
+    assert settings.ui_dist_dir == Path("/opt/semigraph/web")          # root-owned parents, not under /srv (R13, decision 5)
+    assert ui_v2.DEFAULT_DIST_DIR == settings.ui_dist_dir              # the serving fallback is the same path (one object: see the test below)
+
+
+def path_literals_in_src(pattern: str) -> list[str]:
+    """Every string constant under ``src/semigraph`` that IS a path matching ``pattern`` (docstrings and comments are not: a
+    docstring is a long text, a comment is not a constant), as ``file:line``."""
+    found = []
+    for source in sorted((Path(__file__).resolve().parents[1] / "src" / "semigraph").rglob("*.py")):
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and re.fullmatch(pattern, node.value):
+                found.append(f"{source.name}:{node.lineno}")
+    return found
+
+
+def test_the_dist_default_is_defined_once_and_both_names_are_that_one_object():
+    """Review finding 2026-11-07: ``Settings.ui_dist_dir`` and ``ui_v2.DEFAULT_DIST_DIR`` were two literals of the same path, and
+    a test that compares them detects drift but does not remove it. The path is now one constant in ``config.py``; the
+    serving fallback and the setting default are that same object, and no other Python source under ``src`` spells the path."""
+    from semigraph import config
+
+    assert config.UI_DIST_DIR_DEFAULT == Path("/opt/semigraph/web")
+    assert Settings.model_fields["ui_dist_dir"].default is config.UI_DIST_DIR_DEFAULT
+    assert ui_v2.DEFAULT_DIST_DIR is config.UI_DIST_DIR_DEFAULT
+    literals = path_literals_in_src(r"/opt/semigraph(/\S*)?")
+    assert len(literals) == 1 and literals[0].startswith("config.py:"), literals
+
+
+def test_the_path_literal_scan_sees_what_it_exists_to_see(tmp_path):
+    """The scan above is only trustworthy if a second spelling of the path would show up in it."""
+    assert re.fullmatch(r"/opt/semigraph(/\S*)?", "/opt/semigraph/web") and re.fullmatch(r"/opt/semigraph(/\S*)?", "/opt/semigraph")
+    assert not re.fullmatch(r"/opt/semigraph(/\S*)?", "the dist is at /opt/semigraph/web, outside /srv")
+    probe = tmp_path / "probe.py"
+    probe.write_text('"""doc /opt/semigraph/web"""\nA = "/opt/semigraph/web"\n# /opt/semigraph/web\n', encoding="utf-8")
+    nodes = [n for n in ast.walk(ast.parse(probe.read_text(encoding="utf-8")))
+             if isinstance(n, ast.Constant) and isinstance(n.value, str) and re.fullmatch(r"/opt/semigraph(/\S*)?", n.value)]
+    assert [n.lineno for n in nodes] == [2]
 
 
 def test_the_flags_and_the_directory_come_from_the_environment(monkeypatch, tmp_path):
@@ -433,6 +473,155 @@ def test_is_html_path_ignores_a_stream_suffix(name, html):
     assert ui_v2.is_html_path(name) is html
 
 
+@pytest.mark.parametrize("name,html", [("index.html.", True), ("INDEX.HTML", True), ("x.html ", True), ("x.html. . ", True),
+                                       # the extension set and its lower-casing (the built-in table types neither; a Linux mime.types
+                                       # may type .shtml, which is why the test after this one takes the table away)
+                                       ("a.shtml", True), ("A.SHTML", True), ("dir/a.Xht", True),
+                                       ("x.html.js", False), ("x.htmlx", False), ("html", False), (".html.svg", False)])
+def test_is_html_path_pins_each_normalisation_on_its_own(name, html):
+    """Trailing dots and spaces, the upper case, and the extension set are separate layers: each case below is refused (or
+    allowed) by exactly the layer it names, so deleting one layer turns one of them red."""
+    assert ui_v2.is_html_path(name) is html
+
+
+@pytest.mark.parametrize("name,html", [("index.html", True), ("INDEX.HTML", True), ("a.shtml", True), ("A.SHTML", True),
+                                       ("x.xhtml", True), ("page.HTM", True), ("x.html. ", True), ("favicon.svg", False)])
+def test_the_extension_layer_of_is_html_path_stands_without_the_standard_library_table(monkeypatch, name, html):
+    """The same answer on every operating system: the table of media types differs per machine (a Linux ``mime.types`` may type
+    ``.shtml`` as HTML, Windows reads its registry), so with the table taken away the extension set, the lower-casing and the
+    dot-and-space trimming must each still refuse the name by themselves."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(ui_v2, "mimetypes", SimpleNamespace(guess_type=lambda _name: (None, None)))
+    assert ui_v2.is_html_path(name) is html
+
+
+@pytest.mark.parametrize("name,js", [("app.js", True), ("assets/app-1a2b3c.js", True), ("APP.JS", True), ("w.mjs", True),
+                                     ("app.js.map", False), ("app.jsx", False), ("app.json", False), ("app.css", False),
+                                     ("js", False), ("favicon.svg", False), ("x.js.svg", False)])
+def test_is_javascript_path_judges_the_file_name_never_a_content_type(name, js):
+    assert ui_v2.is_javascript_path(name) is js
+
+
+def test_the_v2_route_constants_derive_from_the_one_prefix():
+    assert ui_v2.V2_PREFIX == "/v2" and ui_v2.V2_HOME == "/v2/" and ui_v2.ASSETS_PREFIX == "/v2/assets"
+
+
+def test_dist_root_files_revalidate_and_the_hashed_assets_stay_immutable(monkeypatch, dist):
+    """Literals, not the module's constants: the root files are not hashed, so an immutable header on them would keep a stale
+    favicon in every browser for a year. The 304 of a conditional request is built apart and must say the same."""
+    client = client_of(build_app(monkeypatch, dist, preview=True))
+    root_file = client.get("/v2/favicon.svg")
+    assert root_file.status_code == 200 and root_file.headers["cache-control"] == "no-cache"
+    revalidated = client.get("/v2/favicon.svg", headers={"If-None-Match": root_file.headers["etag"]})
+    assert revalidated.status_code == 304 and revalidated.headers["cache-control"] == "no-cache"
+    for path in ("/v2/assets/x.js", "/v2/assets/app-1a2b3c.css"):
+        assert client.get(path).headers["cache-control"] == IMMUTABLE, path
+
+
+def test_every_file_response_carries_nosniff_and_all_but_javascript_the_sandboxing_csp(monkeypatch, dist):
+    """A file that a browser can open as a document (an SVG, an XML or XSL file) would run script with no CSP; nosniff stops a
+    browser from typing a file as something else. A script is the exception: a Web Worker built from one is governed by the CSP
+    of that response, so ``default-src 'none'`` there would stop the worker from fetching or importing anything."""
+    (dist / "data.xml").write_text("<?xml version='1.0'?><a/>", encoding="utf-8")
+    (dist / "style.xsl").write_text("<x/>", encoding="utf-8")
+    (dist / "assets" / "w.mjs").write_text("self.onmessage=()=>{};", encoding="utf-8")
+    client = client_of(build_app(monkeypatch, dist, preview=True))
+    for path in ("/v2/favicon.svg", "/v2/data.xml", "/v2/style.xsl", "/v2/assets/app-1a2b3c.css"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert response.headers["x-content-type-options"] == "nosniff", path
+        assert response.headers["content-security-policy"] == FILE_CSP_LITERAL, path
+    for path in ("/v2/assets/x.js", "/v2/assets/app-1a2b3c.js", "/v2/assets/w.mjs"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert response.headers["x-content-type-options"] == "nosniff", path
+        assert "content-security-policy" not in response.headers, path
+
+
+def test_a_304_carries_the_same_two_headers_as_the_200_it_stands_for(monkeypatch, dist):
+    """A 304 has no content type to judge by, and a cache merges its headers into the stored 200: a CSP added to the 304 of a
+    script would end up on the cached script, and one missing from the 304 of an SVG would not be refreshed."""
+    client = client_of(build_app(monkeypatch, dist, preview=True))
+    for path, csp in (("/v2/favicon.svg", FILE_CSP_LITERAL), ("/v2/assets/x.js", None), ("/v2/assets/app-1a2b3c.css", FILE_CSP_LITERAL)):
+        first = client.get(path)
+        second = client.get(path, headers={"If-None-Match": first.headers["etag"]})
+        assert second.status_code == 304, path
+        assert second.headers["x-content-type-options"] == "nosniff", path
+        assert second.headers.get("content-security-policy") == csp, path
+
+
+def test_the_page_csp_is_unchanged_and_never_reaches_a_file(monkeypatch, dist):
+    client = client_of(build_app(monkeypatch, dist, preview=True, flip=True))
+    for path in ("/", "/v2/", "/v2/company/NVDA/", "/v2/some/deep/link", "/workspace/", "/legacy"):
+        assert client.get(path).headers["content-security-policy"] == CSP_LITERAL, path
+    for path in ("/v2/favicon.svg", "/v2/assets/app-1a2b3c.css"):
+        assert client.get(path).headers["content-security-policy"] != CSP_LITERAL, path
+
+
+@pytest.mark.parametrize("code", [errno.EINVAL, errno.ELOOP])
+@pytest.mark.parametrize("path", ["/v2/favicon.svg", "/v2/assets/x.js"])
+def test_an_oserror_from_the_lookup_answers_404_on_every_operating_system(monkeypatch, dist, caplog, code, path):
+    """Starlette maps only ENAMETOOLONG to a 404 and re-raises any other ``OSError`` (a 500). Windows raises EINVAL (winerror
+    123) for a 300-character segment and for a name with a reserved character; a link cycle raises ELOOP. A length check on the
+    segment would answer one of them and would also turn a long deep link of the app (a 200 today) into a 404, so the lookup's
+    own failure is what is mapped: whatever the system refuses to open is, to a client, a file that is not there."""
+    app = build_app(monkeypatch, dist, preview=True)
+
+    def refuse(self, name):
+        raise OSError(code, os.strerror(code))
+
+    monkeypatch.setattr(ui_v2.DistFiles, "lookup_path", refuse)
+    with caplog.at_level(logging.INFO, logger="semigraph.serve.ui_v2"):
+        response = client_of(app).get(path)
+    assert response.status_code == 404 and SPA_MARKER not in response.text
+    assert [r for r in caplog.records if r.name == "semigraph.serve.ui_v2" and f"errno={code}" in r.getMessage()]
+
+
+@pytest.mark.parametrize("path", ["/v2/favicon.svg", "/v2/assets/x.js"])
+def test_a_permission_error_from_the_lookup_still_answers_401_and_is_not_mapped_to_404_or_500(monkeypatch, dist, path):
+    """Starlette 1.6.0 handles ``PermissionError`` BEFORE its ``OSError`` branch and answers 401, so the OSError-to-404 mapping in
+    ``DistFiles.get_response`` never sees it. A lookup the server may not make is a deployment fault (a dist directory the ``app``
+    user cannot search), not a missing file: it stays a 401 an operator can tell apart from a 404, and this pins that the new
+    mapping leaves it so. (A file that exists but cannot be read is different: the stat succeeds, so its response starts 200.) Both file branches: a ``/v2/`` file of the dist root (``v2_path`` into ``spa.files``) and a ``/v2/assets/``
+    file (the mount). The same request answers 200 first, so the 401 comes from the refused lookup and from nothing else."""
+    client = client_of(build_app(monkeypatch, dist, preview=True))
+    assert client.get(path).status_code == 200
+
+    def refuse(self, name):
+        raise PermissionError(errno.EACCES, os.strerror(errno.EACCES))
+
+    monkeypatch.setattr(ui_v2.DistFiles, "lookup_path", refuse)
+    response = client.get(path)
+    assert response.status_code == 401, path
+    assert SPA_MARKER not in response.text
+    assert str(dist) not in response.text and "Permission denied" not in response.text      # the reason stays out of the body
+
+
+@pytest.mark.parametrize("path", [f"/v2/{'a' * 300}.js", f"/v2/assets/{'a' * 300}.js", f"/v2/{'a' * 300}/b.js"])
+def test_a_300_character_segment_answers_404_never_500(monkeypatch, dist, path):
+    response = client_of(build_app(monkeypatch, dist, preview=True)).get(path)
+    assert response.status_code == 404, path
+
+
+@pytest.mark.parametrize("decoded", ["/v2/a*b.js", "/v2/a?b.js", "/v2/a<b.js", "/v2/a|b.js", '/v2/a"b.js',
+                                     "/v2/assets/a*b.js", "/v2/assets/a?b.js", "/v2/assets/a>b.js"])
+def test_a_reserved_character_in_a_file_name_answers_404_never_500(monkeypatch, dist, decoded):
+    """Sent decoded (an HTTP client would turn a question mark into a query string). Windows refuses these names with the same
+    error as a long one; Linux has no such file."""
+    status, _, _ = asgi_get(build_app(monkeypatch, dist, preview=True), decoded)
+    assert status == 404, decoded
+
+
+def test_a_long_deep_link_is_still_the_app(monkeypatch, dist):
+    """The reason the fix is not a length cap in ``is_unsafe_dist_path``: a last segment with no extension is a page of the
+    app (R9c), whatever its length, and the app renders its own not-found view."""
+    client = client_of(build_app(monkeypatch, dist, preview=True))
+    for path in (f"/v2/{'a' * 300}", f"/v2/company/{'a' * 300}/"):
+        response = client.get(path, headers={"Accept": "text/html"})
+        assert response.status_code == 200 and SPA_MARKER in response.text, path
+
+
 def test_a_public_file_of_the_dist_root_is_served_and_a_missing_one_is_a_404(monkeypatch, dist):
     client = client_of(build_app(monkeypatch, dist, preview=True))
     response = client.get("/v2/favicon.svg")
@@ -462,6 +651,20 @@ def test_a_decoded_traversal_answers_404_and_never_reads_outside_the_dist(monkey
     status, headers, body = asgi_get(app, decoded)
     assert status == 404, decoded
     assert CANARY.encode() not in body and "text/html" not in headers.get("content-type", "")
+
+
+@pytest.mark.parametrize("decoded,plain,content", [
+    ("/v2/a/../favicon.svg", "/v2/favicon.svg", "<svg"), ("/v2/assets/a/../x.js", "/v2/assets/x.js", "console.log('x')")])
+def test_a_dotdot_that_stays_inside_the_dist_is_still_a_404(monkeypatch, dist, decoded, plain, content):
+    """The containment of ``StaticFiles`` lets these through (the resolved file IS inside the dist), so R9(b) rests on the
+    ``..`` refusal at its two call sites: ``v2_path`` for the root files and ``DistFiles.get_path`` for the mount. Sent as raw
+    ASGI paths: an HTTP client normalises the dot segments before it sends. The first call is the non-vacuity check: the file
+    the ``..`` would reach is served under its plain name."""
+    app = build_app(monkeypatch, dist, preview=True)
+    status, _, body = asgi_get(app, plain)
+    assert status == 200 and content.encode() in body, plain
+    status, _, body = asgi_get(app, decoded)
+    assert status == 404 and content.encode() not in body, decoded
 
 
 @pytest.mark.parametrize("encoded", ["/v2/%2e%2e/canary.txt", "/v2/%2e%2e%2fcanary.txt", "/v2/assets/%2e%2e/%2e%2e/canary.txt",

@@ -2,6 +2,11 @@
 .env
 .env.*
 !.env.example
+# The three rules above are anchored at the context root. The web stage copies all of web/, and Vite inlines every VITE_* value
+# of a web/.env* into the public bundle, so the same rules apply at every depth (the last matching rule wins).
+**/.env
+**/.env.*
+!**/.env.example
 # VCS, envs, caches, data lake, notebooks, docs — not needed to serve
 .git
 .venv
@@ -15,6 +20,10 @@ docs/
 dist/
 web/node_modules
 web/dist
+web/coverage
+web/test-results
+web/playwright-report
+web/lighthouse-out
 tests/
 models/
 deploy/neo4j/
