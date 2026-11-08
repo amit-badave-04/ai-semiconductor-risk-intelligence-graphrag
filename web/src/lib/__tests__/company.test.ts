@@ -96,21 +96,20 @@ describe("fetchDossier", () => {
     expect(await fetchDossier("NVDA")).toEqual({ kind: "error", detail: "Bad Gateway" });
   });
 
-  it("reports a 200 that is not a JSON object as an error, never as data", async () => {
+  it("reports a 200 that is not a JSON object as unreadable, never as data", async () => {
     stubFetch(new Response("<html>not json</html>", { status: 200, statusText: "OK" }));
-    const result = await fetchDossier("NVDA");
-    expect(result.kind).toBe("error");
+    expect(await fetchDossier("NVDA")).toEqual({ kind: "unreadable" });
     stubFetch(json([1, 2, 3]));
-    expect((await fetchDossier("NVDA")).kind).toBe("error");
+    expect(await fetchDossier("NVDA")).toEqual({ kind: "unreadable" });
   });
 
-  // A 200 whose body parses but is no dossier (no company) keeps the status-text fallback; a sentence of its own is the owner's
-  // to propose (public copy), so this pins today's behaviour: the status text, or "HTTP 200" when HTTP/2 sends none.
-  it("pins the status-text fallback for a 200 that holds no company", async () => {
+  // Owner 2026-11-08 (A2): a 200 whose body parses but is no dossier (no company) is "unreadable" (the page words it); the
+  // status text is no longer shown for it, whatever the status text is.
+  it("reports a 200 that holds no company as unreadable, with or without a status text", async () => {
     stubFetch(new Response(JSON.stringify({ filings: [] }), { status: 200, statusText: "OK" }));
-    expect(await fetchDossier("NVDA")).toEqual({ kind: "error", detail: "OK" });
+    expect(await fetchDossier("NVDA")).toEqual({ kind: "unreadable" });
     stubFetch(new Response(JSON.stringify({ company: { ticker: "NVDA" } }), { status: 200, statusText: "" }));
-    expect(await fetchDossier("NVDA")).toEqual({ kind: "error", detail: "HTTP 200" });
+    expect(await fetchDossier("NVDA")).toEqual({ kind: "unreadable" });
   });
 
   it("reports a network failure with the legacy page's words", async () => {

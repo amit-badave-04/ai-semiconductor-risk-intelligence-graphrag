@@ -140,11 +140,51 @@ describe("Company: the risk changes block", () => {
     mount();
     const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
     await within(block).findByText("Export licensing");
-    expect(block).toHaveTextContent("\u201cWe may need a license.\u201d");
-    expect(block).toHaveTextContent("\u201cWe need a license.\u201d");
+    expect(block).toHaveTextContent("10-K 2025-02-26: \u201cWe may need a license.\u201d");
+    expect(block).toHaveTextContent("10-K 2026-02-25: \u201cWe need a license.\u201d");
     const cites = [...block.querySelectorAll("[data-cite]")];
     expect(cites.map((c) => c.getAttribute("data-cite"))).toEqual([CHUNK]);
     expect(block).not.toHaveTextContent("not a chunk id");
+  });
+
+  it("tells the older and the newer passage apart, each by its own filing label (owner 2026-11-08)", async () => {
+    route(() => json(CHANGES));
+    mount();
+    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    await within(block).findByText("Export licensing");
+    const older = block.querySelector("li p:nth-of-type(1)");
+    const newer = block.querySelector("li p:nth-of-type(2)");
+    expect(older?.textContent).toBe("10-K 2025-02-26: \u201cWe may need a license.\u201d " + CHUNK);
+    expect(newer?.textContent).toBe("10-K 2026-02-25: \u201cWe need a license.\u201d");
+    expect(older?.textContent).not.toBe(newer?.textContent);
+  });
+
+  it("falls back to the words of the 'new' label when a filing has no label, and prefixes nothing without a side", async () => {
+    const bare = { accession_no: "x", form: null, filing_date: null };
+    const pairs = [
+      {
+        older: bare,
+        newer: bare,
+        compared: true,
+        items: [
+          {
+            kind: "changed",
+            headline: "H",
+            passages: [
+              { quote: "old text", side: "older" },
+              { quote: "new text", side: "newer" },
+              { quote: "loose text" },
+            ],
+          },
+        ],
+      },
+    ];
+    route(() => json({ company: DOSSIER.company, pairs }));
+    mount();
+    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    await within(block).findByText("H");
+    const text = [...block.querySelectorAll("li p")].map((p) => p.textContent);
+    expect(text).toEqual(["earlier filing: \u201cold text\u201d", "later filing: \u201cnew text\u201d", "\u201cloose text\u201d"]);
   });
 
   it("says a pair could not be compared, with the server's reason, in the legacy template", async () => {

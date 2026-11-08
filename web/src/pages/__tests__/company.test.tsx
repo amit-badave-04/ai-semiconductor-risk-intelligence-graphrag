@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FILERS } from "@/lib/pages.generated";
 import { Company } from "../Company";
+import * as copy from "../Company.copy";
 
 // built from pieces so no script URL literal sits in the source
 const SCRIPT_URL = ["java", "script:alert(1)"].join("");
@@ -166,6 +167,20 @@ describe("Company: the dossier", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Too many requests");
     expect(screen.getByRole("heading", { level: 1, name: "Nvidia (NVDA)" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Filings" })).toBeNull();
+  });
+
+  it("says the company data could not be loaded for a 200 it cannot read (owner 2026-11-08), not the status text", async () => {
+    expect(copy.MSG_COMPANY_UNREADABLE).toBe("could not load the company data");
+    stubFetch(() => new Response(JSON.stringify({ filings: [] }), { status: 200, statusText: "OK" }));
+    const first = mount("/company/NVDA");
+    expect(await screen.findByText("could not load the company data")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("could not load the company data");
+    expect(screen.getByRole("status")).not.toHaveTextContent("OK");
+    expect(screen.queryByRole("region", { name: "Filings" })).toBeNull();
+    first.unmount();
+    stubFetch(() => new Response("<html>not json</html>", { status: 200, statusText: "OK" }));
+    mount("/company/NVDA");
+    expect(await screen.findByText("could not load the company data")).toBeInTheDocument();
   });
 
   it("aborts the request on unmount and renders nothing from it", async () => {

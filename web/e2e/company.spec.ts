@@ -38,7 +38,9 @@ for (const scheme of ["light", "dark"] as const) {
       for (const label of ["No matching risk factor found in the earlier filing", "No longer appears as a separate risk factor", "Not matched", "Reworded"]) {
         await expect(changes.getByText(label, { exact: true })).toBeVisible();
       }
-      await expect(changes).toContainText("\u201cFixture older wording of a passage.\u201d");
+      // owner 2026-11-08: each passage of a reworded risk names its side by that side's filing
+      await expect(changes).toContainText("10-K 2025-02-26: \u201cFixture older wording of a passage.\u201d");
+      await expect(changes).toContainText("10-K 2026-02-25: \u201cFixture newer wording of a passage.\u201d");
       await expect(changes.locator('[data-cite="0001045810-26-000021:I.1:0320"]')).toHaveCount(1);
       await expect(changes).toContainText("comparison not available (low_text_yield).");
       const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();

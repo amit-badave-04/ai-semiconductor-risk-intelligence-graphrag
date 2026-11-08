@@ -63,6 +63,8 @@ export interface Dossier {
 export type DossierResult =
   | { kind: "ok"; dossier: Dossier }
   | { kind: "notFound" }
+  /** A 200 whose body is no dossier (the page words it: Company.copy MSG_COMPANY_UNREADABLE). */
+  | { kind: "unreadable" }
   | { kind: "error"; detail: string };
 
 /** The kinds of change the server reports for a risk item (retrieval/dossier.py _KIND_MAP). */
@@ -216,7 +218,7 @@ type Fetched =
   | { kind: "error"; detail: string };
 
 /** GET one company route as JSON. An abort rejects (the caller discards it); every other failure is a result. `fallback` is the
- *  status text (or "HTTP <status>") a caller shows for a 200 whose body is no usable report: no sentence of our own. */
+ *  status text (or "HTTP <status>") the risk changes show for a 200 whose body is no usable report; the dossier words it itself. */
 async function getJson(url: string, signal?: AbortSignal): Promise<Fetched> {
   let response: Response;
   try {
@@ -231,7 +233,7 @@ async function getJson(url: string, signal?: AbortSignal): Promise<Fetched> {
   try {
     return { kind: "ok", body: await response.json(), fallback };
   } catch {
-    return { kind: "error", detail: fallback };
+    return { kind: "ok", body: undefined, fallback }; // a 200 that is not JSON is no report: the caller's parse says so
   }
 }
 
@@ -242,7 +244,7 @@ export async function fetchDossier(ticker: string, signal?: AbortSignal): Promis
   const got = await getJson(dossierUrl(ticker), signal);
   if (got.kind !== "ok") return got;
   const dossier = parseDossier(got.body);
-  return dossier === null ? { kind: "error", detail: got.fallback } : { kind: "ok", dossier };
+  return dossier === null ? { kind: "unreadable" } : { kind: "ok", dossier };
 }
 
 /** The one place the risk-changes URL is built: an absolute /api path, the ticker encoded. */

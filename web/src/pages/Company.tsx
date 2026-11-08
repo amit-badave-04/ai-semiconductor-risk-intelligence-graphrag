@@ -5,7 +5,7 @@ import { type DossierResult, fetchDossier, fetchRiskChanges } from "@/lib/compan
 import { FILERS } from "@/lib/pages.generated";
 import { CompanySwitcher, DossierBlocks } from "./CompanyBlocks";
 import { RiskChangesBlock, type RiskChangesState } from "./CompanyChanges";
-import { MSG_LOADING } from "./Company.copy";
+import { MSG_COMPANY_UNREADABLE, MSG_LOADING } from "./Company.copy";
 import { NotFound } from "./NotFound";
 
 /** The not-found view after a dossier 404. The company's own h1 (which may have had focus) is gone, so the new h1 takes the
@@ -42,6 +42,13 @@ function useRiskChanges(ticker: string, enabled: boolean): RiskChangesState {
   return state;
 }
 
+/** The local status text of the dossier: loading, the server's detail, the unreadable-body line, or nothing once it is ok. */
+function dossierMessage(result: DossierResult | null): string {
+  if (result === null) return MSG_LOADING;
+  if (result.kind === "error") return result.detail;
+  return result.kind === "unreadable" ? MSG_COMPANY_UNREADABLE : "";
+}
+
 function CompanyPage({ ticker, name }: { ticker: string; name: string }) {
   const [result, setResult] = useState<DossierResult | null>(null);
 
@@ -58,7 +65,7 @@ function CompanyPage({ ticker, name }: { ticker: string; name: string }) {
 
   const changes = useRiskChanges(ticker, result?.kind === "ok");
   if (result?.kind === "notFound") return <DossierNotFound />;
-  const message = result === null ? MSG_LOADING : result.kind === "error" ? result.detail : "";
+  const message = dossierMessage(result);
   return (
     <>
       <PageHeading title={`${name} (${ticker})`} />

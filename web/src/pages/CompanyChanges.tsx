@@ -9,6 +9,7 @@ import {
   NONE,
   RISK_CHANGES_TITLE,
   notComparedLine,
+  passageLabel,
   pairHeader,
   quoted,
 } from "./Company.copy";
@@ -28,10 +29,11 @@ const KIND_LABEL: Record<RiskKind, string> = {
   changed: KIND_CHANGED,
 };
 
-function Passage({ passage }: { passage: RiskPassage }) {
+// Owner 2026-11-08: a passage names its side by that side's filing, so an older and a newer wording read apart.
+function Passage({ passage, pair }: { passage: RiskPassage; pair: RiskPair }) {
   return (
     <p className="my-1 text-sm">
-      {passage.quote === null ? null : quoted(passage.quote)}
+      {passage.quote === null ? null : `${passageLabel(passage.side, pair.older, pair.newer)}${quoted(passage.quote)}`}
       {passage.chunkId === null ? null : (
         <>
           {passage.quote === null ? null : " "}
@@ -42,24 +44,24 @@ function Passage({ passage }: { passage: RiskPassage }) {
   );
 }
 
-function Item({ item }: { item: RiskItem }) {
+function Item({ item, pair }: { item: RiskItem; pair: RiskPair }) {
   return (
     <li>
       {item.headline ?? ""}
       {item.passages.map((passage, index) => (
-        <Passage key={index} passage={passage} />
+        <Passage key={index} passage={passage} pair={pair} />
       ))}
     </li>
   );
 }
 
-function Kind({ kind, items }: { kind: RiskKind; items: RiskItem[] }) {
+function Kind({ kind, items, pair }: { kind: RiskKind; items: RiskItem[]; pair: RiskPair }) {
   return (
     <>
       <p className="mt-2 mb-1 text-sm font-medium">{KIND_LABEL[kind]}</p>
       <ul className="ml-5 list-disc">
         {items.map((item, index) => (
-          <Item key={index} item={item} />
+          <Item key={index} item={item} pair={pair} />
         ))}
       </ul>
     </>
@@ -74,7 +76,7 @@ function Pair({ pair }: { pair: RiskPair }) {
       <h3 className="text-sm font-semibold">{header}</h3>
       {KIND_ORDER.map((kind) => {
         const items = pair.items.filter((item) => item.kind === kind);
-        return items.length === 0 ? null : <Kind key={kind} kind={kind} items={items} />;
+        return items.length === 0 ? null : <Kind key={kind} kind={kind} items={items} pair={pair} />;
       })}
     </div>
   );

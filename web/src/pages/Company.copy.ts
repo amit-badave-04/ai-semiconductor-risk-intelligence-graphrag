@@ -11,6 +11,8 @@
 // Non-ASCII characters are written as unicode escapes.
 export const MSG_LOADING = "loading\u2026";
 export const NONE = "none";
+/** Owner 2026-11-08: a 200 whose body the page cannot read (house style: lower case, "could not load ...", as MSG_CHANGES_FAILED). */
+export const MSG_COMPANY_UNREADABLE = "could not load the company data";
 export const RISK_CHANGES_TITLE = "Compared risk disclosures";
 export const KIND_NEW = "No matching risk factor found in the earlier filing";
 export const KIND_DROPPED = "No longer appears as a separate risk factor";
@@ -29,6 +31,17 @@ export interface FilingLabel {
 /** A filing as the pair header names it: its form and date, whichever the server gave. */
 export function filingLabel(filing: FilingLabel): string {
   return [filing.form, filing.filing_date].filter((part): part is string => part !== null && part !== "").join(" ");
+}
+
+const EARLIER_FILING = "earlier filing";
+const LATER_FILING = "later filing";
+
+/** The prefix of a passage (owner 2026-11-08): its side's filing label and ": ", or "earlier filing: " / "later filing: " (the
+ *  words KIND_NEW uses) when that filing has no label; nothing for a passage without a side. */
+export function passageLabel(side: "older" | "newer" | null, older: FilingLabel, newer: FilingLabel): string {
+  if (side === null) return "";
+  const label = filingLabel(side === "older" ? older : newer);
+  return `${label === "" ? (side === "older" ? EARLIER_FILING : LATER_FILING) : label}: `;
 }
 
 export function pairHeader(older: FilingLabel, newer: FilingLabel): string {
