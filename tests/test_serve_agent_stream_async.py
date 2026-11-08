@@ -252,6 +252,31 @@ class PlanningSpy:
         return bool(self.made) and self.made[0]._stop.is_set()
 
 
+def held_until_the_consumer_left(plannings: PlanningSpy, reply):
+    """A scripted planner turn that blocks until the consumer has left (the stream's stop flag is set), then returns
+    ``reply``: the call stays in flight for exactly as long as the cancellation takes to land, however slow that is."""
+    def held(messages, timeout):
+        assert plannings.made[0]._stop.wait(timeout=10), "the consumer never left"
+        return reply
+    return held
+
+
+async def consume_until_cancelled(agen, events: list, cancel_when) -> bool:
+    """Iterate ``agen`` into ``events`` under an anyio scope that a watcher cancels once ``cancel_when()`` is true, and
+    say whether the scope caught it. A fixed deadline would race the stream's start-up instead (a full GC pass over the
+    collected suite alone can take longer than 0.1 s)."""
+    async with anyio.create_task_group() as tg:
+        with anyio.CancelScope() as scope:
+            async def cancel_once_ready():
+                await wait_until(cancel_when)
+                scope.cancel()
+
+            tg.start_soon(cancel_once_ready)
+            async for event in agen:
+                events.append(event)
+    return scope.cancelled_caught
+
+
 class GatedEmbedder(FakeEmbedder):
     """An embedder that waits inside ``encode_query`` until ``gate`` is set, which pins the prefetch of ``run_agent``
     inside the planning thread (a wait for an embed slot would pin it the same way). The wait times out, so a bug
@@ -736,16 +761,15 @@ def test_a_failing_answer_phase_without_planner_spend_is_re_raised(monkeypatch):
 # --- 5. cancellation --------------------------------------------------------------------------------
 
 def test_an_anyio_scope_cancelled_during_planning_stops_the_thread_and_reports_the_spend(monkeypatch):
-    spy = RunAgentSpy(monkeypatch)
-    planner = ProbePlanner(turn(FM_2026), turn(FM_2023), turn(), delay=0.3, repeat=True)
+    """The scope is cancelled once the first planner call has begun, and that call is held until the consumer has left,
+    so the cancellation lands during planning however long the start-up or the cancel takes."""
+    spy, plannings = RunAgentSpy(monkeypatch), PlanningSpy(monkeypatch)
+    planner = ProbePlanner(held_until_the_consumer_left(plannings, turn(FM_2026)), turn(FM_2023), turn(), repeat=True)
     prompts, events, before, seen = [], [], set(threading.enumerate()), {}
 
     async def main():
         agen = open_stream(make_limiters(), planner, settings=make_settings(**LONG_PLAN), prompts=prompts)
-        with anyio.move_on_after(0.1) as scope:
-            async for event in agen:
-                events.append(event)
-        seen["cancelled"] = scope.cancelled_caught
+        seen["cancelled"] = await consume_until_cancelled(agen, events, lambda: len(planner.idents) == 1)
 
     with recorder.captured_warnings() as warnings:
         run(main)
@@ -822,9 +846,7 @@ def test_a_cancel_during_the_writer_closes_the_upstream_and_invents_no_terminal_
     async def main():
         agen = open_stream(make_limiters(), planner, stall=True, streams=streams)
         if how == "anyio_scope":
-            with anyio.move_on_after(0.4) as scope:
-                await consume(agen)
-            assert scope.cancelled_caught
+            assert await consume_until_cancelled(agen, events, lambda: [e["event"] for e in events][-1:] == ["delta"])
             return
         task = asyncio.create_task(consume(agen))
         await wait_until(lambda: [e["event"] for e in events][-1:] == ["delta"])
@@ -1302,16 +1324,17 @@ def test_native_cancels_during_the_tracer_flush_wait_for_the_flush_and_do_not_re
     assert abandoned(warnings) == []                          # the terminal event had been sent
 
 
-def test_an_anyio_scope_cancelled_stream_still_flushes_off_the_loop_before_it_is_left():
+def test_an_anyio_scope_cancelled_stream_still_flushes_off_the_loop_before_it_is_left(monkeypatch):
     """The flush hop is its own task now: a cancelled anyio scope must still be held off it (and the flush is not
-    repeated), and the stream must report the abandonment as before."""
-    tracer, seen = SlowFlush(), {}
+    repeated), and the stream must report the abandonment as before. The scope is cancelled during the first planner
+    call, which is held until the consumer has left."""
+    tracer, seen, plannings = SlowFlush(), {}, PlanningSpy(monkeypatch)
+    planner = ProbePlanner(held_until_the_consumer_left(plannings, turn(FM_2026)), turn())
 
     async def main():
-        with anyio.move_on_after(0.1) as scope:
-            async for _ in open_stream(make_limiters(), ProbePlanner(turn(FM_2026), turn(), delay=0.3), tracer=tracer):
-                pass
-        seen.update(cancelled=scope.cancelled_caught, done=tracer.done.is_set(), flushes=tracer.flushes)
+        agen = open_stream(make_limiters(), planner, tracer=tracer)
+        cancelled = await consume_until_cancelled(agen, [], lambda: len(planner.idents) == 1)
+        seen.update(cancelled=cancelled, done=tracer.done.is_set(), flushes=tracer.flushes)
 
     with recorder.captured_warnings() as warnings:
         run(main)
