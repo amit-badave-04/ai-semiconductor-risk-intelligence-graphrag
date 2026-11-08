@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { PREVIEW } from "./servers.ts";
-import { problems, watch } from "./support.ts";
+import { isPageApiRequest, problems, watch } from "./support.ts";
 
 // R25 / I2 gate "C1 pages pass axe": the company page with data (NVDA), and its not-found state (the fixture server serves only
 // NVDA's dossier, so /v2/company/AMD/ is a real 404 from the dossier route). Same tags as a11y.spec.ts; the full violation list
@@ -32,6 +32,15 @@ for (const scheme of ["light", "dark"] as const) {
         "keyword matches to external Federal Register rules",
       );
       await expect(page.getByRole("navigation", { name: "Companies" }).getByRole("link")).toHaveCount(13);
+      // R25 (owner 2026-11-08): the recent risk changes, each kind under its pinned label, a pair that could not be compared
+      const changes = page.getByRole("region", { name: "Compared risk disclosures" });
+      await expect(changes).toContainText("10-K 2025-02-26 \u2192 10-K 2026-02-25");
+      for (const label of ["No matching risk factor found in the earlier filing", "No longer appears as a separate risk factor", "Not matched", "Reworded"]) {
+        await expect(changes.getByText(label, { exact: true })).toBeVisible();
+      }
+      await expect(changes).toContainText("\u201cFixture older wording of a passage.\u201d");
+      await expect(changes.locator('[data-cite="0001045810-26-000021:I.1:0320"]')).toHaveCount(1);
+      await expect(changes).toContainText("comparison not available (low_text_yield).");
       const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
       await testInfo.attach("axe-company-data.json", { body: JSON.stringify(results.violations, null, 1), contentType: "application/json" });
       expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
@@ -53,7 +62,7 @@ for (const scheme of ["light", "dark"] as const) {
 test("an unknown ticker makes no request to the API at all", async ({ page }) => {
   const requests: string[] = [];
   page.on("request", (request) => {
-    if (new URL(request.url()).pathname.startsWith("/api/")) requests.push(request.url());
+    if (isPageApiRequest(request.url())) requests.push(request.url());
   });
   for (const path of ["XXXX", "nvda"]) {
     await page.goto(`${PREVIEW}/v2/company/${path}/`);
@@ -82,4 +91,19 @@ test("keyboard: Tab reaches the switcher links, Enter opens one, and focus lands
   // the fixture server has no AMD dossier: the not-found view replaces the page and its h1 keeps the focus
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeFocused();
   expect(withoutTheExpected404(await problems(w), "AMD")).toEqual([]);
+});
+
+test("the risk changes are asked for once, only after the dossier is ok (R25)", async ({ page }) => {
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.startsWith("/api/company/")) asked.push(pathname);
+  });
+  await page.goto(`${PREVIEW}/v2/company/NVDA/`);
+  await expect(page.getByRole("region", { name: "Compared risk disclosures" })).toContainText("Fixture older wording");
+  expect(asked).toEqual(["/api/company/NVDA/dossier", "/api/company/NVDA/risk-changes"]);
+  asked.length = 0;
+  await page.goto(`${PREVIEW}/v2/company/AMD/`);
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  expect(asked).toEqual(["/api/company/AMD/dossier"]);
 });

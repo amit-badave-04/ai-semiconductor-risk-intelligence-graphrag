@@ -1,0 +1,97 @@
+// R22: the sentences of the Ask page that are computed from data, as pure functions (ports of index.html's retrievalStatus, limitsText,
+// costNote and examplesHtml's grouping) and the one status line of an ask, derived from the AskState. Everything is plain text.
+import type { AskState } from "@/state/useAsk";
+import { escalationStatus, shortModel } from "./answerMeta";
+import type { RetrievalEvent } from "./events";
+import {
+  COST_NOTE_DEFAULT,
+  NO_COMPANY_ANCHOR,
+  STATUS_AGENT,
+  STATUS_CACHED,
+  STATUS_DONE,
+  STATUS_GENERATING,
+  STATUS_RETRIEVING,
+} from "@/pages/Ask.copy";
+import type { Stats } from "./statsStore";
+
+type Dict = Record<string, unknown>;
+const dictOf = (value: unknown): Dict => (typeof value === "object" && value !== null ? (value as Dict) : {});
+
+/** "anchors: Nvidia, TSMC \u00b7 12 relationships \u00b7 ..." from the retrieval event (the counts the server sent, nothing more). */
+export function retrievalStatus(event: Pick<RetrievalEvent, "anchors" | "counts" | "anchor_defaulted"> | null | undefined): string {
+  const counts = dictOf(event?.counts);
+  const names = event?.anchors ? Object.keys(event.anchors) : [];
+  const parts = [`anchors: ${event?.anchor_defaulted ? NO_COMPANY_ANCHOR : names.join(", ") || "none"}`];
+  const add = (n: unknown, label: string) => {
+    if (typeof n === "number") parts.push(`${n} ${label}`);
+  };
+  add(counts.edges, "relationships");
+  add(counts.metrics, "XBRL metrics");
+  add(counts.risks, "active risk disclosures");
+  add(counts.temporal, "risk-change items");
+  add(counts.chunks, "excerpts");
+  return parts.join(" \u00b7 ");
+}
+
+/** The hint next to the Ask button: the per-address limit and the models. "" when the service reported neither. */
+export function limitsText(stats: Stats | null): string {
+  const limits = dictOf(stats?.limits);
+  const models = dictOf(stats?.models);
+  const parts: string[] = [];
+  if (limits.per_ip) parts.push(`limit: ${String(limits.per_ip)} per address`);
+  if (models.llm) {
+    const escalation = models.escalation
+      ? ` (drafts are checked before they are shown; ${shortModel(models.escalation)} answers change-over-time questions and re-answers rejected drafts)`
+      : "";
+    parts.push(`model: ${shortModel(models.llm)}${escalation}`);
+  }
+  return parts.join(" \u00b7 ");
+}
+
+/** The cost note of the footer. */
+export function costNote(models: unknown): string {
+  const m = dictOf(models);
+  const answering = shortModel(m.llm);
+  const escalation = shortModel(m.escalation);
+  if (answering && escalation && answering !== escalation) {
+    return `one ${answering} call each, plus a second ${escalation} call when the draft fails its checks; change-over-time questions go straight to ${escalation}`;
+  }
+  if (answering) return `one ${answering} call each`;
+  return COST_NOTE_DEFAULT;
+}
+
+export interface Example {
+  type: string;
+  question: string;
+}
+
+/** The saved examples grouped by type, in the order the types first appear. An example without a string question is dropped. */
+export function groupExamples(payload: unknown): { type: string; questions: string[] }[] {
+  const groups = new Map<string, string[]>();
+  const examples = dictOf(payload).examples;
+  for (const item of Array.isArray(examples) ? examples : []) {
+    const e = dictOf(item);
+    if (typeof e.question !== "string") continue;
+    const type = String(e.type ?? "");
+    groups.set(type, [...(groups.get(type) ?? []), e.question]);
+  }
+  return Array.from(groups, ([type, questions]) => ({ type, questions }));
+}
+
+export interface StatusLine {
+  text: string;
+  /** The line is an error or a refusal (shown in the error colour). */
+  isError: boolean;
+}
+
+/** The status line of the current answer, true on every exit: progress while it streams, then done, cached, an error or a refusal. */
+export function statusLine(ask: Pick<AskState, "status" | "strategy" | "retrieval" | "escalated" | "done" | "statusText">): StatusLine {
+  if (ask.statusText !== null) return { text: ask.statusText, isError: true };
+  if (ask.status === "streaming") {
+    if (ask.escalated !== null) return { text: escalationStatus(ask.escalated), isError: false };
+    if (ask.retrieval !== null) return { text: retrievalStatus(ask.retrieval) + STATUS_GENERATING, isError: false };
+    return { text: ask.strategy === "agent" ? STATUS_AGENT : STATUS_RETRIEVING, isError: false };
+  }
+  if (ask.status === "ended" && ask.done !== null) return { text: ask.done.cached ? STATUS_CACHED : STATUS_DONE, isError: false };
+  return { text: "", isError: false };
+}

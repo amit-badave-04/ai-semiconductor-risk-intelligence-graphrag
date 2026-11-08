@@ -65,6 +65,46 @@ export type DossierResult =
   | { kind: "notFound" }
   | { kind: "error"; detail: string };
 
+/** The kinds of change the server reports for a risk item (retrieval/dossier.py _KIND_MAP). */
+export type RiskKind = "new" | "changed" | "dropped" | "unsettled";
+
+export interface FilingRef {
+  accession_no: string | null;
+  form: string | null;
+  filing_date: string | null;
+}
+
+export interface RiskPassage {
+  quote: string | null;
+  /** Only an id that matches the chunk-id grammar. */
+  chunkId: string | null;
+  side: "older" | "newer" | null;
+}
+
+export interface RiskItem {
+  kind: RiskKind;
+  headline: string | null;
+  passages: RiskPassage[];
+}
+
+export interface RiskPair {
+  older: FilingRef;
+  newer: FilingRef;
+  /** False only when the server says so: the pair could not be compared, and `reason` says why. */
+  compared: boolean;
+  reason: string | null;
+  items: RiskItem[];
+}
+
+export interface RiskChanges {
+  pairs: RiskPair[];
+}
+
+export type RiskChangesResult =
+  | { kind: "ok"; changes: RiskChanges }
+  | { kind: "notFound" }
+  | { kind: "error"; detail: string };
+
 // The legacy page's words for a failed request (index.html:680).
 const MSG_NETWORK = "network error \u2014 is the service online?";
 
@@ -170,26 +210,86 @@ export function parseDossier(body: unknown): Dossier | null {
   };
 }
 
-/** GET one filer's dossier. No request at all for a ticker that is not a generated filer. An abort rejects (the caller
- *  discards it); every other failure is a result. */
-export async function fetchDossier(ticker: string, signal?: AbortSignal): Promise<DossierResult> {
-  if (!isFilerTicker(ticker)) return { kind: "notFound" };
+type Fetched =
+  | { kind: "ok"; body: unknown; fallback: string }
+  | { kind: "notFound" }
+  | { kind: "error"; detail: string };
+
+/** GET one company route as JSON. An abort rejects (the caller discards it); every other failure is a result. `fallback` is the
+ *  status text (or "HTTP <status>") a caller shows for a 200 whose body is no usable report: no sentence of our own. */
+async function getJson(url: string, signal?: AbortSignal): Promise<Fetched> {
   let response: Response;
   try {
-    response = await fetch(dossierUrl(ticker), { signal });
+    response = await fetch(url, { signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     return { kind: "error", detail: MSG_NETWORK };
   }
   if (response.status === 404) return { kind: "notFound" };
+  const fallback = response.statusText || `HTTP ${response.status}`;
   if (!response.ok) return { kind: "error", detail: await detailOf(response) };
-  let body: unknown;
   try {
-    body = await response.json();
+    return { kind: "ok", body: await response.json(), fallback };
   } catch {
-    return { kind: "error", detail: response.statusText || `HTTP ${response.status}` };
+    return { kind: "error", detail: fallback };
   }
-  const dossier = parseDossier(body);
-  if (dossier === null) return { kind: "error", detail: response.statusText || `HTTP ${response.status}` };
-  return { kind: "ok", dossier };
+}
+
+/** GET one filer's dossier. No request at all for a ticker that is not a generated filer. An abort rejects (the caller
+ *  discards it); every other failure is a result. */
+export async function fetchDossier(ticker: string, signal?: AbortSignal): Promise<DossierResult> {
+  if (!isFilerTicker(ticker)) return { kind: "notFound" };
+  const got = await getJson(dossierUrl(ticker), signal);
+  if (got.kind !== "ok") return got;
+  const dossier = parseDossier(got.body);
+  return dossier === null ? { kind: "error", detail: got.fallback } : { kind: "ok", dossier };
+}
+
+/** The one place the risk-changes URL is built: an absolute /api path, the ticker encoded. */
+export function riskChangesUrl(ticker: string): string {
+  return `/api/company/${encodeURIComponent(ticker)}/risk-changes`;
+}
+
+const RISK_KINDS: ReadonlySet<string> = new Set<RiskKind>(["new", "changed", "dropped", "unsettled"]);
+
+function toFilingRef(value: unknown): FilingRef {
+  const row = isRow(value) ? value : {};
+  return { accession_no: str(row.accession_no), form: str(row.form), filing_date: str(row.filing_date) };
+}
+
+function toRiskPassage(row: Row): RiskPassage {
+  const chunk = typeof row.chunk_id === "string" && CHUNK_ID_RE.test(row.chunk_id) ? row.chunk_id : null;
+  const side = row.side === "older" || row.side === "newer" ? row.side : null;
+  return { quote: str(row.quote), chunkId: chunk, side };
+}
+
+function toRiskItem(row: Row): RiskItem | null {
+  if (typeof row.kind !== "string" || !RISK_KINDS.has(row.kind)) return null;
+  return { kind: row.kind as RiskKind, headline: str(row.headline), passages: rows(row.passages).map(toRiskPassage) };
+}
+
+function toRiskPair(row: Row): RiskPair {
+  return {
+    older: toFilingRef(row.older),
+    newer: toFilingRef(row.newer),
+    compared: row.compared !== false,
+    reason: str(row.not_compared_reason),
+    items: rows(row.items).map(toRiskItem).filter((i): i is RiskItem => i !== null),
+  };
+}
+
+/** Narrow an unknown body to the risk changes; null when it has no pairs list. Unknown fields and items of an unknown kind are
+ *  dropped, and a passage keeps a citation id only when it matches the chunk-id grammar (S2: nothing here is a URL). */
+export function parseRiskChanges(body: unknown): RiskChanges | null {
+  if (!isRow(body) || !Array.isArray(body.pairs)) return null;
+  return { pairs: rows(body.pairs).map(toRiskPair) };
+}
+
+/** GET one filer's recent risk changes. Same gate as {@link fetchDossier}: no request for a ticker that is not a generated filer. */
+export async function fetchRiskChanges(ticker: string, signal?: AbortSignal): Promise<RiskChangesResult> {
+  if (!isFilerTicker(ticker)) return { kind: "notFound" };
+  const got = await getJson(riskChangesUrl(ticker), signal);
+  if (got.kind !== "ok") return got;
+  const changes = parseRiskChanges(got.body);
+  return changes === null ? { kind: "error", detail: got.fallback } : { kind: "ok", changes };
 }

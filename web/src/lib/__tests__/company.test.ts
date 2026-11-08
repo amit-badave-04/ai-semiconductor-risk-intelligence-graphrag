@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dossierUrl, fetchDossier, isFilerTicker, parseDossier } from "../company";
+import { dossierUrl, fetchDossier, fetchRiskChanges, isFilerTicker, parseDossier, parseRiskChanges, riskChangesUrl } from "../company";
 import { FILERS } from "../pages.generated";
 
 // built from pieces so no script URL literal sits in the source
@@ -104,6 +104,15 @@ describe("fetchDossier", () => {
     expect((await fetchDossier("NVDA")).kind).toBe("error");
   });
 
+  // A 200 whose body parses but is no dossier (no company) keeps the status-text fallback; a sentence of its own is the owner's
+  // to propose (public copy), so this pins today's behaviour: the status text, or "HTTP 200" when HTTP/2 sends none.
+  it("pins the status-text fallback for a 200 that holds no company", async () => {
+    stubFetch(new Response(JSON.stringify({ filings: [] }), { status: 200, statusText: "OK" }));
+    expect(await fetchDossier("NVDA")).toEqual({ kind: "error", detail: "OK" });
+    stubFetch(new Response(JSON.stringify({ company: { ticker: "NVDA" } }), { status: 200, statusText: "" }));
+    expect(await fetchDossier("NVDA")).toEqual({ kind: "error", detail: "HTTP 200" });
+  });
+
   it("reports a network failure with the legacy page's words", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
     expect(await fetchDossier("NVDA")).toEqual({
@@ -199,5 +208,115 @@ describe("parseDossier (a type guard that ignores unknown fields)", () => {
       rules: [{ target: "A rule", rule_id: "2026-01234" }],
     });
     expect(dossier?.rules[0]?.cite).toBe("fr:2026-01234");
+  });
+});
+
+// R25 (owner 2026-11-08: yes): the recent risk changes of GET /api/company/{ticker}/risk-changes, through the same ticker gate,
+// the same encoding, the same refusal words and the same status-text fallback as the dossier.
+const OLD_FILING = { accession_no: "0001045810-25-000023", form: "10-K", filing_date: "2025-02-26" };
+const NEW_FILING = { accession_no: "0001045810-26-000021", form: "10-K", filing_date: "2026-02-25" };
+const CHANGES = {
+  company: { ticker: "NVDA", name: "Nvidia", cik: 1045810 },
+  pairs: [
+    {
+      older: OLD_FILING,
+      newer: NEW_FILING,
+      compared: true,
+      not_compared_reason: null,
+      items: [
+        { kind: "new", headline: "A new risk", older_item_id: null, newer_item_id: "n1", passages: [] },
+        { kind: "dropped", headline: "A gone risk", older_item_id: "o1", newer_item_id: null, passages: [] },
+        { kind: "unsettled", headline: "An unsettled risk", older_item_id: null, newer_item_id: null, passages: [] },
+        {
+          kind: "changed",
+          headline: "A reworded risk",
+          older_item_id: null,
+          newer_item_id: "n2",
+          passages: [
+            { quote: "old wording", chunk_id: CHUNK, side: "older" },
+            { quote: "new wording", chunk_id: "not a chunk id", side: "newer" },
+          ],
+        },
+      ],
+    },
+    { older: OLD_FILING, newer: NEW_FILING, compared: false, not_compared_reason: "low_text_yield", items: [] },
+  ],
+};
+
+describe("riskChangesUrl and fetchRiskChanges", () => {
+  it("builds an absolute, encoded /api path", () => {
+    expect(riskChangesUrl("NVDA")).toBe("/api/company/NVDA/risk-changes");
+    expect(riskChangesUrl("a/b?c")).toBe("/api/company/a%2Fb%3Fc/risk-changes");
+  });
+
+  it("makes no request for a ticker that is not a generated filer", async () => {
+    const fn = stubFetch(json(CHANGES));
+    for (const t of ["XXXX", "nvda", "..%2F..%2Fapi%2Fadmin%2Fstate", "constructor"]) {
+      expect(await fetchRiskChanges(t)).toEqual({ kind: "notFound" });
+    }
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("GETs the filer's risk changes, passing the abort signal, and parses them", async () => {
+    const fn = stubFetch(json(CHANGES));
+    const controller = new AbortController();
+    const result = await fetchRiskChanges("NVDA", controller.signal);
+    expect(fn.mock.calls[0]?.[0]).toBe("/api/company/NVDA/risk-changes");
+    expect(fn.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+    expect(result.kind).toBe("ok");
+  });
+
+  it("maps a 404 to not found, a refusal to the server's detail, and a network failure to the legacy words", async () => {
+    stubFetch(json({ detail: "unknown ticker" }, 404));
+    expect(await fetchRiskChanges("NVDA")).toEqual({ kind: "notFound" });
+    stubFetch(json({ detail: "Too many requests." }, 429));
+    expect(await fetchRiskChanges("NVDA")).toEqual({ kind: "error", detail: "Too many requests." });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    expect(await fetchRiskChanges("NVDA")).toEqual({ kind: "error", detail: "network error \u2014 is the service online?" });
+  });
+
+  it("keeps the status-text fallback for a 200 that is no report (no sentence of its own)", async () => {
+    stubFetch(new Response("[]", { status: 200, statusText: "OK" }));
+    expect(await fetchRiskChanges("NVDA")).toEqual({ kind: "error", detail: "OK" });
+    stubFetch(new Response("not json", { status: 200, statusText: "" }));
+    expect(await fetchRiskChanges("NVDA")).toEqual({ kind: "error", detail: "HTTP 200" });
+  });
+
+  it("rethrows an abort", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("aborted", "AbortError")));
+    await expect(fetchRiskChanges("NVDA")).rejects.toThrow();
+  });
+});
+
+describe("parseRiskChanges", () => {
+  it("keeps the shown fields, the four kinds, and a citation id only when it is a chunk id", () => {
+    const parsed = parseRiskChanges({ ...CHANGES, extra: "dropped" });
+    expect(parsed?.pairs).toHaveLength(2);
+    const first = parsed?.pairs[0];
+    expect(first?.older).toEqual(OLD_FILING);
+    expect(first?.compared).toBe(true);
+    expect(first?.items.map((i) => i.kind)).toEqual(["new", "dropped", "unsettled", "changed"]);
+    expect(first?.items[3]?.passages).toEqual([
+      { quote: "old wording", chunkId: CHUNK, side: "older" },
+      { quote: "new wording", chunkId: null, side: "newer" },
+    ]);
+    expect(parsed?.pairs[1]).toMatchObject({ compared: false, reason: "low_text_yield", items: [] });
+  });
+
+  it("treats a pair without 'compared: false' as compared, and drops items of an unknown kind or that are not objects", () => {
+    const parsed = parseRiskChanges({
+      pairs: [{ older: OLD_FILING, newer: NEW_FILING, items: [{ kind: "weird", headline: "x" }, "no", { kind: "new", headline: "ok" }] }],
+    });
+    expect(parsed?.pairs[0]?.compared).toBe(true);
+    expect(parsed?.pairs[0]?.items).toEqual([{ kind: "new", headline: "ok", passages: [] }]);
+  });
+
+  it("survives mistyped fields and returns null for a body without a pairs list", () => {
+    const parsed = parseRiskChanges({ pairs: [{ older: 3, newer: null, compared: "yes", not_compared_reason: 7, items: "x" }, 5] });
+    expect(parsed?.pairs).toHaveLength(1);
+    expect(parsed?.pairs[0]?.older).toEqual({ accession_no: null, form: null, filing_date: null });
+    expect(parseRiskChanges({})).toBeNull();
+    expect(parseRiskChanges(null)).toBeNull();
+    expect(parseRiskChanges({ pairs: "x" })).toBeNull();
   });
 });

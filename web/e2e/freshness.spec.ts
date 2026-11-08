@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { PREVIEW } from "./servers.ts";
+import { PAGES, PREVIEW } from "./servers.ts";
 import { problems, watch } from "./support.ts";
 
 // R26 / I2 gate "C1 pages pass axe": the Freshness page over the fixture server, whose /api/freshness is the real "disabled"
@@ -19,7 +19,8 @@ for (const scheme of ["light", "dark"] as const) {
       });
       await page.goto(`${PREVIEW}/v2/freshness/`);
       await expect(page.getByRole("heading", { level: 1, name: "Freshness" })).toBeVisible();
-      await expect(page.getByText("freshness check unavailable")).toBeVisible();
+      await expect(page.getByRole("main").getByText("freshness check unavailable")).toBeVisible();
+      await expect(page.getByRole("banner")).toContainText("freshness check unavailable"); // the shell line (R26)
       await expect(page.getByRole("list", { name: "Freshness fields" })).toContainText("disabled");
       expect(responses).toEqual(["200"]);
       const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -29,3 +30,48 @@ for (const scheme of ["light", "dark"] as const) {
     });
   });
 }
+
+// R26 (owner 2026-11-08: yes): every page carries the freshness line in the header the way the legacy header does: it reads
+// /api/freshness (index.html:639), once per page load, and /api/stats is not asked for it. A deep link has zero failed requests
+// and zero console errors. The Freshness page joins the header's request.
+for (const { path } of PAGES) {
+  test(`R26 shell line: /v2/${path} shows the line in the banner after one /api/freshness request`, async ({ page }) => {
+    const w = await watch(page, PREVIEW);
+    const freshnessRequests: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname === "/api/freshness") freshnessRequests.push(r.url());
+    });
+    await page.goto(`${PREVIEW}/v2/${path}`);
+    await expect(page.getByRole("banner")).toContainText("freshness check unavailable");
+    await page.waitForLoadState("networkidle");
+    expect(freshnessRequests).toHaveLength(1);
+    expect(await problems(w)).toEqual([]);
+  });
+}
+
+// The real shape of a healthy production payload (monitor.py status_payload): the header says the data date, as the legacy one.
+test("R26 shell line: a healthy production payload reads 'Data as of <date>' in the banner", async ({ page }) => {
+  const w = await watch(page, PREVIEW);
+  await page.route("**/api/freshness", (route) =>
+    route.fulfill({
+      json: {
+        configured: true,
+        enabled: true,
+        status: "ok",
+        checked_at: new Date().toISOString(),
+        snapshot_as_of: "2026-09-30",
+        last_error_at: null,
+        next_check_at: new Date(Date.now() + 3600000).toISOString(),
+        pending_count: 0,
+        pending_filings: [],
+        federal_register: null,
+        unresolved: [],
+        duration_s: 1.4,
+      },
+    }),
+  );
+  await page.goto(`${PREVIEW}/v2/method/`);
+  await expect(page.getByRole("banner")).toContainText("Data as of 2026-09-30 \u00b7 checked just now \u00b7 0 filings pending");
+  await expect(page.getByRole("banner")).not.toContainText("Data freshness unknown");
+  expect(await problems(w)).toEqual([]);
+});

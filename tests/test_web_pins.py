@@ -297,8 +297,8 @@ def test_every_checkout_leaves_no_token_in_the_git_config(workflow):
 
 def test_playwright_never_reuses_a_server_that_is_already_on_the_port():
     """S13: a server already listening there (a developer's real-settings app) must never stand in for the guarded fixture
-    server, locally or in CI, so both web servers state ``reuseExistingServer: false`` (no ``!process.env.CI`` either)."""
+    server, locally or in CI, so every web server (preview, flipped, and the site-key server of the Turnstile specs) states ``reuseExistingServer: false`` (no ``!process.env.CI`` either)."""
     lines = (WEB / "playwright.config.ts").read_text(encoding="utf-8").splitlines()
     code = "\n".join(line for line in lines if not line.lstrip().startswith("//"))
-    assert len(re.findall(r"\bcommand:", code)) == 2, "a web server was added: it needs the same pin"
-    assert re.findall(r"\breuseExistingServer:\s*([^,}\s]+)", code) == ["false", "false"]
+    assert len(re.findall(r"\bcommand:", code)) == 3, "a web server was added: it needs the same pin"
+    assert re.findall(r"\breuseExistingServer:\s*([^,}\s]+)", code) == ["false", "false", "false"]

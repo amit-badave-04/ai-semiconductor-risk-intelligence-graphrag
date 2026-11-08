@@ -16,7 +16,7 @@ export default defineConfig({
       reporter: ["text", "json-summary"],
       // Vitest 5: include/exclude match paths relative to the project root, and a bare pattern is a directory.
       include: ["src/**/*.{ts,tsx}"],
-      // Only the copied-in shadcn components and the generated constants are excluded (docs/specs/m5b-frontend.md Acceptance).
+      // Excluded: the copied-in shadcn components and the generated constants (docs/specs/m5b-frontend.md Acceptance), plus the test files and setup, which are not product code. Test helpers under __tests__ count.
       exclude: ["src/components/ui/**", "src/**/*.generated.ts", "src/**/*.test.{ts,tsx}", "src/test/**", "src/vite-env.d.ts"],
       thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
     },

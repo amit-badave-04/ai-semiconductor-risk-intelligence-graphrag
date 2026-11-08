@@ -115,18 +115,36 @@ describe("Method & Evidence page", () => {
     expect(sections.at(-1)).toBe(screen.getByRole("region", { name: "How reliable are change claims?" }));
   });
 
-  it("has only the two static links, each safe", () => {
+  it("has the two static links, each safe, and one internal link to the Freshness page", () => {
     const { container } = mount();
     const links = [...container.querySelectorAll("a")];
-    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+    const external = links.filter((a) => a.getAttribute("target") === "_blank");
+    expect(external.map((a) => a.getAttribute("href"))).toEqual([
       "https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag/blob/v2/docs/v2/M1B_PLAN.md",
       "https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag/blob/v2/docs/v2/REVIEW_2026-09-26.md",
     ]);
-    for (const a of links) {
+    for (const a of external) {
       expect(a.getAttribute("rel")?.split(" ").sort()).toEqual(["noopener", "noreferrer"]);
-      expect(a.getAttribute("target")).toBe("_blank");
     }
+    expect(links).toHaveLength(3);
     expect(container.querySelector("[src], [style], [onclick]")).toBeNull();
+  });
+
+  it("links to the Freshness page by its navigation label, as a route link (R27)", () => {
+    mount();
+    const link = screen.getByRole("link", { name: "Freshness" });
+    expect(link).toHaveAttribute("href", "/freshness/");
+    expect(link).not.toHaveAttribute("target");
+  });
+
+  it("has no heading 'Earlier accuracy figures': the withdrawn notice is an unheaded note", () => {
+    const { container } = mount();
+    expect(screen.queryByRole("heading", { name: "Earlier accuracy figures" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Earlier accuracy figures" })).toBeNull();
+    const note = [...container.querySelectorAll("p")].find((p) => p.textContent?.includes("withdrawn"));
+    expect(note).toBeDefined();
+    expect(note?.closest("section")).toBeNull();
+    expect(note?.textContent).toBe(joined(copy.WITHDRAWN));
   });
 
   it("shows bold runs as bold", () => {

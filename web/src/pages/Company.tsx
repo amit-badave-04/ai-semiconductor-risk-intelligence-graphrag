@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { PageHeading } from "@/components/Layout";
-import { type DossierResult, fetchDossier } from "@/lib/company";
+import { type DossierResult, fetchDossier, fetchRiskChanges } from "@/lib/company";
 import { FILERS } from "@/lib/pages.generated";
 import { CompanySwitcher, DossierBlocks } from "./CompanyBlocks";
+import { RiskChangesBlock, type RiskChangesState } from "./CompanyChanges";
+import { MSG_LOADING } from "./Company.copy";
 import { NotFound } from "./NotFound";
-
-const MSG_LOADING = "loading\u2026";
 
 /** The not-found view after a dossier 404. The company's own h1 (which may have had focus) is gone, so the new h1 takes the
  *  focus unless the user has put it somewhere else since. */
@@ -23,6 +23,25 @@ function DossierNotFound() {
   );
 }
 
+/** R25: the risk changes of a company whose dossier came back ok. They are asked for only then, so an unknown company (a 404
+ *  dossier) or a refusal never costs a second request. Null while pending; an abort (the page is gone, the ticker changed) shows
+ *  nothing. */
+function useRiskChanges(ticker: string, enabled: boolean): RiskChangesState {
+  const [state, setState] = useState<RiskChangesState>(null);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const controller = new AbortController();
+    fetchRiskChanges(ticker, controller.signal).then(
+      (next) => {
+        if (!controller.signal.aborted) setState(next);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, [ticker, enabled]);
+  return state;
+}
+
 function CompanyPage({ ticker, name }: { ticker: string; name: string }) {
   const [result, setResult] = useState<DossierResult | null>(null);
 
@@ -37,6 +56,7 @@ function CompanyPage({ ticker, name }: { ticker: string; name: string }) {
     return () => controller.abort();
   }, [ticker]);
 
+  const changes = useRiskChanges(ticker, result?.kind === "ok");
   if (result?.kind === "notFound") return <DossierNotFound />;
   const message = result === null ? MSG_LOADING : result.kind === "error" ? result.detail : "";
   return (
@@ -46,7 +66,12 @@ function CompanyPage({ ticker, name }: { ticker: string; name: string }) {
         {message}
       </output>
       <CompanySwitcher current={ticker} />
-      {result?.kind === "ok" ? <DossierBlocks dossier={result.dossier} /> : null}
+      {result?.kind === "ok" ? (
+        <>
+          <DossierBlocks dossier={result.dossier} />
+          <RiskChangesBlock state={changes} />
+        </>
+      ) : null}
     </>
   );
 }

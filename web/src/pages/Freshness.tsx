@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { PageHeading } from "@/components/Layout";
-import { type Freshness as FreshnessData, type PendingFiling, fetchFreshness, freshnessLine, relativeTime } from "./Freshness.lib";
+import { loadFreshness } from "@/lib/freshnessStore";
+import { type Freshness as FreshnessData, type PendingFiling, freshnessLine, relativeTime } from "./Freshness.lib";
 
 // R26: every field of GET /api/freshness (monitor.py status_payload, and the "disabled" payload of monitor_routes.py) is
 // shown or listed here as omitted, for the I4 classification.
@@ -79,14 +80,11 @@ export function Freshness() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchFreshness(controller.signal).then(
-      (result) => {
-        if (controller.signal.aborted) return;
-        setState(result.kind === "ok" ? { kind: "ok", freshness: result.freshness, now: Date.now() } : result);
-      },
-      () => undefined, // only an abort rejects: the page is gone
-    );
-    return () => controller.abort();
+    void loadFreshness(controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      setState(result.kind === "ok" ? { kind: "ok", freshness: result.freshness, now: Date.now() } : result);
+    });
+    return () => controller.abort(); // the request itself stops only when the header does not want it either
   }, []);
 
   const message = state.kind === "loading" ? MSG_LOADING : state.kind === "error" ? state.detail : "";

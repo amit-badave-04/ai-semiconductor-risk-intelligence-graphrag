@@ -58,3 +58,65 @@ export async function problems(w: Watch): Promise<string[]> {
     ...(await w.cspViolations()).map((v) => `CSP violation: ${v}`),
   ];
 }
+
+/** The origin the Turnstile script is allowed to come from (the CSP names it). */
+export const CLOUDFLARE = "https://challenges.cloudflare.com";
+
+/** What the stub exposes on `window.__turnstileStub` (a test reads and drives it with `page.evaluate`). */
+export interface TurnstileStubState {
+  renders: number;
+  removes: number;
+  resets: number;
+  live: number;
+  /** Play the visitor: hand the live widget's callback a fresh token and return it. */
+  solve: () => string;
+  expire: () => void;
+}
+
+// The script the Cloudflare address answers with. It is a fake `window.turnstile` (nothing here ever solves or bypasses a real
+// challenge) that draws one marker element per live widget and calls the `onload` hook named in its own address, as Cloudflare's does.
+const TURNSTILE_STUB_SCRIPT = `
+(function () {
+  var state = window.__turnstileStub = { renders: 0, removes: 0, resets: 0, issued: 0, widgets: {} };
+  Object.defineProperty(state, "live", { get: function () { return Object.keys(state.widgets).length; } });
+  function first() { return state.widgets[Object.keys(state.widgets)[0]]; }
+  state.solve = function () { state.issued += 1; var token = "stub-token-" + state.issued; first().options.callback(token); return token; };
+  state.expire = function () { first().options["expired-callback"](); };
+  window.turnstile = {
+    render: function (host, options) {
+      state.renders += 1;
+      var id = "stub-" + state.renders;
+      var frame = document.createElement("div");
+      frame.setAttribute("data-widget", id);
+      host.appendChild(frame);
+      state.widgets[id] = { host: host, frame: frame, options: options };
+      return id;
+    },
+    remove: function (id) { state.removes += 1; if (state.widgets[id]) { state.widgets[id].frame.remove(); delete state.widgets[id]; } },
+    reset: function (id) { if (state.widgets[id]) state.resets += 1; }
+  };
+  var hook = new URL(document.currentScript.src).searchParams.get("onload");
+  if (hook && typeof window[hook] === "function") window[hook]();
+})();
+`;
+
+/** Answer every request to the Cloudflare origin with the fake Turnstile script, at the network layer, so the page's CSP is
+ *  exercised for real (the real widget is the owner's check, B6). Returns the URLs requested, in order. Call BEFORE navigating. */
+export async function stubTurnstile(page: Page): Promise<string[]> {
+  const requested: string[] = [];
+  await page.route(`${CLOUDFLARE}/**`, async (route) => {
+    requested.push(route.request().url());
+    await route.fulfill({ status: 200, contentType: "text/javascript", body: TURNSTILE_STUB_SCRIPT });
+  });
+  return requested;
+}
+
+/** The API requests every page makes: the shell's GET /api/config (R8) and its one GET /api/freshness for the header line (R26). */
+export const SHELL_API_PATHS: readonly string[] = ["/api/config", "/api/freshness"];
+
+/** True for a request to the API that a PAGE made (not the shell's own /api/config and /api/freshness): the specs that say "this page asks the
+ *  API for nothing" use it. */
+export function isPageApiRequest(url: string): boolean {
+  const { pathname } = new URL(url);
+  return pathname.startsWith("/api/") && !SHELL_API_PATHS.includes(pathname);
+}

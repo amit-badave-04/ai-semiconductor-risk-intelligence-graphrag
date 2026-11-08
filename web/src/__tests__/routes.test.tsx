@@ -59,7 +59,9 @@ describe("the company page validates its router parameter and makes no request f
       const fetchSpy = vi.spyOn(globalThis, "fetch");
       at(`/company/${ticker}/`);
       expect(screen.getByRole("heading", { level: 1, name: "Page not found" })).toBeInTheDocument();
-      expect(fetchSpy).not.toHaveBeenCalled();
+      // the shell's own GET /api/freshness (the freshness line, R26) is not a request the page made for the ticker
+      const asked = fetchSpy.mock.calls.map(([input]) => String(input)).filter((url) => !url.includes("/api/freshness"));
+      expect(asked).toEqual([]);
     },
   );
 });

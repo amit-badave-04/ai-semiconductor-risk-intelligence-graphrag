@@ -14,7 +14,7 @@ const RULES_NOTE_AFTER = ": outside events, not statements the company made.";
 
 const NONE = "none";
 
-function Cite({ id }: { id: string }) {
+export function Cite({ id }: { id: string }) {
   return (
     <code data-cite={id} className="rounded bg-muted px-1.5 py-0.5 text-xs break-all">
       {id}
@@ -22,7 +22,7 @@ function Cite({ id }: { id: string }) {
   );
 }
 
-function Block({ title, children }: { title: string; children: ReactNode }) {
+export function Block({ title, children }: { title: string; children: ReactNode }) {
   const id = `block-${title.toLowerCase().replace(/[^a-z]+/g, "-")}`;
   return (
     <section aria-labelledby={id} className="mb-8">
