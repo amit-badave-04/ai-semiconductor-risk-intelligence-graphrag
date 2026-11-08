@@ -55,6 +55,18 @@ the twin itself becomes "The answer could not be completed (<ClassName>)."
   and a page failure shows
   "the page could not show this answer completely: what is shown may be incomplete and was not checked. Please ask again."
 * Nothing after the terminal event is delivered or read; the connection is released.
+* An abort has no status text of its own: a user abort, a page unload and a lost connection all end the call with the cut
+  text (`ended` and `failed` both false), but `AskOutcome.aborted` is true exactly when the CALLER's own signal aborted before
+  a terminal event arrived (I3). A caller that stopped the call itself reads `aborted` (or its own `signal.aborted`) and words
+  it as a stop, never as a lost connection; it never infers an abort from the status text. An answer that had already ended
+  is never `aborted`, and a frame over the buffer limit that arrives after the terminal event (in the same read) does not make
+  a finished answer `failed`: `failed` means an overflow, a throw or a missing body of an answer that had not ended.
+* The page keys every guard on the SSE event NAME (`event: done`, `event: error`), which is what `decodeEvent` receives, and
+  never on an `event` field inside `data`: the byte fixtures carry one, the server may stop sending it, and a forged `data`
+  must not change which handler runs.
+* The time bound of a refused request's body read (`detailOf`) is the caller's signal: `detailOf` has no timer of its own and
+  the body belongs to the POST's `fetch`, so aborting the signal passed in `AskOptions.signal` ends the read (the status text
+  is then used); the body is capped at 64 KiB regardless.
 
 ### Buffer limit
 

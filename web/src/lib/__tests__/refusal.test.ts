@@ -111,3 +111,19 @@ describe("detailOf reads at most 64 KiB of a non-OK body (security LOW)", () => 
     expect(await detailOf(new Response(null, { status: 503, statusText: "Unavailable" }))).toBe("Unavailable");
   });
 });
+
+describe("detailOf: a body that cannot be cancelled", () => {
+  it("still answers with the status text when cancelling the oversized body fails", async () => {
+    const chunk = new Uint8Array(40 * 1024);
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        throw new Error("cannot cancel");
+      },
+    });
+    const response = new Response(stream, { status: 502, statusText: "Bad Gateway" });
+    expect(await detailOf(response)).toBe("Bad Gateway");
+  });
+});

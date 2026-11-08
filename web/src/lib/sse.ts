@@ -56,12 +56,20 @@ export interface AskOutcome {
   refusal: Refusal | null;
   /** The error a handler threw, when `failed` came from one. */
   thrown?: unknown;
+  /** The call ended because the CALLER's own signal aborted (and no terminal event had arrived): the visitor stopped it, or the
+   *  page unloaded. Such a call is neither a cut connection nor a page failure, and the caller must not word it as either. */
+  aborted: boolean;
 }
 
 function outcome(parts: Partial<AskOutcome> & Pick<AskOutcome, "ended" | "failed">): AskOutcome {
   const { ended, failed } = parts;
   const status = parts.status !== undefined ? parts.status : ended ? null : failed ? PAGE_FAILED_STATUS : STREAM_CUT_STATUS;
-  return { refusal: null, ...parts, status };
+  return { refusal: null, aborted: false, ...parts, status };
+}
+
+/** Mark an outcome as aborted when the caller's own signal is what ended it (never after a terminal event). */
+function withAbort(result: AskOutcome, signal: AbortSignal | undefined): AskOutcome {
+  return signal?.aborted === true && !result.ended ? { ...result, aborted: true } : result;
 }
 
 async function release(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
@@ -74,6 +82,10 @@ async function release(reader: ReadableStreamDefaultReader<Uint8Array>): Promise
 
 /** Read one answer. Resolves, never rejects: every way out is described by the outcome. */
 export async function askStream(body: AskBody, options: AskOptions): Promise<AskOutcome> {
+  return withAbort(await askOnce(body, options), options.signal);
+}
+
+async function askOnce(body: AskBody, options: AskOptions): Promise<AskOutcome> {
   const { onEvent, signal, headers, fetchImpl = fetch, maxBufferSize = MAX_BUFFER_SIZE } = options;
   let response: Response;
   try {
@@ -138,6 +150,9 @@ async function read(
   let failed = false;
   let thrown: unknown;
   const parser = askParser(state, onEvent, maxBufferSize);
+  // A pending read must not outlive the caller's abort: cancelling the reader settles it (a real fetch errors the read itself).
+  const onAbort = () => void release(reader);
+  signal?.addEventListener("abort", onAbort);
   try {
     while (!state.ended && !state.overflowed) {
       if (signal?.aborted) {
@@ -154,12 +169,13 @@ async function read(
       }
       parser.feed(decoder.decode(step.value, { stream: true }));
     }
-    failed = state.overflowed; // a frame over the limit is a failure of the stream, never a silent drop
+    failed = state.overflowed && !state.ended; // a frame over the limit is a failure of the stream, never a silent drop (but not of an answer that already ended)
   } catch (error) {
     failed = true; // the handler, the decoder or the parser threw
     thrown = error;
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     await release(reader); // the terminated parser is never fed again; the connection is let go
   }
-  return outcome({ ended: state.ended && !failed, failed, ...(thrown === undefined ? {} : { thrown }) });
+  return outcome({ ended: state.ended, failed, ...(thrown === undefined ? {} : { thrown }) });
 }
