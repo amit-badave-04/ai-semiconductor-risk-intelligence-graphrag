@@ -7,11 +7,11 @@ Spec: `docs/specs/m5b-frontend.md` (increment table I5, gate map B6 and P8, acce
 ## 1. Purpose, and what it does and does not replace
 
 **Why this exists.** The spec's gate P8 asks for "named buyers' feedback" on the new app before `UI_V2` is switched on for `/`.
-On 2026-11-08 the owner decided that no named buyers are available in time, and that this walkthrough is good enough to stand
-in for P8 at I5: the owner sits in the chair of each of the seven target buyers in turn, does the work that buyer would do,
-and scores what happens. I5 then records exactly this sentence for P8 in the spec's Status table: **"persona walkthrough;
-real-buyer feedback pending"**. That is a substitute the owner accepted, not buyer feedback: never call P8 "met by buyers".
-(The spec's D11 still says that without named buyers P8 stays open; the build session records the owner's decision there.)
+Owner 2026-11-08: no named buyers available; at I5, P8 is met by an owner-run persona walkthrough (this document), recorded
+as persona walkthrough; real-buyer feedback pending. The owner sits in the chair of each of the seven target buyers in turn,
+does the work that buyer would do, and scores what happens. I5 then records exactly this sentence for P8 in the spec's Status
+table: **"persona walkthrough; real-buyer feedback pending"**. That is a substitute the owner accepted, not buyer feedback:
+never write that P8 was met by buyers. (The spec's D11 row and the B6 and I5 rows record the owner's decision in the same words.)
 
 **What it can tell you.** Whether the five pages (Ask, Company, Freshness, Method & Evidence, Workspace) let a buyer finish a
 realistic task; whether citations open the verbatim source; whether numbers match their sources; whether change claims are
@@ -56,9 +56,11 @@ The new app lives under `/v2/` on the preview deploy (increment I4). The old pag
    Freshness, Method & Evidence) also links to them; its "Company" link opens Nvidia, and a row of 13 company links on
    that page switches to the others.
 
-Note on wording: the Ask and Workspace pages were still being finished (I3) when this was written, so a button or heading
-may be worded slightly differently from the old page that this document quotes. Treat the quoted words as a guide; if something
-is named differently, write down the new name, and also note whether you could still find it (that is a result, not a mistake).
+Note on wording: the words quoted in this document are the ones in the I3 build (`web/src/pages/Ask.copy.ts`,
+`Workspace.copy.ts`, `components/EvidenceDrawer.tsx`), checked on 2026-11-08. If something is named differently on the live
+preview, write down the new name, and also note whether you could still find it (that is a result, not a mistake). Every page
+also shows one plain freshness line under the menu (for example "Data as of <date> - checked <n> min ago - <n> filings pending", the words joined by a middle dot; or "freshness
+check unavailable" when the monitor is off or cannot be reached); read it once, it is the same line on every page and it is read once per page load.
 
 ### 2.3 The 13 companies the app covers
 Nvidia (NVDA), AMD (AMD), Intel (INTC), Broadcom (AVGO), Qualcomm (QCOM), Micron (MU), Apple (AAPL), Microsoft (MSFT),
@@ -107,18 +109,18 @@ live question. Skip it, or run it only if you still have live budget, and note w
 
 ### 2.7 How to run one question (used by every task below)
 1. Go to the Ask page.
-2. CACHED: find the question in the examples panel (grouped by type; headed something like "Benchmark questions (instant, cached)")
+2. CACHED: find the question in the examples panel (grouped by type; headed "Benchmark questions (instant, cached)")
    and click it. Do not retype it. The task still shows the exact text so you can find it. The answer appears at once.
 3. LIVE: click in the question box (labelled "Your question"), paste the exact text from the task (select the text in this
-   document, press Ctrl+C, click the box, press Ctrl+V), leave the strategy as hybrid, do the bot check (section 2.6),
-   click "Ask". Wait for the status line to say it is done.
+   document, press Ctrl+C, click the box, press Ctrl+V), leave the "Retrieval strategy" as hybrid, do the bot check (section 2.6),
+   click "Ask" (or press Ctrl+Enter). Wait for the status line to say it is done.
 4. Read the whole answer once. Then click EVERY citation chip in it, one at a time. A chip is a small grey button in the
    text. In the new app its label is short, not the raw id (labels come from `web/src/lib/citations.ts`):
    - a filing passage reads like `Item 1A` then a paragraph mark and a number (for example "Item 1A" + "0162"), sometimes
      with the form and year in front, such as "10-K FY2025";
    - a reported number reads like `XBRL revenue FY ended 2024-01-28` (call this the XBRL chip);
    - a Federal Register rule reads like `BIS rule 2025-19001` (call this the rule chip).
-   A side panel called "Evidence" opens. Read it. Close it with the Escape key or its close button. Check that
+   A side panel called "Evidence" opens. Read it. Close it with the Escape key or its "Close evidence" button. Check that
    the text or number in the panel supports the sentence the chip sits in.
 5. Look under the answer for the badges and checks (for example whether numbers were matched to the retrieved context). Read
    the small hint under them: it says what the checks do NOT prove. A good page does not oversell its checks.
@@ -347,11 +349,14 @@ Score (1-5): __   Notes: ____________________
 
 ### Task 2.5: Build a three-holding exposure table (cached, free; Company pages)
 Steps: open the Company pages for NVDA, AMD and INTC. On each, read the "Federal Register rules" block (it lists the rules
-linked to that company) and the "Active risks" block. In your notes make a table: holding, rules listed, active risks about
-export controls. Click at least two citation ids per page. (Until the I3 build lands, the ids under each item are plain
-grey text, not buttons: if nothing happens when you click, write "Company chips not built yet" once and carry on.)
+linked to that company), the "Active risks" block and the "Compared risk disclosures" block (what changed between filings;
+it may say "none"). In your notes make a table: holding, rules listed, active risks about export controls. Look at the
+citation ids on each page. (In this build the ids on a Company page are plain text by design, not buttons: chips exist in
+the Ask answers and in the Workspace what-changed view. Write "Company ids are plain text" once and carry on; it is not a
+failure.)
 Good: the three pages have the same layout; rules carry dates; the copy above the block says they are "keyword matches to
-external Federal Register rules: outside events, not statements the company made"; filing-backed items open evidence.
+external Federal Register rules: outside events, not statements the company made"; "Compared risk disclosures" words each
+change as a hedge ("No longer appears as a separate risk factor", "Not matched", "Reworded"), never as "removed".
 Red flags: a rule listed with no date or link; the "Relationships" block states something with no quote or chip; empty blocks with no explanation.
 Score (1-5): __   Notes: ____________________
 
@@ -395,7 +400,8 @@ Red flags: no dates; the answer mixes two filing pairs without saying so; a chan
 Score (1-5): __   Notes: ____________________
 
 ### Task 3.4: Freshness and the Filings table (no question; free)
-Steps: open https://semigraph.fly.dev/v2/freshness/. Read the summary line and each row (the code's row names are:
+Steps: open https://semigraph.fly.dev/v2/freshness/. First read the freshness line under the menu (it is on every page and
+says the same as the summary line below, in fewer words). Read the summary line and each row (the code's row names are:
 Status, Data as of, Last checked, Last failed check, Next check, Filings pending, Federal Register, Unresolved; a row with
 no value is left out). Then open the NVDA Company page and read the "Filings" table (Form, Filed, Status, Accession).
 Good: "Data as of" and "Last checked" are plainly dated (times read like "3 h ago (2026-...)") and agree with each other;
@@ -515,23 +521,23 @@ Red flags: a chip that opens nothing, or a summary instead of the text.
 Score (1-5): __   Notes: ____________________
 
 ### Task 6.3: Company dossier (Company page, free)
-Steps: open https://semigraph.fly.dev/v2/company/ASML/ . Read the five blocks (Filings, Metrics, Active risks,
-Relationships, Federal Register rules). Use the company switcher to jump to TSMC and back.
+Steps: open https://semigraph.fly.dev/v2/company/ASML/ . Read the six blocks (Filings, Metrics, Active risks,
+Relationships, Federal Register rules, Compared risk disclosures). Use the company switcher to jump to TSMC and back.
 Good: the same structure on both; switching keeps focus sensible; each block either has content or says "none".
 Red flags: a block that looks broken; a switcher that goes to the wrong company.
 Score (1-5): __   Notes: ____________________
 
 ### Task 6.4: Your own document, two versions (Workspace, live (paid))
 Steps: the Workspace link is always in the menu, but uploads only work when the server has them switched on. If the page
-says uploaded documents are not available, note that and skip this task. Creating a workspace and uploading make no model
+shows only its heading "Workspace" and nothing else, note "uploads off" and skip this task. Creating a workspace and uploading make no model
 call (no money); each needs the bot check. The two questions in step 6 are live (paid).
 1. Make two tiny files in Notepad (Start menu, type Notepad, press Enter). Type the text, then File, Save as, pick your
    Desktop, type the file name, click Save. File 1, saved as `memo_v1.txt`: `Supplier A makes 60 percent of our chips. We have no export license issues.` File 2, saved as `memo_v2.txt`: `Supplier A makes 40 percent of our chips and Supplier B makes 20 percent. We have one pending export license review.`
 2. Open https://semigraph.fly.dev/v2/workspace/ and click "Create a workspace". Do the bot check (section 2.6).
-3. Drag `memo_v1.txt` from the Desktop onto the drop zone (or click the drop zone, or a "choose file" button if there is
-   one, and pick the file). Do the bot check if it asks again. Wait until its row says ready.
-4. In "upload as", choose the option for the document you just uploaded (on the old page it reads "New version of"
-   followed by the document's name; not "Upload a new document"), then upload `memo_v2.txt` the same way. Wait for ready.
+3. Drag `memo_v1.txt` from the Desktop onto the drop zone (or click the drop zone, which opens the file picker; there is no
+   separate "choose file" button, and pick the file). Do the bot check if it asks again. Wait until its row says ready.
+4. In "upload as:", choose the option for the document you just uploaded (it reads "New version of" followed by the
+   document's name; not "Upload a new document"), then upload `memo_v2.txt` the same way. Wait for ready.
 5. Look at the documents list (v1 and v2) and the what-changed view; click a chip inside it.
 6. Ask live: `What changed between my two documents about Supplier A and export license reviews?` Then choose "ask as of
    v1" (under the document) and ask the same question again. That is two live asks.
@@ -558,8 +564,9 @@ Score (1-5): __   Notes: ____________________
 Question: `What was Nvidia's total revenue for the fiscal year ended January 25, 2026?`
 Steps: run it. Read the badges and checks, then the hint under them. Open https://semigraph.fly.dev/v2/method/ and read it end to end.
 The Method page has an opening paragraph (verbatim filing excerpts versus keyword-matched Federal Register rules; click a
-citation to read the source) and three sections: "What the checks mean", "Earlier accuracy figures" (says they are
-withdrawn) and "How reliable are change claims?" (the hand-check counts, such as 6 of 12). Check that each of these
+citation to read the source), an unheaded note that earlier accuracy figures are withdrawn, a link "Freshness" to the
+Freshness page, and two sections: "What the checks mean" and "How reliable are change claims?" (the hand-check counts,
+such as 6 of 12). Check that each of these
 matches what you saw on the answer page.
 Good: no claim on the Method page that you could not see happen; the checks hint admits what the checks do not prove; no accuracy percentage is shown.
 Red flags: the Method page promises more than the checks do; text that reads as marketing; an accuracy figure.
@@ -608,8 +615,8 @@ an average under 3.5 for persona 1 or 2 (the top-ranked buyers) deserves a conve
    > against `docs/v2/M5B_PERSONA_WALKTHROUGH.md`: 7 personas, 32 tasks (one optional), <n> live asks, summary table in <file>,
    > <k> findings scored 1 or 2 (list). Not a substitute for real-buyer feedback; that remains open.
 3. Do not write "P8 met by buyers" anywhere. P8 is recorded as "persona walkthrough; real-buyer feedback pending" under
-   the owner's decision of 2026-11-08 (this walkthrough accepted in place of named buyers), and the real-buyer part stays
-   open until a real buyer answers (section 13). The build session also records that decision against D11 in the spec.
+   the owner's decision of 2026-11-08 (no named buyers available; P8 met by this owner-run persona walkthrough), and the
+   real-buyer part stays open until a real buyer answers (section 13). The spec records that decision against D11, B6 and I5.
 4. P8 is one part of B6. B6 also needs the accessibility pass (A11, `docs/v2/M5B_NVDA_GUIDE.md`) and your own written
    sign-off before `UI_V2` is switched on for `/`.
 
@@ -631,11 +638,10 @@ Plain text, ready to send:
 
 - I did not open the live site while writing this (the build was read-only and offline by design), so I cannot say which example questions the server
   actually seeded as cached, how long answers take, or what the Evidence panel or bot-check box looks like there.
-- The Ask and Workspace pages of the new app were being finished (increment I3): their exact labels, the examples panel's
-  heading and the drawer's wording may differ from the old page's words quoted here.
-- In the repo today the Company page shows citation ids as plain text and the evidence drawer is an empty stub; both become
-  clickable in I3. The chip labels quoted in section 2.7 come from `web/src/lib/citations.ts`, which exists now, but the
-  I3 build may still change how they look.
+- The labels quoted here were read from the I3 code in `web/src` on 2026-11-08, not from the live preview; a later change may
+  move one. The chip labels quoted in section 2.7 come from `web/src/lib/citations.ts`.
+- On a Company page the citation ids are plain text by design in this build (chips exist in the Ask answers and the
+  Workspace what-changed view); the "Compared risk disclosures" block was added after the first draft of this document.
 - Which Federal Register rules each Company page lists, and what the Freshness page shows right now, were not read from the
   live data; the "good" notes for those pages say what the page should show, not what it does show.
 - The A12, A03, A19 and A22 questions come from the agent evaluation set; they were designed for the agent strategy, and I did not
