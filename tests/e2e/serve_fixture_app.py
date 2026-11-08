@@ -34,6 +34,8 @@ TESTS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = TESTS_DIR.parent
 if str(TESTS_DIR) not in sys.path:               # run as a script, tests/ is not on the path (the factory lives there)
     sys.path.insert(0, str(TESTS_DIR))
+if str(Path(__file__).resolve().parent) not in sys.path:    # fixture_replay sits beside this file
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 LOOPBACK = "127.0.0.1"
 PROVIDER_KEYS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")
@@ -123,18 +125,23 @@ def install_guards() -> Guards:
 
 
 def build_fixture_app(dist: Path, *, site_key: str = "", ui_v2_preview: bool = False, ui_v2: bool = False,
-                      agent_enabled: bool = False, mp=None):
-    """The app over fakes. ``mp`` is the ``pytest.MonkeyPatch`` the answer and data patches go through (a test passes its
-    own and they are undone; the server keeps them)."""
+                      agent_enabled: bool = False, turnstile_stub: bool = False, mp=None):
+    """The app over fakes, with the browser-flow fixtures of ``fixture_replay`` installed: ``/api/ask`` replays the recorded
+    byte fixtures and uploads are on over an in-memory workspace fake. ``turnstile_stub`` turns on the stubbed bot check (any
+    non-empty token passes, none is a 403; a cached answer needs none): it is how the browser tests exercise the 403 clause. ``mp`` is the ``pytest.MonkeyPatch`` the patches go
+    through (a test passes its own and they are undone; the server keeps them)."""
+    import fixture_replay
     import pytest
     from serve_app_factory import FakeSettings, build_app, patch_answer_paths, patch_data_paths
 
     mp = mp if mp is not None else pytest.MonkeyPatch()
     patch_answer_paths(mp)
     patch_data_paths(mp)
-    settings = FakeSettings(turnstile_site_key=site_key, ui_v2_preview=ui_v2_preview, ui_v2=ui_v2, ui_dist_dir=dist,
-                            agent_enabled=agent_enabled)
-    return build_app(settings)
+    settings = FakeSettings(turnstile_site_key=site_key, turnstile_stub=turnstile_stub, ui_v2_preview=ui_v2_preview,
+                            ui_v2=ui_v2, ui_dist_dir=dist, agent_enabled=agent_enabled, uploads_enabled=True)
+    app = build_app(settings)
+    fixture_replay.install(app, mp)
+    return app
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -143,6 +150,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--host", default=LOOPBACK, help=f"refused unless {LOOPBACK}")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--site-key", default="", help="a dummy Turnstile site key for GET /api/config (default empty: no widget)")
+    parser.add_argument("--turnstile-stub", action="store_true",
+                        help="stub the ask bot check: any non-empty token passes, none is a 403 (never calls Cloudflare)")
     parser.add_argument("--ui-v2-preview", action="store_true", help="UI_V2_PREVIEW: the app at /v2/")
     parser.add_argument("--ui-v2", action="store_true", help="UI_V2: the app at /")
     parser.add_argument("--agent", action="store_true", help="offer strategy=agent (the stream is a fake)")
@@ -172,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault(COST_MAP_VARIABLE, "True")                       # before litellm is imported: no remote price list
     guards = install_guards()                                              # first thing, before the app is built
     app = build_fixture_app(args.dist, site_key=args.site_key, ui_v2_preview=args.ui_v2_preview, ui_v2=args.ui_v2,
-                            agent_enabled=args.agent)
+                            agent_enabled=args.agent, turnstile_stub=args.turnstile_stub)
     reasons = refusals(os.environ, args.host)                              # again: whatever the imports and the build loaded
     if reasons:
         print("the fixture server refuses to start (after the build): " + "; ".join(reasons), file=sys.stderr)

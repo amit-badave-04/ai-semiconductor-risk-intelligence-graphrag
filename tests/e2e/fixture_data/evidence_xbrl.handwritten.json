@@ -1,0 +1,15 @@
+{
+  "metric_id": "1045810:revenue:2026-01-25",
+  "metric": "revenue",
+  "concept": "Revenues",
+  "value": 215938000000,
+  "unit": "USD",
+  "period_start": "2025-01-27",
+  "period_end": "2026-01-25",
+  "company": "Nvidia",
+  "cik": 1045810,
+  "accession_no": "0001045810-26-000021",
+  "form": "10-K",
+  "filing_date": "2026-02-25",
+  "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/fixture.htm"
+}

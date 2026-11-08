@@ -57,9 +57,21 @@ class FakeSettings(RouteSettings):
     rate_limit_questions = GENEROUS
     stats_cache_seconds = 0
     turnstile_site_key = ""
+    turnstile_stub = False                  # True: any non-empty token passes the ask bot check, none is a 403 (no Cloudflare call)
     ui_v2_preview = False
     ui_v2 = False
     ui_dist_dir = DEFAULT_DIST_DIR
+    # the upload limits the workspace routes read (the production values of config.py; uploads_enabled stays False by default)
+    upload_max_bytes = 15 * 1024 * 1024
+    max_uploads_per_day = 40
+    workspace_ttl_hours = 24
+    upload_max_documents = 3
+    upload_max_versions = 5
+    upload_max_workspace_pages = 120
+    upload_max_pages = 30
+    upload_max_tokens = 10000
+    upload_max_workspace_tokens = 48000
+    upload_min_mem_available_kb = 0         # the memory guard is off in the fixture server
 
     def __init__(self, **overrides):
         for name, value in overrides.items():

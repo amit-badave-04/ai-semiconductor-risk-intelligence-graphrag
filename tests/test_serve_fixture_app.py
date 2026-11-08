@@ -20,6 +20,7 @@ from serve_app_factory import FIXTURE_CHUNK_ID, FakeSettings, build_app
 from serve_state_fakes import fresh_drain  # noqa: F401 - a fixture
 
 sys.path.insert(0, str(Path(__file__).parent / "e2e"))
+import fixture_replay as replay  # noqa: E402
 import serve_fixture_app as fixture_app  # noqa: E402
 
 from semigraph import config  # noqa: E402
@@ -59,6 +60,18 @@ def guards():
         yield installed
     finally:
         installed.undo()
+
+
+@pytest.fixture
+def guarded_mp(guards):
+    """The patches ``build_fixture_app`` makes (the stubbed agent module among them) in a MonkeyPatch of their own, undone before
+    ``guards`` is: the shared ``monkeypatch`` is set up first (an autouse fixture asks for it), so it unwinds LAST and would
+    put the stub back after the guards were undone, leaving the real module unscanned and bound to the refuser."""
+    mp = pytest.MonkeyPatch()
+    try:
+        yield mp
+    finally:
+        mp.undo()
 
 
 def originals() -> dict:
@@ -170,16 +183,28 @@ def drive(client: TestClient, agent: bool) -> dict[str, int]:
     seen = {}
     for path in ("/api/config", "/api/stats", "/api/examples", "/api/freshness", "/api/company/NVDA/dossier",
                  "/api/company/NVDA/risk-changes", "/api/company/AMD/dossier", f"/api/evidence/{FIXTURE_CHUNK_ID}",
-                 "/api/evidence/not-a-chunk", "/healthz", "/", "/legacy", "/v2/", "/v2/company/NVDA/"):
+                 "/api/evidence/not-a-chunk", "/api/evidence/0001045810-26-000021:I.1A:0001",
+                 "/api/evidence/xbrl:1045810:revenue:2026-01-25", "/healthz", "/", "/legacy", "/v2/", "/v2/company/NVDA/"):
         seen[path] = client.get(path).status_code
     seen["POST hybrid"] = client.post("/api/ask", json={"question": QUESTION, "strategy": "hybrid"}).status_code
+    seen["POST escalated"] = client.post("/api/ask", json={"question": replay.QUESTIONS["escalated"]}).status_code
+    seen["POST cached"] = client.post("/api/ask", json={"question": replay.cached_question()}).status_code
+    created = client.post("/api/workspace", json={})                       # the I3 flows: create, upload, watch, ask, delete
+    seen["POST workspace"] = created.status_code
+    ws, headers = created.json()["workspace_id"], {"X-Workspace-Token": created.json()["token"]}
+    up = client.post(f"/api/workspace/{ws}/documents", headers=headers, files={"file": ("a.txt", b"hello", "text/plain")})
+    seen["POST upload"] = up.status_code
+    seen["GET job"] = client.get(f"/api/workspace/{ws}/jobs/{up.json()['job_id']}", headers=headers).status_code
+    seen["POST workspace ask"] = client.post("/api/ask", headers=headers, json={"question": replay.WORKSPACE_QUESTION,
+                                                                               "workspace_id": ws}).status_code
+    seen["DELETE workspace"] = client.delete(f"/api/workspace/{ws}", headers=headers).status_code
     if agent:
         seen["POST agent"] = client.post("/api/ask", json={"question": QUESTION, "strategy": "agent"}).status_code
     return seen
 
 
-def test_every_flow_of_i1_runs_under_the_guards_and_reaches_no_settings_or_llm(guards, dist, monkeypatch):
-    app = fixture_app.build_fixture_app(dist, site_key="dummy-site-key", ui_v2_preview=True, agent_enabled=True, mp=monkeypatch)
+def test_every_flow_of_i1_runs_under_the_guards_and_reaches_no_settings_or_llm(guards, dist, guarded_mp):
+    app = fixture_app.build_fixture_app(dist, site_key="dummy-site-key", ui_v2_preview=True, agent_enabled=True, mp=guarded_mp)
     assert guards.hits == []
     with TestClient(app) as client:
         seen = drive(client, agent=True)
@@ -188,15 +213,18 @@ def test_every_flow_of_i1_runs_under_the_guards_and_reaches_no_settings_or_llm(g
     assert seen == {"/api/config": 200, "/api/stats": 200, "/api/examples": 200, "/api/freshness": 200,
                     "/api/company/NVDA/dossier": 200, "/api/company/NVDA/risk-changes": 200,
                     "/api/company/AMD/dossier": 404, f"/api/evidence/{FIXTURE_CHUNK_ID}": 200,
-                    "/api/evidence/not-a-chunk": 400, "/healthz": 200, "/": 200, "/legacy": 200, "/v2/": 200,
-                    "/v2/company/NVDA/": 200, "POST hybrid": 200, "POST agent": 200}
+                    "/api/evidence/not-a-chunk": 400, "/api/evidence/0001045810-26-000021:I.1A:0001": 200,
+                    "/api/evidence/xbrl:1045810:revenue:2026-01-25": 200, "/healthz": 200, "/": 200, "/legacy": 200,
+                    "/v2/": 200, "/v2/company/NVDA/": 200, "POST hybrid": 200, "POST agent": 200, "POST escalated": 200,
+                    "POST cached": 200, "POST workspace": 201, "POST upload": 202, "GET job": 200, "POST workspace ask": 200,
+                    "DELETE workspace": 204}
     assert '"event": "done"' in ask.text.replace('"event":"done"', '"event": "done"')
     assert config_reply == {"turnstile_site_key": "dummy-site-key"}          # from FakeSettings, never from a .env
     assert guards.hits == []
 
 
-def test_a_route_that_reaches_get_settings_fails_the_flow_test(guards, dist, monkeypatch):
-    app = fixture_app.build_fixture_app(dist, mp=monkeypatch)
+def test_a_route_that_reaches_get_settings_fails_the_flow_test(guards, dist, guarded_mp):
+    app = fixture_app.build_fixture_app(dist, mp=guarded_mp)
 
     @app.get("/boom")
     async def boom():
@@ -351,17 +379,17 @@ def test_main_refuses_before_it_installs_a_guard_or_builds_anything(monkeypatch,
     assert "refuses to start" in capsys.readouterr().err
 
 
-def test_check_report_names_the_config_the_guards_and_the_app(guards, dist, monkeypatch):
-    app = fixture_app.build_fixture_app(dist, site_key="k", ui_v2=True, mp=monkeypatch)
+def test_check_report_names_the_config_the_guards_and_the_app(guards, dist, guarded_mp):
+    app = fixture_app.build_fixture_app(dist, site_key="k", ui_v2=True, mp=guarded_mp)
     report = fixture_app.check_report(app, guards)
     assert report["config"] == {"turnstile_site_key": "k"} and report["config_status"] == 200
     assert report["spa_served"] is True and report["guard_hits"] == []
 
 
-def test_check_report_names_the_provider_keys_that_are_present_never_their_values(guards, dist, monkeypatch):
+def test_check_report_names_the_provider_keys_that_are_present_never_their_values(guards, dist, monkeypatch, guarded_mp):
     monkeypatch.setenv("LITELLM_MODE", "PRODUCTION")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "secret-value")
-    app = fixture_app.build_fixture_app(dist, mp=monkeypatch)
+    app = fixture_app.build_fixture_app(dist, mp=guarded_mp)
     report = fixture_app.check_report(app, guards)
     assert report["provider_keys_present"] == ["ANTHROPIC_API_KEY"] and report["litellm_mode"] == "PRODUCTION"
     assert "secret-value" not in json.dumps(report)
