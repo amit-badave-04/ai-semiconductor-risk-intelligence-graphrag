@@ -18,6 +18,7 @@
 // The provider is a composition of small hooks (useAsOf, useSession, useDocuments, useQueue, useHandlers) so each stays short.
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { UploadQueue, type JobRow } from "@/lib/jobs";
+import { pollUntil } from "@/lib/pollUntil";
 import {
   MSG_NOT_FOUND,
   createWorkspace,
@@ -152,6 +153,18 @@ function useQueue(queueRef: QueueRef, gate: GateRef, s: Session, d: Docs) {
     const created = new UploadQueue({
       token: {
         siteKeyKnown: () => gate.current.siteKeyState.kind !== "unknown",
+        siteKeyFailed: () => {
+          const state = gate.current.siteKeyState;
+          return state.kind === "unknown" && state.failed;
+        },
+        waitForSiteKey: async (ms, signal) => {
+          const loading = () => {
+            const state = gate.current.siteKeyState;
+            return state.kind === "unknown" && !state.failed;
+          };
+          await pollUntil(() => !loading(), ms, signal);
+          return gate.current.siteKeyState.kind !== "unknown";
+        },
         siteKeySet: () => gate.current.siteKeySet,
         consume: () => gate.current.consume(),
         waitForToken: (ms, signal) => gate.current.waitForToken(ms, signal),

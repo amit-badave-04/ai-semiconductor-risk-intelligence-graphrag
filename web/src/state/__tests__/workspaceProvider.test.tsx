@@ -160,8 +160,8 @@ function Probe() {
   return null;
 }
 
-function mount(gate: TurnstileContextValue = makeGate(), strict = true) {
-  const tree: ReactNode = (
+function tree(gate: TurnstileContextValue): ReactNode {
+  return (
     <TurnstileContext.Provider value={gate}>
       <WorkspaceProvider>
         <MemoryRouter initialEntries={["/workspace/"]}>
@@ -174,7 +174,10 @@ function mount(gate: TurnstileContextValue = makeGate(), strict = true) {
       </WorkspaceProvider>
     </TurnstileContext.Provider>
   );
-  return render(strict ? <StrictMode>{tree}</StrictMode> : tree);
+}
+
+function mount(gate: TurnstileContextValue = makeGate(), strict = true) {
+  return render(strict ? <StrictMode>{tree(gate)}</StrictMode> : tree(gate));
 }
 
 const ws = () => seen.ws as WorkspaceContextValue;
@@ -463,6 +466,49 @@ describe("the upload queue and its watchers (R34, S12) under StrictMode, with a 
     expect(up().rows.map((r) => r.text)).toEqual(["refused", "refused"]);
     expect(server.count("POST", /documents$/)).toBe(2);
     expect(server.count("GET", /\/jobs\//)).toBe(0);
+  });
+
+  // Owner 2026-11-08 (R8): the gate's config state reaches the queue. Failed says so at once; loading is waited for.
+  const configGate = (siteKeyState: TurnstileContextValue["siteKeyState"], siteKeySet = false, token: string | null = null) => ({
+    ...makeGate(siteKeySet, token),
+    siteKeyState,
+  });
+
+  it("says the bot check could not be loaded, and posts nothing, when /api/config failed", async () => {
+    store(EXPIRES);
+    const server = installServer();
+    mount(configGate({ kind: "unknown", failed: true }), false);
+    await waitFor(() => expect(up().documents).toHaveLength(1));
+    act(() => up().upload([file("a.txt")], ""));
+    await waitFor(() => expect(up().rows.map((r) => r.text)).toEqual(["could not load the bot check \u2014 reload the page and try again"]));
+    expect(server.count("POST", /documents$/)).toBe(0);
+  });
+
+  it("waits for a /api/config that is still loading and sends the file once it answers with a key", async () => {
+    store(EXPIRES);
+    const server = installServer();
+    const view = mount(configGate({ kind: "unknown", failed: false }), false);
+    await waitFor(() => expect(up().documents).toHaveLength(1));
+    act(() => up().upload([file("a.txt")], ""));
+    await settle();
+    expect(server.count("POST", /documents$/)).toBe(0);
+    expect(up().rows.map((r) => r.text)).toEqual(["uploading\u2026"]);
+    view.rerender(tree(configGate({ kind: "key", siteKey: "k" }, true, "cf-token")));
+    await waitFor(() => expect(server.count("POST", /documents$/)).toBe(1));
+    const post = server.calls.find((c) => c.method === "POST" && /documents$/.test(c.url));
+    expect(post?.headers["X-Turnstile-Token"]).toBe("cf-token");
+  });
+
+  it("ends a wait for /api/config with the config-failure text when the config then fails", async () => {
+    store(EXPIRES);
+    const server = installServer();
+    const view = mount(configGate({ kind: "unknown", failed: false }), false);
+    await waitFor(() => expect(up().documents).toHaveLength(1));
+    act(() => up().upload([file("a.txt")], ""));
+    await settle();
+    view.rerender(tree(configGate({ kind: "unknown", failed: true })));
+    await waitFor(() => expect(up().rows.map((r) => r.text)).toEqual(["could not load the bot check \u2014 reload the page and try again"]));
+    expect(server.count("POST", /documents$/)).toBe(0);
   });
 
   it("aborts the live watcher and posts nothing more when the workspace is deleted mid-queue", async () => {

@@ -7,7 +7,8 @@
 //     it takes the next file, and a watcher starts only from `enqueue`, which the upload handler calls, never from an effect.
 //     Neither restore path (the button, the load from sessionStorage) starts one: GET /api/workspace lists no running jobs.
 //   * TOKEN (R33(2)): with a site key set the queue uses the token it holds or waits up to 15 s for one; with none it fails the
-//     file with the old row text and sends nothing. It never sends an empty X-Turnstile-Token. With no site key it sends no
+//     file with the old row text and sends nothing. A site key state that is still unknown (R8) is waited for up to 15 s first:
+//     a /api/config that FAILED reads CONFIG_FAILED_TEXT, one still loading after the wait reads the old row text. It never sends an empty X-Turnstile-Token. With no site key it sends no
 //     such header at all (the server then decides, as the legacy page's empty header did).
 //   * BOUND TO ITS SESSION: `enqueue` takes the session the files belong to. `abortSession` (the workspace's identity changed)
 //     aborts the POST and the watcher in flight, drops the files still waiting and the rows, and re-arms the queue; a stale
@@ -29,6 +30,8 @@ export const TOKEN_WAIT_MS = 15000;
 export const MAX_UPLOAD_TITLE_CHARS = 120;
 
 export const BOT_TIMEOUT_TEXT = "bot check did not complete in time \u2014 try again";
+/** Owner 2026-11-08: /api/config FAILED, so it is unknown whether a bot check is due (R8): reloading is the way out. */
+export const CONFIG_FAILED_TEXT = "could not load the bot check \u2014 reload the page and try again";
 export const UPLOADING_TEXT = "uploading\u2026";
 export const NETWORK_TEXT = "network error";
 export const QUEUED_TEXT = "queued";
@@ -84,6 +87,10 @@ export interface JobRow {
 export interface TokenSource {
   /** False while /api/config has not given a settled answer (loading, or failed): unknown is never taken for "no key" (R8). */
   siteKeyKnown: () => boolean;
+  /** True once /api/config has answered badly (two attempts); false while it is still loading or when it answered. */
+  siteKeyFailed: () => boolean;
+  /** Wait up to `ms` for /api/config to settle: true when the site key state is known, false on timeout, abort or failure. */
+  waitForSiteKey: (ms: number, signal?: AbortSignal) => Promise<boolean>;
   siteKeySet: () => boolean;
   /** Use the held token up (the widget resets), or null. */
   consume: () => string | null;
@@ -196,11 +203,20 @@ export class UploadQueue {
     }
   }
 
-  private async tokenFor(pass: Pass): Promise<{ ok: true; token: string | null } | { ok: false }> {
-    if (!this.deps.token.siteKeyKnown()) return { ok: false }; // R8: it is not known whether a check is due, so nothing is sent
-    if (!this.deps.token.siteKeySet()) return { ok: true, token: null };
-    const token = this.deps.token.consume() ?? (await this.deps.token.waitForToken(TOKEN_WAIT_MS, pass.signal));
-    return token === null ? { ok: false } : { ok: true, token };
+  private async tokenFor(pass: Pass): Promise<{ ok: true; token: string | null } | { ok: false; text: string }> {
+    const source = this.deps.token;
+    // R8: while it is not known whether a check is due nothing is sent. A config that is still loading is waited for (within
+    // the same 15 s as a token: one budget for both waits); one that failed says so.
+    let tokenWaitMs = TOKEN_WAIT_MS;
+    if (!source.siteKeyKnown() && !source.siteKeyFailed()) {
+      const deadline = Date.now() + TOKEN_WAIT_MS;
+      await source.waitForSiteKey(TOKEN_WAIT_MS, pass.signal);
+      tokenWaitMs = Math.max(0, deadline - Date.now());
+    }
+    if (!source.siteKeyKnown()) return { ok: false, text: source.siteKeyFailed() ? CONFIG_FAILED_TEXT : BOT_TIMEOUT_TEXT };
+    if (!source.siteKeySet()) return { ok: true, token: null };
+    const token = source.consume() ?? (await source.waitForToken(tokenWaitMs, pass.signal));
+    return token === null ? { ok: false, text: BOT_TIMEOUT_TEXT } : { ok: true, token };
   }
 
   private async uploadOne(pass: Pass, item: Pending): Promise<void> {
@@ -209,7 +225,7 @@ export class UploadQueue {
     this.emit();
     const bot = await this.tokenFor(pass);
     if (!bot.ok) {
-      this.setRow(pass, key, { text: BOT_TIMEOUT_TEXT, tone: "err", terminal: true });
+      this.setRow(pass, key, { text: bot.text, tone: "err", terminal: true });
       return;
     }
     const body = new FormData();

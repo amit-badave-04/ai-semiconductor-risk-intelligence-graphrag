@@ -3,6 +3,7 @@ import type { JobEvent } from "../events";
 import type { WatchOptions, WatchResult } from "../jobStream";
 import {
   BOT_TIMEOUT_TEXT,
+  CONFIG_FAILED_TEXT,
   TOKEN_WAIT_MS,
   UploadQueue,
   jobStateText,
@@ -67,7 +68,19 @@ interface Rig {
   unchanged: () => number;
   announcements: string[];
   watches: { ws: string; job: string; token: string; options: WatchOptions; resolve: (r: WatchResult) => void }[];
-  token: { siteKeyKnown: boolean; siteKeySet: boolean; held: string | null; waited: number[]; waitResult: string | null | "never" };
+  token: {
+    siteKeyKnown: boolean;
+    siteKeyFailed: boolean;
+    siteKeySet: boolean;
+    held: string | null;
+    waited: number[];
+    waitResult: string | null | "never";
+    configWaited: number[];
+    /** What the config answer turns out to be when the queue waits for it ("never": only an abort ends the wait). */
+    configAnswer: "key" | "none" | "failed" | "timeout" | "never";
+    /** Runs while the queue waits for the config (a test moves its clock here: the config took that long to answer). */
+    onConfigWait: (() => void) | null;
+  };
   respond: { handler: (n: number) => Response };
 }
 
@@ -84,7 +97,17 @@ function rig(options: { deferWatch?: boolean } = {}): Rig {
   let latest: readonly JobRow[] = [];
   let terminals = 0;
   let unchanged = 0;
-  const token = { siteKeyKnown: true, siteKeySet: false, held: null as string | null, waited: [] as number[], waitResult: null as string | null | "never" };
+  const token: Rig["token"] = {
+    siteKeyKnown: true,
+    siteKeyFailed: false,
+    siteKeySet: false,
+    held: null,
+    waited: [],
+    waitResult: null,
+    configWaited: [],
+    configAnswer: "timeout",
+    onConfigWait: null,
+  };
   const respond = { handler: (n: number): Response => accepted(n) };
   vi.stubGlobal(
     "fetch",
@@ -100,6 +123,20 @@ function rig(options: { deferWatch?: boolean } = {}): Rig {
   );
   const tokenSource: TokenSource = {
     siteKeyKnown: () => token.siteKeyKnown,
+    siteKeyFailed: () => token.siteKeyFailed,
+    waitForSiteKey: (ms, signal) => {
+      token.configWaited.push(ms);
+      token.onConfigWait?.();
+      if (token.configAnswer === "never") {
+        return new Promise((resolve) => signal?.addEventListener("abort", () => resolve(false), { once: true }));
+      }
+      if (token.configAnswer === "key" || token.configAnswer === "none") {
+        token.siteKeyKnown = true;
+        token.siteKeySet = token.configAnswer === "key";
+      }
+      if (token.configAnswer === "failed") token.siteKeyFailed = true;
+      return Promise.resolve(token.siteKeyKnown);
+    },
     siteKeySet: () => token.siteKeySet,
     consume: () => {
       const used = token.held;
@@ -273,15 +310,97 @@ describe("UploadQueue: the bot-check token (R33(2), upload_flow 7 to 11)", () =>
     ]);
   });
 
-  it("R8: an unknown site key state is never taken for none: the old row text, no POST, no wait, whether or not a token is held", async () => {
+  it("R8 (owner 2026-11-08): a failed /api/config says so, never 'no key': its own row text, no POST, no wait, whether or not a token is held", async () => {
     const r = rig();
     r.token.siteKeyKnown = false;
+    r.token.siteKeyFailed = true;
     r.token.held = "held-token";
     r.queue.enqueue(SESSION, [file("a.txt")], "");
     await flush();
+    expect(CONFIG_FAILED_TEXT).toBe("could not load the bot check \u2014 reload the page and try again");
     expect(r.posts).toHaveLength(0);
     expect(r.token.waited).toEqual([]);
+    expect(r.token.configWaited).toEqual([]);
+    expect(r.token.held).toBe("held-token");
+    expect(r.rows().map((row) => [row.text, row.tone, row.terminal])).toEqual([[CONFIG_FAILED_TEXT, "err", true]]);
+  });
+
+  it("R8 (owner 2026-11-08): while /api/config is still loading the upload waits for it within 15 s, then sends the held token", async () => {
+    const r = rig();
+    r.token.siteKeyKnown = false;
+    r.token.configAnswer = "key";
+    r.token.held = "held-token";
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    expect(r.token.configWaited).toEqual([TOKEN_WAIT_MS]);
+    expect(r.posts).toHaveLength(1);
+    expect(r.posts[0].headers["X-Turnstile-Token"]).toBe("held-token");
+  });
+
+  it("R8: the config wait and the token wait share one 15 s budget: a config that answers at 10 s leaves 5 s for the token", async () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const r = rig();
+      r.token.siteKeyKnown = false;
+      r.token.configAnswer = "key";
+      r.token.onConfigWait = () => {
+        now += 10_000;
+      };
+      r.token.waitResult = null;
+      r.queue.enqueue(SESSION, [file("a.txt")], "");
+      await flush();
+      expect(r.token.configWaited).toEqual([TOKEN_WAIT_MS]);
+      expect(r.token.waited).toEqual([TOKEN_WAIT_MS - 10_000]);
+      expect(r.posts).toHaveLength(0);
+      expect(r.rows().map((row) => [row.text, row.tone])).toEqual([[BOT_TIMEOUT_TEXT, "err"]]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("R8: a config that settles on 'none' while the upload waits sends it with no token header", async () => {
+    const r = rig();
+    r.token.siteKeyKnown = false;
+    r.token.configAnswer = "none";
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    expect(r.posts).toHaveLength(1);
+    expect(r.posts[0].headers).toEqual({ "X-Workspace-Token": TOKEN });
+  });
+
+  it("R8: a config still unknown after the wait is never taken for none: the old timeout text, no POST", async () => {
+    const r = rig();
+    r.token.siteKeyKnown = false;
+    r.token.held = "held-token";
+    r.token.configAnswer = "timeout";
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    expect(r.token.configWaited).toEqual([TOKEN_WAIT_MS]);
+    expect(r.posts).toHaveLength(0);
     expect(r.rows().map((row) => [row.text, row.tone])).toEqual([[BOT_TIMEOUT_TEXT, "err"]]);
+  });
+
+  it("R8: a config that fails while the upload waits ends with the config-failure text, not the timeout text", async () => {
+    const r = rig();
+    r.token.siteKeyKnown = false;
+    r.token.configAnswer = "failed";
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    expect(r.posts).toHaveLength(0);
+    expect(r.rows().map((row) => [row.text, row.tone])).toEqual([[CONFIG_FAILED_TEXT, "err"]]);
+  });
+
+  it("R8: stops waiting for the config when the queue is aborted, and says nothing", async () => {
+    const r = rig();
+    r.token.siteKeyKnown = false;
+    r.token.configAnswer = "never";
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    r.queue.abortSession();
+    await flush();
+    expect(r.posts).toHaveLength(0);
+    expect(r.rows()).toEqual([]);
   });
 
   it("never sends an empty token header: a second file waits out a slow re-solve instead", async () => {
@@ -437,7 +556,12 @@ describe("UploadQueue: how a watch ends (upload_flow 14 to 18 and 21 at the queu
   it("survives a watch that throws (a failure of the page's own handler), says the connection was lost, signals and goes on", async () => {
     const r = rig();
     const queue = new UploadQueue({
-      token: { siteKeyKnown: () => true, siteKeySet: () => false, consume: () => null, waitForToken: () => Promise.resolve(null) },
+      token: {
+        siteKeyKnown: () => true,
+        siteKeyFailed: () => false,
+        waitForSiteKey: () => Promise.resolve(true),
+        siteKeySet: () => false,
+        consume: () => null, waitForToken: () => Promise.resolve(null) },
       watch: () => Promise.reject(new Error("handler blew up")),
       onRows: (rows) => {
         latest = rows;
