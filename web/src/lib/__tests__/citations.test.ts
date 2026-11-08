@@ -90,17 +90,22 @@ describe("tokenize", () => {
       nearIds: (n) => `[${CHUNK.slice(0, -1)}`.repeat(n / 29),
     };
     for (const [name, make] of Object.entries(shapes)) {
+      // The fastest of a few runs: one slow sample on a busy CI runner (coverage on) is noise, not growth.
       const time = (n: number) => {
         const text = make(n);
-        const start = performance.now();
-        tokenize(text);
-        return performance.now() - start;
+        let best = Number.POSITIVE_INFINITY;
+        for (let run = 0; run < 5; run += 1) {
+          const start = performance.now();
+          tokenize(text);
+          best = Math.min(best, performance.now() - start);
+        }
+        return best;
       };
       time(20_000); // warm up
-      const small = Math.max(time(100_000), 0.5);
+      const small = Math.max(time(40_000), 0.5);
       const large = time(400_000);
-      // 4x the input: linear is about 4x; quadratic would be about 16x. Generous bound for noisy CI.
-      expect(large / small, name).toBeLessThan(10);
+      // 10x the input: linear is about 10x; quadratic would be about 100x. The bound sits between them.
+      expect(large / small, name).toBeLessThan(30);
     }
   });
 });
