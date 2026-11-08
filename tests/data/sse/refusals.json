@@ -1,0 +1,108 @@
+{
+ "_about": {
+  "what": "the pre-stream JSON refusals of POST /api/ask and the job stream, recorded from the real routes over fakes: status, the JSON detail (the MSG_* text, unedited) and the Retry-After header",
+  "source": "route-recorded",
+  "regenerate": "RECORD_SSE=1 uv run pytest tests/test_sse_fixtures.py"
+ },
+ "refusals": [
+  {
+   "name": "bad_strategy",
+   "request": {
+    "POST": "/api/ask",
+    "strategy": "magic"
+   },
+   "status": 400,
+   "detail": "strategy must be one of ('hybrid', 'vector', 'agent')",
+   "retry_after": null
+  },
+  {
+   "name": "as_of_without_workspace",
+   "request": {
+    "POST": "/api/ask",
+    "as_of": "2026-06-30"
+   },
+   "status": 400,
+   "detail": "as_of is available only with a workspace",
+   "retry_after": null
+  },
+  {
+   "name": "bot_check_failed",
+   "request": {
+    "POST": "/api/ask",
+    "turnstile_required": true
+   },
+   "status": 403,
+   "detail": "Bot check failed \u2014 reload the page and try again.",
+   "retry_after": null
+  },
+  {
+   "name": "workspace_not_found",
+   "request": {
+    "POST": "/api/ask",
+    "workspace_id": "unknown"
+   },
+   "status": 404,
+   "detail": "workspace not found",
+   "retry_after": null
+  },
+  {
+   "name": "job_not_found",
+   "request": {
+    "GET": "/api/workspace/{ws}/jobs/{job_id}"
+   },
+   "status": 404,
+   "detail": "job not found",
+   "retry_after": null
+  },
+  {
+   "name": "rate_limited",
+   "request": {
+    "POST": "/api/ask",
+    "second paid ask from one address": true
+   },
+   "status": 429,
+   "detail": "Too many questions from your address \u2014 please wait a few minutes.",
+   "retry_after": null
+  },
+  {
+   "name": "busy",
+   "request": {
+    "POST": "/api/ask",
+    "in_flight_cap_full": true
+   },
+   "status": 429,
+   "detail": "The service is busy answering other questions \u2014 try again in a moment.",
+   "retry_after": null
+  },
+  {
+   "name": "paused",
+   "request": {
+    "POST": "/api/ask",
+    "kill_level": "on"
+   },
+   "status": 503,
+   "detail": "Live questions are paused right now \u2014 the example questions still work.",
+   "retry_after": null
+  },
+  {
+   "name": "retrieval_only",
+   "request": {
+    "POST": "/api/ask",
+    "kill_level": "retrieval_only"
+   },
+   "status": 503,
+   "detail": "Live questions are limited to cached answers right now \u2014 the example questions still work.",
+   "retry_after": null
+  },
+  {
+   "name": "draining",
+   "request": {
+    "POST": "/api/ask",
+    "draining": true
+   },
+   "status": 503,
+   "detail": "The service is restarting \u2014 please try again in a minute.",
+   "retry_after": "30"
+  }
+ ]
+}

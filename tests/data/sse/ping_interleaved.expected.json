@@ -1,0 +1,41 @@
+{
+ "source": "hand-written",
+ "events": [
+  {
+   "event": "retrieval",
+   "anchors": {
+    "Nvidia": 1045810
+   },
+   "counts": {
+    "edges": 2,
+    "metrics": 1,
+    "risks": 1,
+    "temporal": 0,
+    "chunks": 1
+   }
+  },
+  {
+   "event": "delta",
+   "text": "Nvidia depends on "
+  },
+  {
+   "event": "delta",
+   "text": "TSMC."
+  },
+  {
+   "event": "done",
+   "answer": "Nvidia depends on TSMC.",
+   "citations": [],
+   "hallucinated": [],
+   "finish_reason": "stop",
+   "usage": {
+    "prompt_tokens": 10,
+    "completion_tokens": 5
+   },
+   "cost_usd": 0.0,
+   "strategy": "hybrid",
+   "question": "How exposed is Nvidia to TSMC?"
+  }
+ ],
+ "note": "the comment frames and the two `event: ping` frames carry no event of the stream and are not listed"
+}

@@ -1,0 +1,70 @@
+{
+ "source": "route-recorded",
+ "events": [
+  {
+   "event": "retrieval",
+   "anchors": {
+    "Nvidia": 1045810
+   },
+   "counts": {
+    "edges": 3,
+    "metrics": 8,
+    "risks": 2,
+    "temporal": 2,
+    "chunks": 8
+   },
+   "anchor_defaulted": false,
+   "doc_chunks": 2
+  },
+  {
+   "event": "delta",
+   "text": "Gross margin was 41.5% in Q2 [doc:0123456789ab:v1:0007]. Operating expenses rose 12% [doc:0123456789ab:v1:0008]. See  and ."
+  },
+  {
+   "event": "done",
+   "question": "How does my uploaded memo describe Nvidia's gross margin?",
+   "strategy": "hybrid",
+   "answer": "Gross margin was 41.5% in Q2 [doc:0123456789ab:v1:0007]. Operating expenses rose 12% [doc:0123456789ab:v1:0008]. See  and .",
+   "citations": [
+    "doc:0123456789ab:v1:0007",
+    "doc:0123456789ab:v1:0008"
+   ],
+   "hallucinated": [],
+   "checks": {
+    "citations_retrieved": true,
+    "numbers_grounded": true,
+    "numbers_checked": 2,
+    "unmatched_numbers": [],
+    "echoed_numbers": [],
+    "pseudo_citations": [],
+    "has_citation": true,
+    "is_refusal": false,
+    "unsupported_removal_claim": false,
+    "unsupported_removal_sentences": []
+   },
+   "finish_reason": "stop",
+   "usage": {
+    "prompt_tokens": 1500,
+    "completion_tokens": 60
+   },
+   "cost_usd": 0.00018,
+   "chunk_ids": [
+    "0001045810-26-000021:I.1A:0001",
+    "0001045810-26-000021:I.1A:0002",
+    "0001045810-26-000021:I.1A:0003",
+    "0001045810-26-000021:I.1A:0004",
+    "0001045810-26-000021:I.1A:0005",
+    "0001045810-26-000021:I.1A:0006",
+    "0001045810-26-000021:I.1A:0007",
+    "0001045810-26-000021:I.1A:0008"
+   ],
+   "context_chars": 3711,
+   "workspace": {
+    "id_hash": "cd93782b7fb9",
+    "doc_chunks": 2,
+    "stale_citations": [],
+    "suspicious": false
+   }
+  }
+ ]
+}

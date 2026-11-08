@@ -1,0 +1,3 @@
+# The SSE fixtures are byte-exact wire recordings (LF, ASCII). -text: never normalise on commit, never convert on checkout
+# (core.autocrlf=true on Windows would otherwise turn them into CRLF and break the byte tests). See tests/test_sse_fixtures.py.
+tests/data/sse/* -text

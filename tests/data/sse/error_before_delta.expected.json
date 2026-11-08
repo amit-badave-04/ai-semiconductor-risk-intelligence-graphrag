@@ -1,0 +1,24 @@
+{
+ "source": "route-recorded",
+ "events": [
+  {
+   "event": "retrieval",
+   "anchors": {
+    "Nvidia": 1045810,
+    "TSMC": 1046179
+   },
+   "counts": {
+    "edges": 3,
+    "metrics": 10,
+    "risks": 2,
+    "temporal": 2,
+    "chunks": 8
+   },
+   "anchor_defaulted": false
+  },
+  {
+   "event": "error",
+   "detail": "The answer could not be completed \u2014 please try again."
+  }
+ ]
+}

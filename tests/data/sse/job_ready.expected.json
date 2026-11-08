@@ -1,0 +1,85 @@
+{
+ "source": "route-recorded, job dicts constructed",
+ "events": [
+  {
+   "job_id": "00112233445566ff",
+   "state": "received",
+   "document_id": "0123456789ab",
+   "version": null
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "validating",
+   "document_id": "0123456789ab",
+   "version": 1
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "parsing",
+   "document_id": "0123456789ab",
+   "version": 1
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "chunking",
+   "document_id": "0123456789ab",
+   "version": 1
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "embedding",
+   "document_id": "0123456789ab",
+   "version": 1,
+   "progress": {
+    "done": 0,
+    "total": 12,
+    "eta_s": null
+   }
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "embedding",
+   "document_id": "0123456789ab",
+   "version": 1,
+   "progress": {
+    "done": 6,
+    "total": 12,
+    "eta_s": 4.5
+   }
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "embedding",
+   "document_id": "0123456789ab",
+   "version": 1,
+   "progress": {
+    "done": 12,
+    "total": 12,
+    "eta_s": 0.0
+   }
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "comparing",
+   "document_id": "0123456789ab",
+   "version": 1
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "indexing",
+   "document_id": "0123456789ab",
+   "version": 1
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "ready",
+   "document_id": "0123456789ab",
+   "version": 1,
+   "chunks": 12,
+   "units": 30,
+   "items_compared": false,
+   "not_compared_reason": "first_version",
+   "suspicious": false
+  }
+ ]
+}

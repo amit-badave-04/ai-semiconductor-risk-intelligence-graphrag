@@ -1,0 +1,12 @@
+event: job
+data: {"job_id": "ffeeddccbbaa9988", "state": "received", "document_id": "0123456789ab", "version": null}
+
+event: job
+data: {"job_id": "ffeeddccbbaa9988", "state": "validating", "document_id": "0123456789ab", "version": 1}
+
+event: job
+data: {"job_id": "ffeeddccbbaa9988", "state": "parsing", "document_id": "0123456789ab", "version": 1}
+
+event: job
+data: {"job_id": "ffeeddccbbaa9988", "state": "failed", "document_id": "0123456789ab", "version": 1, "error": {"code": "scanned", "message": "the document appears to be scanned; no extractable text was found"}}
+

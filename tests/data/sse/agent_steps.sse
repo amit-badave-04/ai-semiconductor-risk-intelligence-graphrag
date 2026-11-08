@@ -1,0 +1,21 @@
+event: step
+data: {"event": "step", "n": 1, "tool": "financial_metrics", "args": {"companies": ["Nvidia"], "fiscal_years": [2023]}, "summary": "financial_metrics: 0 new metric rows for Nvidia", "ok": true}
+
+event: step
+data: {"event": "step", "n": 2, "tool": "lookup_company", "args": {"name": "AMD"}, "summary": "lookup_company: AMD (SEC filer, 0 annual filing years)", "ok": true}
+
+event: step
+data: {"event": "step", "n": 3, "tool": "compute_change", "args": {"company": "Nvidia", "metric": "revenue", "from_period_end": "2023-01-29", "to_period_end": "2024-01-28"}, "summary": "compute_change: +125.9% revenue for Nvidia", "ok": true}
+
+event: retrieval
+data: {"event": "retrieval", "anchors": {"Nvidia": 1045810, "TSMC": 1046179}, "counts": {"edges": 3, "metrics": 10, "risks": 2, "temporal": 2, "chunks": 8}, "anchor_defaulted": false}
+
+event: delta
+data: {"event": "delta", "text": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. "}
+
+event: delta
+data: {"event": "delta", "text": "Its fiscal 2023 revenue was $27.0 billion [xbrl:1045810:revenue:2023-01-29]."}
+
+event: done
+data: {"event": "done", "question": "How exposed is Nvidia to TSMC?", "strategy": "agent", "answer": "Nvidia depends on TSMC for advanced wafer supply [0001045810-26-000021:I.1A:0001]. Its fiscal 2023 revenue was $27.0 billion [xbrl:1045810:revenue:2023-01-29].", "citations": ["0001045810-26-000021:I.1A:0001", "xbrl:1045810:revenue:2023-01-29"], "hallucinated": [], "checks": {"citations_retrieved": true, "numbers_grounded": true, "numbers_checked": 1, "unmatched_numbers": [], "echoed_numbers": [], "pseudo_citations": [], "has_citation": true, "is_refusal": false, "unsupported_removal_claim": false, "unsupported_removal_sentences": []}, "finish_reason": "stop", "usage": {"prompt_tokens": 12000, "completion_tokens": 300}, "cost_usd": 0.001575, "chunk_ids": ["0001045810-26-000021:I.1A:0001", "0001045810-26-000021:I.1A:0002", "0001045810-26-000021:I.1A:0003", "0001045810-26-000021:I.1A:0004", "0001045810-26-000021:I.1A:0005", "0001045810-26-000021:I.1A:0006", "0001045810-26-000021:I.1A:0007", "0001045810-26-000021:I.1A:0008"], "context_chars": 4299, "agent": {"tool_calls": [{"tool": "financial_metrics", "args": {"companies": ["Nvidia"], "fiscal_years": [2023]}, "ok": true}, {"tool": "lookup_company", "args": {"name": "AMD"}, "ok": true}, {"tool": "compute_change", "args": {"company": "Nvidia", "metric": "revenue", "from_period_end": "2023-01-29", "to_period_end": "2024-01-28"}, "ok": true}], "model_calls": 3, "elapsed_s": 1.5, "fallback_reason": null, "planner_model": "openai/gpt-6-luna", "planner_usage": {"prompt_tokens": 1700, "completion_tokens": 110}, "planner_cost_usd": 0.000225, "planner_prompt_version": "1", "stop_reason": "planner_done"}}
+
