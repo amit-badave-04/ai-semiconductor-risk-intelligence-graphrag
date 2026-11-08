@@ -91,10 +91,32 @@ describe("watchJob over the recorded job fixtures", () => {
     expect(run.stats.urls[0]).not.toContain(TOKEN);
   });
 
-  it("encodes the ids into the path", async () => {
+  it("puts valid ids into the path as they are", async () => {
     const { fetchImpl, stats } = server([{ status: 404 }]);
-    await watchJob("a/b", "c?d", TOKEN, { onJob: () => undefined, fetchImpl, sleep: async () => undefined });
-    expect(stats.urls[0]).toBe("/api/workspace/a%2Fb/jobs/c%3Fd");
+    await watchJob(WS, JOB, TOKEN, { onJob: () => undefined, fetchImpl, sleep: async () => undefined });
+    expect(stats.urls[0]).toBe(`/api/workspace/${WS}/jobs/${JOB}`);
+  });
+
+  // Pre-push security review LOW: encodeURIComponent leaves "." alone, so a "." or ".." id would resolve as a path segment and
+  // send the token to another same-origin /api path. Ids outside the server's grammar (32 / 16 lower-case hex) make no request.
+  it.each([
+    ["..", JOB],
+    [".", JOB],
+    ["", JOB],
+    [WS, ".."],
+    [WS, "."],
+    [WS, ""],
+    ["a/b", JOB],
+    [WS, "c?d"],
+    ["C".repeat(32), JOB],
+    [WS, JOB.toUpperCase()],
+    ["c".repeat(31), JOB],
+    [WS, "0".repeat(17)],
+  ])("makes no request for workspace %j / job %j and reports it gone", async (ws, job) => {
+    const { fetchImpl, stats } = server([{ status: 404 }]);
+    const result = await watchJob(ws, job, TOKEN, { onJob: () => undefined, fetchImpl, sleep: async () => undefined });
+    expect(result).toEqual({ kind: "gone" });
+    expect(stats.urls).toEqual([]);
   });
 
   it("ignores frames that are not valid job events", async () => {

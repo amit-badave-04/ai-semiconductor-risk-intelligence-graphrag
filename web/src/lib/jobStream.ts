@@ -29,6 +29,12 @@ export interface WatchOptions {
 export const MAX_ATTEMPTS = 5;
 export const RETRY_DELAYS_MS = [500, 1000, 2000, 4000];
 
+// The server's id grammar: a workspace id is secrets.token_hex(16) checked by uploads.WORKSPACE_ID_RE, a job id is
+// secrets.token_hex(8) (uploads/jobs.py). Anything else (".", "..", a slash, upper case) is never put into a path, so the token
+// can only ever go to this job's route: encodeURIComponent alone leaves "." as a path segment the URL parser resolves.
+const WORKSPACE_ID_RE = /^[0-9a-f]{32}$/;
+const JOB_ID_RE = /^[0-9a-f]{16}$/;
+
 const DEFAULT_SLEEP = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise((resolve) => {
     if (signal?.aborted === true) {
@@ -150,7 +156,10 @@ export async function watchJob(
   options: WatchOptions,
 ): Promise<WatchResult> {
   const { signal, fetchImpl = fetch, sleep = DEFAULT_SLEEP, maxAttempts = MAX_ATTEMPTS } = options;
-  const url = `/api/workspace/${encodeURIComponent(workspaceId)}/jobs/${encodeURIComponent(jobId)}`;
+  if (!WORKSPACE_ID_RE.test(workspaceId) || !JOB_ID_RE.test(jobId)) {
+    return { kind: "gone" }; // no such job can exist: no request at all
+  }
+  const url = `/api/workspace/${workspaceId}/jobs/${jobId}`;
   let lastStatus = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (signal?.aborted === true) {
