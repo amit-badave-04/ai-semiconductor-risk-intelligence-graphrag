@@ -34,7 +34,7 @@ function useStreamRun(publish: (next: AskState) => void, accumulated: MutableRef
     async (request: AskRequest, signal: AbortSignal) => {
       const { workspace: ws, turnstile: gate } = live.current;
       const token = gate.consume(); // used up at send time: the widget is reset, a fresh challenge starts
-      if (token === null && gate.siteKeySet) gate.clear(); // no token to use up: still reset, as index.html:681 and :712 do
+      if (token === null && gate.siteKeySet) gate.clear(); // no token to use up: still reset, as R33(3) says, index.html:706, 675, 1019, 1050
       const session = ws.workspace === null ? null : { id: ws.workspace.id, asOf: ws.asOf };
       const connection = { reached: false };
       const fetchImpl: typeof fetch = async (input, init) => {
