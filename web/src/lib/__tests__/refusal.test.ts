@@ -50,3 +50,64 @@ describe("detailOf (R20: a refusal is shown from its JSON detail)", () => {
     expect(await detailOf(used)).toBe("Not Found");
   });
 });
+
+describe("detailOf reads at most 64 KiB of a non-OK body (security LOW)", () => {
+  const CAP = 64 * 1024;
+  const jsonOfSize = (bytes: number): string => {
+    const head = '{"detail":"';
+    const tail = '"}';
+    return head + "x".repeat(bytes - head.length - tail.length) + tail;
+  };
+
+  it("shows the detail of a body of exactly 64 KiB", async () => {
+    const body = jsonOfSize(CAP);
+    expect(body.length).toBe(CAP);
+    expect(await detailOf(respond(body, { status: 400, statusText: "Bad Request" }))).toBe(body.slice(11, -2));
+  });
+
+  it("falls back to the status text for a valid JSON body one byte over the cap", async () => {
+    const body = jsonOfSize(CAP + 1);
+    expect(await detailOf(respond(body, { status: 400, statusText: "Bad Request" }))).toBe("Bad Request");
+  });
+
+  it("falls back to the status text for a far larger JSON body", async () => {
+    const body = jsonOfSize(5 * CAP);
+    expect(await detailOf(respond(body, { status: 500, statusText: "Server Error" }))).toBe("Server Error");
+  });
+
+  it("counts bytes, not characters: a multi-byte body over the cap in bytes falls back", async () => {
+    const body = `{"detail":"${"\u00e9".repeat(CAP / 2)}"}`; // 2 bytes per character: about 64 KiB + 14 bytes
+    expect(body.length).toBeLessThan(CAP);
+    expect(await detailOf(respond(body, { status: 400, statusText: "Bad Request" }))).toBe("Bad Request");
+  });
+
+  it("a body that keeps enqueuing resolves promptly to the status text and releases the stream", async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const chunk = new TextEncoder().encode("x".repeat(8192));
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulls += 1;
+          if (pulls > 2000) {
+            controller.close(); // a stand-in for "never": a mutant without the cap would read all 16 MB
+          } else {
+            controller.enqueue(chunk);
+          }
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const response = new Response(stream, { status: 502, statusText: "Bad Gateway", headers: { "content-type": "application/json" } });
+    expect(await detailOf(response)).toBe("Bad Gateway");
+    expect(pulls).toBeLessThan(20);
+    expect(cancelled).toBe(true);
+  });
+
+  it("a body-less response falls back to the status text", async () => {
+    expect(await detailOf(new Response(null, { status: 503, statusText: "Unavailable" }))).toBe("Unavailable");
+  });
+});

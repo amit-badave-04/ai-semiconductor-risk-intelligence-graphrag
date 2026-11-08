@@ -75,7 +75,7 @@ uv run pytest tests/test_web_pins.py tests/test_web_source_scan.py tests/test_do
 
 The lockfile is created on Linux, never on Windows (a Windows-resolved lockfile can omit the Linux native binaries; a test pins
 the `linux-x64-gnu` entries of rolldown, lightningcss and `@tailwindcss/oxide`). With Node 24.22.2 on PATH, in a Linux checkout
-of `web/` (WSL works; use its own file system, not `/mnt/c`):
+of `web/`, in CI or on a Linux machine. The commands, on Linux:
 
 ```bash
 npm install --ignore-scripts            # only to change dependencies; commit package.json and package-lock.json together

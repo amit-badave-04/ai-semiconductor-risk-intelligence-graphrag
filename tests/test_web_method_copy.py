@@ -1,0 +1,113 @@
+"""The Method & Evidence copy of the web app is the legacy page's copy, verbatim (docs/specs/m5b-frontend.md R27, D7, S15).
+
+``web/src/pages/Method.copy.ts`` holds four passages copied from ``src/semigraph/serve/static/index.html``: the header
+sentence, the withdrawn-accuracy notice, the reliability note and the checks hint. The web port is a port, not a rewrite, so
+each passage must equal the legacy text character for character. vitest cannot do this check (it runs from a mirror outside
+the Python tree), so it lives here. The passages are found by their content, never by a line number.
+
+Two legs: the matcher is exercised on a one-character change (a matcher that stopped comparing would turn red), then it runs
+on the real files.
+"""
+
+import html
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+COPY_TS = ROOT / "web" / "src" / "pages" / "Method.copy.ts"
+INDEX_HTML = ROOT / "src" / "semigraph" / "serve" / "static" / "index.html"
+
+_TEXT = re.compile(r'text: "((?:[^"\\]|\\.)*)"')
+_BOLD = re.compile(r'bold: true, text: "((?:[^"\\]|\\.)*)"')
+_HREF = re.compile(r'href: "((?:[^"\\]|\\.)*)"')
+_HINT_TS = re.compile(r'CHECKS_HINT =\s*"((?:[^"\\]|\\.)*)"')
+_HINT_JS = re.compile(r'const hint = "((?:[^"\\]|\\.)*)"')
+SEGMENT_EXPORTS = ("INTRO", "WITHDRAWN", "RELIABILITY")
+
+
+def _js(literal: str) -> str:
+    """A JS string literal body (quotes and unicode escapes only) as the text it denotes."""
+    return json.loads('"' + literal + '"')
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\s+", " ", text)
+
+
+def _block(source: str, name: str) -> str:
+    start = source.index(f"export const {name}")
+    return source[start : source.index("\n];", start)]
+
+
+def _page_text(page: str) -> str:
+    """The page as the reader sees it: tags dropped, entities decoded, whitespace squashed."""
+    return _squash(html.unescape(re.sub(r"<[^>]+>", "", page)))
+
+
+def _bold_runs(page: str) -> set[str]:
+    return {_squash(html.unescape(re.sub(r"<[^>]+>", "", m))) for m in re.findall(r"<b>(.*?)</b>", page, flags=re.S)}
+
+
+def mismatches(copy_source: str, page: str) -> list[str]:
+    """What differs between the TS copy and the page; an empty list means verbatim."""
+    flat = _page_text(page)
+    bold = _bold_runs(page)
+    problems: list[str] = []
+    for name in SEGMENT_EXPORTS:
+        block = _block(copy_source, name)
+        whole = "".join(_js(t) for t in _TEXT.findall(block))
+        if _squash(whole) not in flat:
+            problems.append(f"{name}: the text is not in index.html")
+        for run in _BOLD.findall(block):
+            if _squash(_js(run)) not in bold:
+                problems.append(f"{name}: bold run {_js(run)!r} is not a <b> run of index.html")
+        for href in _HREF.findall(block):
+            if f'href="{_js(href)}"' not in page:
+                problems.append(f"{name}: link {_js(href)} is not an href of index.html")
+    ts_hint = _HINT_TS.search(copy_source)
+    js_hint = _HINT_JS.search(page)
+    if ts_hint is None or js_hint is None:
+        problems.append("CHECKS_HINT: not found")
+    elif _js(ts_hint.group(1)) != _js(js_hint.group(1)):
+        problems.append("CHECKS_HINT: differs from the hint string of index.html")
+    return problems
+
+
+@pytest.fixture(scope="module")
+def sources() -> tuple[str, str]:
+    return COPY_TS.read_text(encoding="utf-8"), INDEX_HTML.read_text(encoding="utf-8")
+
+
+def test_the_matcher_catches_a_one_character_change(sources):
+    copy_source, page = sources
+    assert mismatches(copy_source, page) == []
+    for needle in ("bitemporal knowledge graph", "withdrawn: the benchmark", "4 of 4 checked cases", "a bare number such as"):
+        assert needle in copy_source, needle
+        changed = copy_source.replace(needle, needle[:-1] + "X", 1)
+        assert mismatches(changed, page) != [], needle
+
+
+def test_the_matcher_catches_a_changed_link_and_a_dropped_bold(sources):
+    copy_source, page = sources
+    assert mismatches(copy_source.replace("M1B_PLAN.md", "M1B_PLAN2.md", 1), page) != []
+    assert mismatches(copy_source.replace('bold: true, text: "keyword matches', 'bold: true, text: "keyword matchez', 1), page) != []
+
+
+def test_method_copy_is_verbatim_against_the_legacy_page(sources):
+    copy_source, page = sources
+    assert mismatches(copy_source, page) == []
+
+
+def test_every_passage_is_present_and_non_trivial(sources):
+    copy_source, _page = sources
+    for name in SEGMENT_EXPORTS:
+        assert len("".join(_js(t) for t in _TEXT.findall(_block(copy_source, name)))) > 100, name
+    assert len(_js(_HINT_TS.search(copy_source).group(1))) > 300
+
+
+def test_the_copy_file_is_ascii_with_unicode_escapes(sources):
+    copy_source, _page = sources
+    assert copy_source.isascii()
