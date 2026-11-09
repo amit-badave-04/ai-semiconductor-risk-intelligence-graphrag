@@ -306,6 +306,18 @@ def test_a_cap_job_reaches_ready_under_the_default_ceiling_from_the_start_of_the
     assert float(fields_of(stage_lines(caplog)[0])["embed_s"]) == pytest.approx(cap_job_seconds(share), abs=1e-3)
 
 
+def assert_too_slow_is_in_the_operator_log(caplog) -> None:
+    """UC-1: a job stopped as ``too_slow`` leaves one INFO line the operator can grep, ``code=too_slow``, that names the
+    workspace only by its short hash and never by the workspace id (the capability), and carries no token."""
+    lines = [r for r in caplog.records if r.name == "semigraph.uploads.jobs" and r.getMessage().startswith("upload job failed ")]
+    assert len(lines) == 1
+    record = lines[0]
+    message = record.getMessage()
+    assert record.levelname == "INFO"
+    assert re.fullmatch(r"upload job failed ws_hash=[0-9a-f]{12} job_id=job1 code=too_slow", message)
+    assert WS not in message and "token" not in message.lower()
+
+
 def test_a_cap_job_at_4_percent_is_stopped_early_as_too_slow_not_run_to_the_ceiling(world, caplog):
     """A 4% share needs 2,469 s for the cap job, over the ceiling: since the cap moved to 10,000 tokens the job stops at its third
     chunk (about 300 s in) with ``too_slow``, where it used to run to the ceiling and fail as ``timeout``."""
@@ -317,6 +329,7 @@ def test_a_cap_job_at_4_percent_is_stopped_early_as_too_slow_not_run_to_the_ceil
     assert last_event(events)["error"]["code"] == "too_slow"
     assert embedder.calls == 3 and world.clock.now < DEFAULT_CEILING / 2     # stopped with chunks remaining, long before the ceiling
     assert world.repo.put_version_calls == []
+    assert_too_slow_is_in_the_operator_log(caplog)
 
 
 def test_a_cap_job_at_6_percent_reaches_ready_now_that_the_cap_is_10000(world):
