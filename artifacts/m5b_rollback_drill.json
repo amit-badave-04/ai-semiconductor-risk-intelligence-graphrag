@@ -1,0 +1,73 @@
+{
+  "spec": "docs/specs/m5b-frontend.md D18(a), gate P6, plan step I4; commands from docs/RUNBOOK.md \"Frontend: flags, flip, rollback\"",
+  "date": "2026-11-10",
+  "head_sha": "888be8c62a931c93e12d11998dbe12d183e6c885",
+  "app": "semigraph",
+  "image": "registry.fly.io/semigraph:deployment-01M715C2982PDB7Q3XAM62K0Q4",
+  "release": "v17 (the preview deploy); the drill's two same-image deploys follow it",
+  "previous_image": "registry.fly.io/semigraph:m5a-openapi-2d90286 (v16)",
+  "api_spend_usd": 0,
+  "who": "the owner ran every deploy and ssh command; the agent ran the read-only HTTP checks and the settings check noted in step 2",
+  "baseline_root_page": {
+    "bytes": 76573,
+    "sha256": "efaa3b074c1dea09397d6972c2440f01aee87ed45fd20b29196e324ebb6da07f",
+    "matches_repo": "equal to src/semigraph/serve/static/index.html at head_sha except the one line where the server fills in the public bot-check site key"
+  },
+  "steps": [
+    {
+      "step": 1,
+      "action": "preview on: UI_V2_PREVIEW = \"true\", check_env_fly, flyctl deploy --ha=false --remote-only --yes (full build)",
+      "timing_s": null,
+      "timing_note": "not timed end to end; the remote build reported 511.8 s, followed by the rolling machine update",
+      "checks": {
+        "image_check_deployed_mode": "all checks PASS, 4 skipped (deployed mode), exit 0",
+        "/v2/": "200, x-robots-tag noindex, cache-control no-cache, the same security headers as /; its script, stylesheet and icon 200",
+        "/v2/company/NVDA": 200,
+        "/": "200, baseline above",
+        "/legacy": "200, the old page",
+        "/ask": 404,
+        "/api/config": "200, cache-control no-store",
+        "/openapi.json": 404,
+        "/healthz": "200, db true, embedder onnx fp32",
+        "upload_copy": "/ and the /v2/ bundle both say \"up to about 20 pages\"; \"30 pages\" no longer appears on /"
+      },
+      "result": "PASS"
+    },
+    {
+      "step": 2,
+      "action": "preview off on the same image: UI_V2_PREVIEW = \"false\", flyctl deploy --image <image> --ha=false --yes",
+      "timing_s": 161.64,
+      "checks": {
+        "printenv UI_V2_PREVIEW": "false",
+        "/v2/": 404,
+        "/v2/company/NVDA": 404,
+        "/legacy": "404 (both flags false, as the RUNBOOK state table says)",
+        "/": "200, sha256 equal to the baseline",
+        "/api/config": 200,
+        "/healthz": 200
+      },
+      "settings_check": "the owner's check_env_fly did not start (uv could not sync the local .venv under OneDrive: access denied); the agent ran it with --no-sync on the same fly.toml right after this deploy: RESULT PASS",
+      "result": "PASS"
+    },
+    {
+      "step": 3,
+      "action": "preview on again on the same image: UI_V2_PREVIEW = \"true\" (the committed fly.toml), check_env_fly (RESULT PASS), flyctl deploy --image <image> --ha=false --yes",
+      "timing_s": 162.72,
+      "checks": {
+        "printenv UI_V2_PREVIEW": "true",
+        "/v2/": "200, x-robots-tag noindex, cache-control no-cache",
+        "/v2/company/NVDA": 200,
+        "/legacy": 200,
+        "/": "200, sha256 equal to the baseline",
+        "/ask": 404,
+        "/api/config": 200,
+        "/openapi.json": 404,
+        "/healthz": 200
+      },
+      "result": "PASS"
+    }
+  ],
+  "finding": "flyctl deploy --image applies an edited fly.toml [env] (the spec and RUNBOOK had this as inferred): a flag rollback is one same-image deploy of about 162 s, no rebuild",
+  "not_covered": "the upload cap's 10,000 / 10,001 token boundary was not exercised live: an upload needs a bot-check token, which only a person can obtain; it is covered by the unit tests of docs/specs/upload-cap-and-abort.md",
+  "result": "PASS"
+}
