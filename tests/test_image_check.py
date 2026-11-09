@@ -339,6 +339,15 @@ def test_every_secret_setting_has_a_canary_in_the_script_and_the_workflow(script
     assert sorted(names) == sorted(CANARY_NAMES)
 
 
+def test_every_canary_value_passes_the_settings_length_checks(workflow_text):
+    # The app refuses to start with a secret shorter than 32 bytes (asgi_middleware MIN_SECRET_BYTES for
+    # ORIGIN_AUTH_SECRET); a short canary made the first CI run fail before the check could run.
+    values = re.findall(r"-e ([A-Z0-9_]+)=(CANARY_\S+)", workflow_text)
+    assert sorted({name for name, _ in values}) == sorted(CANARY_NAMES)
+    for name, value in values:
+        assert len(value.encode()) >= 32, f"{name} canary is {len(value)} bytes"
+
+
 def test_the_worker_env_name_test_covers_pepper_salt_and_auth(script):
     line = next(l for l in script.splitlines() if "for w in (" in l)
     for word in ("KEY", "TOKEN", "SECRET", "PASSWORD", "PEPPER", "SALT", "AUTH"):

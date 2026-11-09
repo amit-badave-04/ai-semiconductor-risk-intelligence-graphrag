@@ -56,16 +56,16 @@ jobs:
           start_and_wait() {
             docker rm -f semigraph-check >/dev/null 2>&1 || true
             docker run -d --name semigraph-check --network none \
-              -e NEO4J_PASSWORD=CANARY_NEO4J_PASSWORD \
-              -e ANTHROPIC_API_KEY=CANARY_ANTHROPIC_API_KEY \
-              -e OPENAI_API_KEY=CANARY_OPENAI_API_KEY \
-              -e TURNSTILE_SECRET_KEY=CANARY_TURNSTILE_SECRET_KEY \
-              -e ADMIN_TOKEN=CANARY_ADMIN_TOKEN \
-              -e EMBEDDING_API_KEY=CANARY_EMBEDDING_API_KEY \
-              -e ORIGIN_AUTH_SECRET=CANARY_ORIGIN_AUTH_SECRET \
-              -e IP_HASH_PEPPER=CANARY_IP_HASH_PEPPER \
-              -e LANGFUSE_SECRET_KEY=CANARY_LANGFUSE_SECRET_KEY \
-              -e LANGFUSE_HASH_SALT=CANARY_LANGFUSE_HASH_SALT \
+              -e NEO4J_PASSWORD=CANARY_NEO4J_PASSWORD_padded_past_length_checks \
+              -e ANTHROPIC_API_KEY=CANARY_ANTHROPIC_API_KEY_padded_past_length_checks \
+              -e OPENAI_API_KEY=CANARY_OPENAI_API_KEY_padded_past_length_checks \
+              -e TURNSTILE_SECRET_KEY=CANARY_TURNSTILE_SECRET_KEY_padded_past_length_checks \
+              -e ADMIN_TOKEN=CANARY_ADMIN_TOKEN_padded_past_length_checks \
+              -e EMBEDDING_API_KEY=CANARY_EMBEDDING_API_KEY_padded_past_length_checks \
+              -e ORIGIN_AUTH_SECRET=CANARY_ORIGIN_AUTH_SECRET_padded_past_length_checks \
+              -e IP_HASH_PEPPER=CANARY_IP_HASH_PEPPER_padded_past_length_checks \
+              -e LANGFUSE_SECRET_KEY=CANARY_LANGFUSE_SECRET_KEY_padded_past_length_checks \
+              -e LANGFUSE_HASH_SALT=CANARY_LANGFUSE_HASH_SALT_padded_past_length_checks \
               semigraph-image-check:ci
             for i in $(seq 1 60); do
               logs="$(docker logs semigraph-check 2>&1 || true)"
