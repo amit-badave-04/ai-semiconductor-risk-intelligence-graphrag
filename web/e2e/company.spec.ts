@@ -18,6 +18,19 @@ function withoutTheExpected404(list: string[], ticker: string): string[] {
   );
 }
 
+/** A dossier with every chip kind (the fixture's has none of metrics, edges and rules): the xbrl metric, two edge chunks, a rule's
+ *  chunk and the rule itself, so axe's WCAG 2.2 checks (target size included) see the chips as they stack in each block. */
+const CHUNK = "0001045810-26-000021:I.1:0320";
+const EVERY_CHIP_DOSSIER = {
+  company: { ticker: "NVDA", name: "Nvidia", cik: 1045810 },
+  data_as_of: "2026-09-30",
+  filings: [{ accession_no: "0001045810-26-000021", form: "10-K", filing_date: "2026-02-25", is_current: true, status: "current", superseded_by: null }],
+  metrics: [{ metric: "revenue", value: 130497000000, unit: "USD", period_start: "2025-01-27", period_end: "2026-01-25" }],
+  active_risks: [],
+  edges: [{ source: "Nvidia", relation: "DEPENDS_ON", target: "TSMC", status: "Active", quote: "We depend on TSMC.", chunk_ids: [CHUNK, "0001045810-26-000021:I.1A:0042"] }],
+  rules: [{ source: "Nvidia", relation: "MENTIONED_IN", target: "Export rule", status: null, quote: null, chunk_ids: [CHUNK], rule_id: "2026-01234", date: "2026-03-01", kind: "Rule" }],
+};
+
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`company page, ${scheme} scheme`, () => {
     test.use({ colorScheme: scheme });
@@ -41,13 +54,61 @@ for (const scheme of ["light", "dark"] as const) {
       // owner 2026-11-08: each passage of a reworded risk names its side by that side's filing
       await expect(changes).toContainText("10-K 2025-02-26: \u201cFixture older wording of a passage.\u201d");
       await expect(changes).toContainText("10-K 2026-02-25: \u201cFixture newer wording of a passage.\u201d");
-      await expect(changes.locator('[data-cite="0001045810-26-000021:I.1:0320"]')).toHaveCount(1);
+      // R25: a filing-backed passage's chunk id is the evidence chip (a button), not text
+      await expect(changes.locator('button[data-id="0001045810-26-000021:I.1:0320"]')).toHaveCount(1);
+      await expect(changes.locator("[data-cite]")).toHaveCount(0);
       await expect(changes).toContainText("comparison not available (low_text_yield).");
       const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
       await testInfo.attach("axe-company-data.json", { body: JSON.stringify(results.violations, null, 1), contentType: "application/json" });
       expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
       expect(await problems(w)).toEqual([]);
     });
+
+    test("R25: a chip opens the evidence drawer from the keyboard; Escape closes it and focus returns to the chip", async ({ page }, testInfo) => {
+      const w = await watch(page, PREVIEW);
+      const evidenceGets: string[] = [];
+      page.on("request", (request) => {
+        const path = new URL(request.url()).pathname;
+        if (path.startsWith("/api/evidence/")) evidenceGets.push(path);
+      });
+      await page.goto(`${PREVIEW}/v2/company/NVDA/`);
+      const changes = page.getByRole("region", { name: "Compared risk disclosures" });
+      const chip = changes.locator('button[data-id="0001045810-26-000021:I.1:0320"]');
+      await chip.focus();
+      await page.keyboard.press("Enter");
+      const drawer = page.getByRole("complementary", { name: "Evidence" });
+      await expect(drawer).toBeVisible();
+      await expect(drawer.getByRole("button", { name: "Close evidence" })).toBeFocused();
+      await expect(drawer).toContainText("Fixture excerpt");
+      expect(evidenceGets).toEqual(["/api/evidence/0001045810-26-000021%3AI.1%3A0320"]);
+      const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      await testInfo.attach("axe-company-drawer.json", { body: JSON.stringify(results.violations, null, 1), contentType: "application/json" });
+      expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+      await expect(chip).toBeFocused();
+      expect(await problems(w)).toEqual([]);
+    });
+
+    for (const width of [1440, 390]) {
+      test(`R25 every chip kind at ${width} px: buttons with their labels, no axe violation, no sideways scroll`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.route("**/api/company/NVDA/dossier", (route) => route.fulfill({ json: EVERY_CHIP_DOSSIER }));
+        await page.goto(`${PREVIEW}/v2/company/NVDA/`);
+        const metricChip = page.getByRole("region", { name: "Metrics" }).getByRole("button", { name: "XBRL revenue FY ended 2026-01-25" });
+        await expect(metricChip).toBeVisible();
+        await expect(page.getByRole("region", { name: "Relationships" }).locator("button[data-id]")).toHaveCount(2);
+        const rules = page.getByRole("region", { name: "Federal Register rules" });
+        await expect(rules.locator("button[data-id]")).toHaveCount(2);
+        await expect(rules.getByRole("button", { name: "BIS rule 2026-01234" })).toBeVisible();
+        await expect(rules).toContainText("keyword matches to external Federal Register rules");
+        await expect(page.locator("main [data-cite]")).toHaveCount(0);
+        const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+        await testInfo.attach(`axe-company-chips-${width}.json`, { body: JSON.stringify(results.violations, null, 1), contentType: "application/json" });
+        expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+      });
+    }
 
     test("not found (the dossier answers 404): the not-found view, no axe violation", async ({ page }, testInfo) => {
       const w = await watch(page, PREVIEW);

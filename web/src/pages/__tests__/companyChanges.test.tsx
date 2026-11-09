@@ -1,6 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { chipLabel } from "@/lib/citations";
 import { Company } from "../Company";
 import * as copy from "../Company.copy";
 
@@ -135,15 +136,16 @@ describe("Company: the risk changes block", () => {
     expect(copy.RISK_CHANGES_TITLE).toBe("Compared risk disclosures");
   });
 
-  it("quotes passages, and only a chunk id of the grammar becomes a cite", async () => {
+  it("quotes passages, and only a chunk id of the grammar becomes an evidence chip (R25)", async () => {
     route(() => json(CHANGES));
     mount();
     const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
     await within(block).findByText("Export licensing");
     expect(block).toHaveTextContent("10-K 2025-02-26: \u201cWe may need a license.\u201d");
     expect(block).toHaveTextContent("10-K 2026-02-25: \u201cWe need a license.\u201d");
-    const cites = [...block.querySelectorAll("[data-cite]")];
-    expect(cites.map((c) => c.getAttribute("data-cite"))).toEqual([CHUNK]);
+    const cites = [...block.querySelectorAll("button[data-id]")];
+    expect(cites.map((c) => c.getAttribute("data-id"))).toEqual([CHUNK]);
+    expect(block.querySelectorAll("[data-cite]")).toHaveLength(0);
     expect(block).not.toHaveTextContent("not a chunk id");
   });
 
@@ -154,7 +156,7 @@ describe("Company: the risk changes block", () => {
     await within(block).findByText("Export licensing");
     const older = block.querySelector("li p:nth-of-type(1)");
     const newer = block.querySelector("li p:nth-of-type(2)");
-    expect(older?.textContent).toBe("10-K 2025-02-26: \u201cWe may need a license.\u201d " + CHUNK);
+    expect(older?.textContent).toBe("10-K 2025-02-26: \u201cWe may need a license.\u201d " + chipLabel(CHUNK));
     expect(newer?.textContent).toBe("10-K 2026-02-25: \u201cWe need a license.\u201d");
     expect(older?.textContent).not.toBe(newer?.textContent);
   });
@@ -237,7 +239,7 @@ describe("Company: the risk changes block", () => {
     await within(block).findAllByText(new RegExp("<img src=x"));
     expect(container.querySelector("img, [onerror], [src], [style]")).toBeNull();
     expect(block.querySelector("a")).toBeNull();
-    expect(block.querySelectorAll("[data-cite]")).toHaveLength(0);
+    expect(block.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
   });
 
   it("aborts the risk-changes request on unmount and renders nothing from it", async () => {

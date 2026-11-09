@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
+import { chipLabel } from "@/lib/citations";
 import type { Dossier, Edge, Rule } from "@/lib/company";
 import { CompanySwitcher, DossierBlocks } from "../CompanyBlocks";
 
@@ -73,7 +74,7 @@ describe("DossierBlocks: rows with null fields", () => {
     const { container } = show(nulls);
     expect(within(section("Filings")).getAllByRole("cell").map((c) => c.textContent)).toEqual(["", "", "", ""]);
     expect(within(section("Metrics")).getAllByRole("cell").map((c) => c.textContent)).toEqual(["", "", "", "", ""]);
-    expect(container.querySelectorAll("[data-cite]")).toHaveLength(0);
+    expect(container.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
     expect(section("Active risks").textContent).not.toContain("\u00b7");
     expect(section("Relationships").textContent).not.toContain("(");
   });
@@ -102,11 +103,11 @@ describe("DossierBlocks: rows with every field present", () => {
     expect(section("Active risks").textContent).toContain("supply \u00b7 2026-02-25");
   });
 
-  it("shows the citation ids as text with data-cite: the metric, the edge chunk, the rule chunk and the rule", () => {
+  it("shows the citation ids as evidence chips (R25): the metric, the edge chunk, the rule chunk and the rule", () => {
     const { container } = show(full);
-    const cites = Array.from(container.querySelectorAll("[data-cite]")).map((el) => el.getAttribute("data-cite"));
+    const cites = Array.from(container.querySelectorAll("button[data-id]")).map((el) => el.getAttribute("data-id"));
     expect(cites).toEqual(["xbrl:1045810:revenue:2026-01-25", CHUNK, CHUNK, "fr:2026-01234"]);
-    expect(container.querySelector(`[data-cite="${CHUNK}"]`)?.textContent).toBe(CHUNK);
+    expect(container.querySelector(`button[data-id="${CHUNK}"]`)?.textContent).toBe(chipLabel(CHUNK));
   });
 
   it("shows an edge's status and quote, and a rule's date and kind", () => {
@@ -125,14 +126,14 @@ describe("DossierBlocks: a rule without a citation id falls back to its rule id 
     const { container } = show({ ...EMPTY, rules: [{ ...FULL_RULE, cite: null, date: null, kind: null, chunk_ids: [] }] });
     const rules = section("Federal Register rules");
     expect(within(rules).getByText("fr:2026-01234")).toBeTruthy();
-    expect(container.querySelectorAll("[data-cite]")).toHaveLength(0);
+    expect(container.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
     expect(within(rules).queryByText("2026-03-01")).toBeNull();
     expect(within(rules).queryByText("Rule")).toBeNull();
   });
 
   it("keeps an edge with a quote but no chunk ids free of citation chips", () => {
     const { container } = show({ ...EMPTY, edges: [{ ...FULL_EDGE, chunk_ids: [] }] });
-    expect(container.querySelectorAll("[data-cite]")).toHaveLength(0);
+    expect(container.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
     expect(screen.getByText("We depend on TSMC.")).toBeTruthy();
   });
 });

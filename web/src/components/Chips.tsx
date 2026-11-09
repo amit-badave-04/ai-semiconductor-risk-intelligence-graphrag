@@ -11,9 +11,9 @@ import { useEvidenceDrawer } from "./useEvidenceDrawer";
 export interface ChipProps {
   /** The citation id. Untrusted: it must already have matched the generated grammar (tokenize guarantees it). */
   id: string;
-  /** "answer" or "changes": which view the chip is in (focus return, A2). */
+  /** "answer", "changes" or "company": which view the chip is in (focus return, A2). */
   place: ChipPlace;
-  /** The answer sequence the chip belongs to (AskState.seq; 0 in the what-changed view). */
+  /** The answer sequence the chip belongs to (AskState.seq); the what-changed view passes its own sequence; the Company page passes its block group (CITE_GROUP). */
   gen: number;
   /** The occurrence of this id in its text, from 0. With place, gen and id it forms the chip's key (chipKey). */
   nth: number;

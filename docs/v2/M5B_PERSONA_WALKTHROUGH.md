@@ -351,9 +351,8 @@ Score (1-5): __   Notes: ____________________
 Steps: open the Company pages for NVDA, AMD and INTC. On each, read the "Federal Register rules" block (it lists the rules
 linked to that company), the "Active risks" block and the "Compared risk disclosures" block (what changed between filings;
 it may say "none"). In your notes make a table: holding, rules listed, active risks about export controls. Look at the
-citation ids on each page. (In this build the ids on a Company page are plain text by design, not buttons: chips exist in
-the Ask answers and in the Workspace what-changed view. Write "Company ids are plain text" once and carry on; it is not a
-failure.)
+citation ids on each page: each one is a chip (a button, the same as in the Ask answers). Open one: the evidence drawer
+shows the filing passage, the XBRL fact or the Federal Register rule it points to; Escape closes it.
 Good: the three pages have the same layout; rules carry dates; the copy above the block says they are "keyword matches to
 external Federal Register rules: outside events, not statements the company made"; "Compared risk disclosures" words each
 change as a hedge ("No longer appears as a separate risk factor", "Not matched", "Reworded"), never as "removed".
@@ -640,8 +639,8 @@ Plain text, ready to send:
   actually seeded as cached, how long answers take, or what the Evidence panel or bot-check box looks like there.
 - The labels quoted here were read from the I3 code in `web/src` on 2026-11-08, not from the live preview; a later change may
   move one. The chip labels quoted in section 2.7 come from `web/src/lib/citations.ts`.
-- On a Company page the citation ids are plain text by design in this build (chips exist in the Ask answers and the
-  Workspace what-changed view); the "Compared risk disclosures" block was added after the first draft of this document.
+- On a Company page the citation ids are evidence chips (R25, added 2026-11-10); the "Compared risk disclosures" block was
+  added after the first draft of this document.
 - Which Federal Register rules each Company page lists, and what the Freshness page shows right now, were not read from the
   live data; the "good" notes for those pages say what the page should show, not what it does show.
 - The A12, A03, A19 and A22 questions come from the agent evaluation set; they were designed for the agent strategy, and I did not

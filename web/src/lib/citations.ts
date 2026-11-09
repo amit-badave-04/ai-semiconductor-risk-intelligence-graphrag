@@ -85,8 +85,24 @@ export function docChipLabel(id: unknown, evidence?: unknown): string {
   return ev.title ? `${asText(ev.title)} \u00b7 ${base}` : `your document \u00b7 ${base}`;
 }
 
-/** Where a chip lives: the streamed answer or the what-changed view. Both open the same drawer. */
-export type ChipPlace = "answer" | "changes";
+/** Where a chip lives: the streamed answer, the what-changed view or the Company page. All open the same drawer. */
+export type ChipPlace = "answer" | "changes" | "company";
+
+/**
+ * The occurrence number of each id across `groups`, in order: the first time an id appears it is 0, the next time 1, and so on,
+ * whatever group it is in. The result has the shape of `groups`. A pure function, so a page can number its chips during render
+ * (each chip key must be unique on the page, A2).
+ */
+export function numberOccurrences(groups: readonly (readonly string[])[]): number[][] {
+  const seen = new Map<string, number>();
+  return groups.map((ids) =>
+    ids.map((id) => {
+      const nth = seen.get(id) ?? 0;
+      seen.set(id, nth + 1);
+      return nth;
+    }),
+  );
+}
 
 /**
  * A chip's identity for focus return (A2): its place, the answer sequence, the id and the occurrence of that id in the text.

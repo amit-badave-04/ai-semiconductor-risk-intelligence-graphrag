@@ -1,11 +1,14 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import type { ActiveRisk, Dossier, Edge, Filing, Metric, Rule } from "@/lib/company";
+import { Chip } from "@/components/Chips";
+import { classifyId, numberOccurrences } from "@/lib/citations";
+import { CITE_GROUP, type ActiveRisk, type Dossier, type Edge, type Filing, type Metric, type Rule } from "@/lib/company";
 import { FILERS } from "@/lib/pages.generated";
 
 // R25: every block of the dossier. Everything from the server is a text node (S2): no dangerouslySetInnerHTML, no href, src
-// or style comes from data. A citation id is shown as text with a data-cite attribute; the evidence chips and the drawer are
-// worker B's (I3) and will take over these elements.
+// or style comes from data. A citation id of the corpus grammar (chunk, xbrl, fr) is the shared evidence chip (Chips.tsx): a real
+// button that opens the one evidence drawer with the place "company" (R25 "filing-backed items open evidence chips", A1). Any
+// other value, a `doc:` id included (it belongs to a workspace), stays text with a data-cite attribute and can cause no request (S4).
 
 // The header sentence of index.html:58 that says what the rules are (pinned by tests/test_static_ui.py:54).
 const RULES_NOTE_BEFORE = "The links to export-control rules are ";
@@ -14,7 +17,18 @@ const RULES_NOTE_AFTER = ": outside events, not statements the company made.";
 
 const NONE = "none";
 
-export function Cite({ id }: { id: string }) {
+export interface CiteProps {
+  /** The citation id from the server. Untrusted: only an id of the corpus grammar becomes a chip. */
+  id: string;
+  /** The block's group (CITE_GROUP). */
+  group: number;
+  /** The occurrence of this id within its group, from numberOccurrences. */
+  nth: number;
+}
+
+export function Cite({ id, group, nth }: CiteProps) {
+  const kind = classifyId(id);
+  if (kind !== null && kind !== "doc") return <Chip id={id} place="company" gen={group} nth={nth} />;
   return (
     <code data-cite={id} className="rounded bg-muted px-1.5 py-0.5 text-xs break-all">
       {id}
@@ -73,6 +87,7 @@ function FilingsBlock({ filings }: { filings: Filing[] }) {
 }
 
 function MetricsBlock({ metrics }: { metrics: Metric[] }) {
+  const nths = numberOccurrences(metrics.map((m) => (m.cite === null ? [] : [m.cite])));
   return (
     <Block title="Metrics">
       {metrics.length === 0 ? (
@@ -95,7 +110,7 @@ function MetricsBlock({ metrics }: { metrics: Metric[] }) {
                 <td className={TD}>{text(m.value)}</td>
                 <td className={TD}>{text(m.unit)}</td>
                 <td className={TD}>{text(m.period_end)}</td>
-                <td className={TD}>{m.cite === null ? null : <Cite id={m.cite} />}</td>
+                <td className={TD}>{m.cite === null ? null : <Cite id={m.cite} group={CITE_GROUP.metrics} nth={nths[i][0]} />}</td>
               </tr>
             ))}
           </tbody>
@@ -127,7 +142,14 @@ function RisksBlock({ risks }: { risks: ActiveRisk[] }) {
   );
 }
 
-function Relation({ edge }: { edge: Edge }) {
+interface RelationProps {
+  edge: Edge;
+  group: number;
+  /** The occurrence number of each of edge.chunk_ids, in order. */
+  nths: readonly number[];
+}
+
+function Relation({ edge, group, nths }: RelationProps) {
   return (
     <>
       <p className="m-0 font-medium">
@@ -137,8 +159,8 @@ function Relation({ edge }: { edge: Edge }) {
       {edge.quote === null ? null : <p className="m-0 text-sm">{edge.quote}</p>}
       {edge.chunk_ids.length === 0 ? null : (
         <p className="m-0 flex flex-wrap gap-2">
-          {edge.chunk_ids.map((id) => (
-            <Cite key={id} id={id} />
+          {edge.chunk_ids.map((id, j) => (
+            <Cite key={`${id}:${nths[j]}`} id={id} group={group} nth={nths[j]} />
           ))}
         </p>
       )}
@@ -147,6 +169,7 @@ function Relation({ edge }: { edge: Edge }) {
 }
 
 function EdgesBlock({ edges }: { edges: Edge[] }) {
+  const nths = numberOccurrences(edges.map((e) => e.chunk_ids));
   return (
     <Block title="Relationships">
       {edges.length === 0 ? (
@@ -155,7 +178,7 @@ function EdgesBlock({ edges }: { edges: Edge[] }) {
         <ul className="m-0 list-none space-y-3 p-0">
           {edges.map((e, i) => (
             <li key={`${e.source ?? ""}-${e.relation ?? ""}-${e.target ?? ""}-${i}`}>
-              <Relation edge={e} />
+              <Relation edge={e} group={CITE_GROUP.edges} nths={nths[i]} />
             </li>
           ))}
         </ul>
@@ -165,6 +188,8 @@ function EdgesBlock({ edges }: { edges: Edge[] }) {
 }
 
 function RulesBlock({ rules }: { rules: Rule[] }) {
+  // A rule's chunk ids, then its own cite: one count for the whole block.
+  const nths = numberOccurrences(rules.map((r) => (r.cite === null ? r.chunk_ids : [...r.chunk_ids, r.cite])));
   return (
     <Block title="Federal Register rules">
       <p className="mb-3 text-sm text-muted-foreground">
@@ -178,9 +203,9 @@ function RulesBlock({ rules }: { rules: Rule[] }) {
         <ul className="m-0 list-none space-y-3 p-0">
           {rules.map((r, i) => (
             <li key={`${r.rule_id ?? ""}-${r.target ?? ""}-${i}`}>
-              <Relation edge={r} />
-              <p className="m-0 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                {r.cite === null ? <span>{text(r.rule_id)}</span> : <Cite id={r.cite} />}
+              <Relation edge={r} group={CITE_GROUP.rules} nths={nths[i]} />
+              <p className="mt-2 mb-0 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                {r.cite === null ? <span>{text(r.rule_id)}</span> : <Cite id={r.cite} group={CITE_GROUP.rules} nth={nths[i][r.chunk_ids.length]} />}
                 {r.date === null ? null : <span>{r.date}</span>}
                 {r.kind === null ? null : <span>{r.kind}</span>}
               </p>

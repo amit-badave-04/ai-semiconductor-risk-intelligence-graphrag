@@ -179,8 +179,8 @@ company data has loaded, and says "loading..." until its own data arrives). Unde
 level 3 heading such as "10-K 2025-02-26 -> 10-K 2026-02-25", then labels: "No matching risk factor found in the earlier
 filing", "No longer appears as a separate risk factor", "Not matched", "Reworded". A pair that could not be compared reads
 "<pair>: comparison not available (<reason>)." A line "Data as of <date>" may appear. A loading line near the top says
-"loading..." and is a status region. In this build the citation ids on this page (including those under "Compared risk
-disclosures") are plain text, not buttons: chips exist in the Ask answers and in the Workspace what-changed view only.
+"loading..." and is a status region. The citation ids on this page (including those under "Compared risk disclosures") are
+evidence chips: buttons that open the Evidence drawer, as in the Ask answers and the Workspace what-changed view.
 
 | # | Do | Expect | Req | Result |
 |---|---|---|---|---|
@@ -190,7 +190,7 @@ disclosures") are plain text, not buttons: chips exist in the Ask answers and in
 | Co-4 | Press K through the switcher | 13 company links by name and ticker; the current one says current page | A7 | |
 | Co-5 | Activate "AMD (AMD)" with Enter | The page changes; NVDA reads the new level 1 heading "AMD (AMD)" (focus moved there); the title changes. You did not have to hunt for the new page | A7 | |
 | Co-6 | While it loads | "loading..." is spoken once (status region). If an error appears it is spoken through the same region; a company answer the page cannot read reads "could not load the company data" | A3, A10 | |
-| Co-7 | Look for citation ids under Relationships and under "Compared risk disclosures". They are plain text here, so Tab skips them: write "plain text by design in this build" (not a fail) | No button, no drawer on this page. Chips and the drawer are exercised on Ask (Ask-7 to Ask-10) and on Workspace (Ws-8) | A1, A2, A5 | |
+| Co-7 | Tab to a citation chip under Relationships or under "Compared risk disclosures", press Enter, then Escape | Each chip is announced as a button with its label (for example "Item 1", then the paragraph sign and "0320"); Enter opens the Evidence drawer with focus on "Close evidence"; Escape closes it and focus returns to the same chip | A1, A2, A5 | |
 | Co-10 | Read "Compared risk disclosures" (press H, then arrow down) | The labels read as hedged statements ("No longer appears as a separate risk factor", never "removed"); a pair that could not be compared says so with its reason; each quoted passage of a reworded risk starts with its filing, for example "10-K 2025-02-26: " before the older wording and "10-K 2026-02-25: " before the newer | content | |
 | Co-8 | Read the Federal Register rules block | The line above the list says "The links to export-control rules are keyword matches to external Federal Register rules: outside events, not statements the company made." NVDA reads it | content | |
 | Co-9 | Type `/v2/company/XXXX/` (a made-up ticker) in the address bar | Title "Page not found - semigraph"; one level 1 heading "Page not found"; a link "Back to the start page". This is a fresh page load, so focus starts at the top, not on the heading (that is expected) | A7 | |

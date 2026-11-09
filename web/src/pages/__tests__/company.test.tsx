@@ -1,6 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { chipLabel } from "@/lib/citations";
 import { FILERS } from "@/lib/pages.generated";
 import { Company } from "../Company";
 import * as copy from "../Company.copy";
@@ -82,12 +83,12 @@ describe("Company: the dossier", () => {
     expect(within(filings).getByText("0001045810-26-000021")).toBeInTheDocument();
     const metrics = screen.getByRole("region", { name: "Metrics" });
     expect(within(metrics).getByText("revenue")).toBeInTheDocument();
-    expect(within(metrics).getByText("xbrl:1045810:revenue:2026-01-25")).toHaveAttribute("data-cite", "xbrl:1045810:revenue:2026-01-25");
+    expect(within(metrics).getByRole("button", { name: chipLabel("xbrl:1045810:revenue:2026-01-25") })).toHaveAttribute("data-id", "xbrl:1045810:revenue:2026-01-25");
     const risks = screen.getByRole("region", { name: "Active risks" });
     expect(within(risks).getByText("Supply of advanced packaging is concentrated.")).toBeInTheDocument();
     const edges = screen.getByRole("region", { name: "Relationships" });
     expect(within(edges).getByText("We depend on TSMC.")).toBeInTheDocument();
-    expect(within(edges).getByText(CHUNK)).toHaveAttribute("data-cite", CHUNK);
+    expect(within(edges).getByRole("button", { name: chipLabel(CHUNK) })).toHaveAttribute("data-id", CHUNK);
   });
 
   it("labels the rules as keyword matches to external Federal Register rules", async () => {
@@ -96,7 +97,7 @@ describe("Company: the dossier", () => {
     const rules = await screen.findByRole("region", { name: "Federal Register rules" });
     expect(rules).toHaveTextContent(RULE_LABEL);
     expect(within(rules).getByText("Export rule title")).toBeInTheDocument();
-    expect(within(rules).getByText("fr:2026-01234")).toHaveAttribute("data-cite", "fr:2026-01234");
+    expect(within(rules).getByRole("button", { name: chipLabel("fr:2026-01234") })).toHaveAttribute("data-id", "fr:2026-01234");
   });
 
   it("says none for an empty block", async () => {
@@ -127,8 +128,8 @@ describe("Company: the dossier", () => {
     expect(hrefs.every((h) => /^\/company\/[A-Z]+\/$/.test(h ?? ""))).toBe(true);
     expect(container.querySelector('[href*="evil"]')).toBeNull();
     expect(container.textContent).not.toContain("evil.example");
-    // the metric's xbrl id and the one valid chunk id; the hostile rule_id and chunk id are text only, never a cite
-    expect(container.querySelectorAll("[data-cite]")).toHaveLength(2);
+    // the metric's xbrl id and the one valid chunk id are chips; the hostile rule_id and chunk id are text only, never a chip
+    expect([...container.querySelectorAll("button[data-id]")].map((b) => b.getAttribute("data-id"))).toEqual(["xbrl:1045810:revenue:2026-01-25", CHUNK]);
   });
 
   it("a 404 from the dossier renders the not-found view and moves focus to its h1", async () => {
