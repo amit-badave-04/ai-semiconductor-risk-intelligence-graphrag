@@ -87,7 +87,7 @@ def build_tiny_quantized(tmp_path: Path, level: int) -> Path:
 def fake_download(tiny_dir: Path):
     files = {"onnx/model.onnx": tiny_dir / "model.onnx", "onnx/model.onnx_data": tiny_dir / "model.onnx_data",
              "tokenizer.json": tiny_dir / "tokenizer.json"}
-    return lambda repo, filename: files[filename]
+    return lambda repo, filename, revision: files[filename]
 
 
 # ---------------------------------------------------------------- hand-made graphs for the attribute tests
@@ -649,7 +649,7 @@ def test_main_passes_the_requested_level_to_the_quantizer(tmp_path, monkeypatch)
 
     tok = tmp_path / "tokenizer.json"
     tok.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(bo, "download", lambda repo, name: tok)
+    monkeypatch.setattr(bo, "download", lambda repo, name, revision: tok)
     monkeypatch.setattr(bo, "quantize", fake_quantize)
 
     bo.main(["--out", str(tmp_path / "o"), "--no-verify", "--accuracy-level", "3", "--bits", "8"])

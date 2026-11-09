@@ -70,6 +70,9 @@ if TYPE_CHECKING:
     from onnx import ModelProto
 
 REPO = "onnx-community/Qwen3-Embedding-0.6B-ONNX"
+# The commit of REPO the weights and tokenizer are downloaded at (owner decision 2026-11-09; the repo head on that date, last modified
+# 2026-04-03). A branch name moves under a rebuild, a full commit sha does not. Change it only together with a re-run of the fidelity gates.
+REPO_REVISION = "c25a394dd583836952667c12f008335071b3f43d"
 FP32 = ("onnx/model.onnx", "onnx/model.onnx_data")
 COS_MIN = 0.98
 
@@ -371,12 +374,12 @@ def verify_patched(out_dir: Path, level: int, *, questions: Sequence[str] = GATE
 
 # ------------------------------------------------------------------------------------------ build + verify
 
-def download(repo: str, filename: str) -> Path:
+def download(repo: str, filename: str, revision: str) -> Path:
     from huggingface_hub import hf_hub_download
     try:
-        return Path(hf_hub_download(repo, filename, local_files_only=True))
+        return Path(hf_hub_download(repo, filename, revision=revision, local_files_only=True))
     except Exception:
-        return Path(hf_hub_download(repo, filename))
+        return Path(hf_hub_download(repo, filename, revision=revision))
 
 
 def quantize(fp32_model: Path, fp32_data: Path, out_model: Path, bits: int, block_size: int,
@@ -482,8 +485,8 @@ def ensure_model(args: argparse.Namespace, out_model: Path) -> bool:
         print(f"{out_model} exists — skipping quantization (use --force to rebuild)")
         refuse_reused_model_with_wrong_level(out_model, args.accuracy_level)
         return False
-    fp32 = download(REPO, FP32[0])
-    data = download(REPO, FP32[1])  # external weights file
+    fp32 = download(REPO, FP32[0], REPO_REVISION)
+    data = download(REPO, FP32[1], REPO_REVISION)  # external weights file
     quantize(fp32, data, out_model, args.bits, args.block_size, args.accuracy_level)
     return True
 
@@ -522,7 +525,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     out_dir = Path(args.out)
     out_model = out_dir / MODEL_NAME
     built_now = ensure_model(args, out_model)
-    shutil.copy(download(REPO, "tokenizer.json"), out_dir / "tokenizer.json")
+    shutil.copy(download(REPO, "tokenizer.json", REPO_REVISION), out_dir / "tokenizer.json")
     total = sum(f.stat().st_size for f in out_dir.glob("model_q8.onnx*"))
     print(f"model size: {total / 1e6:.0f} MB ({', '.join(f.name for f in sorted(out_dir.glob('model_q8.onnx*')))})")
 
