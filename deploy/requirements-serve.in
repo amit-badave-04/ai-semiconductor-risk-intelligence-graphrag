@@ -14,7 +14,7 @@ onnxruntime>=1.29
 tokenizers>=0.21
 numpy>=2.0
 neo4j>=6.2.0
-litellm>=1.90.2
+litellm>=1.100.4
 pydantic>=2.13
 pydantic-settings>=2.14
 python-dotenv>=1.2
@@ -31,3 +31,13 @@ puremagic>=2.2
 rapidfuzz>=3.14
 scipy>=1.18
 uvloop==0.22.1
+# R5-5 (docs/security/accepted-risks.md): floors that keep the pinned lock clear of the pillow and urllib3 advisories open at 12.3.0 / 2.7.0.
+# Both arrive through other packages (pdfplumber; litellm and requests), so only a floor here makes the lock move them.
+pillow>=13.0.0
+urllib3>=2.8.0
+# Owner decision 2026-11-09: floors for four open advisories in the serve lock (PYSEC-2026-4320 certifi; GHSA-7hp6-4w63-5g45 litellm,
+# the lowest patched release of the 1.100 line; GHSA-2g87-pp6c-29x5 and seven more aiohttp; GHSA-567q-5qvw-pf92 and thirteen more
+# filelock, a major bump to 4.x). All four arrive through other packages, so only a floor here makes the lock move them.
+certifi>=2026.10.18
+aiohttp>=3.14.4
+filelock>=4.2.1

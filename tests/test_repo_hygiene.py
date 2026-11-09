@@ -67,4 +67,4 @@ def test_every_serving_test_pattern_in_ci_matches_a_file(workflow):
 
 def test_shipped_requirements_pin_the_litellm_the_image_runs():
     text = (ROOT / "deploy" / "requirements-serve.txt").read_text(encoding="utf-8")
-    assert "litellm==1.100.0" in text
+    assert "litellm==1.100.4" in text

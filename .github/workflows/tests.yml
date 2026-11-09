@@ -4,7 +4,7 @@
 #
 # Two dependency sets are under test on purpose:
 #   unit          the developer set (uv.lock: the SDK, the pipeline and the serve extra)
-#   serve-shipped exactly what the API image installs (deploy/requirements-serve.txt, e.g. litellm 1.100.0),
+#   serve-shipped exactly what the API image installs (deploy/requirements-serve.txt, e.g. litellm 1.100.4),
 #                 so a shipped dependency cannot drift from what CI exercised.
 #
 # serve-shipped has NO pandas or sentence-transformers (it does ship rapidfuzz and scipy since M4: the upload what-changed
