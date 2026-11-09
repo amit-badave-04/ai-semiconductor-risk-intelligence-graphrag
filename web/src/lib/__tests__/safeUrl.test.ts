@@ -13,10 +13,11 @@ describe("safeUrl accepts only a plain https URL", () => {
     expect(safeUrl("https://example.com:8443/a?b=c#d")).toBe("https://example.com:8443/a?b=c#d");
   });
 
+  // The nosemgrep lines below are rejected test inputs, not values rendered into a page.
   it.each([
-    ["the script scheme", js],
+    ["the script scheme", js], // nosemgrep
     ["the script scheme in mixed case", ["JaVa", "ScRiPt:alert(1)"].join("")],
-    ["vbscript:", vb],
+    ["vbscript:", vb], // nosemgrep
     ["data:", "data:text/html,<script>x</script>"],
     ["blob:", "blob:https://example.com/uuid"],
     ["mailto:", "mailto:a@example.com"],
