@@ -1,0 +1,77 @@
+{
+  "head_sha": "2258287db8dad5ce2caeb9fb917de1e7c9848fa7",
+  "date": "2026-11-09",
+  "node": "v26.13.0",
+  "os": "Windows 11 (10.0.26300) x64",
+  "tool": "axe-core 4.14.0 via @axe-core/playwright",
+  "tags": [
+    "wcag2a",
+    "wcag2aa",
+    "wcag21a",
+    "wcag21aa",
+    "wcag22aa"
+  ],
+  "note": "five pages in light and dark colour schemes; all violations listed, serious and critical counted in blocking",
+  "runs": [
+    {
+      "page": "/v2/",
+      "scheme": "dark",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/company/NVDA/",
+      "scheme": "dark",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/freshness/",
+      "scheme": "dark",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/method/",
+      "scheme": "dark",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/workspace/",
+      "scheme": "dark",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/",
+      "scheme": "light",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/company/NVDA/",
+      "scheme": "light",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/freshness/",
+      "scheme": "light",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/method/",
+      "scheme": "light",
+      "blocking": 0,
+      "violations": []
+    },
+    {
+      "page": "/v2/workspace/",
+      "scheme": "light",
+      "blocking": 0,
+      "violations": []
+    }
+  ]
+}

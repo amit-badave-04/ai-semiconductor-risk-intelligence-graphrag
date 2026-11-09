@@ -1,0 +1,174 @@
+{
+  "head_sha": "2258287db8dad5ce2caeb9fb917de1e7c9848fa7",
+  "date": "2026-11-09",
+  "node": "v26.13.0",
+  "os": "Windows 11 (10.0.26300) x64",
+  "tool": "lighthouse 13.6.0",
+  "server": "fixture server (tests/e2e/serve_fixture_app.py), built web/dist",
+  "gates": {
+    "accessibility": 0.95,
+    "best-practices": 0.9
+  },
+  "gate_failures": [],
+  "note": "performance and seo are recorded, not gated; the /legacy baseline (S8) is recorded, not gated",
+  "runs": [
+    {
+      "page": "/v2/",
+      "formFactor": "mobile",
+      "scores": {
+        "performance": 0.78,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 8,
+      "transferBytes": 437805,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/",
+      "formFactor": "desktop",
+      "scores": {
+        "performance": 0.76,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 8,
+      "transferBytes": 437805,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/company/NVDA/",
+      "formFactor": "mobile",
+      "scores": {
+        "performance": 0.9,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 8,
+      "transferBytes": 430707,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/company/NVDA/",
+      "formFactor": "desktop",
+      "scores": {
+        "performance": 0.99,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 8,
+      "transferBytes": 430707,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/workspace/",
+      "formFactor": "mobile",
+      "scores": {
+        "performance": 0.9,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 7,
+      "transferBytes": 429233,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/workspace/",
+      "formFactor": "desktop",
+      "scores": {
+        "performance": 1,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 7,
+      "transferBytes": 429233,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/freshness/",
+      "formFactor": "mobile",
+      "scores": {
+        "performance": 0.91,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 6,
+      "transferBytes": 428540,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/freshness/",
+      "formFactor": "desktop",
+      "scores": {
+        "performance": 1,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 6,
+      "transferBytes": 428540,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/method/",
+      "formFactor": "mobile",
+      "scores": {
+        "performance": 1,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 6,
+      "transferBytes": 428540,
+      "runtimeError": null
+    },
+    {
+      "page": "/v2/method/",
+      "formFactor": "desktop",
+      "scores": {
+        "performance": 1,
+        "accessibility": 1,
+        "best-practices": 1,
+        "seo": 0.5
+      },
+      "requests": 6,
+      "transferBytes": 428540,
+      "runtimeError": null
+    }
+  ],
+  "legacy_baseline": [
+    {
+      "page": "/legacy",
+      "formFactor": "mobile",
+      "scores": {
+        "performance": 0.81,
+        "accessibility": 0.96,
+        "best-practices": 0.96,
+        "seo": 0.9
+      },
+      "requests": 5,
+      "transferBytes": 86912,
+      "runtimeError": null
+    },
+    {
+      "page": "/legacy",
+      "formFactor": "desktop",
+      "scores": {
+        "performance": 0.8,
+        "accessibility": 0.96,
+        "best-practices": 0.96,
+        "seo": 0.9
+      },
+      "requests": 5,
+      "transferBytes": 86912,
+      "runtimeError": null
+    }
+  ]
+}
