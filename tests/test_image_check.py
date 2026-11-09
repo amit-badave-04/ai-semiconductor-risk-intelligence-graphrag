@@ -448,3 +448,15 @@ def test_each_run_of_the_script_gets_a_fresh_container_with_its_own_boot_line_wa
     fn = body.split("start_and_wait() {", 1)[1].split("\n          }\n", 1)[0]
     assert "docker rm -f semigraph-check" in fn and "docker run -d" in fn and "process marked non-dumpable" in fn
     assert body.count("start_and_wait\n") == 2
+
+
+def test_the_first_ci_image_run_findings_stay_fixed(script):
+    # Image run 42688935960: four checks measured the wrong thing. The canary values carry a suffix (prefix match),
+    # non-dumpable is measured by the refused reads and PR_GET_DUMPABLE (the /proc owner stays the uid on that kernel),
+    # and the workspace-store search skips source files.
+    assert 'case "$v" in "$pat$n"*) ;;' in script
+    assert 'cat "/proc/$api_pid/maps"' in script and 'owner" = "0"' not in script
+    assert 'prctl(3, 0, 0, 0, 0)' in script and 'info["dumpable"] == 0' in script
+    assert 'info["proc_uid"] == 0' not in script
+    ws_line = next(line for line in script.splitlines() if line.startswith("ws=$(find"))
+    assert "-path /srv/src" in ws_line and "-name '*.py'" in ws_line and "-prune" in ws_line

@@ -68,7 +68,7 @@ else
     missing=""
     for n in $SECRET_NAMES; do
         v=$(printenv "$n")
-        case "$v" in "$pat$n") ;; *) missing="$missing $n" ;; esac
+        case "$v" in "$pat$n"*) ;; *) missing="$missing $n" ;; esac
     done
     # positive control: the search used below must find a canary where one is known to be (this shell's own environment)
     grep -qaF -e "$pat" /proc/$$/environ 2>/dev/null || missing="$missing (positive control: grep found no canary in its own environment)"
@@ -91,8 +91,10 @@ if [ -n "$api_pid" ]; then
     else
         report api_proc_environ_unreadable PASS "read refused"
     fi
+    # Non-dumpable, measured directly: the kernel refuses maps and environ to a same-uid reader only when the target is not
+    # dumpable (the /proc/<pid> owner is not used: on some kernels it stays the process uid while the reads are refused).
     owner=$(stat -c %u "/proc/$api_pid" 2>/dev/null)
-    if [ "$owner" = "0" ]; then report api_proc_root_owned PASS "/proc/$api_pid is owned by uid 0 (non-dumpable)"; else report api_proc_root_owned FAIL "/proc/$api_pid owner uid '$owner'"; fi
+    if cat "/proc/$api_pid/maps" >/dev/null 2>&1; then report api_proc_root_owned FAIL "the serving user can read /proc/$api_pid/maps: the server is dumpable"; else report api_proc_root_owned PASS "maps and environ refused to the same uid: non-dumpable (owner uid $owner)"; fi
     # the server must run as the serving user: /proc/<pid>/status is world-readable (the entry is root-owned but not hidden)
     app_uid=$(id -u app 2>/dev/null)
     uids=$(awk '/^Uid:/ {print $2 " " $3}' "/proc/$api_pid/status" 2>/dev/null)
@@ -161,7 +163,7 @@ FIXTURE = b"Containment fixture.\n\nThis fixture paragraph is plain text for the
 # The real worker entry point, run as __main__ in a child with the same command line flags and environment as an upload job. The
 # child wraps apply_sandbox_limits (the first statement of the worker's __main__ guard) to report the state it leaves behind.
 CHILD = """
-import json, os, runpy, sys, threading
+import ctypes, json, os, runpy, sys, threading
 import semigraph.uploads.sandbox as sb
 orig = sb.apply_sandbox_limits
 def wrapped(*a, **k):
@@ -185,6 +187,7 @@ def wrapped(*a, **k):
             "nnp": [l for l in status if l.startswith("NoNewPrivs")],
             "nproc": [l for l in limits if l.startswith("Max processes")],
             "proc_uid": os.stat("/proc/self").st_uid,
+            "dumpable": ctypes.CDLL(None).prctl(3, 0, 0, 0, 0),
             "env": dict(os.environ)}
     sys.stdout.write("INFO " + json.dumps(info) + "\\n")
     sys.stdout.flush()
@@ -250,7 +253,8 @@ else:
     result("worker_nproc_zero", len(limit) == 1 and limit[0].split()[2:4] == ["0", "0"], limit)
     result("worker_fork_refused", info["fork_refused"] is True and info["thread_refused"] is True,
            "fork refused %s, thread start refused %s" % (info["fork_refused"], info["thread_refused"]))
-    result("worker_proc_root_owned", info["proc_uid"] == 0, "worker /proc entry uid %s" % info["proc_uid"])
+    result("worker_proc_root_owned", info["dumpable"] == 0,
+           "worker PR_GET_DUMPABLE %s (proc entry uid %s)" % (info["dumpable"], info["proc_uid"]))
 
 after = snapshot("/tmp")
 result("worker_leaves_no_tmp", not (after - before), "new: %s" % sorted(after - before)[:5] if after - before else "no new entry in /tmp")
@@ -312,7 +316,7 @@ if [ -z "$nodes" ] && [ -z "$nodefile" ]; then report no_node PASS "no node, nod
 # The workspace store lives in the database, not on disk: the serving code writes nothing under /srv and its temporary files go to
 # /tmp. This asserts that layout (no workspace directory a job of another workspace could read); the /tmp comparison above shows a
 # parse leaves nothing behind.
-ws=$(find /tmp /var/tmp /srv /opt/semigraph /nonexistent -iname '*workspace*' -print -quit 2>/dev/null)
+ws=$(find /tmp /var/tmp /srv /opt/semigraph /nonexistent \( -path /srv/src -o -name '*.py' -o -name '*.pyc' \) -prune -o -iname '*workspace*' -print -quit 2>/dev/null)
 if [ -z "$ws" ]; then report workspace_store_none PASS "no on-disk workspace store; per-workspace data lives in the database"; else report workspace_store_none FAIL "found $ws"; fi
 
 finish
