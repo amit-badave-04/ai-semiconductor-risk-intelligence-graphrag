@@ -130,10 +130,12 @@ def test_the_fp32_branch_pins_the_libraries_the_gate_runs_on_to_the_serving_pins
     """The in-build bit-exactness check is against THIS onnxruntime: it must be the one the image serves with."""
     run = variant_instruction()
     install = re.search(r"pip install ([^;&]+)", run).group(1)
+    assert install.strip() == "--require-hashes --only-binary=:all: -r deploy/requirements-model-fp32.txt"   # hashed file (R5-2)
+    pins = (ROOT / "deploy" / "requirements-model-fp32.txt").read_text(encoding="utf-8")
 
     for name, version in serving_pins().items():
-        assert f'"{name}=={version}"' in install
-    assert re.search(r'"onnx==\d+\.\d+\.\d+"', install)
+        assert re.search(rf"^{name}=={re.escape(version)} \\$", pins, re.M)
+    assert re.search(r"^onnx==\d+\.\d+\.\d+ \\$", pins, re.M)
 
 
 # ---------------------------------------------------------------- KEEP_UNPATCHED

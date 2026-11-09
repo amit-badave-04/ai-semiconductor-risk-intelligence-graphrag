@@ -1,0 +1,109 @@
+# The production image, built and run in CI, with the containment check inside it (docs/security/accepted-risks.md R5-7 pre-I4
+# check and R5-3 gate; docs/specs/m5b-frontend.md Acceptance, verifier Warning 4).
+#
+# What runs: `docker build .` of the production Dockerfile with the one build argument production uses (EMBEDDER_VARIANT, read from
+# fly.toml, so this job builds the variant that is deployed; no secret, no Fly), then the image started with its own CMD
+# (python -m semigraph.serve.drain) with --network none and a fake value for every secret setting (a canary).
+# There is no Neo4j, so the server never gets past the database connection at boot (it retries for 90 s); but the lifespan marks the
+# process non-dumpable FIRST and logs "process marked non-dumpable", which is what this job waits for. At that point the server
+# process is exactly the one production runs, and deploy/checks/image_check.sh (copied into the image by the Dockerfile) runs in the
+# container as the serving user. The script must finish well inside the 90 s of the retry window: each run is limited to 80 s and a
+# stall fails with a message that says to rerun.
+# A second run, in a fresh container, proves the command the RUNBOOK gives for the live machine (root drops to the serving user,
+# deployed mode). It goes through docker exec; that a Fly SSH session carries the same environment is shown by the first run on the machine.
+# What this does and does not measure: file, process, privilege and environment containment of the image, as the serving user. With
+# --network none, worker network egress is not measured here. The workspace-store check only reads the image layout (no
+# upload has been processed in this container), so it is not isolation evidence either.
+# No GitHub secret is used. Every action is pinned to a full commit SHA with its release in a trailing comment (tests/test_image_check.py).
+name: image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [v2]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - deploy/**
+      - src/semigraph/**
+      - web/**
+      - fly.toml
+      - .github/workflows/image.yml
+
+permissions:
+  contents: read
+
+jobs:
+  containment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Read the embedder variant production builds with
+        id: variant
+        run: |
+          variant="$(python3 -c "import tomllib; print(tomllib.load(open('fly.toml', 'rb'))['build']['args']['EMBEDDER_VARIANT'])")"
+          case "$variant" in q8|fp32) ;; *) echo "unexpected EMBEDDER_VARIANT in fly.toml"; exit 1 ;; esac
+          echo "variant=$variant" >> "$GITHUB_OUTPUT"
+      - name: Build the production image
+        run: docker build --build-arg EMBEDDER_VARIANT="${{ steps.variant.outputs.variant }}" -t semigraph-image-check:ci .
+      - name: Containment checks, each in a fresh container
+        run: |
+          # Each check gets its own container: the server exits about 90 s after its boot line, so the second check must not
+          # share that window with the first.
+          start_and_wait() {
+            docker rm -f semigraph-check >/dev/null 2>&1 || true
+            docker run -d --name semigraph-check --network none \
+              -e NEO4J_PASSWORD=CANARY_NEO4J_PASSWORD \
+              -e ANTHROPIC_API_KEY=CANARY_ANTHROPIC_API_KEY \
+              -e OPENAI_API_KEY=CANARY_OPENAI_API_KEY \
+              -e TURNSTILE_SECRET_KEY=CANARY_TURNSTILE_SECRET_KEY \
+              -e ADMIN_TOKEN=CANARY_ADMIN_TOKEN \
+              -e EMBEDDING_API_KEY=CANARY_EMBEDDING_API_KEY \
+              -e ORIGIN_AUTH_SECRET=CANARY_ORIGIN_AUTH_SECRET \
+              -e IP_HASH_PEPPER=CANARY_IP_HASH_PEPPER \
+              -e LANGFUSE_SECRET_KEY=CANARY_LANGFUSE_SECRET_KEY \
+              -e LANGFUSE_HASH_SALT=CANARY_LANGFUSE_HASH_SALT \
+              semigraph-image-check:ci
+            for i in $(seq 1 60); do
+              logs="$(docker logs semigraph-check 2>&1 || true)"
+              case "$logs" in
+                *"process marked non-dumpable"*) echo "server up after about $((i * 2)) s"; return 0 ;;
+              esac
+              if [ "$(docker inspect -f '{{.State.Running}}' semigraph-check)" != "true" ]; then
+                echo "the container exited before the boot line"; return 1
+              fi
+              sleep 2
+            done
+            echo "no boot line within 120 s"; return 1
+          }
+          no_canary_in_log() {
+            logs="$(docker logs semigraph-check 2>&1 || true)"
+            case "$logs" in
+              *CANARY_*) echo "a canary value reached the container log"; return 1 ;;
+            esac
+            echo "no canary in the container log"
+          }
+          echo "== check 1: as the serving user"
+          start_and_wait
+          rc=0
+          timeout 80 docker exec -u app -e IMAGE_CHECK_MODE=ci semigraph-check sh /srv/checks/image_check.sh || rc=$?
+          if [ "$rc" -eq 124 ]; then echo "the image check did not finish in 80 s (the server exits at about 90 s): rerun the job"; fi
+          [ "$rc" -eq 0 ] || exit "$rc"
+          no_canary_in_log
+          echo "== check 2: deployed mode, the command the RUNBOOK gives for the live machine"
+          start_and_wait
+          docker exec -u root semigraph-check sh -c 'command -v setpriv'
+          rc=0
+          timeout 80 docker exec -u root semigraph-check setpriv --reuid app --regid app --clear-groups env IMAGE_CHECK_MODE=deployed sh /srv/checks/image_check.sh || rc=$?
+          if [ "$rc" -eq 124 ]; then echo "the deployed-mode check did not finish in 80 s: rerun the job"; fi
+          [ "$rc" -eq 0 ] || exit "$rc"
+          no_canary_in_log
+      - name: Container log
+        if: always()
+        run: docker logs semigraph-check 2>&1 | tail -n 200
+      - name: Remove the container
+        if: always()
+        run: docker rm -f semigraph-check || true

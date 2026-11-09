@@ -1,0 +1,11 @@
+# Direct dependencies of the Dockerfile MODEL stage's 8-bit build (scripts/build_onnx_embedder.py), nothing else. Pinned by:
+#   uv pip compile deploy/requirements-model.in -o deploy/requirements-model.txt --python-version 3.13 --python-platform x86_64-manylinux_2_28 --generate-hashes --constraint deploy/requirements-serve.txt
+# (the Dockerfile installs it with pip install --require-hashes -r; R5-2 in docs/security/accepted-risks.md.)
+# --constraint holds every package this file shares with the serving lock (numpy, onnxruntime, huggingface-hub, ...) at the
+# serving pin, so the model stage never resolves a library to a version the image does not serve with.
+# The serving file's python-platform is used here as well: the stage runs on the same Linux x86_64 base image.
+onnx>=1.17
+onnxruntime>=1.29
+onnx-ir>=1.0
+huggingface_hub>=1.0
+numpy>=2

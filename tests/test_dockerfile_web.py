@@ -45,12 +45,14 @@ IMPORT_PATH_CHECK = r"""RUN set -eu; paths="$(python -c 'import sys; print(*sys.
 # Setuid and setgid bits come off every file of the image's root filesystem (the build fails if one is left); it only removes bits.
 STRIP_SETID = """RUN set -eu; find / -xdev -perm /6000 -type f -exec chmod a-s {} +; bad="$(find / -xdev -perm /6000 -type f -print -quit)"; test -z "$bad\""""
 USERADD = "RUN useradd --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin app"
-SERVE_INSTALL = "RUN uv pip install --system --no-cache --require-hashes -r deploy/requirements-serve.txt"
+SERVE_INSTALL = "RUN uv pip install --system --no-cache --require-hashes --no-build -r deploy/requirements-serve.txt"
 WORKDIR_SRV = "WORKDIR /srv"
 SAFE_PATH = "PYTHONSAFEPATH=1"
 NO_USER_SITE = "PYTHONNOUSERSITE=1"
 CACHE_HOME = "XDG_CACHE_HOME=/tmp/.cache"        # the serving user has no home to cache in: caches go to /tmp
-SCAN_EXEMPT = {STRIP_SETID}                      # the one step the ownership scans read as a hit (it names ``/``) and that only removes bits
+# The image smoke check: root-owned and read-only (0555, no --chown), so it reads as an ownership step under /srv but hands nothing on.
+IMAGE_CHECK_COPY = "COPY --chmod=0555 deploy/checks/image_check.sh /srv/checks/image_check.sh"
+SCAN_EXEMPT = {STRIP_SETID, IMAGE_CHECK_COPY}   # the steps the ownership scans read as a hit (STRIP_SETID names ``/``) and that hand nothing to the app user
 DIST_TARGET = "/opt/semigraph/web"        # /opt and /opt/semigraph are root-owned and nothing chowns them (R13, owner decision 5)
 WEB_COPY = f"COPY --from=web /web/dist {DIST_TARGET}"  # no --chown: root-owned, the app user cannot write it (R13)
 WEB_COPY_TARGET = re.compile(r"^COPY --from=web /web/dist (\S+)$")
@@ -527,7 +529,7 @@ def test_the_base_images_are_pinned_by_digest_and_the_serving_requirements_insta
     model, runtime = PYTHON_FROM.match(STAGES["model"][0]), PYTHON_FROM.match(STAGES["runtime"][0])
     assert model and runtime and model.group(1) == runtime.group(1)
     assert SERVE_INSTALL in STAGES["runtime"]
-    assert not [step for step in STAGES["runtime"] if "uv pip install" in step and "--require-hashes" not in step and "--no-deps ." not in step]
+    assert not [step for step in STAGES["runtime"] if "uv pip install" in step and "--require-hashes" not in step and "--no-deps --build-constraint deploy/requirements-build.txt ." not in step]
     uv_copies = [step for step in STAGES["runtime"] if step.startswith("COPY --from=ghcr.io/")]
     assert len(uv_copies) == 1 and UV_IMAGE.fullmatch(uv_copies[0].split()[1].removeprefix("--from="))
 

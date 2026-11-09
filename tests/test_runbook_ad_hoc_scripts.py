@@ -103,7 +103,7 @@ def test_the_runtime_image_has_no_pythonpath_so_isolated_mode_still_finds_the_pa
     not editable) and sets no PYTHONPATH, so the documented command can import ``semigraph`` and ``neo4j``."""
     dockerfile = read("Dockerfile")
     assert "PYTHONPATH" not in dockerfile
-    assert re.search(r"uv pip install --system --no-cache --no-deps \.\s", dockerfile)
+    assert re.search(r"uv pip install --system --no-cache --no-deps (?:--build-constraint \S+ )?\.\s", dockerfile)
     assert "PYTHONPATH" not in read("fly.toml")
 
 

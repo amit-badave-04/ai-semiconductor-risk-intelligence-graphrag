@@ -27,20 +27,26 @@
 # An fp32 image built WITHOUT KEEP_UNPATCHED has no 8-bit file, so with fly.toml unchanged it fails to boot.
 FROM python:3.13-slim@sha256:09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc AS model
 ENV PIP_NO_CACHE_DIR=1 HF_HUB_DISABLE_PROGRESS_BARS=1 HF_HOME=/hf
-RUN pip install "onnx>=1.17" "onnxruntime>=1.29" "onnx-ir>=1.0" "huggingface_hub>=1.0" "numpy>=2"
 WORKDIR /build
+# The model stage installs from hashed requirements, like the runtime does (R5-2): deploy/requirements-model.txt is generated
+# with --generate-hashes from deploy/requirements-model.in, at the serving pins for every package the two locks share, and
+# --require-hashes fails the build for a package that is unpinned or whose hash differs.
+COPY deploy/requirements-model.txt deploy/
+RUN pip install --require-hashes --only-binary=:all: -r deploy/requirements-model.txt
 COPY scripts/build_onnx_embedder.py scripts/
 RUN python scripts/build_onnx_embedder.py --out /models/qwen3-embedding-0.6b-q8 --no-verify \
  && python -c "import shutil; shutil.rmtree('/hf', ignore_errors=True)"
 # The variant arguments come AFTER the 8-bit build, so changing them never invalidates that layer. fp32 pins the libraries
-# to the serving pins (deploy/requirements-serve.txt): the build's bit-exactness check runs on the onnxruntime it serves with.
+# to the serving pins (deploy/requirements-serve.txt) through the hashed deploy/requirements-model-fp32.txt: the build's bit-exactness
+# check runs on the onnxruntime it serves with.
 ARG EMBEDDER_VARIANT=q8
 ARG KEEP_UNPATCHED=0
+COPY deploy/requirements-model-fp32.txt deploy/
 COPY scripts/predequantize_embedder.py scripts/embedder_timing.py scripts/
 RUN set -eu; \
     case "$EMBEDDER_VARIANT" in \
       q8) ;; \
-      fp32) pip install "onnx==1.22.0" "onnxruntime==1.29.0" "numpy==2.5.3" "tokenizers==0.23.2"; \
+      fp32) pip install --require-hashes --only-binary=:all: -r deploy/requirements-model-fp32.txt; \
             python scripts/predequantize_embedder.py --src /models/qwen3-embedding-0.6b-q8 --out /models/qwen3-embedding-0.6b-fp32; \
             if [ "$KEEP_UNPATCHED" != 1 ]; then rm -rf /models/qwen3-embedding-0.6b-q8; fi ;; \
       *) echo "EMBEDDER_VARIANT must be q8 or fp32, got '$EMBEDDER_VARIANT'" >&2; exit 1 ;; \
@@ -72,13 +78,15 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 EMBEDDING_BACKEND=onnx \
     ONNX_MODEL_PATH=/srv/models/qwen3-embedding-0.6b-${EMBEDDER_VARIANT}/model_${EMBEDDER_VARIANT}.onnx
 COPY --from=ghcr.io/astral-sh/uv:0.11.20@sha256:eaa5f1a3305307aaf9e67fe2bbba1d85ebbb2d8a63bce23af21797bfafbe0f8b /uv /bin/uv
 WORKDIR /srv
-COPY deploy/requirements-serve.txt deploy/
+COPY deploy/requirements-serve.txt deploy/requirements-build.txt deploy/
 # --require-hashes: every package of the file must carry a pinned hash that matches (deploy/requirements-serve.txt is generated
 # with --generate-hashes), so an index that serves a different file fails the build.
-RUN uv pip install --system --no-cache --require-hashes -r deploy/requirements-serve.txt
+RUN uv pip install --system --no-cache --require-hashes --no-build -r deploy/requirements-serve.txt
 COPY pyproject.toml README.md ./
 COPY src/ src/
-RUN uv pip install --system --no-cache --no-deps .
+# The project itself builds in an isolated environment; its build backend (hatchling and its dependencies) comes from the
+# hash-locked deploy/requirements-build.txt as a build constraint, so uv checks every hash of it (R5-2).
+RUN uv pip install --system --no-cache --no-deps --build-constraint deploy/requirements-build.txt .
 # Never run as root; port 8080 needs no privileges. Nothing under /srv is handed to that user: /srv (the working directory of the
 # server and of every upload worker it starts) and everything under it stay root-owned, so the serving user can write nothing on
 # the import path or under /srv. The serving code writes nothing under /srv (state is in the database, temporary files go to
@@ -103,6 +111,8 @@ RUN set -eu; \
 # /opt/semigraph as root (the base image's /opt is root's) and nothing chowns or chmods /opt or anything under it, before or
 # after this line (tests/test_dockerfile_web.py). Settings.ui_dist_dir defaults to this same path.
 COPY --from=web /web/dist /opt/semigraph/web
+# Image smoke check (deploy/checks/image_check.sh): root-owned and read-only (0555), copied before the privilege drop.
+COPY --chmod=0555 deploy/checks/image_check.sh /srv/checks/image_check.sh
 # PYTHONSAFEPATH=1 (Python 3.11+) keeps the working directory off sys.path for the server (`python -m ...`), and
 # PYTHONNOUSERSITE=1 keeps the user site of /home/app off it, for the server and for anything that inherits them. The sandboxed
 # upload workers get an allowlisted environment instead, so they start with -s -P on their own command line (uploads/sandbox.py

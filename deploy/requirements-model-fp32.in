@@ -1,0 +1,9 @@
+# Libraries the Dockerfile MODEL stage adds for the fp32 variant (scripts/predequantize_embedder.py), on top of requirements-model.txt.
+# Pinned by:
+#   uv pip compile deploy/requirements-model-fp32.in -o deploy/requirements-model-fp32.txt --python-version 3.13 --python-platform x86_64-manylinux_2_28 --generate-hashes --constraint deploy/requirements-serve.txt
+# onnxruntime, numpy and tokenizers are the serving pins (deploy/requirements-serve.txt): the build's bit-exactness check runs on
+# the onnxruntime the image serves with. tests/test_dockerfile_model_pins.py keeps them equal. onnx is not served; it is pinned here.
+onnx==1.22.0
+onnxruntime==1.29.0
+numpy==2.5.3
+tokenizers==0.23.2

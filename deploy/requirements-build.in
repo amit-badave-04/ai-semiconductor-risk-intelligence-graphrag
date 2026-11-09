@@ -1,0 +1,5 @@
+# The build backend of pyproject.toml ([build-system] requires), pinned and hash-locked for the Dockerfile's project install (R5-2):
+#   uv pip compile deploy/requirements-build.in -o deploy/requirements-build.txt --python-version 3.13 --python-platform x86_64-manylinux_2_28 --generate-hashes --constraint deploy/requirements-serve.txt
+# The runtime stage passes it as --build-constraint, so the isolated build environment resolves hatchling and its dependencies to
+# these pins and uv checks every hash; none of it is installed into the image.
+hatchling

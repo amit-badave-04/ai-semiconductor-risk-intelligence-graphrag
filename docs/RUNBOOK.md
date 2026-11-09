@@ -807,6 +807,68 @@ questions that cite them as `doc:` ids next to the filing evidence, and see what
   the same command inside a double-quoted string breaks in Windows PowerShell 5.1).
   Moving the VM back to `shared-cpu-1x` / 2 GB requires `UPLOADS_ENABLED = "false"`.
 
+## Frontend: flags, flip, rollback
+
+The new frontend is served from the same image as the API and chosen by two settings in `fly.toml [env]`, `UI_V2_PREVIEW` and
+`UI_V2` (both default false). They are plain settings, never secrets, so `scripts/check_env_fly.py` (which reads `[env]` and warns when
+a name is also a secret) stays quiet. Source: `docs/specs/m5b-frontend.md` R7 and D18; tags come from `flyctl releases -a semigraph`.
+
+| `UI_V2_PREVIEW` | `UI_V2` | `/` | `/legacy` | `/v2/*` | root pages |
+|---|---|---|---|---|---|
+| false | false | old page | 404 | 404 | 404 |
+| true | false | old page | old page | new app, `noindex` | 404 |
+| any | true | new app | old page | new app, `noindex` (alias) | new app |
+
+Both false is the previous surface, plus `Cache-Control: no-cache` on `/` and `GET /api/config`.
+
+**Change the image (preview deploy).** Edit `[env]` (preview: `UI_V2_PREVIEW = "true"`), then:
+
+```
+uv run python -m scripts.check_env_fly
+flyctl deploy --ha=false --remote-only --yes
+```
+
+**Flip a flag, or roll a flag back, on the image that is already running.** Edit `[env]`, run `check_env_fly`, then deploy the running
+tag (add `--ha=false --yes` as in START above):
+
+```
+flyctl deploy --image registry.fly.io/semigraph:<tag now running>
+```
+
+Check that the edited `[env]` took effect: `flyctl ssh console -a semigraph -C "printenv UI_V2_PREVIEW"`, and `/v2/` answers 404
+while the flag is off. If it does not take effect with `--image`, a flag rollback is the full deploy above.
+
+**Roll the image back.** The same command with the previous tag (the v16 image is `registry.fly.io/semigraph:m5a-openapi-2d90286`).
+
+Every deploy replaces the one machine and drains it first (see "Stopping, deploying and the drain").
+
+**After a deploy: image check.** The image carries a containment check. `flyctl ssh console` logs in as root, and the check must run
+as the serving user, so the command drops to that user first and runs the script in deployed mode (the live machine has real secrets
+and no canary values, so the four canary checks are reported as SKIP and the run ends with "all checks PASS, 4 skipped (deployed mode)"; every other check runs):
+
+```
+flyctl ssh console -a semigraph -C "setpriv --reuid app --regid app --clear-groups env IMAGE_CHECK_MODE=deployed sh /srv/checks/image_check.sh"
+```
+
+It prints one PASS, SKIP or FAIL line per check and exits non-zero on a FAIL (in ci mode, the default, a SKIP is a FAIL); its list includes `no_node` (no Node in the runtime image),
+`api_runs_as_app` (the server runs as the serving user) and the dist ownership and path checks. The image job in CI runs this same
+command on the built image (`.github/workflows/image.yml`).
+
+**Upload aborts (`too_slow`).** Look for jobs the server stopped on projected time (`docs/security/accepted-risks.md`, UC-1):
+
+```
+flyctl logs -a semigraph | grep "code=too_slow"
+```
+
+In PowerShell: `flyctl logs -a semigraph | Select-String "code=too_slow"`. Each one refunded the visitor's daily upload count.
+
+**Rollback drill (D18).** Three deploys, no API spend; time each one and record them in `artifacts/m5b_rollback_drill.json`:
+
+1. Preview on: `UI_V2_PREVIEW = "true"`, `check_env_fly`, deploy.
+2. Preview off on the same image: `UI_V2_PREVIEW = "false"`, `check_env_fly`, `flyctl deploy --image registry.fly.io/semigraph:<tag now running>`.
+   While it is off, `/v2/` answers 404 and `/` is unchanged.
+3. Preview on again, the same way.
+
 ## Troubleshooting
 
 - `/healthz` 503 → the API cannot reach Neo4j: `flyctl status -a semigraph-neo4j` (machine must be
