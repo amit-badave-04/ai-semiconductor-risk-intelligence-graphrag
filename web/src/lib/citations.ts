@@ -85,8 +85,9 @@ export function docChipLabel(id: unknown, evidence?: unknown): string {
   return ev.title ? `${asText(ev.title)} \u00b7 ${base}` : `your document \u00b7 ${base}`;
 }
 
-/** Where a chip lives: the streamed answer, the what-changed view or the Company page. All open the same drawer. */
-export type ChipPlace = "answer" | "changes" | "company";
+/** Where a chip lives: the streamed answer, its Sources list (docs/specs/m5b-redesign.md RD15), the what-changed view or the
+ *  Company page. All open the same drawer. */
+export type ChipPlace = "answer" | "sources" | "changes" | "company";
 
 /**
  * The occurrence number of each id across `groups`, in order: the first time an id appears it is 0, the next time 1, and so on,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { ReadWithCare, SourcesList } from "@/components/AnswerNotes";
 import { AnswerSample } from "@/components/AnswerSample";
 import { AnswerMeta } from "@/components/Badges";
 import { AnswerText } from "@/components/Chips";
@@ -122,6 +123,9 @@ function AnswerArea({ ask, stats, renderFailed, onRenderError }: AnswerProps) {
       {ask.done !== null && !renderFailed && (
         <div id="meta">
           <RenderBoundary key={ask.seq} fallback={null} onError={onRenderError}>
+            {/* RD13 under the answer, not beside each claim (AnswerText's markup is pinned by R21): recorded in the spec Status */}
+            <ReadWithCare text={ask.text} />
+            <SourcesList text={ask.text} gen={ask.seq} staleIds={stale} />
             <WhatWasChecked done={ask.done} />
             {/* RD14: the legacy badges and the checks hint, for analysts */}
             <details className="mt-3 text-sm">

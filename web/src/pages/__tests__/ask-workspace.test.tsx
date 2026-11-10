@@ -71,8 +71,11 @@ describe("the Ask page with a workspace open (R23)", () => {
     await env.user.type(screen.getByRole("textbox", { name: "Your question" }), "q");
     await env.user.click(screen.getByRole("button", { name: "Ask" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Done."));
-    const marked = Array.from(document.querySelectorAll("[data-stale]"));
+    const marked = Array.from(document.querySelectorAll("#answer [data-stale]"));
     expect(marked.map((c) => c.getAttribute("data-id"))).toEqual([OLD]);
     expect(marked[0].getAttribute("title")).toMatch(/a newer version exists/);
+    // RD15: its entry in Sources is marked the same way, and only that one
+    const listed = Array.from(screen.getByRole("region", { name: "Sources (2)" }).querySelectorAll("[data-stale]"));
+    expect(listed.map((c) => c.getAttribute("data-id"))).toEqual([OLD]);
   });
 });

@@ -5,6 +5,7 @@
 // is a reviewable diff. Non-ASCII characters are written as unicode escapes.
 import type { CheckedLine } from "@/lib/answerMeta";
 import type { RetrievalParams, StatusView } from "@/lib/askStatus";
+import type { HedgeGroup } from "@/lib/hedge";
 import type { StampView } from "@/lib/stamp";
 import type { StepCode, StepView } from "@/lib/steps";
 
@@ -203,6 +204,23 @@ export const deck = {
     },
   },
 
+  care: {
+    /** RD13: "Read with care", one note per change-claim wording an answer holds (lib/hedge.ts hedgesIn), each with the counts
+     *  pages/Method.copy.ts HEDGES pins for that wording (tests/test_web_method_copy.py checks them against RELIABILITY). */
+    heading: "Read with care",
+    line: (group: HedgeGroup, counts: readonly number[]): string => {
+      switch (group) {
+        case "removed":
+          return `\u201cNo longer appears as a separate risk factor\u201d comes from an automatic comparison of two filings. Checked by hand, ${counts[0]} of ${counts[1]} such risk factors were gone as a standalone risk factor, but ${counts[2]} of ${counts[3]} had been folded into another risk factor rather than dropped.`;
+        case "unmatchedNew":
+          return `\u201cNo matching risk factor found in the earlier filing\u201d comes from an automatic comparison. Checked by hand, only ${counts[0]} of ${counts[1]} such risk factors were really new; the others had been disclosed before.`;
+        case "passageRemoved":
+          return `A sentence \u201cwhose wording was not found in the newer filing\u201d may still be there in other words: checked by hand, ${counts[0]} of ${counts[1]} such sentences were.`;
+      }
+    },
+    link: "How reliable change claims are",
+  },
+
   chips: {
     /** RD11: a source stamp's label (lib/stamp.ts stampView). No pilcrow, no leading zeros; the company only once loaded. */
     label: (view: StampView): string => {
@@ -224,6 +242,8 @@ export const deck = {
           return view.text;
       }
     },
+    /** RD15: the list of an answer's distinct cited sources */
+    sourcesHeading: (count: number): string => `Sources (${count})`,
     /** shown after a stale chip's label (a workspace answer cited an older version of the document) */
     stale: " (older version)",
   },
