@@ -9,6 +9,21 @@ import type { HedgeGroup } from "@/lib/hedge";
 import type { StampView } from "@/lib/stamp";
 import type { StepCode, StepView } from "@/lib/steps";
 
+// The legacy page's words that the redesigned page still shows, word for word, as named exports so that
+// tests/test_web_copy_deck.py keeps pinning each against index.html (R4 retired pages/Ask.copy.ts): the client's error clauses
+// (state/askState.ts), the Ask footer (pages/AskParts.tsx), and the two refusals the SERVER words (routes.py; the drawer says
+// what the server would have, components/evidenceFetch.ts).
+export const CLAUSE_TOKEN_EXPIRED = " (the check expired \u2014 please click Ask again)";
+export const CLAUSE_NO_TOKEN = " (the bot check below has not completed yet \u2014 wait a moment and click Ask again)";
+export const STATUS_NETWORK = "network error \u2014 is the service online?";
+export const FOOTER_LEAD = "Live questions cost real money (";
+export const FOOTER_AFTER_COST =
+  "), so they are rate-limited per address and capped per day; benchmark questions are served from a saved evaluation run. Financial figures come from XBRL facts, not from model parsing. Each answer is checked so that every cited id was retrieved and every number matches the retrieved context; those checks do not prove that a sentence is supported by the passage it cites, so read the source. Source code and methodology: ";
+export const FOOTER_LINK_TEXT = "GitHub";
+export const FOOTER_END = ".";
+export const MSG_NOT_PUBLIC_EVIDENCE = "not a public evidence id";
+export const MSG_MALFORMED_EVIDENCE = "malformed evidence id";
+
 /** The per-address limits of live questions, as /api/stats reports them (lib/askStatus.ts liveLimits). */
 export interface Limits {
   perWindow: number;

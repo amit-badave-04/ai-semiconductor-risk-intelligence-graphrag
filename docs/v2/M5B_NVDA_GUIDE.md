@@ -146,7 +146,7 @@ Page titles come from the code as "<page name> - semigraph" (the code uses a mid
 
 ### 5.1 Ask  (`/v2/`)
 
-Labels in the code (`web/src/pages/Ask.copy.ts`, `Ask.tsx`, `components/EvidenceDrawer.tsx`, `components/Steps.tsx`): the
+Labels in the code (`web/src/copy/deck.ts` (Ask.copy.ts until R4), `Ask.tsx`, `components/EvidenceDrawer.tsx`, `components/Steps.tsx`): the
 level 1 heading is "Ask"; two named sections follow, "Benchmark questions (instant, cached)" (the examples) and "Ask the
 graph" (the question and the answer, a level 2 heading that takes focus when an answer is replaced under an open drawer); a
 box labelled "Your question"; a select named "Retrieval strategy" (options "hybrid GraphRAG (graph + XBRL + text-checked risk

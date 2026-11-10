@@ -5,8 +5,9 @@ import { costNote } from "@/lib/askStatus";
 import type { Stats } from "@/lib/statsStore";
 import { tracingNote } from "@/lib/steps";
 import { SAFE_REL } from "@/lib/safeUrl";
-import { FOOTER_AFTER_COST, FOOTER_END, FOOTER_LEAD, FOOTER_LINK_HREF, FOOTER_LINK_TEXT } from "./Ask.copy";
-import { RELIABILITY, WITHDRAWN, type Segment } from "./Method.copy";
+import { FOOTER_AFTER_COST, FOOTER_END, FOOTER_LEAD, FOOTER_LINK_TEXT } from "@/copy/deck";
+import { FOOTER_LINK_HREF } from "./Ask.constants";
+import { RELIABILITY, type Segment } from "./Method.copy";
 
 /** A run of copy: plain text, bold runs and the static links of the pinned copy (opened in a new tab, safely). */
 export function Segments({ segments }: { segments: readonly Segment[] }) {
@@ -27,16 +28,13 @@ export function Segments({ segments }: { segments: readonly Segment[] }) {
   );
 }
 
-/** The foot of the Ask page: the withdrawn-accuracy notice, the cost note, the privacy line of the agent, and how reliable change
- *  claims are (pinned legacy copy; docs/specs/m5b-redesign.md R4 rewords it). */
+/** The foot of the Ask page: the cost note, the privacy line of the agent, and how reliable change claims are (pinned legacy copy).
+ *  The withdrawn-accuracy notice is the Method page's (docs/decisions/002-r4-workspace-copy.md, 4). */
 export function AskNotes({ stats }: { stats: Stats | null }) {
   const privacy = tracingNote(stats);
   return (
     <footer className="mt-12 border-t border-border pt-6 text-xs text-muted-foreground">
       <p>
-        <Segments segments={WITHDRAWN} />
-      </p>
-      <p className="mt-2.5">
         {FOOTER_LEAD}
         <span id="costNote">{costNote(stats?.models)}</span>
         {FOOTER_AFTER_COST}

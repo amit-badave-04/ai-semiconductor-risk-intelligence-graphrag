@@ -56,7 +56,7 @@ The new app lives under `/v2/` on the preview deploy (increment I4). The old pag
    Freshness, Method & Evidence) also links to them; its "Company" link opens Nvidia, and a row of 13 company links on
    that page switches to the others.
 
-Note on wording: the words quoted in this document are the ones in the I3 build (`web/src/pages/Ask.copy.ts`,
+Note on wording: the words quoted in this document are the ones in the I3 build (`web/src/pages/Ask.copy.ts`, retired in R4 for `web/src/copy/deck.ts`,
 `Workspace.copy.ts`, `components/EvidenceDrawer.tsx`), checked on 2026-11-08. If something is named differently on the live
 preview, write down the new name, and also note whether you could still find it (that is a result, not a mistake). Every page
 also shows one plain freshness line under the menu (for example "Data as of <date> - checked <n> min ago - <n> filings pending", the words joined by a middle dot; or "freshness

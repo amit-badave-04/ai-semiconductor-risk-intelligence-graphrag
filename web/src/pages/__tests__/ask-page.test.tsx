@@ -182,9 +182,10 @@ describe("the page", () => {
     await waitFor(() => expect(env.statsCalls().length).toBeGreaterThan(before));
   });
 
-  it("shows the withdrawn-accuracy notice, the reliability note and the footer with their links opened safely", async () => {
+  it("shows the reliability note and the footer with their links opened safely; the withdrawn notice is on Method only", async () => {
     mountAsk();
-    expect(screen.getByText(/Accuracy figures shown on earlier versions of this page are withdrawn/)).toBeInTheDocument();
+    // docs/decisions/002-r4-workspace-copy.md (4): the withdrawn-accuracy notice is the Method page's unheaded note, not the Ask footer's
+    expect(screen.queryByText(/Accuracy figures shown on earlier versions of this page are withdrawn/)).toBeNull();
     expect(screen.getByText(/How reliable are change claims\?/)).toBeInTheDocument();
     // every link that opens a new tab is opened safely (the in-app links, such as a company page, stay in the tab)
     const external = Array.from(document.querySelectorAll("a")).filter((a) => a.getAttribute("target") === "_blank");

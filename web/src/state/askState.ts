@@ -3,7 +3,8 @@
 // "done"). Nothing in this file touches the DOM or the network.
 import type { StreamEvent } from "@/lib/events";
 import { PAGE_FAILED_STATUS, STREAM_CUT_STATUS, type AskOutcome } from "@/lib/sse";
-import { CLAUSE_NO_TOKEN, CLAUSE_TOKEN_EXPIRED, FORBIDDEN_STATUS, STATUS_NETWORK } from "@/pages/Ask.copy";
+import { CLAUSE_NO_TOKEN, CLAUSE_TOKEN_EXPIRED, STATUS_NETWORK } from "@/copy/deck";
+import { FORBIDDEN_STATUS } from "@/pages/Ask.constants";
 import { MAX_STEPS_SHOWN } from "@/lib/steps";
 import { IDLE_ASK_STATE, type AskState } from "./useAsk";
 

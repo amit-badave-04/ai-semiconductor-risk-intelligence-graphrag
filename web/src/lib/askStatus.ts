@@ -3,17 +3,17 @@
 import type { AskState } from "@/state/useAsk";
 import { escalationStatus, shortModel } from "./answerMeta";
 import type { RetrievalEvent } from "./events";
-import {
-  COST_NOTE_DEFAULT,
-  NO_COMPANY_ANCHOR,
-  STATUS_AGENT,
-  STATUS_CACHED,
-  STATUS_DONE,
-  STATUS_GENERATING,
-  STATUS_RETRIEVING,
-} from "@/pages/Ask.copy";
 import type { Limits } from "@/copy/deck";
 import type { Stats } from "./statsStore";
+
+// the legacy status projection's words (index.html; pinned by tests/test_web_copy_deck.py), moved here from pages/Ask.copy.ts
+export const STATUS_RETRIEVING = "retrieving from the graph\u2026";
+export const STATUS_AGENT = "the research agent is choosing lookups\u2026";
+export const STATUS_GENERATING = " \u2014 generating\u2026";
+export const STATUS_CACHED = "served from cache \u2014 no model call";
+export const STATUS_DONE = "done";
+export const NO_COMPANY_ANCHOR = "no company detected; defaulting to Nvidia";
+export const COST_NOTE_DEFAULT = "one or two model calls each";
 
 type Dict = Record<string, unknown>;
 const dictOf = (value: unknown): Dict => (typeof value === "object" && value !== null ? (value as Dict) : {});

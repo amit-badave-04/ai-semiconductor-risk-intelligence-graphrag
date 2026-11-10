@@ -20,7 +20,7 @@ import { getStats, refreshStats, useStats, type Stats } from "@/lib/statsStore";
 import { agentEnabled } from "@/lib/steps";
 import { useAsk, type AskContextValue } from "@/state/useAsk";
 import { useWorkspace } from "@/state/useWorkspace";
-import { MAX_QUESTION_CHARS } from "./Ask.copy";
+import { MAX_QUESTION_CHARS } from "./Ask.constants";
 import { CompaniesCovered, CostLine, Grounding, MoreOptions, Starters } from "./AskFirstScreen";
 import { AskNotes, RenderBoundary } from "./AskParts";
 import { AGENT_HINT } from "./Method.copy";

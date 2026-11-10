@@ -34,8 +34,9 @@ WEB = ROOT / "web" / "src"
 DECK_TS = WEB / "copy" / "deck.ts"
 METHOD_TS = WEB / "pages" / "Method.copy.ts"
 COMPANY_TS = WEB / "pages" / "Company.copy.ts"
-ASK_COPY_TS = WEB / "pages" / "Ask.copy.ts"
+ASK_CONSTANTS_TS = WEB / "pages" / "Ask.constants.ts"
 ASK_STATUS_TS = WEB / "lib" / "askStatus.ts"
+ASK_COPY_TS_RETIRED = WEB / "pages" / "Ask.copy.ts"
 LIB_FILES = [WEB / "lib" / name for name in ("answerMeta.ts", "steps.ts", "evidenceView.ts", "askStatus.ts")]
 INDEX_HTML = ROOT / "src" / "semigraph" / "serve" / "static" / "index.html"
 ROUTES_PY = ROOT / "src" / "semigraph" / "serve" / "routes.py"
@@ -50,7 +51,6 @@ NOT_YET_IN_THE_DECK = {
     "lib/freshnessStore.ts": 1,
     "lib/jobs.ts": 11,
     "lib/workspace.ts": 7,
-    "pages/Ask.copy.ts": 12,
     "pages/Freshness.lib.ts": 7,
     "pages/Freshness.tsx": 9,
     "pages/Method.tsx": 2,
@@ -365,13 +365,23 @@ def haystack() -> str:
     return legacy_haystack(INDEX_HTML.read_text(encoding="utf-8"))
 
 
-class TestAskCopyUntilItFoldsIntoTheDeck:
+class TestTheLegacyAskWordsKeepTheirPins:
+    """R4 retired pages/Ask.copy.ts. The legacy words still shown live in copy/deck.ts as top-level named exports (the error
+    clauses, the footer, the server's two refusals) or in lib/askStatus.ts (the legacy status projection); the numbers and the
+    footer's link are in pages/Ask.constants.ts. Each stays pinned against the legacy page, as before."""
+
     @pytest.fixture(scope="class")
     def copy(self) -> dict[str, str]:
-        return constants(ASK_COPY_TS.read_text(encoding="utf-8"))
+        return {**constants(DECK_TS.read_text(encoding="utf-8")), **constants(ASK_STATUS_TS.read_text(encoding="utf-8")),
+                **constants(ASK_CONSTANTS_TS.read_text(encoding="utf-8"))}
 
     def test_the_file_was_read(self, copy):
-        assert len(copy) >= 19  # R2 folded the redesigned page's words into the deck and dropped the unused ones
+        assert not ASK_COPY_TS_RETIRED.exists()
+        for name in ("CLAUSE_TOKEN_EXPIRED", "CLAUSE_NO_TOKEN", "STATUS_NETWORK", "FOOTER_LEAD", "FOOTER_AFTER_COST",
+                     "FOOTER_LINK_TEXT", "FOOTER_END", "MSG_NOT_PUBLIC_EVIDENCE", "MSG_MALFORMED_EVIDENCE", "STATUS_RETRIEVING",
+                     "STATUS_AGENT", "STATUS_GENERATING", "STATUS_CACHED", "STATUS_DONE", "NO_COMPANY_ANCHOR", "COST_NOTE_DEFAULT",
+                     "MAX_QUESTION_CHARS", "FORBIDDEN_STATUS", "FOOTER_LINK_HREF"):
+            assert name in copy, name
 
     def test_every_constant_is_found_in_the_legacy_page(self, copy, haystack):
         by_server = {"MSG_NOT_PUBLIC_EVIDENCE", "MSG_MALFORMED_EVIDENCE", "FOOTER_LINK_HREF"}

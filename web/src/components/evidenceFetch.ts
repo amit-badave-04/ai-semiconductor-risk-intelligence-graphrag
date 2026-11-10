@@ -5,7 +5,7 @@
 import { deck } from "@/copy/deck";
 import { classifyId } from "@/lib/citations";
 import { detailOf } from "@/lib/refusal";
-import { MSG_MALFORMED_EVIDENCE, MSG_NOT_PUBLIC_EVIDENCE } from "@/pages/Ask.copy";
+import { MSG_MALFORMED_EVIDENCE, MSG_NOT_PUBLIC_EVIDENCE } from "@/copy/deck";
 
 export type EvidenceOutcome = { ok: true; payload: unknown } | { ok: false; message: string };
 
