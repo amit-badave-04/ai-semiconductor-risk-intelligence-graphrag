@@ -23,7 +23,7 @@ export function PageHeading({ title, documentTitle = title, display = false }: P
   return (
     <h1
       tabIndex={-1}
-      className={`mb-4 font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring ${display ? "text-2xl font-bold sm:text-3xl" : "text-2xl"}`}
+      className={`mb-4 font-semibold tracking-tight ${display ? "text-2xl font-bold sm:text-3xl" : "text-2xl"}`}
     >
       {title}
     </h1>

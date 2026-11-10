@@ -109,7 +109,7 @@ describe("the page", () => {
     });
     await env.user.type(box(), "q");
     await env.user.click(askButton());
-    await waitFor(() => expect(askButton()).toBeDisabled());
+    await waitFor(() => expect(askButton()).toHaveAttribute("aria-disabled", "true")); // focusable while disabled (it keeps focus)
     await env.user.keyboard("{Control>}{Enter}{/Control}");
     release();
     await waitFor(() => expect(askButton()).toBeEnabled());

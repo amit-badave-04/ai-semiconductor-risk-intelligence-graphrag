@@ -28,6 +28,8 @@ export interface Env {
   /** The /api/stats body; null makes the request fail. */
   stats?: Record<string, unknown> | null;
   examples?: unknown;
+  /** The status /api/examples answers with (200 when omitted). */
+  examplesStatus?: number;
   /** The /api/ask response, made per request. */
   ask?: () => Response | Promise<Response>;
   workspace?: Partial<WorkspaceContextValue>;
@@ -63,7 +65,7 @@ export function mountAsk(env: Env = {}) {
     const path = String(url);
     if (path === "/api/ask") return env.ask ? env.ask() : new Response("{}", { status: 500 });
     if (path === "/api/stats") return stats === null ? new Response("{}", { status: 500 }) : new Response(JSON.stringify(stats), { status: 200 });
-    if (path === "/api/examples") return new Response(JSON.stringify(env.examples ?? EXAMPLES), { status: 200 });
+    if (path === "/api/examples") return new Response(JSON.stringify(env.examples ?? EXAMPLES), { status: env.examplesStatus ?? 200 });
     return new Response("{}", { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);

@@ -1,0 +1,60 @@
+{
+ "recorded": "2026-11-10, GET https://semigraph.fly.dev/api/evidence/<id> (public evidence, read-only)",
+ "payloads": {
+  "0001045810-24-000029:I.1A:0162": {
+   "type": "chunk",
+   "chunk_id": "0001045810-24-000029:I.1A:0162",
+   "text": "As of January 28, 2024, we had net outstanding a total of $9.7 billion in notes due by 2060. As each series of senior notes matures, unless redeemed or repurchased, we must repay or refinance the notes. If we decide to refinance, we may receive less favorable terms, or we may be unable to refinance at all, which may adversely affect our financial condition. We also have a $575 million commercial paper program.Maintenance of our current and future indebtedness and contractual restrictions could cause us to dedicate a substantial portion of our cash flows from operations towards debt service obligations and principal repayments; increase our vulnerability to adverse changes in general economic, industry and competitive conditions; limit our flexibility regarding changes in our business and our industry; impair our ability to obtain future financing; and restrict our ability to grant liens on property, enter into certain mergers, dispose of our assets, or materially change our business.Our ability to comply with the covenants in our indenture may be affected by events beyond our control. If we breach any of the covenants without a waiver from the note holders or lenders, then any outstanding indebtedness may be declared immediately due and payable. Changes to our credit rating may negatively impact the value and liquidity of our securities, restrict our ability to obtain future financing and affect the terms of any such financing.",
+   "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581024000029/nvda-20240128.htm",
+   "section_key": "0001045810-24-000029:I.1A",
+   "section_title": "Item 1A. Risk Factors",
+   "accession_no": "0001045810-24-000029",
+   "form": "10-K",
+   "filing_date": "2024-02-21",
+   "filer": "Nvidia",
+   "status": "superseded",
+   "is_current": false,
+   "retrievable": true,
+   "valid_to": "2025-02-26",
+   "superseded_by": "0001045810-25-000023",
+   "corrected_by": null,
+   "mentions": [],
+   "item_headlines": [
+    "Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations."
+   ]
+  },
+  "xbrl:1045810:revenue:2026-01-25": {
+   "type": "xbrl",
+   "metric_id": "1045810:revenue:2026-01-25",
+   "metric": "revenue",
+   "concept": "Revenues",
+   "value": 215938000000.0,
+   "unit": "USD",
+   "period_start": "2025-01-27",
+   "period_end": "2026-01-25",
+   "company": "Nvidia",
+   "cik": 1045810,
+   "accession_no": "0001045810-26-000021",
+   "form": "10-K",
+   "filing_date": "2026-02-25",
+   "source_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm"
+  },
+  "fr:2025-00711": {
+   "type": "fr",
+   "document_number": "2025-00711",
+   "title": "Implementation of Additional Due Diligence Measures for Advanced Computing Integrated Circuits; Amendments and Clarifications; and Extension of Comment Period",
+   "publication_date": "2025-01-16",
+   "url": "https://www.federalregister.gov/documents/2025/01/16/2025-00711/implementation-of-additional-due-diligence-measures-for-advanced-computing-integrated-circuits",
+   "kind": "advanced_computing",
+   "topics": [
+    "advanced computing",
+    "semiconductor manufacturing"
+   ],
+   "relevant": true,
+   "abstract": "BIS is revising the Export Administration Regulations (EAR) in response to requests from the public to provide additional due diligence procedures regarding advanced computing integrated circuits (ICs). This interim final rule (IFR) will protect the national security of the United States and assist foundries and Outsourced Semiconductor Assembly and Test (\"OSATs\") companies in complying with provisions of the EAR pertaining to advanced computing ICs in the supply chain. This IFR also revises the EAR to make amendments and clarifications to the EAR for changes made to the EAR in an IFR released by BIS on December 2, 2024, \"Foreign-Produced Direct Product Rule Additions, and Refinements to Controls for Advanced Computing and Semiconductor Manufacturing Items,\" (FDP IFR), including extending the deadline for written comments for the FDP IFR to March 14, 2025.",
+   "source": "federal_register",
+   "external": true,
+   "note": "A Federal Register rule linked to companies by keyword match; not a company disclosure."
+  }
+ }
+}

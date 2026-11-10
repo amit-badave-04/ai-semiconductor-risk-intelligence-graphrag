@@ -54,7 +54,9 @@ describe("tests/ui/stream_cut.test.mjs", () => {
   it("a read that rejects mid-answer says the connection was lost and enables Ask again", async () => {
     let askDisabledWhileStreaming: boolean | null = null;
     await ask([RETRIEVAL, DELTA, CUT], () => {
-      askDisabledWhileStreaming ??= (document.querySelector("button[type='submit'], #ask") as HTMLButtonElement | null)?.disabled ?? null;
+      // the Ask button is aria-disabled while streaming (it keeps keyboard focus; accessibility review of baba14d)
+      const button = document.querySelector("button[type='submit'], #ask") as HTMLButtonElement | null;
+      askDisabledWhileStreaming ??= button === null ? null : button.disabled || button.getAttribute("aria-disabled") === "true";
     });
     await settled();
     expect(askDisabledWhileStreaming, "Ask is disabled while the answer streams (else this test proves nothing)").toBe(true);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { AnswerMeta } from "@/components/Badges";
 import { AnswerText } from "@/components/Chips";
 import { PageHeading } from "@/components/Layout";
@@ -27,20 +27,6 @@ import { AGENT_HINT } from "./Method.copy";
 
 const EMPTY_NOTE_ID = "q-empty";
 
-function useCtrlEnter(submit: () => void) {
-  const latest = useRef(submit);
-  useEffect(() => {
-    latest.current = submit;
-  });
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") latest.current();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-}
-
 interface ControlsProps {
   question: string;
   onQuestion: (value: string) => void;
@@ -49,8 +35,15 @@ interface ControlsProps {
   emptyShown: boolean;
 }
 
-/** RD4: the labelled question box with the Ask button beside it, and RD8's note when Ask was pressed with nothing typed. */
+/** RD4: the labelled question box with the Ask button beside it, and RD8's note when Ask was pressed with nothing typed. Ctrl or
+ *  Cmd with Enter asks from the box (only there: elsewhere the same keys open a link in a new tab, for example). */
 function AskControls({ question, onQuestion, streaming, onSubmit, emptyShown }: ControlsProps) {
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      onSubmit();
+    }
+  };
   return (
     <>
       {/* the box shows the 3 px focus ring (RD1) while the textarea inside it has focus */}
@@ -61,11 +54,22 @@ function AskControls({ question, onQuestion, streaming, onSubmit, emptyShown }: 
           maxLength={MAX_QUESTION_CHARS}
           placeholder={deck.ask.placeholder}
           onChange={(e) => onQuestion(e.target.value)}
+          onKeyDown={onKeyDown}
+          aria-keyshortcuts="Control+Enter Meta+Enter"
+          aria-invalid={emptyShown || undefined}
           aria-describedby={emptyShown ? EMPTY_NOTE_ID : undefined}
-          className="min-h-20 border-0 bg-transparent text-lg shadow-none focus-visible:ring-0 md:text-lg dark:bg-transparent"
+          className="min-h-20 border-0 bg-transparent text-lg shadow-none focus-visible:outline-none md:text-lg dark:bg-transparent"
         />
         {/* hover keeps the full primary colour (a lighter one drops white text under 4.5:1) and adds an underline */}
-        <Button id="ask" type="button" disabled={streaming} onClick={onSubmit} className="h-11 px-6 text-base hover:bg-primary hover:underline">
+        {/* focusable while an answer streams (aria-disabled), so a keyboard user's focus is not dropped to the page */}
+        <Button
+          id="ask"
+          type="button"
+          disabled={streaming}
+          focusableWhenDisabled
+          onClick={onSubmit}
+          className="h-11 px-6 text-base hover:bg-primary hover:underline aria-disabled:opacity-60"
+        >
           {deck.ask.askButton}
         </Button>
       </div>
@@ -120,7 +124,8 @@ export function Ask() {
   const { workspace } = useWorkspace();
   const [question, setQuestion] = useState("");
   const [preferred, setPreferred] = useState<Depth>("hybrid");
-  const [emptyShown, setEmptyShown] = useState(false);
+  const [emptyCount, setEmptyCount] = useState(0);
+  const emptyShown = emptyCount > 0;
   const [renderFailedAt, setRenderFailedAt] = useState<number | null>(null);
   const workspaceOpen = workspace !== null;
   const options = depthOptions(agentEnabled(stats), workspaceOpen);
@@ -132,16 +137,17 @@ export function Ask() {
   }, []);
   const send = ask.ask;
   const submit = useCallback(() => {
+    if (streaming) return; // the answer in progress keeps its status line
     if (question.trim() === "") {
-      setEmptyShown(true); // RD8: nothing is sent
+      // RD8: nothing is sent; each empty Ask counts, so a repeated one still changes the status text (see `line`)
+      setEmptyCount((n) => n + 1);
       return;
     }
     send({ question, strategy });
-  }, [send, question, strategy]);
-  useCtrlEnter(submit);
+  }, [send, question, strategy, streaming]);
   const onQuestion = (value: string) => {
     setQuestion(value);
-    setEmptyShown(false);
+    setEmptyCount(0);
   };
   const pick = (picked: string) => {
     onQuestion(picked);
@@ -150,8 +156,9 @@ export function Ask() {
   };
 
   const renderFailed = renderFailedAt === ask.seq && ask.seq > 0;
+  // a repeated empty Ask alternates an invisible trailing no-break space, so the polite status region announces it again
   const line: StatusLine = emptyShown
-    ? { text: deck.ask.emptyQuestion, isError: true }
+    ? { text: `${deck.ask.emptyQuestion}${emptyCount % 2 === 0 ? "\u00a0" : ""}`, isError: true }
     : renderFailed && ask.statusText === null
       ? { text: PAGE_FAILED_STATUS, isError: true }
       : statusLine(ask);
@@ -164,7 +171,7 @@ export function Ask() {
           <Grounding />
           {/* not a named region: its name would be "Your question" too, the same as the box (one name, one control) */}
           <section>
-            <h2 id={ANSWER_HEADING_ID} tabIndex={-1} className="mb-2 text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <h2 id={ANSWER_HEADING_ID} tabIndex={-1} className="mb-2 text-base font-semibold">
               <label htmlFor="q">{deck.ask.questionLabel}</label>
             </h2>
             <AskControls question={question} onQuestion={onQuestion} streaming={streaming} onSubmit={submit} emptyShown={emptyShown} />
@@ -184,7 +191,7 @@ export function Ask() {
             />
             <AnswerArea ask={ask} stats={stats} line={line} renderFailed={renderFailed} onRenderError={() => setRenderFailedAt(ask.seq)} />
           </section>
-          <Starters disabled={workspaceOpen || streaming} onPick={pick} />
+          <Starters off={workspaceOpen ? "workspace" : streaming ? "busy" : null} onPick={pick} />
         </div>
         <CompaniesCovered />
       </div>

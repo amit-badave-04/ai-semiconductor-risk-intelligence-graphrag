@@ -42,8 +42,7 @@ export const deck = {
     groundingLead: "Answers cite their sources: a ",
     groundingBetween: ", a ",
     groundingBeforeLast: " or a ",
-    // "Click one to see an example." joins this when the stamps open their example (R1 slice 3b, SR3, SR9)
-    groundingEnd: ".",
+    groundingEnd: ". Click one to see an example.",
     stamp: {
       passage: "filing passage",
       number: "reported number",
@@ -63,6 +62,26 @@ export const deck = {
     howLink: "How answers are made",
     /** RD8: Ask pressed with an empty box. */
     emptyQuestion: "Type a question first, or pick an example below.",
+  },
+
+  specimen: {
+    /** RD4: the example a specimen stamp opens (lib/specimens.ts). */
+    passageHeading: (filer: string, form: string, section: string): string => `${filer} ${form}, ${section}`,
+    filed: (date: string): string => `Filed ${date}`,
+    paragraph: (n: string): string => `paragraph ${n}`,
+    olderFiling: "From an older filing; a newer one has replaced it.",
+    numberHeading: (company: string, metric: string, year: string): string => `${company} ${metric}, ${year}`,
+    exactly: (value: string): string => `Exactly ${value}`,
+    reportedIn: (form: string, date: string): string => `Reported in the ${form} filed ${date}`,
+    ruleLabel: "Government rule",
+    published: (date: string): string => `Published in the Federal Register on ${date}`,
+    ruleNote:
+      "Linked to companies by keyword matching: an action by the government, not statements the company made.",
+    openFiling: "Open the filing on SEC.gov",
+    openRule: "Open the rule on FederalRegister.gov",
+    loading: "Loading the example\u2026",
+    failed: "The example could not be loaded right now.",
+    close: "Close",
   },
 
   options: {
@@ -96,6 +115,9 @@ export const deck = {
     showAll: "Show all examples, grouped by company",
     loading: "Loading examples\u2026",
     none: "No saved example answers are available right now. You can still ask your own question.",
+    failed: "The examples could not be loaded right now. You can still ask your own question.",
+    /** R23: with a workspace open an example would be a paid live question about the uploaded documents. */
+    workspaceOff: "With a workspace open, the examples are off: each would become a paid live question about your documents.",
   },
 
   companies: {

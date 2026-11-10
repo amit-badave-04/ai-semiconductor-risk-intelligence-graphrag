@@ -71,7 +71,8 @@ test("when a new answer replaced the opener, closing the drawer puts focus on th
   await answered(page);
   await chips(page).first().click();
   await expect(page.getByRole("button", { name: "Close evidence" })).toBeFocused();
-  await page.keyboard.press("Control+Enter"); // a new ask, with the focus still in the drawer
+  // a new ask while the drawer stays open (Ctrl+Enter asks from the question box only, accessibility review of baba14d)
+  await box(page).press("Control+Enter");
   await expect(page.getByRole("status")).toHaveText("served from cache \u2014 no model call");
   await expect(chips(page).first()).toBeVisible();
   await page.getByRole("button", { name: "Close evidence" }).click();

@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { PREVIEW } from "./servers.ts";
+import { firstStarter } from "./support.ts";
 
 // docs/specs/m5b-redesign.md RD4 and RD4a: before any question, the headline, the labelled question box and the cost line are
 // on the first screen without scrolling, at 1440x900 and at 390x844, in that order, and nothing shifts while the examples and
@@ -81,4 +85,79 @@ test("the question box shows the 3 px focus ring while the reader types in it", 
     return { width: style.outlineWidth, style: style.outlineStyle };
   });
   expect(outline).toEqual({ width: "3px", style: "solid" });
+});
+
+// Accessibility review of baba14d: a focused control draws the global 3 px outline (RD1), which forced-colours mode keeps; a
+// box-shadow ring alone disappears there.
+test("the Ask button, a starter and the More options toggle show the 3 px outline when focused from the keyboard", async ({ page }) => {
+  await page.goto(`${PREVIEW}/v2/`);
+  const controls = [
+    page.getByRole("button", { name: "Ask", exact: true }),
+    page.getByRole("button", { name: /More options/ }),
+    page.getByRole("region", { name: "Or try an example" }).getByRole("listitem").first().getByRole("button"),
+  ];
+  for (const control of controls) {
+    await control.waitFor();
+    await control.focus();
+    await page.keyboard.press("Shift"); // a key press, so the browser treats the focus as keyboard focus
+    const outline = await control.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { width: style.outlineWidth, style: style.outlineStyle };
+    });
+    expect(outline, await control.textContent() ?? "").toEqual({ width: "3px", style: "solid" });
+  }
+});
+
+// RD4, SR3, SR9 in a real browser: a specimen stamp opens a real example (the evidence recorded from the live service, served
+// here by route), and with the evidence drawer open one Escape closes only the popover.
+const RECORDED = JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../src/test/fixtures/specimens.recorded.json"), "utf-8")) as {
+  payloads: Record<string, unknown>;
+};
+
+async function serveRecordedSpecimens(page: Page): Promise<string[]> {
+  const asked: string[] = [];
+  for (const [id, payload] of Object.entries(RECORDED.payloads)) {
+    await page.route(`**/api/evidence/${encodeURIComponent(id)}`, async (route) => {
+      asked.push(id);
+      await route.fulfill({ json: payload });
+    });
+  }
+  return asked;
+}
+
+test("a specimen stamp opens its real example, fetched once by its public id, and axe finds nothing serious with it open", async ({ page }) => {
+  const asked = await serveRecordedSpecimens(page);
+  await page.goto(`${PREVIEW}/v2/`);
+  const stamp = page.getByRole("button", { name: "reported number" });
+  await expect(stamp).toHaveAttribute("aria-expanded", "false");
+  expect((await stamp.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(24); // WCAG 2.5.8
+  await stamp.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Nvidia revenue, FY2026 (ended Jan 25, 2026)");
+  await expect(dialog).toContainText("$215.9B");
+  await expect(stamp).toHaveAttribute("aria-expanded", "true");
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+  expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(stamp).toBeFocused();
+  await stamp.click();
+  await expect(page.getByRole("dialog")).toContainText("$215.9B");
+  expect(asked).toEqual(["xbrl:1045810:revenue:2026-01-25"]); // the second opening is served from the page's own cache
+});
+
+test("with the evidence drawer open, one Escape closes the specimen popover and leaves the drawer open (SR9)", async ({ page }) => {
+  await serveRecordedSpecimens(page);
+  await page.goto(`${PREVIEW}/v2/`);
+  await firstStarter(page).click();
+  await page.locator("#answer [data-chip-key]").first().click();
+  const drawer = page.getByRole("complementary", { name: "Evidence" });
+  await expect(drawer).toBeVisible();
+  await page.getByRole("button", { name: "filing passage" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Nvidia 10-K");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+  await page.keyboard.press("Escape"); // the next one is the drawer's
+  await expect(drawer).toBeHidden();
 });

@@ -161,3 +161,91 @@ describe("RD9: the covered companies, after the starters", () => {
     expect(starters.compareDocumentPosition(companies) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+// Reviews of baba14d (accessibility, Opus; React, Sonnet): each finding as a failing test first.
+describe("review fixes", () => {
+  it("the Ask button keeps keyboard focus while an answer streams (it is aria-disabled, not removed from the tab order)", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const env = mountAsk({
+      ask: async () => {
+        await gate;
+        return responseOf(fixtureBytes("cached_done"));
+      },
+    });
+    await env.user.type(box(), "q");
+    askButton().focus();
+    await env.user.keyboard("{Enter}");
+    await waitFor(() => expect(askButton()).toHaveAttribute("aria-disabled", "true"));
+    expect(askButton()).toHaveFocus();
+    await env.user.keyboard("{Enter}");
+    release();
+    await waitFor(() => expect(askButton()).not.toHaveAttribute("aria-disabled", "true"));
+    expect(env.posts()).toHaveLength(1);
+  });
+
+  it("a starter keeps keyboard focus when it is pressed (the starters are aria-disabled while the answer streams)", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const env = mountAsk({
+      examples: STARTER_PAYLOAD,
+      ask: async () => {
+        await gate;
+        return responseOf(fixtureBytes("cached_done"));
+      },
+    });
+    const starter = await screen.findByRole("button", { name: STARTER_PAYLOAD.examples[1].question });
+    starter.focus();
+    await env.user.keyboard("{Enter}");
+    await waitFor(() => expect(starter).toHaveAttribute("aria-disabled", "true"));
+    expect(starter).toHaveFocus();
+    await env.user.keyboard("{Enter}");
+    release();
+    await waitFor(() => expect(starter).not.toHaveAttribute("aria-disabled"));
+    expect(env.posts()).toHaveLength(1);
+  });
+
+  it("Ctrl+Enter asks only from the question box, and says so to assistive technology", async () => {
+    const env = mountAsk({ ask: () => responseOf(fixtureBytes("cached_done")) });
+    await env.user.type(box(), "q");
+    expect(box()).toHaveAttribute("aria-keyshortcuts", "Control+Enter Meta+Enter");
+    screen.getByRole("link", { name: "How answers are made" }).focus();
+    await env.user.keyboard("{Control>}{Enter}{/Control}");
+    expect(env.posts()).toHaveLength(0);
+    box().focus();
+    await env.user.keyboard("{Control>}{Enter}{/Control}");
+    await waitFor(() => expect(env.posts()).toHaveLength(1));
+  });
+
+  it("an empty Ask marks the box invalid, and a second empty Ask changes the status text so it is announced again", async () => {
+    const env = mountAsk();
+    await env.user.click(askButton());
+    expect(box()).toHaveAttribute("aria-invalid", "true");
+    const first = screen.getByRole("status").textContent ?? "";
+    expect(first.trim()).toBe("Type a question first, or pick an example below.");
+    await env.user.click(askButton());
+    const second = screen.getByRole("status").textContent ?? "";
+    expect(second.trim()).toBe(first.trim());
+    expect(second).not.toBe(first); // an invisible difference, so the live region has a change to announce
+  });
+
+  it("with a workspace open, the starters say why they are off", async () => {
+    mountAsk({ examples: STARTER_PAYLOAD, workspace: { workspace: { id: "a".repeat(32), token: "t", expires_at: null } } });
+    const starters = await screen.findByRole("region", { name: "Or try an example" });
+    const note = within(starters).getByText(/With a workspace open, the examples are off/);
+    const button = within(starters).getByRole("button", { name: STARTER_PAYLOAD.examples[0].question });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-describedby", note.id);
+  });
+
+  it("names the starters' region by its heading alone (the note is a paragraph of its own)", async () => {
+    mountAsk({ examples: STARTER_PAYLOAD });
+    expect(await screen.findByRole("region", { name: "Or try an example" })).toBeInTheDocument();
+  });
+
+  it("says when the examples could not be loaded, which is not the same as having none", async () => {
+    mountAsk({ examplesStatus: 503 });
+    expect(await screen.findByText("The examples could not be loaded right now. You can still ask your own question.")).toBeInTheDocument();
+    expect(screen.queryByText(/No saved example answers/)).toBeNull();
+  });
+});

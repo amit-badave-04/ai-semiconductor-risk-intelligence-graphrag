@@ -2,9 +2,10 @@
 // three source stamps, the cost line, "More options" (Depth), the six starters with "Show all examples", and the covered
 // companies. All copy comes from copy/deck.ts; every server value is rendered as a text node (S2).
 import { Collapsible } from "@base-ui/react/collapsible";
-import { ChartNoAxesColumn, ChevronRight, FileText, Landmark, type LucideIcon } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router";
+import { SpecimenStamp } from "@/components/SpecimenStamp";
 import { deck } from "@/copy/deck";
 import { FILERS } from "@/lib/pages.generated";
 import { type Depth, type DepthOption } from "@/lib/depth";
@@ -12,35 +13,16 @@ import { STARTERS, splitExamples, type Example, type StarterGroup, type StarterJ
 
 // ------------------------------------------------------------------ RD4: the grounding sentence and its source stamps
 
-type StampKind = keyof typeof deck.ask.stamp;
-
-const STAMPS: Record<StampKind, { icon: LucideIcon; tone: string }> = {
-  passage: { icon: FileText, tone: "border-brand-line bg-brand-fill text-primary" },
-  number: { icon: ChartNoAxesColumn, tone: "border-brand-line bg-brand-fill text-primary" },
-  rule: { icon: Landmark, tone: "border-rule-line bg-rule-fill text-rule" },
-};
-
-/** A specimen source stamp: the kind of source an answer cites, drawn the way the answer's own stamps are. */
-function Stamp({ kind }: { kind: StampKind }) {
-  const { icon: Icon, tone } = STAMPS[kind];
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 align-baseline font-semibold whitespace-nowrap ${tone}`}>
-      <Icon aria-hidden="true" className="size-4 shrink-0" />
-      {deck.ask.stamp[kind]}
-    </span>
-  );
-}
-
 export function Grounding() {
   const w = deck.ask;
   return (
     <p className="mb-6 max-w-[46rem] text-lg leading-relaxed text-muted-foreground">
       {w.groundingLead}
-      <Stamp kind="passage" />
+      <SpecimenStamp kind="passage" />
       {w.groundingBetween}
-      <Stamp kind="number" />
+      <SpecimenStamp kind="number" />
       {w.groundingBeforeLast}
-      <Stamp kind="rule" />
+      <SpecimenStamp kind="rule" />
       {w.groundingEnd}
     </p>
   );
@@ -124,22 +106,22 @@ export function MoreOptions({ options, depth, onDepth, workspaceOpen, note }: Mo
 
 // ------------------------------------------------------------------ RD5: starters and every example
 
-type Loaded = { kind: "loading" } | { kind: "loaded"; payload: unknown };
+type Loaded = { kind: "loading" } | { kind: "loaded"; payload: unknown } | { kind: "failed" };
 
-/** GET /api/examples once; a failure reads as no examples (the page works without them). */
+/** GET /api/examples once; a failure is said as one, not as "no examples" (the page works without them). */
 function useExamples(): Loaded {
   const [state, setState] = useState<Loaded>({ kind: "loading" });
   useEffect(() => {
     let current = true;
-    const load = async (): Promise<unknown> => {
+    const load = async (): Promise<Loaded> => {
       try {
         const response = await fetch("/api/examples");
-        return response.ok ? await response.json() : null;
+        return response.ok ? { kind: "loaded", payload: (await response.json()) as unknown } : { kind: "failed" };
       } catch {
-        return null;
+        return { kind: "failed" };
       }
     };
-    void load().then((payload) => current && setState({ kind: "loaded", payload }));
+    void load().then((next) => current && setState(next));
     return () => {
       current = false;
     };
@@ -147,21 +129,33 @@ function useExamples(): Loaded {
   return state;
 }
 
+/** Why the questions cannot be asked now: a workspace is open (R23: each would be a paid live call; the buttons are disabled and
+ *  say why), or an answer is streaming (busy: aria-disabled, so a keyboard user's focus stays on the pressed button). */
+export type StartersOff = "workspace" | "busy" | null;
+
 interface PickProps {
-  /** A workspace is open (R23) or an answer is streaming: a click would be a paid live call, or is ignored. */
-  disabled: boolean;
+  off: StartersOff;
   onPick: (question: string) => void;
+  /** the id of the sentence that says why the questions are off */
+  reasonId?: string;
 }
 
 const QUESTION_BUTTON =
-  "min-h-11 w-full cursor-pointer py-2.5 text-left hover:text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50";
+  "min-h-11 w-full cursor-pointer py-2.5 text-left hover:text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-60";
 
-function QuestionList({ examples, disabled, onPick }: PickProps & { examples: Example[] }) {
+function QuestionList({ examples, off, onPick, reasonId }: PickProps & { examples: Example[] }) {
   return (
     <ul className="m-0 list-none border-t border-border p-0">
-      {examples.map((e) => (
-        <li key={e.id} className="border-b border-border">
-          <button type="button" disabled={disabled} onClick={() => onPick(e.question)} className={QUESTION_BUTTON}>
+      {examples.map((e, i) => (
+        <li key={`${e.id}-${i}`} className="border-b border-border">
+          <button
+            type="button"
+            disabled={off === "workspace"}
+            aria-disabled={off === "busy" || undefined}
+            aria-describedby={off === "workspace" ? reasonId : undefined}
+            onClick={() => off === null && onPick(e.question)}
+            className={QUESTION_BUTTON}
+          >
             {e.question}
           </button>
         </li>
@@ -195,19 +189,29 @@ function ReservedRows({ count }: { count: number }) {
   );
 }
 
-export function Starters({ disabled, onPick }: PickProps) {
+export function Starters({ off, onPick }: Omit<PickProps, "reasonId">) {
   const loaded = useExamples();
   const headingId = useId();
-  const split = loaded.kind === "loaded" ? splitExamples(loaded.payload) : null;
+  const reasonId = useId();
+  const split = loaded.kind === "loaded" ? splitExamples(loaded.payload) : loaded.kind === "failed" ? { groups: [], byCompany: [] } : null;
   const groups = split?.groups ?? RESERVED;
   const byCompany = split?.byCompany ?? [];
   return (
-    <section aria-labelledby={headingId} aria-busy={split === null} className="mt-6">
-      <h2 id={headingId} className="mb-3 text-xl font-semibold">
-        {s.heading} <span className="text-sm font-normal text-muted-foreground">{s.note}</span>
-      </h2>
+    <section aria-labelledby={headingId} className="mt-6">
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
+        <h2 id={headingId} className="m-0 text-xl font-semibold">
+          {s.heading}
+        </h2>
+        <p className="m-0 text-sm text-muted-foreground">{s.note}</p>
+      </div>
+      {off === "workspace" && (
+        <p id={reasonId} className="mb-3 text-sm text-muted-foreground">
+          {s.workspaceOff}
+        </p>
+      )}
       {split === null && <p className="sr-only">{s.loading}</p>}
-      {split !== null && groups.length === 0 && byCompany.length === 0 && <p className="text-sm text-muted-foreground">{s.none}</p>}
+      {loaded.kind === "failed" && <p className="text-sm text-muted-foreground">{s.failed}</p>}
+      {loaded.kind === "loaded" && groups.length === 0 && byCompany.length === 0 && <p className="text-sm text-muted-foreground">{s.none}</p>}
       <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
         {groups.map((group) => (
           <div key={group.job}>
@@ -216,7 +220,7 @@ export function Starters({ disabled, onPick }: PickProps) {
             {split === null ? (
               <ReservedRows count={group.examples.length} />
             ) : (
-              <QuestionList examples={group.examples} disabled={disabled} onPick={onPick} />
+              <QuestionList examples={group.examples} off={off} onPick={onPick} reasonId={reasonId} />
             )}
           </div>
         ))}
@@ -231,7 +235,7 @@ export function Starters({ disabled, onPick }: PickProps) {
             {byCompany.map((company) => (
               <div key={company.company}>
                 <h3 className="m-0 mb-1 text-base font-semibold">{company.company}</h3>
-                <QuestionList examples={company.examples} disabled={disabled} onPick={onPick} />
+                <QuestionList examples={company.examples} off={off} onPick={onPick} reasonId={reasonId} />
               </div>
             ))}
           </Collapsible.Panel>

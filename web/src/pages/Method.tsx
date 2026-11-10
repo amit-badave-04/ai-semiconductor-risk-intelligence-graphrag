@@ -51,7 +51,7 @@ export function Method() {
       <p className="mb-8">
         <Link
           to="/freshness/"
-          className="rounded-sm text-primary underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="rounded-sm text-primary underline underline-offset-4"
         >
           Freshness
         </Link>

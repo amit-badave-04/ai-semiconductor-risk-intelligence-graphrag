@@ -231,7 +231,7 @@ export function CompanySwitcher({ current }: { current: string }) {
             <Link
               to={`/company/${f.ticker}/`}
               aria-current={f.ticker === current ? "page" : undefined}
-              className="rounded-md px-3 py-2 text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-[current=page]:bg-muted aria-[current=page]:font-semibold"
+              className="rounded-md px-3 py-2 text-sm hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:font-semibold"
             >
               {`${f.name} (${f.ticker})`}
             </Link>

@@ -179,7 +179,8 @@ function useEscapeToClose(isOpen: boolean, close: EvidenceDrawerApi["close"]) {
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      // docs/specs/m5b-redesign.md SR9: an Escape something above the drawer already handled (an open popover) is not ours
+      if (event.key === "Escape" && !event.defaultPrevented) close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

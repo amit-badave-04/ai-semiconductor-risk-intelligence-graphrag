@@ -157,6 +157,19 @@ describe("A5: a non-modal complementary landmark", () => {
     expect(chip).toHaveFocus();
   });
 
+  it("an Escape something above it already handled (an open popover, SR9) leaves it open", async () => {
+    const user = userEvent.setup();
+    mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
+    await user.click(screen.getByRole("button", { name: /Item 1A/ }));
+    const handled = (event: KeyboardEvent) => event.preventDefault();
+    document.addEventListener("keydown", handled, true); // the capture listener an open specimen popover installs
+    await user.keyboard("{Escape}");
+    document.removeEventListener("keydown", handled, true);
+    expect(drawer()).not.toHaveAttribute("inert");
+    await user.keyboard("{Escape}"); // the next Escape, with nothing above it, closes it
+    expect(drawer()).toHaveAttribute("inert");
+  });
+
   it("the close button closes it and focus returns to the chip", async () => {
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
