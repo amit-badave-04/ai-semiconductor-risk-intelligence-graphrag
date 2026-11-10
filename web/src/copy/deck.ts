@@ -153,7 +153,7 @@ export const deck = {
     ruleLabel: "Government rule",
     ruleNote: "Linked to companies by keyword matching: an action by the government, not statements the company made.",
     exactly: (value: string): string => `Exactly ${value}`,
-    link: { filing: "Open the filing on SEC.gov", rule: "Open the rule on FederalRegister.gov" },
+    link: { filing: "Open the filing on SEC.gov", rule: "Open the rule on FederalRegister.gov", source: "Open the source" },
     details: "Details for analysts",
     detail: { id: "id", accession: "accession", replacedBy: "replaced by", metric: "metric", concept: "XBRL concept" },
   },

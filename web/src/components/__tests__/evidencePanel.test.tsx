@@ -116,4 +116,15 @@ describe("the evidence panel body", () => {
     api.current?.open("0001045810-24-000029:I.1A:0999", null, "answer");
     await waitFor(() => expect(panel()).toHaveTextContent("Could not load this source: not found"));
   });
+
+  it("announces the loading and failed states politely (R2 review)", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    mount();
+    api.current?.open(SPECIMENS.passage, null, "answer");
+    const body = await screen.findByRole("complementary", { name: "Evidence" });
+    await waitFor(() => expect(within(body).getByRole("status")).toHaveTextContent("Loading the source…"));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "not found" }), { status: 404 })));
+    api.current?.open("0001045810-24-000029:I.1A:0998", null, "answer");
+    await waitFor(() => expect(within(body).getByRole("status")).toHaveTextContent("Could not load this source: not found"));
+  });
 });

@@ -87,3 +87,14 @@ describe.each([
     expect(Math.abs(rule - hue(t.mark))).toBeGreaterThan(60);
   });
 });
+
+// R2 review (accessibility, confirmed): a highlight is never colour alone. The spec (risk 4) asks for dark ink on yellow AND a
+// real text-decoration underline, which forced-colours mode keeps (a box-shadow underline would vanish).
+describe("the highlighter's mark", () => {
+  it("draws a real underline in the mark edge colour, besides the fill", () => {
+    const rule = /(?:^|\n)\s*mark\s*\{([^}]*)\}/.exec(CSS)?.[1] ?? "";
+    expect(rule).toMatch(/text-decoration-line:\s*underline/);
+    expect(rule).toMatch(/text-decoration-color:\s*var\(--mark-edge\)/);
+    expect(rule).toMatch(/text-decoration-thickness:\s*2px/);
+  });
+});

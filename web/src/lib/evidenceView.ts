@@ -150,7 +150,8 @@ export interface EvidenceBody {
   passage: string;
   /** RD18: only a filing passage is highlighted (a number, a rule's abstract and a document never are) */
   highlightable: boolean;
-  link: { href: string; code: "filing" | "rule" } | null;
+  /** the link is named by where it goes: SEC.gov, FederalRegister.gov, or plainly "the source" for any other host */
+  link: { href: string; code: "filing" | "rule" | "source" } | null;
   details: { code: BodyDetailCode; value: string }[];
 }
 
@@ -168,9 +169,15 @@ function supersededOf(d: Dict, status: string): EvidenceBody["superseded"] {
 
 const facts = (pairs: [BodyFactCode, string][]): EvidenceBody["facts"] => pairs.filter(([, v]) => v !== "").map(([code, value]) => ({ code, value }));
 const details = (pairs: [BodyDetailCode, string][]): EvidenceBody["details"] => pairs.filter(([, v]) => v !== "").map(([code, value]) => ({ code, value }));
+const HOSTS: Record<"filing" | "rule", readonly string[]> = { filing: ["sec.gov"], rule: ["federalregister.gov"] };
+const onHost = (href: string, domains: readonly string[]): boolean => {
+  const host = new URL(href).hostname;
+  return domains.some((d) => host === d || host.endsWith(`.${d}`));
+};
 const linkTo = (value: unknown, code: "filing" | "rule"): EvidenceBody["link"] => {
   const href = safeUrl(value);
-  return href === null ? null : { href, code };
+  if (href === null) return null;
+  return { href, code: onHost(href, HOSTS[code]) ? code : "source" };
 };
 
 function chunkBody(id: string, d: Dict, body: EvidenceBody): void {
@@ -186,13 +193,17 @@ function chunkBody(id: string, d: Dict, body: EvidenceBody): void {
 }
 
 function xbrlBody(id: string, d: Dict, body: EvidenceBody): void {
-  const year = fiscalYearLabel(str(d.period_end));
+  // a thin payload keeps what the id says: xbrl:<cik>:<metric>:<period end>
+  const [, , idMetric = "", idEnd = ""] = id.split(":");
+  const periodEnd = str(d.period_end) || idEnd;
+  const metric = str(d.metric) || idMetric.replace(/_/g, " ");
+  const year = fiscalYearLabel(periodEnd);
   const unit = str(d.unit);
   const compact = compactMoney(d.value as number, unit);
-  body.heading = [joinTruthy([d.company, d.metric], " "), year?.long ?? ""].filter(Boolean).join(", ");
+  body.heading = [joinTruthy([d.company, metric], " "), year?.long ?? ""].filter(Boolean).join(", ");
   body.figure = compact === "" ? null : { compact, exact: exactMoney(d.value as number, unit) };
   const start = formatDate(str(d.period_start));
-  const end = formatDate(str(d.period_end));
+  const end = formatDate(periodEnd);
   body.facts = facts([["period", start && end ? `${start} to ${end}` : end], ["form", str(d.form)], ["filed", formatDate(str(d.filing_date))]]);
   body.link = linkTo(d.source_url, "filing");
   body.details = details([["id", id], ["accession", ACCESSION.test(str(d.accession_no)) ? str(d.accession_no) : ""], ["concept", str(d.concept)]]);

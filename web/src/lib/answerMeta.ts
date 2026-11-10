@@ -189,7 +189,12 @@ export interface CheckedView {
   lines: CheckedLine[];
 }
 
-const joined = (items: unknown[]): string => items.map(String).join(", ");
+const MAX_NAMED_CHARS = 160;
+/** The server values a line names, joined and bounded (they are worded into a sentence of ours). */
+const joined = (items: unknown[]): string => {
+  const text = items.map(String).join(", ");
+  return text.length > MAX_NAMED_CHARS ? `${text.slice(0, MAX_NAMED_CHARS)}\u2026` : text;
+};
 
 function sourcesLine(cites: unknown[], hall: unknown[], c: Dict | null): CheckedLine | null {
   if (hall.length || (c !== null && c.citations_retrieved === false)) return { code: "sourcesMissing", tone: "bad", params: { count: hall.length } };

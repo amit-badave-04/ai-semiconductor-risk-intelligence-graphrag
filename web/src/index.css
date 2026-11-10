@@ -183,7 +183,7 @@
     --caution-line: #9a7426;
     --mark: #ebcb52;
     --mark-ink: #17202d;
-    --mark-edge: #ebcb52;
+    --mark-edge: #7a5d00;
     --rule: #aeb7f2;
     --rule-fill: #1e2340;
     --rule-line: #4a5390;
@@ -212,9 +212,14 @@
     outline: 3px solid var(--ring);
     outline-offset: 2px;
   }
+  /* never colour alone (R2 review): dark ink on yellow AND a real underline, which forced-colours mode keeps */
   mark {
     background-color: var(--mark);
     color: var(--mark-ink);
+    text-decoration-line: underline;
+    text-decoration-color: var(--mark-edge);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 2px;
     box-decoration-break: clone;
   }
   .skip-link {

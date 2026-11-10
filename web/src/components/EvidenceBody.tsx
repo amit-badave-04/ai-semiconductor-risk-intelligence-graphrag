@@ -84,7 +84,8 @@ function Loaded({ id, payload, quotes }: { id: string; payload: unknown; quotes:
 
 /** The body of the open panel: what loads, what failed, or the evidence. */
 export function EvidenceBody({ id, content, quotes }: { id: string; content: Content; quotes: readonly string[] }) {
-  if (content.phase === "loading") return <p className="m-0 text-muted-foreground">{w.loading}</p>;
-  if (content.phase === "error") return <p className="m-0 text-destructive">{w.failed(content.message)}</p>;
+  // announced politely (R2 review): focus is on Close while the source loads
+  if (content.phase === "loading") return <output className="block text-muted-foreground">{w.loading}</output>;
+  if (content.phase === "error") return <output className="block text-destructive">{w.failed(content.message)}</output>;
   return <Loaded id={id} payload={content.payload} quotes={quotes} />;
 }

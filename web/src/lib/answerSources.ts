@@ -6,9 +6,9 @@ import { parseAnswer, type Inline, type Leaf } from "./answerBlocks";
 /** How far before a chip (in characters) a closing quote mark may end and still belong to it. */
 export const QUOTE_NEAR_CHARS = 12;
 const MAX_QUOTE_CHARS = 1000;
-const CLOSE = new Set(['"', "”"]);
-const OPEN = new Set(['"', "“"]);
-const ANY_QUOTE = new Set(['"', "“", "”"]);
+const CLOSE = new Set(['"', "\u201d"]);
+const OPEN = new Set(['"', "\u201c"]);
+const ANY_QUOTE = new Set(['"', "\u201c", "\u201d"]);
 
 /** The leaves of each block (a paragraph, a heading, a list item), in document order, bold runs flattened in place. */
 function blockLeaves(text: string): Leaf[][] {
@@ -23,8 +23,9 @@ export function answerSources(text: string): string[] {
   return [...seen];
 }
 
-/** The double-quoted text that closes within QUOTE_NEAR_CHARS of the end of `before`, or null. */
-function quoteBefore(before: string): string | null {
+/** The double-quoted text that closes within QUOTE_NEAR_CHARS of the end of `before`, or null. `straightCount` is how many
+ *  straight double quotes the whole block has before the chip: a straight mark closes a pair only when that count is even. */
+function quoteBefore(before: string, straightCount: number): string | null {
   let close = -1;
   for (let i = before.length - 1; i >= Math.max(0, before.length - 1 - QUOTE_NEAR_CHARS); i -= 1) {
     if (CLOSE.has(before[i])) {
@@ -33,6 +34,7 @@ function quoteBefore(before: string): string | null {
     }
   }
   if (close === -1) return null;
+  if (before[close] === '"' && straightCount % 2 === 1) return null; // the last straight mark opens a quote, it closes none
   for (let i = close - 1; i >= Math.max(0, close - 1 - MAX_QUOTE_CHARS); i -= 1) {
     if (OPEN.has(before[i])) {
       const quote = before.slice(i + 1, close);
@@ -49,14 +51,16 @@ export function chipQuotes(text: string): Map<string, string[]> {
   const nth = new Map<string, number>();
   for (const leaves of blockLeaves(text)) {
     let before = "";
+    let straight = 0;
     for (const leaf of leaves) {
       if (leaf.type === "text") {
         before += leaf.text;
+        for (const ch of leaf.text) if (ch === '"') straight += 1;
         continue;
       }
       const n = nth.get(leaf.id) ?? 0;
       nth.set(leaf.id, n + 1);
-      const quote = quoteBefore(before.slice(-(MAX_QUOTE_CHARS + QUOTE_NEAR_CHARS + 2)));
+      const quote = quoteBefore(before.slice(-(MAX_QUOTE_CHARS + QUOTE_NEAR_CHARS + 2)), straight);
       if (quote !== null) quotes.set(`${leaf.id}:${n}`, [quote]);
     }
   }

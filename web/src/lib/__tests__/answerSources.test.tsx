@@ -84,3 +84,15 @@ describe("chipQuotes", () => {
     expect(performance.now() - started).toBeLessThan(500);
   });
 });
+
+describe("chipQuotes: straight quotes are paired, never guessed (R2 review)", () => {
+  it("does not read an opening straight quote as a closing one, so unquoted prose is never passed off as a quote", () => {
+    const text = `"x" the firm told investors that revenue rose, "up [${A}]`;
+    expect(chipQuotes(text).get(`${A}:0`)).toBeUndefined();
+  });
+
+  it("still pairs a balanced straight quote after an earlier balanced one", () => {
+    const text = `"x" then "we must repay or refinance the notes" [${A}]`;
+    expect(chipQuotes(text).get(`${A}:0`)).toEqual(["we must repay or refinance the notes"]);
+  });
+});

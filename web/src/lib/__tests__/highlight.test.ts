@@ -115,3 +115,19 @@ describe("highlight", () => {
     }
   });
 });
+
+describe("highlight caps (R2 review: exercised, not only declared)", () => {
+  it("uses at most 8 fragments of a quote: a missing ninth fragment does not undo the first eight", () => {
+    const passage = Array.from({ length: 9 }, (_, i) => `fragment number ${i} of the passage text here.`).join(" ");
+    const fragments = Array.from({ length: 9 }, (_, i) => `fragment number ${i} of the passage text`);
+    fragments[8] = "a ninth fragment that is nowhere in the passage";
+    const r = highlight(passage, [fragments.join(" \u2026 ")]);
+    expect(r.marked).toBe(true);
+    expect(r.segments.filter((s) => s.marked)).toHaveLength(8);
+  });
+
+  it("reads at most 50 quotes: a 51st that would match marks nothing", () => {
+    const misses = Array.from({ length: 50 }, (_, i) => `a quote that is not in the passage, number ${i}`);
+    expect(highlight(PASSAGE, [...misses, "we had net outstanding a total of $9.7 billion"]).marked).toBe(false);
+  });
+});
