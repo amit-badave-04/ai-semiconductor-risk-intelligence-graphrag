@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, type InitialEntry } from "react-router";
 import { vi } from "vitest";
 import { EvidenceDrawerProvider } from "@/components/EvidenceDrawer";
 import { resetChipEvidence } from "@/lib/chipEvidence";
@@ -34,6 +34,8 @@ export interface Env {
   ask?: () => Response | Promise<Response>;
   workspace?: Partial<WorkspaceContextValue>;
   turnstile?: Partial<TurnstileContextValue>;
+  /** Where the router starts, with its state (the Company page's "Ask about" link, docs/specs/m5b-redesign.md RD19). */
+  entries?: InitialEntry[];
 }
 
 export interface Call {
@@ -74,7 +76,7 @@ export function mountAsk(env: Env = {}) {
     <StrictMode>
       <TurnstileContext.Provider value={{ ...INERT_TURNSTILE, ...env.turnstile }}>
         <WorkspaceContext.Provider value={ws}>
-          <MemoryRouter>
+          <MemoryRouter initialEntries={env.entries}>
             <AskProvider>
               <EvidenceDrawerProvider>
                 <Ask />

@@ -101,7 +101,8 @@ describe("DossierBlocks: rows with every field present", () => {
     show(full);
     expect(within(section("Filings")).getByText("10-K")).toBeTruthy();
     expect(within(section("Key numbers")).getByText("$130.5B")).toBeTruthy();
-    expect(section("Active risks").textContent).toContain("supply \u00b7 2026-02-25");
+    expect(section("Active risks").textContent).toContain("supply");
+    expect(section("Active risks").textContent).not.toContain("2026-02-25"); // D-R4: the data has no date for active risks
   });
 
   it("shows the citation ids as evidence chips (R25): the metric, the edge chunk, the rule chunk and the rule", () => {

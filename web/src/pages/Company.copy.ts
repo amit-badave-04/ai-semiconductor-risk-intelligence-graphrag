@@ -9,10 +9,6 @@
 //   notComparedLine     the legacy template of index.html (Workspace.copy.ts notCompared): "<a> -> <b>: comparison not available
 //                       (<reason>)." with the two filings as the operands.
 // Non-ASCII characters are written as unicode escapes.
-export const MSG_LOADING = "loading\u2026";
-export const NONE = "none";
-/** Owner 2026-11-08: a 200 whose body the page cannot read (house style: lower case, "could not load ...", as MSG_CHANGES_FAILED). */
-export const MSG_COMPANY_UNREADABLE = "could not load the company data";
 export const RISK_CHANGES_TITLE = "Compared risk disclosures";
 export const KIND_NEW = "No matching risk factor found in the earlier filing";
 export const KIND_DROPPED = "No longer appears as a separate risk factor";

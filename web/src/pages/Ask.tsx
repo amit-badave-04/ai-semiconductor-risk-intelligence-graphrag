@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { ReadWithCare, SourcesList } from "@/components/AnswerNotes";
 import { AnswerSample } from "@/components/AnswerSample";
 import { AnswerMeta } from "@/components/Badges";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { deck } from "@/copy/deck";
 import { liveLimits, statusView, type StatusLine } from "@/lib/askStatus";
+import { isFilerTicker } from "@/lib/company";
 import { depthOptions, type Depth } from "@/lib/depth";
 import { ANSWER_HEADING_ID } from "@/lib/focusTargets";
 import { FILERS } from "@/lib/pages.generated";
@@ -139,6 +141,21 @@ function AnswerArea({ ask, stats, renderFailed, onRenderError }: AnswerProps) {
   );
 }
 
+/** docs/specs/m5b-redesign.md RD19: the Company page's "Ask about <company>" opens Ask with the approved question in the box. The
+ *  router state is untrusted: only a ticker of the 13 filers is read (its generated name fills the question), anything else is
+ *  ignored, and the state is cleared at once, so a reload or Back never fills the box again. Nothing is sent; focus is untouched. */
+function useAskAbout(fill: (question: string) => void) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (location.state === null || location.state === undefined) return;
+    const about: unknown = typeof location.state === "object" ? (location.state as { askAbout?: unknown }).askAbout : undefined;
+    const filer = isFilerTicker(about) ? FILERS.find((f) => f.ticker === about) : undefined;
+    if (filer !== undefined) fill(deck.company.header.askPrefill(filer.name));
+    void navigate(".", { replace: true, state: null });
+  }, [location.state, navigate, fill]);
+}
+
 export function Ask() {
   const ask = useAsk();
   const stats = useStats();
@@ -170,6 +187,7 @@ export function Ask() {
     setQuestion(value);
     setEmptyCount(0);
   };
+  useAskAbout(setQuestion);
   const pick = (picked: string) => {
     onQuestion(picked);
     setPreferred("hybrid");

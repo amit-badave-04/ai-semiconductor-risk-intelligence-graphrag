@@ -70,7 +70,7 @@ export interface Dossier {
 export type DossierResult =
   | { kind: "ok"; dossier: Dossier }
   | { kind: "notFound" }
-  /** A 200 whose body is no dossier (the page words it: Company.copy MSG_COMPANY_UNREADABLE). */
+  /** A 200 whose body is no dossier (the page words it: copy/deck.ts company.status.unreadable). */
   | { kind: "unreadable" }
   | { kind: "error"; detail: string };
 

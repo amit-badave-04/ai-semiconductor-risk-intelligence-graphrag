@@ -14,7 +14,7 @@ import { focusSection } from "@/lib/sectionHash";
 import { Block, ScrollRegion } from "./CompanySection";
 
 const w = deck.company.numbers;
-const NONE = "none";
+const NONE = deck.company.status.none;
 
 function metricName(row: Pick<NumberRow, "metric" | "known">): string {
   return row.known ? w.metric[row.metric as keyof typeof w.metric].name : row.metric;

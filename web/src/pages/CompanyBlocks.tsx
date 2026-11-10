@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { deck } from "@/copy/deck";
 import type { ActiveRisk, Dossier, Filing } from "@/lib/company";
+import { formatDate } from "@/lib/format";
 import { FILERS } from "@/lib/pages.generated";
 import { Block, ScrollRegion } from "./CompanySection";
 import { AtAGlance, KeyNumbers } from "./CompanyNumbers";
@@ -12,7 +13,7 @@ import { GovernmentRules } from "./CompanyRules";
 // shared evidence chip or figure stamp (components/Chips.tsx), a real button that opens the one evidence drawer with the place
 // "company" (A1); any other value, a `doc:` id included (it belongs to a workspace), stays text and can cause no request (S4).
 
-const NONE = "none";
+const NONE = deck.company.status.none;
 
 const TH = "px-3 py-2 text-left text-sm font-semibold";
 const TD = "px-3 py-2 align-top text-sm";
@@ -45,8 +46,8 @@ function FilingsBlock({ filings }: { filings: Filing[] }) {
               {filings.map((f, i) => (
                 <tr key={`${f.accession_no ?? ""}-${i}`} className="border-b border-border">
                   <td className={TD}>{text(f.form)}</td>
-                  <td className={TD_LONG}>{text(f.filing_date)}</td>
-                  <td className={TD}>{text(f.status)}</td>
+                  <td className={TD_LONG}>{formatDate(f.filing_date)}</td>
+                  <td className={TD}>{f.status === null ? "" : deck.evidence.status(f.status)}</td>
                   <td className={TD_LONG}>{text(f.accession_no)}</td>
                 </tr>
               ))}
@@ -61,6 +62,8 @@ function FilingsBlock({ filings }: { filings: Filing[] }) {
 function RisksBlock({ risks }: { risks: ActiveRisk[] }) {
   return (
     <Block id="active-risks" title={deck.company.risks.heading}>
+      {/* D-R4: the summaries are semigraph's words; the data has no date for them (the field is never written) */}
+      <p className="mt-0 mb-3 text-sm text-muted-foreground">{deck.company.risks.label}</p>
       {risks.length === 0 ? (
         <p className="text-muted-foreground">{NONE}</p>
       ) : (
@@ -68,10 +71,7 @@ function RisksBlock({ risks }: { risks: ActiveRisk[] }) {
           {risks.map((r, i) => (
             <li key={`${r.risk_id ?? ""}-${i}`}>
               <p className="m-0">{text(r.summary)}</p>
-              <p className="m-0 text-sm text-muted-foreground">
-                {text(r.category)}
-                {r.last_evidenced_at === null ? "" : ` \u00b7 ${r.last_evidenced_at}`}
-              </p>
+              {r.category !== null && <p className="m-0 text-sm text-muted-foreground">{r.category}</p>}
             </li>
           ))}
         </ul>

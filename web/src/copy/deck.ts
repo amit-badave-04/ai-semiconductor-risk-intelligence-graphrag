@@ -294,6 +294,12 @@ export const deck = {
       /** D-R4 */
       label: "Summaries written by semigraph, not quotes",
     },
+    /** the page's status words (unchanged from R25): while the dossier loads, an empty block, a 200 the page cannot read */
+    status: {
+      loading: "loading\u2026",
+      none: "none",
+      unreadable: "could not load the company data",
+    },
     /** a request that never reached the server (the legacy page's words, index.html:680) */
     network: "network error \u2014 is the service online?",
   },

@@ -10,7 +10,7 @@ import { relationshipsView } from "@/lib/companyView";
 import { FILERS } from "@/lib/pages.generated";
 import { Block, Cite } from "./CompanySection";
 
-const NONE = "none";
+const NONE = deck.company.status.none;
 const TICKER_BY_NAME: ReadonlyMap<string, string> = new Map(FILERS.map((f) => [f.name, f.ticker]));
 
 function CompanyName({ name }: { name: string }) {

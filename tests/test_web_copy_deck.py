@@ -56,7 +56,7 @@ NOT_YET_IN_THE_DECK = {
     "lib/sse.ts": 2,
     "lib/workspace.ts": 7,
     "pages/Ask.copy.ts": 12,
-    "pages/Company.copy.ts": 8,  # only the KIND_* labels stay when it folds into the deck
+    "pages/Company.copy.ts": 7,  # the pinned KIND_* labels and heading, and the legacy pair templates (R4 copy sweep)
     "pages/Freshness.lib.ts": 7,
     "pages/Freshness.tsx": 9,
     "pages/Method.tsx": 2,

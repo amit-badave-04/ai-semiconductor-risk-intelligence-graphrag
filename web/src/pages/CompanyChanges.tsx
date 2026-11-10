@@ -1,3 +1,4 @@
+import { deck } from "@/copy/deck";
 import { numberOccurrences } from "@/lib/citations";
 import { CITE_GROUP, type RiskChangesResult, type RiskItem, type RiskKind, type RiskPair, type RiskPassage } from "@/lib/company";
 import { Block, Cite } from "./CompanySection";
@@ -6,8 +7,6 @@ import {
   KIND_DROPPED,
   KIND_NEW,
   KIND_UNSETTLED,
-  MSG_LOADING,
-  NONE,
   RISK_CHANGES_TITLE,
   notComparedLine,
   passageLabel,
@@ -106,9 +105,9 @@ function Pair({ pair, numbers }: { pair: RiskPair; numbers: PassageNumbers }) {
 }
 
 function Body({ state }: { state: RiskChangesState }) {
-  if (state === null) return <p className="text-muted-foreground">{MSG_LOADING}</p>;
+  if (state === null) return <p className="text-muted-foreground">{deck.company.status.loading}</p>;
   if (state.kind === "error") return <p className="text-destructive">{state.detail}</p>;
-  if (state.kind === "notFound" || state.changes.pairs.length === 0) return <p className="text-muted-foreground">{NONE}</p>;
+  if (state.kind === "notFound" || state.changes.pairs.length === 0) return <p className="text-muted-foreground">{deck.company.status.none}</p>;
   const numbers = numberPassages(state.changes.pairs);
   return (
     <>

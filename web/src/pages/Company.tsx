@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { PageHeading } from "@/components/Layout";
+import { deck } from "@/copy/deck";
 import { type DossierResult, fetchDossier, fetchRiskChanges } from "@/lib/company";
 import { FILERS } from "@/lib/pages.generated";
 import { CompanySwitcher, DossierBlocks } from "./CompanyBlocks";
 import { RiskChangesBlock, type RiskChangesState } from "./CompanyChanges";
-import { CompanyReports, type FilerFacts } from "./CompanyHeader";
+import { CompanyActions, CompanyReports, type FilerFacts } from "./CompanyHeader";
 import { CompanyNav } from "./CompanyNav";
-import { MSG_COMPANY_UNREADABLE, MSG_LOADING } from "./Company.copy";
 import { NotFound } from "./NotFound";
 import { useSectionFocus } from "./useSectionFocus";
 
@@ -47,9 +47,9 @@ function useRiskChanges(ticker: string, enabled: boolean): RiskChangesState {
 
 /** The local status text of the dossier: loading, the server's detail, the unreadable-body line, or nothing once it is ok. */
 function dossierMessage(result: DossierResult | null): string {
-  if (result === null) return MSG_LOADING;
+  if (result === null) return deck.company.status.loading;
   if (result.kind === "error") return result.detail;
-  return result.kind === "unreadable" ? MSG_COMPANY_UNREADABLE : "";
+  return result.kind === "unreadable" ? deck.company.status.unreadable : "";
 }
 
 function CompanyPage({ ticker, name, filer }: { ticker: string; name: string; filer: FilerFacts }) {
@@ -74,6 +74,7 @@ function CompanyPage({ ticker, name, filer }: { ticker: string; name: string; fi
     <>
       <PageHeading title={`${name} (${ticker})`} />
       {result?.kind === "ok" && <CompanyReports dossier={result.dossier} filer={filer} />}
+      {result?.kind === "ok" && <CompanyActions ticker={ticker} name={name} />}
       <output className="mb-4 block min-h-6 text-muted-foreground">
         {message}
       </output>

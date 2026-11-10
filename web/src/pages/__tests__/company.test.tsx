@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { stampLabel } from "@/components/__tests__/stampLabel";
 import { FILERS } from "@/lib/pages.generated";
 import { Company } from "../Company";
-import * as copy from "../Company.copy";
+import { deck } from "@/copy/deck";
 
 // built from pieces so no script URL literal sits in the source
 const SCRIPT_URL = ["java", "script:alert(1)"].join("");
@@ -127,8 +127,8 @@ describe("Company: the dossier", () => {
     // the one style attribute is Base UI's own on the switch's hidden input (RD22 "Show exact values"), never from data
     expect([...container.querySelectorAll("[style]")].filter((el) => !(el.matches("input[aria-hidden='true']") && el.closest("label, div")?.querySelector("[role='switch']")))).toEqual([]);
     const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    // the switcher's company pages and RD21's five fixed section links: constants, never from data
-    const SECTIONS = ["#key-numbers", "#government-rules", "#relationships", "#filings", "#risk-changes"];
+    // the switcher's company pages, RD21's five fixed section links and RD19's "Ask about" (Ask, "/"): constants, never from data
+    const SECTIONS = ["/", "#key-numbers", "#government-rules", "#relationships", "#filings", "#risk-changes"];
     expect(hrefs.filter((h) => !/^\/company\/[A-Z]+\/$/.test(h ?? "") && !SECTIONS.includes(h ?? ""))).toEqual([]);
     expect(container.querySelector('[href*="evil"]')).toBeNull();
     expect(container.textContent).not.toContain("evil.example");
@@ -176,7 +176,7 @@ describe("Company: the dossier", () => {
   });
 
   it("says the company data could not be loaded for a 200 it cannot read (owner 2026-11-08), not the status text", async () => {
-    expect(copy.MSG_COMPANY_UNREADABLE).toBe("could not load the company data");
+    expect(deck.company.status.unreadable).toBe("could not load the company data"); // the words moved to the deck, unchanged
     stubFetch(() => new Response(JSON.stringify({ filings: [] }), { status: 200, statusText: "OK" }));
     const first = mount("/company/NVDA");
     expect(await screen.findByText("could not load the company data")).toBeInTheDocument();
