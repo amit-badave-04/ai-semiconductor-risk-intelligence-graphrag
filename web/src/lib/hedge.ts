@@ -19,25 +19,25 @@ const CLAIMS: Record<HedgeGroup, RegExp> = {
 };
 
 /** Before the wording in its sentence: the answer says no such item was found. */
-const NONE_BEFORE = ["found no ", "no such ", "not listed", "none ", "did not find", "no risk factor was found", "there is no ", "there are no ", "there were no "];
+const NONE_BEFORE = /found no |no such |not listed|none |did not find|no risk factor was found|there (?:is|are|were) no /;
 /** After the wording in its sentence: the claim is made of nothing ("... for any items; none were listed"). */
-const NONE_AFTER = ["for any item", "none were listed", "none was listed", "none found"];
+const NONE_AFTER = /for any item|none (?:were|was) listed|none found/;
 /** A sentence ends at . ! ? followed by white space, at a blank line, or where a list item starts; any other line break is a
  *  space (a sentence may wrap). */
 const SENTENCES = /(?<=[.!?])\s+|\n\s*\n|\n(?=[ \t]*(?:[-*+]|\d+\.)\s)/;
 /** How far before and after the wording (in characters) a cue that says none was found is looked for. */
 const CUE_WINDOW_CHARS = 300;
 
-const normalise = (text: string): string => text.replace(/[\u201c\u201d]/g, '"').toLowerCase();
+const normalise = (text: string): string => text.replace(/[\u201c\u201d]/g, String.fromCharCode(0x22)).toLowerCase();
 const flatten = (sentence: string): string => sentence.replace(/\s+/g, " ");
 
 /** Whether the wording at `at` (of `length` characters) in `sentence` makes the claim. */
 function claims(sentence: string, at: number, length: number): boolean {
   const before = sentence.slice(Math.max(0, at - CUE_WINDOW_CHARS), at);
-  if (/"\s*$/.test(before)) return false; // the list's quoted heading, named, not a claim
-  if (NONE_BEFORE.some((cue) => before.includes(cue))) return false;
+  if (/\x22\s*$/.test(before)) return false; // the list's quoted heading, named, not a claim
+  if (NONE_BEFORE.test(before)) return false;
   const after = sentence.slice(at + length, at + length + CUE_WINDOW_CHARS);
-  return !NONE_AFTER.some((cue) => after.includes(cue));
+  return !NONE_AFTER.test(after);
 }
 
 /** The groups whose claim the text makes, each once, in a fixed order. */
