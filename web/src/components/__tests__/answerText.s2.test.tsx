@@ -5,16 +5,32 @@ import { parseAnswer } from "@/lib/answerBlocks";
 import { HOSTILE, generated } from "./answerCorpus";
 
 // S2 (docs/specs/m5b-frontend.md): the answer text contains only p, ul, li, h3, strong, the chip button and text; no on*, src or
-// style attribute anywhere and no href; the chip carries nothing but the documented attributes.
+// style attribute anywhere and no href; the chip carries nothing but the documented attributes, and holds only its label text and
+// its constant kind icon (RD11).
 const ALLOWED_TAGS = new Set(["p", "ul", "li", "h3", "strong", "button"]);
 // aria-expanded and aria-controls: docs/specs/m5b-redesign.md RD11 (constant values, never from data)
 const ALLOWED_CHIP_ATTRS = new Set(["type", "class", "data-id", "data-chip-key", "data-stale", "title", "aria-expanded", "aria-controls"]);
+// RD11: the chip's kind icon, a constant lucide SVG (never from data), allowed only inside a chip and only with drawing attributes
+const ICON_TAGS = new Set(["svg", "path", "circle", "rect", "line", "polyline"]);
+const ICON_ATTRS = new Set(["xmlns", "width", "height", "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "class", "aria-hidden", "d", "cx", "cy", "r", "x", "y", "rx", "ry", "x1", "x2", "y1", "y2", "points"]);
+
+function iconViolations(el: Element, tag: string): string[] {
+  const found: string[] = [];
+  if (el.closest("button.cite") === null) found.push(`icon <${tag}> outside a chip`);
+  for (const attr of Array.from(el.attributes)) if (!ICON_ATTRS.has(attr.name)) found.push(`icon attr ${attr.name} on <${tag}>`);
+  if (tag === "svg" && el.getAttribute("aria-hidden") !== "true") found.push("icon not hidden from assistive technology");
+  return found;
+}
 
 function violations(text: string): string[] {
   const { container, unmount } = render(<AnswerText text={text} place="answer" gen={1} />);
   const found: string[] = [];
   for (const el of Array.from(container.querySelectorAll("*"))) {
     const tag = el.tagName.toLowerCase();
+    if (ICON_TAGS.has(tag)) {
+      found.push(...iconViolations(el, tag));
+      continue;
+    }
     if (!ALLOWED_TAGS.has(tag)) found.push(`tag <${tag}>`);
     for (const attr of Array.from(el.attributes)) {
       if (/^on/i.test(attr.name) || attr.name === "src" || attr.name === "style" || attr.name === "href") found.push(`attr ${attr.name}`);

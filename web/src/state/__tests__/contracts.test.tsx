@@ -156,7 +156,7 @@ describe("EvidenceDrawer and Chips contract", () => {
         </>,
       ),
     );
-    const chip = screen.getByRole("button", { name: /Item 1A/ });
+    const chip = screen.getByRole("button", { name: /paragraph 361/ });
     expect(chip.tagName).toBe("BUTTON");
     expect(chip.getAttribute("type")).toBe("button");
     await userEvent.click(chip);

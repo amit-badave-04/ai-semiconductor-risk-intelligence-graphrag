@@ -5,6 +5,7 @@
 // is a reviewable diff. Non-ASCII characters are written as unicode escapes.
 import type { CheckedLine } from "@/lib/answerMeta";
 import type { RetrievalParams, StatusView } from "@/lib/askStatus";
+import type { StampView } from "@/lib/stamp";
 import type { StepCode, StepView } from "@/lib/steps";
 
 /** The per-address limits of live questions, as /api/stats reports them (lib/askStatus.ts liveLimits). */
@@ -200,6 +201,31 @@ export const deck = {
           return "The answer was cut short by the length limit.";
       }
     },
+  },
+
+  chips: {
+    /** RD11: a source stamp's label (lib/stamp.ts stampView). No pilcrow, no leading zeros; the company only once loaded. */
+    label: (view: StampView): string => {
+      switch (view.kind) {
+        case "chunk": {
+          const lead = [view.filer, view.form].filter((part) => part !== "").join(" ");
+          const filed = lead === "" ? "Filed" : "filed";
+          const year = view.year === "" ? "" : view.loaded ? `${filed} ${view.year}` : `Filing ${view.year}`;
+          const head = [lead, year].filter((part) => part !== "").join(", ");
+          return head === "" ? `Paragraph ${view.paragraph}` : `${head} \u00b7 paragraph ${view.paragraph}`;
+        }
+        case "xbrl":
+          return view.periodEnd === "" ? `Reported ${view.metric}` : `Reported ${view.metric}, period ended ${view.periodEnd}`;
+        case "fr":
+          return `Government rule ${view.number}`;
+        case "doc":
+          return `Your document, version ${view.version} \u00b7 paragraph ${view.paragraph}`;
+        case "other":
+          return view.text;
+      }
+    },
+    /** shown after a stale chip's label (a workspace answer cited an older version of the document) */
+    stale: " (older version)",
   },
 
   sample: {

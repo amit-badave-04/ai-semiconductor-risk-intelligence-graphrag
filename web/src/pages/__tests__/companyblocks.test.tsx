@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
-import { chipLabel } from "@/lib/citations";
+import { stampLabel } from "@/components/__tests__/stampLabel";
 import type { Dossier, Edge, Rule } from "@/lib/company";
 import { CompanySwitcher, DossierBlocks } from "../CompanyBlocks";
 
@@ -107,7 +107,7 @@ describe("DossierBlocks: rows with every field present", () => {
     const { container } = show(full);
     const cites = Array.from(container.querySelectorAll("button[data-id]")).map((el) => el.getAttribute("data-id"));
     expect(cites).toEqual(["xbrl:1045810:revenue:2026-01-25", CHUNK, CHUNK, "fr:2026-01234"]);
-    expect(container.querySelector(`button[data-id="${CHUNK}"]`)?.textContent).toBe(chipLabel(CHUNK));
+    expect(container.querySelector(`button[data-id="${CHUNK}"]`)?.textContent).toBe(stampLabel(CHUNK));
   });
 
   it("shows an edge's status and quote, and a rule's date and kind", () => {

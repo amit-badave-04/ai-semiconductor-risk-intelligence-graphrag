@@ -164,7 +164,13 @@ describe("a hostile report is text (S2, S11, 32)", () => {
   it("renders only p, ul, li, h3, strong and chip buttons, with no event, link, source or style attribute", () => {
     const { container } = show(report(HOSTILE));
     for (const element of container.querySelectorAll("*")) {
-      expect(ALLOWED.has(element.tagName.toLowerCase()), element.tagName).toBe(true);
+      const icon = element.closest("svg"); // RD11: a chip's constant kind icon, hidden from assistive technology, only inside a chip
+      if (icon !== null) {
+        expect(icon.closest("button.cite"), "an icon outside a chip").not.toBeNull();
+        expect(icon).toHaveAttribute("aria-hidden", "true");
+      } else {
+        expect(ALLOWED.has(element.tagName.toLowerCase()), element.tagName).toBe(true);
+      }
       for (const attribute of Array.from(element.attributes)) {
         expect(FORBIDDEN.test(attribute.name), attribute.name).toBe(false);
       }

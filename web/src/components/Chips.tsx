@@ -2,11 +2,14 @@
 // A chip is a real <button type="button"> (A1): reachable by Tab, operable with Enter and Space, a visible focus indicator, an
 // accessible name (its label). Model text is data: it is rendered as text nodes only, never as markup, and a chip id is untrusted
 // (it already matched the generated grammar in tokenize, and the drawer checks it again before any request, S4).
+import { ChartNoAxesColumn, FileQuestionMark, FileText, FileUser, Landmark, TriangleAlert, type LucideIcon } from "lucide-react";
 import { Fragment, useMemo, type ReactNode } from "react";
+import { deck } from "@/copy/deck";
 import { parseAnswer, type Inline, type Leaf } from "@/lib/answerBlocks";
 import { chipQuotes } from "@/lib/answerSources";
 import { useChipEvidence } from "@/lib/chipEvidence";
-import { chipKey, chipLabel, type ChipPlace } from "@/lib/citations";
+import { chipKey, type ChipPlace } from "@/lib/citations";
+import { stampView, type StampView } from "@/lib/stamp";
 import { EVIDENCE_PANEL_ID, useEvidenceDrawer } from "./useEvidenceDrawer";
 
 export interface ChipProps {
@@ -24,9 +27,24 @@ export interface ChipProps {
   quotes?: readonly string[];
 }
 
+// RD11: an icon and a shape per kind (the icon is hidden from assistive technology: the label says the same). A filing passage and
+// an uploaded document sit on the neutral surface (the document with a dashed edge), a reported number is a pill, a government rule
+// is square in the rule colours. A stale chip takes the caution colours and a warning icon, and says so in visible words.
+const KINDS: Record<StampView["kind"], { icon: LucideIcon; look: string }> = {
+  chunk: { icon: FileText, look: "rounded-sm border-border-strong bg-card text-foreground" },
+  xbrl: { icon: ChartNoAxesColumn, look: "rounded-full border-border-strong bg-card text-foreground" },
+  fr: { icon: Landmark, look: "rounded-none border-rule-line bg-rule-fill text-rule" },
+  doc: { icon: FileUser, look: "rounded-sm border-dashed border-border-strong bg-card text-foreground" },
+  other: { icon: FileQuestionMark, look: "rounded-sm border-border-strong bg-card text-foreground" },
+};
+const STALE_LOOK = "stale rounded-sm border-caution-line bg-caution-fill text-caution";
+
 export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) {
   const drawer = useEvidenceDrawer();
-  const evidence = useChipEvidence(id); // a chunk chip gains its form and period once the drawer has loaded it
+  const evidence = useChipEvidence(id); // a chunk chip names its filer, form and year once the drawer has loaded it
+  const view = stampView(id, evidence);
+  const { icon: KindIcon, look } = KINDS[view.kind];
+  const Icon = stale ? TriangleAlert : KindIcon;
   const title = `open evidence ${id}${stale ? " \u2014 a newer version exists" : ""}`;
   return (
     <button
@@ -37,10 +55,11 @@ export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) 
       aria-controls={EVIDENCE_PANEL_ID}
       data-stale={stale ? "" : undefined}
       title={title}
-      className={`cite mx-0.5 inline cursor-pointer rounded-sm border bg-muted px-1 font-mono text-[0.85em] ${stale ? "stale border-amber-600 text-amber-700" : "border-border text-primary"}`}
+      className={`cite mx-0.5 inline max-w-full cursor-pointer border px-1 text-left text-[0.9em] font-semibold hover:underline ${stale ? STALE_LOOK : look}`}
       onClick={(event) => drawer.open(id, event.currentTarget, place, quotes)}
     >
-      {chipLabel(id, evidence)}
+      <Icon aria-hidden="true" className="mr-1 inline size-[1em] align-[-0.125em]" />
+      {`${deck.chips.label(view)}${stale ? deck.chips.stale : ""}`}
     </button>
   );
 }

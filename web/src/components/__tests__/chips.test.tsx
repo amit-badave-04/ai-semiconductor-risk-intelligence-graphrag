@@ -28,7 +28,7 @@ describe("tests/ui/chips.test.mjs", () => {
     expect(classifyId("doc:0123456789AB:v2:0007")).toBeNull();
     expect(chipLabel(DOC)).toBe("your document v2 \u00b60007");
     render(<AnswerText text={`It says so [${DOC}].`} place="answer" gen={1} />);
-    const chip = screen.getByRole("button", { name: "your document v2 \u00b60007" });
+    const chip = screen.getByRole("button", { name: "Your document, version 2 \u00b7 paragraph 7" });
     expect(chip).toHaveAttribute("data-id", DOC);
   });
 
@@ -58,9 +58,9 @@ describe("tests/ui/chips.test.mjs", () => {
 
   it("renderMarkdown turns each of the three id forms into a labelled chip", () => {
     render(<AnswerText text={`Revenue was $215.9B [${XBRL}], see risk [${CHUNK}] and the rule [${FR}].`} place="answer" gen={1} />);
-    expect(screen.getByRole("button", { name: "Item 1A \u00b60361" })).toHaveAttribute("data-id", CHUNK);
-    expect(screen.getByRole("button", { name: "XBRL revenue FY ended 2026-01-25" })).toHaveAttribute("data-id", XBRL);
-    expect(screen.getByRole("button", { name: "BIS rule 2026-19537" })).toHaveAttribute("data-id", FR);
+    expect(screen.getByRole("button", { name: "Filing 2026 \u00b7 paragraph 361" })).toHaveAttribute("data-id", CHUNK);
+    expect(screen.getByRole("button", { name: "Reported revenue, period ended Jan 25, 2026" })).toHaveAttribute("data-id", XBRL);
+    expect(screen.getByRole("button", { name: "Government rule 2026-19537" })).toHaveAttribute("data-id", FR);
   });
 
   it("bracketed text that is not a citation stays plain text", () => {

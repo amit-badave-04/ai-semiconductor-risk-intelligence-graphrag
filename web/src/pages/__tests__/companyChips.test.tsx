@@ -2,7 +2,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { EvidenceDrawerContext, type EvidenceDrawerApi } from "@/components/useEvidenceDrawer";
-import { chipLabel, numberOccurrences } from "@/lib/citations";
+import { stampLabel } from "@/components/__tests__/stampLabel";
+import { numberOccurrences } from "@/lib/citations";
 import type { Dossier, RiskChangesResult } from "@/lib/company";
 import { DossierBlocks } from "../CompanyBlocks";
 import { RiskChangesBlock } from "../CompanyChanges";
@@ -61,7 +62,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
     const { container } = showDossier(DOSSIER);
     const found = chips(container);
     expect(found.map((b) => b.dataset.id)).toEqual([XBRL, CHUNK, CHUNK, FR]);
-    expect(found.map((b) => b.textContent)).toEqual([XBRL, CHUNK, CHUNK, FR].map((id) => chipLabel(id)));
+    expect(found.map((b) => b.textContent)).toEqual([XBRL, CHUNK, CHUNK, FR].map((id) => stampLabel(id)));
     for (const button of found) expect(button).toHaveAttribute("type", "button");
     expect(container.querySelectorAll("[data-cite]")).toHaveLength(0);
   });
@@ -77,7 +78,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
   it("opens the drawer for the clicked chip, with the chip as the opener and the place company", () => {
     const { drawer } = showDossier(DOSSIER);
     const metrics = screen.getByRole("region", { name: "Metrics" });
-    const chip = within(metrics).getByRole("button", { name: chipLabel(XBRL) });
+    const chip = within(metrics).getByRole("button", { name: stampLabel(XBRL) });
     fireEvent.click(chip);
     expect(drawer.open).toHaveBeenCalledWith(XBRL, chip, "company", undefined); // no quote before it (RD18)
   });
@@ -86,7 +87,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
     showDossier(DOSSIER);
     const rules = screen.getByRole("region", { name: "Federal Register rules" });
     expect(rules).toHaveTextContent("keyword matches to external Federal Register rules");
-    expect(within(rules).getByRole("button", { name: chipLabel(FR) })).toBeInTheDocument();
+    expect(within(rules).getByRole("button", { name: stampLabel(FR) })).toBeInTheDocument();
   });
 
   it("keeps both chips of an id an edge lists twice: distinct chip keys and no duplicate React key", () => {

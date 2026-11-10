@@ -95,12 +95,12 @@ for (const scheme of ["light", "dark"] as const) {
         await page.setViewportSize({ width, height: 900 });
         await page.route("**/api/company/NVDA/dossier", (route) => route.fulfill({ json: EVERY_CHIP_DOSSIER }));
         await page.goto(`${PREVIEW}/v2/company/NVDA/`);
-        const metricChip = page.getByRole("region", { name: "Metrics" }).getByRole("button", { name: "XBRL revenue FY ended 2026-01-25" });
+        const metricChip = page.getByRole("region", { name: "Metrics" }).getByRole("button", { name: "Reported revenue, period ended Jan 25, 2026" });
         await expect(metricChip).toBeVisible();
         await expect(page.getByRole("region", { name: "Relationships" }).locator("button[data-id]")).toHaveCount(2);
         const rules = page.getByRole("region", { name: "Federal Register rules" });
         await expect(rules.locator("button[data-id]")).toHaveCount(2);
-        await expect(rules.getByRole("button", { name: "BIS rule 2026-01234" })).toBeVisible();
+        await expect(rules.getByRole("button", { name: "Government rule 2026-01234" })).toBeVisible();
         await expect(rules).toContainText("keyword matches to external Federal Register rules");
         await expect(page.locator("main [data-cite]")).toHaveCount(0);
         const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();

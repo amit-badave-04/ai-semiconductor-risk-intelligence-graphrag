@@ -4,7 +4,6 @@ import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it } from "vitest";
 import { AnswerText } from "@/components/Chips";
-import { classifyId } from "@/lib/citations";
 import { HOSTILE, generated } from "./answerCorpus";
 
 // R21's transitional differential test (it goes when /legacy goes): every recorded answer, the hostile strings and a seeded
@@ -36,33 +35,39 @@ const decode = (text: string) => text.replace(/&(?:amp|lt|gt|quot|#39|#x27);/g, 
 /**
  * Both renderers write only p, ul, li, h3, b or strong, and a chip (span or button with class cite), so the markup is read by a
  * small tokenizer instead of a DOM (a DOM per string is too slow and heavy for 2000 strings). Text is entity-decoded, b is
- * strong, and a chip becomes <chip ID>label</chip>. A chunk id whose prefix is not 10..30 characters is a token to the tokenizer
- * (as to the server's CITE_RE) but not an id to classifyId, so the shipped chip shows the bare id where the legacy page's looser
- * pattern gave it a label: a known, pinned difference (tests/test_export_ids.py); only the label of such a chip is left out.
+ * strong, and a chip becomes <chip ID></chip>: since RD11 (docs/specs/m5b-redesign.md) the chip's label is a redesigned surface
+ * and no longer the legacy text, so the label and the icon are left out and the chip is compared by its id and its place. (This
+ * also covers the pinned difference of a chunk id whose prefix is not 10..30 characters: tests/test_export_ids.py.)
  */
 function normalise(markup: string): string {
   let out = "";
-  const chipClose: string[] = [];
+  let inChip = 0; // the depth of open elements inside the current chip (0: not in a chip)
   for (const piece of markup.split(/(<[^>]*>)/)) {
     if (piece === "") continue;
     if (!piece.startsWith("<")) {
-      out += JSON.stringify(decode(piece));
+      if (inChip === 0) out += JSON.stringify(decode(piece));
       continue;
     }
     const tag = /^<(\/?)([a-z0-9]+)/.exec(piece);
     if (tag === null) throw new Error(`unexpected markup ${piece}`);
     const [, closing, name] = tag;
-    if (closing) {
-      out += chipClose.length > 0 && (name === "span" || name === "button") ? chipClose.pop() : `</${name === "b" ? "strong" : name}>`;
+    if (inChip > 0) {
+      // RD11: a chip's content (its label and kind icon) is a redesigned surface, compared by its own tests (stamp.test.ts,
+      // stampChips.test.tsx); here only the chip's id and its place in the tree count
+      if (piece.endsWith("/>")) continue;
+      inChip += closing ? -1 : 1;
+      if (inChip === 0) out += "</chip>";
+    } else if (closing) {
+      out += `</${name === "b" ? "strong" : name}>`;
     } else if ((name === "span" || name === "button") && /class="[^"]*cite/.test(piece)) {
       const id = decode(/data-id="([^"]*)"/.exec(piece)?.[1] ?? "");
       out += `<chip ${id}>`;
-      chipClose.push("</chip>");
+      inChip = 1;
     } else {
       out += `<${name === "b" ? "strong" : name}>`;
     }
   }
-  return out.replace(/<chip ([^>]*)>(.*?)<\/chip>/g, (_m, id: string, label: string) => (classifyId(id) === null ? `<chip ${id}>(unclassified)</chip>` : `<chip ${id}>${label}</chip>`));
+  return out;
 }
 
 const shipped = (text: string) => normalise(renderToStaticMarkup(<AnswerText text={text} place="answer" gen={1} />));

@@ -89,7 +89,7 @@ describe("tests/ui/evidence.test.mjs", () => {
     );
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
-    await user.click(screen.getByRole("button", { name: /Item 1A/ }));
+    await user.click(screen.getByRole("button", { name: /paragraph 361/ }));
     await waitFor(() => expect(drawer().textContent).toContain(evil));
     expect(drawer().querySelector("script")).toBeNull();
     expect(drawer().querySelector("img")).toBeNull();
@@ -140,7 +140,7 @@ describe("A5: a non-modal complementary landmark", () => {
   it("opens on a click, names the landmark, moves focus to the close button and shows the evidence", async () => {
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
-    await user.click(screen.getByRole("button", { name: "Item 1A \u00b60361" }));
+    await user.click(screen.getByRole("button", { name: "Filing 2026 \u00b7 paragraph 361" }));
     expect(screen.getByRole("complementary", { name: "Evidence" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close evidence" })).toHaveFocus();
     expect(await screen.findByText(PAYLOAD.text)).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe("A5: a non-modal complementary landmark", () => {
   it("Escape closes it and focus returns to the chip that opened it", async () => {
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
-    const chip = screen.getByRole("button", { name: /Item 1A/ });
+    const chip = screen.getByRole("button", { name: /paragraph 361/ });
     await user.click(chip);
     await user.keyboard("{Escape}");
     expect(drawer()).toHaveAttribute("inert");
@@ -160,7 +160,7 @@ describe("A5: a non-modal complementary landmark", () => {
   it("an Escape something above it already handled (an open popover, SR9) leaves it open", async () => {
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
-    await user.click(screen.getByRole("button", { name: /Item 1A/ }));
+    await user.click(screen.getByRole("button", { name: /paragraph 361/ }));
     const handled = (event: KeyboardEvent) => event.preventDefault();
     document.addEventListener("keydown", handled, true); // the capture listener an open specimen popover installs
     await user.keyboard("{Escape}");
@@ -173,7 +173,7 @@ describe("A5: a non-modal complementary landmark", () => {
   it("the close button closes it and focus returns to the chip", async () => {
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
-    const chip = screen.getByRole("button", { name: /Item 1A/ });
+    const chip = screen.getByRole("button", { name: /paragraph 361/ });
     await user.click(chip);
     await user.click(screen.getByRole("button", { name: "Close evidence" }));
     expect(drawer()).toHaveAttribute("inert");
@@ -188,7 +188,7 @@ describe("A5: a non-modal complementary landmark", () => {
         <textarea aria-label="q" />
       </>,
     );
-    await user.click(screen.getByRole("button", { name: /Item 1A/ }));
+    await user.click(screen.getByRole("button", { name: /paragraph 361/ }));
     const box = screen.getByRole("textbox", { name: "q" });
     act(() => box.focus());
     await user.keyboard("{Escape}");
@@ -198,9 +198,9 @@ describe("A5: a non-modal complementary landmark", () => {
   it("the answer and every other chip stay operable while it is open (no focus trap, nothing inert)", async () => {
     const user = userEvent.setup();
     mount(<AnswerText text={`One [${CHUNK}] two [${XBRL}].`} place="answer" gen={1} />);
-    await user.click(screen.getByRole("button", { name: /Item 1A/ }));
+    await user.click(screen.getByRole("button", { name: /paragraph 361/ }));
     expect(document.querySelectorAll("[inert]")).toHaveLength(0);
-    await user.click(screen.getByRole("button", { name: /XBRL revenue/ }));
+    await user.click(screen.getByRole("button", { name: /Reported revenue/ }));
     expect(await screen.findByText(`id: ${XBRL}`)).toBeInTheDocument(); // the second chip's evidence now fills the panel
     expect(calls().length).toBe(2);
   });
@@ -208,7 +208,7 @@ describe("A5: a non-modal complementary landmark", () => {
   it("a chip is operated from the keyboard: Enter and Space open it (A1)", async () => {
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
-    const chip = screen.getByRole("button", { name: /Item 1A/ });
+    const chip = screen.getByRole("button", { name: /paragraph 361/ });
     act(() => chip.focus());
     await user.keyboard("{Enter}");
     expect(drawer()).not.toHaveAttribute("inert");
@@ -246,7 +246,7 @@ describe("openSeq: only the last click fills the drawer", () => {
     fetchMock.mockImplementation(async () => json({ detail: "no evidence with that id" }, 404));
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
-    await user.click(screen.getByRole("button", { name: /Item 1A/ }));
+    await user.click(screen.getByRole("button", { name: /paragraph 361/ }));
     expect(await screen.findByText("Could not load this source: no evidence with that id")).toBeInTheDocument();
   });
 
@@ -254,7 +254,7 @@ describe("openSeq: only the last click fills the drawer", () => {
     fetchMock.mockImplementation(() => new Promise<Response>(() => {}));
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
-    await user.click(screen.getByRole("button", { name: /Item 1A/ }));
+    await user.click(screen.getByRole("button", { name: /paragraph 361/ }));
     expect(screen.getByText("Loading the source\u2026")).toBeInTheDocument(); // RD17 wording (was the legacy "loading...")
   });
 });
@@ -341,7 +341,7 @@ describe("A2: focus returns to the right chip", () => {
   it("when a new answer replaced the opener, focus goes to the answer heading, never to the body", async () => {
     const user = userEvent.setup();
     const view = mount(<Answer text={TEXT} gen={1} />);
-    await user.click(screen.getAllByRole("button", { name: /Item 1A/ })[0]);
+    await user.click(screen.getAllByRole("button", { name: /paragraph 361/ })[0]);
     view.rerender(
       <StrictMode>
         <WorkspaceContext.Provider value={workspaceValue()}>
@@ -380,7 +380,7 @@ describe("the drawer follows the workspace", () => {
         <Probe />
       </>,
     );
-    const chip = screen.getByRole("button", { name: /Item 1A/ });
+    const chip = screen.getByRole("button", { name: /paragraph 361/ });
     await user.click(chip);
     act(() => api.current?.close({ restoreFocus: false }));
     expect(drawer()).toHaveAttribute("inert");
@@ -388,13 +388,13 @@ describe("the drawer follows the workspace", () => {
   });
 });
 
-describe("a chunk chip learns its form and period once its evidence has loaded", () => {
+describe("a chunk chip learns its filer, form and filing year once its evidence has loaded (RD11)", () => {
   it("every chip of that id changes its label, and only chunk chips do", async () => {
     const user = userEvent.setup();
     mount(<AnswerText text={`A [${CHUNK}] and [${CHUNK}] and [${XBRL}].`} place="answer" gen={1} />);
-    await user.click(screen.getAllByRole("button", { name: "Item 1A \u00b60361" })[0]);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "10-K filed 2026-02-25 \u00b7 Item 1A \u00b60361" })).toHaveLength(2));
-    expect(screen.getByRole("button", { name: "XBRL revenue FY ended 2026-01-25" })).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Filing 2026 \u00b7 paragraph 361" })[0]);
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "NVIDIA Corp 10-K, filed 2026 \u00b7 paragraph 361" })).toHaveLength(2));
+    expect(screen.getByRole("button", { name: "Reported revenue, period ended Jan 25, 2026" })).toBeInTheDocument();
   });
 });
 

@@ -1,7 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chipLabel } from "@/lib/citations";
+import { stampLabel } from "@/components/__tests__/stampLabel";
 import { FILERS } from "@/lib/pages.generated";
 import { Company } from "../Company";
 import * as copy from "../Company.copy";
@@ -83,12 +83,12 @@ describe("Company: the dossier", () => {
     expect(within(filings).getByText("0001045810-26-000021")).toBeInTheDocument();
     const metrics = screen.getByRole("region", { name: "Metrics" });
     expect(within(metrics).getByText("revenue")).toBeInTheDocument();
-    expect(within(metrics).getByRole("button", { name: chipLabel("xbrl:1045810:revenue:2026-01-25") })).toHaveAttribute("data-id", "xbrl:1045810:revenue:2026-01-25");
+    expect(within(metrics).getByRole("button", { name: stampLabel("xbrl:1045810:revenue:2026-01-25") })).toHaveAttribute("data-id", "xbrl:1045810:revenue:2026-01-25");
     const risks = screen.getByRole("region", { name: "Active risks" });
     expect(within(risks).getByText("Supply of advanced packaging is concentrated.")).toBeInTheDocument();
     const edges = screen.getByRole("region", { name: "Relationships" });
     expect(within(edges).getByText("We depend on TSMC.")).toBeInTheDocument();
-    expect(within(edges).getByRole("button", { name: chipLabel(CHUNK) })).toHaveAttribute("data-id", CHUNK);
+    expect(within(edges).getByRole("button", { name: stampLabel(CHUNK) })).toHaveAttribute("data-id", CHUNK);
   });
 
   it("labels the rules as keyword matches to external Federal Register rules", async () => {
@@ -97,7 +97,7 @@ describe("Company: the dossier", () => {
     const rules = await screen.findByRole("region", { name: "Federal Register rules" });
     expect(rules).toHaveTextContent(RULE_LABEL);
     expect(within(rules).getByText("Export rule title")).toBeInTheDocument();
-    expect(within(rules).getByRole("button", { name: chipLabel("fr:2026-01234") })).toHaveAttribute("data-id", "fr:2026-01234");
+    expect(within(rules).getByRole("button", { name: stampLabel("fr:2026-01234") })).toHaveAttribute("data-id", "fr:2026-01234");
   });
 
   it("says none for an empty block", async () => {

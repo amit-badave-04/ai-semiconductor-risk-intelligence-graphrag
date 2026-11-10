@@ -1,7 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chipLabel } from "@/lib/citations";
+import { stampLabel } from "@/components/__tests__/stampLabel";
 import { Company } from "../Company";
 import * as copy from "../Company.copy";
 
@@ -156,7 +156,7 @@ describe("Company: the risk changes block", () => {
     await within(block).findByText("Export licensing");
     const older = block.querySelector("li p:nth-of-type(1)");
     const newer = block.querySelector("li p:nth-of-type(2)");
-    expect(older?.textContent).toBe("10-K 2025-02-26: \u201cWe may need a license.\u201d " + chipLabel(CHUNK));
+    expect(older?.textContent).toBe("10-K 2025-02-26: \u201cWe may need a license.\u201d " + stampLabel(CHUNK));
     expect(newer?.textContent).toBe("10-K 2026-02-25: \u201cWe need a license.\u201d");
     expect(older?.textContent).not.toBe(newer?.textContent);
   });
