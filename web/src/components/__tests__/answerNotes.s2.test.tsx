@@ -23,7 +23,7 @@ function violations(container: HTMLElement): string[] {
     if (!ALLOWED.has(tag)) found.push(`tag <${tag}>`);
     for (const attr of Array.from(el.attributes)) {
       if (/^on/i.test(attr.name) || attr.name === "src" || attr.name === "style") found.push(`attr ${attr.name} on <${tag}>`);
-      if (attr.name === "href" && attr.value !== "/method/") found.push(`href ${attr.value}`);
+      if (attr.name === "href" && attr.value !== "/method/#method-reliability") found.push(`href ${attr.value}`);
     }
   }
   return found;

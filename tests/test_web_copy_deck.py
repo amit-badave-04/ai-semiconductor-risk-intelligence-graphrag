@@ -50,7 +50,6 @@ NOT_YET_IN_THE_DECK = {
     "lib/changes.ts": 3,
     "lib/jobs.ts": 11,
     "lib/workspace.ts": 7,
-    "pages/Method.tsx": 2,
     "pages/Workspace.copy.ts": 17,
     "pages/WorkspaceDocuments.tsx": 1,
 }

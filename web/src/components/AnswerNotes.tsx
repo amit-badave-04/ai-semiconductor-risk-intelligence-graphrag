@@ -29,7 +29,7 @@ export function ReadWithCare({ text }: { text: string }) {
         ))}
       </ul>
       <p className="m-0 mt-2 text-sm">
-        <Link to="/method/" className="underline underline-offset-4">
+        <Link to="/method/#method-reliability" className="underline underline-offset-4">
           {w.link}
         </Link>
       </p>

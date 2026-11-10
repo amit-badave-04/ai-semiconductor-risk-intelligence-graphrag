@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { PageHeading } from "@/components/Layout";
+import { deck } from "@/copy/deck";
+import { METHOD_SECTION_IDS } from "@/lib/sectionHash";
+import { useSectionFocus } from "./useSectionFocus";
 import { CHECKS_HINT, INTRO, RELIABILITY, type Segment, WITHDRAWN } from "./Method.copy";
 
 // D7 (docs/specs/m5b-frontend.md): the Method & Evidence page. The sentences are the pinned copy of Method.copy.ts; this file
@@ -29,7 +32,7 @@ function Runs({ segments }: { segments: readonly Segment[] }) {
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section aria-labelledby={id} className="mb-8">
-      <h2 id={id} className="mb-2 text-lg font-semibold">
+      <h2 id={id} tabIndex={-1} className="mb-2 scroll-mt-4 text-lg font-semibold">
         {title}
       </h2>
       {children}
@@ -39,9 +42,11 @@ function Section({ id, title, children }: { id: string; title: string; children:
 
 export function Method() {
   const [lead, ...rest] = RELIABILITY;
+  useSectionFocus(true, METHOD_SECTION_IDS); // a hash after the page opened (Back, Forward); Layout handles the route change
   return (
     <>
-      <PageHeading title="Method & Evidence" />
+      <PageHeading title={deck.method.title} />
+      <p className="mb-4 max-w-[75ch] text-lg">{deck.method.lead}</p>
       <p className="mb-8 max-w-[75ch]">
         <Runs segments={INTRO} />
       </p>
@@ -53,10 +58,10 @@ export function Method() {
           to="/freshness/"
           className="rounded-sm text-primary underline underline-offset-4"
         >
-          Freshness
+          {deck.method.freshnessLink}
         </Link>
       </p>
-      <Section id="method-checks" title="What the checks mean">
+      <Section id="method-checks" title={deck.method.checksHeading}>
         <p className="max-w-[75ch]">{CHECKS_HINT}</p>
       </Section>
       {/* Last on the page: the checks hint above says the note is at the bottom of the page. */}

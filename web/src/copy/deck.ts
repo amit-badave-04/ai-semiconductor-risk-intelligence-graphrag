@@ -173,6 +173,14 @@ export const deck = {
     },
   },
 
+  method: {
+    /** RD27: the newcomer's version first; INTRO (pages/Method.copy.ts) is the technical explanation that follows */
+    lead: "Answers are written from passages of the companies' SEC filings, their reported figures and US government rules, and cite them, so you can open each source.",
+    title: "Method & Evidence",
+    checksHeading: "What the checks mean",
+    freshnessLink: "Freshness",
+  },
+
   notFound: {
     /** an address that is not a page (R9c) */
     title: "Page not found",

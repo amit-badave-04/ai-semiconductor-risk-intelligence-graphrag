@@ -81,6 +81,14 @@ describe("Method & Evidence page", () => {
     }
   });
 
+  it("opens with a plain lead for a newcomer, before the technical explanation (RD27)", () => {
+    const { container } = mount();
+    const text = (container.textContent ?? "").replace(/\s+/g, " ");
+    const lead = "Answers are written from passages of the companies' SEC filings, their reported figures and US government rules, and cite them, so you can open each source.";
+    expect(text).toContain(lead);
+    expect(text.indexOf(lead)).toBeLessThan(text.indexOf(joined(copy.INTRO)));
+  });
+
   it("renders each pinned passage whole, in its own words", () => {
     const { container } = mount();
     const text = (container.textContent ?? "").replace(/\s+/g, " ");

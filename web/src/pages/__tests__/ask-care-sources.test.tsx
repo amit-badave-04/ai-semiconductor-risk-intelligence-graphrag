@@ -35,7 +35,8 @@ describe("Read with care (RD13)", () => {
     const note = care() as HTMLElement;
     expect(note).toHaveTextContent("4 of 4");
     expect(note).toHaveTextContent("2 of 4 had been folded into another risk factor");
-    expect(within(note).getByRole("link", { name: "How reliable change claims are" })).toHaveAttribute("href", "/method/");
+    // R2 review A3: it opens Method at the reliability section, not at the top of the page
+    expect(within(note).getByRole("link", { name: "How reliable change claims are" })).toHaveAttribute("href", "/method/#method-reliability");
     expect(within(note).getAllByRole("listitem")).toHaveLength(1);
   });
 

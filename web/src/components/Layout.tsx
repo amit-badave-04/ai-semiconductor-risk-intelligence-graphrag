@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 import { deck } from "@/copy/deck";
 import { loadShellFreshness } from "@/lib/freshnessStore";
+import { focusSection, ROUTE_SECTION_IDS, sectionOf } from "@/lib/sectionHash";
 import { Nav } from "./Nav";
 import { TurnstileWidget } from "./TurnstileWidget";
 import { useEvidenceDrawer } from "./useEvidenceDrawer";
@@ -37,7 +38,7 @@ export function PageHeading({ title, documentTitle = title, display = false }: P
  * first render leaves both alone.
  */
 export function Layout() {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const previous = useRef(pathname);
   const main = useRef<HTMLElement>(null);
   const { close } = useEvidenceDrawer();
@@ -49,8 +50,12 @@ export function Layout() {
     if (previous.current === pathname) return;
     previous.current = pathname;
     close({ restoreFocus: false });
+    // a hash that names a section of the new page that is already there takes focus to it (R2 review A3); else the h1 (A7).
+    // A Company section arrives with its dossier and is focused then (pages/useSectionFocus.ts).
+    const id = sectionOf(hash, ROUTE_SECTION_IDS);
+    if (id !== null && focusSection(id)) return;
     main.current?.querySelector("h1")?.focus();
-  }, [pathname, close]);
+  }, [pathname, hash, close]); // a hash change alone returns above (same pathname): it is the page's own (useSectionFocus)
 
   return (
     <>
