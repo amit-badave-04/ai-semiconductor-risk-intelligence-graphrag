@@ -23,8 +23,6 @@ interface Shared {
 let inflight: Shared | null = null;
 const listeners = new Set<() => void>();
 
-const MSG_ABORTED = "request cancelled";
-
 /** Load /api/freshness, joining a request already in flight. Never rejects. With a `signal`, aborting it lets go of the request,
  *  and the request itself is aborted once no consumer still wants it (the header never lets go). */
 export function loadFreshness(signal?: AbortSignal): Promise<FreshnessResult> {
@@ -34,7 +32,7 @@ export function loadFreshness(signal?: AbortSignal): Promise<FreshnessResult> {
       controller,
       holders: 0,
       request: fetchFreshness(controller.signal)
-        .catch((): FreshnessResult => ({ kind: "error", detail: MSG_ABORTED })) // only an abort rejects
+        .catch((): FreshnessResult => ({ kind: "aborted" })) // only an abort rejects; never shown
         .finally(() => {
           if (inflight === shared) inflight = null;
         }),

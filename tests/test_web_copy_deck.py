@@ -48,13 +48,9 @@ COPY_HOMES = {"copy/deck.ts", "pages/Method.copy.ts", "lib/answerMeta.ts", "lib/
 # Files the redesign has not reached yet, with the number of sentences each holds today (R1 to R4 empty this list).
 NOT_YET_IN_THE_DECK = {
     "lib/changes.ts": 3,
-    "lib/freshnessStore.ts": 1,
     "lib/jobs.ts": 11,
     "lib/workspace.ts": 7,
-    "pages/Freshness.lib.ts": 7,
-    "pages/Freshness.tsx": 9,
     "pages/Method.tsx": 2,
-    "pages/NotFound.tsx": 3,
     "pages/Workspace.copy.ts": 17,
     "pages/WorkspaceDocuments.tsx": 1,
 }

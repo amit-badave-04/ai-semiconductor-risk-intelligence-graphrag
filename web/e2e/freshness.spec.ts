@@ -19,9 +19,9 @@ for (const scheme of ["light", "dark"] as const) {
       });
       await page.goto(`${PREVIEW}/v2/freshness/`);
       await expect(page.getByRole("heading", { level: 1, name: "Freshness" })).toBeVisible();
-      await expect(page.getByRole("main").getByText("freshness check unavailable")).toBeVisible();
+      await expect(page.getByRole("main").getByText("Data status unavailable", { exact: true })).toBeVisible(); // RD27: RD3's words
       await expect(page.getByRole("banner")).toContainText(NAV_FRESHNESS); // the shell line (R26, worded by RD3)
-      await expect(page.getByRole("list", { name: "Freshness fields" })).toContainText("disabled");
+      await expect(page.getByRole("list", { name: "Freshness details" })).toContainText("Off");
       expect(responses).toEqual(["200"]);
       const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
       await testInfo.attach("axe-freshness.json", { body: JSON.stringify(results.violations, null, 1), contentType: "application/json" });
@@ -91,4 +91,33 @@ test("the longest freshness line keeps the header to one row at 1024 px", async 
   const howItWorks = await page.getByRole("link", { name: "How it works" }).boundingBox();
   expect(header?.height).toBeLessThanOrEqual(54); // 3.5rem at the 15 px root, plus the 1 px border
   expect((howItWorks?.y ?? 0) + (howItWorks?.height ?? 0)).toBeLessThanOrEqual(header?.height ?? 0);
+});
+
+// docs/specs/m5b-redesign.md RD27: a full payload in words fits a 320 px screen under a wider font, and the page stays readable
+// in forced colours.
+const FULL = {
+  configured: true, enabled: true, status: "ok", checked_at: "2026-09-29T11:45:00Z", snapshot_as_of: "2026-09-24",
+  last_error_at: "2026-09-28T01:00:00Z", next_check_at: "2026-09-29T17:45:00Z", pending_count: 2,
+  pending_filings: [{ ticker: "NVDA", cik: 1, form: "10-Q", filing_date: "2026-09-20", accession_no: "0001045810-26-000045", period_of_report: null }],
+  federal_register: { graph_count: 1234, live_count: 1240, new_since: 6 }, unresolved: ["TSM"], duration_s: 4.2,
+};
+for (const width of [390, 320]) {
+  test(`RD27 at ${width} px the details fit the screen under a wider font`, async ({ page }) => {
+    await page.route("**/api/freshness", (route) => route.fulfill({ json: FULL }));
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${PREVIEW}/v2/freshness/`);
+    await expect(page.getByRole("list", { name: "Freshness details" })).toContainText("1234 in our data, 1240 published, 6 not yet in our data");
+    await page.addStyleTag({ content: "*{font-family:Verdana,sans-serif !important;letter-spacing:0.6px !important}" });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+}
+
+test("RD27 forced colours: no axe violation on the details", async ({ page }, testInfo) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await page.route("**/api/freshness", (route) => route.fulfill({ json: FULL }));
+  await page.goto(`${PREVIEW}/v2/freshness/`);
+  await expect(page.getByRole("list", { name: "Freshness details" })).toBeVisible();
+  const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+  await testInfo.attach("axe-freshness-forced.json", { body: JSON.stringify(results.violations, null, 1), contentType: "application/json" });
+  expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
 });

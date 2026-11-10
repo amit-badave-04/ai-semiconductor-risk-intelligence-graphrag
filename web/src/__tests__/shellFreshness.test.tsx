@@ -141,7 +141,7 @@ describe("the freshness line of the shell header (R26, RD3)", () => {
     const fn = stubFetch(HEALTHY);
     mount("/freshness/", true);
     await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("Data as of Sep 30, 2026"));
-    await waitFor(() => expect(within(screen.getByRole("main")).getByRole("list", { name: "Freshness fields" })).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole("main")).getByRole("list", { name: "Freshness details" })).toBeInTheDocument());
     expect(calls(fn, "/api/freshness")).toBe(1);
     expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: /^Freshness: Data as of/ })).toHaveAttribute("aria-current", "page");
   });

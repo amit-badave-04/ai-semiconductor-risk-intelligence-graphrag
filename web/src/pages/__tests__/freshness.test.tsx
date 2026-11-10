@@ -1,10 +1,12 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetFreshnessStore } from "@/lib/freshnessStore";
 import { Freshness } from "../Freshness";
 
-// R26 (docs/specs/m5b-frontend.md): the Freshness page, from GET /api/freshness. Every field of the payload is rendered or
-// listed as omitted (see FRESHNESS_FIELDS in Freshness.tsx and the I4 classification).
+// R26 (docs/specs/m5b-frontend.md) and docs/specs/m5b-redesign.md RD27: the Freshness page, from GET /api/freshness, in plain
+// words through the deck. Every field of the payload is rendered or listed as omitted (see Freshness.tsx); dates are in words,
+// in UTC; the summary is the header's own line (RD3); a failed request says so in the RD3 form with the server's detail.
 
 const DISABLED = {
   checked_at: null, snapshot_as_of: null, last_error_at: null, next_check_at: null, pending_count: 0, pending_filings: [],
@@ -29,6 +31,7 @@ function stubFetch(body: unknown, status = 200, statusText = "") {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  resetFreshnessStore();
 });
 
 function mount() {
@@ -39,82 +42,90 @@ function mount() {
   );
 }
 
-describe("Freshness page", () => {
-  it("keeps the h1 and says it is loading until the payload arrives", async () => {
+const fields = () => screen.getByRole("list", { name: "Freshness details" });
+const row = (label: string) => within(fields()).getByText(label).closest("li") as HTMLElement;
+// the page's own status line (this harness renders no evidence panel, so it is the only status, R2 review C4)
+const pageStatus = () => screen.getByRole("status");
+
+describe("Freshness page (RD27)", () => {
+  it("keeps the h1, says what the page is, and says it is loading until the payload arrives", async () => {
     let release: (r: Response) => void = () => undefined;
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => (release = resolve))));
     mount();
     expect(screen.getByRole("heading", { level: 1, name: "Freshness" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("loading\u2026");
+    expect(screen.getByText("When the filings and the government rules were last checked for anything newer than our data.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading…");
     await act(async () => release(new Response(JSON.stringify(DISABLED), { status: 200 })));
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
-  it("renders the disabled payload: the neutral line, the status and a zero count, nothing invented", async () => {
+  it("words a disabled check plainly and invents nothing", async () => {
     const fn = stubFetch(DISABLED);
     mount();
-    expect(await screen.findByText("freshness check unavailable")).toBeInTheDocument();
-    expect(fn).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Data status unavailable")).toBeInTheDocument();
     expect(fn.mock.calls[0]?.[0]).toBe("/api/freshness");
-    const list = screen.getByRole("list", { name: "Freshness fields" });
-    expect(within(list).getByText("disabled")).toBeInTheDocument();
-    expect(within(list).getByText("0")).toBeInTheDocument();
-    expect(screen.queryByText("Data as of")).toBeNull();
-    expect(screen.queryByText("Next check")).toBeNull();
+    expect(within(row("Checks")).getByText("Off")).toBeInTheDocument();
+    expect(within(row("Newer filings being added")).getByText("0")).toBeInTheDocument();
+    expect(within(fields()).queryByText("Data as of")).toBeNull();
+    expect(within(fields()).queryByText("Next check")).toBeNull();
   });
 
-  it("renders every shown field of a full payload", async () => {
+  it("states every shown field of a full payload in words, with dates in UTC", async () => {
     vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-09-29T12:00:00Z") });
     stubFetch(FULL);
     mount();
     await act(async () => vi.advanceTimersByTimeAsync(0));
-    expect(screen.getByText("Data as of 2026-09-24 \u00b7 checked 15 min ago \u00b7 2 filings pending")).toBeInTheDocument();
-    const list = screen.getByRole("list", { name: "Freshness fields" });
-    expect(within(list).getByText("ok")).toBeInTheDocument();
-    expect(within(list).getByText("2026-09-24")).toBeInTheDocument();
-    expect(within(list).getByText(/2026-09-29T11:45:00Z/)).toBeInTheDocument();
-    expect(within(list).getByText(/2026-09-28T01:00:00Z/)).toBeInTheDocument();
-    expect(within(list).getByText(/2026-09-29T17:45:00Z/)).toBeInTheDocument();
-    expect(within(list).getByText("in graph 10 \u00b7 live 12 \u00b7 new 2")).toBeInTheDocument();
-    expect(within(list).getByText("TSM")).toBeInTheDocument();
-    expect(within(list).getByText("NVDA 10-Q filed 2026-09-20 \u00b7 0001-26-1")).toBeInTheDocument();
-    expect(within(list).getByText("AMD 10-K filed 2026-09-21 \u00b7 0002-26-2")).toBeInTheDocument();
+    expect(screen.getByText("Data as of Sep 24, 2026, 2 newer filings being added")).toBeInTheDocument();
+    expect(within(row("Checks")).getByText("Working")).toBeInTheDocument();
+    expect(row("Data as of")).toHaveTextContent("Sep 24, 2026");
+    expect(row("Last checked")).toHaveTextContent("15 min ago (Sep 29, 2026)");
+    expect(row("Last failed check")).toHaveTextContent("1 d ago (Sep 28, 2026)");
+    expect(row("Next check")).toHaveTextContent("in 6 h (Sep 29, 2026)");
+    expect(row("Government rules")).toHaveTextContent("10 in our data, 12 published, 2 not yet in our data");
+    expect(row("Companies the check could not look up")).toHaveTextContent("TSM");
+    const pending = within(fields()).getByRole("list", { name: "Newer filings" });
+    expect(within(pending).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "NVDA 10-Q filed Sep 20, 2026 · 0001-26-1",
+      "AMD 10-K filed Sep 21, 2026 · 0002-26-2",
+    ]);
+    // no ISO time stamp reaches the page
+    expect(fields().textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("shows the next check as ahead of now, not as just now", async () => {
-    vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-09-29T12:00:00Z") });
-    stubFetch({ ...FULL, next_check_at: "2026-09-29T12:20:00Z" });
-    mount();
-    await act(async () => vi.advanceTimersByTimeAsync(0));
-    const list = screen.getByRole("list", { name: "Freshness fields" });
-    expect(within(list).getByText("in 20 min (2026-09-29T12:20:00Z)")).toBeInTheDocument();
+  it("words each check status, and shows one it does not know as the server wrote it", async () => {
+    for (const [status, words] of [["error", "The last check failed"], ["stale", "Overdue"], ["unconfigured", "Not set up"], ["paused_by_admin", "paused_by_admin"], ["constructor", "constructor"]]) {
+      stubFetch({ ...DISABLED, status });
+      const view = mount();
+      expect(await within(view.container).findByText(words)).toBeInTheDocument();
+      view.unmount();
+      resetFreshnessStore();
+    }
   });
 
-  it("says the check failed for an error status, from last_error_at", async () => {
-    vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-09-29T12:00:00Z") });
+  it("uses the header's own words for a failed check", async () => {
     stubFetch({ ...DISABLED, status: "error", last_error_at: "2026-09-29T11:45:00Z" });
     mount();
-    await act(async () => vi.advanceTimersByTimeAsync(0));
-    expect(screen.getByText("freshness check failed 15 min ago")).toBeInTheDocument();
+    expect(await screen.findByText("The check for newer filings failed")).toBeInTheDocument();
   });
 
   it("renders server text as text", async () => {
-    stubFetch({ ...FULL, unresolved: ['<img src=x onerror="1">'], pending_filings: [{ ticker: "<b>x</b>", form: "<i>", filing_date: "d", accession_no: "a" }] });
+    stubFetch({ ...FULL, status: "<b>s</b>", unresolved: ['<img src=x onerror="1">'], pending_filings: [{ ticker: "<b>x</b>", form: "<i>", filing_date: "d", accession_no: "a" }] });
     const { container } = mount();
-    await screen.findByRole("list", { name: "Freshness fields" });
+    await screen.findByRole("list", { name: "Freshness details" });
     expect(container.querySelector("img, b, i")).toBeNull();
     expect(container.querySelector("[onerror], [src], [style]")).toBeNull();
+    expect(container.textContent).toContain('<img src=x onerror="1">');
   });
 
-  it("shows the server's detail in a local status on an error and no field list", async () => {
-    stubFetch({ detail: "Too many requests from your address \u2014 please slow down." }, 429, "Too Many Requests");
+  it("says the status is unavailable, with the server's detail, on an error and shows no details", async () => {
+    stubFetch({ detail: "Too many requests from your address — please slow down." }, 429, "Too Many Requests");
     mount();
-    expect(await screen.findByText("Too many requests from your address \u2014 please slow down.")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Too many requests");
-    expect(screen.queryByRole("list", { name: "Freshness fields" })).toBeNull();
+    expect(await screen.findByText("Data status unavailable: Too many requests from your address — please slow down.")).toBeInTheDocument();
+    expect(pageStatus()).toHaveTextContent("Data status unavailable");
+    expect(screen.queryByRole("list", { name: "Freshness details" })).toBeNull();
   });
 
-  it("aborts the request on unmount without logging", async () => {
+  it("aborts the request on unmount without logging and without a raw code", async () => {
     let signal: AbortSignal | undefined;
     const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.stubGlobal(
@@ -128,6 +139,7 @@ describe("Freshness page", () => {
     await act(async () => undefined);
     expect(signal?.aborted).toBe(true);
     expect(errors).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain("request cancelled");
     errors.mockRestore();
   });
 });

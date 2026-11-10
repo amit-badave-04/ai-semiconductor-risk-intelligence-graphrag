@@ -1,27 +1,29 @@
 // R26 (docs/specs/m5b-frontend.md): the port of the legacy page's freshness header line (index.html:489-518, tests in
-// tests/ui/workspace.test.mjs:96-170) and the client and parser of GET /api/freshness. Worker C1, I2.
+// tests/ui/workspace.test.mjs:96-170) and the client and parser of GET /api/freshness. Worker C1, I2. Its words are in
+// copy/deck.ts freshness (docs/specs/m5b-redesign.md R4); the Freshness page itself shows RD3's line.
+import { deck, STATUS_NETWORK } from "@/copy/deck";
 import { detailOf } from "@/lib/refusal";
 
 const MS_PER_MINUTE = 60000;
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
-// The legacy page's words for a failed request (index.html:680).
-const MSG_NETWORK = "network error \u2014 is the service online?";
+const time = deck.freshness.time;
+const legacy = deck.freshness.legacyLine;
 
 export function relativeTime(iso: string | null | undefined, now: number): string {
   const then = iso ? new Date(iso).getTime() : Number.NaN;
-  if (!Number.isFinite(then)) return "unknown";
+  if (!Number.isFinite(then)) return time.unknown;
   const signed = Math.round((now - then) / MS_PER_MINUTE);
   const minutes = Math.abs(signed);
-  if (minutes < 1) return "just now";
+  if (minutes < 1) return time.justNow;
   const span = spanOf(minutes);
-  return signed < 0 ? `in ${span}` : `${span} ago`; // a time still ahead (next_check_at) counts forward
+  return signed < 0 ? time.ahead(span) : time.ago(span); // a time still ahead (next_check_at) counts forward
 }
 
 function spanOf(minutes: number): string {
-  if (minutes < MINUTES_PER_HOUR) return `${minutes} min`;
+  if (minutes < MINUTES_PER_HOUR) return time.minutes(minutes);
   const hours = Math.round(minutes / MINUTES_PER_HOUR);
-  return hours < HOURS_PER_DAY ? `${hours} h` : `${Math.round(hours / HOURS_PER_DAY)} d`;
+  return hours < HOURS_PER_DAY ? time.hours(hours) : time.days(Math.round(hours / HOURS_PER_DAY));
 }
 
 /** The page's single freshness line. `now` (ms) is a parameter so this stays pure. error/stale is decided FIRST, before the
@@ -32,13 +34,13 @@ export function freshnessLine(freshness: unknown, now: number): string {
   const lastErrorAt = typeof f.last_error_at === "string" ? f.last_error_at : null;
   if (f.status === "error" || f.status === "stale") {
     const at = f.status === "error" && lastErrorAt ? lastErrorAt : checkedAt;
-    return at ? `freshness check failed ${relativeTime(at, now)}` : "freshness check failed";
+    return at ? legacy.failedAt(relativeTime(at, now)) : legacy.failed;
   }
-  if (!checkedAt) return "freshness check unavailable";
+  if (!checkedAt) return legacy.unavailable;
   const snapshot = typeof f.snapshot_as_of === "string" && f.snapshot_as_of !== "" ? f.snapshot_as_of : null;
-  const parts = [snapshot ? `Data as of ${snapshot}` : "Data freshness unknown", `checked ${relativeTime(checkedAt, now)}`];
-  if (typeof f.pending_count === "number") parts.push(`${f.pending_count} filing${f.pending_count === 1 ? "" : "s"} pending`);
-  return parts.join(" \u00b7 ");
+  const parts = [snapshot ? legacy.dataAsOf(snapshot) : legacy.dateUnknown, legacy.checked(relativeTime(checkedAt, now))];
+  if (typeof f.pending_count === "number") parts.push(legacy.pending(f.pending_count));
+  return parts.join(legacy.separator);
 }
 
 export interface PendingFiling {
@@ -61,7 +63,8 @@ export interface Freshness {
   unresolved: string[];
 }
 
-export type FreshnessResult = { kind: "ok"; freshness: Freshness } | { kind: "error"; detail: string };
+/** "aborted": the request was cancelled because nobody wants it any more; it is never shown (R4 review of the plan, sec #12). */
+export type FreshnessResult = { kind: "ok"; freshness: Freshness } | { kind: "error"; detail: string } | { kind: "aborted" };
 
 type Row = Record<string, unknown>;
 
@@ -110,7 +113,7 @@ export async function fetchFreshness(signal?: AbortSignal): Promise<FreshnessRes
     response = await fetch("/api/freshness", { signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
-    return { kind: "error", detail: MSG_NETWORK };
+    return { kind: "error", detail: STATUS_NETWORK };
   }
   if (!response.ok) return { kind: "error", detail: await detailOf(response) };
   let body: unknown = null;

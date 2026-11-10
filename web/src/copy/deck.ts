@@ -119,6 +119,65 @@ export const deck = {
     unavailable: "Data status unavailable",
     /** read before the line by screen readers, so the link names where it goes */
     linkPrefix: "Freshness:",
+    /** relative times, as the legacy page worded them (pages/Freshness.lib.ts relativeTime; pinned by its port tests) */
+    time: {
+      unknown: "unknown",
+      justNow: "just now",
+      ahead: (span: string): string => `in ${span}`,
+      ago: (span: string): string => `${span} ago`,
+      minutes: (n: number): string => `${n} min`,
+      hours: (n: number): string => `${n} h`,
+      days: (n: number): string => `${n} d`,
+    },
+    /** the legacy page's one freshness line (pages/Freshness.lib.ts freshnessLine, kept for its port tests; the page shows RD3's) */
+    legacyLine: {
+      failedAt: (when: string): string => `freshness check failed ${when}`,
+      failed: "freshness check failed",
+      unavailable: "freshness check unavailable",
+      dataAsOf: (date: string): string => `Data as of ${date}`,
+      dateUnknown: "Data freshness unknown",
+      checked: (when: string): string => `checked ${when}`,
+      pending: (n: number): string => `${n} filing${n === 1 ? "" : "s"} pending`,
+      separator: " \u00b7 ",
+    },
+    /** RD27: the Freshness page. The summary is the header's own line; each detail in words, dates in UTC. */
+    page: {
+      intro: "When the filings and the government rules were last checked for anything newer than our data.",
+      loading: "Loading\u2026",
+      failed: (detail: string): string => `Data status unavailable: ${detail}`,
+      list: "Freshness details",
+      rows: {
+        checks: "Checks",
+        dataAsOf: "Data as of",
+        lastChecked: "Last checked",
+        lastFailed: "Last failed check",
+        nextCheck: "Next check",
+        pending: "Newer filings being added",
+        rules: "Government rules",
+        unresolved: "Companies the check could not look up",
+      },
+      pendingList: "Newer filings",
+      /** the monitor's status (monitor.py); one it does not know is shown as the server wrote it */
+      status: (status: string): string => {
+        const words: Record<string, string> = { ok: "Working", stale: "Overdue", error: "The last check failed", disabled: "Off", unconfigured: "Not set up" };
+        return Object.hasOwn(words, status) ? words[status] : status; // own keys only: "constructor" is server text, not a lookup
+      },
+      when: (relative: string, date: string): string => (date === "" ? relative : `${relative} (${date})`),
+      pendingFiling: (f: { ticker: string | null; form: string | null; filed: string; accession: string | null }): string => {
+        const head = [f.ticker, f.form].filter((v): v is string => v !== null).join(" ");
+        const filed = f.filed === "" ? head : `${head} filed ${f.filed}`;
+        return f.accession === null ? filed : `${filed} \u00b7 ${f.accession}`;
+      },
+      rules: (inData: number, published: number, newer: number): string =>
+        `${inData} in our data, ${published} published, ${newer} not yet in our data`,
+    },
+  },
+
+  notFound: {
+    /** an address that is not a page (R9c) */
+    title: "Page not found",
+    text: "There is nothing at this address.",
+    back: "Back to the start page",
   },
 
   ask: {

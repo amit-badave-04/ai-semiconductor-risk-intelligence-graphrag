@@ -51,7 +51,7 @@ describe("freshnessStore", () => {
     const result = loadFreshness(page.signal);
     page.abort();
     expect(signals[0]?.aborted).toBe(true);
-    expect((await result).kind).toBe("error");
+    expect((await result).kind).toBe("aborted"); // a cancelled request is a kind of its own, never shown (R4)
     void loadFreshness();
     expect(fn).toHaveBeenCalledTimes(2);
   });
