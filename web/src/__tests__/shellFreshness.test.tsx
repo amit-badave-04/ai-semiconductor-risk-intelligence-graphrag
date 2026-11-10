@@ -98,19 +98,19 @@ describe("the freshness line of the shell header (R26, RD3)", () => {
   it("says the data status is unavailable when /api/freshness fails or answers an error status", async () => {
     stubFetch(null);
     mount();
-    await waitFor(() => expect(screen.getByRole("link", { name: "Data status unavailable" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("link", { name: "Freshness: Data status unavailable" })).toBeInTheDocument());
     cleanup();
     resetFreshnessStore();
     stubFetch({ detail: "Too many requests" }, 429);
     mount();
-    await waitFor(() => expect(screen.getByRole("link", { name: "Data status unavailable" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("link", { name: "Freshness: Data status unavailable" })).toBeInTheDocument());
   });
 
   it("is a link to the Freshness page inside the main navigation, and never a live region", async () => {
     stubFetch(HEALTHY);
     mount();
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
-    const link = await nav.findByRole("link", { name: /^Data as of Sep 30, 2026/ });
+    const link = await nav.findByRole("link", { name: /^Freshness: Data as of Sep 30, 2026/ });
     expect(link).toHaveAttribute("href", "/freshness/");
     expect(screen.getByRole("banner").querySelector("[aria-live], [role=status], output")).toBeNull();
   });
@@ -143,6 +143,6 @@ describe("the freshness line of the shell header (R26, RD3)", () => {
     await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("Data as of Sep 30, 2026"));
     await waitFor(() => expect(within(screen.getByRole("main")).getByRole("list", { name: "Freshness fields" })).toBeInTheDocument());
     expect(calls(fn, "/api/freshness")).toBe(1);
-    expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: /^Data as of/ })).toHaveAttribute("aria-current", "page");
+    expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: /^Freshness: Data as of/ })).toHaveAttribute("aria-current", "page");
   });
 });

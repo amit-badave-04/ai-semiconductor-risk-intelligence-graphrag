@@ -30,8 +30,8 @@ export const DUMMY_SITE_KEY = "dummy-site-key";
 
 /** The five pages as served under each prefix, with the h1 each one shows and the name of its link in the main navigation
  *  (docs/specs/m5b-redesign.md RD3; the Freshness link is the header's freshness line, which the fixture server's disabled
- *  monitor words "Data status unavailable"). */
-export const NAV_FRESHNESS = "Data status unavailable";
+ *  monitor words "Data status unavailable"; the link name starts "Freshness: " for screen readers). */
+export const NAV_FRESHNESS = "Freshness: Data status unavailable";
 export const PAGES = [
   { path: "", heading: "Ask", nav: "Ask" },
   { path: "company/NVDA/", heading: "Nvidia (NVDA)", nav: "Companies" },

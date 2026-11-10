@@ -40,11 +40,14 @@ function FreshnessLink() {
       {text !== "" && (
         <Link
           to="/freshness/"
+          title={text}
           aria-current={active ? "page" : undefined}
-          className="inline-flex min-h-11 items-center gap-1.5 border-b-2 border-transparent text-sm text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
+          className="inline-flex min-h-11 max-w-full items-center gap-1.5 border-b-2 border-transparent text-sm text-muted-foreground hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:text-foreground"
         >
           <Clock aria-hidden="true" className="size-4 shrink-0 text-primary" />
-          {text}
+          <span className="sr-only">{deck.freshness.linkPrefix}</span>{" "}
+          {/* the one-row header at lg (Layout.tsx lg:h-14) never wraps: a very long line is cut visually, its title and name keep it whole */}
+          <span className="lg:max-w-[26rem] lg:truncate">{text}</span>
         </Link>
       )}
     </li>

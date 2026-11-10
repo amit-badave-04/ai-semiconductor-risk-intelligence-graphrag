@@ -11,8 +11,12 @@ export function shellFreshness(freshness: unknown, failed: boolean): string {
   if (typeof freshness !== "object" || freshness === null) return "";
   const f = freshness as Record<string, unknown>;
   const date = typeof f.snapshot_as_of === "string" ? formatDate(f.snapshot_as_of) : "";
-  if (f.status === "error" || f.status === "stale") {
+  if (f.status === "error") {
     return date === "" ? words.checkFailed : `${words.dataAsOf(date)}; ${words.checkFailedAfterDate}`;
+  }
+  // monitor.py: "stale" is a last check older than twice the poll interval, which is overdue, not failed
+  if (f.status === "stale") {
+    return date === "" ? words.checkOverdue : `${words.dataAsOf(date)}; ${words.checkOverdueAfterDate}`;
   }
   if (typeof f.checked_at !== "string" || f.checked_at === "") return words.unavailable;
   const head = date === "" ? words.dateUnknown : words.dataAsOf(date);

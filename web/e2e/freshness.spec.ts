@@ -72,7 +72,23 @@ test("R26 shell line (RD3): a healthy production payload reads 'Data as of <date
   );
   await page.goto(`${PREVIEW}/v2/method/`);
   // RD3: one date style, and no count when nothing newer is waiting
-  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data as of Sep 30, 2026", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Freshness: Data as of Sep 30, 2026", exact: true })).toBeVisible();
   await expect(page.getByRole("banner")).not.toContainText("Data date unknown");
   expect(await problems(w)).toEqual([]);
+});
+
+// RD3 review: at 1024 px (the smallest one-row header, lg) the longest wording of the line keeps the header to one row, so it
+// never spills over the page and the evidence drawer (lg:top-14) starts exactly below it.
+test("the longest freshness line keeps the header to one row at 1024 px", async ({ page }) => {
+  await page.route("**/api/freshness", (route) =>
+    route.fulfill({ json: { status: "stale", checked_at: new Date().toISOString(), snapshot_as_of: "2026-09-30", pending_count: 12 } }),
+  );
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto(`${PREVIEW}/v2/method/`);
+  const link = page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: /^Freshness: Data as of Sep 30, 2026; the check/ });
+  await expect(link).toBeVisible();
+  const header = await page.getByRole("banner").boundingBox();
+  const howItWorks = await page.getByRole("link", { name: "How it works" }).boundingBox();
+  expect(header?.height).toBeLessThanOrEqual(54); // 3.5rem at the 15 px root, plus the 1 px border
+  expect((howItWorks?.y ?? 0) + (howItWorks?.height ?? 0)).toBeLessThanOrEqual(header?.height ?? 0);
 });

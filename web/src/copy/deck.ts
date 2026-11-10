@@ -28,7 +28,11 @@ export const deck = {
     newer: (count: number): string => (count === 1 ? "1 newer filing being added" : `${count} newer filings being added`),
     checkFailedAfterDate: "the check for newer filings failed",
     checkFailed: "The check for newer filings failed",
+    checkOverdueAfterDate: "the check for newer filings is overdue",
+    checkOverdue: "The check for newer filings is overdue",
     unavailable: "Data status unavailable",
+    /** read before the line by screen readers, so the link names where it goes */
+    linkPrefix: "Freshness:",
   },
 
   ask: {

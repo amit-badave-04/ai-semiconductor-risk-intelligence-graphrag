@@ -20,7 +20,12 @@ describe("shellFreshness", () => {
 
   it("says in plain words when the check for newer filings failed, keeping the data date it knows", () => {
     expect(shellFreshness({ ...OK, status: "error" }, false)).toBe("Data as of Sep 24, 2026; the check for newer filings failed");
-    expect(shellFreshness({ ...OK, status: "stale", snapshot_as_of: null }, false)).toBe("The check for newer filings failed");
+    expect(shellFreshness({ ...OK, status: "error", snapshot_as_of: null }, false)).toBe("The check for newer filings failed");
+  });
+
+  it("says the check is overdue, not failed, for a stale status (monitor.py: the last check is older than twice the poll interval)", () => {
+    expect(shellFreshness({ ...OK, status: "stale" }, false)).toBe("Data as of Sep 24, 2026; the check for newer filings is overdue");
+    expect(shellFreshness({ ...OK, status: "stale", snapshot_as_of: null }, false)).toBe("The check for newer filings is overdue");
   });
 
   it("says the data date is unknown when the check ran but recorded no date", () => {
