@@ -119,3 +119,53 @@ export function statusLine(ask: Pick<AskState, "status" | "strategy" | "retrieva
   if (ask.status === "ended" && ask.done !== null) return { text: ask.done.cached ? STATUS_CACHED : STATUS_DONE, isError: false };
   return { text: "", isError: false };
 }
+
+// ------------------------------------------------------------------ docs/specs/m5b-redesign.md RD10: the status line as codes
+
+export type StatusCode = "idle" | "error" | "retrieving" | "agent" | "retrieval" | "escalated" | "cachedSaved" | "cachedEarlier" | "done";
+
+export interface RetrievalParams {
+  anchors: string[];
+  defaulted: boolean;
+  passages: number;
+  figures: number;
+  relationships: number;
+  risks: number;
+  changes: number;
+}
+
+export interface StatusView {
+  code: StatusCode;
+  isError: boolean;
+  params?: { text: string } | RetrievalParams;
+}
+
+const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0);
+
+function retrievalParams(event: Pick<RetrievalEvent, "anchors" | "counts" | "anchor_defaulted">): RetrievalParams {
+  const counts = dictOf(event.counts);
+  return {
+    anchors: Object.keys(dictOf(event.anchors)),
+    defaulted: event.anchor_defaulted === true,
+    passages: count(counts.chunks),
+    figures: count(counts.metrics),
+    relationships: count(counts.edges),
+    risks: count(counts.risks),
+    changes: count(counts.temporal),
+  };
+}
+
+/** The status of the current answer as a code (the deck words it): the same states as statusLine, in plain words. */
+export function statusView(ask: Pick<AskState, "status" | "strategy" | "retrieval" | "escalated" | "done" | "statusText">): StatusView {
+  if (ask.statusText !== null) return { code: "error", isError: true, params: { text: ask.statusText } };
+  if (ask.status === "streaming") {
+    if (ask.escalated !== null) return { code: "escalated", isError: false };
+    if (ask.retrieval !== null) return { code: "retrieval", isError: false, params: retrievalParams(ask.retrieval) };
+    return { code: ask.strategy === "agent" ? "agent" : "retrieving", isError: false };
+  }
+  if (ask.status === "ended" && ask.done !== null) {
+    if (!ask.done.cached) return { code: "done", isError: false };
+    return { code: (ask.done as { source?: unknown }).source === "benchmark" ? "cachedSaved" : "cachedEarlier", isError: false };
+  }
+  return { code: "idle", isError: false };
+}

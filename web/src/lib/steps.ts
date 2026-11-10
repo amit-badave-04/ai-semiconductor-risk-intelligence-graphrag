@@ -38,3 +38,22 @@ export function agentEnabled(stats: unknown): boolean {
 export function tracingNote(stats: unknown): string {
   return agentEnabled(stats) && (stats as { tracing?: unknown }).tracing === true ? TRACING_NOTE : "";
 }
+
+// ------------------------------------------------------------------ docs/specs/m5b-redesign.md section 4: a step as a code
+
+export type StepCode = keyof typeof STEP_VERBS | "unknown";
+
+export interface StepView {
+  code: StepCode;
+  params: { tool: string; summary: string; failed: boolean };
+}
+
+/** One step as a code the deck words (copy/deck.ts steps), with the same tool grammar and summary bound as stepText. */
+export function stepView(event: StepEvent | null | undefined): StepView {
+  const ev = (typeof event === "object" && event !== null ? event : {}) as Record<string, unknown>;
+  const tool = typeof ev.tool === "string" && TOOL_NAME.test(ev.tool) ? ev.tool : "";
+  const raw = typeof ev.summary === "string" ? ev.summary.replace(/\s+/g, " ").trim() : "";
+  const summary = raw.length > MAX_STEP_CHARS ? `${raw.slice(0, MAX_STEP_CHARS)}\u2026` : raw;
+  const code: StepCode = Object.hasOwn(STEP_VERBS, tool) ? (tool as keyof typeof STEP_VERBS) : "unknown";
+  return { code, params: { tool, summary, failed: ev.ok === false } };
+}

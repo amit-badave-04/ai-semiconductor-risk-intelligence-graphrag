@@ -4,6 +4,8 @@
 // lives, the fact invariants and the cost line, and records this file in artifacts/m5b_copy_deck.json, so every wording change
 // is a reviewable diff. Non-ASCII characters are written as unicode escapes.
 import type { CheckedLine } from "@/lib/answerMeta";
+import type { RetrievalParams, StatusView } from "@/lib/askStatus";
+import type { StepCode, StepView } from "@/lib/steps";
 
 /** The per-address limits of live questions, as /api/stats reports them (lib/askStatus.ts liveLimits). */
 export interface Limits {
@@ -12,6 +14,40 @@ export interface Limits {
   /** null: no per-address daily cap (the server's paid_per_ip_per_day is 0) */
   perDay: number | null;
 }
+
+/** "Nvidia", "Nvidia and TSMC", "Nvidia, AMD and TSMC". */
+function listWords(items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** RD10: what retrieval found, in a sentence ("Found 8 passages and 1 relationship about Nvidia. Writing the answer..."). */
+function foundSentence(p: RetrievalParams): string {
+  const found = [
+    p.passages > 0 ? plural(p.passages, "passage", "passages") : "",
+    p.figures > 0 ? plural(p.figures, "reported figure", "reported figures") : "",
+    p.relationships > 0 ? plural(p.relationships, "relationship", "relationships") : "",
+    p.risks > 0 ? plural(p.risks, "risk disclosure", "risk disclosures") : "",
+    p.changes > 0 ? plural(p.changes, "risk change", "risk changes") : "",
+  ].filter((part) => part !== "");
+  const lead = p.defaulted && p.anchors.length > 0 ? `No company was named, so this looks at ${listWords(p.anchors)}. ` : "";
+  const about = p.anchors.length > 0 ? ` about ${listWords(p.anchors)}` : "";
+  const what = found.length > 0 ? `Found ${listWords(found)}${about}. ` : "";
+  return `${lead}${what}Writing the answer\u2026`;
+}
+
+/** The research agent's steps, as the legacy page worded them: the verb, and what joins it to the summary. */
+const STEP_WORDS: Record<Exclude<StepCode, "unknown">, readonly [string, string]> = {
+  lookup_company: ["Looked up", " "],
+  search_filings: ["Searched the filings", ": "],
+  financial_metrics: ["Fetched", " "],
+  risk_changes: ["Compared risk disclosures", ": "],
+  relationships: ["Checked relationships", ": "],
+  active_risks: ["Listed active risks", ": "],
+  compute_change: ["Computed", " "],
+};
 
 export const deck = {
   nav: {
@@ -63,6 +99,43 @@ export const deck = {
     howLink: "How answers are made",
     /** RD8: Ask pressed with an empty box. */
     emptyQuestion: "Type a question first, or pick an example below.",
+  },
+
+  status: {
+    /** RD10: the status line of an answer (lib/askStatus.ts statusView), in plain words. Server values arrive as params and are
+     *  rendered as text: company names, counts, the server's own error words. */
+    line: (view: StatusView): string => {
+      switch (view.code) {
+        case "idle":
+          return "";
+        case "error":
+          return view.params !== undefined && "text" in view.params ? view.params.text : "";
+        case "retrieving":
+          return "Looking in the filings\u2026";
+        case "agent":
+          return "The research agent is choosing where to look\u2026";
+        case "escalated":
+          return "The first draft did not pass the automatic checks, so a stronger model is answering again\u2026";
+        case "retrieval":
+          return view.params !== undefined && "anchors" in view.params ? foundSentence(view.params) : "Writing the answer\u2026";
+        case "cachedSaved":
+          return "Saved answer, shown instantly.";
+        case "cachedEarlier":
+          return "Answered earlier, shown instantly.";
+        case "done":
+          return "Done.";
+      }
+    },
+  },
+
+  steps: {
+    /** The research agent's steps (lib/steps.ts stepView), worded as the legacy page worded them. */
+    line: (view: StepView): string => {
+      const { tool, summary, failed } = view.params;
+      const [verb, joiner] =
+        view.code === "unknown" ? [tool ? `Ran ${tool.replace(/_/g, " ")}` : "Ran a tool", ": "] : STEP_WORDS[view.code];
+      return verb + (summary ? joiner + summary : "") + (failed ? " (failed)" : "");
+    },
   },
 
   checked: {
