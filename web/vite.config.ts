@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 // ONE artifact (docs/specs/m5b-frontend.md R12): the base is the absolute /v2/ and the router basename is chosen at runtime
 // from the path (src/lib/basename.ts), so the same dist serves /v2/ and, once UI_V2 flips the root, /. The server's CSP has
 // base-uri 'none', so a <base> element is not an option.
+// index.html preloads only the regular sans face (docs/specs/m5b-redesign.md RD2); Vite rewrites its href to the hashed file.
 const FONT_FILE = /\.(?:woff2?|ttf|otf|eot)$/i;
 
 export default defineConfig({

@@ -45,3 +45,10 @@ export const RELIABILITY: readonly Segment[] = [
 // index.html:259 (the checks hint, shown under the badges and checks of an answer)
 export const CHECKS_HINT =
   "These checks confirm that each cited id was retrieved and that numbers match the retrieved context (a figure only your question states is never counted as a match); they do not prove that a sentence is supported by the passage it cites. Only amounts with a currency ($, \u20ac, USD, EUR, NT$, TWD) and percentages are checked: a bare number such as \"190 billion\" is not. Statements about what changed between two filings come from an automatic text comparison and are worded with hedges: see \"How reliable are change claims?\" at the bottom of the page. Click a chip to read the source.";
+
+// index.html: AGENT_HINT and TRACING_NOTE (the research agent's hint and what a trace holds), moved here from Ask.copy.ts by
+// docs/specs/m5b-redesign.md section 4; pinned by tests/test_web_method_copy.py and tests/test_serve_agent_ui.py.
+export const AGENT_HINT =
+  "Deep research: a small planning model chooses a few extra graph lookups, listed below as they run, before the answer is written. It is slower and costs a little more; the same checks apply to the answer.";
+export const TRACING_NOTE =
+  "Deep research questions are traced for debugging, at a sampling rate the operator sets. A trace holds the length of the question and a one-way hash of it, the names of the tools and models used, token counts, cost, timings and any fallback reason; never the text of the question or the answer, and never your address.";

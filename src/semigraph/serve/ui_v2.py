@@ -38,6 +38,10 @@ from . import routes
 
 logger = logging.getLogger("semigraph.serve.ui_v2")
 
+# docs/specs/m5b-redesign.md SR6: the self-hosted fonts are woff2, which Python 3.13's type table does not know, so a font would
+# otherwise go out as a generic binary type. Registered once at import; ``StaticFiles`` guesses the type from the file name.
+mimetypes.add_type("font/woff2", ".woff2")
+
 # The pages of the app as the router knows them (``{ticker}`` is a path parameter). ``scripts/export_ids.py`` writes them into
 # ``web/src/lib/pages.generated.ts`` so the client and the server cannot disagree about which paths exist.
 SPA_PAGES = ("/", "/company/{ticker}/", "/workspace/", "/freshness/", "/method/")

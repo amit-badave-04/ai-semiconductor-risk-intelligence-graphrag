@@ -335,3 +335,68 @@ def test_the_report_states_both_allow_lists_says_the_gate_is_closed_and_records_
     assert sorted(decision["build_test_added"]) == sorted(DECIDED_FOR_TOOLS_ONLY)
     assert decision["runtime_allow_list"] == "unchanged"
     assert report["totals"]["packages"] == len(report["packages"]) == sum(report["totals"][s] for s in ALLOWED)
+
+
+# ---------------------------------------------------------------- vendored runtime assets (docs/specs/m5b-redesign.md RD2, SR5)
+# Files shipped in the bundle that do not come from npm, so the lockfile gate above cannot see them. The owner's decision of
+# 2026-11-10 (D-R9) allows OFL-1.1 for these font files only; RUNTIME_ALLOWED for npm packages is unchanged. Each file is the
+# unmodified release file (the OFL reserves the name "Source" for unmodified fonts, so no subsetting), pinned by its sha256.
+
+FONTS_DIR = ROOT / "web" / "src" / "assets" / "fonts"
+LICENSES_DIR = ROOT / "web" / "public" / "licenses"
+DIST_DIR = Path(os.environ.get("WEB_DIST") or ROOT / "web" / "dist")
+SANS_ZIP = "https://github.com/adobe-fonts/source-sans/releases/download/3.052R/WOFF2-source-sans-3.052R.zip"
+SERIF_ZIP = "https://github.com/adobe-fonts/source-serif/releases/download/4.005R/source-serif-4.005_WOFF2.zip"
+VENDORED_FONTS = (
+    {"file": "SourceSans3-Regular.ttf.woff2", "license": "OFL-1.1", "version": "3.052R", "source": SANS_ZIP,
+     "sha256": "53492fb3a0def77354f166a55d09b63a10855e91c206c7620a81cf56e97f8ec3"},
+    {"file": "SourceSans3-Semibold.ttf.woff2", "license": "OFL-1.1", "version": "3.052R", "source": SANS_ZIP,
+     "sha256": "47b9b661b9f395fe7f0d0e119637fba5c8dad97bde3df60066fd24229c0792f4"},
+    {"file": "SourceSans3-Bold.ttf.woff2", "license": "OFL-1.1", "version": "3.052R", "source": SANS_ZIP,
+     "sha256": "8d35c6d40e750a4ee23bbbba2bd604ad098d172907369b43281507e16b8e2e7a"},
+    {"file": "SourceSerif4-Regular.ttf.woff2", "license": "OFL-1.1", "version": "4.005R", "source": SERIF_ZIP,
+     "sha256": "6b053e98f0838afe81f3e784727be4583a7c13bb42f198dc5202ecffee0aaee0"},
+)
+FONT_LICENSES = (
+    {"file": "OFL-SourceSans3.txt", "source": "https://raw.githubusercontent.com/adobe-fonts/source-sans/3.052R/LICENSE.md",
+     "sha256": "89ad2c4f66dd29127527493e729c31e731f111cf10faf5774c3db9275ed0c22c"},
+    {"file": "OFL-SourceSerif4.txt", "source": "https://raw.githubusercontent.com/adobe-fonts/source-serif/4.005R/LICENSE.md",
+     "sha256": "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7"},
+)
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_every_vendored_font_is_the_pinned_release_file_and_nothing_else_is_vendored():
+    assert sorted(p.name for p in FONTS_DIR.glob("*.woff2")) == sorted(f["file"] for f in VENDORED_FONTS)
+    for font in VENDORED_FONTS:
+        assert _sha256(FONTS_DIR / font["file"]) == font["sha256"], font["file"]
+        assert font["license"] == "OFL-1.1" and font["license"] not in RUNTIME_ALLOWED
+
+
+def test_the_font_licenses_ship_verbatim_from_the_same_release_tags():
+    for lic in FONT_LICENSES:
+        path = LICENSES_DIR / lic["file"]
+        assert _sha256(path) == lic["sha256"], lic["file"]
+        assert "SIL Open Font License, Version 1.1" in path.read_text(encoding="utf-8")
+    assert {lic["source"].split("/")[5] for lic in FONT_LICENSES} == {f["version"] for f in VENDORED_FONTS}
+
+
+def test_the_fonts_readme_records_every_file_with_its_source_and_checksum():
+    readme = (FONTS_DIR / "README.md").read_text(encoding="utf-8")
+    for item in (*VENDORED_FONTS, *FONT_LICENSES):
+        assert item["file"] in readme and item["sha256"] in readme and item["source"] in readme, item["file"]
+
+
+def test_the_built_app_ships_only_the_vendored_fonts_unchanged_and_their_licenses():
+    if not (DIST_DIR / "index.html").is_file():
+        pytest.skip(f"no built app at {DIST_DIR}; the CI web job runs this after the build")
+    pinned = {f["sha256"] for f in VENDORED_FONTS}
+    shipped = list((DIST_DIR / "assets").glob("*.woff2"))
+    assert shipped and all(_sha256(p) in pinned for p in shipped), [p.name for p in shipped]
+    for lic in FONT_LICENSES:
+        assert _sha256(DIST_DIR / "licenses" / lic["file"]) == lic["sha256"]

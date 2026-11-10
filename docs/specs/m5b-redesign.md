@@ -1,6 +1,7 @@
 # M5b redesign: a frontend a newcomer understands and an analyst trusts ("B combined")
 
-Status: **DRAFT r2 for the owner (2026-11-10)**, revised after an Opus review of r1 (section 14). Path: full (new feature
+Status: **APPROVED by the owner 2026-11-10** ("all as recommended": the spec r2 and D-R1 to D-R9 as recommended), after an Opus
+review of r1 (section 14). Path: full (new feature
 on the sensitive list: input handling, a vendored runtime asset with a new licence, the file-serving path, a possible
 database query change). Amends `docs/specs/m5b-frontend.md` (the M5b spec); everything in it that this document does not
 name stays in force.
@@ -366,8 +367,8 @@ real-person tasks; RD6 pinned to a fixture; RD26 states that passages go to the 
 
 | Stage | Gate | Evidence |
 |---|---|---|
-| 1 Spec | owner approves this spec and D-R1 to D-R9 | r1 reviewed by Opus (NEEDS_CHANGES, 14 findings); r2 addresses all; owner approval pending |
-| 2 Dev (TDD) | per increment R0-R4: RED then GREEN, reviews clean of CRITICAL and HIGH | pending |
+| 1 Spec | owner approves this spec and D-R1 to D-R9 | **PASSED 2026-11-10**: r1 reviewed by Opus (NEEDS_CHANGES, 14 findings); r2 addresses all; owner: "all as recommended" |
+| 2 Dev (TDD) | per increment R0-R4: RED then GREEN, reviews clean of CRITICAL and HIGH | **R0 part 1 (2026-11-10)**: tokens (RD1), self-hosted fonts and preload (RD2), woff2 type (SR6), vendored files and licences (SR5), `lib/format.ts`, facts move (section 4). RED seen for each: font rules in `test_dist_contract.py`, woff2 content type, vendored-font table, `format.test.ts` (module missing), method-copy pins (`AGENT_HINT: not found`). GREEN: pytest dist/licences/serve/copy 300 passed + 33 passed against a mirror build; vitest 1151 passed; tsc and oxlint clean; Playwright 123 passed (axe included); Source Sans 3 400/600/700 load in Chromium in both schemes. Reviews: code (Sonnet) and security (Opus), no CRITICAL or HIGH; fixed with RED first: a timestamp with no offset read as local time (moved the day west of UTC), "-$0", an unknown currency code dropped, and the font checker made an allow-list (the security review's 10 bypass strings are negative tests). Added after the CSS, so with no RED: `tokens.test.ts` (every text pair 4.5:1, edges and focus 3:1, both schemes; rule hue outside the yellow band). First visit on slow 4G with the cache off: the fonts shift nothing (CLS 0 on Company); the old Ask page shifts 0.371 when its example list arrives above the box, which R1's order removes (R1's first-screen spec asserts CLS 0.02 or less); Semibold and Bold miss the window, so headings draw in the bold fallback face (real Arial Bold, no faux bold) on a first visit; preloading Semibold too would change RD2 and is the owner's call. After the fixes: vitest 1191 passed; Playwright 123 passed; pytest 344 passed, 1 skipped (the existing symlink test). Staged into R1/R2 (they land with the first components that use them): the deck scaffold and `test_web_copy_deck.py`, lib `code` fields, the Base UI popover and collapsible wrappers. |
 | 3 Regression | section 7 items 1-5 | pending |
 | 4 Security | `/security-review`, gitleaks, semgrep, `differential-review`, `spec-to-code-compliance`; dependency audit if a lockfile changes | pending |
 | 5 Fix findings | if any | pending |

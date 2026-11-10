@@ -3,7 +3,10 @@
 The server's CSP (``routes.CSP``) has ``'unsafe-inline'`` for scripts and styles, no ``font-src`` (so a ``data:`` font is
 blocked) and ``base-uri 'none'`` (so a ``<base>`` is refused), and the same built page is served at ``/v2/`` and, flipped, at
 ``/``. So the build output must have: no inline script or style, no ``style=``, no ``<base>``, no robots meta, no ``data:``
-font and no ``@font-face``, no absolute URL in the page (``https://challenges.cloudflare.com`` aside) or in the CSS, and, because
+font, no ``@font-face`` other than a self-hosted woff2 under the base or a ``local()`` fallback (docs/specs/m5b-redesign.md RD2
+and SR1: ``default-src 'self'`` covers same-origin fonts), a font preload only with ``crossorigin``, the woff2 type and a woff2
+file, no font file but woff2 and only under ``assets/``, no absolute URL in the page (``https://challenges.cloudflare.com``
+aside) or in the CSS, and, because
 nothing moves (R30), no ``transition``, ``animation`` or ``@keyframes`` declaration in any CSS file.
 
 The JavaScript bundles are NOT scanned for URLs: react-dom itself contains ``http://www.w3.org/2000/svg`` and
@@ -31,6 +34,20 @@ DATA_FONT = re.compile(r"data:\s*(?:font/|application/(?:x-)?font|application/vn
 # A declaration, not a substring: ``(?<![\w-])`` keeps a custom property such as ``--tw-transition`` from tripping the scan.
 MOTION = re.compile(r"(?<![\w-])(?:transition|animation)(?:-[a-z-]+)?\s*:|@(?:-webkit-)?keyframes\b", re.I)
 CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+# The font rules are an allow-list (docs/specs/m5b-redesign.md SR1): a quoted string is one token, so a "}" or ";" inside a
+# family name or a data: URL never ends a rule early; whatever an @font-face src holds after the allowed sources are removed
+# must be commas and spaces.
+_QUOTED = r""""[^"]*"|'[^']*'"""
+FONT_FACE = re.compile(r"@font-face\s*\{((?:" + _QUOTED + r"""|[^}"'])*)\}""", re.I)
+FONT_SRC = re.compile(r"(?<![\w-])src\s*:\s*((?:" + _QUOTED + r"""|[^;"'])*)""", re.I)
+ALLOWED_FONT_SOURCE = re.compile(
+    r"""url\(\s*(["']?)/v2/assets/[A-Za-z0-9._-]+\.woff2\1\s*\)(?:\s*format\(\s*(["']?)woff2\2\s*\))?"""
+    r"""|local\(\s*(?:"[^"\\]*"|'[^'\\]*'|[^)"'\\]*)\s*\)""",
+    re.I,
+)
+# An escaped at-rule name ("@\66ont-face") would hide a rule from every pattern here; Vite and Tailwind never write one.
+ESCAPED_AT_RULE = re.compile(r"@\\")
+CSS_IMPORT = re.compile(r"@import\b", re.I)
 
 
 class _Page(HTMLParser):
@@ -64,6 +81,14 @@ class _Page(HTMLParser):
             self.problems.append(f"style= attribute on <{tag}>")
         if tag == "link" and attrs.get("href"):
             self.references.append(attrs["href"])
+        if tag == "link" and attrs.get("rel", "").lower() == "preload" and attrs.get("as", "").lower() == "font":
+            href = attrs.get("href", "")
+            if "crossorigin" not in attrs:
+                self.problems.append(f"font preload {href} without crossorigin (the font would be fetched twice)")
+            if attrs.get("type", "").lower() != "font/woff2":
+                self.problems.append(f'font preload {href} without type="font/woff2"')
+            if not href.endswith(".woff2"):
+                self.problems.append(f"font preload {href} is not a woff2")
         if tag in ("img", "source", "iframe") and attrs.get("src"):
             self.references.append(attrs["src"])
         if tag == "a" and attrs.get("href"):
@@ -93,8 +118,20 @@ def check_page(html: str) -> tuple[list[str], list[str]]:
 def check_css(css: str, name: str = "css") -> list[str]:
     stripped = CSS_COMMENT.sub("", css)
     problems = []
-    if re.search(r"@font-face\b", stripped, re.I):
-        problems.append(f"{name}: @font-face (system font stack only)")
+    for block in FONT_FACE.findall(stripped):
+        if "\\" in block or "data:" in block.lower():
+            problems.append(f"{name}: @font-face with a CSS escape or a data: URL")
+        sources = FONT_SRC.findall(block)
+        if not sources:
+            problems.append(f"{name}: @font-face without a src")
+        for source in sources:
+            left = ALLOWED_FONT_SOURCE.sub("", source)
+            if left.strip(" \t\r\n,") != "":
+                problems.append(f"{name}: @font-face source {source.strip()!r} (a self-hosted /v2/assets/*.woff2 or local() only)")
+    if ESCAPED_AT_RULE.search(stripped):
+        problems.append(f"{name}: an at-rule written with a CSS escape")
+    if CSS_IMPORT.search(stripped):
+        problems.append(f"{name}: @import (the build inlines every stylesheet)")
     if DATA_FONT.search(stripped):
         problems.append(f"{name}: data: font (the CSP has no font-src)")
     if CSS_ABSOLUTE_URL.search(stripped):
@@ -116,8 +153,11 @@ def check_dist(dist: Path) -> list[str]:
             problems.append(f"{ref} is referenced but not in the dist")
     for css in sorted(dist.rglob("*.css")):
         problems += check_css(css.read_text(encoding="utf-8"), css.relative_to(dist).as_posix())
-    for font in [*dist.rglob("*.woff"), *dist.rglob("*.woff2"), *dist.rglob("*.ttf"), *dist.rglob("*.otf")]:
-        problems.append(f"font file {font.relative_to(dist).as_posix()} (web fonts are out of scope)")
+    for font in [*dist.rglob("*.woff"), *dist.rglob("*.ttf"), *dist.rglob("*.otf"), *dist.rglob("*.eot")]:
+        problems.append(f"font file {font.relative_to(dist).as_posix()} (woff2 only)")
+    for font in dist.rglob("*.woff2"):
+        if font.parent != dist / "assets":
+            problems.append(f"font file {font.relative_to(dist).as_posix()} outside assets/")
     return problems
 
 
@@ -178,7 +218,13 @@ def test_the_page_needs_a_title_a_language_and_a_viewport(missing):
 
 
 @pytest.mark.parametrize("css, expected", [
-    ("@font-face{font-family:x;src:url(/v2/assets/x.woff2)}", "@font-face"),
+    ("@font-face{font-family:x;src:url(https://fonts.example.com/x.woff2)}", "@font-face source"),
+    ("@font-face{font-family:x;src:url(/v2/assets/x.ttf) format('truetype')}", "@font-face source"),
+    ("@font-face{font-family:x;src:url(/v2/assets/x.woff) format('woff')}", "@font-face source"),
+    ("@font-face{font-family:x;src:url(/fonts/x.woff2)}", "@font-face source"),
+    ("@font-face{font-family:x;src:url(assets/x.woff2)}", "@font-face source"),
+    ("@font-face{font-family:x;src:url(data:font/woff2;base64,AAAA)}", "data: font"),
+    ("@font-face{font-family:x}", "@font-face without a src"),
     (".a{src:url(data:font/woff2;base64,AAAA)}", "data: font"),
     (".a{src:url(data:application/x-font-woff;base64,AAAA)}", "data: font"),
     (".a{background:url(https://cdn.example.com/p.png)}", "absolute url()"),
@@ -202,10 +248,74 @@ def test_a_commented_out_declaration_is_not_a_finding():
     assert check_css("/* transition: all 1s; @keyframes x{} */.a{color:red}") == []
 
 
-def test_a_font_file_in_the_dist_is_a_finding(tmp_path):
+# docs/specs/m5b-redesign.md RD2, SR1: self-hosted woff2 fonts under the base, and local() fallbacks, are allowed; nothing else.
+@pytest.mark.parametrize("css", [
+    "@font-face{font-family:Source Sans 3;font-display:optional;src:url(/v2/assets/SourceSans3-Regular-abc.woff2) format('woff2')}",
+    '@font-face{font-family:"Source Sans 3";src:url("/v2/assets/SourceSans3-Bold-abc.woff2")format("woff2")}',
+    "@font-face{font-family:Fallback;src:local('Segoe UI'),local(Arial);size-adjust:96%}",
+])
+def test_a_same_origin_woff2_or_local_font_face_is_allowed(css):
+    assert check_css(css) == []
+
+
+# The R0 security review fed these to the earlier deny-list checker and each passed: the font rules are an allow-list now.
+@pytest.mark.parametrize("css", [
+    "@font-face{font-family:x;src:url(data:;base64,d09GMgAB)}",                       # data: with no MIME type
+    "@font-face{font-family:x;src:url('data:image/png;base64,d09GMgAB')}",            # data: with a non-font MIME type
+    r"@font-face{font-family:x;src:u\72l(https://evil.example/x.woff2)}",             # url written with a CSS escape
+    r"""@font-face{font-family:x;src:url("\2f\2f evil.example/x'.woff2")}""",          # escaped slashes and a stray quote
+    r"@\66ont-face{font-family:x;src:url(/fonts/x.woff2)}",                           # an escaped at-rule name
+    '@font-face{font-family:x;src:src("https://evil.example/x.woff2")}',              # the CSS src() function
+    '@import "https://evil.example/fonts.css";',                                       # an import written as a string
+    "@import url(/v2/assets/other.css);",                                              # any import left in the dist
+    '@font-face{font-family:"a}b";src:url(https://evil.example/x.woff2)}',            # a brace inside a quoted family name
+    "@font-face{font-family:x;src:url(/v2/assets/x.woff2) format('woff2'), url(https://evil.example/y.woff2)}",
+])
+def test_a_font_the_allow_list_does_not_name_is_a_finding(css):
+    assert check_css(css) != []
+
+
+def test_a_quoted_family_name_with_a_brace_is_read_as_one_rule():
+    assert check_css('@font-face{font-family:"a}b";src:local(Arial)}') == []
+
+
+@pytest.mark.parametrize("name", ["inter.ttf", "inter.otf", "inter.woff"])
+def test_a_font_file_other_than_woff2_in_the_dist_is_a_finding(tmp_path, name):
     dist = make_dist(tmp_path)
-    (dist / "assets" / "inter.woff2").write_bytes(b"wOF2")
+    (dist / "assets" / name).write_bytes(b"\x00\x01")
     assert any("font file" in p for p in check_dist(dist))
+
+
+def test_a_woff2_file_in_the_assets_is_allowed(tmp_path):
+    dist = make_dist(tmp_path)
+    (dist / "assets" / "SourceSans3-Regular-abc.woff2").write_bytes(b"wOF2")
+    assert check_dist(dist) == []
+
+
+def test_a_woff2_file_outside_the_assets_is_a_finding(tmp_path):
+    dist = make_dist(tmp_path)
+    (dist / "x.woff2").write_bytes(b"wOF2")
+    assert any("font file" in p for p in check_dist(dist))
+
+
+@pytest.mark.parametrize("link, expected", [
+    ('<link rel="preload" as="font" type="font/woff2" href="/v2/assets/f-abc.woff2">', "crossorigin"),
+    ('<link rel="preload" as="font" crossorigin href="/v2/assets/f-abc.woff2">', "type"),
+    ('<link rel="preload" as="font" type="font/woff2" crossorigin href="/v2/assets/f-abc.ttf">', "woff2"),
+])
+def test_a_font_preload_needs_crossorigin_the_type_and_a_woff2(tmp_path, link, expected):
+    dist = make_dist(tmp_path, html=GOOD_HTML.replace("</head>", link + "</head>"))
+    (dist / "assets" / "f-abc.woff2").write_bytes(b"wOF2")
+    (dist / "assets" / "f-abc.ttf").write_bytes(b"\x00")
+    problems = check_dist(dist)
+    assert any("preload" in p and expected in p for p in problems), problems
+
+
+def test_a_correct_font_preload_passes(tmp_path):
+    link = '<link rel="preload" as="font" type="font/woff2" crossorigin href="/v2/assets/f-abc.woff2">'
+    dist = make_dist(tmp_path, html=GOOD_HTML.replace("</head>", link + "</head>"))
+    (dist / "assets" / "f-abc.woff2").write_bytes(b"wOF2")
+    assert check_dist(dist) == []
 
 
 def test_a_dist_without_an_index_is_a_finding(tmp_path):
@@ -246,3 +356,23 @@ def test_the_built_app_ships_css_and_javascript(real_dist):
 def test_the_built_css_carries_no_keyframes_from_tw_animate_css_or_shadcn(real_dist):
     css = "\n".join(CSS_COMMENT.sub("", p.read_text(encoding="utf-8")) for p in real_dist.rglob("*.css"))
     assert css and "@keyframes" not in css
+
+
+FONT_PRELOAD = re.compile(r"<link\b[^>]*\brel=[\"']?preload[\"']?[^>]*\bas=[\"']?font[\"']?[^>]*>", re.I)
+HREF = re.compile(r"\bhref=[\"']?([^\"'\s>]+)", re.I)
+
+
+def test_the_built_page_preloads_only_the_regular_sans_face(real_dist):
+    # docs/specs/m5b-redesign.md RD2: only SourceSans3-Regular is preloaded; the other faces load when first used.
+    html = (real_dist / "index.html").read_text(encoding="utf-8")
+    hrefs = [HREF.search(tag).group(1) for tag in FONT_PRELOAD.findall(html)]
+    assert len(hrefs) == 1, hrefs
+    assert re.fullmatch(r"/v2/assets/SourceSans3-Regular\.ttf-[A-Za-z0-9_-]+\.woff2", hrefs[0]), hrefs
+
+
+def test_the_built_css_declares_the_four_faces_with_font_display_optional(real_dist):
+    css = "\n".join(CSS_COMMENT.sub("", p.read_text(encoding="utf-8")) for p in real_dist.rglob("*.css"))
+    faces = FONT_FACE.findall(css)
+    woff2_faces = [f for f in faces if ".woff2" in f]
+    assert len(woff2_faces) == 4, woff2_faces
+    assert all(re.search(r"font-display\s*:\s*optional", f) for f in woff2_faces), woff2_faces

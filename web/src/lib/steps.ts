@@ -1,6 +1,6 @@
 // R22: the research agent's steps as one plain sentence each (a port of index.html's stepText, agentEnabled and tracingNote). A step
 // carries a tool name and a summary (counts, ids, fiscal years); both are server text, rendered as a text node only (S2, S11).
-import { TRACING_NOTE } from "@/pages/Ask.copy";
+import { TRACING_NOTE } from "@/pages/Method.copy";
 import type { StepEvent } from "./events";
 
 export const MAX_STEP_CHARS = 140;

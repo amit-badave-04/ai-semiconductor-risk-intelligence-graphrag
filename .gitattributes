@@ -2,3 +2,6 @@
 # (core.autocrlf=true on Windows would otherwise turn them into CRLF and break the byte tests). See tests/test_sse_fixtures.py.
 tests/data/sse/* -text
 deploy/checks/*.sh text eol=lf
+# docs/specs/m5b-redesign.md SR5: the vendored fonts and their licence texts are pinned by sha256, so git must never rewrite them.
+*.woff2 binary
+web/public/licenses/*.txt -text

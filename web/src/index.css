@@ -3,17 +3,88 @@
 @source not "./test";
 
 /*
-  Colours follow prefers-color-scheme (docs/specs/m5b-frontend.md R30): Tailwind's built-in dark: variant is that media query,
-  so there is no .dark class. The look follows the existing page's palette. System font stack only (R4: no @font-face; the
-  server's CSP has no font-src). Nothing moves (R30). Two imports that shadcn's init adds are NOT here: tw-animate-css
-  (animation utilities) and shadcn/tailwind.css (it ships a plain, always-emitted animated rule and keyframes; the seven
-  components in use need none of its variants). Tailwind scans only src, never tests (the `source` and `@source not` lines),
-  because it turns any word in a scanned file into a class.
+  docs/specs/m5b-redesign.md RD1 (tokens) and RD2 (fonts), which amend docs/specs/m5b-frontend.md R4 and keep R30.
+  Colours follow prefers-color-scheme (R30): Tailwind's built-in dark: variant is that media query, so there is no .dark class.
+  The shadcn variable names are kept so components/ui/* keeps working; their values are Direction B's palette.
+  Fonts are self-hosted woff2 files (RD2): same-origin, so the CSP's default-src 'self' allows them without a font-src; never a
+  data: font (vite.config.ts never inlines a font) and never a remote one (tests/test_dist_contract.py). font-display: optional,
+  plus a size-adjusted local() fallback face, so a late font never shifts the layout. Nothing moves (R30). Two imports that
+  shadcn's init adds are NOT here: tw-animate-css and shadcn/tailwind.css. Tailwind scans only src, never tests (the `source`
+  and `@source not` lines), because it turns any word in a scanned file into a class.
 */
 
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("./assets/fonts/SourceSans3-Regular.ttf.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: optional;
+}
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("./assets/fonts/SourceSans3-Semibold.ttf.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: optional;
+}
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("./assets/fonts/SourceSans3-Bold.ttf.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: optional;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("./assets/fonts/SourceSerif4-Regular.ttf.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: optional;
+}
+/* The fallback drawn until (or instead of) Source Sans 3: Arial or its metric twin, scaled to Source Sans 3's metrics
+   (ascender 1024, descender 400, no line gap, per 1000 units). */
+@font-face {
+  font-family: "Source Sans 3 Fallback";
+  src: local("Arial"), local("Liberation Sans"), local("Arimo");
+  size-adjust: 93.76%;
+  ascent-override: 109.21%;
+  descent-override: 42.66%;
+  line-gap-override: 0%;
+}
+/* The same fallback for semibold and bold text, so a first visit that misses the Semibold and Bold files (not preloaded)
+   draws real bold Arial, not a synthesized one. */
+@font-face {
+  font-family: "Source Sans 3 Fallback";
+  src: local("Arial Bold"), local("Arial-BoldMT"), local("Liberation Sans Bold"), local("Arimo Bold");
+  font-weight: 600 700;
+  size-adjust: 93.76%;
+  ascent-override: 109.21%;
+  descent-override: 42.66%;
+  line-gap-override: 0%;
+}
+
 @theme inline {
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Source Sans 3", "Source Sans 3 Fallback", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --font-serif: "Source Serif 4", Charter, "Bitstream Charter", Georgia, Cambria, serif;
   --font-heading: var(--font-sans);
+
+  /* RD1 type scale 13/15/17/21/28/44 px at the default root size (the root is 93.75%, so 1rem is 15 px and a reader's own
+     browser text size still scales everything). */
+  --text-xs: 0.8667rem;
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.8667rem;
+  --text-sm--line-height: 1.45;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.1333rem;
+  --text-lg--line-height: 1.45;
+  --text-xl: 1.4rem;
+  --text-xl--line-height: 1.3;
+  --text-2xl: 1.8667rem;
+  --text-2xl--line-height: 1.2;
+  --text-3xl: 2.9333rem;
+  --text-3xl--line-height: 1.1;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -28,8 +99,20 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand-fill: var(--brand-fill);
+  --color-brand-line: var(--brand-line);
+  --color-caution: var(--caution);
+  --color-caution-fill: var(--caution-fill);
+  --color-caution-line: var(--caution-line);
+  --color-mark: var(--mark);
+  --color-mark-ink: var(--mark-ink);
+  --color-mark-edge: var(--mark-edge);
+  --color-rule: var(--rule);
+  --color-rule-fill: var(--rule-fill);
+  --color-rule-line: var(--rule-line);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -38,58 +121,100 @@
 }
 
 :root {
+  /* Direction B, light */
   --background: #f6f7f9;
-  --foreground: #1b1f24;
+  --foreground: #17202a;
   --card: #ffffff;
-  --card-foreground: #1b1f24;
-  --primary: #0b5fff;
+  --card-foreground: #17202a;
+  --primary: #13654b;
   --primary-foreground: #ffffff;
-  --secondary: #eef2f7;
-  --secondary-foreground: #1b1f24;
-  --muted: #eef2f7;
-  --muted-foreground: #5b6470;
-  --accent: #eef2f7;
-  --accent-foreground: #1b1f24;
+  --secondary: #eef1f4;
+  --secondary-foreground: #17202a;
+  --muted: #eef1f4;
+  --muted-foreground: #4f5a67;
+  --accent: #eef1f4;
+  --accent-foreground: #17202a;
   --destructive: #b91c1c;
-  --border: #e2e6eb;
-  --input: #8791a0;
-  --ring: #0b5fff;
-  --radius: 0.625rem;
+  --border: #d8dde3;
+  --border-strong: #b9c1ca;
+  /* a form control's edge: 3:1 or better against the card (WCAG 1.4.11) */
+  --input: #7a8592;
+  --ring: #1d4ed8;
+  --brand-fill: #e4f2ec;
+  --brand-line: #8fc2ac;
+  --caution: #7a4e00;
+  --caution-fill: #fbf1d9;
+  --caution-line: #b88a2e;
+  /* the highlighter: dark ink on yellow in both schemes (RD1) */
+  --mark: #ffe066;
+  --mark-ink: #17202d;
+  --mark-edge: #b88a00;
+  /* a government rule: indigo, never yellow, so a rule is never confused with a highlighted quote (RD1) */
+  --rule: #3a4588;
+  --rule-fill: #eceefa;
+  --rule-line: #a3aad9;
+  --radius: 0.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0f1216;
-    --foreground: #e7eaee;
-    --card: #171b21;
-    --card-foreground: #e7eaee;
-    --primary: #5b8cff;
-    --primary-foreground: #0f1216;
-    --secondary: #222933;
-    --secondary-foreground: #e7eaee;
-    --muted: #222933;
-    --muted-foreground: #9aa4b1;
-    --accent: #222933;
-    --accent-foreground: #e7eaee;
+    /* Direction B, dark */
+    --background: #121820;
+    --foreground: #e7ecf2;
+    --card: #1a212b;
+    --card-foreground: #e7ecf2;
+    --primary: #74d3ab;
+    --primary-foreground: #121820;
+    --secondary: #232c37;
+    --secondary-foreground: #e7ecf2;
+    --muted: #232c37;
+    --muted-foreground: #a9b3bf;
+    --accent: #232c37;
+    --accent-foreground: #e7ecf2;
     --destructive: #f87171;
-    --border: #2a313b;
-    --input: #6b7685;
-    --ring: #5b8cff;
+    --border: #2e3843;
+    --border-strong: #46525f;
+    --input: #75828f;
+    --ring: #8ab4ff;
+    --brand-fill: #15302a;
+    --brand-line: #2f6b55;
+    --caution: #f0c463;
+    --caution-fill: #2d2412;
+    --caution-line: #9a7426;
+    --mark: #ebcb52;
+    --mark-ink: #17202d;
+    --mark-edge: #ebcb52;
+    --rule: #aeb7f2;
+    --rule-fill: #1e2340;
+    --rule-line: #4a5390;
   }
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   html {
     @apply font-sans;
-    font-size: 15px;
+    /* 15 px at the browser's default size, and it follows the reader's own text-size setting */
+    font-size: 93.75%;
     line-height: 1.5;
+    /* RD1: tabular figures for every number, so columns of figures line up */
+    font-variant-numeric: tabular-nums;
   }
   body {
     @apply bg-background text-foreground;
     margin: 0;
+  }
+  /* RD1: a 3 px focus outline on anything focused from the keyboard. Components that draw their own ring keep it. */
+  :focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 2px;
+  }
+  mark {
+    background-color: var(--mark);
+    color: var(--mark-ink);
+    box-decoration-break: clone;
   }
   .skip-link {
     @apply sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-10 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:text-foreground focus:ring-2 focus:ring-ring;

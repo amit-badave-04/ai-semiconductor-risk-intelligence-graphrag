@@ -26,6 +26,18 @@ _HREF = re.compile(r'href: "((?:[^"\\]|\\.)*)"')
 _HINT_TS = re.compile(r'CHECKS_HINT =\s*"((?:[^"\\]|\\.)*)"')
 _HINT_JS = re.compile(r'const hint = "((?:[^"\\]|\\.)*)"')
 SEGMENT_EXPORTS = ("INTRO", "WITHDRAWN", "RELIABILITY")
+# docs/specs/m5b-redesign.md section 4: the two notes about the research agent moved here from Ask.copy.ts and stay pinned
+# against the constants of the same names in the legacy page's script.
+STRING_EXPORTS = ("AGENT_HINT", "TRACING_NOTE")
+_LITERAL = r'"((?:[^"\\]|\\.)*)"'
+
+
+def _ts_string(source: str, name: str) -> re.Match[str] | None:
+    return re.search(name + r" =\s*" + _LITERAL, source)
+
+
+def _js_string(page: str, name: str) -> re.Match[str] | None:
+    return re.search(r"const " + name + r" = " + _LITERAL, page)
 
 
 def _js(literal: str) -> str:
@@ -73,6 +85,13 @@ def mismatches(copy_source: str, page: str) -> list[str]:
         problems.append("CHECKS_HINT: not found")
     elif _js(ts_hint.group(1)) != _js(js_hint.group(1)):
         problems.append("CHECKS_HINT: differs from the hint string of index.html")
+    for name in STRING_EXPORTS:
+        ts = _ts_string(copy_source, name)
+        js = _js_string(page, name)
+        if ts is None or js is None:
+            problems.append(f"{name}: not found")
+        elif _js(ts.group(1)) != _js(js.group(1)):
+            problems.append(f"{name}: differs from the {name} string of index.html")
     return problems
 
 
@@ -84,7 +103,8 @@ def sources() -> tuple[str, str]:
 def test_the_matcher_catches_a_one_character_change(sources):
     copy_source, page = sources
     assert mismatches(copy_source, page) == []
-    for needle in ("bitemporal knowledge graph", "withdrawn: the benchmark", "4 of 4 checked cases", "a bare number such as"):
+    for needle in ("bitemporal knowledge graph", "withdrawn: the benchmark", "4 of 4 checked cases", "a bare number such as",
+                   "a few extra graph lookups", "one-way hash"):
         assert needle in copy_source, needle
         changed = copy_source.replace(needle, needle[:-1] + "X", 1)
         assert mismatches(changed, page) != [], needle
@@ -106,6 +126,8 @@ def test_every_passage_is_present_and_non_trivial(sources):
     for name in SEGMENT_EXPORTS:
         assert len("".join(_js(t) for t in _TEXT.findall(_block(copy_source, name)))) > 100, name
     assert len(_js(_HINT_TS.search(copy_source).group(1))) > 300
+    for name in STRING_EXPORTS:
+        assert len(_js(_ts_string(copy_source, name).group(1))) > 100, name
 
 
 def test_the_copy_file_is_ascii_with_unicode_escapes(sources):

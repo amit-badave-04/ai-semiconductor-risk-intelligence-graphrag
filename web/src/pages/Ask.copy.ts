@@ -17,12 +17,8 @@ export const HYBRID_LABEL = "hybrid GraphRAG (graph + XBRL + text-checked risk c
 export const VECTOR_LABEL = "vector-only: comparison baseline, no temporal reasoning";
 export const ASK_BUTTON = "Ask";
 
-// the opt-in research agent (index.html: AGENT_OPTION_LABEL, AGENT_HINT, TRACING_NOTE)
+// the opt-in research agent (index.html: AGENT_OPTION_LABEL; AGENT_HINT and TRACING_NOTE moved to Method.copy.ts)
 export const AGENT_OPTION_LABEL = "Deep research (agent): plans extra lookups first";
-export const AGENT_HINT =
-  "Deep research: a small planning model chooses a few extra graph lookups, listed below as they run, before the answer is written. It is slower and costs a little more; the same checks apply to the answer.";
-export const TRACING_NOTE =
-  "Deep research questions are traced for debugging, at a sampling rate the operator sets. A trace holds the length of the question and a one-way hash of it, the names of the tools and models used, token counts, cost, timings and any fallback reason; never the text of the question or the answer, and never your address.";
 export const STEPS_LABEL = "What the research agent did";
 
 // the status line (index.html: ask(), finish(), retrievalStatus)

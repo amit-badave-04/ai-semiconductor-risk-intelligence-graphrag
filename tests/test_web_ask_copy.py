@@ -101,7 +101,8 @@ class TestAskCopy:
         return constants(COPY_TS.read_text(encoding="utf-8"))
 
     def test_the_file_was_read(self, copy):
-        assert len(copy) >= 40
+        # 38: AGENT_HINT and TRACING_NOTE moved to Method.copy.ts (docs/specs/m5b-redesign.md section 4), pinned there.
+        assert len(copy) >= 38
 
     def test_every_constant_is_found_in_the_legacy_page(self, copy, haystack):
         # the three strings of the server are checked against routes.py below; the rest are legacy text, a number or a status code

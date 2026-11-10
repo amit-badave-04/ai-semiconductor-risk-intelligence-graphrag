@@ -14,7 +14,6 @@ import { agentEnabled } from "@/lib/steps";
 import { useAsk, type AskContextValue } from "@/state/useAsk";
 import { useWorkspace } from "@/state/useWorkspace";
 import {
-  AGENT_HINT,
   AGENT_OPTION_LABEL,
   ASK_BUTTON,
   ASK_HEADING,
@@ -27,7 +26,7 @@ import {
   VECTOR_LABEL,
 } from "./Ask.copy";
 import { AskNotes, ExamplesPanel, RenderBoundary, Segments } from "./AskParts";
-import { WITHDRAWN } from "./Method.copy";
+import { AGENT_HINT, WITHDRAWN } from "./Method.copy";
 
 // R22 / R23 / R31: the Ask page. The ask and its stream live in the AskProvider above the router; this page only reads them and
 // starts an ask from an event handler (a click, Ctrl or Cmd with Enter), never from an effect. The strategy select offers `agent`

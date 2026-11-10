@@ -397,6 +397,19 @@ def test_assets_are_immutable_and_a_missing_asset_is_a_404_never_the_index(monke
         assert response.status_code == 404 and SPA_MARKER not in response.text, path
 
 
+def test_a_woff2_font_is_served_as_font_woff2_with_the_file_headers(monkeypatch, dist):
+    """docs/specs/m5b-redesign.md SR6: Python 3.13's type table has no ``.woff2`` entry, so without a registration the self-hosted
+    fonts would go out as ``text/plain``. The type comes from the file name, so the immutable, nosniff and CSP headers stay."""
+    (dist / "assets" / "SourceSans3-Regular-1a2b3c.woff2").write_bytes(b"wOF2\x00\x01\x00\x00")
+    client = client_of(build_app(monkeypatch, dist, preview=True))
+    response = client.get("/v2/assets/SourceSans3-Regular-1a2b3c.woff2")
+    assert response.status_code == 200 and response.content.startswith(b"wOF2")
+    assert response.headers["content-type"] == "font/woff2"
+    assert response.headers["cache-control"] == IMMUTABLE
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["content-security-policy"] == ui_v2.FILE_CSP
+
+
 def test_a_conditional_asset_request_keeps_the_immutable_header_on_the_304(monkeypatch, dist):
     client = client_of(build_app(monkeypatch, dist, preview=True))
     first = client.get("/v2/assets/app-1a2b3c.js")
