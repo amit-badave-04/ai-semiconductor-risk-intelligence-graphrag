@@ -131,6 +131,8 @@ export const deck = {
   },
 
   steps: {
+    /** the accessible name of the steps list (the legacy page's, A3) */
+    label: "What the research agent did",
     /** The research agent's steps (lib/steps.ts stepView), worded as the legacy page worded them. */
     line: (view: StepView): string => {
       const { tool, summary, failed } = view.params;
@@ -145,6 +147,8 @@ export const deck = {
     /** RD16: the panel's header: its visible title and Close (whose accessible name stays "Close evidence", A5) */
     title: "Evidence",
     close: "Close",
+    /** the accessible name of Close (A5, unchanged from the legacy page) */
+    closeName: "Close evidence",
     loading: "Loading the source\u2026",
     failed: (message: string): string => `Could not load this source: ${message}`,
     untitled: "Source",

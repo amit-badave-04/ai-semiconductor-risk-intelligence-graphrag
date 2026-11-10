@@ -4,13 +4,12 @@
 import type { StepEvent } from "@/lib/events";
 import { deck } from "@/copy/deck";
 import { MAX_STEPS_SHOWN, stepView } from "@/lib/steps";
-import { STEPS_LABEL } from "@/pages/Ask.copy";
 
 export function Steps({ steps }: { steps: readonly StepEvent[] }) {
   const shown = steps.slice(0, MAX_STEPS_SHOWN);
   return (
     <div className="steps" aria-live="polite" aria-relevant="additions">
-      <ol aria-label={STEPS_LABEL} hidden={shown.length === 0} className="mt-2 list-decimal pl-5.5 text-sm text-muted-foreground">
+      <ol aria-label={deck.steps.label} hidden={shown.length === 0} className="mt-2 list-decimal pl-5.5 text-sm text-muted-foreground">
         {shown.map((step, index) => (
           <li key={index} className="my-0.5">
             {deck.steps.line(stepView(step))}

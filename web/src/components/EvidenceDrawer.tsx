@@ -10,7 +10,6 @@
 import { X } from "lucide-react";
 import { useLayoutEffect, type ReactNode } from "react";
 import { deck } from "@/copy/deck";
-import { EVIDENCE_CLOSE_LABEL, EVIDENCE_LABEL } from "@/pages/Ask.copy";
 import { EvidenceBody } from "./EvidenceBody";
 import { useDrawerController } from "./useDrawerController";
 import { EVIDENCE_PANEL_ID, EvidenceDrawerContext } from "./useEvidenceDrawer";
@@ -47,7 +46,7 @@ export function EvidenceDrawerProvider({ children }: { children: ReactNode }) {
       <aside
         ref={aside}
         id={EVIDENCE_PANEL_ID}
-        aria-label={EVIDENCE_LABEL}
+        aria-label={deck.evidence.title}
         {...(openId !== null ? {} : { inert: true, "aria-hidden": true, hidden: true })}
         className={PANEL}
       >
@@ -56,7 +55,7 @@ export function EvidenceDrawerProvider({ children }: { children: ReactNode }) {
           <button
             ref={closeButton}
             type="button"
-            aria-label={EVIDENCE_CLOSE_LABEL}
+            aria-label={deck.evidence.closeName}
             onClick={() => close()}
             className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-3 font-semibold text-primary hover:underline"
           >

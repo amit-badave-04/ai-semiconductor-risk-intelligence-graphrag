@@ -1,25 +1,11 @@
-// R22 / R30 (docs/specs/m5b-frontend.md): the Ask page copy. Every string here is copied from the legacy page (index.html: its markup
-// and its script constants); the web app is a port, not a rewrite, and nothing here is new. tests/test_web_ask_copy.py pins each one
-// against index.html character for character. Non-ASCII characters are written as unicode escapes.
+// R22 / R30 (docs/specs/m5b-frontend.md): what is left of the Ask page's legacy copy. Every string here is copied from the legacy
+// page (index.html) and pinned against it by tests/test_web_copy_deck.py (TestAskCopyUntilItFoldsIntoTheDeck). The words the
+// redesigned page shows are in copy/deck.ts (docs/specs/m5b-redesign.md section 4). What stays here, until R4's copy sweep: the
+// legacy status projection (lib/askStatus.ts statusText, kept for the differential tests), the client's own error clauses
+// (state/askState.ts), the legacy footer (AskParts.tsx), the question's length limit, and two refusals the SERVER words.
+// Non-ASCII characters are written as unicode escapes.
 
-export const EXAMPLES_HEADING = "Benchmark questions (instant, cached)";
-export const EXAMPLES_LOADING = "loading\u2026";
-export const NO_EXAMPLES =
-  "No saved example answers are available right now. Ask your own question below (live questions are rate-limited and capped per day).";
-
-export const ASK_HEADING = "Ask the graph";
-export const QUESTION_LABEL = "Your question";
-export const QUESTION_PLACEHOLDER =
-  "e.g. Which export-control rules affect Nvidia, and which risk factors no longer appear as separate risk factors in its latest 10-K?";
 export const MAX_QUESTION_CHARS = 500;
-export const STRATEGY_TITLE = "Retrieval strategy";
-export const HYBRID_LABEL = "hybrid GraphRAG (graph + XBRL + text-checked risk changes + vector search)";
-export const VECTOR_LABEL = "vector-only: comparison baseline, no temporal reasoning";
-export const ASK_BUTTON = "Ask";
-
-// the opt-in research agent (index.html: AGENT_OPTION_LABEL; AGENT_HINT and TRACING_NOTE moved to Method.copy.ts)
-export const AGENT_OPTION_LABEL = "Deep research (agent): plans extra lookups first";
-export const STEPS_LABEL = "What the research agent did";
 
 // the status line (index.html: ask(), finish(), retrievalStatus)
 export const STATUS_RETRIEVING = "retrieving from the graph\u2026";
@@ -41,16 +27,9 @@ export const FOOTER_LINK_TEXT = "GitHub";
 export const FOOTER_LINK_HREF = "https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag";
 export const COST_NOTE_DEFAULT = "one or two model calls each";
 
-// the evidence drawer (index.html: the aside, showEvidence, openCitation) and two refusals the SERVER words: a `doc:` id with no workspace
+// two refusals the SERVER words: a `doc:` id with no workspace
 // open and an id outside the grammar make no request (S4), so the drawer says what the server would have (routes.py MSG_NOT_PUBLIC_EVIDENCE
 // and the 400 detail of the evidence route).
-export const EVIDENCE_LABEL = "Evidence";
-export const EVIDENCE_CLOSE_LABEL = "Close evidence";
-export const EVIDENCE_CLOSE_TITLE = "close";
-export const EVIDENCE_LOADING = "loading\u2026";
-export const EVIDENCE_ERROR_PREFIX = "could not load evidence: ";
-export const EVIDENCE_ID_PREFIX = "id: ";
-export const EVIDENCE_LINK_ARROW = " \u2197";
 export const MSG_NOT_PUBLIC_EVIDENCE = "not a public evidence id";
 export const MSG_MALFORMED_EVIDENCE = "malformed evidence id";
 export const FOOTER_END = ".";

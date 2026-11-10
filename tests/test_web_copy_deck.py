@@ -56,7 +56,7 @@ NOT_YET_IN_THE_DECK = {
     "lib/jobs.ts": 11,
     "lib/sse.ts": 2,
     "lib/workspace.ts": 7,
-    "pages/Ask.copy.ts": 24,
+    "pages/Ask.copy.ts": 12,
     "pages/Company.copy.ts": 8,  # only the KIND_* labels stay when it folds into the deck
     "pages/CompanyBlocks.tsx": 7,
     "pages/Freshness.lib.ts": 7,
@@ -349,7 +349,7 @@ class TestAskCopyUntilItFoldsIntoTheDeck:
         return constants(ASK_COPY_TS.read_text(encoding="utf-8"))
 
     def test_the_file_was_read(self, copy):
-        assert len(copy) >= 38  # AGENT_HINT and TRACING_NOTE moved to Method.copy.ts, pinned there
+        assert len(copy) >= 19  # R2 folded the redesigned page's words into the deck and dropped the unused ones
 
     def test_every_constant_is_found_in_the_legacy_page(self, copy, haystack):
         by_server = {"MSG_NOT_PUBLIC_EVIDENCE", "MSG_MALFORMED_EVIDENCE", "FOOTER_LINK_HREF"}
