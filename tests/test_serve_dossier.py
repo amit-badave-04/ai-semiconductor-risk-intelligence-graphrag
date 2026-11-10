@@ -115,6 +115,21 @@ def test_get_dossier_shapes_every_block(monkeypatch):
     assert len(result["rules"]) == 1
 
 
+def test_the_company_page_asks_for_four_fiscal_years():
+    # docs/specs/m5b-redesign.md D-R2 (owner: yes): the Key numbers table shows the company's four latest fiscal years
+    assert dossier.DOSSIER_METRIC_PERIODS == 4
+
+
+def test_the_metrics_query_stays_parameterised_and_read_only():
+    # SR7, a guard (passes before and after D-R2): the constant reaches the query as a parameter, and the query writes nothing
+    import re
+
+    from semigraph.retrieval import retriever
+
+    assert "LIMIT $periods" in retriever.METRICS_QUERY
+    assert re.search(r"(CREATE|MERGE|SET|DELETE|REMOVE|DETACH)", retriever.METRICS_QUERY) is None
+
+
 def test_dossier_active_risks_query_never_uses_search_or_an_embedding(monkeypatch):
     assert "SEARCH" not in dossier.DOSSIER_ACTIVE_RISKS_QUERY
     assert "$vec" not in dossier.DOSSIER_ACTIVE_RISKS_QUERY
@@ -418,6 +433,15 @@ def test_dossier_route_404_for_a_ticker_outside_filers(app_client):
     client = app_client()
     resp = client.get("/api/company/ZZZZ/dossier")
     assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("ticker", ["ZZZZ", "NVDA;MATCH", "NVDA%20", "N" * 1000])
+def test_dossier_route_404s_an_odd_ticker_without_reading_the_graph(app_client, ticker):
+    # SR7, a guard: only the 13 filers reach the shaping function, whatever the path holds
+    calls = []
+    client = app_client(get_dossier=lambda driver, t, **kw: calls.append(t) or {"company": {}})
+    assert client.get(f"/api/company/{ticker}/dossier").status_code == 404
+    assert calls == []
 
 
 def test_dossier_route_404_when_the_shaping_function_finds_nothing(app_client):

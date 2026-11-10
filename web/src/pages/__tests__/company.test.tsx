@@ -82,8 +82,8 @@ describe("Company: the dossier", () => {
     expect(within(filings).getByText("10-K")).toBeInTheDocument();
     expect(within(filings).getByText("0001045810-26-000021")).toBeInTheDocument();
     const metrics = screen.getByRole("region", { name: "Key numbers" });
-    expect(within(metrics).getByText("revenue")).toBeInTheDocument();
-    expect(within(metrics).getByRole("button", { name: stampLabel("xbrl:1045810:revenue:2026-01-25") })).toHaveAttribute("data-id", "xbrl:1045810:revenue:2026-01-25");
+    expect(within(metrics).getByRole("rowheader", { name: /^Revenue/ })).toBeInTheDocument(); // RD22: readable names
+    expect(within(metrics).getByRole("button", { name: /^\$130\.5B, Revenue, FY2026/ })).toHaveAttribute("data-id", "xbrl:1045810:revenue:2026-01-25");
     const risks = screen.getByRole("region", { name: "Active risks" });
     expect(within(risks).getByText("Supply of advanced packaging is concentrated.")).toBeInTheDocument();
     const edges = screen.getByRole("region", { name: "Relationships" });
@@ -123,15 +123,17 @@ describe("Company: the dossier", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("[onerror]")).toBeNull();
     expect(container.querySelector("[src]")).toBeNull();
-    expect(container.querySelector("[style]")).toBeNull();
+    // the one style attribute is Base UI's own on the switch's hidden input (RD22 "Show exact values"), never from data
+    expect([...container.querySelectorAll("[style]")].filter((el) => !(el.matches("input[aria-hidden='true']") && el.closest("label, div")?.querySelector("[role='switch']")))).toEqual([]);
     const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     // the switcher's company pages and RD21's five fixed section links: constants, never from data
     const SECTIONS = ["#key-numbers", "#government-rules", "#relationships", "#filings", "#risk-changes"];
     expect(hrefs.filter((h) => !/^\/company\/[A-Z]+\/$/.test(h ?? "") && !SECTIONS.includes(h ?? ""))).toEqual([]);
     expect(container.querySelector('[href*="evil"]')).toBeNull();
     expect(container.textContent).not.toContain("evil.example");
-    // the metric's xbrl id and the one valid chunk id are chips; the hostile rule_id and chunk id are text only, never a chip
-    expect([...container.querySelectorAll("button[data-id]")].map((b) => b.getAttribute("data-id"))).toEqual(["xbrl:1045810:revenue:2026-01-25", CHUNK]);
+    // the metric's xbrl id (At a glance and Key numbers) and the one valid chunk id are chips; the hostile rule_id and chunk id are
+    // text only, never a chip
+    expect([...container.querySelectorAll("button[data-id]")].map((b) => b.getAttribute("data-id"))).toEqual(["xbrl:1045810:revenue:2026-01-25", "xbrl:1045810:revenue:2026-01-25", CHUNK]);
   });
 
   it("a 404 from the dossier renders the not-found view and moves focus to its h1", async () => {

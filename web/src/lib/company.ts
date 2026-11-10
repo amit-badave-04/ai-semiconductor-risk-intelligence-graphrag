@@ -17,7 +17,7 @@ export interface Filing {
 }
 
 /** The Company page's chip groups (R25): a chip's key is place + group + id + occurrence, unique on the page (A2). */
-export const CITE_GROUP = { metrics: 1, edges: 2, rules: 3, changes: 4 } as const;
+export const CITE_GROUP = { metrics: 1, edges: 2, rules: 3, changes: 4, glance: 5 } as const;
 
 export interface Metric {
   metric: string | null;

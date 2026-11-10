@@ -39,7 +39,7 @@ for (const scheme of ["light", "dark"] as const) {
       const w = await watch(page, PREVIEW);
       await page.goto(`${PREVIEW}/v2/company/NVDA/`);
       await expect(page.getByRole("heading", { level: 1, name: "Nvidia (NVDA)" })).toBeVisible();
-      await expect(page.getByRole("region", { name: "Filings" })).toContainText("10-K");
+      await expect(page.getByRole("region", { name: "Filings", exact: true })).toContainText("10-K");
       await expect(page.getByRole("region", { name: "Active risks" })).toContainText("Fixture risk summary");
       await expect(page.getByRole("region", { name: "Government rules" })).toContainText(
         "keyword matches to external Federal Register rules",
@@ -95,7 +95,7 @@ for (const scheme of ["light", "dark"] as const) {
         await page.setViewportSize({ width, height: 900 });
         await page.route("**/api/company/NVDA/dossier", (route) => route.fulfill({ json: EVERY_CHIP_DOSSIER }));
         await page.goto(`${PREVIEW}/v2/company/NVDA/`);
-        const metricChip = page.getByRole("region", { name: "Key numbers" }).getByRole("button", { name: "Reported revenue, period ended Jan 25, 2026" });
+        const metricChip = page.getByRole("region", { name: "Key numbers" }).getByRole("button", { name: "$130.5B, Revenue, FY2026 (ended Jan 25, 2026): $130,497,000,000. Open source" });
         await expect(metricChip).toBeVisible();
         await expect(page.getByRole("region", { name: "Relationships" }).locator("button[data-id]")).toHaveCount(2);
         const rules = page.getByRole("region", { name: "Government rules" });
@@ -146,7 +146,7 @@ test("an unknown ticker makes no request to the API at all", async ({ page }) =>
 test("keyboard: Tab reaches the switcher links, Enter opens one, and focus lands on the heading", async ({ page }) => {
   const w = await watch(page, PREVIEW);
   await page.goto(`${PREVIEW}/v2/company/NVDA/`);
-  await expect(page.getByRole("region", { name: "Filings" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Filings", exact: true })).toBeVisible();
   const companies = page.getByRole("navigation", { name: "Companies" });
   await page.getByRole("heading", { level: 1, name: "Nvidia (NVDA)" }).focus();
   await page.keyboard.press("Tab");

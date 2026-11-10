@@ -258,6 +258,9 @@ export const deck = {
     numbers: {
       heading: "Key numbers",
       fiscalNote: "Fiscal years are the company's own. Each column shows the date its year ended.",
+      /** the names of the table's scrolling region and its first column header */
+      tableRegion: "Key numbers table",
+      metricColumn: "Metric",
       exact: "Show exact values",
       metric: {
         revenue: { name: "Revenue", meaning: "Money from sales" },
@@ -285,7 +288,7 @@ export const deck = {
       ownWords: "In the filing's own words",
       competitors: "Competitors named in its filings",
     },
-    filings: { heading: "Filings" },
+    filings: { heading: "Filings", tableRegion: "Filings table" },
     risks: {
       heading: "Active risks",
       /** D-R4 */

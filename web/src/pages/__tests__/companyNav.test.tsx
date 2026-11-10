@@ -75,7 +75,7 @@ describe("section navigation (RD21)", () => {
     await ready();
     await screen.findByRole("heading", { level: 2, name: "Compared risk disclosures" });
     const ids = Array.from(document.querySelectorAll("main h2[id], h2[id]"), (h) => h.id);
-    expect(ids).toEqual(["key-numbers", "government-rules", "relationships", "filings", "active-risks", "risk-changes"]);
+    expect(ids).toEqual(["at-a-glance", "key-numbers", "government-rules", "relationships", "filings", "active-risks", "risk-changes"]);
     for (const id of ids) expect(document.getElementById(id)).toHaveAttribute("tabindex", "-1");
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
     expect(screen.queryAllByRole("tabpanel")).toHaveLength(0);

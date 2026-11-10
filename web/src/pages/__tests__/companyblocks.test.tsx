@@ -74,7 +74,7 @@ describe("DossierBlocks: rows with null fields", () => {
   it("renders empty cells for null fields without a citation, a date suffix or a status", () => {
     const { container } = show(nulls);
     expect(within(section("Filings")).getAllByRole("cell").map((c) => c.textContent)).toEqual(["", "", "", ""]);
-    expect(within(section("Key numbers")).getAllByRole("cell").map((c) => c.textContent)).toEqual(["", "", "", "", ""]);
+    expect(within(section("Key numbers")).getByText("none")).toBeTruthy(); // a metric with no readable year makes no column
     expect(container.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
     expect(section("Active risks").textContent).not.toContain("\u00b7");
     expect(section("Relationships").textContent).not.toContain("(");
@@ -99,14 +99,15 @@ describe("DossierBlocks: rows with every field present", () => {
   it("shows each value as text (the data date is in the header now, RD19)", () => {
     show(full);
     expect(within(section("Filings")).getByText("10-K")).toBeTruthy();
-    expect(within(section("Key numbers")).getByText("130497000000")).toBeTruthy();
+    expect(within(section("Key numbers")).getByText("$130.5B")).toBeTruthy();
     expect(section("Active risks").textContent).toContain("supply \u00b7 2026-02-25");
   });
 
   it("shows the citation ids as evidence chips (R25): the metric, the edge chunk, the rule chunk and the rule", () => {
     const { container } = show(full);
     const cites = Array.from(container.querySelectorAll("button[data-id]")).map((el) => el.getAttribute("data-id"));
-    expect(cites).toEqual(["xbrl:1045810:revenue:2026-01-25", CHUNK, "fr:2026-01234", CHUNK]); // RD21 order: key numbers, rules, relationships
+    // RD20/RD21 order: at a glance, key numbers, rules, relationships
+    expect(cites).toEqual(["xbrl:1045810:revenue:2026-01-25", "xbrl:1045810:revenue:2026-01-25", CHUNK, "fr:2026-01234", CHUNK]);
     expect(container.querySelector(`button[data-id="${CHUNK}"]`)?.textContent).toBe(stampLabel(CHUNK));
   });
 

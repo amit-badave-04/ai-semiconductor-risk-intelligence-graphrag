@@ -8,7 +8,7 @@ import { deck } from "@/copy/deck";
 import { parseAnswer, type Inline, type Leaf } from "@/lib/answerBlocks";
 import { chipQuotes } from "@/lib/answerSources";
 import { useChipEvidence } from "@/lib/chipEvidence";
-import { chipKey, type ChipPlace } from "@/lib/citations";
+import { chipKey, classifyId, type ChipPlace } from "@/lib/citations";
 import { stampView, type StampView } from "@/lib/stamp";
 import { EVIDENCE_PANEL_ID, useEvidenceDrawer } from "./useEvidenceDrawer";
 
@@ -39,8 +39,20 @@ const KINDS: Record<StampView["kind"], { icon: LucideIcon; look: string }> = {
 };
 const STALE_LOOK = "stale rounded-sm border-caution-line bg-caution-fill text-caution";
 
-export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) {
+/** What every source stamp shares: its key (A2), whether its evidence is the open one (RD11), and opening it with itself as the
+ *  opener (A5 focus return). */
+function useOpener(id: string, place: ChipPlace, gen: number, nth: number, quotes?: readonly string[]) {
   const drawer = useEvidenceDrawer();
+  const key = chipKey(place, gen, id, nth);
+  return {
+    key,
+    expanded: drawer.openKey !== null && drawer.openKey === key,
+    open: (opener: HTMLElement) => drawer.open(id, opener, place, quotes),
+  };
+}
+
+export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) {
+  const opener = useOpener(id, place, gen, nth, quotes);
   const evidence = useChipEvidence(id); // a chunk chip names its filer, form and year once the drawer has loaded it
   const view = stampView(id, evidence);
   const { icon: KindIcon, look } = KINDS[view.kind];
@@ -50,18 +62,57 @@ export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) 
     <button
       type="button"
       data-id={id}
-      data-chip-key={chipKey(place, gen, id, nth)}
-      aria-expanded={drawer.openKey !== null && drawer.openKey === chipKey(place, gen, id, nth)}
+      data-chip-key={opener.key}
+      aria-expanded={opener.expanded}
       aria-controls={EVIDENCE_PANEL_ID}
       data-stale={stale ? "" : undefined}
       title={title}
       className={`cite mx-0.5 inline min-h-[24px] min-w-[24px] max-w-full cursor-pointer border px-1 text-left text-[0.9em] font-semibold hover:underline ${stale ? STALE_LOOK : look}`}
-      onClick={(event) => drawer.open(id, event.currentTarget, place, quotes)}
+      onClick={(event) => opener.open(event.currentTarget)}
     >
       <Icon aria-hidden="true" className="mr-1 inline size-[1em] align-[-0.125em]" />
       {`${deck.chips.label(view)}${stale ? deck.chips.stale : ""}`}
     </button>
   );
+}
+
+export interface FigureStampProps {
+  /** The figure's `xbrl:` id, or null. Untrusted: only an id the grammar classifies as xbrl becomes a stamp (SR3). */
+  cite: string | null;
+  place: ChipPlace;
+  /** The block's chip group (lib/company.ts CITE_GROUP). */
+  gen: number;
+  nth: number;
+  /** The figure as the page shows it ("$215.9B"). */
+  shown: string;
+  /** The accessible name: the visible text first (WCAG 2.5.3), then what it is (copy/deck.ts company.numbers.stampName). */
+  name: string;
+}
+
+function FigureButton({ cite, place, gen, nth, shown, name }: FigureStampProps & { cite: string }) {
+  const opener = useOpener(cite, place, gen, nth);
+  return (
+    <button
+      type="button"
+      data-id={cite}
+      data-chip-key={opener.key}
+      aria-expanded={opener.expanded}
+      aria-controls={EVIDENCE_PANEL_ID}
+      aria-label={name}
+      className="cite inline-flex min-h-[24px] min-w-[24px] cursor-pointer items-center gap-1 rounded-full border border-border-strong bg-card px-2 font-semibold text-foreground tabular-nums hover:underline"
+      onClick={(event) => opener.open(event.currentTarget)}
+    >
+      <ChartNoAxesColumn aria-hidden="true" className="size-[0.9em] shrink-0" />
+      {shown}
+    </button>
+  );
+}
+
+/** docs/specs/m5b-redesign.md RD20 and RD22: a reported figure as a source stamp that opens its XBRL fact; a figure whose id
+ *  fails the grammar is text only and can cause no request. */
+export function FigureStamp(props: FigureStampProps) {
+  if (props.cite === null || classifyId(props.cite) !== "xbrl") return <span className="tabular-nums">{props.shown}</span>;
+  return <FigureButton {...props} cite={props.cite} />;
 }
 
 export interface AnswerTextProps {

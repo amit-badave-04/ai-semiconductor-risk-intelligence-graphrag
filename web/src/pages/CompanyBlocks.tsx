@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Chip } from "@/components/Chips";
 import { classifyId, numberOccurrences } from "@/lib/citations";
-import { CITE_GROUP, type ActiveRisk, type Dossier, type Edge, type Filing, type Metric, type Rule } from "@/lib/company";
+import { CITE_GROUP, type ActiveRisk, type Dossier, type Edge, type Filing, type Rule } from "@/lib/company";
 import { deck } from "@/copy/deck";
 import { FILERS } from "@/lib/pages.generated";
+import { Block, ScrollRegion } from "./CompanySection";
+import { AtAGlance, KeyNumbers } from "./CompanyNumbers";
 
 // R25: every block of the dossier. Everything from the server is a text node (S2): no dangerouslySetInnerHTML, no href, src
 // or style comes from data. A citation id of the corpus grammar (chunk, xbrl, fr) is the shared evidence chip (Chips.tsx): a real
@@ -37,19 +38,6 @@ export function Cite({ id, group, nth }: CiteProps) {
   );
 }
 
-/** A section of the Company page (docs/specs/m5b-redesign.md RD21): its heading carries the section's fixed id and takes focus
- *  when the section navigation or a hash names it. */
-export function Block({ id, title, children }: { id: string; title: string; children: ReactNode }) {
-  return (
-    <section aria-labelledby={id} className="mb-8">
-      <h2 id={id} tabIndex={-1} className="mb-2 scroll-mt-4 text-lg font-semibold">
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
 const TH = "px-3 py-2 text-left text-sm font-semibold";
 const TD = "px-3 py-2 align-top text-sm";
 // A cell that holds one long token (an accession number, a 12-digit value, a date, a chip label). overflow-wrap: anywhere (not
@@ -67,60 +55,28 @@ function FilingsBlock({ filings }: { filings: Filing[] }) {
       {filings.length === 0 ? (
         <p className="text-muted-foreground">{NONE}</p>
       ) : (
-        <table className="w-full border-collapse break-words">
-          <thead>
-            <tr className="border-b border-border">
-              <th scope="col" className={TH}>Form</th>
-              <th scope="col" className={TH}>Filed</th>
-              <th scope="col" className={TH}>Status</th>
-              <th scope="col" className={TH}>Accession</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filings.map((f, i) => (
-              <tr key={`${f.accession_no ?? ""}-${i}`} className="border-b border-border">
-                <td className={TD}>{text(f.form)}</td>
-                <td className={TD_LONG}>{text(f.filing_date)}</td>
-                <td className={TD}>{text(f.status)}</td>
-                <td className={TD_LONG}>{text(f.accession_no)}</td>
+        <ScrollRegion label={deck.company.filings.tableRegion}>
+          <table className="w-full border-collapse break-words">
+            <thead>
+              <tr className="border-b border-border">
+                <th scope="col" className={TH}>Form</th>
+                <th scope="col" className={TH}>Filed</th>
+                <th scope="col" className={TH}>Status</th>
+                <th scope="col" className={TH}>Accession</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Block>
-  );
-}
-
-function MetricsBlock({ metrics }: { metrics: Metric[] }) {
-  const nths = numberOccurrences(metrics.map((m) => (m.cite === null ? [] : [m.cite])));
-  return (
-    <Block id="key-numbers" title={deck.company.numbers.heading}>
-      {metrics.length === 0 ? (
-        <p className="text-muted-foreground">{NONE}</p>
-      ) : (
-        <table className="w-full border-collapse break-words">
-          <thead>
-            <tr className="border-b border-border">
-              <th scope="col" className={TH}>Metric</th>
-              <th scope="col" className={TH}>Value</th>
-              <th scope="col" className={TH}>Unit</th>
-              <th scope="col" className={TH}>Period end</th>
-              <th scope="col" className={TH}>Source</th>
-            </tr>
-          </thead>
-          <tbody>
-            {metrics.map((m, i) => (
-              <tr key={`${m.metric ?? ""}-${m.period_end ?? ""}-${i}`} className="border-b border-border">
-                <td className={TD}>{text(m.metric)}</td>
-                <td className={TD_LONG}>{text(m.value)}</td>
-                <td className={TD}>{text(m.unit)}</td>
-                <td className={TD_LONG}>{text(m.period_end)}</td>
-                <td className={TD_LONG}>{m.cite === null ? null : <Cite id={m.cite} group={CITE_GROUP.metrics} nth={nths[i][0]} />}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filings.map((f, i) => (
+                <tr key={`${f.accession_no ?? ""}-${i}`} className="border-b border-border">
+                  <td className={TD}>{text(f.form)}</td>
+                  <td className={TD_LONG}>{text(f.filing_date)}</td>
+                  <td className={TD}>{text(f.status)}</td>
+                  <td className={TD_LONG}>{text(f.accession_no)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollRegion>
       )}
     </Block>
   );
@@ -247,7 +203,8 @@ export function CompanySwitcher({ current }: { current: string }) {
 export function DossierBlocks({ dossier }: { dossier: Dossier }) {
   return (
     <>
-      <MetricsBlock metrics={dossier.metrics} />
+      <AtAGlance metrics={dossier.metrics} rulesListed={dossier.rules.length} />
+      <KeyNumbers metrics={dossier.metrics} />
       <RulesBlock rules={dossier.rules} />
       <EdgesBlock edges={dossier.edges} />
       <FilingsBlock filings={dossier.filings} />

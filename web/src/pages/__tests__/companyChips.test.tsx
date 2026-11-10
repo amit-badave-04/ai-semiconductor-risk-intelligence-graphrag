@@ -61,8 +61,10 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
   it("renders the metric, the edge chunk, the rule chunk and the rule as chip buttons with the Ask page's labels", () => {
     const { container } = showDossier(DOSSIER);
     const found = chips(container);
-    expect(found.map((b) => b.dataset.id)).toEqual([XBRL, CHUNK, FR, CHUNK]); // RD21 order: key numbers, rules, relationships
-    expect(found.map((b) => b.textContent)).toEqual([XBRL, CHUNK, FR, CHUNK].map((id) => stampLabel(id)));
+    // RD20/RD21 order: at a glance, key numbers, rules, relationships; a figure shows its value (RD22), a passage or rule its stamp
+    expect(found.map((b) => b.dataset.id)).toEqual([XBRL, XBRL, CHUNK, FR, CHUNK]);
+    expect(found.slice(2).map((b) => b.textContent)).toEqual([CHUNK, FR, CHUNK].map((id) => stampLabel(id)));
+    expect(found.slice(0, 2).map((b) => b.textContent)).toEqual(["$1", "$1"]);
     for (const button of found) expect(button).toHaveAttribute("type", "button");
     expect(container.querySelectorAll("[data-cite]")).toHaveLength(0);
   });
@@ -70,7 +72,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
   it("gives every chip on the page its own key, under the place company", () => {
     const { container } = showDossier(DOSSIER);
     const keys = chips(container).map((b) => b.dataset.chipKey ?? "");
-    expect(keys).toHaveLength(4);
+    expect(keys).toHaveLength(5);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys.every((k) => k.startsWith("company:"))).toBe(true);
   });
@@ -78,7 +80,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
   it("opens the drawer for the clicked chip, with the chip as the opener and the place company", () => {
     const { drawer } = showDossier(DOSSIER);
     const metrics = screen.getByRole("region", { name: "Key numbers" });
-    const chip = within(metrics).getByRole("button", { name: stampLabel(XBRL) });
+    const chip = within(metrics).getByRole("button", { name: /^\$1, Revenue, FY2026/ });
     fireEvent.click(chip);
     expect(drawer.open).toHaveBeenCalledWith(XBRL, chip, "company", undefined); // no quote before it (RD18)
   });
@@ -103,7 +105,8 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
   it("never makes a chip of a doc: id: it stays text, and a click on it opens nothing", () => {
     const { container, drawer } = showDossier({ ...DOSSIER, metrics: [{ ...DOSSIER.metrics[0], cite: DOC }], edges: [], rules: [] });
     expect(chips(container)).toHaveLength(0);
-    const text = screen.getByText(DOC);
+    expect(container.textContent).not.toContain(DOC); // a figure shows its value; its id is never a stamp (SR3)
+    const text = within(screen.getByRole("region", { name: "Key numbers" })).getByText("$1");
     fireEvent.click(text);
     expect(drawer.open).not.toHaveBeenCalled();
   });

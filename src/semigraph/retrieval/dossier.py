@@ -50,7 +50,7 @@ from .retriever import (
 )
 
 RISK_CHANGES_LIMIT_CAP = 50
-DOSSIER_METRIC_PERIODS = 2   # "the latest two fiscal years" (docs/v2/M4_PLAN.md 4.5)
+DOSSIER_METRIC_PERIODS = 4   # the latest four fiscal years (docs/specs/m5b-redesign.md D-R2; was two, docs/v2/M4_PLAN.md 4.5)
 
 COMPANY_QUERY = "MATCH (c:Company {ticker: $ticker}) RETURN c.cik AS cik, c.name AS name"
 
