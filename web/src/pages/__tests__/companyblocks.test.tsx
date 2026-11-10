@@ -49,15 +49,16 @@ describe("DossierBlocks: empty dossier", () => {
   it("shows no data-as-of line and the word none in every empty block", () => {
     show(EMPTY);
     expect(screen.queryByText(/Data as of/)).toBeNull();
-    for (const name of ["Key numbers", "Government rules", "Relationships", "Filings", "Active risks"]) {
+    for (const name of ["Key numbers", "Relationships", "Filings", "Active risks"]) {
       expect(within(section(name)).getByText("none"), name).toBeTruthy();
     }
+    expect(section("Government rules")).toHaveTextContent("No export-control rule in our data was linked to Nvidia by keyword matching. This is not a finding that none applies."); // D-R3
     expect(screen.queryByRole("table")).toBeNull();
   });
 
-  it("still states what the rules are, in the empty rules block", () => {
+  it("still states what the rules are, in the empty rules block (RD23)", () => {
     show(EMPTY);
-    expect(within(section("Government rules")).getByText("keyword matches to external Federal Register rules")).toBeTruthy();
+    expect(within(section("Government rules")).getByText("These US export-control rules come from the Federal Register and are linked to the company by keyword matching: actions by the government, not statements the company made.")).toBeTruthy();
   });
 });
 
@@ -107,33 +108,35 @@ describe("DossierBlocks: rows with every field present", () => {
     const { container } = show(full);
     const cites = Array.from(container.querySelectorAll("button[data-id]")).map((el) => el.getAttribute("data-id"));
     // RD20/RD21 order: at a glance, key numbers, rules, relationships
-    expect(cites).toEqual(["xbrl:1045810:revenue:2026-01-25", "xbrl:1045810:revenue:2026-01-25", CHUNK, "fr:2026-01234", CHUNK]);
+    // decision 2: a rule shows its own stamp only, no passage chips
+    expect(cites).toEqual(["xbrl:1045810:revenue:2026-01-25", "xbrl:1045810:revenue:2026-01-25", "fr:2026-01234", CHUNK]);
     expect(container.querySelector(`button[data-id="${CHUNK}"]`)?.textContent).toBe(stampLabel(CHUNK));
   });
 
-  it("shows an edge's status and quote, and a rule's date and kind", () => {
+  it("shows an edge's other company and quote with no relation name, and a rule's date in words with no kind (RD23, RD24)", () => {
     show(full);
     const edges = section("Relationships");
-    expect(edges.textContent).toContain("Nvidia DEPENDS_ON TSMC (Active)");
+    expect(edges.textContent).toContain("TSMC");
+    expect(edges.textContent).not.toMatch(/DEPENDS_ON|\(Active\)/);
     expect(within(edges).getByText("We depend on TSMC.")).toBeTruthy();
     const rules = section("Government rules");
-    expect(within(rules).getByText("2026-03-01")).toBeTruthy();
-    expect(within(rules).getByText("Rule")).toBeTruthy();
+    expect(within(rules).getByText("Mar 1, 2026")).toBeTruthy();
+    expect(within(rules).queryByText("Rule")).toBeNull();
   });
 });
 
-describe("DossierBlocks: a rule without a citation id falls back to its rule id as text", () => {
-  it("shows the rule id when cite is null, and neither date nor kind when they are null", () => {
-    const { container } = show({ ...EMPTY, rules: [{ ...FULL_RULE, cite: null, date: null, kind: null, chunk_ids: [] }] });
+describe("DossierBlocks: a rule without a citation id keeps its title beside the words Government rule (RD23, SR3)", () => {
+  it("shows the label and title as text with no button, and no date or kind when they are null", () => {
+    const { container } = show({ ...EMPTY, rules: [{ ...FULL_RULE, cite: null, date: null, kind: null, chunk_ids: [], quoteChunk: null }] });
     const rules = section("Government rules");
-    expect(within(rules).getByText("fr:2026-01234")).toBeTruthy();
+    expect(within(rules).getByRole("listitem")).toHaveTextContent("Government rule");
     expect(container.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
-    expect(within(rules).queryByText("2026-03-01")).toBeNull();
+    expect(within(rules).queryByText("Mar 1, 2026")).toBeNull();
     expect(within(rules).queryByText("Rule")).toBeNull();
   });
 
   it("keeps an edge with a quote but no chunk ids free of citation chips", () => {
-    const { container } = show({ ...EMPTY, edges: [{ ...FULL_EDGE, chunk_ids: [] }] });
+    const { container } = show({ ...EMPTY, edges: [{ ...FULL_EDGE, chunk_ids: [], quoteChunk: null }] });
     expect(container.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
     expect(screen.getByText("We depend on TSMC.")).toBeTruthy();
   });

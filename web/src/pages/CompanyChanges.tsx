@@ -1,7 +1,6 @@
 import { numberOccurrences } from "@/lib/citations";
 import { CITE_GROUP, type RiskChangesResult, type RiskItem, type RiskKind, type RiskPair, type RiskPassage } from "@/lib/company";
-import { Cite } from "./CompanyBlocks";
-import { Block } from "./CompanySection";
+import { Block, Cite } from "./CompanySection";
 import {
   KIND_CHANGED,
   KIND_DROPPED,

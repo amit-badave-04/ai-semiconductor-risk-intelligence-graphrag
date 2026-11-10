@@ -42,7 +42,7 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("region", { name: "Filings", exact: true })).toContainText("10-K");
       await expect(page.getByRole("region", { name: "Active risks" })).toContainText("Fixture risk summary");
       await expect(page.getByRole("region", { name: "Government rules" })).toContainText(
-        "keyword matches to external Federal Register rules",
+        "linked to the company by keyword matching: actions by the government, not statements the company made", // RD23
       );
       await expect(page.getByRole("navigation", { name: "Companies" }).getByRole("link")).toHaveCount(13);
       // R25 (owner 2026-11-08): the recent risk changes, each kind under its pinned label, a pair that could not be compared
@@ -99,9 +99,9 @@ for (const scheme of ["light", "dark"] as const) {
         await expect(metricChip).toBeVisible();
         await expect(page.getByRole("region", { name: "Relationships" }).locator("button[data-id]")).toHaveCount(2);
         const rules = page.getByRole("region", { name: "Government rules" });
-        await expect(rules.locator("button[data-id]")).toHaveCount(2);
+        await expect(rules.locator("button[data-id]")).toHaveCount(1); // decision 2: the rule stamp only, no passage chip
         await expect(rules.getByRole("button", { name: "Government rule 2026-01234" })).toBeVisible();
-        await expect(rules).toContainText("keyword matches to external Federal Register rules");
+        await expect(rules).toContainText("US export-control rules come from the Federal Register"); // RD23
         await expect(page.locator("main [data-cite]")).toHaveCount(0);
         const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
         await testInfo.attach(`axe-company-chips-${width}.json`, { body: JSON.stringify(results.violations, null, 1), contentType: "application/json" });

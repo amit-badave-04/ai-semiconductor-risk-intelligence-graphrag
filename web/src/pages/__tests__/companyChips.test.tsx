@@ -62,8 +62,9 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
     const { container } = showDossier(DOSSIER);
     const found = chips(container);
     // RD20/RD21 order: at a glance, key numbers, rules, relationships; a figure shows its value (RD22), a passage or rule its stamp
-    expect(found.map((b) => b.dataset.id)).toEqual([XBRL, XBRL, CHUNK, FR, CHUNK]);
-    expect(found.slice(2).map((b) => b.textContent)).toEqual([CHUNK, FR, CHUNK].map((id) => stampLabel(id)));
+    // decision 2: a rule shows its own stamp only, no passage chips
+    expect(found.map((b) => b.dataset.id)).toEqual([XBRL, XBRL, FR, CHUNK]);
+    expect(found.slice(2).map((b) => b.textContent)).toEqual([FR, CHUNK].map((id) => stampLabel(id)));
     expect(found.slice(0, 2).map((b) => b.textContent)).toEqual(["$1", "$1"]);
     for (const button of found) expect(button).toHaveAttribute("type", "button");
     expect(container.querySelectorAll("[data-cite]")).toHaveLength(0);
@@ -72,7 +73,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
   it("gives every chip on the page its own key, under the place company", () => {
     const { container } = showDossier(DOSSIER);
     const keys = chips(container).map((b) => b.dataset.chipKey ?? "");
-    expect(keys).toHaveLength(5);
+    expect(keys).toHaveLength(4);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys.every((k) => k.startsWith("company:"))).toBe(true);
   });
@@ -85,19 +86,21 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
     expect(drawer.open).toHaveBeenCalledWith(XBRL, chip, "company", undefined); // no quote before it (RD18)
   });
 
-  it("keeps the rules labelled as keyword matches next to their chips", () => {
+  it("keeps the rules described as keyword matches to Federal Register rules next to their stamps (RD23)", () => {
     showDossier(DOSSIER);
     const rules = screen.getByRole("region", { name: "Government rules" });
-    expect(rules).toHaveTextContent("keyword matches to external Federal Register rules");
+    expect(rules).toHaveTextContent(/linked to the company by keyword matching/);
+    expect(rules).toHaveTextContent(/Federal Register/);
     expect(within(rules).getByRole("button", { name: stampLabel(FR) })).toBeInTheDocument();
   });
 
   it("keeps both chips of an id an edge lists twice: distinct chip keys and no duplicate React key", () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { container } = showDossier({ ...DOSSIER, metrics: [], rules: [], edges: [{ ...DOSSIER.edges[0], chunk_ids: [CHUNK, CHUNK] }] });
+    const OTHER = "0001045810-26-000021:I.1A:0002";
+    const { container } = showDossier({ ...DOSSIER, metrics: [], rules: [], edges: [{ ...DOSSIER.edges[0], quote: "q", chunk_ids: [CHUNK, OTHER, OTHER] }] });
     const found = chips(container);
-    expect(found).toHaveLength(2);
-    expect(new Set(found.map((b) => b.dataset.chipKey)).size).toBe(2);
+    expect(found.map((b) => b.dataset.id)).toEqual([CHUNK, OTHER, OTHER]); // the quote's own chip, then the others
+    expect(new Set(found.map((b) => b.dataset.chipKey)).size).toBe(3);
     expect(errors.mock.calls.filter((call) => String(call[0]).includes("same key"))).toEqual([]);
     errors.mockRestore();
   });

@@ -13,7 +13,8 @@ const SCRIPT_URL = ["java", "script:alert(1)"].join("");
 // sends, a switcher of the 13 filers, and no request at all for a ticker that is not one of them.
 
 const CHUNK = "0001045810-26-000021:I.1:0320";
-const RULE_LABEL = "keyword matches to external Federal Register rules";
+// RD23: what the rules are (US export-control rules from the Federal Register, linked by keyword matching)
+const RULE_LABEL = "These US export-control rules come from the Federal Register and are linked to the company by keyword matching: actions by the government, not statements the company made.";
 
 const DOSSIER = {
   company: { ticker: "NVDA", name: "Nvidia", cik: 1045810 },
@@ -105,7 +106,7 @@ describe("Company: the dossier", () => {
     mount("/company/NVDA");
     const filings = await screen.findByRole("region", { name: "Filings" });
     expect(filings).toHaveTextContent("none");
-    expect(screen.getByRole("region", { name: "Government rules" })).toHaveTextContent("none");
+    expect(screen.getByRole("region", { name: "Government rules" })).toHaveTextContent("No export-control rule in our data was linked to Nvidia by keyword matching. This is not a finding that none applies."); // D-R3
   });
 
   it("renders server text as text: no element, no handler, no link comes from the data", async () => {
