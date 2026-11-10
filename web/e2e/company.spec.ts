@@ -149,11 +149,7 @@ test("keyboard: Tab reaches the switcher links, Enter opens one, and focus lands
   await expect(page.getByRole("region", { name: "Filings", exact: true })).toBeVisible();
   const companies = page.getByRole("navigation", { name: "Companies" });
   await page.getByRole("heading", { level: 1, name: "Nvidia (NVDA)" }).focus();
-  // RD19: the header's two actions come first, then the switcher
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Ask about Nvidia" })).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Compare filings" })).toBeFocused();
+  // RD19: the switcher comes first, right under the name (the reports and actions follow once the dossier is in)
   await page.keyboard.press("Tab");
   await expect(companies.getByRole("link", { name: "Nvidia (NVDA)" })).toBeFocused();
   await page.keyboard.press("Tab");

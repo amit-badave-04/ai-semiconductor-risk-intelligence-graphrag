@@ -73,14 +73,15 @@ function CompanyPage({ ticker, name, filer }: { ticker: string; name: string; fi
   return (
     <>
       <PageHeading title={`${name} (${ticker})`} />
-      {result?.kind === "ok" && <CompanyReports dossier={result.dossier} filer={filer} />}
-      {result?.kind === "ok" && <CompanyActions ticker={ticker} name={name} />}
+      {/* RD19 order: the switcher first, then what the dossier brings, so nothing already shown moves when it arrives (CLS) */}
+      <CompanySwitcher current={ticker} />
       <output className="mb-4 block min-h-6 text-muted-foreground">
         {message}
       </output>
-      <CompanySwitcher current={ticker} />
       {result?.kind === "ok" ? (
         <>
+          <CompanyReports dossier={result.dossier} filer={filer} />
+          <CompanyActions ticker={ticker} name={name} />
           <CompanyNav />
           <DossierBlocks dossier={result.dossier} />
           <RiskChangesBlock state={changes} />

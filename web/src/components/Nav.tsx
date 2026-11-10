@@ -66,7 +66,8 @@ export function Nav() {
         <NavItem to={`/company/${firstFiler}/`} label={words.companies} match="/company/*" end={false} />
         <NavItem to="/workspace/" label={words.workspace} match="/workspace" />
       </ul>
-      <ul className="m-0 flex list-none flex-wrap items-center gap-x-5 p-0 md:ml-auto">
+      {/* a row of its own below md whatever the freshness line holds, so its arrival never moves the header (CLS; R3 gates) */}
+      <ul className="m-0 flex basis-full list-none flex-wrap items-center gap-x-5 p-0 md:ml-auto md:basis-auto">
         <FreshnessLink />
         <NavItem to="/method/" label={words.howItWorks} match="/method" />
       </ul>

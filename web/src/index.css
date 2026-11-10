@@ -201,6 +201,9 @@
     line-height: 1.5;
     /* RD1: tabular figures for every number, so columns of figures line up */
     font-variant-numeric: tabular-nums;
+    /* a classic scrollbar is always there, so a page that grows long (the Company page once its dossier is in) does not shift
+       sideways when it would appear (CLS, R3 gates); overlay and hidden scrollbars take no room, so phones lose nothing */
+    overflow-y: scroll;
   }
   body {
     @apply bg-background text-foreground;

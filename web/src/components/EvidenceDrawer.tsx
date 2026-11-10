@@ -14,8 +14,6 @@ import { EvidenceBody } from "./EvidenceBody";
 import { useDrawerController } from "./useDrawerController";
 import { EVIDENCE_PANEL_ID, EvidenceDrawerContext } from "./useEvidenceDrawer";
 
-const OPEN_MARK = "data-evidence";
-
 const PANEL =
   "fixed inset-x-0 bottom-0 z-20 flex h-[var(--evidence-sheet)] flex-col rounded-t-lg border-t border-border-strong bg-card shadow-lg " +
   "min-[900px]:inset-x-auto min-[900px]:top-0 min-[900px]:right-0 min-[900px]:h-auto min-[900px]:w-[var(--evidence-column)] " +
@@ -26,8 +24,9 @@ function useMakeRoom(isOpen: boolean, openKey: string | null) {
   useLayoutEffect(() => {
     if (!isOpen) return;
     const root = document.documentElement;
-    root.setAttribute(OPEN_MARK, "");
-    return () => root.removeAttribute(OPEN_MARK);
+    // a literal attribute name (S1: tests/test_web_source_scan.py allows setAttribute only with a literal name)
+    root.setAttribute("data-evidence", "");
+    return () => root.removeAttribute("data-evidence");
   }, [isOpen]);
   useLayoutEffect(() => {
     if (!isOpen || openKey === null) return;
