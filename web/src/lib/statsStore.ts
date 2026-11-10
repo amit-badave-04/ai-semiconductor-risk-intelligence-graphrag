@@ -14,7 +14,7 @@ export interface Stats {
   uploads_enabled?: unknown;
   paused?: unknown;
   models?: { llm?: unknown; escalation?: unknown };
-  limits?: { per_ip?: unknown; max_queries_per_day?: unknown };
+  limits?: { per_ip?: unknown; per_ip_per_day?: unknown; max_queries_per_day?: unknown };
 }
 
 let current: Stats | null = null;

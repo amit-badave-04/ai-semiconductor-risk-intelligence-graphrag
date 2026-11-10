@@ -12,6 +12,7 @@ import {
   STATUS_GENERATING,
   STATUS_RETRIEVING,
 } from "@/pages/Ask.copy";
+import type { Limits } from "@/copy/deck";
 import type { Stats } from "./statsStore";
 
 type Dict = Record<string, unknown>;
@@ -46,6 +47,29 @@ export function limitsText(stats: Stats | null): string {
     parts.push(`model: ${shortModel(models.llm)}${escalation}`);
   }
   return parts.join(" \u00b7 ");
+}
+
+/** docs/specs/m5b-redesign.md RD4a, decision D-R5: the approved defaults, equal to the server's Settings defaults
+ *  (rate_limit_questions, rate_limit_window_seconds / 60, paid_per_ip_per_day; tests/test_web_copy_deck.py checks them). */
+export const DEFAULT_LIMITS: Limits = { perWindow: 5, windowMinutes: 10, perDay: 20 };
+
+const PER_IP = /^(\d+) per (\d+) min$/;
+const positive = (n: number): boolean => Number.isInteger(n) && n > 0;
+
+/** The limits of the cost line: /api/stats.limits per_ip ("5 per 10 min") and per_ip_per_day, each field falling back to its
+ *  approved default when it is missing or unreadable (never a NaN, negative or fractional number on the page). */
+export function liveLimits(stats: Stats | null): Limits {
+  const limits = dictOf(stats?.limits);
+  const window = typeof limits.per_ip === "string" ? PER_IP.exec(limits.per_ip) : null;
+  const perWindow = window ? Number(window[1]) : NaN;
+  const windowMinutes = window ? Number(window[2]) : NaN;
+  const perDay = limits.per_ip_per_day;
+  return {
+    perWindow: positive(perWindow) && positive(windowMinutes) ? perWindow : DEFAULT_LIMITS.perWindow,
+    windowMinutes: positive(perWindow) && positive(windowMinutes) ? windowMinutes : DEFAULT_LIMITS.windowMinutes,
+    // 0 is the server's "no per-address daily cap" (config.py paid_per_ip_per_day): the cost line then names none
+    perDay: perDay === 0 ? null : typeof perDay === "number" && positive(perDay) ? perDay : DEFAULT_LIMITS.perDay,
+  };
 }
 
 /** The cost note of the footer. */
