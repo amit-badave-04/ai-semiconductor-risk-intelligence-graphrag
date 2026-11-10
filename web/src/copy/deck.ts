@@ -51,7 +51,39 @@ const STEP_WORDS: Record<Exclude<StepCode, "unknown">, readonly [string, string]
   compute_change: ["Computed", " "],
 };
 
+/** R25's risk changes block (docs/specs/m5b-redesign.md R3/R4: moved from pages/Company.copy.ts, word for word): its heading
+ *  (the legacy page's label of the risk_changes step), a filing as a pair header names it, the prefix of a passage, the line for
+ *  a pair that could not be compared (the legacy template), and the quote marks. */
+interface FilingWords {
+  form: string | null;
+  filing_date: string | null;
+}
+const filingLabel = (f: FilingWords): string => [f.form, f.filing_date].filter((part): part is string => part !== null && part !== "").join(" ");
+const COMPANY_CHANGES = {
+  title: STEP_WORDS.risk_changes[0],
+  filingLabel,
+  /** a passage names its side by that side's filing, or "earlier filing" / "later filing" when it has no label; nothing for none */
+  passageLabel: (side: "older" | "newer" | null, older: FilingWords, newer: FilingWords): string => {
+    if (side === null) return "";
+    const label = filingLabel(side === "older" ? older : newer);
+    return `${label === "" ? (side === "older" ? "earlier filing" : "later filing") : label}: `;
+  },
+  pairHeader: (older: FilingWords, newer: FilingWords): string => `${filingLabel(older)} \u2192 ${filingLabel(newer)}`,
+  notCompared: (header: string, reason: string | null): string => `${header}: comparison not available (${reason ?? "unknown reason"}).`,
+  quoted: (text: string): string => `\u201c${text}\u201d`,
+};
+
 export const deck = {
+  shell: {
+    /** the first stop of the keyboard: jumps to the page's main content */
+    skip: "Skip to content",
+  },
+
+  errors: {
+    /** an evidence request that never reached the server, with no message of its own */
+    network: "network error",
+  },
+
   nav: {
     label: "Main",
     ask: "Ask",
@@ -75,6 +107,10 @@ export const deck = {
   },
 
   ask: {
+    /** lib/sse.ts: the stream ended before done; what is shown was not checked */
+    streamCut: "connection lost before the answer finished: what is shown is incomplete and was not checked. Please ask again.",
+    /** lib/sse.ts: the page itself failed to show the answer */
+    pageFailed: "the page could not show this answer completely: what is shown may be incomplete and was not checked. Please ask again.",
     /** RD4: the h1, with the count of covered companies. */
     heading: (companies: number): string => `Ask about ${companies} chip and AI companies.`,
     /** RD4: the grounding sentence, around the three specimen source stamps (each opens a recorded example). */
@@ -300,6 +336,9 @@ export const deck = {
       none: "none",
       unreadable: "could not load the company data",
     },
+    /** R25's risk changes block: its heading (the legacy page's label of the risk_changes step), the pair header, the
+     *  passage prefix, the line for a pair that could not be compared (the legacy template), and the quote marks */
+    changes: COMPANY_CHANGES,
     /** a request that never reached the server (the legacy page's words, index.html:680) */
     network: "network error \u2014 is the service online?",
   },
@@ -327,6 +366,10 @@ export const deck = {
     },
     /** RD15: the list of an answer's distinct cited sources */
     sourcesHeading: (count: number): string => `Sources (${count})`,
+    /** a chip's tooltip, with its id for analysts (the label above says what it is) */
+    title: (id: string, stale: boolean): string => `open evidence ${id}${stale ? " \u2014 a newer version exists" : ""}`,
+    /** the legacy label of a document chip (lib/citations.ts chipLabel, kept for the differential tests) */
+    legacyDoc: "your document",
     /** shown after a stale chip's label (a workspace answer cited an older version of the document) */
     stale: " (older version)",
   },

@@ -57,7 +57,7 @@ export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) 
   const view = stampView(id, evidence);
   const { icon: KindIcon, look } = KINDS[view.kind];
   const Icon = stale ? TriangleAlert : KindIcon;
-  const title = `open evidence ${id}${stale ? " \u2014 a newer version exists" : ""}`;
+  const title = deck.chips.title(id, stale);
   return (
     <button
       type="button"

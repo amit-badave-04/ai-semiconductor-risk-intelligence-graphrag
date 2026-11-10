@@ -2,6 +2,7 @@
 // match of the generated grammar (classifyId) and the URL is built with encodeURIComponent; a `doc:` id with no workspace open and
 // an id outside the grammar make NO request and answer with the server's own words. The response is read through detailOf, which
 // bounds what is read and never shows an upstream page.
+import { deck } from "@/copy/deck";
 import { classifyId } from "@/lib/citations";
 import { detailOf } from "@/lib/refusal";
 import { MSG_MALFORMED_EVIDENCE, MSG_NOT_PUBLIC_EVIDENCE } from "@/pages/Ask.copy";
@@ -39,6 +40,6 @@ export async function fetchEvidence(id: string, workspace: EvidenceWorkspace | n
     if (!response.ok) return { ok: false, message: await detailOf(response) };
     return { ok: true, payload: (await response.json()) as unknown };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "network error" };
+    return { ok: false, message: error instanceof Error ? error.message : deck.errors.network };
   }
 }

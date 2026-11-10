@@ -5,6 +5,7 @@
 //     page itself threw, or a frame went over the buffer limit), so the status returned is always the true one;
 //   * unknown events, comments, pings, data that is not JSON and payloads of the wrong shape are ignored;
 //   * the parser never buffers without limit: eventsource-parser has no default cap, so one is set here.
+import { deck } from "@/copy/deck";
 import { createParser, type ParseError } from "eventsource-parser";
 import { decodeEvent, isTerminal, type StreamEvent } from "./events";
 import { detailOf } from "./refusal";
@@ -16,10 +17,9 @@ export const ASK_URL = "/api/ask";
  *  real answer never trips it while a runaway frame is stopped. Pinned against the contract doc by a test. */
 export const MAX_BUFFER_SIZE = 256 * 1024;
 
-export const STREAM_CUT_STATUS =
-  "connection lost before the answer finished: what is shown is incomplete and was not checked. Please ask again.";
-export const PAGE_FAILED_STATUS =
-  "the page could not show this answer completely: what is shown may be incomplete and was not checked. Please ask again.";
+// the words live in the deck (docs/specs/m5b-redesign.md section 4); the names stay for the callers and their tests
+export const STREAM_CUT_STATUS = deck.ask.streamCut;
+export const PAGE_FAILED_STATUS = deck.ask.pageFailed;
 
 export interface AskBody {
   question: string;

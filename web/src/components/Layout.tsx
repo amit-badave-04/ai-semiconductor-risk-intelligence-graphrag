@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link, Outlet, useLocation } from "react-router";
+import { deck } from "@/copy/deck";
 import { loadShellFreshness } from "@/lib/freshnessStore";
 import { Nav } from "./Nav";
 import { TurnstileWidget } from "./TurnstileWidget";
@@ -18,7 +19,7 @@ interface PageHeadingProps {
 /** The page's h1. It names the document (A7) and takes focus, via {@link Layout}, when the route changes. */
 export function PageHeading({ title, documentTitle = title, display = false }: PageHeadingProps) {
   useEffect(() => {
-    document.title = `${documentTitle} · ${SITE_NAME}`;
+    document.title = `${documentTitle} \u00b7 ${SITE_NAME}`;
   }, [documentTitle]);
   return (
     <h1
@@ -54,7 +55,7 @@ export function Layout() {
   return (
     <>
       <a className="skip-link" href="#main">
-        Skip to content
+        {deck.shell.skip}
       </a>
       <header className="border-b border-border bg-card">
         <div className="header-row mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-8 px-5 lg:h-14 lg:flex-nowrap">

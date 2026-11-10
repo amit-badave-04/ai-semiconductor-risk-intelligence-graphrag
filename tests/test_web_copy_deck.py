@@ -46,17 +46,11 @@ COPY_HOMES = {"copy/deck.ts", "pages/Method.copy.ts", "lib/answerMeta.ts", "lib/
               "lib/askStatus.ts"}
 # Files the redesign has not reached yet, with the number of sentences each holds today (R1 to R4 empty this list).
 NOT_YET_IN_THE_DECK = {
-    "components/Chips.tsx": 1,
-    "components/evidenceFetch.ts": 1,
-    "components/Layout.tsx": 1,
     "lib/changes.ts": 3,
-    "lib/citations.ts": 2,
     "lib/freshnessStore.ts": 1,
     "lib/jobs.ts": 11,
-    "lib/sse.ts": 2,
     "lib/workspace.ts": 7,
     "pages/Ask.copy.ts": 12,
-    "pages/Company.copy.ts": 7,  # the pinned KIND_* labels and heading, and the legacy pair templates (R4 copy sweep)
     "pages/Freshness.lib.ts": 7,
     "pages/Freshness.tsx": 9,
     "pages/Method.tsx": 2,
@@ -64,6 +58,10 @@ NOT_YET_IN_THE_DECK = {
     "pages/Workspace.copy.ts": 17,
     "pages/WorkspaceDocuments.tsx": 1,
 }
+# docs/specs/m5b-redesign.md section 4: Company.copy.ts keeps only the four KIND_* labels (pinned by the server's context layout); it
+# is a copy home only while those are all it exports, so no other copy can slip into it under the sentence counter.
+KIND_HOME = "pages/Company.copy.ts"
+KIND_EXPORTS = {"KIND_NEW", "KIND_DROPPED", "KIND_UNSETTLED", "KIND_CHANGED"}
 # Strings with spaces that are not copy: a link's rel value and a start-up error no reader sees.
 NOT_COPY = {"noopener noreferrer", "#root is missing from index.html"}
 
@@ -148,19 +146,25 @@ def source_files() -> list[Path]:
     )
 
 
-def location_problems(files: dict[str, list[str]]) -> list[str]:
-    """Sentences outside the copy homes, except the counted ones of files the redesign has not reached yet."""
+def kind_home_exports() -> set[str]:
+    return set(re.findall(r"^export (?:const|function|interface|type) (\w+)", COMPANY_TS.read_text(encoding="utf-8"), re.M))
+
+
+def location_problems(files: dict[str, list[str]], counted: dict[str, int] | None = None) -> list[str]:
+    """Sentences outside the copy homes, except the counted ones of files the redesign has not reached yet (`counted`, the
+    module's NOT_YET_IN_THE_DECK unless a test passes its own)."""
+    counted = NOT_YET_IN_THE_DECK if counted is None else counted
     problems = []
     for rel, fragments in files.items():
-        if rel in COPY_HOMES or not fragments:
+        if rel in COPY_HOMES or not fragments or (rel == KIND_HOME and kind_home_exports() == KIND_EXPORTS):
             continue
-        allowed = NOT_YET_IN_THE_DECK.get(rel)
+        allowed = counted.get(rel)
         if allowed is None:
             problems.append(f"{rel}: {len(fragments)} sentence(s) outside the deck, e.g. {fragments[0]!r}")
         elif len(fragments) != allowed:
             problems.append(f"{rel}: {len(fragments)} sentence(s), the list says {allowed} (move new copy to the deck; "
                             "lower the count when copy moves out)")
-    problems += [f"{rel}: holds no copy now; remove it from NOT_YET_IN_THE_DECK" for rel in NOT_YET_IN_THE_DECK
+    problems += [f"{rel}: holds no copy now; remove it from NOT_YET_IN_THE_DECK" for rel in counted
                  if rel in files and not files[rel]]
     return problems
 
@@ -224,8 +228,9 @@ class TestTheMatcher:
     def test_a_new_sentence_in_a_component_is_a_finding_and_a_counted_file_must_match_its_count(self):
         assert location_problems({"components/New.tsx": ["Click here to begin."]}) != []
         assert location_problems({"copy/deck.ts": ["Click here to begin."]}) == []
-        assert location_problems({"pages/NotFound.tsx": ["a", "b", "c"]}) == []
-        assert location_problems({"pages/NotFound.tsx": ["a", "b", "c", "d"]}) != []
+        counted = {"pages/Example.tsx": 3}
+        assert location_problems({"pages/Example.tsx": ["a", "b", "c"]}, counted) == []
+        assert location_problems({"pages/Example.tsx": ["a", "b", "c", "d"]}, counted) != []
 
 
 # ---------------------------------------------------------------- 2. where copy lives
@@ -279,6 +284,17 @@ def test_the_company_page_s_limit_sentences_are_the_owner_s_words():
     for phrase in ("No export-control rule in our data was linked to", "by keyword matching. This is not a finding that none applies.",
                    "Summaries written by semigraph, not quotes", "Not in our data for these years.", "The latest we hold is"):
         assert phrase in text, phrase
+
+
+def test_company_copy_exports_only_the_four_kind_labels():
+    # R4: everything else on the Company page lives in the deck (deck.company.changes)
+    assert kind_home_exports() == KIND_EXPORTS
+
+
+def test_the_deck_imports_only_types_from_the_libs():
+    # the deck stays a leaf at run time: a lib may take its words from the deck, never the other way round (no import cycle)
+    imports = re.findall(r"^import (type )?[^;]*? from \"@/lib/[^\"]+\";", DECK_TS.read_text(encoding="utf-8"), re.M)
+    assert imports and all(kind == "type " for kind in imports), imports
 
 
 def test_the_measured_hand_check_counts_are_present():

@@ -2,17 +2,9 @@ import { deck } from "@/copy/deck";
 import { numberOccurrences } from "@/lib/citations";
 import { CITE_GROUP, type RiskChangesResult, type RiskItem, type RiskKind, type RiskPair, type RiskPassage } from "@/lib/company";
 import { Block, Cite } from "./CompanySection";
-import {
-  KIND_CHANGED,
-  KIND_DROPPED,
-  KIND_NEW,
-  KIND_UNSETTLED,
-  RISK_CHANGES_TITLE,
-  notComparedLine,
-  passageLabel,
-  pairHeader,
-  quoted,
-} from "./Company.copy";
+import { KIND_CHANGED, KIND_DROPPED, KIND_NEW, KIND_UNSETTLED } from "./Company.copy";
+
+const words = deck.company.changes;
 
 // R25 (owner 2026-11-08: yes): the recent risk changes of the company. Everything from the server is a text node (S2): a
 // headline, a quote and a reason are strings, a filing-backed passage's chunk id is the evidence chip (Cite, the same element as the
@@ -48,7 +40,7 @@ interface PassageProps {
 function Passage({ passage, pair, numbers }: PassageProps) {
   return (
     <p className="my-1 text-sm">
-      {passage.quote === null ? null : `${passageLabel(passage.side, pair.older, pair.newer)}${quoted(passage.quote)}`}
+      {passage.quote === null ? null : `${words.passageLabel(passage.side, pair.older, pair.newer)}${words.quoted(passage.quote)}`}
       {passage.chunkId === null ? null : (
         <>
           {passage.quote === null ? null : " "}
@@ -91,8 +83,8 @@ function Kind({ kind, items, pair, numbers }: KindProps) {
 }
 
 function Pair({ pair, numbers }: { pair: RiskPair; numbers: PassageNumbers }) {
-  const header = pairHeader(pair.older, pair.newer);
-  if (!pair.compared) return <p className="mb-4 text-sm text-muted-foreground">{notComparedLine(header, pair.reason)}</p>;
+  const header = words.pairHeader(pair.older, pair.newer);
+  if (!pair.compared) return <p className="mb-4 text-sm text-muted-foreground">{words.notCompared(header, pair.reason)}</p>;
   return (
     <div className="mb-4">
       <h3 className="text-sm font-semibold">{header}</h3>
@@ -120,7 +112,7 @@ function Body({ state }: { state: RiskChangesState }) {
 
 export function RiskChangesBlock({ state }: { state: RiskChangesState }) {
   return (
-    <Block id="risk-changes" title={RISK_CHANGES_TITLE}>
+    <Block id="risk-changes" title={words.title}>
       <Body state={state} />
     </Block>
   );

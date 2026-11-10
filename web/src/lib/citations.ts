@@ -1,6 +1,7 @@
 // The citation grammar as the page uses it (R5, S2, S4, S11): a tokenizer that finds `[id]` tokens in model text, a classifier
 // that gates every evidence fetch, and the chip labels. A port of index.html:152-178 and :454, over the GENERATED patterns of
 // ids.generated.ts, so the browser and the server cannot disagree. Everything here is a pure function of its arguments.
+import { deck } from "@/copy/deck";
 import { CITE_PATTERN, CHUNK_ID_RE, DOC_ID_RE, FR_ID_RE, XBRL_ID_RE } from "./ids.generated";
 
 export type CitationKind = "chunk" | "xbrl" | "fr" | "doc";
@@ -69,7 +70,7 @@ export function chipLabel(id: unknown, evidence?: unknown): string {
   const parts = text.split(":");
   if (kind === "xbrl") return `XBRL ${parts[2].replace(/_/g, " ")} FY ended ${parts[3]}`;
   if (kind === "fr") return `BIS rule ${text.slice(3)}`;
-  if (kind === "doc") return `your document ${parts[2]} \u00b6${parts[3]}`;
+  if (kind === "doc") return `${deck.chips.legacyDoc} ${parts[2]} \u00b6${parts[3]}`;
   return text;
 }
 
@@ -82,7 +83,7 @@ export function docChipLabel(id: unknown, evidence?: unknown): string {
   const parts = asText(id).split(":");
   const version = (parts[2] ?? "").replace(/^v/, "") || "?";
   const base = `v${version} \u00b6${parts[3] || "?"}`;
-  return ev.title ? `${asText(ev.title)} \u00b7 ${base}` : `your document \u00b7 ${base}`;
+  return ev.title ? `${asText(ev.title)} \u00b7 ${base}` : `${deck.chips.legacyDoc} \u00b7 ${base}`;
 }
 
 /** Where a chip lives: the streamed answer, its Sources list (docs/specs/m5b-redesign.md RD15), the what-changed view or the

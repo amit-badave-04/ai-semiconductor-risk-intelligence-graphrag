@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stampLabel } from "@/components/__tests__/stampLabel";
 import { Company } from "../Company";
+import { deck } from "@/copy/deck";
 import * as copy from "../Company.copy";
 
 // R25 (owner 2026-11-08: yes): the Company page also shows the recent risk changes of GET /api/company/{ticker}/risk-changes.
@@ -110,14 +111,14 @@ describe("Company: the risk changes block", () => {
   it("says loading while the report is pending", async () => {
     route(() => new Promise<Response>(() => undefined));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     expect(block).toHaveTextContent("loading\u2026");
   });
 
   it("shows each pair, each kind under its pinned label, and each headline", async () => {
     route(() => json(CHANGES));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     expect(await within(block).findByRole("heading", { level: 3, name: "10-K 2025-02-26 \u2192 10-K 2026-02-25" })).toBeInTheDocument();
     for (const label of [copy.KIND_NEW, copy.KIND_DROPPED, copy.KIND_UNSETTLED, copy.KIND_CHANGED]) {
       expect(within(block).getByText(label)).toBeInTheDocument();
@@ -133,13 +134,13 @@ describe("Company: the risk changes block", () => {
     expect(copy.KIND_DROPPED).toBe("No longer appears as a separate risk factor");
     expect(copy.KIND_UNSETTLED).toBe("Not matched");
     expect(copy.KIND_CHANGED).toBe("Reworded");
-    expect(copy.RISK_CHANGES_TITLE).toBe("Compared risk disclosures");
+    expect(deck.company.changes.title).toBe("Compared risk disclosures");
   });
 
   it("quotes passages, and only a chunk id of the grammar becomes an evidence chip (R25)", async () => {
     route(() => json(CHANGES));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     await within(block).findByText("Export licensing");
     expect(block).toHaveTextContent("10-K 2025-02-26: \u201cWe may need a license.\u201d");
     expect(block).toHaveTextContent("10-K 2026-02-25: \u201cWe need a license.\u201d");
@@ -152,7 +153,7 @@ describe("Company: the risk changes block", () => {
   it("tells the older and the newer passage apart, each by its own filing label (owner 2026-11-08)", async () => {
     route(() => json(CHANGES));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     await within(block).findByText("Export licensing");
     const older = block.querySelector("li p:nth-of-type(1)");
     const newer = block.querySelector("li p:nth-of-type(2)");
@@ -183,7 +184,7 @@ describe("Company: the risk changes block", () => {
     ];
     route(() => json({ company: DOSSIER.company, pairs }));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     await within(block).findByText("H");
     const text = [...block.querySelectorAll("li p")].map((p) => p.textContent);
     expect(text).toEqual(["earlier filing: \u201cold text\u201d", "later filing: \u201cnew text\u201d", "\u201cloose text\u201d"]);
@@ -192,7 +193,7 @@ describe("Company: the risk changes block", () => {
   it("says a pair could not be compared, with the server's reason, in the legacy template", async () => {
     route(() => json(CHANGES));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     await within(block).findByText("Export licensing");
     expect(block).toHaveTextContent("10-K 2025-02-26 \u2192 10-K 2026-02-25: comparison not available (low_text_yield).");
   });
@@ -200,14 +201,14 @@ describe("Company: the risk changes block", () => {
   it("says none for a company with no pairs", async () => {
     route(() => json({ company: DOSSIER.company, pairs: [] }));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     await within(block).findByText("none");
   });
 
   it("shows the server's refusal in the block and keeps the dossier", async () => {
     route(() => json({ detail: "Too many requests from your address \u2014 please slow down." }, 429, "Too Many Requests"));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     await within(block).findByText("Too many requests from your address \u2014 please slow down.");
     expect(screen.getByRole("region", { name: "Filings" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
@@ -216,7 +217,7 @@ describe("Company: the risk changes block", () => {
   it("keeps the status-text fallback for a 200 that is no report", async () => {
     route(() => new Response("{}", { status: 200, statusText: "OK" }));
     mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     await within(block).findByText("OK");
   });
 
@@ -235,7 +236,7 @@ describe("Company: the risk changes block", () => {
     };
     route(() => json(hostile));
     const { container } = mount();
-    const block = await screen.findByRole("region", { name: copy.RISK_CHANGES_TITLE });
+    const block = await screen.findByRole("region", { name: deck.company.changes.title });
     await within(block).findAllByText(new RegExp("<img src=x"));
     expect(container.querySelector("img, [onerror], [src], [style]")).toBeNull();
     expect(block.querySelector("a")).toBeNull();
@@ -276,14 +277,14 @@ describe("Company: the risk changes block", () => {
 
 describe("Company.copy helpers", () => {
   it("names a filing by whichever of form and date the server gave", () => {
-    expect(copy.filingLabel({ form: "10-K", filing_date: "2026-02-25" })).toBe("10-K 2026-02-25");
-    expect(copy.filingLabel({ form: null, filing_date: "2026-02-25" })).toBe("2026-02-25");
-    expect(copy.filingLabel({ form: "10-K", filing_date: "" })).toBe("10-K");
-    expect(copy.filingLabel({ form: null, filing_date: null })).toBe("");
+    expect(deck.company.changes.filingLabel({ form: "10-K", filing_date: "2026-02-25" })).toBe("10-K 2026-02-25");
+    expect(deck.company.changes.filingLabel({ form: null, filing_date: "2026-02-25" })).toBe("2026-02-25");
+    expect(deck.company.changes.filingLabel({ form: "10-K", filing_date: "" })).toBe("10-K");
+    expect(deck.company.changes.filingLabel({ form: null, filing_date: null })).toBe("");
   });
 
   it("says 'unknown reason' for a pair with no reason, as the legacy page does", () => {
-    expect(copy.notComparedLine("a \u2192 b", null)).toBe("a \u2192 b: comparison not available (unknown reason).");
-    expect(copy.notComparedLine("a \u2192 b", "low_text_yield")).toBe("a \u2192 b: comparison not available (low_text_yield).");
+    expect(deck.company.changes.notCompared("a \u2192 b", null)).toBe("a \u2192 b: comparison not available (unknown reason).");
+    expect(deck.company.changes.notCompared("a \u2192 b", "low_text_yield")).toBe("a \u2192 b: comparison not available (low_text_yield).");
   });
 });
