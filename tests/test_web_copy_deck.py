@@ -287,7 +287,7 @@ def test_no_change_label_says_removed_or_dropped():
     assert [n for n, v in labels.items() if re.search(r"\b(removed|dropped)\b", _js(v[1:-1]), re.I)] == []
 
 
-@pytest.mark.parametrize("word", ["verified", "unlimited", "AI-powered"])
+@pytest.mark.parametrize("word", ["verified", "unlimited", "AI-powered", "guarantee", "guaranteed", "accurate", "proves"])
 def test_no_sentence_on_the_site_says(word):
     # The four lib files keep the legacy page's pinned text until R2 renders them through deck codes; their three uses of
     # "verified" are negations ("not verified", "cannot be verified"), checked against the legacy page below.

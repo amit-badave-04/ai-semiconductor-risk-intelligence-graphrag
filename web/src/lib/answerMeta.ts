@@ -158,3 +158,70 @@ export function metaSummary(event: unknown, defaultModel?: unknown): ChecksSumma
   const checks = checksSummary(ev);
   return { badges: [...head, ...checks.badges], warnings: checks.warnings, hint: checks.hint };
 }
+
+// ------------------------------------------------------------------ docs/specs/m5b-redesign.md RD14: "What was checked" as codes
+
+export type CheckedCode =
+  | "saved"
+  | "earlier"
+  | "sourcesOk"
+  | "sourcesMissing"
+  | "noCitation"
+  | "declines"
+  | "figuresMatched"
+  | "figuresUnmatched"
+  | "figuresNone"
+  | "figuresEchoed"
+  | "figuresUnchecked"
+  | "pseudoCitation"
+  | "removalClaim"
+  | "truncated";
+
+export interface CheckedLine {
+  code: CheckedCode;
+  tone: "ok" | "warn" | "bad" | "plain";
+  params?: { count?: number; figures?: string; items?: string };
+}
+
+export interface CheckedView {
+  /** saved: a saved benchmark answer; earlier: a repeated live answer from the cache (no checks stored); live: its own checks. */
+  kind: "saved" | "earlier" | "live";
+  lines: CheckedLine[];
+}
+
+const joined = (items: unknown[]): string => items.map(String).join(", ");
+
+function sourcesLine(cites: unknown[], hall: unknown[], c: Dict | null): CheckedLine | null {
+  if (hall.length || (c !== null && c.citations_retrieved === false)) return { code: "sourcesMissing", tone: "bad", params: { count: hall.length } };
+  if (c !== null && c.has_citation === false) return c.is_refusal === true ? { code: "declines", tone: "plain" } : { code: "noCitation", tone: "warn" };
+  return cites.length ? { code: "sourcesOk", tone: "ok" } : null;
+}
+
+function figureLines(c: Dict | null): CheckedLine[] {
+  if (c === null) return [{ code: "figuresUnchecked", tone: "plain" }];
+  const unmatched = list(c.unmatched_numbers);
+  const echoed = list(c.echoed_numbers);
+  const lines: CheckedLine[] = [];
+  if (unmatched.length || (c.numbers_grounded === false && !echoed.length)) lines.push({ code: "figuresUnmatched", tone: "bad", params: { figures: joined(unmatched) } });
+  if (echoed.length) lines.push({ code: "figuresEchoed", tone: "warn", params: { figures: joined(echoed) } });
+  if (!unmatched.length && !echoed.length && c.numbers_grounded !== false) {
+    if (typeof c.numbers_checked !== "number") lines.push({ code: "figuresUnchecked", tone: "plain" });
+    else lines.push(c.numbers_checked > 0 ? { code: "figuresMatched", tone: "ok" } : { code: "figuresNone", tone: "plain" });
+  }
+  return lines;
+}
+
+/** What was checked, never more than the checks say (RD14). The same rules as checksSummary, as codes the deck words. */
+export function checkedView(event: unknown): CheckedView {
+  const ev = dictOf(event);
+  if (ev.cached) return ev.source === "benchmark" ? { kind: "saved", lines: [{ code: "saved", tone: "plain" }] } : { kind: "earlier", lines: [{ code: "earlier", tone: "plain" }] };
+  const c = isDict(ev.checks) ? ev.checks : null;
+  const lines: CheckedLine[] = [];
+  const sources = sourcesLine(list(ev.citations), list(ev.hallucinated), c);
+  if (sources !== null) lines.push(sources);
+  lines.push(...figureLines(c));
+  if (c !== null && list(c.pseudo_citations).length) lines.push({ code: "pseudoCitation", tone: "warn", params: { items: joined(list(c.pseudo_citations)) } });
+  if (c !== null && c.unsupported_removal_claim === true) lines.push({ code: "removalClaim", tone: "warn" });
+  if (ev.finish_reason === "length") lines.push({ code: "truncated", tone: "warn" });
+  return { kind: "live", lines };
+}

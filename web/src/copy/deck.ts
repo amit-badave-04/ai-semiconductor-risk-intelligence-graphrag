@@ -3,6 +3,7 @@
 // Plain strings and small pure functions; a caller renders each as a text node. tests/test_web_copy_deck.py checks where copy
 // lives, the fact invariants and the cost line, and records this file in artifacts/m5b_copy_deck.json, so every wording change
 // is a reviewable diff. Non-ASCII characters are written as unicode escapes.
+import type { CheckedLine } from "@/lib/answerMeta";
 
 /** The per-address limits of live questions, as /api/stats reports them (lib/askStatus.ts liveLimits). */
 export interface Limits {
@@ -62,6 +63,48 @@ export const deck = {
     howLink: "How answers are made",
     /** RD8: Ask pressed with an empty box. */
     emptyQuestion: "Type a question first, or pick an example below.",
+  },
+
+  checked: {
+    /** RD14: "What was checked" under an answer, one plain sentence per line of lib/answerMeta.ts checkedView. Never claims more
+     *  than the checks did: no "verified", no percentages (the figures named in a line are the answer's own). */
+    heading: "What was checked",
+    line: (line: CheckedLine): string => {
+      const figures = line.params?.figures ?? "";
+      const count = line.params?.count ?? 0;
+      switch (line.code) {
+        case "saved":
+          return "Checked when the answer was saved. Open a source to read it.";
+        case "earlier":
+          return "Answered earlier. The checks are shown only when an answer is first written; open a source to read it.";
+        case "sourcesOk":
+          return "Every cited source was among the passages found for this question.";
+        case "sourcesMissing":
+          return count > 0
+            ? `${count} cited ${count === 1 ? "source was" : "sources were"} not among the passages found for this question.`
+            : "Some cited sources were not among the passages found for this question.";
+        case "noCitation":
+          return "This answer cites no source: read it as unsupported.";
+        case "declines":
+          return "This answer declines: there was nothing to cite.";
+        case "figuresMatched":
+          return "All figures matched the filings.";
+        case "figuresUnmatched":
+          return figures === "" ? "Some figures could not be matched." : `Some figures could not be matched: ${figures}.`;
+        case "figuresNone":
+          return "No dollar amounts or percentages in this answer.";
+        case "figuresEchoed":
+          return `A figure came from your question and was not looked up in the filings: ${figures}.`;
+        case "figuresUnchecked":
+          return "Figures were not checked for this answer.";
+        case "pseudoCitation":
+          return `Bracketed text that is not a source: ${line.params?.items ?? ""}.`;
+        case "removalClaim":
+          return "This answer says something no longer appears, and the lists of removed items do not support that.";
+        case "truncated":
+          return "The answer was cut short by the length limit.";
+      }
+    },
   },
 
   sample: {
