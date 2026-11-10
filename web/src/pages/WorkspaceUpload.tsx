@@ -8,7 +8,7 @@ import { deck } from "@/copy/deck";
 import { FILE_ACCEPT, uploadTargetOptions, type WsDocument } from "@/lib/workspace";
 import { useWorkspaceUploads } from "@/state/useWorkspaceUploads";
 
-const { DROP_TEXT, UPLOAD_AS } = deck.workspace;
+const { DROP_TEXT, UPLOAD_AS, types: TYPES } = deck.workspace;
 
 const TONE: Record<JobRow["tone"], string> = { "": "", ok: "text-foreground font-medium", err: "text-destructive" };
 
@@ -30,9 +30,11 @@ function Rows({ rows }: { rows: readonly JobRow[] }) {
 
 interface DropZoneProps {
   onFiles: (files: FileList | null | undefined) => void;
+  /** The id of the accepted-types line: the zone's name stays its own sentence, the types are its description (RD26). */
+  describedBy: string;
 }
 
-function DropZone({ onFiles }: DropZoneProps) {
+function DropZone({ onFiles, describedBy }: DropZoneProps) {
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const dropId = useId();
@@ -45,6 +47,7 @@ function DropZone({ onFiles }: DropZoneProps) {
       <button
         type="button"
         id={dropId}
+        aria-describedby={describedBy}
         data-dragging={dragging ? "" : undefined}
         onClick={() => input.current?.click()}
         onDragEnter={over}
@@ -78,6 +81,7 @@ export function WorkspaceUpload({ documents }: { documents: readonly WsDocument[
   const { upload, rows } = useWorkspaceUploads();
   const [chosen, setChosen] = useState("");
   const targetId = useId();
+  const typesId = useId();
   const options = uploadTargetOptions(documents);
   // keep the choice across reloads of the list, as the legacy page does; a document that is gone falls back to a new one
   const target = options.some((o) => o.value === chosen) ? chosen : "";
@@ -104,7 +108,10 @@ export function WorkspaceUpload({ documents }: { documents: readonly WsDocument[
           ))}
         </select>
       </div>
-      <DropZone onFiles={hand} />
+      <DropZone onFiles={hand} describedBy={typesId} />
+      <p id={typesId} className="mt-2 mb-0 text-sm text-muted-foreground">
+        {TYPES}
+      </p>
       <Rows rows={rows} />
     </div>
   );

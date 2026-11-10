@@ -54,7 +54,7 @@ async function storedToken(page: Page): Promise<string> {
 test("create, upload, a second version, what changed, a chip's drawer and delete, with zero violations", async ({ page }) => {
   const w = await watch(page, PREVIEW);
   await page.goto(WORKSPACE);
-  await expect(page.getByRole("heading", { level: 2, name: "Your documents (private, 24h)" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Your documents" })).toBeVisible();
   await createWorkspace(page);
   await expect(page.getByText("No documents uploaded yet.")).toBeVisible();
 
@@ -157,8 +157,9 @@ test("restore accepts the id and token of a workspace made in this tab, and refu
   const stored = await page.evaluate((key) => JSON.parse(window.sessionStorage.getItem(key) ?? "{}") as { id: string; token: string }, STORAGE_KEY);
   await page.getByRole("button", { name: "Delete workspace" }).click();
   // the workspace is gone on the server now: a restore of it says so
-  await page.getByLabel("workspace id").fill(stored.id);
-  await page.getByLabel("token").fill(stored.token);
+  await page.getByRole("button", { name: "I have a workspace id and key" }).click();
+  await page.getByLabel("Workspace id").fill(stored.id);
+  await page.getByLabel("Workspace key").fill(stored.token);
   await page.getByRole("button", { name: "Restore" }).click();
   await expect(page.getByText("workspace not found")).toBeVisible();
   await page.getByRole("button", { name: "Create a workspace" }).click();
@@ -167,8 +168,9 @@ test("restore accepts the id and token of a workspace made in this tab, and refu
 
 test("the controls are labelled, the drop zone works from the keyboard, and axe finds nothing serious", async ({ page }) => {
   await page.goto(WORKSPACE);
-  await expect(page.getByLabel("workspace id")).toBeVisible();
-  await expect(page.getByLabel("token")).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "I have a workspace id and key" }).click();
+  await expect(page.getByLabel("Workspace id")).toBeVisible();
+  await expect(page.getByLabel("Workspace key")).toHaveAttribute("type", "password");
   await createWorkspace(page);
   for (const name of ["Ask as of this date instead of the current version", "upload as:"]) await expect(page.getByLabel(name)).toBeVisible();
   // the drop zone's own text names the hidden file input too
@@ -230,6 +232,86 @@ test("in forced colours the drag cue is a solid border, not only a colour", asyn
   await dropZone(page).dispatchEvent("dragenter", { dataTransfer });
   await expect(dropZone(page)).toHaveAttribute("data-dragging", "");
   expect(await style()).toBe("solid");
+});
+
+// docs/specs/m5b-redesign.md RD26 and docs/decisions/002-r4-workspace-copy.md in a real browser: the first-time view makes no
+// workspace request by itself, Restore opens from its disclosure, focus goes to the h2 after create or restore and to Create after
+// delete, the key is never in the page after a restore that worked or failed, and the view holds at 320 px and in forced colours.
+const TRIGGER = "I have a workspace id and key";
+const H2 = "Your documents";
+
+test("the first-time view: no workspace request on load, the steps and types, and focus after create, delete and restore", async ({ page }) => {
+  const seen: string[] = [];
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.startsWith("/api/workspace")) seen.push(`${request.method()} ${pathname}`);
+  });
+  const console_: string[] = [];
+  page.on("console", (message) => console_.push(message.text()));
+  await page.goto(WORKSPACE);
+  await expect(page.getByRole("heading", { level: 2, name: H2 })).toBeVisible();
+  await expect(page.locator("main ol > li")).toHaveText(["Create a workspace.", "Upload a document.", "Ask a question about it on the Ask page."]);
+  expect(seen).toEqual([]);
+
+  await createWorkspace(page);
+  await expect(page.getByRole("heading", { level: 2, name: H2 })).toBeFocused();
+  const stored = await page.evaluate((key) => JSON.parse(window.sessionStorage.getItem(key) ?? "{}") as { id: string; token: string }, STORAGE_KEY);
+  // a restore that works: the session is still stored, so put it back after a delete
+  await page.getByRole("button", { name: "Delete workspace" }).click();
+  await expect(page.getByRole("button", { name: "Create a workspace" })).toBeFocused();
+
+  const trigger = page.getByRole("button", { name: TRIGGER });
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByLabel("Workspace key")).toHaveCount(0);
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await page.getByLabel("Workspace id").fill(stored.id);
+  await page.getByLabel("Workspace key").fill(stored.token);
+  await page.getByRole("button", { name: "Restore" }).click();
+  await expect(page.getByText("workspace not found")).toBeVisible(); // deleted on the server, so the restore is refused
+  await expect(page.getByRole("button", { name: "Restore" })).toBeFocused(); // focus stays in the panel
+  await trigger.click(); // collapsing keeps the message, which lives outside the disclosure
+  await expect(page.getByRole("status").filter({ hasText: "workspace not found" })).toBeVisible();
+  const failed = await page.evaluate(() => ({ html: document.documentElement.outerHTML, text: document.body.innerText, url: location.href }));
+  for (const [where, value] of Object.entries(failed)) expect(value, where).not.toContain(stored.token);
+  expect(console_.join("\n")).not.toContain(stored.token);
+});
+
+test("a restore that works lands focus on the h2 and leaves the key out of the page", async ({ page }) => {
+  await page.goto(WORKSPACE);
+  await createWorkspace(page);
+  const stored = await page.evaluate((key) => JSON.parse(window.sessionStorage.getItem(key) ?? "{}") as { id: string; token: string }, STORAGE_KEY);
+  await page.evaluate((key) => window.sessionStorage.removeItem(key), STORAGE_KEY);
+  await page.reload(); // the workspace lives on the server; this tab no longer holds it
+  await page.getByRole("button", { name: TRIGGER }).click();
+  await page.getByLabel("Workspace id").fill(stored.id);
+  await page.getByLabel("Workspace key").fill(stored.token);
+  await page.getByRole("button", { name: "Restore" }).click();
+  await expect(page.getByRole("button", { name: "Delete workspace" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: H2 })).toBeFocused();
+  const after = await page.evaluate(() => ({ html: document.documentElement.outerHTML, text: document.body.innerText, title: document.title, url: location.href }));
+  for (const [where, value] of Object.entries(after)) expect(value, where).not.toContain(stored.token);
+  await page.getByRole("button", { name: "Delete workspace" }).click();
+});
+
+test("at 320 px and in forced colours the first-time view fits, its targets are at least 24 px and the chevron shows", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.emulateMedia({ forcedColors: "active" });
+  await page.goto(WORKSPACE);
+  await page.getByRole("button", { name: TRIGGER }).click();
+  await expect(page.getByLabel("Workspace key")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  for (const control of [page.getByRole("button", { name: TRIGGER }), page.getByRole("button", { name: "Create a workspace" }), page.getByRole("button", { name: "Restore" })]) {
+    const box = await control.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(24);
+    expect(box?.width ?? 0).toBeGreaterThanOrEqual(24);
+  }
+  const chevron = page.getByRole("button", { name: TRIGGER }).locator("svg");
+  await expect(chevron).toBeVisible();
+  expect(await chevron.evaluate((svg) => getComputedStyle(svg).color)).not.toBe("rgba(0, 0, 0, 0)");
+  const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+  expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 });
 
 test.describe("with a site key (R33(2)): an upload waits for the bot-check token", () => {

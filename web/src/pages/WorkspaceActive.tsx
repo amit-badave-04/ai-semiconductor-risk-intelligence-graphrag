@@ -54,9 +54,16 @@ function useChanges(session: WorkspaceSession) {
   return { view, show };
 }
 
-export function WorkspaceActive({ session }: { session: WorkspaceSession }) {
+interface ActiveProps {
+  session: WorkspaceSession;
+  /** Deletes through the page's one action runner, which moves focus to Create afterwards (pages/Workspace.tsx). */
+  onDelete: () => void;
+}
+
+/** The upload announcements are spoken by the page's one status region (pages/Workspace.tsx), not by a second one here. */
+export function WorkspaceActive({ session, onDelete }: ActiveProps) {
   const { asOf, setAsOf } = useWorkspace();
-  const { documents, remove, announcement } = useWorkspaceUploads();
+  const { documents } = useWorkspaceUploads();
   const { view, show } = useChanges(session);
   const dateId = useId();
   return (
@@ -66,7 +73,7 @@ export function WorkspaceActive({ session }: { session: WorkspaceSession }) {
           {WORKSPACE_WORD} <code className="break-all">{session.id}</code>
           {` \u00b7 ${EXPIRES_WORD} ${session.expires_at ?? EXPIRES_UNKNOWN}`}
         </span>
-        <Button type="button" variant="outline" onClick={() => void remove()}>
+        <Button type="button" variant="outline" onClick={onDelete}>
           {DELETE_BUTTON}
         </Button>
       </div>
@@ -87,9 +94,6 @@ export function WorkspaceActive({ session }: { session: WorkspaceSession }) {
       <WorkspaceUpload documents={documents} />
       <WorkspaceDocuments documents={documents} asOf={asOf} setAsOf={setAsOf} onShowChanges={show} />
       <WorkspaceChanges view={view} />
-      <output className="sr-only">
-        {announcement}
-      </output>
     </div>
   );
 }

@@ -30,10 +30,11 @@ test("the Ask page's controls are found by label, and axe's label rules are clea
   expect(results.violations.map((v) => v.id)).toEqual([]);
 });
 
-test("the Workspace page's start controls are found by label, and the restore token is a password field (A4, A6, S8)", async ({ page }) => {
+test("the Workspace page's start controls are found by label, and the restore key is a password field (A4, A6, S8)", async ({ page }) => {
   await page.goto(`${PREVIEW}/v2/workspace/`);
-  await expect(page.getByLabel("workspace id")).toBeVisible();
-  await expect(page.getByLabel("token")).toHaveAttribute("type", "password");
+  await page.getByRole("button", { name: "I have a workspace id and key" }).click(); // RD26: Restore sits behind a disclosure
+  await expect(page.getByLabel("Workspace id")).toBeVisible();
+  await expect(page.getByLabel("Workspace key")).toHaveAttribute("type", "password");
   await expect(page.getByRole("button", { name: "Create a workspace" })).toBeVisible();
   const results = await new AxeBuilder({ page }).withRules(["label", "select-name"]).analyze();
   expect(results.violations.map((v) => v.id)).toEqual([]);

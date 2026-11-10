@@ -183,14 +183,24 @@ export const deck = {
 
   workspace: {
     /** R28/R30: the open workspace's words, as the legacy page had them (moved from pages/Workspace.copy.ts under the same
-     *  names; docs/specs/m5b-redesign.md R4). The first-time view's words are RD26's, below. */
-    PANEL_TITLE: "Your documents (private, 24h)",
-    INTRO: "Upload your own documents and ask questions that cite them, with versions and what-changed between them. " +
-      "Private to you, never shown to anyone else, and deleted automatically after 24 hours.",
+     *  names; docs/specs/m5b-redesign.md R4). The first-time view's words are RD26's, as docs/decisions/002 settled them:
+     *  what it is, who can open it, when it is deleted and what is sent, three steps, the types, and Restore behind a disclosure. */
+    title: "Your documents",
+    what: "Upload your own documents, then ask questions whose answers cite them and see what changed between versions.",
+    access: "Only someone with the workspace's id and key can open it. It stays open in this browser tab.",
+    deletion: "Access ends 24 hours after you create the workspace; everything in it is then deleted automatically. " +
+      "You can delete it sooner with Delete workspace.",
+    providers: "When you ask a question, the question and the matching passages from your documents are sent to the AI model " +
+      "providers that write the answer.",
+    /** An ordered list: the numbers are the list's, never the words' */
+    steps: ["Create a workspace.", "Upload a document.", "Ask a question about it on the Ask page."],
+    /** One type per extension of lib/workspace.ts FILE_ACCEPT (the page's test maps each) */
+    types: "PDF with selectable text, Word (.docx), Markdown, plain text or HTML.",
+    restoreTrigger: "I have a workspace id and key",
+    idLabel: "Workspace id",
+    /** The visible name; the storage field and the request header keep the name "token" */
+    keyLabel: "Workspace key",
     CREATE_BUTTON: "Create a workspace",
-    HAVE_ONE: "have one already?",
-    ID_LABEL: "workspace id",
-    TOKEN_LABEL: "token",
     RESTORE_BUTTON: "Restore",
     CREATING: "creating\u2026",
     RESTORING: "restoring\u2026",

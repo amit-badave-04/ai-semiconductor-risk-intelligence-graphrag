@@ -231,8 +231,10 @@ page makes no requests of its own.
 
 The page shows its content only when the server has uploads switched on (`/api/stats`); if you see just the heading
 "Workspace", write "uploads off" and skip the rest (not a pass). Labels in the code (`Workspace.copy.ts`, moved in R4 to `deck.workspace` in `web/src/copy/deck.ts`): a section
-"Your documents (private, 24h)" with a "Create a workspace" button, restore fields "workspace id" and "token" (the token
-field is a password field), a "Restore" button, a status line; once a workspace is open: a "Delete workspace" button, a date
+"Your documents" that says what a workspace is, lists three steps as a numbered list, names the accepted file types and says
+who can open it, when it is deleted and what is sent to the AI model providers; a "Create a workspace" button; a disclosure
+button "I have a workspace id and key" that opens the restore fields "Workspace id" and "Workspace key" (the key field is a
+password field) and a "Restore" button; a status line; once a workspace is open: a "Delete workspace" button, a date
 field named "Ask as of this date instead of the current version", a select labelled "upload as:" (first option "Upload a
 new document"), and one drop-zone button whose text starts "Drag a PDF, DOCX, Markdown, TXT or HTML file here". There is no
 separate "choose file" button: the drop zone is the real button and Enter or Space on it opens the file picker.
@@ -240,11 +242,12 @@ separate "choose file" button: the drop zone is the real button and Enter or Spa
 | # | Do | Expect | Req | Result |
 |---|---|---|---|---|
 | Ws-1 | NVDA+T; press 1; D | "Workspace - semigraph"; one level 1 heading; banner, navigation "Main", main | A7 | |
-| Ws-2 | Press F (or E) through the fields | The restore fields are announced as "workspace id" and "token"; the date field as "Ask as of this date instead of the current version"; the upload target select as "upload as:". None is "edit" or blank. The file input (hidden) is named by the drop-zone text | A4 | |
+| Ws-2 | Press Enter on "I have a workspace id and key" (announced as collapsed, then expanded), then F (or E) through the fields | The restore fields are announced as "Workspace id" and "Workspace key"; the date field as "Ask as of this date instead of the current version"; the upload target select as "upload as:". None is "edit" or blank. The file input (hidden) is named by the drop-zone text | A4 | |
 | Ws-3 | To reach the rows below you need an open workspace. Creating one and uploading a file make no paid model call (no money), but each needs the Turnstile check, and each upload counts toward the server's daily upload limit. Asking a question about the uploaded file IS a paid live ask (D14, ceiling $5); you do not need one here. Use a tiny text file you do not mind sharing (persona walkthrough task 6.4 shows how to make one), and click "Delete workspace" afterwards | | | |
 | Ws-4 | Tab to the drop zone | It is announced as a button named by its text ("Drag a PDF, DOCX, Markdown, TXT or HTML file here, or click to choose one ..."); Enter and Space open the file picker; there is no second button for it | A6 | |
 | Ws-5 | After an upload starts | Progress ("uploading...", "queued", "checking", "reading the document", "splitting into sections", "embedding", "comparing with the previous version", "saving", then "ready" or "failed"; on screen "uploading" ends in an ellipsis character, "embedding" adds a count and the time left, and "failed" adds the reason; if the bot-check settings could not be loaded the row reads "could not load the bot check - reload the page and try again", and if they are still loading the upload waits up to 15 seconds for them) is spoken through the status region, once per change | A3 | |
-| Ws-6 | A refusal (for example a wrong token on Restore) | The error is next to the field and is spoken without moving | A3, A10 | |
+| Ws-6 | A refusal (for example a wrong key on Restore) | The error is next to the field and is spoken without moving | A3, A10 | |
+| Ws-6b | Create a workspace, then Delete workspace | After Create, focus is on the heading "Your documents"; after Delete, on "Create a workspace" | A7 | |
 | Ws-7 | While a workspace is open, the examples on Ask | The example buttons are disabled and the strategy select offers only the "hybrid GraphRAG ..." option | content | |
 | Ws-8 | Optional: after an upload, open the what-changed view of a second version (the version buttons are named "<document>: v2") and press Enter on a chip in it | The same drawer opens ("Evidence"), Esc closes it and focus returns to that chip | A1, A2, A5 | |
 

@@ -7,11 +7,10 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EvidenceDrawerContext, type EvidenceDrawerApi } from "@/components/useEvidenceDrawer";
 import { getStats, refreshStats, resetStatsStore } from "@/lib/statsStore";
-import { WS_SESSION_KEY } from "@/lib/workspace";
+import { FILE_ACCEPT, MSG_NOT_FOUND, WS_SESSION_KEY } from "@/lib/workspace";
 import { INERT_TURNSTILE, TurnstileContext } from "@/state/useTurnstile";
 import { WorkspaceProvider } from "@/state/WorkspaceProvider";
 import { deck } from "@/copy/deck";
-import { FILE_ACCEPT } from "@/lib/workspace";
 import { Workspace } from "../Workspace";
 
 // the Workspace page's words (R4: moved from pages/Workspace.copy.ts to the deck under the same names)
@@ -135,6 +134,8 @@ function mount(api: EvidenceDrawerApi = drawer()) {
 // the page's markup as a string (a serializer, not an HTML sink: the S1 scan lists the property names)
 const pageMarkup = () => new XMLSerializer().serializeToString(document.body);
 const store = () => window.sessionStorage.setItem(WS_SESSION_KEY, JSON.stringify({ id: ID, token: TOKEN, expires_at: EXPIRES }));
+const openRestore = async () => userEvent.click(await screen.findByRole("button", { name: copy.restoreTrigger }));
+const section = () => screen.getByRole("heading", { level: 2, name: copy.title }).closest("section") as HTMLElement;
 const open = async () => {
   store();
   const fake = installFake();
@@ -156,7 +157,7 @@ describe("hidden until uploads are enabled (R28)", () => {
     mount();
     expect(screen.getByRole("heading", { level: 1, name: "Workspace" })).toBeInTheDocument();
     await waitFor(() => expect(fake.calls.some((c) => c.url === "/api/stats")).toBe(true));
-    expect(screen.queryByText(copy.PANEL_TITLE)).toBeNull();
+    expect(screen.queryByText(copy.title)).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     expect(fake.calls.map((c) => c.url).every((u) => u === "/api/stats")).toBe(true);
   });
@@ -167,7 +168,7 @@ describe("hidden until uploads are enabled (R28)", () => {
     expect(getStats()).not.toBeNull();
     const before = fake.calls.filter((c) => c.url === "/api/stats").length;
     mount();
-    expect(await screen.findByRole("heading", { level: 2, name: copy.PANEL_TITLE })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: copy.title })).toBeInTheDocument();
     expect(fake.calls.filter((c) => c.url === "/api/stats")).toHaveLength(before);
   });
 
@@ -175,25 +176,26 @@ describe("hidden until uploads are enabled (R28)", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
     mount();
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-    expect(screen.queryByText(copy.PANEL_TITLE)).toBeNull();
+    expect(screen.queryByText(copy.title)).toBeNull();
   });
 
   it("shows the panel, the intro and the create controls when uploads are on, and sends no POST by itself (S12)", async () => {
     const fake = installFake();
     mount();
-    expect(await screen.findByRole("heading", { level: 2, name: copy.PANEL_TITLE })).toBeInTheDocument();
-    expect(screen.getByText(copy.INTRO)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: copy.title })).toBeInTheDocument();
+    expect(screen.getByText(copy.what)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: copy.CREATE_BUTTON })).toBeInTheDocument();
     expect(fake.calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 });
 
 describe("every control has a label (A4) and the token stays out of the page (S8)", () => {
-  it("names the restore id and token fields, and makes the token a password field with autocomplete off", async () => {
+  it("names the restore id and key fields, and makes the key a password field with autocomplete off", async () => {
     installFake();
     mount();
-    const id = await screen.findByLabelText(copy.ID_LABEL);
-    const token = screen.getByLabelText(copy.TOKEN_LABEL);
+    await openRestore();
+    const id = screen.getByLabelText(copy.idLabel);
+    const token = screen.getByLabelText(copy.keyLabel);
     expect(token).toHaveAttribute("type", "password");
     expect(token).toHaveAttribute("autocomplete", "off");
     expect(id).toHaveAttribute("autocomplete", "off");
@@ -211,8 +213,9 @@ describe("every control has a label (A4) and the token stays out of the page (S8
   it("restores a workspace from the typed id and token, clears both fields, and never writes the token into the page", async () => {
     const fake = installFake();
     mount();
-    await userEvent.type(await screen.findByLabelText(copy.ID_LABEL), ID);
-    await userEvent.type(screen.getByLabelText(copy.TOKEN_LABEL), TOKEN);
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.idLabel), ID);
+    await userEvent.type(screen.getByLabelText(copy.keyLabel), TOKEN);
     expect(pageMarkup()).not.toContain(TOKEN); // typing into a password field leaves no value attribute
     await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
     await screen.findByText("memo.txt", HEADING);
@@ -226,8 +229,9 @@ describe("every control has a label (A4) and the token stays out of the page (S8
     const fake = installFake();
     fake.restoreOk.value = false;
     mount();
-    await userEvent.type(await screen.findByLabelText(copy.ID_LABEL), ID);
-    await userEvent.type(screen.getByLabelText(copy.TOKEN_LABEL), TOKEN);
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.idLabel), ID);
+    await userEvent.type(screen.getByLabelText(copy.keyLabel), TOKEN);
     await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
     expect(await screen.findByText("workspace not found")).toBeInTheDocument();
     expect(pageMarkup()).not.toContain(TOKEN);
@@ -236,9 +240,162 @@ describe("every control has a label (A4) and the token stays out of the page (S8
   it("does nothing, with no request, when Restore is pressed with an empty field", async () => {
     const fake = installFake();
     mount();
-    await userEvent.type(await screen.findByLabelText(copy.ID_LABEL), ID);
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.idLabel), ID);
     await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
     expect(fake.calls.filter((c) => c.url.startsWith("/api/workspace"))).toEqual([]);
+  });
+});
+
+// docs/specs/m5b-redesign.md RD26 and docs/decisions/002-r4-workspace-copy.md: the first-time view says what a workspace is, who
+// can open it, when it is deleted and what is sent to the model providers, lists three steps and the accepted types, and keeps
+// Restore behind a disclosure. One status region serves the whole panel; focus goes to the h2 after create or restore, and to
+// Create after delete (plan D4).
+const TYPE_OF_EXTENSION: Record<string, string> = {
+  ".pdf": "PDF with selectable text",
+  ".docx": "Word (.docx)",
+  ".md": "Markdown",
+  ".markdown": "Markdown",
+  ".txt": "plain text",
+  ".html": "HTML",
+  ".htm": "HTML",
+};
+
+describe("the first-time view (RD26, decision 002)", () => {
+  it("says what it is, who can open it, when it is deleted and what is sent, in the approved words", async () => {
+    installFake();
+    mount();
+    await screen.findByRole("heading", { level: 2, name: "Your documents" });
+    expect(copy.what).toBe("Upload your own documents, then ask questions whose answers cite them and see what changed between versions.");
+    expect(copy.access).toBe("Only someone with the workspace's id and key can open it. It stays open in this browser tab.");
+    expect(copy.deletion).toBe(
+      `Access ends 24 hours after you create the workspace; everything in it is then deleted automatically. You can delete it sooner with ${copy.DELETE_BUTTON}.`,
+    );
+    expect(copy.providers).toBe(
+      "When you ask a question, the question and the matching passages from your documents are sent to the AI model providers that write the answer.",
+    );
+    for (const sentence of [copy.what, copy.access, copy.deletion, copy.providers, copy.types]) expect(screen.getByText(sentence)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/private|never shown|cannot reopen|15 minutes/i);
+  });
+
+  it("lists the three steps as an ordered list with no numbers in their words", async () => {
+    installFake();
+    mount();
+    const list = (await screen.findByText(copy.steps[0])).closest("ol") as HTMLOListElement;
+    const items = within(list).getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["Create a workspace.", "Upload a document.", "Ask a question about it on the Ask page."]);
+    for (const item of items) expect(item).not.toMatch(/\d/);
+  });
+
+  it("names a type for every extension the upload accepts", () => {
+    expect(copy.types).toBe("PDF with selectable text, Word (.docx), Markdown, plain text or HTML.");
+    for (const extension of FILE_ACCEPT.split(",")) {
+      expect(TYPE_OF_EXTENSION[extension], extension).toBeDefined();
+      expect(copy.types).toContain(TYPE_OF_EXTENSION[extension]);
+    }
+  });
+
+  it("keeps the drop zone's name to its own sentence and describes it by the types line", async () => {
+    await open();
+    const zone = screen.getByRole("button", { name: copy.DROP_TEXT });
+    const described = document.getElementById(zone.getAttribute("aria-describedby") ?? "missing");
+    expect(described?.textContent).toBe(copy.types);
+  });
+
+  it("keeps the restore fields out of the page until the disclosure opens, from a click, Enter or Space", async () => {
+    installFake();
+    mount();
+    const trigger = await screen.findByRole("button", { name: "I have a workspace id and key" });
+    expect(screen.queryByLabelText("Workspace id")).toBeNull();
+    expect(screen.queryByLabelText("Workspace key")).toBeNull();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    trigger.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Workspace id")).toBeInTheDocument();
+    await userEvent.keyboard(" ");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Workspace key")).toBeNull();
+  });
+
+  it("forgets a typed key when the disclosure closes", async () => {
+    installFake();
+    mount();
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.keyLabel), TOKEN);
+    await userEvent.click(screen.getByRole("button", { name: copy.restoreTrigger }));
+    await openRestore();
+    expect((screen.getByLabelText(copy.keyLabel) as HTMLInputElement).value).toBe("");
+  });
+
+  it("sends nothing for a malformed id and shows neither the id nor the key", async () => {
+    const fake = installFake();
+    mount();
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.idLabel), "not-an-id");
+    await userEvent.type(screen.getByLabelText(copy.keyLabel), TOKEN);
+    await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
+    expect(await screen.findByText(MSG_NOT_FOUND)).toBeInTheDocument();
+    expect(fake.calls.filter((c) => c.url.startsWith("/api/workspace"))).toEqual([]);
+    for (const typed of ["not-an-id", TOKEN]) {
+      expect(pageMarkup()).not.toContain(typed);
+      expect(document.body.textContent).not.toContain(typed);
+    }
+  });
+
+  it("keeps focus in the panel after an unknown id, and the message after the disclosure closes", async () => {
+    const fake = installFake();
+    fake.restoreOk.value = false;
+    mount();
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.idLabel), ID);
+    await userEvent.type(screen.getByLabelText(copy.keyLabel), TOKEN);
+    await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
+    expect(await screen.findByText(MSG_NOT_FOUND)).toBeInTheDocument();
+    expect(section().contains(document.activeElement)).toBe(true);
+    const status = within(section()).getByRole("status");
+    expect(screen.getByLabelText(copy.keyLabel)).toHaveAttribute("aria-describedby", status.id);
+    await userEvent.click(screen.getByRole("button", { name: copy.restoreTrigger }));
+    expect(within(section()).getByRole("status")).toHaveTextContent(MSG_NOT_FOUND);
+  });
+
+  it("has exactly one status region in the panel, before and after a workspace opens", async () => {
+    installFake();
+    mount();
+    await openRestore();
+    expect(within(section()).getAllByRole("status")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: copy.CREATE_BUTTON }));
+    await screen.findByText(copy.DELETE_BUTTON);
+    expect(within(section()).getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("refuses a restore while a create is still running", async () => {
+    const fake = installFake();
+    fake.createDelayMs.value = 80;
+    mount();
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.idLabel), ID);
+    await userEvent.type(screen.getByLabelText(copy.keyLabel), TOKEN);
+    await userEvent.click(screen.getByRole("button", { name: copy.CREATE_BUTTON }));
+    await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
+    await screen.findByText(copy.DELETE_BUTTON);
+    expect(fake.calls.filter((c) => c.url === `/api/workspace/${ID}`)).toEqual([]);
+  });
+
+  it("moves focus to the h2 after create and after restore, and to Create after delete", async () => {
+    installFake();
+    mount();
+    await userEvent.click(await screen.findByRole("button", { name: copy.CREATE_BUTTON }));
+    await screen.findByText(copy.DELETE_BUTTON);
+    await waitFor(() => expect(screen.getByRole("heading", { level: 2, name: copy.title })).toHaveFocus());
+    await userEvent.click(screen.getByRole("button", { name: copy.DELETE_BUTTON }));
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.CREATE_BUTTON })).toHaveFocus());
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.idLabel), ID);
+    await userEvent.type(screen.getByLabelText(copy.keyLabel), TOKEN);
+    await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
+    await screen.findByText("memo.txt", HEADING);
+    await waitFor(() => expect(screen.getByRole("heading", { level: 2, name: copy.title })).toHaveFocus());
   });
 });
 
@@ -471,17 +628,15 @@ describe("what changed", () => {
   });
 });
 
-describe("the copy is the legacy page's, character for character (R30)", () => {
+// R4 (decision 002): the first-time view's words are RD26's (tested above); the open workspace's stay the legacy page's.
+describe("the open workspace's copy is the legacy page's, character for character (R30)", () => {
   const html = readFileSync(path.resolve(import.meta.dirname, "../../../../src/semigraph/serve/static/index.html"), "utf8");
   const squash = (s: string) => s.replace(/\s+/g, " ");
   const legacy = squash(html);
   const unescape = (s: string) => s.replace(/&ldquo;/g, "\u201c").replace(/&rdquo;/g, "\u201d").replace(/&quot;/g, '"');
 
   it.each([
-    ["PANEL_TITLE", copy.PANEL_TITLE],
-    ["INTRO", copy.INTRO],
     ["CREATE_BUTTON", copy.CREATE_BUTTON],
-    ["HAVE_ONE", copy.HAVE_ONE],
     ["RESTORE_BUTTON", copy.RESTORE_BUTTON],
     ["DELETE_BUTTON", copy.DELETE_BUTTON],
     ["AS_OF_TITLE", copy.AS_OF_TITLE],
@@ -493,9 +648,7 @@ describe("the copy is the legacy page's, character for character (R30)", () => {
     expect(unescape(legacy)).toContain(squash(text));
   });
 
-  it("keeps the placeholders and the hint of the legacy fields", () => {
-    expect(legacy).toContain(`placeholder="${copy.ID_LABEL}"`);
-    expect(legacy).toContain(`placeholder="${copy.TOKEN_LABEL}"`);
+  it("keeps the hint and the words of the open workspace's line", () => {
     expect(legacy).toContain(copy.AS_OF_HINT);
     expect(legacy).toContain(`${copy.WORKSPACE_WORD} <code id="wsIdLabel">`);
     expect(legacy).toContain(copy.EXPIRES_WORD);
