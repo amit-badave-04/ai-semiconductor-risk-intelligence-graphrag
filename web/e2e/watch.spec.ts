@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { PREVIEW } from "./servers.ts";
+import { ASK_HEADING, PREVIEW } from "./servers.ts";
 import { problems, watch } from "./support.ts";
 
 // The watcher the other specs lean on must not be vacuous: here it is shown to SEE each kind of problem it reports.
@@ -40,6 +40,6 @@ test("the watcher sees a console error, a page error and a failed response", asy
 test("a clean page has no problems", async ({ page }) => {
   const w = await watch(page, PREVIEW);
   await page.goto(`${PREVIEW}/v2/`);
-  await expect(page.getByRole("heading", { level: 1, name: "Ask" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: ASK_HEADING })).toBeVisible();
   expect(await problems(w)).toEqual([]);
 });

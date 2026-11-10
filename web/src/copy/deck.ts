@@ -42,7 +42,8 @@ export const deck = {
     groundingLead: "Answers cite their sources: a ",
     groundingBetween: ", a ",
     groundingBeforeLast: " or a ",
-    groundingEnd: ". Click one to see an example.",
+    // "Click one to see an example." joins this when the stamps open their example (R1 slice 3b, SR3, SR9)
+    groundingEnd: ".",
     stamp: {
       passage: "filing passage",
       number: "reported number",

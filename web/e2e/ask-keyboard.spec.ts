@@ -1,4 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
+import { chooseDepth, firstStarter } from "./support.ts";
 import { expect, test, type Page } from "@playwright/test";
 import { PREVIEW } from "./servers.ts";
 
@@ -9,7 +10,7 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 // The first packaged example is cached from the start and replays the same recorded answer every time (a live answer is cached
 // after its first ask, so a second ask of it would not be live).
 async function cachedQuestion(page: Page): Promise<string> {
-  const first = page.locator("#examples button").first();
+  const first = firstStarter(page);
   await expect(first).toBeVisible();
   return (await first.innerText()).trim();
 }
@@ -17,7 +18,8 @@ async function cachedQuestion(page: Page): Promise<string> {
 test("every control of the Ask page is found by its label (A4)", async ({ page }) => {
   await page.goto(`${PREVIEW}/v2/`);
   await expect(page.getByLabel("Your question")).toBeVisible();
-  await expect(page.getByLabel("Retrieval strategy")).toBeVisible();
+  await expect(page.getByRole("button", { name: /More options/ })).toBeVisible();
+  await chooseDepth(page, "Standard (recommended)"); // RD7: Depth is a labelled radio group
   await expect(page.getByRole("button", { name: "Ask", exact: true })).toBeVisible();
   const results = await new AxeBuilder({ page }).withRules(["label", "select-name"]).analyze();
   expect(results.violations.map((v) => v.id)).toEqual([]);

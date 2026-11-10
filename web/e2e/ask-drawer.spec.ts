@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { PREVIEW } from "./servers.ts";
-import { problems, watch } from "./support.ts";
+import { firstStarter, problems, watch } from "./support.ts";
 
 // R24 / A1 / A2 / A5 in a real browser: the evidence drawer is a non-modal complementary landmark named Evidence, closed it is out
 // of the tab order and the accessibility tree, open it takes focus on the close button, Escape closes it, a second chip works while
@@ -13,7 +13,7 @@ const drawer = (page: Page) => page.locator("aside[aria-label='Evidence']");
 const chips = (page: Page) => page.locator("#answer [data-chip-key]");
 
 async function answered(page: Page) {
-  const first = page.locator("#examples button").first();
+  const first = firstStarter(page);
   await expect(first).toBeVisible();
   const question = (await first.innerText()).trim();
   await box(page).fill(question);
@@ -76,7 +76,7 @@ test("when a new answer replaced the opener, closing the drawer puts focus on th
   await expect(chips(page).first()).toBeVisible();
   await page.getByRole("button", { name: "Close evidence" }).click();
   await expect(drawer(page)).toHaveAttribute("inert", "");
-  await expect(page.getByRole("heading", { name: "Ask the graph" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Your question" })).toBeFocused();
 });
 
 test("a route change closes the drawer without taking focus back: the new page's h1 has it", async ({ page }) => {

@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 /** What a page did while the test drove it (S5: zero violations, zero console errors, one origin, every request answered). */
 export interface Watch {
@@ -119,4 +119,16 @@ export const SHELL_API_PATHS: readonly string[] = ["/api/config", "/api/freshnes
 export function isPageApiRequest(url: string): boolean {
   const { pathname } = new URL(url);
   return pathname.startsWith("/api/") && !SHELL_API_PATHS.includes(pathname);
+}
+
+/** The first starter question of the Ask page (docs/specs/m5b-redesign.md RD5: six curated examples, answered from the cache). */
+export function firstStarter(page: Page): Locator {
+  return page.getByRole("region", { name: /Or try an example/ }).getByRole("listitem").first().getByRole("button");
+}
+
+/** Choose a Depth in "More options" (RD7: Standard = hybrid, Deep research = agent, Basic text search = vector). */
+export async function chooseDepth(page: Page, depth: "Standard (recommended)" | "Deep research" | "Basic text search"): Promise<void> {
+  const toggle = page.getByRole("button", { name: /More options/ });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await page.getByRole("group", { name: "Depth" }).getByRole("radio", { name: depth }).check();
 }

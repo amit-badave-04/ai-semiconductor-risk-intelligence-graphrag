@@ -17,9 +17,10 @@ import { Ask } from "../Ask";
 export const EXAMPLES = {
   source: "s",
   examples: [
-    { id: "N1", type: "numeric", question: "What was Nvidia's total revenue for the fiscal year ended January 25, 2026?" },
-    { id: "N2", type: "numeric", question: "How much did AMD spend on research?" },
-    { id: "R1", type: "refusal", question: "Samsung?" },
+    // the first is a curated starter (docs/specs/m5b-redesign.md RD5), so it is on the page without opening "Show all examples"
+    { id: "N2", type: "numeric", question: "What was Nvidia's total revenue for the fiscal year ended January 25, 2026?" },
+    { id: "Z1", type: "numeric", question: "How much did AMD spend on research?" },
+    { id: "U1", type: "refusal", question: "Samsung?" },
   ],
 };
 

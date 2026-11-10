@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { PREVIEW, SITE_KEY } from "./servers.ts";
-import { CLOUDFLARE, problems, stubTurnstile, watch, type TurnstileStubState } from "./support.ts";
+import { ASK_HEADING, PREVIEW, SITE_KEY } from "./servers.ts";
+import { CLOUDFLARE, chooseDepth, firstStarter, problems, stubTurnstile, type TurnstileStubState, watch } from "./support.ts";
 
 // R22 / R31 / R33(1) / S12 in a real browser, over the fixture server (the real routers and the real built app, with fakes for the
 // model; no LLM, no Neo4j): a cached example, a live answer with its checks, an escalation, errors, the agent's steps, a refusal, a
@@ -41,8 +41,8 @@ test.describe("on the preview server", () => {
     const w = await watch(page, PREVIEW);
     const asks = countAsks(page);
     await page.goto(`${PREVIEW}/v2/`);
-    await expect(page.getByRole("heading", { level: 1, name: "Ask" })).toBeVisible();
-    await page.locator("#examples button").first().click();
+    await expect(page.getByRole("heading", { level: 1, name: ASK_HEADING })).toBeVisible();
+    await firstStarter(page).click();
     await expect(status(page)).toHaveText("served from cache \u2014 no model call");
     expect(asks.count()).toBe(1);
     await expect(page.locator("#answer [data-chip-key]").first()).toBeVisible();
@@ -56,7 +56,7 @@ test.describe("on the preview server", () => {
       if (request.method() === "POST") posts.push(request.url());
     });
     await page.goto(`${PREVIEW}/v2/`);
-    await expect(page.locator("#examples button").first()).toBeVisible();
+    await expect(firstStarter(page)).toBeVisible();
     await page.waitForLoadState("networkidle");
     expect(posts).toEqual([]);
   });
@@ -79,7 +79,7 @@ test.describe("on the preview server", () => {
     test.use({ colorScheme: "dark" });
     test("a live answer with its badges and warnings has no serious axe violation", async ({ page }) => {
       await page.goto(`${PREVIEW}/v2/`);
-      await page.getByRole("combobox", { name: "Retrieval strategy" }).selectOption("vector");
+      await chooseDepth(page, "Basic text search");
       await ask(page, QUESTIONS.escalated); // a key of its own: the server caches a live answer after its first ask
       await expect(status(page)).toHaveText("done");
       await expect(page.locator("#meta")).toContainText("escalated after a failed check");
@@ -114,7 +114,7 @@ test.describe("on the preview server", () => {
 
   test("the agent strategy is offered, and its answer shows the steps timeline", async ({ page }) => {
     await page.goto(`${PREVIEW}/v2/`);
-    await page.getByRole("combobox", { name: "Retrieval strategy" }).selectOption("agent");
+    await chooseDepth(page, "Deep research");
     await expect(page.getByText(/planning model/)).toBeVisible();
     await ask(page, QUESTIONS.live);
     await expect(status(page)).toHaveText("done");
@@ -133,7 +133,7 @@ test.describe("on the preview server", () => {
       await route.continue();
     });
     await page.goto(`${PREVIEW}/v2/`);
-    await page.getByRole("combobox", { name: "Retrieval strategy" }).selectOption("vector");
+    await chooseDepth(page, "Basic text search");
     await ask(page, QUESTIONS.live);
     await expect(askButton(page)).toBeDisabled();
     await page.getByRole("link", { name: "How it works" }).click();
@@ -163,7 +163,7 @@ test.describe("on the site-key server (R33(1): an ask is never held back for a b
     const asks = countAsks(page);
     await page.goto(`${SITE_KEY}/v2/`);
     await expect(page.locator("[data-widget]")).toHaveCount(1);
-    await page.locator("#examples button").first().click();
+    await firstStarter(page).click();
     await expect(status(page)).toHaveText("served from cache \u2014 no model call");
     expect(asks.count()).toBe(1);
     expect(await problems(w)).toEqual([]);
@@ -176,7 +176,7 @@ test.describe("on the site-key server (R33(1): an ask is never held back for a b
     const asks = countAsks(page);
     await page.goto(`${SITE_KEY}/v2/`);
     await expect(page.locator("[data-widget]")).toHaveCount(1);
-    await page.getByRole("combobox", { name: "Retrieval strategy" }).selectOption("vector");
+    await chooseDepth(page, "Basic text search");
     await ask(page, QUESTIONS.live);
     await expect(status(page)).toContainText("(the bot check below has not completed yet");
     await expect(status(page)).toHaveClass(/destructive/);

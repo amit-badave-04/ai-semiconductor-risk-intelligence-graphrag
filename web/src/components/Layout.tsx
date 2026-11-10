@@ -7,13 +7,24 @@ import { useEvidenceDrawer } from "./useEvidenceDrawer";
 
 const SITE_NAME = "semigraph";
 
+interface PageHeadingProps {
+  title: string;
+  /** The tab's name when the h1 is a sentence (the Ask page's "Ask about 13 chip and AI companies." is "Ask"). */
+  documentTitle?: string;
+  /** The display size of the type scale (RD1: 44 px), for the Ask page's headline only. */
+  display?: boolean;
+}
+
 /** The page's h1. It names the document (A7) and takes focus, via {@link Layout}, when the route changes. */
-export function PageHeading({ title }: { title: string }) {
+export function PageHeading({ title, documentTitle = title, display = false }: PageHeadingProps) {
   useEffect(() => {
-    document.title = `${title} · ${SITE_NAME}`;
-  }, [title]);
+    document.title = `${documentTitle} · ${SITE_NAME}`;
+  }, [documentTitle]);
   return (
-    <h1 tabIndex={-1} className="mb-4 text-2xl font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <h1
+      tabIndex={-1}
+      className={`mb-4 font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring ${display ? "text-2xl font-bold sm:text-3xl" : "text-2xl"}`}
+    >
       {title}
     </h1>
   );

@@ -103,6 +103,22 @@ def test_the_cached_question_is_one_of_the_listed_examples(client):
     assert replay.cached_question() in listed
 
 
+# docs/specs/m5b-redesign.md RD5: the Ask page leads with six curated starters, so the fixture server holds a saved answer for
+# each (the recorded cached_done answer), and a newcomer's first click is the path the e2e specs exercise.
+def test_the_fixture_starter_ids_are_the_web_app_s_curated_list():
+    source = (Path(__file__).resolve().parents[1] / "web" / "src" / "lib" / "starters.ts").read_text(encoding="utf-8")
+    block = source[source.index("export const STARTERS"):source.index("];", source.index("export const STARTERS"))]
+    import re
+    assert tuple(re.findall(r'id: "(\w+)"', block)) == replay.STARTER_IDS
+
+
+@pytest.mark.parametrize("starter", replay.STARTER_IDS)
+def test_every_starter_is_answered_from_the_cache(client, starter):
+    question = next(e["question"] for e in client.get("/api/examples").json()["examples"] if e["id"] == starter)
+    events = events_of(ask(client, question))
+    assert [e["event"] for e in events] == ["done"] and events[0]["cached"] is True
+
+
 @pytest.mark.parametrize("key, fixture", [("live", "live_hybrid"), ("escalated", "escalated"),
                                           ("error_before", "error_before_delta"), ("error_after", "error_after_delta")])
 def test_each_question_replays_its_recorded_event_sequence(client, key, fixture):

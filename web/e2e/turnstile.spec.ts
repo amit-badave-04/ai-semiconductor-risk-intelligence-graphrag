@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { PREVIEW, SITE_KEY } from "./servers.ts";
+import { ASK_HEADING, PREVIEW, SITE_KEY } from "./servers.ts";
 import { CLOUDFLARE, problems, stubTurnstile, watch, type TurnstileStubState } from "./support.ts";
 
 // R33(3), R8, S5 in a real browser: with a site key the shell loads the Cloudflare script from challenges.cloudflare.com ONLY
@@ -37,7 +37,7 @@ test("without a site key no third-party script is requested and no widget exists
   const requested = await stubTurnstile(page);
   const w = await watch(page, PREVIEW);
   await page.goto(`${PREVIEW}/v2/`);
-  await expect(page.getByRole("heading", { level: 1, name: "Ask" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: ASK_HEADING })).toBeVisible();
   await page.waitForLoadState("networkidle");
   expect(requested).toEqual([]);
   await expect(page.locator("[data-widget]")).toHaveCount(0);

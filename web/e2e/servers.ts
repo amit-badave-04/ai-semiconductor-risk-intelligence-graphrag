@@ -28,14 +28,16 @@ export const SITE_KEY = `http://127.0.0.1:${SITE_KEY_PORT}`;
 /** The dummy key the site-key server answers /api/config with (not a Cloudflare key). */
 export const DUMMY_SITE_KEY = "dummy-site-key";
 
-/** The five pages as served under each prefix, with the h1 each one shows and the name of its link in the main navigation
+/** The five pages as served under each prefix, with the h1 each one shows, the tab title, and the name of its link in the main navigation
  *  (docs/specs/m5b-redesign.md RD3; the Freshness link is the header's freshness line, which the fixture server's disabled
  *  monitor words "Data status unavailable"; the link name starts "Freshness: " for screen readers). */
 export const NAV_FRESHNESS = "Freshness: Data status unavailable";
+export const ASK_HEADING = "Ask about 13 chip and AI companies.";
 export const PAGES = [
-  { path: "", heading: "Ask", nav: "Ask" },
-  { path: "company/NVDA/", heading: "Nvidia (NVDA)", nav: "Companies" },
-  { path: "workspace/", heading: "Workspace", nav: "Workspace" },
-  { path: "freshness/", heading: "Freshness", nav: NAV_FRESHNESS },
-  { path: "method/", heading: "Method & Evidence", nav: "How it works" },
+  // the Ask page's h1 is a sentence (docs/specs/m5b-redesign.md RD4); its tab is named "Ask"
+  { path: "", heading: ASK_HEADING, title: "Ask", nav: "Ask" },
+  { path: "company/NVDA/", heading: "Nvidia (NVDA)", title: "Nvidia (NVDA)", nav: "Companies" },
+  { path: "workspace/", heading: "Workspace", title: "Workspace", nav: "Workspace" },
+  { path: "freshness/", heading: "Freshness", title: "Freshness", nav: NAV_FRESHNESS },
+  { path: "method/", heading: "Method & Evidence", title: "Method & Evidence", nav: "How it works" },
 ] as const;

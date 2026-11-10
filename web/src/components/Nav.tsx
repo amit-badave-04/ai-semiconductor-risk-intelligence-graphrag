@@ -36,7 +36,8 @@ function FreshnessLink() {
   const text = shellFreshness(freshness, failed);
   const active = useMatch({ path: "/freshness", end: true }) !== null;
   return (
-    <li id="shell-freshness" className="min-h-11">
+    // a row of its own below md, so nothing beside it moves when the line arrives (CLS)
+    <li id="shell-freshness" className="min-h-11 basis-full md:basis-auto">
       {text !== "" && (
         <Link
           to="/freshness/"

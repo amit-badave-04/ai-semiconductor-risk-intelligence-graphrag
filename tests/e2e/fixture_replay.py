@@ -59,6 +59,17 @@ def cached_question() -> str:
     return load_examples()["examples"][0]["question"]
 
 
+# The Ask page's six curated starters (web/src/lib/starters.ts STARTERS, pinned by tests/test_fixture_replay.py): each is seeded
+# with the recorded cached answer too, so a newcomer's first click is answered from the cache, as in production.
+STARTER_IDS = ("N2", "D3", "Q2", "R1", "T7", "NG15")
+
+
+def cached_questions() -> list[str]:
+    """Every question seeded into the answer cache: the first packaged example and the starters."""
+    by_id = {e["id"]: e["question"] for e in load_examples()["examples"]}
+    return [cached_question(), *(by_id[i] for i in STARTER_IDS)]
+
+
 # ---------------------------------------------------------------- /api/ask
 
 def events_for(question: str, strategy: str, workspace: bool) -> list[dict]:
@@ -79,8 +90,9 @@ async def replay_stream(question, driver=None, embedder=None, strategy="hybrid",
 
 def seed_cache(app) -> None:
     done = {k: v for k, v in recorded_events("cached_done")[0].items() if k not in ("event", "cached")}
-    key = store.cache_key(cached_question(), "hybrid", getattr(app.state, "snapshot_id", ""))
-    app.state.state.cache[key] = done
+    for question in cached_questions():
+        key = store.cache_key(question, "hybrid", getattr(app.state, "snapshot_id", ""))
+        app.state.state.cache[key] = dict(done)
 
 
 # ---------------------------------------------------------------- public evidence of the cited ids

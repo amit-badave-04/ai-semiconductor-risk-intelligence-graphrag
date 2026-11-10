@@ -38,7 +38,9 @@ describe("every page renders one h1 in the main landmark and names the document"
     const headings = screen.getAllByRole("heading", { level: 1 });
     expect(headings).toHaveLength(1);
     expect(screen.getByRole("main")).toContainElement(headings[0]);
-    expect(document.title).toBe(`${headings[0].textContent} · semigraph`);
+    // the Ask page's h1 is a sentence (docs/specs/m5b-redesign.md RD4), so its tab is named by the page's nav name instead
+    const name = url === "/" ? "Ask" : headings[0].textContent;
+    expect(document.title).toBe(`${name} · semigraph`);
   });
 
   it("under the /v2 basename the same pages answer at /v2/...", () => {

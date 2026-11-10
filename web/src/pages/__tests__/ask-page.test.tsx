@@ -2,10 +2,10 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureBytes } from "@/lib/__tests__/fixtures";
 import { responseOf } from "@/lib/__tests__/sse-helpers";
-import { groupExamples } from "@/lib/askStatus";
 import { EXAMPLES, mountAsk } from "./askHarness";
 
-// R22 / R23 / A3 / A4 / S12: the Ask page. Two titles of tests/ui/checks.test.mjs (the example panel) are ported here.
+// R22 / R23 / A3 / A4 / S12: the Ask page. Two titles of tests/ui/checks.test.mjs (the example panel) are ported here; since
+// docs/specs/m5b-redesign.md RD5 the examples are six starters grouped by job and the rest by company under "Show all examples".
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -13,31 +13,35 @@ const box = () => screen.getByRole("textbox", { name: "Your question" });
 const askButton = () => screen.getByRole("button", { name: "Ask" });
 const status = () => screen.getByRole("status");
 const live = (name: string) => () => responseOf(fixtureBytes(name));
+const startersRegion = () => screen.findByRole("region", { name: /Or try an example/ });
+const questionButtons = (root: HTMLElement) => within(root).queryAllByRole("button").filter((b) => b.closest("li") !== null);
 
 describe("tests/ui/checks.test.mjs: the example panel", () => {
   it("with no saved example the panel says so instead of listing questions that would cost money", async () => {
     mountAsk({ examples: { source: "s", examples: [] } });
     expect(await screen.findByText(/No saved example answers/)).toBeInTheDocument();
-    expect(within(document.querySelector("#examples") as HTMLElement).queryAllByRole("button")).toHaveLength(0);
-    expect(groupExamples(undefined)).toEqual([]);
-    expect(groupExamples({})).toEqual([]);
+    expect(questionButtons(await startersRegion())).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /Show all examples/ })).toBeNull();
   });
 
-  it("examples are grouped by type and escaped", async () => {
-    mountAsk({
+  it("examples are grouped (starters by job, the rest by company) and escaped", async () => {
+    const env = mountAsk({
       examples: {
         examples: [
-          { id: "N1", type: "numeric", question: "Revenue?" },
+          { id: "N1", type: "numeric", question: "Nvidia revenue?" },
           { id: "N2", type: "numeric", question: '"><b>x</b>' },
           { id: "U1", type: "refusal", question: "Samsung?" },
         ],
       },
     });
-    const panel = document.querySelector("#examples") as HTMLElement;
-    await waitFor(() => expect(within(panel).getAllByRole("button")).toHaveLength(3));
-    expect(panel.querySelectorAll("[data-example-type]")).toHaveLength(2);
-    expect(panel.querySelector("b")).toBeNull();
-    expect(within(panel).getByRole("button", { name: '"><b>x</b>' })).toBeInTheDocument();
+    const starters = await startersRegion();
+    await waitFor(() => expect(questionButtons(starters)).toHaveLength(1));
+    expect(within(starters).getByRole("button", { name: '"><b>x</b>' })).toBeInTheDocument();
+    await env.user.click(screen.getByRole("button", { name: "Show all examples, grouped by company" }));
+    const all = document.getElementById("examples") as HTMLElement;
+    expect(questionButtons(all)).toHaveLength(2);
+    expect(within(all).getAllByRole("heading").map((h) => h.textContent)).toEqual(["Nvidia", "Other"]);
+    expect(starters.querySelector("b")).toBeNull();
   });
 });
 
@@ -51,11 +55,11 @@ describe("the page", () => {
   it("every control has a programmatic label (A4) and the status is a polite live region (A3)", async () => {
     mountAsk();
     expect(box()).toHaveAttribute("maxlength", "500");
-    expect(screen.getByRole("combobox", { name: "Retrieval strategy" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /More options/ })).toBeInTheDocument(); // Depth's radios are labelled (ask-first-screen.test.tsx)
     expect(askButton()).toBeInTheDocument();
     expect(status()).toHaveAttribute("aria-live", "polite");
-    expect(screen.getByRole("heading", { level: 1, name: "Ask" })).toBeInTheDocument();
-    const heading = screen.getByRole("heading", { name: "Ask the graph" });
+    expect(screen.getByRole("heading", { level: 1, name: "Ask about 13 chip and AI companies." })).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { name: "Your question" });
     expect(heading).toHaveAttribute("id", "ask-heading");
     expect(heading).toHaveAttribute("tabindex", "-1");
   });
@@ -165,12 +169,12 @@ describe("the page", () => {
     expect(status().className).toMatch(/destructive/);
   });
 
-  it("the stats are reloaded after an ask, and the limits hint and the cost note come from them", async () => {
+  it("the stats are reloaded after an ask, and the cost line and the cost note come from them", async () => {
     const env = mountAsk({
       ask: live("cached_done"),
-      stats: { limits: { per_ip: 5 }, models: { llm: "anthropic/claude-sonnet-5", escalation: "openai/gpt-6-luna" } },
+      stats: { limits: { per_ip: "4 per 10 min", per_ip_per_day: 9 }, models: { llm: "anthropic/claude-sonnet-5", escalation: "openai/gpt-6-luna" } },
     });
-    await screen.findByText(/limit: 5 per address \u00b7 model: claude-sonnet-5/);
+    await screen.findByText("Free to use, up to 4 live questions every 10 minutes (9 a day).");
     expect(document.body.textContent).toContain("one claude-sonnet-5 call each, plus a second gpt-6-luna call when the draft fails its checks");
     const before = env.statsCalls().length;
     await env.user.type(box(), "q");
@@ -182,7 +186,10 @@ describe("the page", () => {
     mountAsk();
     expect(screen.getByText(/Accuracy figures shown on earlier versions of this page are withdrawn/)).toBeInTheDocument();
     expect(screen.getByText(/How reliable are change claims\?/)).toBeInTheDocument();
-    for (const a of Array.from(document.querySelectorAll("a"))) expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+    // every link that opens a new tab is opened safely (the in-app links, such as a company page, stay in the tab)
+    const external = Array.from(document.querySelectorAll("a")).filter((a) => a.getAttribute("target") === "_blank");
+    expect(external.length).toBeGreaterThan(0);
+    for (const a of external) expect(a.getAttribute("rel")).toBe("noopener noreferrer");
     expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", "https://github.com/amit-badave-04/ai-semiconductor-risk-intelligence-graphrag");
   });
 });

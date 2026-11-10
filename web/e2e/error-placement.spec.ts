@@ -87,7 +87,7 @@ async function askAndMeet(page: Page, refusal: Refusal): Promise<void> {
 for (const refusal of ASK_REFUSALS) {
   test(`${refusal.name} (${refusal.status}): announced in the Ask card's status region, next to the Ask button`, async ({ page }) => {
     await askAndMeet(page, refusal);
-    const askCard = page.getByRole("region", { name: "Ask the graph" });
+    const askCard = page.locator("section", { has: page.getByRole("button", { name: "Ask", exact: true }) });
     const region = askCard.getByRole("status");
     await expect(region).toContainText(refusal.detail);
     await expect(region).toHaveAttribute("aria-live", "polite");

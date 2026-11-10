@@ -1,4 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
+import { chooseDepth } from "./support.ts";
 import { expect, test, type Page } from "@playwright/test";
 import { PREVIEW } from "./servers.ts";
 
@@ -22,7 +23,8 @@ async function askForError(page: Page) {
 test("the Ask page's controls are found by label, and axe's label rules are clean (A4)", async ({ page }) => {
   await page.goto(`${PREVIEW}/v2/`);
   await expect(page.getByLabel("Your question")).toBeVisible();
-  await expect(page.getByLabel("Retrieval strategy")).toBeVisible();
+  await expect(page.getByRole("button", { name: /More options/ })).toBeVisible();
+  await chooseDepth(page, "Standard (recommended)"); // RD7: Depth is a labelled radio group, checked by axe below
   await expect(page.getByRole("button", { name: "Ask", exact: true })).toBeVisible();
   const results = await new AxeBuilder({ page }).withRules(["label", "select-name"]).analyze();
   expect(results.violations.map((v) => v.id)).toEqual([]);
