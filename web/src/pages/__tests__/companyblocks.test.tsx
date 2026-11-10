@@ -20,7 +20,7 @@ const EMPTY: Dossier = {
   rules: [],
 };
 
-const NULL_EDGE: Edge = { source: null, relation: null, target: null, status: null, quote: null, chunk_ids: [] };
+const NULL_EDGE: Edge = { source: null, relation: null, target: null, status: null, quote: null, chunk_ids: [], quoteChunk: null };
 const FULL_EDGE: Edge = {
   source: "Nvidia",
   relation: "DEPENDS_ON",
@@ -28,6 +28,7 @@ const FULL_EDGE: Edge = {
   status: "Active",
   quote: "We depend on TSMC.",
   chunk_ids: [CHUNK],
+  quoteChunk: CHUNK,
 };
 const NULL_RULE: Rule = { ...NULL_EDGE, rule_id: null, date: null, kind: null, cite: null };
 const FULL_RULE: Rule = { ...FULL_EDGE, rule_id: "fr:2026-01234", date: "2026-03-01", kind: "Rule", cite: "fr:2026-01234" };

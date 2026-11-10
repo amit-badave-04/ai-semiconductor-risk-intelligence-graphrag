@@ -51,7 +51,6 @@ NOT_YET_IN_THE_DECK = {
     "components/Layout.tsx": 1,
     "lib/changes.ts": 3,
     "lib/citations.ts": 2,
-    "lib/company.ts": 1,
     "lib/freshnessStore.ts": 1,
     "lib/jobs.ts": 11,
     "lib/sse.ts": 2,
@@ -272,6 +271,14 @@ def _all_text(path: Path) -> str:
 def test_the_rule_notice_names_the_federal_register_keyword_matching_and_not_statements(path):
     text = _all_text(path)  # each file on its own: the deck's newcomer wording and the facts file's technical one
     for phrase in ("Federal Register", "keyword match", "not statements"):
+        assert phrase in text, phrase
+
+
+def test_the_company_page_s_limit_sentences_are_the_owner_s_words():
+    # docs/specs/m5b-redesign.md D-R3 and D-R4, docs/decisions/001-r3-company-copy.md (1): approved word for word
+    text = _all_text(DECK_TS)
+    for phrase in ("No export-control rule in our data was linked to", "by keyword matching. This is not a finding that none applies.",
+                   "Summaries written by semigraph, not quotes", "Not in our data for these years.", "The latest we hold is"):
         assert phrase in text, phrase
 
 

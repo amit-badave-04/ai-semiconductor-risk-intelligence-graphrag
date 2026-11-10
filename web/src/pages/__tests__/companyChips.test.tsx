@@ -24,8 +24,8 @@ const DOSSIER: Dossier = {
   filings: [],
   metrics: [{ metric: "revenue", value: 1, unit: "USD", period_start: null, period_end: "2026-01-25", cite: XBRL }],
   activeRisks: [],
-  edges: [{ source: "Nvidia", relation: "DEPENDS_ON", target: "TSMC", status: null, quote: null, chunk_ids: [CHUNK] }],
-  rules: [{ source: "Nvidia", relation: "MATCHES", target: "Export rule", status: null, quote: null, chunk_ids: [CHUNK], rule_id: FR, date: null, kind: null, cite: FR }],
+  edges: [{ source: "Nvidia", relation: "DEPENDS_ON", target: "TSMC", status: null, quote: null, chunk_ids: [CHUNK], quoteChunk: CHUNK }],
+  rules: [{ source: "Nvidia", relation: "MATCHES", target: "Export rule", status: null, quote: null, chunk_ids: [CHUNK], quoteChunk: CHUNK, rule_id: FR, date: null, kind: null, cite: FR }],
 };
 
 function drawerSpy() {

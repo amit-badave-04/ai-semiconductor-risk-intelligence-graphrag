@@ -201,6 +201,20 @@ describe("parseDossier (a type guard that ignores unknown fields)", () => {
     expect(JSON.stringify(dossier)).not.toContain(SCRIPT_URL.slice(0, 11));
   });
 
+  it("keeps the chunk a relation's quote came from: its first raw id, only when that id is valid (RD24)", () => {
+    // the server sets the quote when the edge is created and appends chunk ids later, so the quote belongs to chunk_ids[0]
+    const dossier = parseDossier({
+      company: { ticker: "NVDA", name: "Nvidia", cik: 1 },
+      edges: [
+        { source: "Nvidia", relation: "DEPENDS_ON", target: "TSMC", quote: "q", chunk_ids: [CHUNK, "0001045810-26-000021:I.1A:0002"] },
+        { source: "Nvidia", relation: "DEPENDS_ON", target: "SK Hynix", quote: "q", chunk_ids: ["not-a-chunk-id", CHUNK] },
+        { source: "Nvidia", relation: "DEPENDS_ON", target: "X", quote: "q", chunk_ids: null },
+      ],
+    });
+    expect(dossier?.edges.map((e) => e.quoteChunk)).toEqual([CHUNK, null, null]);
+    expect(dossier?.edges[1]?.chunk_ids).toEqual([CHUNK]);
+  });
+
   it("builds a rule's citation id from a bare Federal Register number too", () => {
     const dossier = parseDossier({
       company: { ticker: "NVDA", name: "Nvidia", cik: 1 },

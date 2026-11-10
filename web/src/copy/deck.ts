@@ -228,6 +228,73 @@ export const deck = {
     link: "How reliable change claims are",
   },
 
+  company: {
+    /** docs/specs/m5b-redesign.md R3 (RD19-RD25), D-R3, D-R4 and docs/decisions/001-r3-company-copy.md. Server values (names,
+     *  forms, dates already formatted in UTC) arrive as parameters and are rendered as text. */
+    header: {
+      annual: (r: { form: string; yearEnded: string | null; filed: string }): string =>
+        r.yearEnded === null ? `${r.form} filed ${r.filed}` : `${r.form} for the fiscal year ended ${r.yearEnded}, filed ${r.filed}`,
+      quarterly: (r: { form: string; filed: string }): string => `${r.form} filed ${r.filed}`,
+      annualOnly: "Files an annual report on Form 20-F; no quarterly 10-Q",
+      dataAsOf: (date: string): string => `Data as of ${date}`,
+      askAbout: (name: string): string => `Ask about ${name}`,
+      compare: "Compare filings",
+      /** decision 4: the question "Ask about <company>" puts in the box (nothing is sent) */
+      askPrefill: (name: string): string => `What risks does ${name} describe in its latest annual report?`,
+    },
+    nav: {
+      label: "On this page",
+      keyNumbers: "Key numbers",
+      rules: "Government rules",
+      relationships: "Relationships",
+      filings: "Filings",
+      changes: "Risk changes",
+    },
+    glance: {
+      heading: "At a glance",
+      /** decision 3: counts the rules the page lists (the server lists at most 8) */
+      rulesCount: (count: number): string => `${count} government ${count === 1 ? "rule" : "rules"} listed below`,
+    },
+    numbers: {
+      heading: "Key numbers",
+      fiscalNote: "Fiscal years are the company's own. Each column shows the date its year ended.",
+      exact: "Show exact values",
+      metric: {
+        revenue: { name: "Revenue", meaning: "Money from sales" },
+        net_income: { name: "Net income", meaning: "Profit after all costs and taxes" },
+        rnd: { name: "Research and development", meaning: "Money spent on developing new products" },
+        capex: { name: "Capital spending", meaning: "Money spent on buildings and equipment" },
+      },
+      /** D-R4 */
+      notHeld: (year: string): string => `Not in our data for these years. The latest we hold is ${year}.`,
+      /** decision 1: a metric we hold nothing of */
+      absent: "Not in our data for these years.",
+      /** WCAG 2.5.3: the visible text first, then what it is, the exact value when the compact one is shown */
+      stampName: (f: { shown: string; metric: string; year: string; exact: string }): string =>
+        f.shown === f.exact ? `${f.shown}, ${f.metric}, ${f.year}. Open source` : `${f.shown}, ${f.metric}, ${f.year}: ${f.exact}. Open source`,
+    },
+    rules: {
+      heading: "Government rules",
+      notice:
+        "These US export-control rules come from the Federal Register and are linked to the company by keyword matching: actions by the government, not statements the company made.",
+      /** D-R3 */
+      none: (name: string): string => `No export-control rule in our data was linked to ${name} by keyword matching. This is not a finding that none applies.`,
+    },
+    relationships: {
+      heading: "Relationships",
+      ownWords: "In the filing's own words",
+      competitors: "Competitors named in its filings",
+    },
+    filings: { heading: "Filings" },
+    risks: {
+      heading: "Active risks",
+      /** D-R4 */
+      label: "Summaries written by semigraph, not quotes",
+    },
+    /** a request that never reached the server (the legacy page's words, index.html:680) */
+    network: "network error \u2014 is the service online?",
+  },
+
   chips: {
     /** RD11: a source stamp's label (lib/stamp.ts stampView). No pilcrow, no leading zeros; the company only once loaded. */
     label: (view: StampView): string => {

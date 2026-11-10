@@ -2,6 +2,7 @@
 // The router-decoded :ticker is untrusted: a value that is not one of the generated filers is never fetched. The parser keeps
 // only the fields the page shows, so an unknown field of the response never reaches a component, and it never keeps a
 // data-supplied URL (S2: the page has no href that comes from data).
+import { deck } from "@/copy/deck";
 import { CHUNK_ID_RE, FR_ID_RE, XBRL_ID_RE } from "@/lib/ids.generated";
 import { FILERS, type Ticker } from "@/lib/pages.generated";
 import { detailOf } from "@/lib/refusal";
@@ -43,6 +44,9 @@ export interface Edge {
   quote: string | null;
   /** Only ids that match the chunk-id grammar. */
   chunk_ids: string[];
+  /** The passage the quote came from: the first raw chunk id when it matches the grammar, else null (docs/specs/m5b-redesign.md
+   *  RD24; the server sets the quote when the edge is created and appends later passages after it). */
+  quoteChunk: string | null;
 }
 
 export interface Rule extends Edge {
@@ -110,9 +114,6 @@ export type RiskChangesResult =
   | { kind: "notFound" }
   | { kind: "error"; detail: string };
 
-// The legacy page's words for a failed request (index.html:680).
-const MSG_NETWORK = "network error \u2014 is the service online?";
-
 const FILER_TICKERS: ReadonlySet<string> = new Set(FILERS.map((f) => f.ticker));
 
 export function isFilerTicker(value: unknown): value is Ticker {
@@ -157,6 +158,11 @@ function ruleCite(ruleId: string | null): string | null {
   return [ruleId, `fr:${ruleId}`].find((id) => FR_ID_RE.test(id)) ?? null;
 }
 
+function quoteChunk(value: unknown): string | null {
+  const first: unknown = Array.isArray(value) ? value[0] : undefined;
+  return typeof first === "string" && CHUNK_ID_RE.test(first) ? first : null;
+}
+
 function toEdge(row: Row): Edge {
   return {
     source: str(row.source),
@@ -165,6 +171,7 @@ function toEdge(row: Row): Edge {
     status: str(row.status),
     quote: str(row.quote),
     chunk_ids: chunkIds(row.chunk_ids),
+    quoteChunk: quoteChunk(row.chunk_ids),
   };
 }
 
@@ -228,7 +235,7 @@ async function getJson(url: string, signal?: AbortSignal): Promise<Fetched> {
     response = await fetch(url, { signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
-    return { kind: "error", detail: MSG_NETWORK };
+    return { kind: "error", detail: deck.company.network };
   }
   if (response.status === 404) return { kind: "notFound" };
   const fallback = response.statusText || `HTTP ${response.status}`;
