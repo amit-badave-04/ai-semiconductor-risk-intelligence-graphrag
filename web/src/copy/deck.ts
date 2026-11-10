@@ -162,6 +162,8 @@ export const deck = {
     /** RD14: "What was checked" under an answer, one plain sentence per line of lib/answerMeta.ts checkedView. Never claims more
      *  than the checks did: no "verified", no percentages (the figures named in a line are the answer's own). */
     heading: "What was checked",
+    /** the disclosure that keeps the legacy badges (tokens, cost, model, counts) and the checks hint for analysts */
+    technical: "Technical details",
     line: (line: CheckedLine): string => {
       const figures = line.params?.figures ?? "";
       const count = line.params?.count ?? 0;

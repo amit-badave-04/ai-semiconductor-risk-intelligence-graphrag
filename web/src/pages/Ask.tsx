@@ -4,6 +4,7 @@ import { AnswerMeta } from "@/components/Badges";
 import { AnswerText } from "@/components/Chips";
 import { PageHeading } from "@/components/Layout";
 import { Steps } from "@/components/Steps";
+import { WhatWasChecked } from "@/components/WhatWasChecked";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { deck } from "@/copy/deck";
@@ -121,7 +122,12 @@ function AnswerArea({ ask, stats, renderFailed, onRenderError }: AnswerProps) {
       {ask.done !== null && !renderFailed && (
         <div id="meta">
           <RenderBoundary key={ask.seq} fallback={null} onError={onRenderError}>
-            <AnswerMeta done={ask.done} defaultModel={stats?.models?.llm} />
+            <WhatWasChecked done={ask.done} />
+            {/* RD14: the legacy badges and the checks hint, for analysts */}
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer font-semibold text-muted-foreground">{deck.checked.technical}</summary>
+              <AnswerMeta done={ask.done} defaultModel={stats?.models?.llm} />
+            </details>
           </RenderBoundary>
         </div>
       )}
