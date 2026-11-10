@@ -29,7 +29,7 @@ const DOSSIER: Dossier = {
 
 function drawerSpy() {
   const open = vi.fn<EvidenceDrawerApi["open"]>();
-  const api: EvidenceDrawerApi = { openId: null, open, close: vi.fn(), dropDocEvidence: vi.fn(), clearAll: vi.fn() };
+  const api: EvidenceDrawerApi = { openId: null, openKey: null, open, close: vi.fn(), dropDocEvidence: vi.fn(), clearAll: vi.fn() };
   return { ...api, open };
 }
 

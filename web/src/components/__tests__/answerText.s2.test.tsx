@@ -7,7 +7,8 @@ import { HOSTILE, generated } from "./answerCorpus";
 // S2 (docs/specs/m5b-frontend.md): the answer text contains only p, ul, li, h3, strong, the chip button and text; no on*, src or
 // style attribute anywhere and no href; the chip carries nothing but the documented attributes.
 const ALLOWED_TAGS = new Set(["p", "ul", "li", "h3", "strong", "button"]);
-const ALLOWED_CHIP_ATTRS = new Set(["type", "class", "data-id", "data-chip-key", "data-stale", "title"]);
+// aria-expanded and aria-controls: docs/specs/m5b-redesign.md RD11 (constant values, never from data)
+const ALLOWED_CHIP_ATTRS = new Set(["type", "class", "data-id", "data-chip-key", "data-stale", "title", "aria-expanded", "aria-controls"]);
 
 function violations(text: string): string[] {
   const { container, unmount } = render(<AnswerText text={text} place="answer" gen={1} />);

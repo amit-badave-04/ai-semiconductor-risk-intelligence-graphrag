@@ -19,7 +19,7 @@ import {
 } from "@/pages/Ask.copy";
 import { Badge } from "./Badges";
 import { useDrawerController, type Content } from "./useDrawerController";
-import { EvidenceDrawerContext } from "./useEvidenceDrawer";
+import { EVIDENCE_PANEL_ID, EvidenceDrawerContext } from "./useEvidenceDrawer";
 
 function DrawerBody({ id, content }: { id: string; content: Content }) {
   if (content.phase !== "loaded") {
@@ -77,6 +77,7 @@ export function EvidenceDrawerProvider({ children }: { children: ReactNode }) {
       {children}
       <aside
         ref={aside}
+        id={EVIDENCE_PANEL_ID}
         aria-label={EVIDENCE_LABEL}
         {...(openId !== null ? {} : { inert: true, "aria-hidden": true, hidden: true })}
         // Until R2 (docs/specs/m5b-redesign.md RD16, a sticky column): on wide screens it starts below the one-row header (lg:h-14

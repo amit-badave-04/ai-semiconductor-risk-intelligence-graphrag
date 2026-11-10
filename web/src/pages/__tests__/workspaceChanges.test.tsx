@@ -18,7 +18,7 @@ const FORBIDDEN = new RegExp(`^on|^href$|^src$|^style$|^${"src" + "doc"}$`, "i")
 const ALLOWED = new Set(["div", "p", "ul", "li", "h3", "strong", "button"]);
 
 function drawer(open = vi.fn()): EvidenceDrawerApi {
-  return { openId: null, open, close: vi.fn(), dropDocEvidence: vi.fn(), clearAll: vi.fn() };
+  return { openId: null, openKey: null, open, close: vi.fn(), dropDocEvidence: vi.fn(), clearAll: vi.fn() };
 }
 
 function show(view: ChangesView, api: EvidenceDrawerApi = drawer()) {

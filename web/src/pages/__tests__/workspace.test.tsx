@@ -105,7 +105,7 @@ function installFake(): Fake {
 }
 
 function drawer(open = vi.fn()): EvidenceDrawerApi {
-  return { openId: null, open, close: vi.fn(), dropDocEvidence: vi.fn(), clearAll: vi.fn() };
+  return { openId: null, openKey: null, open, close: vi.fn(), dropDocEvidence: vi.fn(), clearAll: vi.fn() };
 }
 
 function mount(api: EvidenceDrawerApi = drawer()) {

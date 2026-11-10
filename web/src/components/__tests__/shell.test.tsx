@@ -35,7 +35,7 @@ afterEach(() => {
 describe("Layout and the drawer on a route change", () => {
   function spyDrawer() {
     const close = vi.fn<EvidenceDrawerApi["close"]>();
-    const api: EvidenceDrawerApi = { openId: null, open: vi.fn(), close, dropDocEvidence: vi.fn(), clearAll: vi.fn() };
+    const api: EvidenceDrawerApi = { openId: null, openKey: null, open: vi.fn(), close, dropDocEvidence: vi.fn(), clearAll: vi.fn() };
     return { ...api, close };
   }
 

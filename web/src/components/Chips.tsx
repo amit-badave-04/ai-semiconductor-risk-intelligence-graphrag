@@ -6,7 +6,7 @@ import { Fragment, useMemo, type ReactNode } from "react";
 import { parseAnswer, type Inline, type Leaf } from "@/lib/answerBlocks";
 import { useChipEvidence } from "@/lib/chipEvidence";
 import { chipKey, chipLabel, type ChipPlace } from "@/lib/citations";
-import { useEvidenceDrawer } from "./useEvidenceDrawer";
+import { EVIDENCE_PANEL_ID, useEvidenceDrawer } from "./useEvidenceDrawer";
 
 export interface ChipProps {
   /** The citation id. Untrusted: it must already have matched the generated grammar (tokenize guarantees it). */
@@ -30,6 +30,8 @@ export function Chip({ id, place, gen, nth, stale = false }: ChipProps) {
       type="button"
       data-id={id}
       data-chip-key={chipKey(place, gen, id, nth)}
+      aria-expanded={drawer.openKey !== null && drawer.openKey === chipKey(place, gen, id, nth)}
+      aria-controls={EVIDENCE_PANEL_ID}
       data-stale={stale ? "" : undefined}
       title={title}
       className={`cite mx-0.5 inline cursor-pointer rounded-sm border bg-muted px-1 font-mono text-[0.85em] ${stale ? "stale border-amber-600 text-amber-700" : "border-border text-primary"}`}

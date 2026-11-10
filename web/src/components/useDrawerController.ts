@@ -69,9 +69,16 @@ function bump(box: { current: number }): number {
 }
 
 type SetOpen = Dispatch<SetStateAction<string | null>>;
+/** What the open chip is: its key (aria-expanded, RD11) and the words its answer quoted (RD18). */
+export interface Opened {
+  key: string | null;
+  quotes: readonly string[];
+}
+type SetOpened = Dispatch<SetStateAction<Opened>>;
+const NOTHING_OPENED: Opened = { key: null, quotes: [] };
 type SetContent = Dispatch<SetStateAction<Content>>;
 
-function useOpen(shell: Shell, setOpenId: SetOpen, setContent: SetContent, setFocusClose: Dispatch<SetStateAction<number>>) {
+function useOpen(shell: Shell, setOpenId: SetOpen, setOpened: SetOpened, setContent: SetContent, setFocusClose: Dispatch<SetStateAction<number>>) {
   const show = useCallback(
     (id: string, seq: number, next: Content) => {
       if (seq !== shell.openSeq.current) return; // a stale response never fills the drawer (the old openSeq rule)
@@ -81,7 +88,7 @@ function useOpen(shell: Shell, setOpenId: SetOpen, setContent: SetContent, setFo
     [shell, setContent],
   );
   return useCallback<EvidenceDrawerApi["open"]>(
-    (id, element, _place) => {
+    (id, element, _place, quotes = []) => {
       const seq = bump(shell.openSeq);
       cancelFetch(shell);
       const previous = shell.opener.current;
@@ -89,6 +96,7 @@ function useOpen(shell: Shell, setOpenId: SetOpen, setContent: SetContent, setFo
       put(shell.opener, { element: from, key: element ? element.getAttribute(OPENER_KEY_ATTR) : shell.isOpen.current ? previous.key : null });
       put(shell.isOpen, true);
       setOpenId(id);
+      setOpened({ key: shell.opener.current.key, quotes });
       setFocusClose((n) => n + 1);
       const cached = shell.cache.current.get(id);
       if (cached !== undefined) return show(id, seq, { phase: "loaded", payload: cached });
@@ -106,11 +114,11 @@ function useOpen(shell: Shell, setOpenId: SetOpen, setContent: SetContent, setFo
         show(id, seq, outcome.ok ? { phase: "loaded", payload: outcome.payload } : { phase: "error", message: outcome.message });
       });
     },
-    [shell, show, setOpenId, setContent, setFocusClose],
+    [shell, show, setOpenId, setOpened, setContent, setFocusClose],
   );
 }
 
-function useClose(shell: Shell, aside: RefObject<HTMLElement | null>, setOpenId: SetOpen, setRestore: Dispatch<SetStateAction<Restore>>) {
+function useClose(shell: Shell, aside: RefObject<HTMLElement | null>, setOpenId: SetOpen, setOpened: SetOpened, setRestore: Dispatch<SetStateAction<Restore>>) {
   return useCallback<EvidenceDrawerApi["close"]>(
     ({ restoreFocus = true } = {}) => {
       if (!shell.isOpen.current) return;
@@ -121,15 +129,18 @@ function useClose(shell: Shell, aside: RefObject<HTMLElement | null>, setOpenId:
       const target = restoreFocus && focusWasHere ? focusTargetAfterClose(shell.opener.current.element, shell.opener.current.key) : null;
       put(shell.opener, { element: null, key: null });
       setOpenId(null);
+      setOpened(NOTHING_OPENED);
       setRestore((r) => ({ target, tick: r.tick + 1 }));
     },
-    [shell, aside, setOpenId, setRestore],
+    [shell, aside, setOpenId, setOpened, setRestore],
   );
 }
 
 export interface DrawerController {
   api: EvidenceDrawerApi;
   content: Content;
+  /** The words the open chip's answer quoted (RD18), for the panel's highlighter. */
+  quotes: readonly string[];
   aside: RefObject<HTMLElement | null>;
   closeButton: RefObject<HTMLButtonElement | null>;
 }
@@ -141,11 +152,12 @@ export function useDrawerController(): DrawerController {
   const aside = useRef<HTMLElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [opened, setOpened] = useState<Opened>(NOTHING_OPENED);
   const [content, setContent] = useState<Content>({ phase: "loading" });
   const [focusClose, setFocusClose] = useState(0);
   const [restore, setRestore] = useState<Restore>({ target: null, tick: 0 });
-  const open = useOpen(shell, setOpenId, setContent, setFocusClose);
-  const close = useClose(shell, aside, setOpenId, setRestore);
+  const open = useOpen(shell, setOpenId, setOpened, setContent, setFocusClose);
+  const close = useClose(shell, aside, setOpenId, setOpened, setRestore);
   useEffect(() => () => cancelFetch(shell), [shell]); // the provider going away cancels the request in flight
   const dropDocEvidence = useCallback(() => shell.cache.current.dropDoc(), [shell]);
   const clearAll = useCallback(() => {
@@ -171,8 +183,12 @@ export function useDrawerController(): DrawerController {
   }, [restore]);
   useEscapeToClose(openId !== null, close);
 
-  const api = useMemo<EvidenceDrawerApi>(() => ({ openId, open, close, dropDocEvidence, clearAll }), [openId, open, close, dropDocEvidence, clearAll]);
-  return { api, content, aside, closeButton };
+  const openKey = opened.key;
+  const api = useMemo<EvidenceDrawerApi>(
+    () => ({ openId, openKey, open, close, dropDocEvidence, clearAll }),
+    [openId, openKey, open, close, dropDocEvidence, clearAll],
+  );
+  return { api, content, quotes: opened.quotes, aside, closeButton };
 }
 
 function useEscapeToClose(isOpen: boolean, close: EvidenceDrawerApi["close"]) {

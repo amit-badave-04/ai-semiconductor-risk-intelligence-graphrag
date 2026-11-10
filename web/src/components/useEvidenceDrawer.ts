@@ -16,16 +16,26 @@
 import { createContext, useContext } from "react";
 import type { ChipPlace } from "@/lib/citations";
 
+/** The id of the evidence panel element (the `<aside>`), which every chip names with aria-controls (RD11). */
+export const EVIDENCE_PANEL_ID = "evidence-panel";
+
 export interface EvidenceDrawerApi {
   /** The citation id the drawer shows, or null when closed. */
   openId: string | null;
+  /**
+   * The chip key (data-chip-key) of the occurrence whose evidence is open, or null: that chip, and only that one, says
+   * aria-expanded="true" (docs/specs/m5b-redesign.md RD11). An `open` with no opener keeps the previous key. (Additive, R2.)
+   */
+  openKey: string | null;
   /**
    * Open the drawer for a chip. `id` came from untrusted model text: it is fetched only after an anchored match of the
    * generated grammar (classifyId), with encodeURIComponent, and a `doc:` id with no workspace open makes NO request (S4).
    * `opener` is the chip element, kept so focus can return to it on close (A2: by chip key, even after the answer re-rendered;
    * when the chip is gone, focus goes to the answer heading). A second `open` while open replaces the content (openSeq rule).
+   * `quotes` (optional, additive in R2) are the words the answer quoted right before the chip, which the panel highlights where
+   * the passage holds them exactly (RD18); they are untrusted text and never reach the request.
    */
-  open: (id: string, opener: HTMLElement | null, place: ChipPlace) => void;
+  open: (id: string, opener: HTMLElement | null, place: ChipPlace, quotes?: readonly string[]) => void;
   /** Close the drawer. `restoreFocus` defaults to true; a route change passes false (the new page's h1 takes focus, A7). */
   close: (options?: { restoreFocus?: boolean }) => void;
   /** Forget cached evidence of `doc:` ids. The drawer's own reaction to `docEvidenceEpoch`; no other component calls it. */
@@ -36,6 +46,7 @@ export interface EvidenceDrawerApi {
 
 const INERT: EvidenceDrawerApi = {
   openId: null,
+  openKey: null,
   open: () => {},
   close: () => {},
   dropDocEvidence: () => {},
