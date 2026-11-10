@@ -142,6 +142,9 @@ export const deck = {
 
   evidence: {
     /** RD17: the evidence panel (components/EvidenceBody.tsx over lib/evidenceView.ts evidenceBody). */
+    /** RD16: the panel's header: its visible title and Close (whose accessible name stays "Close evidence", A5) */
+    title: "Evidence",
+    close: "Close",
     loading: "Loading the source\u2026",
     failed: (message: string): string => `Could not load this source: ${message}`,
     untitled: "Source",

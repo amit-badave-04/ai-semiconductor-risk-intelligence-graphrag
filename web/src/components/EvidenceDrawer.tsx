@@ -4,15 +4,43 @@
 // the router (the chips of the what-changed view open the same one) and below the WorkspaceProvider, whose signals it follows:
 // a new `generation` closes it and clears the cache, a new `docEvidenceEpoch` drops the cached `doc:` evidence (EvidenceCache).
 // The body (EvidenceBody.tsx, docs/specs/m5b-redesign.md RD17, RD18) renders every value as a text node; the one link is safeUrl's.
-import type { ReactNode } from "react";
-import { EVIDENCE_CLOSE_LABEL, EVIDENCE_CLOSE_TITLE, EVIDENCE_LABEL } from "@/pages/Ask.copy";
+// Layout (RD16): a bottom sheet below 900 px, a full-height column from 900 px. While it is open the root element carries
+// `data-evidence`, and index.css pads the page by the sheet's height or the column's width, so it covers nothing (WCAG 2.4.11);
+// the chip that opened it is then scrolled into view. The header with Close stays put while the evidence scrolls.
+import { X } from "lucide-react";
+import { useLayoutEffect, type ReactNode } from "react";
+import { deck } from "@/copy/deck";
+import { EVIDENCE_CLOSE_LABEL, EVIDENCE_LABEL } from "@/pages/Ask.copy";
 import { EvidenceBody } from "./EvidenceBody";
 import { useDrawerController } from "./useDrawerController";
 import { EVIDENCE_PANEL_ID, EvidenceDrawerContext } from "./useEvidenceDrawer";
 
+const OPEN_MARK = "data-evidence";
+
+const PANEL =
+  "fixed inset-x-0 bottom-0 z-20 flex h-[var(--evidence-sheet)] flex-col rounded-t-lg border-t border-border-strong bg-card shadow-lg " +
+  "min-[900px]:inset-x-auto min-[900px]:top-0 min-[900px]:right-0 min-[900px]:h-auto min-[900px]:w-[var(--evidence-column)] " +
+  "min-[900px]:rounded-none min-[900px]:border-t-0 min-[900px]:border-l";
+
+/** While the panel is open: mark the root element (the page makes room), then bring the chip that opened it into view. */
+function useMakeRoom(isOpen: boolean, openKey: string | null) {
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const root = document.documentElement;
+    root.setAttribute(OPEN_MARK, "");
+    return () => root.removeAttribute(OPEN_MARK);
+  }, [isOpen]);
+  useLayoutEffect(() => {
+    if (!isOpen || openKey === null) return;
+    const opener = document.querySelector(`[data-chip-key="${openKey.replace(/["\\]/g, "\\$&")}"]`);
+    if (opener !== null && typeof opener.scrollIntoView === "function") opener.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [isOpen, openKey]);
+}
+
 export function EvidenceDrawerProvider({ children }: { children: ReactNode }) {
   const { api, content, quotes, aside, closeButton } = useDrawerController();
-  const { openId, close } = api;
+  const { openId, openKey, close } = api;
+  useMakeRoom(openId !== null, openKey);
   return (
     <EvidenceDrawerContext.Provider value={api}>
       {children}
@@ -21,21 +49,24 @@ export function EvidenceDrawerProvider({ children }: { children: ReactNode }) {
         id={EVIDENCE_PANEL_ID}
         aria-label={EVIDENCE_LABEL}
         {...(openId !== null ? {} : { inert: true, "aria-hidden": true, hidden: true })}
-        // Until R2 (docs/specs/m5b-redesign.md RD16, a sticky column): on wide screens it starts below the one-row header (lg:h-14
-        // in Layout.tsx), so the header links stay usable while evidence is open.
-        className="fixed top-0 right-0 z-10 h-full w-[min(560px,100%)] overflow-auto border-l border-border bg-card p-5 shadow-lg lg:top-14 lg:h-[calc(100%-3.5rem)]"
+        className={PANEL}
       >
-        <button
-          ref={closeButton}
-          type="button"
-          aria-label={EVIDENCE_CLOSE_LABEL}
-          title={EVIDENCE_CLOSE_TITLE}
-          onClick={() => close()}
-          className="float-right cursor-pointer border-0 bg-transparent text-xl text-muted-foreground"
-        >
-          {"\u00d7"}
-        </button>
-        {openId !== null && <EvidenceBody id={openId} content={content} quotes={quotes} />}
+        <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-1">
+          <h2 className="m-0 text-base font-semibold">{deck.evidence.title}</h2>
+          <button
+            ref={closeButton}
+            type="button"
+            aria-label={EVIDENCE_CLOSE_LABEL}
+            onClick={() => close()}
+            className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-3 font-semibold text-primary hover:underline"
+          >
+            <X aria-hidden="true" className="size-4" />
+            {deck.evidence.close}
+          </button>
+        </div>
+        <div data-evidence-body="" className="min-h-0 flex-1 overflow-auto p-5">
+          {openId !== null && <EvidenceBody id={openId} content={content} quotes={quotes} />}
+        </div>
       </aside>
     </EvidenceDrawerContext.Provider>
   );

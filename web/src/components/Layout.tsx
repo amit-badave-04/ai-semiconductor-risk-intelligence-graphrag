@@ -57,7 +57,7 @@ export function Layout() {
         Skip to content
       </a>
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-8 px-5 lg:h-14 lg:flex-nowrap">
+        <div className="header-row mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-8 px-5 lg:h-14 lg:flex-nowrap">
           <Link to="/" className="inline-flex min-h-11 items-center text-xl font-bold tracking-tight text-foreground">
             {SITE_NAME}
           </Link>

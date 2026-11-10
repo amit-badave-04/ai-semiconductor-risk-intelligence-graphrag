@@ -192,7 +192,7 @@ export function Ask() {
       <PageHeading title={deck.ask.heading(FILERS.length)} documentTitle={deck.nav.ask} display />
       {/* Two columns from lg: the question form beside RD6's sample, then the starters beside the companies (RD9). One column on a
           phone, in the same order: form, sample, starters, companies. */}
-      <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="ask-grid grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0">
           <Grounding />
           {/* not a named region: its name would be "Your question" too, the same as the box (one name, one control) */}

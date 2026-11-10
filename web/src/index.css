@@ -226,3 +226,38 @@
     @apply sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-10 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:text-foreground;
   }
 }
+
+/* docs/specs/m5b-redesign.md RD16: room for the evidence panel while it is open (EvidenceDrawer.tsx marks the root element with
+   data-evidence). Below 900 px it is a bottom sheet: the page is padded by its height and anything focused scrolls above it (WCAG
+   2.4.11). From 900 px it is a full-height column: the page, its header included, is padded by its width, the header row may
+   wrap in the narrower space, and the Ask page's two columns become one. Outside any layer, so it wins over the utilities. */
+:root {
+  --evidence-sheet: 55vh;
+  --evidence-column: min(480px, 42vw);
+}
+@supports (height: 1dvh) {
+  :root {
+    --evidence-sheet: 55dvh;
+  }
+}
+@media (max-width: 899.98px) {
+  html[data-evidence] {
+    scroll-padding-bottom: var(--evidence-sheet);
+  }
+  html[data-evidence] body {
+    padding-bottom: var(--evidence-sheet);
+  }
+}
+@media (min-width: 900px) {
+  html[data-evidence] body {
+    padding-right: var(--evidence-column);
+  }
+  html[data-evidence] .header-row {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 3.5rem;
+  }
+  html[data-evidence] .ask-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

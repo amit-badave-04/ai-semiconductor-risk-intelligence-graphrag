@@ -78,7 +78,7 @@ test("R26 shell line (RD3): a healthy production payload reads 'Data as of <date
 });
 
 // RD3 review: at 1024 px (the smallest one-row header, lg) the longest wording of the line keeps the header to one row, so it
-// never spills over the page and the evidence drawer (lg:top-14) starts exactly below it.
+// never spills over the page.
 test("the longest freshness line keeps the header to one row at 1024 px", async ({ page }) => {
   await page.route("**/api/freshness", (route) =>
     route.fulfill({ json: { status: "stale", checked_at: new Date().toISOString(), snapshot_as_of: "2026-09-30", pending_count: 12 } }),
