@@ -50,6 +50,10 @@ export function Block({ title, children }: { title: string; children: ReactNode 
 
 const TH = "px-3 py-2 text-left text-sm font-semibold";
 const TD = "px-3 py-2 align-top text-sm";
+// A cell that holds one long token (an accession number, a 12-digit value, a date, a chip label). overflow-wrap: anywhere (not
+// break-word) lowers the cell's minimum width, so the five-column table fits a 390 px screen whatever the font; short words in
+// the other cells stay whole.
+const TD_LONG = `${TD} [overflow-wrap:anywhere]`;
 
 function text(value: string | number | boolean | null): string {
   return value === null ? "" : String(value);
@@ -74,9 +78,9 @@ function FilingsBlock({ filings }: { filings: Filing[] }) {
             {filings.map((f, i) => (
               <tr key={`${f.accession_no ?? ""}-${i}`} className="border-b border-border">
                 <td className={TD}>{text(f.form)}</td>
-                <td className={TD}>{text(f.filing_date)}</td>
+                <td className={TD_LONG}>{text(f.filing_date)}</td>
                 <td className={TD}>{text(f.status)}</td>
-                <td className={TD}>{text(f.accession_no)}</td>
+                <td className={TD_LONG}>{text(f.accession_no)}</td>
               </tr>
             ))}
           </tbody>
@@ -107,10 +111,10 @@ function MetricsBlock({ metrics }: { metrics: Metric[] }) {
             {metrics.map((m, i) => (
               <tr key={`${m.metric ?? ""}-${m.period_end ?? ""}-${i}`} className="border-b border-border">
                 <td className={TD}>{text(m.metric)}</td>
-                <td className={TD}>{text(m.value)}</td>
+                <td className={TD_LONG}>{text(m.value)}</td>
                 <td className={TD}>{text(m.unit)}</td>
-                <td className={TD}>{text(m.period_end)}</td>
-                <td className={TD}>{m.cite === null ? null : <Cite id={m.cite} group={CITE_GROUP.metrics} nth={nths[i][0]} />}</td>
+                <td className={TD_LONG}>{text(m.period_end)}</td>
+                <td className={TD_LONG}>{m.cite === null ? null : <Cite id={m.cite} group={CITE_GROUP.metrics} nth={nths[i][0]} />}</td>
               </tr>
             ))}
           </tbody>

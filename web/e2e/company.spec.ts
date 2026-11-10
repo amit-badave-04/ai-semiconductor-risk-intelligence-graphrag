@@ -106,7 +106,11 @@ for (const scheme of ["light", "dark"] as const) {
         const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
         await testInfo.attach(`axe-company-chips-${width}.json`, { body: JSON.stringify(results.violations, null, 1), contentType: "application/json" });
         expect(results.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
-        expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+        const sideways = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(await sideways()).toBeLessThanOrEqual(0);
+        // a wider font than this machine's (CI's Linux fonts are wider): the tables must still fit
+        await page.addStyleTag({ content: "*{font-family:Verdana,sans-serif !important;letter-spacing:0.6px !important}" });
+        expect(await sideways()).toBeLessThanOrEqual(0);
       });
     }
 
