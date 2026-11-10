@@ -43,7 +43,7 @@ test.describe("on the preview server", () => {
     await page.goto(`${PREVIEW}/v2/`);
     await expect(page.getByRole("heading", { level: 1, name: ASK_HEADING })).toBeVisible();
     await firstStarter(page).click();
-    await expect(status(page)).toHaveText("served from cache \u2014 no model call");
+    await expect(status(page)).toHaveText("Saved answer, shown instantly.");
     expect(asks.count()).toBe(1);
     await expect(page.locator("#answer [data-chip-key]").first()).toBeVisible();
     await expect(askButton(page)).toBeEnabled();
@@ -65,7 +65,7 @@ test.describe("on the preview server", () => {
     const w = await watch(page, PREVIEW);
     await page.goto(`${PREVIEW}/v2/`);
     await ask(page, QUESTIONS.live);
-    await expect(status(page)).toHaveText("done");
+    await expect(status(page)).toHaveText("Done.");
     const meta = page.locator("#meta");
     await expect(meta).toContainText(/\d+ citations?/);
     await expect(meta).toContainText("do not prove");
@@ -81,7 +81,7 @@ test.describe("on the preview server", () => {
       await page.goto(`${PREVIEW}/v2/`);
       await chooseDepth(page, "Basic text search");
       await ask(page, QUESTIONS.escalated); // a key of its own: the server caches a live answer after its first ask
-      await expect(status(page)).toHaveText("done");
+      await expect(status(page)).toHaveText("Done.");
       await expect(page.locator("#meta")).toContainText("escalated after a failed check");
       const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
       expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical").flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.target.join(" ")} ${n.any.map((a) => a.message).join(" ")}`))).toEqual([]);
@@ -91,7 +91,7 @@ test.describe("on the preview server", () => {
   test("an escalated answer names the failed checks", async ({ page }) => {
     await page.goto(`${PREVIEW}/v2/`);
     await ask(page, QUESTIONS.escalated);
-    await expect(status(page)).toHaveText("done");
+    await expect(status(page)).toHaveText("Done.");
     await expect(page.locator("#meta")).toContainText("escalated after a failed check");
   });
 
@@ -100,7 +100,7 @@ test.describe("on the preview server", () => {
     await ask(page, QUESTIONS.errorBefore);
     await expect(askButton(page)).toBeEnabled();
     await expect(status(page)).not.toHaveText("");
-    await expect(status(page)).not.toHaveText("done");
+    await expect(status(page)).not.toHaveText("Done.");
     await expect(status(page)).toHaveClass(/destructive/);
     await expect(page.locator("#meta")).toHaveCount(0);
   });
@@ -117,7 +117,7 @@ test.describe("on the preview server", () => {
     await chooseDepth(page, "Deep research");
     await expect(page.getByText(/planning model/)).toBeVisible();
     await ask(page, QUESTIONS.live);
-    await expect(status(page)).toHaveText("done");
+    await expect(status(page)).toHaveText("Done.");
     await expect(page.getByRole("list", { name: "What the research agent did" }).getByRole("listitem").first()).toBeVisible();
   });
 
@@ -140,7 +140,7 @@ test.describe("on the preview server", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Method & Evidence" })).toBeFocused();
     release();
     await page.getByRole("link", { name: "Ask", exact: true }).click();
-    await expect(status(page)).toHaveText("done");
+    await expect(status(page)).toHaveText("Done.");
     await expect(page.locator("#answer [data-chip-key]").first()).toBeVisible();
     expect(asks.count()).toBe(1);
     // After the terminal event the client lets the connection go (sse.ts releases the reader), which Chromium reports as ERR_ABORTED
@@ -164,7 +164,7 @@ test.describe("on the site-key server (R33(1): an ask is never held back for a b
     await page.goto(`${SITE_KEY}/v2/`);
     await expect(page.locator("[data-widget]")).toHaveCount(1);
     await firstStarter(page).click();
-    await expect(status(page)).toHaveText("served from cache \u2014 no model call");
+    await expect(status(page)).toHaveText("Saved answer, shown instantly.");
     expect(asks.count()).toBe(1);
     expect(await problems(w)).toEqual([]);
   });
@@ -191,7 +191,7 @@ test.describe("on the site-key server (R33(1): an ask is never held back for a b
     await page.evaluate(() => (window as unknown as { __turnstileStub: TurnstileStubState }).__turnstileStub.solve());
     const before = await stub(page);
     await ask(page, QUESTIONS.live);
-    await expect(status(page)).toHaveText("done");
+    await expect(status(page)).toHaveText("Done.");
     const after = await stub(page);
     expect(after.resets).toBe(before.resets + 1);
     expect(after.live).toBe(1);

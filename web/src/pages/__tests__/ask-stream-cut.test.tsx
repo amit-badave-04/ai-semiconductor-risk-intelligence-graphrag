@@ -94,7 +94,7 @@ describe("tests/ui/stream_cut.test.mjs", () => {
     it(`a finished answer keeps its own status when the stream then ends by ${name}`, async () => {
       await ask([DELTA, DONE, ending]);
       await settled();
-      expect(status().textContent).toBe("served from cache \u2014 no model call");
+      expect(status().textContent).toBe("Answered earlier, shown instantly.");
       expect(meta()).not.toBeNull();
       expect(answer().textContent).toMatch(/Nvidia reported growth\./);
     });
@@ -111,7 +111,7 @@ describe("tests/ui/stream_cut.test.mjs", () => {
   it("an ordinary answer is unchanged: done status, checks footer, Ask enabled", async () => {
     await ask([RETRIEVAL, DELTA, frame("done", { answer: "Nvidia reported growth.", cached: false, citations: [], hallucinated: [] }), END]);
     await settled();
-    expect(status().textContent).toBe("done");
+    expect(status().textContent).toBe("Done.");
     expect(meta()).not.toBeNull();
     expect(askButton()).toBeEnabled();
   });
@@ -156,7 +156,7 @@ describe("tests/ui/stream_cut.test.mjs: the page failing while it takes an answe
     });
     await ask([RETRIEVAL, DELTA, DONE, END]);
     await settled();
-    assertHonestAfterAPageFailure("done");
+    assertHonestAfterAPageFailure("Done.");
     expect(answer().textContent, "the text that did arrive stays on the page").toMatch(/Nvidia reported/);
   });
 

@@ -51,7 +51,7 @@ describe("the Ask page with a workspace open (R23)", () => {
     const env = mountAsk({ workspace: { ...WS, asOf: "2026-02-01T00:00:00Z" }, ask: () => responseOf(fixtureBytes("workspace_done")) });
     await env.user.type(screen.getByRole("textbox", { name: "Your question" }), "What does my document say?");
     await env.user.click(screen.getByRole("button", { name: "Ask" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("done"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Done."));
     const call = env.posts()[0];
     expect(JSON.parse(String(call.init?.body))).toMatchObject({ workspace_id: WS.workspace.id, as_of: "2026-02-01T00:00:00Z", strategy: "hybrid" });
     expect(call.init?.headers).toMatchObject({ "X-Workspace-Token": "secret-token" });
@@ -70,7 +70,7 @@ describe("the Ask page with a workspace open (R23)", () => {
     const env = mountAsk({ workspace: WS, ask: () => responseOf(frame("done", event)) });
     await env.user.type(screen.getByRole("textbox", { name: "Your question" }), "q");
     await env.user.click(screen.getByRole("button", { name: "Ask" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("done"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Done."));
     const marked = Array.from(document.querySelectorAll("[data-stale]"));
     expect(marked.map((c) => c.getAttribute("data-id"))).toEqual([OLD]);
     expect(marked[0].getAttribute("title")).toMatch(/a newer version exists/);

@@ -68,7 +68,7 @@ describe("the page", () => {
     const env = mountAsk({ ask: live("live_hybrid") });
     await env.user.type(box(), "What changed?");
     await env.user.click(askButton());
-    await waitFor(() => expect(status()).toHaveTextContent("done"));
+    await waitFor(() => expect(status()).toHaveTextContent("Done."));
     expect(document.querySelector("#answer")?.closest("[aria-live]")).toBeNull();
     expect(document.querySelector("#answer")).not.toHaveAttribute("aria-live");
   });
@@ -77,7 +77,7 @@ describe("the page", () => {
     const env = mountAsk({ ask: live("live_hybrid"), stats: { models: { llm: "anthropic/claude-sonnet-5" } } });
     await env.user.type(box(), "What changed in Nvidia's risk factors?");
     await env.user.click(askButton());
-    await waitFor(() => expect(status()).toHaveTextContent("done"));
+    await waitFor(() => expect(status()).toHaveTextContent("Done."));
     expect(env.posts()).toHaveLength(1);
     expect(JSON.parse(String(env.posts()[0].init?.body))).toMatchObject({ question: "What changed in Nvidia's risk factors?", strategy: "hybrid" });
     expect(document.querySelector("#answer")?.textContent?.length).toBeGreaterThan(20);
@@ -126,7 +126,7 @@ describe("the page", () => {
   it("clicking an example asks it on the hybrid path, at once, exactly once", async () => {
     const env = mountAsk({ ask: live("cached_done") });
     await env.user.click(await screen.findByRole("button", { name: EXAMPLES.examples[0].question }));
-    await waitFor(() => expect(status()).toHaveTextContent("served from cache \u2014 no model call"));
+    await waitFor(() => expect(status()).toHaveTextContent("Answered earlier, shown instantly."));
     expect(env.posts()).toHaveLength(1);
     expect(JSON.parse(String(env.posts()[0].init?.body))).toMatchObject({ question: EXAMPLES.examples[0].question, strategy: "hybrid" });
     expect(box()).toHaveValue(EXAMPLES.examples[0].question);
@@ -153,11 +153,11 @@ describe("the page", () => {
     const env = mountAsk({ ask: () => new Response(stream, { status: 200 }) });
     await env.user.type(box(), "q");
     await env.user.click(askButton());
-    await waitFor(() => expect(status()).toHaveTextContent("anchors: Nvidia \u00b7 2 relationships \u00b7 8 excerpts \u2014 generating\u2026"));
+    await waitFor(() => expect(status()).toHaveTextContent("Found 8 passages and 2 relationships about Nvidia. Writing the answer\u2026"));
     step();
-    await waitFor(() => expect(status()).toHaveTextContent(/did not pass the automatic checks \(a number not found/));
+    await waitFor(() => expect(status()).toHaveTextContent(/did not pass the automatic checks, so a stronger model is answering again/));
     step();
-    await waitFor(() => expect(status()).toHaveTextContent("done"));
+    await waitFor(() => expect(status()).toHaveTextContent("Done."));
   });
 
   it("a refusal lands in the status region, in the same card as the Ask button (A10)", async () => {

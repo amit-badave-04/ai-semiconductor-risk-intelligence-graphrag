@@ -117,6 +117,7 @@ def test_every_starter_is_answered_from_the_cache(client, starter):
     question = next(e["question"] for e in client.get("/api/examples").json()["examples"] if e["id"] == starter)
     events = events_of(ask(client, question))
     assert [e["event"] for e in events] == ["done"] and events[0]["cached"] is True
+    assert events[0]["source"] == "benchmark"  # seeded as production seeds its examples (store.seed_examples)
 
 
 @pytest.mark.parametrize("key, fixture", [("live", "live_hybrid"), ("escalated", "escalated"),

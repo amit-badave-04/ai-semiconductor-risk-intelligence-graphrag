@@ -18,7 +18,7 @@ async function answered(page: Page) {
   const question = (await first.innerText()).trim();
   await box(page).fill(question);
   await box(page).press("Control+Enter");
-  await expect(page.getByRole("status")).toHaveText("served from cache \u2014 no model call");
+  await expect(page.getByRole("status")).toHaveText("Saved answer, shown instantly.");
   await expect(chips(page).first()).toBeVisible();
 }
 
@@ -73,11 +73,13 @@ test("when a new answer replaced the opener, closing the drawer puts focus on th
   await expect(page.getByRole("button", { name: "Close evidence" })).toBeFocused();
   // a new ask while the drawer stays open (Ctrl+Enter asks from the question box only, accessibility review of baba14d)
   await box(page).press("Control+Enter");
-  await expect(page.getByRole("status")).toHaveText("served from cache \u2014 no model call");
+  await expect(page.getByRole("status")).toHaveText("Saved answer, shown instantly.");
   await expect(chips(page).first()).toBeVisible();
   await page.getByRole("button", { name: "Close evidence" }).click();
   await expect(drawer(page)).toHaveAttribute("inert", "");
-  await expect(page.getByRole("heading", { name: "Your question" })).toBeFocused();
+  // RD10: the answer is headed by its question, which is now the focus target (ANSWER_HEADING_ID)
+  await expect(page.locator("#ask-heading")).toBeFocused();
+  await expect(page.locator("#ask-heading")).not.toHaveText("Your question");
 });
 
 test("a route change closes the drawer without taking focus back: the new page's h1 has it", async ({ page }) => {

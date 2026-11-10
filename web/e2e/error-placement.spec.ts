@@ -96,7 +96,7 @@ for (const refusal of ASK_REFUSALS) {
     expect(await nextToItsControl(region, button)).toBe(true);
     // under the controls and above the answer: the line the button leads to, not a line after the answer
     expect(await precedes(button, region)).toBe(true);
-    expect(await precedes(region, askCard.locator("#answer"))).toBe(true);
+    expect(await precedes(region, page.locator("#answer"))).toBe(true); // the answer has its own section after the card (RD10)
     // exactly one region says it: the error is not repeated elsewhere on the page
     await expect(page.getByRole("status").filter({ hasText: refusal.detail })).toHaveCount(1);
   });

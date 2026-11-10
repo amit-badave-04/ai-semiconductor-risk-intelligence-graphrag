@@ -84,7 +84,7 @@ describe("tests/ui/agent.test.mjs: the option, the hint and the privacy line", (
     expect(chosen()).toBe("hybrid");
     expect(hint()).toBeNull(); // the answer has not come back yet
     release();
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("served from cache"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Answered earlier, shown instantly."));
   });
 
   it("syncAgentUi stays idempotent when re-run (as loadStats does after every answer) with the agent strategy selected", async () => {
@@ -149,7 +149,7 @@ describe("the agent path of an ask", () => {
     await choose(env.user, "agent");
     await env.user.type(screen.getByRole("textbox", { name: "Your question" }), "q");
     await env.user.click(screen.getByRole("button", { name: "Ask" }));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("done"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Done."));
     expect(JSON.parse(String(env.posts()[0].init?.body)).strategy).toBe("agent");
     expect(screen.getByRole("list", { name: "What the research agent did" })).not.toHaveAttribute("hidden");
   });

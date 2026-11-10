@@ -92,7 +92,7 @@ def seed_cache(app) -> None:
     done = {k: v for k, v in recorded_events("cached_done")[0].items() if k not in ("event", "cached")}
     for question in cached_questions():
         key = store.cache_key(question, "hybrid", getattr(app.state, "snapshot_id", ""))
-        app.state.state.cache[key] = dict(done)
+        app.state.state.cache[key] = {**done, "source": "benchmark"}  # as store.seed_examples seeds the packaged examples
 
 
 # ---------------------------------------------------------------- public evidence of the cited ids

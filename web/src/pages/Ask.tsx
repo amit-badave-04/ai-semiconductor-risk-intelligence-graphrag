@@ -7,7 +7,7 @@ import { Steps } from "@/components/Steps";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { deck } from "@/copy/deck";
-import { liveLimits, statusLine, type StatusLine } from "@/lib/askStatus";
+import { liveLimits, statusView, type StatusLine } from "@/lib/askStatus";
 import { depthOptions, type Depth } from "@/lib/depth";
 import { ANSWER_HEADING_ID } from "@/lib/focusTargets";
 import { FILERS } from "@/lib/pages.generated";
@@ -86,24 +86,32 @@ function AskControls({ question, onQuestion, streaming, onSubmit, emptyShown }: 
 const ANSWER_CLASSES =
   "mt-2.5 leading-relaxed [&_h3]:mt-3.5 [&_h3]:mb-1.5 [&_h3]:text-base [&_h3]:font-semibold [&_li]:my-0.5 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5";
 
+/** The status line of the form (A3, A10: next to the Ask button); a new announceKey puts the line into the live region as a new
+ *  node, so a repeated message is announced again. */
+function StatusOutput({ line, announceKey }: { line: StatusLine; announceKey: number }) {
+  return (
+    <output id="status" aria-live="polite" className={`mt-3 block min-h-5 text-sm ${line.isError ? "text-destructive" : "text-muted-foreground"}`}>
+      <span key={announceKey}>{line.text}</span>
+    </output>
+  );
+}
+
 interface AnswerProps {
   ask: AskContextValue;
   stats: Stats | null;
-  line: StatusLine;
-  /** a new value puts the line into the live region as a new node, so a repeated message is announced again */
-  announceKey: number;
   renderFailed: boolean;
   onRenderError: () => void;
 }
 
-/** The status line, the steps, the answer text and the footer of the answer; a failure of the page while rendering them is caught. */
-function AnswerArea({ ask, stats, line, announceKey, renderFailed, onRenderError }: AnswerProps) {
+/** RD10: the answer, headed by its question (the focus target, A5), with the steps, the text and the footer; a failure of the
+ *  page while rendering them is caught. */
+function AnswerArea({ ask, stats, renderFailed, onRenderError }: AnswerProps) {
   const stale = ask.done !== null && !ask.done.cached ? (ask.done.workspace?.stale_citations ?? []) : [];
   return (
-    <>
-      <output id="status" aria-live="polite" className={`mt-3 block min-h-5 text-sm ${line.isError ? "text-destructive" : "text-muted-foreground"}`}>
-        <span key={announceKey}>{line.text}</span>
-      </output>
+    <section aria-labelledby={ANSWER_HEADING_ID} className="mt-6">
+      <h2 id={ANSWER_HEADING_ID} tabIndex={-1} className="m-0 text-2xl font-semibold tracking-tight break-words">
+        {ask.question}
+      </h2>
       <Steps steps={agentEnabled(stats) ? ask.steps : []} />
       <div id="answer" className={ANSWER_CLASSES}>
         <RenderBoundary key={ask.seq} resetKey={ask.text.length} fallback={<p>{ask.text}</p>} onError={onRenderError}>
@@ -117,7 +125,7 @@ function AnswerArea({ ask, stats, line, announceKey, renderFailed, onRenderError
           </RenderBoundary>
         </div>
       )}
-    </>
+    </section>
   );
 }
 
@@ -159,11 +167,15 @@ export function Ask() {
   };
 
   const renderFailed = renderFailedAt === ask.seq && ask.seq > 0;
+  // RD10: once a question is asked, the answer is headed by it (keyed on the question, never on the status, which goes back to
+  // idle after an abort)
+  const answered = ask.seq > 0 && ask.question.trim() !== "";
+  const view = statusView(ask);
   const line: StatusLine = emptyShown
     ? { text: deck.ask.emptyQuestion, isError: true }
     : renderFailed && ask.statusText === null
       ? { text: PAGE_FAILED_STATUS, isError: true }
-      : statusLine(ask);
+      : { text: deck.status.line(view), isError: view.isError };
 
   return (
     <>
@@ -175,7 +187,7 @@ export function Ask() {
           <Grounding />
           {/* not a named region: its name would be "Your question" too, the same as the box (one name, one control) */}
           <section>
-            <h2 id={ANSWER_HEADING_ID} tabIndex={-1} className="mb-2 text-base font-semibold">
+            <h2 id={answered ? undefined : ANSWER_HEADING_ID} tabIndex={-1} className="mb-2 text-base font-semibold">
               <label htmlFor="q">{deck.ask.questionLabel}</label>
             </h2>
             <AskControls question={question} onQuestion={onQuestion} streaming={streaming} onSubmit={submit} emptyShown={emptyShown} />
@@ -193,12 +205,12 @@ export function Ask() {
                 ) : null
               }
             />
-            <AnswerArea ask={ask} stats={stats} line={line} announceKey={emptyCount} renderFailed={renderFailed} onRenderError={() => setRenderFailedAt(ask.seq)} />
+            <StatusOutput line={line} announceKey={emptyCount} />
           </section>
+          {answered && <AnswerArea ask={ask} stats={stats} renderFailed={renderFailed} onRenderError={() => setRenderFailedAt(ask.seq)} />}
         </div>
-        <div className="lg:pt-14">
-          <AnswerSample />
-        </div>
+        {/* RD6: the sample shows what an answer looks like until a real one is on the page */}
+        <div className="lg:pt-14">{!answered && <AnswerSample />}</div>
         <div className="min-w-0">
           <Starters off={workspaceOpen ? "workspace" : streaming ? "busy" : null} onPick={pick} />
         </div>

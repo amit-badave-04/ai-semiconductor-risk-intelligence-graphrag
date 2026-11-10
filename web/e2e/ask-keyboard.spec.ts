@@ -36,7 +36,7 @@ test("Ctrl+Enter asks from the question box and a plain Enter does not", async (
   await page.waitForTimeout(200);
   expect(asks).toBe(0);
   await page.getByLabel("Your question").press("Control+Enter");
-  await expect(page.getByRole("status")).toHaveText("served from cache \u2014 no model call");
+  await expect(page.getByRole("status")).toHaveText("Saved answer, shown instantly.");
   expect(asks).toBe(1);
 });
 
@@ -44,7 +44,7 @@ test("a chip is a real button reached by Tab, the status is a polite live region
   await page.goto(`${PREVIEW}/v2/`);
   await page.getByLabel("Your question").fill(await cachedQuestion(page));
   await page.getByLabel("Your question").press("Control+Enter");
-  await expect(page.getByRole("status")).toHaveText("served from cache \u2014 no model call");
+  await expect(page.getByRole("status")).toHaveText("Saved answer, shown instantly.");
   const chip = page.locator("#answer button[data-chip-key]").first();
   await expect(chip).toHaveAttribute("type", "button");
   await chip.focus();
@@ -61,7 +61,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.goto(`${PREVIEW}/v2/`);
       await page.getByLabel("Your question").fill(await cachedQuestion(page));
       await page.getByLabel("Your question").press("Control+Enter");
-      await expect(page.getByRole("status")).toHaveText("served from cache \u2014 no model call");
+      await expect(page.getByRole("status")).toHaveText("Saved answer, shown instantly.");
       const before = await new AxeBuilder({ page }).withTags(TAGS).analyze();
       await page.locator("#answer button[data-chip-key]").first().click();
       await expect(page.getByRole("complementary", { name: "Evidence" })).toBeVisible();
