@@ -94,7 +94,7 @@ describe("the compared report", () => {
     const chips = screen.getAllByRole("button");
     expect(chips).toHaveLength(2);
     await userEvent.click(chips[0]);
-    expect(open).toHaveBeenCalledWith(DOC_A, chips[0], "changes");
+    expect(open).toHaveBeenCalledWith(DOC_A, chips[0], "changes", undefined);
   });
 
   it("gives each chip a key of place, report sequence, id and occurrence, counted across the whole view", () => {

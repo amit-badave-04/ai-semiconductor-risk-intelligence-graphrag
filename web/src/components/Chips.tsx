@@ -4,6 +4,7 @@
 // (it already matched the generated grammar in tokenize, and the drawer checks it again before any request, S4).
 import { Fragment, useMemo, type ReactNode } from "react";
 import { parseAnswer, type Inline, type Leaf } from "@/lib/answerBlocks";
+import { chipQuotes } from "@/lib/answerSources";
 import { useChipEvidence } from "@/lib/chipEvidence";
 import { chipKey, chipLabel, type ChipPlace } from "@/lib/citations";
 import { EVIDENCE_PANEL_ID, useEvidenceDrawer } from "./useEvidenceDrawer";
@@ -19,9 +20,11 @@ export interface ChipProps {
   nth: number;
   /** The id is listed in the workspace answer's `stale_citations`: the chip says so. */
   stale?: boolean;
+  /** The words the answer quoted right before this chip (lib/answerSources.ts chipQuotes), for the panel's highlighter (RD18). */
+  quotes?: readonly string[];
 }
 
-export function Chip({ id, place, gen, nth, stale = false }: ChipProps) {
+export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) {
   const drawer = useEvidenceDrawer();
   const evidence = useChipEvidence(id); // a chunk chip gains its form and period once the drawer has loaded it
   const title = `open evidence ${id}${stale ? " \u2014 a newer version exists" : ""}`;
@@ -35,7 +38,7 @@ export function Chip({ id, place, gen, nth, stale = false }: ChipProps) {
       data-stale={stale ? "" : undefined}
       title={title}
       className={`cite mx-0.5 inline cursor-pointer rounded-sm border bg-muted px-1 font-mono text-[0.85em] ${stale ? "stale border-amber-600 text-amber-700" : "border-border text-primary"}`}
-      onClick={(event) => drawer.open(id, event.currentTarget, place)}
+      onClick={(event) => drawer.open(id, event.currentTarget, place, quotes)}
     >
       {chipLabel(id, evidence)}
     </button>
@@ -67,11 +70,13 @@ interface Context {
   gen: number;
   stale: ReadonlySet<string>;
   counts: Occurrences;
+  quotes: ReadonlyMap<string, readonly string[]>;
 }
 
 function leaf(part: Leaf, index: number, c: Context): ReactNode {
   if (part.type === "text") return <Fragment key={index}>{part.text}</Fragment>;
-  return <Chip key={index} id={part.id} place={c.place} gen={c.gen} nth={c.counts.next(part.id)} stale={c.stale.has(part.id)} />;
+  const nth = c.counts.next(part.id);
+  return <Chip key={index} id={part.id} place={c.place} gen={c.gen} nth={nth} stale={c.stale.has(part.id)} quotes={c.quotes.get(`${part.id}:${nth}`)} />;
 }
 
 function inline(parts: Inline[], c: Context): ReactNode[] {
@@ -84,7 +89,8 @@ function inline(parts: Inline[], c: Context): ReactNode[] {
 export function AnswerText({ text, place, gen, staleIds = [] }: AnswerTextProps) {
   const blocks = useMemo(() => parseAnswer(text), [text]);
   const stale = useMemo(() => new Set(staleIds), [staleIds]);
-  const c: Context = { place, gen, stale, counts: new Occurrences() };
+  const quotes = useMemo(() => chipQuotes(text), [text]); // RD18: the words quoted right before each chip (markup unchanged, R21)
+  const c: Context = { place, gen, stale, counts: new Occurrences(), quotes };
   return (
     <>
       {blocks.map((block, index) => {

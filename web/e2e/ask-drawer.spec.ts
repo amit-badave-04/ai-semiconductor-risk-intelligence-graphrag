@@ -34,7 +34,7 @@ test("closed it is inert and out of the accessibility tree; open it is a named c
   await expect(landmark).toBeVisible();
   await expect(landmark.getByRole("button", { name: "Close evidence" })).toBeFocused();
   await expect(landmark).toContainText("id: ");
-  await expect(landmark).toContainText("Open the filing on sec.gov");
+  await expect(landmark).toContainText("Open the filing on SEC.gov"); // RD17 wording
   expect(await problems(w)).toEqual([]);
 });
 

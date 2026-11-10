@@ -79,7 +79,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
     const metrics = screen.getByRole("region", { name: "Metrics" });
     const chip = within(metrics).getByRole("button", { name: chipLabel(XBRL) });
     fireEvent.click(chip);
-    expect(drawer.open).toHaveBeenCalledWith(XBRL, chip, "company");
+    expect(drawer.open).toHaveBeenCalledWith(XBRL, chip, "company", undefined); // no quote before it (RD18)
   });
 
   it("keeps the rules labelled as keyword matches next to their chips", () => {
@@ -141,6 +141,6 @@ describe("R25: a compared passage's chunk id is an evidence chip", () => {
     const keys = found.map((b) => b.dataset.chipKey);
     expect(new Set(keys).size).toBe(3);
     fireEvent.click(found[0]);
-    expect(drawer.open).toHaveBeenCalledWith(CHUNK, found[0], "company");
+    expect(drawer.open).toHaveBeenCalledWith(CHUNK, found[0], "company", undefined);
   });
 });

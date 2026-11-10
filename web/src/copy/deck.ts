@@ -138,6 +138,26 @@ export const deck = {
     },
   },
 
+  evidence: {
+    /** RD17: the evidence panel (components/EvidenceBody.tsx over lib/evidenceView.ts evidenceBody). */
+    loading: "Loading the source\u2026",
+    failed: (message: string): string => `Could not load this source: ${message}`,
+    untitled: "Source",
+    fact: { section: "Section", filed: "Filed", status: "Status", period: "Period", form: "Form", published: "Published" },
+    status: (status: string): string =>
+      status === "current" ? "Current filing" : status === "superseded" ? "Older filing" : status === "corrected" ? "Corrected" : status,
+    band: (until: string): string =>
+      until === "" ? "Older filing: a newer filing has replaced it." : `Older filing: a newer filing has replaced it. It was current until ${until}.`,
+    docBand: "An older version of your document: a newer version has replaced it.",
+    docNote: "Uploaded by you, not a filing.",
+    ruleLabel: "Government rule",
+    ruleNote: "Linked to companies by keyword matching: an action by the government, not statements the company made.",
+    exactly: (value: string): string => `Exactly ${value}`,
+    link: { filing: "Open the filing on SEC.gov", rule: "Open the rule on FederalRegister.gov" },
+    details: "Details for analysts",
+    detail: { id: "id", accession: "accession", replacedBy: "replaced by", metric: "metric", concept: "XBRL concept" },
+  },
+
   checked: {
     /** RD14: "What was checked" under an answer, one plain sentence per line of lib/answerMeta.ts checkedView. Never claims more
      *  than the checks did: no "verified", no percentages (the figures named in a line are the answer's own). */

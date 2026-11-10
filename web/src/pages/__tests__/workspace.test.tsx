@@ -410,7 +410,7 @@ describe("what changed", () => {
     expect(call?.headers).toEqual({ "X-Workspace-Token": TOKEN });
     const chip = document.querySelector(`[data-chip-key^="changes:"]`) as HTMLElement;
     await userEvent.click(chip);
-    expect(opened).toHaveBeenCalledWith(CHUNK, chip, "changes");
+    expect(opened).toHaveBeenCalledWith(CHUNK, chip, "changes", undefined);
   });
 
   it("shows a failed report as the server's text", async () => {

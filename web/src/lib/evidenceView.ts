@@ -3,6 +3,7 @@
 // safeUrl (S3). A payload is untrusted: a missing or odd field is an empty cell, never a throw.
 import type { Badge } from "./answerMeta";
 import { chipLabel, classifyId, docChipLabel, type CitationKind } from "./citations";
+import { compactMoney, exactMoney, fiscalYearLabel, formatDate } from "./format";
 import { safeUrl } from "./safeUrl";
 
 export interface FactRow {
@@ -128,4 +129,99 @@ export function evidenceView(id: string, payload: unknown): EvidenceView {
   else if (kind === "doc") docView(d, view);
   else chunkView(d, view);
   return view;
+}
+
+// ------------------------------------------------------------------ docs/specs/m5b-redesign.md RD17: the panel's parts as data
+
+export type BodyFactCode = "section" | "filed" | "status" | "period" | "form" | "published";
+export type BodyDetailCode = "id" | "accession" | "replacedBy" | "metric" | "concept";
+
+export interface EvidenceBody {
+  kind: CitationKind | null;
+  /** "" when the payload names nothing (the panel then words a plain heading of its own) */
+  heading: string;
+  /** a government rule: the panel says so, in its own words and shape, never as the company's */
+  rule: boolean;
+  facts: { code: BodyFactCode; value: string }[];
+  /** the filing (or document version) was replaced; `until` is the date it stopped being current, "" when unknown */
+  superseded: { until: string } | null;
+  figure: { compact: string; exact: string } | null;
+  /** the passage, the rule's abstract or the document's text; "" when there is none */
+  passage: string;
+  /** RD18: only a filing passage is highlighted (a number, a rule's abstract and a document never are) */
+  highlightable: boolean;
+  link: { href: string; code: "filing" | "rule" } | null;
+  details: { code: BodyDetailCode; value: string }[];
+}
+
+const ACCESSION = /^\d{10}-\d{2}-\d{6}$/;
+
+function statusOf(d: Dict): "current" | "superseded" | "corrected" | "" {
+  const status = str(d.status);
+  if (status === "current" || status === "superseded" || status === "corrected") return status;
+  return d.is_current === false ? "superseded" : d.is_current === true ? "current" : "";
+}
+
+function supersededOf(d: Dict, status: string): EvidenceBody["superseded"] {
+  return status === "superseded" ? { until: formatDate(str(d.valid_to)) } : null;
+}
+
+const facts = (pairs: [BodyFactCode, string][]): EvidenceBody["facts"] => pairs.filter(([, v]) => v !== "").map(([code, value]) => ({ code, value }));
+const details = (pairs: [BodyDetailCode, string][]): EvidenceBody["details"] => pairs.filter(([, v]) => v !== "").map(([code, value]) => ({ code, value }));
+const linkTo = (value: unknown, code: "filing" | "rule"): EvidenceBody["link"] => {
+  const href = safeUrl(value);
+  return href === null ? null : { href, code };
+};
+
+function chunkBody(id: string, d: Dict, body: EvidenceBody): void {
+  const status = statusOf(d);
+  const replacedBy = str(d.superseded_by);
+  body.heading = [joinTruthy([d.filer, d.form], " "), str(d.section_title)].filter(Boolean).join(", ");
+  body.facts = facts([["section", str(d.section_title)], ["filed", formatDate(str(d.filing_date))], ["status", status]]);
+  body.superseded = supersededOf(d, status);
+  body.passage = typeof d.text === "string" ? d.text : "";
+  body.highlightable = body.passage !== "";
+  body.link = linkTo(d.source_url, "filing");
+  body.details = details([["id", id], ["accession", ACCESSION.test(str(d.accession_no)) ? str(d.accession_no) : ""], ["replacedBy", ACCESSION.test(replacedBy) ? replacedBy : ""]]);
+}
+
+function xbrlBody(id: string, d: Dict, body: EvidenceBody): void {
+  const year = fiscalYearLabel(str(d.period_end));
+  const unit = str(d.unit);
+  const compact = compactMoney(d.value as number, unit);
+  body.heading = [joinTruthy([d.company, d.metric], " "), year?.long ?? ""].filter(Boolean).join(", ");
+  body.figure = compact === "" ? null : { compact, exact: exactMoney(d.value as number, unit) };
+  const start = formatDate(str(d.period_start));
+  const end = formatDate(str(d.period_end));
+  body.facts = facts([["period", start && end ? `${start} to ${end}` : end], ["form", str(d.form)], ["filed", formatDate(str(d.filing_date))]]);
+  body.link = linkTo(d.source_url, "filing");
+  body.details = details([["id", id], ["accession", ACCESSION.test(str(d.accession_no)) ? str(d.accession_no) : ""], ["concept", str(d.concept)]]);
+}
+
+function frBody(id: string, d: Dict, body: EvidenceBody): void {
+  body.rule = true;
+  body.heading = str(d.title);
+  body.facts = facts([["published", formatDate(str(d.publication_date))]]);
+  body.passage = typeof d.abstract === "string" ? d.abstract : "";
+  body.link = linkTo(d.url, "rule");
+  body.details = details([["id", id]]);
+}
+
+function docBody(id: string, d: Dict, body: EvidenceBody): void {
+  body.heading = str(d.title);
+  body.superseded = str(d.status) === "superseded" ? { until: formatDate(str(d.valid_to)) } : null;
+  body.passage = typeof d.text === "string" ? d.text : "";
+  body.details = details([["id", id]]);
+}
+
+/** The evidence panel's parts for one id and its payload (RD17). Never throws; every value is a plain string. */
+export function evidenceBody(id: string, payload: unknown): EvidenceBody {
+  const d = dictOf(payload);
+  const kind = classifyId(id);
+  const body: EvidenceBody = { kind, heading: "", rule: false, facts: [], superseded: null, figure: null, passage: "", highlightable: false, link: null, details: [] };
+  if (kind === "xbrl") xbrlBody(id, d, body);
+  else if (kind === "fr") frBody(id, d, body);
+  else if (kind === "doc") docBody(id, d, body);
+  else chunkBody(id, d, body);
+  return body;
 }

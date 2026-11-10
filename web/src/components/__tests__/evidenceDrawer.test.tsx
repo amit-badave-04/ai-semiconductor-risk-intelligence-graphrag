@@ -201,7 +201,7 @@ describe("A5: a non-modal complementary landmark", () => {
     await user.click(screen.getByRole("button", { name: /Item 1A/ }));
     expect(document.querySelectorAll("[inert]")).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: /XBRL revenue/ }));
-    expect(await screen.findByText(/XBRL revenue FY ended/, { selector: "h3" })).toBeInTheDocument();
+    expect(await screen.findByText(`id: ${XBRL}`)).toBeInTheDocument(); // the second chip's evidence now fills the panel
     expect(calls().length).toBe(2);
   });
 
@@ -247,7 +247,7 @@ describe("openSeq: only the last click fills the drawer", () => {
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
     await user.click(screen.getByRole("button", { name: /Item 1A/ }));
-    expect(await screen.findByText("could not load evidence: no evidence with that id")).toBeInTheDocument();
+    expect(await screen.findByText("Could not load this source: no evidence with that id")).toBeInTheDocument();
   });
 
   it("while loading it says so", async () => {
@@ -255,7 +255,7 @@ describe("openSeq: only the last click fills the drawer", () => {
     const user = userEvent.setup();
     mount(<Chip id={CHUNK} place="answer" gen={1} nth={0} />);
     await user.click(screen.getByRole("button", { name: /Item 1A/ }));
-    expect(screen.getByText("loading\u2026")).toBeInTheDocument();
+    expect(screen.getByText("Loading the source\u2026")).toBeInTheDocument(); // RD17 wording (was the legacy "loading...")
   });
 });
 
@@ -273,7 +273,7 @@ describe("S4: an id comes from untrusted model text", () => {
     mount(<Probe />, workspaceValue(openSession()));
     act(() => api.current?.open(id, null, "answer"));
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(drawer().textContent).toContain("could not load evidence: malformed evidence id");
+    expect(drawer().textContent).toContain("Could not load this source: malformed evidence id");
   });
 
   it("a doc: id with no workspace open makes no request and says what the server would", () => {
@@ -282,7 +282,7 @@ describe("S4: an id comes from untrusted model text", () => {
     mount(<Probe />);
     act(() => api.current?.open(DOC, null, "changes"));
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(drawer().textContent).toContain("could not load evidence: not a public evidence id");
+    expect(drawer().textContent).toContain("Could not load this source: not a public evidence id");
   });
 
   it("a public id is fetched from the public route with the id encoded and no token", async () => {
