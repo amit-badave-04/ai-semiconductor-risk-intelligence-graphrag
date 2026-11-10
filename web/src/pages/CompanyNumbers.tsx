@@ -24,6 +24,7 @@ function Figure({ cell, metric, column, exact, gen }: { cell: Cell; metric: stri
   const compact = compactMoney(cell.value, cell.unit);
   const full = exactMoney(cell.value, cell.unit);
   const shown = exact ? full : compact;
+  if (shown === "") return null; // no value to show: no stamp, no name starting with a comma (R3 review A6)
   return <FigureStamp cite={cell.cite} place="company" gen={gen} nth={0} shown={shown} name={w.stampName({ shown, metric, year: column.long, exact: full })} />;
 }
 
@@ -112,6 +113,8 @@ export function AtAGlance({ metrics, rulesListed }: { metrics: Metric[]; rulesLi
   const g = deck.company.glance;
   return (
     <Block id="at-a-glance" title={g.heading}>
+      {/* the latest figures' year as text, as the prior line names its own (R3 review A1) */}
+      {columns[0] !== undefined && <p className="mt-0 mb-2 text-sm text-muted-foreground">{columns[0].long}</p>}
       <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-3">
         {figures.map((f) => {
           const name = w.metric[f.metric].name;

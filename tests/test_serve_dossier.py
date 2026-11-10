@@ -127,7 +127,8 @@ def test_the_metrics_query_stays_parameterised_and_read_only():
     from semigraph.retrieval import retriever
 
     assert "LIMIT $periods" in retriever.METRICS_QUERY
-    assert re.search(r"(CREATE|MERGE|SET|DELETE|REMOVE|DETACH)", retriever.METRICS_QUERY) is None
+    # case-blind, whole words (R3 review T10)
+    assert re.search(r"\b(CREATE|MERGE|SET|DELETE|REMOVE|DETACH|LOAD\s+CSV|CALL\s+(db|apoc)\.)\b", retriever.METRICS_QUERY, re.I) is None
 
 
 def test_dossier_active_risks_query_never_uses_search_or_an_embedding(monkeypatch):

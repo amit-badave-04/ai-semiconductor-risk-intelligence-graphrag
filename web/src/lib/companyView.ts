@@ -131,7 +131,11 @@ const byNewest = (filings: readonly Filing[]): Filing[] => [...filings].sort((a,
  *  filed; none when no figure fits), and the latest quarterly report. Dates are formatted in UTC. */
 export function reportLine(filings: readonly Filing[], metrics: readonly Metric[], filer: { annualForm: string; quarterly: boolean }): ReportLine {
   const sorted = byNewest(filings.filter((f) => time(f.filing_date) !== null));
-  const annualFiling = sorted.find((f) => f.form === filer.annualForm && f.status === "current");
+  // the newest current filing of the annual form; when none is current because a whole-filing amendment ("10-K/A") replaced it
+  // (versions.py marks the original "corrected"), that amendment, shown under its own form (R3 review C1). An overlay amendment
+  // leaves its original current, so the original still wins.
+  const current = (form: string) => sorted.find((f) => f.form === form && f.status === "current");
+  const annualFiling = current(filer.annualForm) ?? current(`${filer.annualForm}/A`);
   let annual: ReportLine["annual"] = null;
   if (annualFiling !== undefined) {
     const filedAt = time(annualFiling.filing_date) as number;
@@ -143,7 +147,7 @@ export function reportLine(filings: readonly Filing[], metrics: readonly Metric[
         return gap > 0 && gap <= ANNUAL_REPORT_WINDOW_DAYS * DAY_MS;
       })
       .sort((a, b) => (time(b) as number) - (time(a) as number));
-    annual = { form: filer.annualForm, yearEnded: ends.length > 0 ? formatDate(ends[0]) : null, filed: formatDate(annualFiling.filing_date) };
+    annual = { form: annualFiling.form as string, yearEnded: ends.length > 0 ? formatDate(ends[0]) : null, filed: formatDate(annualFiling.filing_date) };
   }
   const quarterlyFiling = filer.quarterly ? sorted.find((f) => f.form === "10-Q") : undefined;
   return {

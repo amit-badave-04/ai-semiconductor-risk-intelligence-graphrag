@@ -35,6 +35,8 @@ for (const width of [390, 320]) {
     const last = links.last();
     await last.focus();
     await expect(last).toBeInViewport();
+    // the focus outline (3 px, 2 px offset) fits inside the scrolling row (R3 review A3)
+    expect(await nav(page).locator("ul").evaluate((ul) => parseFloat(getComputedStyle(ul).paddingTop))).toBeGreaterThanOrEqual(5);
   });
 }
 

@@ -16,7 +16,8 @@ const LABELS: Record<SectionId, string> = {
 export function CompanyNav() {
   return (
     <nav aria-label={deck.company.nav.label} className="mb-6 border-b border-border">
-      <ul className="m-0 flex list-none flex-nowrap gap-1 overflow-x-auto p-0 whitespace-nowrap">
+      {/* padding inside the scrolling row keeps the 3 px focus outline and its 2 px offset from being clipped (R3 review A3) */}
+      <ul className="m-0 flex list-none flex-nowrap gap-1 overflow-x-auto p-[6px] whitespace-nowrap">
         {SECTION_IDS.map((id) => (
           <li key={id} className="shrink-0">
             <a

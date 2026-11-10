@@ -71,6 +71,29 @@ describe("Filings and Active risks (RD25)", () => {
     expect(rows[1]).toBe("10-KFeb 26, 2025Older filing0001045810-25-000023");
   });
 
+  it("words a corrected filing, and shows an unknown status as the server wrote it (R3 review T11)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const body = String(input).endsWith("/dossier")
+          ? { ...DOSSIER, filings: [{ ...DOSSIER.filings[0], status: "corrected" }, { ...DOSSIER.filings[1], status: "pending_review" }] }
+          : CHANGES;
+        return new Response(JSON.stringify(body), { status: 200 });
+      }),
+    );
+    render(
+      <MemoryRouter initialEntries={["/company/NVDA"]}>
+        <Routes>
+          <Route path="company/:ticker" element={<Company />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const filings = await screen.findByRole("region", { name: "Filings" });
+    const rows = within(filings).getAllByRole("row").slice(1).map((r) => r.textContent);
+    expect(rows[0]).toContain("Corrected");
+    expect(rows[1]).toContain("pending_review");
+  });
+
   it("labels the active risks as summaries written by semigraph, and shows no date for them (D-R4)", async () => {
     mountCompany();
     const risks = await screen.findByRole("region", { name: "Active risks" });
@@ -85,8 +108,9 @@ describe("Filings and Active risks (RD25)", () => {
     const changes = await screen.findByRole("region", { name: "Compared risk disclosures" });
     await waitFor(() => expect(changes).toHaveTextContent("A new paragraph."));
     const item = within(changes).getByRole("listitem");
-    expect(item.firstChild?.nodeType === Node.TEXT_NODE && item.firstChild.textContent === "").toBe(false);
-    expect(item.textContent?.startsWith("20-F Apr 16, 2026") || item.textContent?.startsWith("20-F 2026-04-16")).toBe(true);
+    expect(item.firstElementChild?.tagName).toBe("P"); // the passage leads; no empty label before it
+    expect([...item.children].every((child) => child.textContent !== "")).toBe(true);
+    expect(item.textContent?.startsWith("20-F 2026-04-16: ")).toBe(true); // the pair's filing label, unchanged (R25)
   });
 });
 

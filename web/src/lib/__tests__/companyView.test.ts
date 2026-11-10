@@ -37,6 +37,13 @@ describe("fiscalColumns", () => {
     expect(columns.map((c) => c.long)).toEqual(["FY2025 (ended Dec 31, 2025)", "FY2025 (ended Jan 26, 2025)"]);
   });
 
+  it("never lets a stale metric fill the columns when the company has fewer than four recent years (R3 review T2)", () => {
+    const data = [m("revenue", "2026-01-25", 2), m("revenue", "2025-01-26", 1), m("capex", "2012-01-29", 138e6), m("capex", "2011-01-30", 97e6)];
+    const columns = fiscalColumns(data);
+    expect(columns.map((c) => c.periodEnd)).toEqual(["2026-01-25", "2025-01-26"]);
+    expect(numberRows(data, columns).find((r) => r.metric === "capex")).toMatchObject({ cells: [null, null], latestHeld: "FY2012", absent: false });
+  });
+
   it("is empty with no metrics", () => {
     expect(fiscalColumns([])).toEqual([]);
   });
@@ -122,6 +129,14 @@ describe("reportLine (RD19)", () => {
   it("for a 20-F filer: the annual report and no quarterly line", () => {
     const line = reportLine([filing("20-F", "2026-04-16")], [m("revenue", "2025-12-31", 1, "TWD")], { annualForm: "20-F", quarterly: false });
     expect(line).toEqual({ annual: { form: "20-F", yearEnded: "Dec 31, 2025", filed: "Apr 16, 2026" }, quarterly: null, annualOnly: true });
+  });
+
+  it("keeps the annual line when a whole-filing amendment replaces the report (original corrected, amendment current; R3 review C1)", () => {
+    const line = reportLine([filing("10-K", "2026-02-25", "corrected"), filing("10-K/A", "2026-03-10"), filing("10-Q", "2026-05-28")], NVDA, filer);
+    expect(line.annual).toEqual({ form: "10-K/A", yearEnded: "Jan 25, 2026", filed: "Mar 10, 2026" });
+    expect(line.quarterly).toEqual({ form: "10-Q", filed: "May 28, 2026" });
+    const foreign = reportLine([filing("20-F", "2026-04-16", "corrected"), filing("20-F/A", "2026-05-01")], [m("revenue", "2025-12-31", 1, "TWD")], { annualForm: "20-F", quarterly: false });
+    expect(foreign.annual).toEqual({ form: "20-F/A", yearEnded: "Dec 31, 2025", filed: "May 1, 2026" });
   });
 
   it("has no annual line without a current annual report", () => {

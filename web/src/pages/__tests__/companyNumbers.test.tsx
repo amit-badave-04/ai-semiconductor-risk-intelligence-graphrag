@@ -180,6 +180,24 @@ describe("At a glance (RD20)", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Government rules" })).toHaveFocus();
   });
 
+  it("shows the latest figures' fiscal year as visible text, as it does the prior year's (R3 review A1)", () => {
+    show(dossier());
+    expect(glanceRegion()).toHaveTextContent("FY2026 (ended Jan 25, 2026)");
+    expect(within(glanceRegion()).getAllByRole("listitem")[0]).toHaveTextContent(/FY2025: \$130\.5B/);
+  });
+
+  it("makes no stamp of a figure that has no value (R3 review A6)", () => {
+    const blank: Metric[] = [
+      { ...m("revenue", "2026-01-25", 1), value: null },
+      { ...m("net_income", "2026-01-25", 1), value: "n/a" },
+      m("rnd", "2026-01-25", 5e9),
+    ];
+    show(dossier({ metrics: blank }));
+    const ids = [...document.querySelectorAll("button[data-id]")].map((b) => b.getAttribute("data-id"));
+    expect(ids.every((id) => id?.includes(":rnd:"))).toBe(true);
+    for (const b of document.querySelectorAll("button[data-id]")) expect(b.getAttribute("aria-label")?.startsWith(",")).toBe(false);
+  });
+
   it("says a figure we hold nothing of is not in our data, and shows no prior for it", () => {
     show(dossier({ metrics: NVDA_METRICS.filter((r) => r.metric !== "rnd") }));
     expect(glanceRegion()).toHaveTextContent("Not in our data for these years.");

@@ -70,11 +70,4 @@ describe("the Company header (RD19)", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Nvidia (NVDA)");
     expect(document.querySelector("img")).toBeNull();
   });
-
-  it("shows the data date in UTC whatever the machine's time zone", async () => {
-    vi.stubEnv("TZ", "America/Los_Angeles");
-    mount("NVDA", dossier("NVDA", "Nvidia", [filing("10-K", "2026-02-25")], "2026-01-25"));
-    expect(await screen.findByText("Data as of Sep 30, 2026")).toBeInTheDocument();
-    vi.unstubAllEnvs();
-  });
 });

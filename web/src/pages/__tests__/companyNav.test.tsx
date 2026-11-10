@@ -87,7 +87,8 @@ describe("section navigation (RD21)", () => {
     await ready();
     await user.click(within(nav()).getByRole("link", { name: "Filings" }));
     expect(heading("Filings")).toHaveFocus();
-    await user.click(within(nav()).getByRole("link", { name: "Key numbers" }));
+    act(() => (document.activeElement as HTMLElement).blur()); // focus elsewhere, the hash still #filings
+    expect(heading("Filings")).not.toHaveFocus();
     await user.click(within(nav()).getByRole("link", { name: "Filings" }));
     expect(heading("Filings")).toHaveFocus();
   });
@@ -112,6 +113,9 @@ describe("section navigation (RD21)", () => {
     ["an unknown id", "#unknown"],
     ["an empty hash", "#"],
     ["no hash", ""],
+    ["a real heading outside the list", "#at-a-glance"],
+    ["another real heading outside the list", "#active-risks"],
+    ["the evidence panel's id", "#evidence-panel"],
   ];
 
   it.each(HOSTILE_HASHES)("ignores %s: no focus moves, nothing throws, no selector is built from it", async (_label, hash) => {
@@ -121,8 +125,11 @@ describe("section navigation (RD21)", () => {
         vi.spyOn(Element.prototype, "querySelector"),
         vi.spyOn(Element.prototype, "querySelectorAll"),
       ];
-      mount(`/company/NVDA${hash}`);
+      mount(`/company/NVDA${hash}`); // the page opened at the hash
       await ready();
+      await screen.findByRole("heading", { level: 2, name: "Compared risk disclosures" });
+      expect(document.activeElement).toBe(document.body);
+      act(() => go.to?.("")); // and the hash arriving later (the change path)
       act(() => go.to?.(hash));
       expect(document.activeElement).toBe(document.body);
       // a selector built from the hash would hold it whole, "#" included (shorter pieces such as "*" are in ordinary selectors)
@@ -130,6 +137,30 @@ describe("section navigation (RD21)", () => {
         for (const spy of spies) for (const call of spy.mock.calls) expect(String(call[0])).not.toContain(hash);
       }
       for (const spy of spies) spy.mockRestore();
+  });
+
+  it("on first load moves focus to the section only when nobody has placed it: a link focused while loading keeps it (R3 review A2)", async () => {
+    let release: (r: Response) => void = () => undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) =>
+        String(input).endsWith("/dossier")
+          ? new Promise<Response>((resolve) => (release = resolve))
+          : Promise.resolve(new Response(JSON.stringify({ company: DOSSIER.company, pairs: [] }), { status: 200 })),
+      ),
+    );
+    render(
+      <MemoryRouter initialEntries={["/company/NVDA#filings"]}>
+        <Routes>
+          <Route path="company/:ticker" element={<Company />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: "AMD (AMD)" });
+    link.focus();
+    await act(async () => release(new Response(JSON.stringify(DOSSIER), { status: 200 })));
+    await ready();
+    expect(link).toHaveFocus();
   });
 
   it("moves nothing on a hash change while focus is in the evidence panel; a link still moves it", async () => {
