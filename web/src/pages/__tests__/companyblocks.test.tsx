@@ -49,7 +49,7 @@ describe("DossierBlocks: empty dossier", () => {
   it("shows no data-as-of line and the word none in every empty block", () => {
     show(EMPTY);
     expect(screen.queryByText(/Data as of/)).toBeNull();
-    for (const name of ["Filings", "Metrics", "Active risks", "Relationships", "Federal Register rules"]) {
+    for (const name of ["Key numbers", "Government rules", "Relationships", "Filings", "Active risks"]) {
       expect(within(section(name)).getByText("none"), name).toBeTruthy();
     }
     expect(screen.queryByRole("table")).toBeNull();
@@ -57,7 +57,7 @@ describe("DossierBlocks: empty dossier", () => {
 
   it("still states what the rules are, in the empty rules block", () => {
     show(EMPTY);
-    expect(within(section("Federal Register rules")).getByText("keyword matches to external Federal Register rules")).toBeTruthy();
+    expect(within(section("Government rules")).getByText("keyword matches to external Federal Register rules")).toBeTruthy();
   });
 });
 
@@ -74,7 +74,7 @@ describe("DossierBlocks: rows with null fields", () => {
   it("renders empty cells for null fields without a citation, a date suffix or a status", () => {
     const { container } = show(nulls);
     expect(within(section("Filings")).getAllByRole("cell").map((c) => c.textContent)).toEqual(["", "", "", ""]);
-    expect(within(section("Metrics")).getAllByRole("cell").map((c) => c.textContent)).toEqual(["", "", "", "", ""]);
+    expect(within(section("Key numbers")).getAllByRole("cell").map((c) => c.textContent)).toEqual(["", "", "", "", ""]);
     expect(container.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
     expect(section("Active risks").textContent).not.toContain("\u00b7");
     expect(section("Relationships").textContent).not.toContain("(");
@@ -96,18 +96,17 @@ describe("DossierBlocks: rows with every field present", () => {
     rules: [FULL_RULE],
   };
 
-  it("shows the data-as-of line and each value as text", () => {
+  it("shows each value as text (the data date is in the header now, RD19)", () => {
     show(full);
-    expect(screen.getByText("Data as of 2026-09-30")).toBeTruthy();
     expect(within(section("Filings")).getByText("10-K")).toBeTruthy();
-    expect(within(section("Metrics")).getByText("130497000000")).toBeTruthy();
+    expect(within(section("Key numbers")).getByText("130497000000")).toBeTruthy();
     expect(section("Active risks").textContent).toContain("supply \u00b7 2026-02-25");
   });
 
   it("shows the citation ids as evidence chips (R25): the metric, the edge chunk, the rule chunk and the rule", () => {
     const { container } = show(full);
     const cites = Array.from(container.querySelectorAll("button[data-id]")).map((el) => el.getAttribute("data-id"));
-    expect(cites).toEqual(["xbrl:1045810:revenue:2026-01-25", CHUNK, CHUNK, "fr:2026-01234"]);
+    expect(cites).toEqual(["xbrl:1045810:revenue:2026-01-25", CHUNK, "fr:2026-01234", CHUNK]); // RD21 order: key numbers, rules, relationships
     expect(container.querySelector(`button[data-id="${CHUNK}"]`)?.textContent).toBe(stampLabel(CHUNK));
   });
 
@@ -116,7 +115,7 @@ describe("DossierBlocks: rows with every field present", () => {
     const edges = section("Relationships");
     expect(edges.textContent).toContain("Nvidia DEPENDS_ON TSMC (Active)");
     expect(within(edges).getByText("We depend on TSMC.")).toBeTruthy();
-    const rules = section("Federal Register rules");
+    const rules = section("Government rules");
     expect(within(rules).getByText("2026-03-01")).toBeTruthy();
     expect(within(rules).getByText("Rule")).toBeTruthy();
   });
@@ -125,7 +124,7 @@ describe("DossierBlocks: rows with every field present", () => {
 describe("DossierBlocks: a rule without a citation id falls back to its rule id as text", () => {
   it("shows the rule id when cite is null, and neither date nor kind when they are null", () => {
     const { container } = show({ ...EMPTY, rules: [{ ...FULL_RULE, cite: null, date: null, kind: null, chunk_ids: [] }] });
-    const rules = section("Federal Register rules");
+    const rules = section("Government rules");
     expect(within(rules).getByText("fr:2026-01234")).toBeTruthy();
     expect(container.querySelectorAll("[data-cite], button[data-id]")).toHaveLength(0);
     expect(within(rules).queryByText("2026-03-01")).toBeNull();

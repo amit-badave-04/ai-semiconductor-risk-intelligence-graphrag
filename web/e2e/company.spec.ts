@@ -41,7 +41,7 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("heading", { level: 1, name: "Nvidia (NVDA)" })).toBeVisible();
       await expect(page.getByRole("region", { name: "Filings" })).toContainText("10-K");
       await expect(page.getByRole("region", { name: "Active risks" })).toContainText("Fixture risk summary");
-      await expect(page.getByRole("region", { name: "Federal Register rules" })).toContainText(
+      await expect(page.getByRole("region", { name: "Government rules" })).toContainText(
         "keyword matches to external Federal Register rules",
       );
       await expect(page.getByRole("navigation", { name: "Companies" }).getByRole("link")).toHaveCount(13);
@@ -95,10 +95,10 @@ for (const scheme of ["light", "dark"] as const) {
         await page.setViewportSize({ width, height: 900 });
         await page.route("**/api/company/NVDA/dossier", (route) => route.fulfill({ json: EVERY_CHIP_DOSSIER }));
         await page.goto(`${PREVIEW}/v2/company/NVDA/`);
-        const metricChip = page.getByRole("region", { name: "Metrics" }).getByRole("button", { name: "Reported revenue, period ended Jan 25, 2026" });
+        const metricChip = page.getByRole("region", { name: "Key numbers" }).getByRole("button", { name: "Reported revenue, period ended Jan 25, 2026" });
         await expect(metricChip).toBeVisible();
         await expect(page.getByRole("region", { name: "Relationships" }).locator("button[data-id]")).toHaveCount(2);
-        const rules = page.getByRole("region", { name: "Federal Register rules" });
+        const rules = page.getByRole("region", { name: "Government rules" });
         await expect(rules.locator("button[data-id]")).toHaveCount(2);
         await expect(rules.getByRole("button", { name: "Government rule 2026-01234" })).toBeVisible();
         await expect(rules).toContainText("keyword matches to external Federal Register rules");

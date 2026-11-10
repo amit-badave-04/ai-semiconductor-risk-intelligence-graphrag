@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { Chip } from "@/components/Chips";
 import { classifyId, numberOccurrences } from "@/lib/citations";
 import { CITE_GROUP, type ActiveRisk, type Dossier, type Edge, type Filing, type Metric, type Rule } from "@/lib/company";
+import { deck } from "@/copy/deck";
 import { FILERS } from "@/lib/pages.generated";
 
 // R25: every block of the dossier. Everything from the server is a text node (S2): no dangerouslySetInnerHTML, no href, src
@@ -36,11 +37,12 @@ export function Cite({ id, group, nth }: CiteProps) {
   );
 }
 
-export function Block({ title, children }: { title: string; children: ReactNode }) {
-  const id = `block-${title.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+/** A section of the Company page (docs/specs/m5b-redesign.md RD21): its heading carries the section's fixed id and takes focus
+ *  when the section navigation or a hash names it. */
+export function Block({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section aria-labelledby={id} className="mb-8">
-      <h2 id={id} className="mb-2 text-lg font-semibold">
+      <h2 id={id} tabIndex={-1} className="mb-2 scroll-mt-4 text-lg font-semibold">
         {title}
       </h2>
       {children}
@@ -61,7 +63,7 @@ function text(value: string | number | boolean | null): string {
 
 function FilingsBlock({ filings }: { filings: Filing[] }) {
   return (
-    <Block title="Filings">
+    <Block id="filings" title={deck.company.filings.heading}>
       {filings.length === 0 ? (
         <p className="text-muted-foreground">{NONE}</p>
       ) : (
@@ -93,7 +95,7 @@ function FilingsBlock({ filings }: { filings: Filing[] }) {
 function MetricsBlock({ metrics }: { metrics: Metric[] }) {
   const nths = numberOccurrences(metrics.map((m) => (m.cite === null ? [] : [m.cite])));
   return (
-    <Block title="Metrics">
+    <Block id="key-numbers" title={deck.company.numbers.heading}>
       {metrics.length === 0 ? (
         <p className="text-muted-foreground">{NONE}</p>
       ) : (
@@ -126,7 +128,7 @@ function MetricsBlock({ metrics }: { metrics: Metric[] }) {
 
 function RisksBlock({ risks }: { risks: ActiveRisk[] }) {
   return (
-    <Block title="Active risks">
+    <Block id="active-risks" title={deck.company.risks.heading}>
       {risks.length === 0 ? (
         <p className="text-muted-foreground">{NONE}</p>
       ) : (
@@ -175,7 +177,7 @@ function Relation({ edge, group, nths }: RelationProps) {
 function EdgesBlock({ edges }: { edges: Edge[] }) {
   const nths = numberOccurrences(edges.map((e) => e.chunk_ids));
   return (
-    <Block title="Relationships">
+    <Block id="relationships" title={deck.company.relationships.heading}>
       {edges.length === 0 ? (
         <p className="text-muted-foreground">{NONE}</p>
       ) : (
@@ -195,7 +197,7 @@ function RulesBlock({ rules }: { rules: Rule[] }) {
   // A rule's chunk ids, then its own cite: one count for the whole block.
   const nths = numberOccurrences(rules.map((r) => (r.cite === null ? r.chunk_ids : [...r.chunk_ids, r.cite])));
   return (
-    <Block title="Federal Register rules">
+    <Block id="government-rules" title={deck.company.rules.heading}>
       <p className="mb-3 text-sm text-muted-foreground">
         {RULES_NOTE_BEFORE}
         <b>{RULES_NOTE_PINNED}</b>
@@ -245,12 +247,11 @@ export function CompanySwitcher({ current }: { current: string }) {
 export function DossierBlocks({ dossier }: { dossier: Dossier }) {
   return (
     <>
-      {dossier.dataAsOf === null ? null : <p className="mb-6 text-sm text-muted-foreground">{`Data as of ${dossier.dataAsOf}`}</p>}
-      <FilingsBlock filings={dossier.filings} />
       <MetricsBlock metrics={dossier.metrics} />
-      <RisksBlock risks={dossier.activeRisks} />
-      <EdgesBlock edges={dossier.edges} />
       <RulesBlock rules={dossier.rules} />
+      <EdgesBlock edges={dossier.edges} />
+      <FilingsBlock filings={dossier.filings} />
+      <RisksBlock risks={dossier.activeRisks} />
     </>
   );
 }

@@ -77,11 +77,11 @@ describe("Company: the dossier", () => {
 
     await act(async () => release(json(DOSSIER)));
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
-    expect(screen.getByText("Data as of 2026-09-30")).toBeInTheDocument();
+    expect(screen.getByText("Data as of Sep 30, 2026")).toBeInTheDocument(); // RD19: in the header, in words
     const filings = screen.getByRole("region", { name: "Filings" });
     expect(within(filings).getByText("10-K")).toBeInTheDocument();
     expect(within(filings).getByText("0001045810-26-000021")).toBeInTheDocument();
-    const metrics = screen.getByRole("region", { name: "Metrics" });
+    const metrics = screen.getByRole("region", { name: "Key numbers" });
     expect(within(metrics).getByText("revenue")).toBeInTheDocument();
     expect(within(metrics).getByRole("button", { name: stampLabel("xbrl:1045810:revenue:2026-01-25") })).toHaveAttribute("data-id", "xbrl:1045810:revenue:2026-01-25");
     const risks = screen.getByRole("region", { name: "Active risks" });
@@ -94,7 +94,7 @@ describe("Company: the dossier", () => {
   it("labels the rules as keyword matches to external Federal Register rules", async () => {
     stubFetch(() => json(DOSSIER));
     mount("/company/NVDA");
-    const rules = await screen.findByRole("region", { name: "Federal Register rules" });
+    const rules = await screen.findByRole("region", { name: "Government rules" });
     expect(rules).toHaveTextContent(RULE_LABEL);
     expect(within(rules).getByText("Export rule title")).toBeInTheDocument();
     expect(within(rules).getByRole("button", { name: stampLabel("fr:2026-01234") })).toHaveAttribute("data-id", "fr:2026-01234");
@@ -105,7 +105,7 @@ describe("Company: the dossier", () => {
     mount("/company/NVDA");
     const filings = await screen.findByRole("region", { name: "Filings" });
     expect(filings).toHaveTextContent("none");
-    expect(screen.getByRole("region", { name: "Federal Register rules" })).toHaveTextContent("none");
+    expect(screen.getByRole("region", { name: "Government rules" })).toHaveTextContent("none");
   });
 
   it("renders server text as text: no element, no handler, no link comes from the data", async () => {
@@ -125,7 +125,9 @@ describe("Company: the dossier", () => {
     expect(container.querySelector("[src]")).toBeNull();
     expect(container.querySelector("[style]")).toBeNull();
     const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
-    expect(hrefs.every((h) => /^\/company\/[A-Z]+\/$/.test(h ?? ""))).toBe(true);
+    // the switcher's company pages and RD21's five fixed section links: constants, never from data
+    const SECTIONS = ["#key-numbers", "#government-rules", "#relationships", "#filings", "#risk-changes"];
+    expect(hrefs.filter((h) => !/^\/company\/[A-Z]+\/$/.test(h ?? "") && !SECTIONS.includes(h ?? ""))).toEqual([]);
     expect(container.querySelector('[href*="evil"]')).toBeNull();
     expect(container.textContent).not.toContain("evil.example");
     // the metric's xbrl id and the one valid chunk id are chips; the hostile rule_id and chunk id are text only, never a chip

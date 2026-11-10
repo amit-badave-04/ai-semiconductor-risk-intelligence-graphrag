@@ -57,7 +57,7 @@ NOT_YET_IN_THE_DECK = {
     "lib/workspace.ts": 7,
     "pages/Ask.copy.ts": 12,
     "pages/Company.copy.ts": 8,  # only the KIND_* labels stay when it folds into the deck
-    "pages/CompanyBlocks.tsx": 7,
+    "pages/CompanyBlocks.tsx": 4,
     "pages/Freshness.lib.ts": 7,
     "pages/Freshness.tsx": 9,
     "pages/Method.tsx": 2,

@@ -5,8 +5,11 @@ import { type DossierResult, fetchDossier, fetchRiskChanges } from "@/lib/compan
 import { FILERS } from "@/lib/pages.generated";
 import { CompanySwitcher, DossierBlocks } from "./CompanyBlocks";
 import { RiskChangesBlock, type RiskChangesState } from "./CompanyChanges";
+import { CompanyReports, type FilerFacts } from "./CompanyHeader";
+import { CompanyNav } from "./CompanyNav";
 import { MSG_COMPANY_UNREADABLE, MSG_LOADING } from "./Company.copy";
 import { NotFound } from "./NotFound";
+import { useSectionFocus } from "./useSectionFocus";
 
 /** The not-found view after a dossier 404. The company's own h1 (which may have had focus) is gone, so the new h1 takes the
  *  focus unless the user has put it somewhere else since. */
@@ -49,7 +52,7 @@ function dossierMessage(result: DossierResult | null): string {
   return result.kind === "unreadable" ? MSG_COMPANY_UNREADABLE : "";
 }
 
-function CompanyPage({ ticker, name }: { ticker: string; name: string }) {
+function CompanyPage({ ticker, name, filer }: { ticker: string; name: string; filer: FilerFacts }) {
   const [result, setResult] = useState<DossierResult | null>(null);
 
   useEffect(() => {
@@ -64,17 +67,20 @@ function CompanyPage({ ticker, name }: { ticker: string; name: string }) {
   }, [ticker]);
 
   const changes = useRiskChanges(ticker, result?.kind === "ok");
+  useSectionFocus(result?.kind === "ok");
   if (result?.kind === "notFound") return <DossierNotFound />;
   const message = dossierMessage(result);
   return (
     <>
       <PageHeading title={`${name} (${ticker})`} />
+      {result?.kind === "ok" && <CompanyReports dossier={result.dossier} filer={filer} />}
       <output className="mb-4 block min-h-6 text-muted-foreground">
         {message}
       </output>
       <CompanySwitcher current={ticker} />
       {result?.kind === "ok" ? (
         <>
+          <CompanyNav />
           <DossierBlocks dossier={result.dossier} />
           <RiskChangesBlock state={changes} />
         </>
@@ -89,5 +95,5 @@ export function Company() {
   const { ticker } = useParams();
   const filer = FILERS.find((f) => f.ticker === ticker);
   if (!filer) return <NotFound />;
-  return <CompanyPage key={filer.ticker} ticker={filer.ticker} name={filer.name} />;
+  return <CompanyPage key={filer.ticker} ticker={filer.ticker} name={filer.name} filer={filer} />;
 }

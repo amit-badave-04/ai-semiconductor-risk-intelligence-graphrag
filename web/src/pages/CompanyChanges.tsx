@@ -121,7 +121,7 @@ function Body({ state }: { state: RiskChangesState }) {
 
 export function RiskChangesBlock({ state }: { state: RiskChangesState }) {
   return (
-    <Block title={RISK_CHANGES_TITLE}>
+    <Block id="risk-changes" title={RISK_CHANGES_TITLE}>
       <Body state={state} />
     </Block>
   );

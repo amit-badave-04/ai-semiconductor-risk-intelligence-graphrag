@@ -61,8 +61,8 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
   it("renders the metric, the edge chunk, the rule chunk and the rule as chip buttons with the Ask page's labels", () => {
     const { container } = showDossier(DOSSIER);
     const found = chips(container);
-    expect(found.map((b) => b.dataset.id)).toEqual([XBRL, CHUNK, CHUNK, FR]);
-    expect(found.map((b) => b.textContent)).toEqual([XBRL, CHUNK, CHUNK, FR].map((id) => stampLabel(id)));
+    expect(found.map((b) => b.dataset.id)).toEqual([XBRL, CHUNK, FR, CHUNK]); // RD21 order: key numbers, rules, relationships
+    expect(found.map((b) => b.textContent)).toEqual([XBRL, CHUNK, FR, CHUNK].map((id) => stampLabel(id)));
     for (const button of found) expect(button).toHaveAttribute("type", "button");
     expect(container.querySelectorAll("[data-cite]")).toHaveLength(0);
   });
@@ -77,7 +77,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
 
   it("opens the drawer for the clicked chip, with the chip as the opener and the place company", () => {
     const { drawer } = showDossier(DOSSIER);
-    const metrics = screen.getByRole("region", { name: "Metrics" });
+    const metrics = screen.getByRole("region", { name: "Key numbers" });
     const chip = within(metrics).getByRole("button", { name: stampLabel(XBRL) });
     fireEvent.click(chip);
     expect(drawer.open).toHaveBeenCalledWith(XBRL, chip, "company", undefined); // no quote before it (RD18)
@@ -85,7 +85,7 @@ describe("R25: the dossier's citation ids are evidence chips", () => {
 
   it("keeps the rules labelled as keyword matches next to their chips", () => {
     showDossier(DOSSIER);
-    const rules = screen.getByRole("region", { name: "Federal Register rules" });
+    const rules = screen.getByRole("region", { name: "Government rules" });
     expect(rules).toHaveTextContent("keyword matches to external Federal Register rules");
     expect(within(rules).getByRole("button", { name: stampLabel(FR) })).toBeInTheDocument();
   });
