@@ -133,3 +133,43 @@ def test_every_passage_is_present_and_non_trivial(sources):
 def test_the_copy_file_is_ascii_with_unicode_escapes(sources):
     copy_source, _page = sources
     assert copy_source.isascii()
+
+
+# ---------------------------------------------------------------- RD13: the hedge phrases and their hand-check counts
+# docs/specs/m5b-redesign.md RD13: "Read with care" is shown when an answer holds one of the pinned hedge phrases, and cites
+# the measured counts. The phrases are the server's own wording (src/semigraph/retrieval/context_layout.py), and each group's
+# counts are the ones the facts file states for that same wording.
+
+CONTEXT_LAYOUT = ROOT / "src" / "semigraph" / "retrieval" / "context_layout.py"
+_HEDGE_BLOCK = re.compile(r"export const HEDGES = \{(.*?)\n\} as const;", re.S)
+_HEDGE_ENTRY = re.compile(r"(\w+): \{ phrase: " + _LITERAL + r", counts: \[([0-9, ]+)\] \}")
+
+
+def hedges(copy_source: str) -> dict[str, tuple[str, list[int]]]:
+    block = _HEDGE_BLOCK.search(copy_source)
+    assert block, "HEDGES not found in Method.copy.ts"
+    return {k: (_js(p), [int(n) for n in c.split(",")]) for k, p, c in _HEDGE_ENTRY.findall(block.group(1))}
+
+
+def test_the_hedge_groups_are_the_three_change_claims(sources):
+    assert set(hedges(sources[0])) == {"removed", "unmatchedNew", "passageRemoved"}
+
+
+def test_every_hedge_phrase_is_the_server_s_own_wording(sources):
+    layout = CONTEXT_LAYOUT.read_text(encoding="utf-8").lower()
+    for name, (phrase, _counts) in hedges(sources[0]).items():
+        assert len(phrase) >= 20, name
+        assert phrase.lower() in layout, f"{name}: {phrase!r} is not in context_layout.py"
+
+
+def test_each_hedge_group_cites_the_counts_the_facts_file_states_for_that_wording(sources):
+    copy_source, _page = sources
+    text = _squash(" ".join(_js(t) for t in _TEXT.findall(_block(copy_source, "RELIABILITY"))))
+    expected = {"removed": "4 of 4 checked cases were gone as a standalone risk factor, but 2 of the 4",
+                "unmatchedNew": "only 6 of 12 checked cases were really new",
+                "passageRemoved": "6 of the 51 sentences flagged as missing from the newer filing"}
+    for name, (phrase, counts) in hedges(copy_source).items():
+        assert expected[name] in text, name
+        numbers = [int(n) for n in re.findall(r"\d+", expected[name])]
+        assert counts == numbers, f"{name}: {counts} != {numbers} (the facts file's counts for this wording)"
+

@@ -52,3 +52,12 @@ export const AGENT_HINT =
   "Deep research: a small planning model chooses a few extra graph lookups, listed below as they run, before the answer is written. It is slower and costs a little more; the same checks apply to the answer.";
 export const TRACING_NOTE =
   "Deep research questions are traced for debugging, at a sampling rate the operator sets. A trace holds the length of the question and a one-way hash of it, the names of the tools and models used, token counts, cost, timings and any fallback reason; never the text of the question or the answer, and never your address.";
+
+// docs/specs/m5b-redesign.md RD13: the change-claim wordings that set off "Read with care", each with the counts RELIABILITY
+// states for that same wording. Pinned by tests/test_web_method_copy.py: every phrase is the server's own wording
+// (retrieval/context_layout.py), and every count is the facts file's. The note's sentences are in copy/deck.ts.
+export const HEDGES = {
+  removed: { phrase: "no longer appears as a separate risk factor", counts: [4, 4, 2, 4] },
+  unmatchedNew: { phrase: "no matching risk factor found in the earlier filing", counts: [6, 12] },
+  passageRemoved: { phrase: "whose wording was not found in the newer filing", counts: [6, 51] },
+} as const;
