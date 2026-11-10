@@ -22,7 +22,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from serve_app_factory import GENEROUS, answer_events, load_fixture
+from serve_app_factory import COMPANY_FIXTURE_TICKERS, GENEROUS, answer_events, load_fixture
 
 from semigraph.artifacts import load_examples
 from semigraph.serve import routes, store
@@ -97,14 +97,55 @@ def seed_cache(app) -> None:
 
 # ---------------------------------------------------------------- public evidence of the cited ids
 
-def public_evidence_rows(previous):
-    """A ``run_cypher`` that answers the chunk and metric ids the recorded answers cite from templates, and everything else
-    as ``previous`` did."""
+CHUNK_ID_RE = re.compile(r"^[0-9-]{10,30}:[IVX]+\.[0-9A-Z]+:[0-9]{4}$")
+SECTION_TITLES = {"I.1A": "Item 1A. Risk Factors", "I.3": "Item 3. Key Information"}
+
+
+def _annual_filing(dossier: dict) -> dict:
+    return next(f for f in dossier["filings"] if f["form"] in ("10-K", "20-F") and f["is_current"])
+
+
+def company_evidence_rows() -> dict[tuple[str, str], dict]:
+    """The evidence of every id a Company page builds from the three company fixtures (docs/specs/m5b-redesign.md R3): each
+    figure, rule and relation passage, keyed by (id form, the id the evidence query receives)."""
     chunk = load_fixture("evidence_chunk_ask.handwritten.json")
     metric = load_fixture("evidence_xbrl.handwritten.json")
+    rows: dict[tuple[str, str], dict] = {}
+    for ticker in COMPANY_FIXTURE_TICKERS:
+        dossier = load_fixture(f"dossier_{ticker.lower()}.handwritten.json")
+        company, filing = dossier["company"], _annual_filing(dossier)
+        filed = {"accession_no": filing["accession_no"], "form": filing["form"], "filing_date": filing["filing_date"]}
+        for m in dossier["metrics"]:
+            metric_id = f"{company['cik']}:{m['metric']}:{m['period_end']}"
+            rows[("xbrl", metric_id)] = {**metric, **filed, "metric_id": metric_id, "metric": m["metric"], "concept": m["metric"],
+                                         "value": m["value"], "unit": m["unit"], "period_start": m["period_start"],
+                                         "period_end": m["period_end"], "company": company["name"], "cik": company["cik"]}
+        for r in dossier["rules"]:
+            rows[("fr", r["rule_id"])] = {"document_number": r["rule_id"], "title": r["target"], "publication_date": r["date"],
+                                          "url": r["url"], "kind": r["kind"], "topics": "['fixture']", "relevant": True,
+                                          "abstract": "Fixture abstract: a stand-in for the rule's summary."}
+        for edge in dossier["edges"] + dossier["rules"]:
+            for chunk_id in filter(CHUNK_ID_RE.match, edge["chunk_ids"]):
+                section = chunk_id.split(":")[1]
+                rows[("chunk", chunk_id)] = {**chunk, **filed, "chunk_id": chunk_id, "accession_no": chunk_id.split(":")[0],
+                                             "filer": company["name"], "section_key": section,
+                                             "section_title": SECTION_TITLES.get(section, section)}
+    return rows
+
+
+def public_evidence_rows(previous):
+    """A ``run_cypher`` that answers the chunk and metric ids the recorded answers cite from templates, the ids of the three
+    company fixtures from :func:`company_evidence_rows`, and everything else as ``previous`` did."""
+    chunk = load_fixture("evidence_chunk_ask.handwritten.json")
+    metric = load_fixture("evidence_xbrl.handwritten.json")
+    company = company_evidence_rows()
+    kinds = {routes.EVIDENCE_QUERY: "chunk", routes.XBRL_EVIDENCE_QUERY: "xbrl", routes.FR_EVIDENCE_QUERY: "fr"}
 
     def run_cypher(driver, query, **params):
         wanted = params.get("id", "")
+        known = company.get((kinds.get(query, ""), wanted))
+        if known is not None:
+            return [dict(known)]
         if query is routes.EVIDENCE_QUERY and wanted.startswith(ASK_CHUNK_PREFIX) and wanted[len(ASK_CHUNK_PREFIX):].isdigit() \
                 and int(wanted[len(ASK_CHUNK_PREFIX):]) in ASK_CHUNK_NUMBERS:
             return [{**chunk, "chunk_id": wanted}]

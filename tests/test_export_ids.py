@@ -77,9 +77,11 @@ def _spa_pages(text: str) -> list[str]:
     return [json.loads(line.strip().rstrip(",")) for line in block.group(1).splitlines()]
 
 
-def _filers(text: str) -> list[tuple[str, str]]:
-    pairs = re.findall(r'^  \{ ticker: ("[^"]*"), name: ("[^"]*") \},?$', text, re.MULTILINE)
-    return [(json.loads(ticker), json.loads(name)) for ticker, name in pairs]
+def _filers(text: str) -> list[tuple[str, str, str, bool]]:
+    rows = re.findall(
+        r'^  \{ ticker: ("[^"]*"), name: ("[^"]*"), annualForm: ("[^"]*"), quarterly: (true|false) \},?$', text, re.MULTILINE
+    )
+    return [(json.loads(ticker), json.loads(name), json.loads(form), quarterly == "true") for ticker, name, form, quarterly in rows]
 
 
 # ---------------------------------------------------------------- the translation
@@ -191,9 +193,17 @@ def test_the_pages_file_lists_spa_pages_in_source_order():
 
 def test_the_pages_file_lists_the_13_sec_filers_in_source_order_and_not_samsung():
     filers = _filers(export_ids.generate()[PAGES_FILE])
-    assert filers == [(ticker, spec[0]) for ticker, spec in universe.FILERS.items()]
+    assert filers == [(ticker, spec[0], spec[1], spec[2] is not None) for ticker, spec in universe.FILERS.items()]
     assert len(filers) == 13
-    assert "SSNLF" not in {ticker for ticker, _ in filers}
+    assert "SSNLF" not in {row[0] for row in filers}
+
+
+def test_each_filer_says_its_annual_form_and_whether_it_files_quarterly_reports():
+    # docs/specs/m5b-redesign.md RD19 and docs/decisions/001-r3-company-copy.md (5): TSMC and ASML file a 20-F and no 10-Q
+    filers = {row[0]: row[2:] for row in _filers(export_ids.generate()[PAGES_FILE])}
+    assert filers["TSM"] == ("20-F", False)
+    assert filers["ASML"] == ("20-F", False)
+    assert all(filers[t] == ("10-K", True) for t in filers if t not in {"TSM", "ASML"})
 
 
 def test_the_pages_file_exports_a_ticker_type():

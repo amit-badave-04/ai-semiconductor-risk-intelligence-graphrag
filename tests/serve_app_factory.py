@@ -13,7 +13,7 @@ It never imports ``semigraph.serve.main`` (``app = create_app()`` runs there at 
   workspace routes (503 while ``uploads_enabled`` is off).
 * The three answer paths, patched (:func:`patch_answer_paths`): ``routes.aanswer_stream`` (hybrid, vector),
   ``routes.astream_workspace_answer``, and the ``semigraph.agent.stream_async`` module (agent).
-* Hand-written JSON, NOT recorded (:func:`patch_data_paths`): the dossier and risk-changes of NVDA (``dossier.get_dossier`` /
+* Hand-written JSON, NOT recorded (:func:`patch_data_paths`): the dossier and risk-changes of NVDA, TSM and ASML (``dossier.get_dossier`` /
   ``get_risk_changes`` patched) and one evidence chunk (``routes.run_cypher`` patched), from
   ``tests/e2e/fixture_data/*.handwritten.json``. Recording them would need the production graph. Any other ticker or id is a 404.
 * Not served yet: the workspace upload and job pipeline (I3); those routes answer 503.
@@ -42,6 +42,7 @@ from semigraph.serve.ui_v2 import DEFAULT_DIST_DIR
 
 FIXTURE_DATA = Path(__file__).parent / "e2e" / "fixture_data"
 FIXTURE_CHUNK_ID = "0001045810-26-000021:I.1:0320"
+COMPANY_FIXTURE_TICKERS = ("NVDA", "TSM", "ASML")    # the companies with hand-written dossier and risk-changes fixtures
 # The caps are lifted far above what a browser test does from one address: a per-address window would otherwise answer 429
 # to the tenth page load of a Lighthouse run. (Production values are pinned by tests/test_serve_config_production.py.)
 GENEROUS = 100_000
@@ -156,8 +157,9 @@ def load_fixture(name: str, data_dir: Path = FIXTURE_DATA):
 
 def patch_data_paths(mp: pytest.MonkeyPatch, data_dir: Path = FIXTURE_DATA) -> None:
     """The store reads that touch the driver, the dossier, and the evidence query, answered from hand-written JSON."""
-    dossier_nvda = load_fixture("dossier_nvda.handwritten.json", data_dir)
-    changes_nvda = load_fixture("risk_changes_nvda.handwritten.json", data_dir)
+    # docs/specs/m5b-redesign.md R3: NVDA (10-K, USD), TSM (20-F, TWD, rules) and ASML (20-F, EUR, no rules); every other ticker 404s
+    dossiers = {t: load_fixture(f"dossier_{t.lower()}.handwritten.json", data_dir) for t in COMPANY_FIXTURE_TICKERS}
+    changes = {t: load_fixture(f"risk_changes_{t.lower()}.handwritten.json", data_dir) for t in COMPANY_FIXTURE_TICKERS}
     chunk = load_fixture("evidence_chunk.handwritten.json", data_dir)
 
     def fake_run_cypher(driver, query, **params):
@@ -168,7 +170,6 @@ def patch_data_paths(mp: pytest.MonkeyPatch, data_dir: Path = FIXTURE_DATA) -> N
     mp.setattr(store, "log_query", lambda driver, **kw: None)
     mp.setattr(store, "get_policy", lambda driver, key: None)
     mp.setattr(store, "ledger_summary", lambda driver: {"today": {"paid": 0}})
-    mp.setattr(dossier, "get_dossier", lambda driver, ticker, **kw: dict(dossier_nvda) if ticker == "NVDA" else None)
-    mp.setattr(dossier, "get_risk_changes",
-               lambda driver, ticker, **kw: dict(changes_nvda) if ticker == "NVDA" else None)
+    mp.setattr(dossier, "get_dossier", lambda driver, ticker, **kw: dict(dossiers[ticker]) if ticker in dossiers else None)
+    mp.setattr(dossier, "get_risk_changes", lambda driver, ticker, **kw: dict(changes[ticker]) if ticker in changes else None)
     mp.setattr(routes, "run_cypher", fake_run_cypher)

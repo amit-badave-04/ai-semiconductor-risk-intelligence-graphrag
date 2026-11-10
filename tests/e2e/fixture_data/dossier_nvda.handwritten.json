@@ -2,14 +2,62 @@
   "company": {"ticker": "NVDA", "name": "Nvidia", "cik": 1045810},
   "data_as_of": "2026-09-30",
   "filings": [
+    {"accession_no": "0001045810-26-000045", "form": "10-Q", "filing_date": "2026-08-27", "is_current": true,
+     "status": "current", "superseded_by": null},
     {"accession_no": "0001045810-26-000021", "form": "10-K", "filing_date": "2026-02-25", "is_current": true,
-     "status": "current", "superseded_by": null}
+     "status": "current", "superseded_by": null},
+    {"accession_no": "0001045810-25-000023", "form": "10-K", "filing_date": "2025-02-26", "is_current": false,
+     "status": "superseded", "superseded_by": "0001045810-26-000021"}
   ],
-  "metrics": [],
+  "metrics": [
+    {"metric": "capex", "value": 138000000.0, "unit": "USD", "period_start": "2011-01-31", "period_end": "2012-01-29"},
+    {"metric": "capex", "value": 97000000.0, "unit": "USD", "period_start": "2010-02-01", "period_end": "2011-01-30"},
+    {"metric": "capex", "value": 78000000.0, "unit": "USD", "period_start": "2009-01-26", "period_end": "2010-01-31"},
+    {"metric": "net_income", "value": 120067000000.0, "unit": "USD", "period_start": "2025-01-27", "period_end": "2026-01-25"},
+    {"metric": "net_income", "value": 72880000000.0, "unit": "USD", "period_start": "2024-01-29", "period_end": "2025-01-26"},
+    {"metric": "net_income", "value": 29760000000.0, "unit": "USD", "period_start": "2023-01-30", "period_end": "2024-01-28"},
+    {"metric": "net_income", "value": 4368000000.0, "unit": "USD", "period_start": "2022-01-31", "period_end": "2023-01-29"},
+    {"metric": "revenue", "value": 215938000000.0, "unit": "USD", "period_start": "2025-01-27", "period_end": "2026-01-25"},
+    {"metric": "revenue", "value": 130497000000.0, "unit": "USD", "period_start": "2024-01-29", "period_end": "2025-01-26"},
+    {"metric": "revenue", "value": 60922000000.0, "unit": "USD", "period_start": "2023-01-30", "period_end": "2024-01-28"},
+    {"metric": "revenue", "value": 26974000000.0, "unit": "USD", "period_start": "2022-01-31", "period_end": "2023-01-29"},
+    {"metric": "rnd", "value": 18497000000.0, "unit": "USD", "period_start": "2025-01-27", "period_end": "2026-01-25"},
+    {"metric": "rnd", "value": 12914000000.0, "unit": "USD", "period_start": "2024-01-29", "period_end": "2025-01-26"},
+    {"metric": "rnd", "value": 8675000000.0, "unit": "USD", "period_start": "2023-01-30", "period_end": "2024-01-28"},
+    {"metric": "rnd", "value": 7339000000.0, "unit": "USD", "period_start": "2022-01-31", "period_end": "2023-01-29"}
+  ],
   "active_risks": [
     {"risk_id": "fixture-risk-1", "summary": "Fixture risk summary: a stand-in for a disclosed supply risk.",
      "category": "supply", "last_evidenced_at": "2026-02-25"}
   ],
-  "edges": [],
-  "rules": []
+  "edges": [
+    {"source": "Nvidia", "relation": "DEPENDS_ON", "target": "TSMC", "status": "Active",
+     "quote": "Fixture quote: we depend on a foundry partner to manufacture our semiconductor wafers.",
+     "chunk_ids": ["0001045810-26-000021:I.1A:0002", "0001045810-26-000021:I.1A:0003"]},
+    {"source": "Microsoft", "relation": "CUSTOMER_OF", "target": "Nvidia", "status": "Active",
+     "quote": "Fixture quote: a large cloud provider buys our data center products.",
+     "chunk_ids": ["0001045810-26-000021:I.1A:0004"]},
+    {"source": "Nvidia", "relation": "DEPENDS_ON", "target": "SK Hynix", "status": "Active",
+     "quote": "Fixture quote: we rely on a memory supplier for high-bandwidth memory.",
+     "chunk_ids": ["not-a-chunk-id", "0001045810-26-000021:I.1A:0005"]},
+    {"source": "Nvidia", "relation": "COMPETES_WITH", "target": "AMD", "status": "Active",
+     "quote": "Fixture quote: our competitors include other makers of graphics processors.",
+     "chunk_ids": ["0001045810-26-000021:I.1A:0006"]},
+    {"source": "AMD", "relation": "COMPETES_WITH", "target": "Nvidia", "status": "Active",
+     "quote": "Fixture quote: the same competitor named the other way round.",
+     "chunk_ids": ["0001045810-26-000021:I.1A:0007"]},
+    {"source": "Nvidia", "relation": "COMPETES_WITH", "target": "Intel", "status": "Active",
+     "quote": "Fixture quote: another competitor named in the filing.",
+     "chunk_ids": ["0001045810-26-000021:I.1A:0008"]}
+  ],
+  "rules": [
+    {"source": "Nvidia", "relation": "AFFECTED_BY", "target": "Fixture rule: additional due diligence measures for advanced computing items",
+     "status": "Active", "quote": null, "chunk_ids": ["0001045810-26-000021:I.1A:0009"], "rule_id": "2025-00711",
+     "date": "2025-01-16", "url": "https://www.federalregister.gov/documents/2025/01/16/2025-00711/fixture",
+     "kind": "advanced_computing", "link_source": "keyword", "link_method": "keyword", "external": true},
+    {"source": "Nvidia", "relation": "AFFECTED_BY", "target": "Fixture rule: revisions to the export rules for semiconductor manufacturing items",
+     "status": "Active", "quote": null, "chunk_ids": ["0001045810-26-000021:I.1A:0010"], "rule_id": "2026-01234",
+     "date": "2026-03-04", "url": "https://www.federalregister.gov/documents/2026/03/04/2026-01234/fixture",
+     "kind": "semiconductor_manufacturing", "link_source": "keyword", "link_method": "keyword", "external": true}
+  ]
 }

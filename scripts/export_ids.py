@@ -6,7 +6,7 @@ Two TypeScript files come out of the Python sources of truth, so the browser and
 
 * ``web/src/lib/ids.generated.ts``: the four citation-id patterns of ``semigraph.retrieval.ids``, the scan pattern ``CITE_RE``
   and the anchored forms of the four ``*_RE`` objects, translated for JavaScript;
-* ``web/src/lib/pages.generated.ts``: the page paths ``semigraph.serve.ui_v2.SPA_PAGES`` and the ``{ticker, name}`` list of
+* ``web/src/lib/pages.generated.ts``: the page paths ``semigraph.serve.ui_v2.SPA_PAGES`` and the ``{ticker, name, annualForm, quarterly}`` list of
   ``semigraph.universe.FILERS`` (the 13 SEC filers; Samsung is in ``UNIVERSE`` only).
 
 Without ``--check`` the files are (re)written. With ``--check`` nothing is written and the exit code is 1 when a file is
@@ -190,11 +190,14 @@ def render_pages() -> str:
     lines += [
         "] as const;",
         "",
-        "// The 13 SEC filers (a company page exists for each). Samsung has no SEC filings and is not here.",
+        "// The 13 SEC filers (a company page exists for each). Samsung has no SEC filings and is not here. annualForm is the",
+        "// annual report's form; quarterly is false for a filer with no quarterly 10-Q (TSMC and ASML file a 20-F only).",
         "export const FILERS = [",
     ]
     lines += [
-        f"  {{ ticker: {_literal(ticker)}, name: {_literal(spec[0])} }}," for ticker, spec in universe.FILERS.items()
+        f"  {{ ticker: {_literal(ticker)}, name: {_literal(spec[0])}, annualForm: {_literal(spec[1])}, "
+        f"quarterly: {'true' if spec[2] is not None else 'false'} }},"
+        for ticker, spec in universe.FILERS.items()
     ]
     lines += ["] as const;", "", 'export type Ticker = (typeof FILERS)[number]["ticker"];']
     return "\n".join(lines) + "\n"

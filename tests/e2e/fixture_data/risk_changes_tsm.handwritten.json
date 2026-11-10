@@ -1,0 +1,16 @@
+{
+  "company": {"ticker": "TSM", "name": "TSMC", "cik": 1046179},
+  "pairs": [
+    {
+      "older": {"accession_no": "0001046179-25-000009", "form": "20-F", "filing_date": "2025-04-17"},
+      "newer": {"accession_no": "0001046179-26-000010", "form": "20-F", "filing_date": "2026-04-16"},
+      "compared": true,
+      "not_compared_reason": null,
+      "items": [
+        {"kind": "new", "headline": null, "older_item_id": null, "newer_item_id": "fixture-tsm-new-1",
+         "passages": [{"quote": "Fixture paragraph: a stand-in for a newly disclosed paragraph of a 20-F.",
+                       "chunk_id": "0001046179-26-000010:I.3:0011", "side": "newer"}]}
+      ]
+    }
+  ]
+}

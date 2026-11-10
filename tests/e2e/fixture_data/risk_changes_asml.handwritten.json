@@ -1,0 +1,12 @@
+{
+  "company": {"ticker": "ASML", "name": "ASML", "cik": 937966},
+  "pairs": [
+    {
+      "older": {"accession_no": "0000937966-25-000010", "form": "20-F", "filing_date": "2025-02-12"},
+      "newer": {"accession_no": "0000937966-26-000012", "form": "20-F", "filing_date": "2026-02-25"},
+      "compared": false,
+      "not_compared_reason": "low_text_yield",
+      "items": []
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "company": {"ticker": "ASML", "name": "ASML", "cik": 937966},
+  "data_as_of": "2026-09-30",
+  "filings": [
+    {"accession_no": "0000937966-26-000012", "form": "20-F", "filing_date": "2026-02-25", "is_current": true,
+     "status": "current", "superseded_by": null}
+  ],
+  "metrics": [
+    {"metric": "net_income", "value": 9609000000.0, "unit": "EUR", "period_start": "2025-01-01", "period_end": "2025-12-31"},
+    {"metric": "net_income", "value": 7571600000.0, "unit": "EUR", "period_start": "2024-01-01", "period_end": "2024-12-31"},
+    {"metric": "revenue", "value": 32667000000.0, "unit": "EUR", "period_start": "2025-01-01", "period_end": "2025-12-31"},
+    {"metric": "revenue", "value": 28262900000.0, "unit": "EUR", "period_start": "2024-01-01", "period_end": "2024-12-31"}
+  ],
+  "active_risks": [],
+  "edges": [
+    {"source": "ASML", "relation": "SUPPLIES_TO", "target": "TSMC", "status": "Active",
+     "quote": "Fixture quote: we supply lithography systems to a large foundry customer.",
+     "chunk_ids": ["0000937966-26-000012:I.3:0021"]}
+  ],
+  "rules": []
+}

@@ -1,0 +1,33 @@
+{
+  "company": {"ticker": "TSM", "name": "TSMC", "cik": 1046179},
+  "data_as_of": "2026-09-30",
+  "filings": [
+    {"accession_no": "0001046179-26-000010", "form": "20-F", "filing_date": "2026-04-16", "is_current": true,
+     "status": "current", "superseded_by": null},
+    {"accession_no": "0001046179-25-000009", "form": "20-F", "filing_date": "2025-04-17", "is_current": false,
+     "status": "superseded", "superseded_by": "0001046179-26-000010"}
+  ],
+  "metrics": [
+    {"metric": "net_income", "value": 1717900000000.0, "unit": "TWD", "period_start": "2025-01-01", "period_end": "2025-12-31"},
+    {"metric": "net_income", "value": 1173268000000.0, "unit": "TWD", "period_start": "2024-01-01", "period_end": "2024-12-31"},
+    {"metric": "revenue", "value": 3809054000000.0, "unit": "TWD", "period_start": "2025-01-01", "period_end": "2025-12-31"},
+    {"metric": "revenue", "value": 2894308000000.0, "unit": "TWD", "period_start": "2024-01-01", "period_end": "2024-12-31"},
+    {"metric": "rnd", "value": 225000000000.0, "unit": "TWD", "period_start": "2025-01-01", "period_end": "2025-12-31"},
+    {"metric": "rnd", "value": 204182000000.0, "unit": "TWD", "period_start": "2024-01-01", "period_end": "2024-12-31"}
+  ],
+  "active_risks": [
+    {"risk_id": "fixture-risk-tsm-1", "summary": "Fixture risk summary: a stand-in for a disclosed geopolitical risk.",
+     "category": "geopolitical", "last_evidenced_at": null}
+  ],
+  "edges": [
+    {"source": "Nvidia", "relation": "DEPENDS_ON", "target": "TSMC", "status": "Active",
+     "quote": "Fixture quote: a customer depends on our wafer manufacturing services.",
+     "chunk_ids": ["0001046179-26-000010:I.3:0011"]}
+  ],
+  "rules": [
+    {"source": "TSMC", "relation": "AFFECTED_BY", "target": "Fixture rule: entity list additions for foundry services",
+     "status": "Active", "quote": null, "chunk_ids": ["0001046179-26-000010:I.3:0012"], "rule_id": "2025-02345",
+     "date": "2025-02-10", "url": "https://www.federalregister.gov/documents/2025/02/10/2025-02345/fixture",
+     "kind": "entity_list", "link_source": "keyword", "link_method": "keyword", "external": true}
+  ]
+}

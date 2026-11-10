@@ -12,21 +12,22 @@ export const SPA_PAGES = [
   "/method/",
 ] as const;
 
-// The 13 SEC filers (a company page exists for each). Samsung has no SEC filings and is not here.
+// The 13 SEC filers (a company page exists for each). Samsung has no SEC filings and is not here. annualForm is the
+// annual report's form; quarterly is false for a filer with no quarterly 10-Q (TSMC and ASML file a 20-F only).
 export const FILERS = [
-  { ticker: "NVDA", name: "Nvidia" },
-  { ticker: "AMD", name: "AMD" },
-  { ticker: "INTC", name: "Intel" },
-  { ticker: "AVGO", name: "Broadcom" },
-  { ticker: "QCOM", name: "Qualcomm" },
-  { ticker: "MU", name: "Micron" },
-  { ticker: "AAPL", name: "Apple" },
-  { ticker: "MSFT", name: "Microsoft" },
-  { ticker: "AMZN", name: "Amazon" },
-  { ticker: "GOOGL", name: "Alphabet" },
-  { ticker: "META", name: "Meta" },
-  { ticker: "TSM", name: "TSMC" },
-  { ticker: "ASML", name: "ASML" },
+  { ticker: "NVDA", name: "Nvidia", annualForm: "10-K", quarterly: true },
+  { ticker: "AMD", name: "AMD", annualForm: "10-K", quarterly: true },
+  { ticker: "INTC", name: "Intel", annualForm: "10-K", quarterly: true },
+  { ticker: "AVGO", name: "Broadcom", annualForm: "10-K", quarterly: true },
+  { ticker: "QCOM", name: "Qualcomm", annualForm: "10-K", quarterly: true },
+  { ticker: "MU", name: "Micron", annualForm: "10-K", quarterly: true },
+  { ticker: "AAPL", name: "Apple", annualForm: "10-K", quarterly: true },
+  { ticker: "MSFT", name: "Microsoft", annualForm: "10-K", quarterly: true },
+  { ticker: "AMZN", name: "Amazon", annualForm: "10-K", quarterly: true },
+  { ticker: "GOOGL", name: "Alphabet", annualForm: "10-K", quarterly: true },
+  { ticker: "META", name: "Meta", annualForm: "10-K", quarterly: true },
+  { ticker: "TSM", name: "TSMC", annualForm: "20-F", quarterly: false },
+  { ticker: "ASML", name: "ASML", annualForm: "20-F", quarterly: false },
 ] as const;
 
 export type Ticker = (typeof FILERS)[number]["ticker"];

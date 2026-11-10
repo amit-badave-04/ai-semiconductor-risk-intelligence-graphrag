@@ -8,6 +8,7 @@ environment: nothing here reads the developer's ``os.environ`` (Claude Code's ow
 
 import json
 import os
+import re
 import subprocess
 import sys
 import types
@@ -182,7 +183,9 @@ def test_a_call_whose_error_is_swallowed_still_shows_in_the_hit_list(guards):
 def drive(client: TestClient, agent: bool) -> dict[str, int]:
     seen = {}
     for path in ("/api/config", "/api/stats", "/api/examples", "/api/freshness", "/api/company/NVDA/dossier",
-                 "/api/company/NVDA/risk-changes", "/api/company/AMD/dossier", f"/api/evidence/{FIXTURE_CHUNK_ID}",
+                 "/api/company/NVDA/risk-changes", "/api/company/TSM/dossier", "/api/company/TSM/risk-changes",
+                 "/api/company/ASML/dossier", "/api/company/ASML/risk-changes", "/api/company/AMD/dossier",
+                 f"/api/evidence/{FIXTURE_CHUNK_ID}",
                  "/api/evidence/not-a-chunk", "/api/evidence/0001045810-26-000021:I.1A:0001",
                  "/api/evidence/xbrl:1045810:revenue:2026-01-25", "/healthz", "/", "/legacy", "/v2/", "/v2/company/NVDA/"):
         seen[path] = client.get(path).status_code
@@ -212,6 +215,8 @@ def test_every_flow_of_i1_runs_under_the_guards_and_reaches_no_settings_or_llm(g
         config_reply = client.get("/api/config").json()
     assert seen == {"/api/config": 200, "/api/stats": 200, "/api/examples": 200, "/api/freshness": 200,
                     "/api/company/NVDA/dossier": 200, "/api/company/NVDA/risk-changes": 200,
+                    "/api/company/TSM/dossier": 200, "/api/company/TSM/risk-changes": 200,
+                    "/api/company/ASML/dossier": 200, "/api/company/ASML/risk-changes": 200,
                     "/api/company/AMD/dossier": 404, f"/api/evidence/{FIXTURE_CHUNK_ID}": 200,
                     "/api/evidence/not-a-chunk": 400, "/api/evidence/0001045810-26-000021:I.1A:0001": 200,
                     "/api/evidence/xbrl:1045810:revenue:2026-01-25": 200, "/healthz": 200, "/": 200, "/legacy": 200,
@@ -221,6 +226,47 @@ def test_every_flow_of_i1_runs_under_the_guards_and_reaches_no_settings_or_llm(g
     assert '"event": "done"' in ask.text.replace('"event":"done"', '"event": "done"')
     assert config_reply == {"turnstile_site_key": "dummy-site-key"}          # from FakeSettings, never from a .env
     assert guards.hits == []
+
+
+DOSSIER_FIXTURES = {"NVDA": "dossier_nvda.handwritten.json", "TSM": "dossier_tsm.handwritten.json",
+                    "ASML": "dossier_asml.handwritten.json"}
+
+
+def dossier_evidence_ids(dossier: dict) -> list[str]:
+    """Every citation id a Company page builds from a dossier fixture: its figures, its rules and the passages of its relations
+    (an id outside the chunk grammar is left out, as the page leaves it out)."""
+    cik = dossier["company"]["cik"]
+    ids = [f"xbrl:{cik}:{m['metric']}:{m['period_end']}" for m in dossier["metrics"]]
+    ids += [f"fr:{r['rule_id']}" for r in dossier["rules"]]
+    chunk = re.compile(r"^[0-9-]{10,30}:[IVX]+\.[0-9A-Z]+:[0-9]{4}$")
+    ids += [c for e in dossier["edges"] + dossier["rules"] for c in e["chunk_ids"] if chunk.match(c)]
+    return ids
+
+
+def test_every_citation_of_the_three_company_fixtures_resolves_to_evidence(guards, dist, guarded_mp):
+    # docs/specs/m5b-redesign.md R3: the Company page's e2e opens figures, rules and relation quotes of NVDA, TSM and ASML
+    app = fixture_app.build_fixture_app(dist, mp=guarded_mp)
+    with TestClient(app) as client:
+        for ticker, name in DOSSIER_FIXTURES.items():
+            dossier = client.get(f"/api/company/{ticker}/dossier").json()
+            assert dossier == json.loads((Path(__file__).parent / "e2e" / "fixture_data" / name).read_text(encoding="utf-8"))
+            ids = dossier_evidence_ids(dossier)
+            assert ids, ticker
+            unresolved = [i for i in ids if client.get(f"/api/evidence/{i}").status_code != 200]
+            assert unresolved == [], ticker
+    assert guards.hits == []
+
+
+def test_a_figure_s_evidence_is_its_own_company_currency_and_annual_form(guards, dist, guarded_mp):
+    app = fixture_app.build_fixture_app(dist, mp=guarded_mp)
+    with TestClient(app) as client:
+        tsm = client.get("/api/company/TSM/dossier").json()
+        fact = tsm["metrics"][0]
+        body = client.get(f"/api/evidence/xbrl:{tsm['company']['cik']}:{fact['metric']}:{fact['period_end']}").json()
+        nvda = client.get("/api/evidence/xbrl:1045810:net_income:2025-01-26").json()
+    assert (body["company"], body["unit"], body["form"], body["value"]) == ("TSMC", "TWD", "20-F", fact["value"])
+    assert body["metric"] == fact["metric"] and body["period_end"] == fact["period_end"]
+    assert (nvda["company"], nvda["unit"], nvda["metric"], nvda["form"]) == ("Nvidia", "USD", "net_income", "10-K")
 
 
 def test_a_route_that_reaches_get_settings_fails_the_flow_test(guards, dist, guarded_mp):
