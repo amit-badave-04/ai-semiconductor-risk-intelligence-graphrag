@@ -6,6 +6,7 @@
 //   * The workspace id goes into a path and the token into a header: both are checked against their grammar BEFORE any request,
 //     so a malformed value makes no request (S4). The token is sent in the X-Workspace-Token header only (S8).
 //   * Create, restore and delete are sent at once; none is retried (create spends a daily count).
+import { deck } from "@/copy/deck";
 import type { WorkspaceSession } from "@/state/useWorkspace";
 import { detailOf } from "./refusal";
 
@@ -16,9 +17,11 @@ export const WS_SESSION_KEY = "semigraph:workspace";
 const WORKSPACE_ID_RE = /^[0-9a-f]{32}$/;
 const TOKEN_RE = /^[\x21-\x7e]{1,512}$/;
 
-export const MSG_CREATE_NETWORK = "network error creating a workspace";
-export const MSG_CREATE_FAILED = "could not create a workspace";
-export const MSG_NOT_FOUND = "workspace not found";
+export const MSG_CREATE_NETWORK = deck.workspace.createNetwork;
+export const MSG_CREATE_FAILED = deck.workspace.createFailed;
+export const MSG_NOT_FOUND = deck.workspace.notFound;
+/** The file types an upload accepts (the server's own list, R32). */
+export const FILE_ACCEPT = ".pdf,.docx,.md,.markdown,.txt,.html,.htm";
 
 export function isWorkspaceId(value: unknown): value is string {
   return typeof value === "string" && WORKSPACE_ID_RE.test(value);
@@ -202,8 +205,8 @@ export function uploadTargetOptions(
   docs: readonly Pick<WsDocument, "document_id" | "title">[] | null | undefined,
 ): SelectOption[] {
   return [
-    { value: "", label: "Upload a new document" },
-    ...list(docs).map((d) => ({ value: d.document_id, label: `New version of ${d.title || d.document_id}` })),
+    { value: "", label: deck.workspace.uploadNew },
+    ...list(docs).map((d) => ({ value: d.document_id, label: deck.workspace.newVersionOf(d.title || d.document_id) })),
   ];
 }
 
@@ -212,8 +215,8 @@ export function versionAskAsOfOptions(
   versions: readonly Pick<WsVersion, "version" | "created_at">[] | null | undefined,
 ): SelectOption[] {
   return [
-    { value: "", label: "ask as of: current" },
-    ...list(versions).map((v) => ({ value: v.created_at || "", label: `ask as of v${v.version}` })),
+    { value: "", label: deck.workspace.askAsOfCurrent },
+    ...list(versions).map((v) => ({ value: v.created_at || "", label: deck.workspace.askAsOfVersion(v.version) })),
   ];
 }
 

@@ -187,6 +187,51 @@ test("the controls are labelled, the drop zone works from the keyboard, and axe 
   expect(results.violations.filter((v) => v.id === "label")).toEqual([]);
 });
 
+// docs/specs/m5b-redesign.md R4 (the open workspace): names come from the uploader. A 300-character name, markup and a right-to-left
+// override stay text, each in its own <bdi>, and nothing pushes the page sideways on a phone; the drag cue survives forced colours.
+const LONG_NAME = `${"quarterly-risk-report-".repeat(13)}final.txt`;
+const MARKUP_NAME = '<img src=x onerror="window.__pwned=1">.txt';
+const RLO_NAME = "report‮pdf.txt";
+
+for (const width of [390, 320]) {
+  test(`at ${width} px a long, a markup and a right-to-left-override name stay text and nothing scrolls sideways`, async ({ page }) => {
+    expect(LONG_NAME.length).toBeGreaterThanOrEqual(290);
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(WORKSPACE);
+    await createWorkspace(page);
+    for (const name of [LONG_NAME, MARKUP_NAME, RLO_NAME]) {
+      await chooser(page).setInputFiles(file(name));
+      await expect(page.locator("[data-job-row]").filter({ hasText: name }).first()).toContainText("ready");
+      // the document's title is the name cut to the server's 120-character cap (lib/jobs.ts MAX_UPLOAD_TITLE_CHARS)
+      const title = name.slice(0, 120);
+      await expect(page.locator("strong bdi").filter({ hasText: title })).toHaveText(title);
+    }
+    expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
+    await expect(page.locator("main img")).toHaveCount(0);
+    for (const name of [LONG_NAME, MARKUP_NAME, RLO_NAME]) {
+      await expect(page.locator("[data-job-row] bdi").filter({ hasText: name }).first()).toHaveText(name);
+    }
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    for (const select of await page.locator("main select").all()) {
+      const box = await select.boundingBox();
+      expect(box === null ? 0 : box.x + box.width).toBeLessThanOrEqual(width);
+    }
+  });
+}
+
+test("in forced colours the drag cue is a solid border, not only a colour", async ({ page }) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await page.goto(WORKSPACE);
+  await createWorkspace(page);
+  const style = () => dropZone(page).evaluate((zone) => getComputedStyle(zone).borderTopStyle);
+  expect(await style()).toBe("dashed");
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await dropZone(page).dispatchEvent("dragenter", { dataTransfer });
+  await expect(dropZone(page)).toHaveAttribute("data-dragging", "");
+  expect(await style()).toBe("solid");
+});
+
 test.describe("with a site key (R33(2)): an upload waits for the bot-check token", () => {
   const stub = (page: Page) =>
     page.evaluate(() => {

@@ -4,9 +4,11 @@
 // that sentence. Files are handed to the provider's queue from the handlers below and nowhere else (S12).
 import { useId, useRef, useState, type DragEvent } from "react";
 import type { JobRow } from "@/lib/jobs";
-import { uploadTargetOptions, type WsDocument } from "@/lib/workspace";
+import { deck } from "@/copy/deck";
+import { FILE_ACCEPT, uploadTargetOptions, type WsDocument } from "@/lib/workspace";
 import { useWorkspaceUploads } from "@/state/useWorkspaceUploads";
-import { DROP_TEXT, FILE_ACCEPT, UPLOAD_AS } from "./Workspace.copy";
+
+const { DROP_TEXT, UPLOAD_AS } = deck.workspace;
 
 const TONE: Record<JobRow["tone"], string> = { "": "", ok: "text-foreground font-medium", err: "text-destructive" };
 
@@ -16,7 +18,9 @@ function Rows({ rows }: { rows: readonly JobRow[] }) {
     <ul className="m-0 mt-3 list-none space-y-1 p-0 text-sm">
       {rows.map((row) => (
         <li key={row.key} data-job-row="" className="flex flex-wrap gap-x-3">
-          <span className="font-medium break-all">{row.name}</span>
+          <span className="font-medium break-all">
+            <bdi>{row.name}</bdi>
+          </span>
           <span className={TONE[row.tone]}>{row.text}</span>
         </li>
       ))}
@@ -51,7 +55,7 @@ function DropZone({ onFiles }: DropZoneProps) {
           setDragging(false);
           onFiles(event.dataTransfer.files);
         }}
-        className="mt-3 w-full rounded-md border-2 border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground hover:bg-muted data-[dragging]:bg-muted"
+        className="mt-3 w-full rounded-md border-2 border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground hover:bg-muted data-[dragging]:border-solid data-[dragging]:border-foreground data-[dragging]:bg-muted"
       >
         {DROP_TEXT}
       </button>
@@ -91,7 +95,7 @@ export function WorkspaceUpload({ documents }: { documents: readonly WsDocument[
           id={targetId}
           value={target}
           onChange={(event) => setChosen(event.target.value)}
-          className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+          className="h-9 max-w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-sm"
         >
           {options.map((o) => (
             <option key={o.value} value={o.value}>

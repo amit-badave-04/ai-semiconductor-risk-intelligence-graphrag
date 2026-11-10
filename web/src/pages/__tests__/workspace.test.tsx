@@ -10,8 +10,12 @@ import { getStats, refreshStats, resetStatsStore } from "@/lib/statsStore";
 import { WS_SESSION_KEY } from "@/lib/workspace";
 import { INERT_TURNSTILE, TurnstileContext } from "@/state/useTurnstile";
 import { WorkspaceProvider } from "@/state/WorkspaceProvider";
-import * as copy from "../Workspace.copy";
+import { deck } from "@/copy/deck";
+import { FILE_ACCEPT } from "@/lib/workspace";
 import { Workspace } from "../Workspace";
+
+// the Workspace page's words (R4: moved from pages/Workspace.copy.ts to the deck under the same names)
+const copy = deck.workspace;
 
 // R28, A3, A4, A6, S8, S12 (docs/specs/m5b-frontend.md): the workspace page, over the real provider and a fake server. The copy
 // is pinned against the legacy page (index.html), character for character.
@@ -23,8 +27,10 @@ const DOC = "abc123456789";
 const V1 = "2026-09-01T00:00:00Z";
 const V2 = "2026-09-15T00:00:00Z";
 const CHUNK = `doc:${DOC}:v2:0003`;
+// a document's title as its heading shows it (the as-of label repeats the title in its own <bdi>)
+const HEADING = { selector: "strong bdi" };
 
-const docs = (extra = false, extraInstant = "2026-09-20T00:00:00Z") => ({
+const docs = (extra = false, extraInstant = "2026-09-20T00:00:00Z", extraTitle = "<b>other</b>") => ({
   workspace_id: ID,
   expires_at: EXPIRES,
   documents: [
@@ -38,7 +44,7 @@ const docs = (extra = false, extraInstant = "2026-09-20T00:00:00Z") => ({
       ],
     },
     ...(extra
-      ? [{ document_id: "def123456789", title: "<b>other</b>", latest_version: 1, versions: [{ version: 1, created_at: extraInstant, is_current: true, status: "ready" }] }]
+      ? [{ document_id: "def123456789", title: extraTitle, latest_version: 1, versions: [{ version: 1, created_at: extraInstant, is_current: true, status: "ready" }] }]
       : []),
   ],
 });
@@ -48,6 +54,7 @@ interface Fake {
   uploads: { value: boolean };
   extraDocument: { value: boolean };
   extraInstant: { value: string };
+  extraTitle: { value: string };
   createDelayMs: { value: number };
   createResponse: { value: Response | null };
   restoreOk: { value: boolean };
@@ -63,6 +70,7 @@ function installFake(): Fake {
     uploads: { value: true },
     extraDocument: { value: false },
     extraInstant: { value: "2026-09-20T00:00:00Z" },
+    extraTitle: { value: "<b>other</b>" },
     createDelayMs: { value: 0 },
     createResponse: { value: null },
     restoreOk: { value: true },
@@ -95,7 +103,7 @@ function installFake(): Fake {
       }
       if (method === "GET" && url.includes("/changes?")) return fake.changes.value.clone();
       if (method === "GET" && /\/api\/workspace\/[0-9a-f]{32}$/.test(url)) {
-        return fake.restoreOk.value ? json(docs(fake.extraDocument.value, fake.extraInstant.value)) : json({ detail: "x" }, 404);
+        return fake.restoreOk.value ? json(docs(fake.extraDocument.value, fake.extraInstant.value, fake.extraTitle.value)) : json({ detail: "x" }, 404);
       }
       if (method === "DELETE") return new Response(null, { status: 204 });
       return new Response("{}", { status: 404 });
@@ -131,7 +139,7 @@ const open = async () => {
   store();
   const fake = installFake();
   mount();
-  await screen.findByText("memo.txt");
+  await screen.findByText("memo.txt", HEADING);
   return fake;
 };
 
@@ -207,7 +215,7 @@ describe("every control has a label (A4) and the token stays out of the page (S8
     await userEvent.type(screen.getByLabelText(copy.TOKEN_LABEL), TOKEN);
     expect(pageMarkup()).not.toContain(TOKEN); // typing into a password field leaves no value attribute
     await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
-    await screen.findByText("memo.txt");
+    await screen.findByText("memo.txt", HEADING);
     expect(fake.calls.find((c) => c.url === `/api/workspace/${ID}`)?.headers).toEqual({ "X-Workspace-Token": TOKEN });
     expect(pageMarkup()).not.toContain(TOKEN);
     expect(document.body.textContent).not.toContain(TOKEN);
@@ -276,7 +284,7 @@ describe("the upload area (A6, S12)", () => {
     fake.extraDocument.value = true;
     store();
     mount();
-    await screen.findByText("memo.txt");
+    await screen.findByText("memo.txt", HEADING);
     const options = within(screen.getByLabelText(copy.UPLOAD_AS)).getAllByRole("option").map((o) => o.textContent);
     expect(options).toEqual(["Upload a new document", "New version of memo.txt", "New version of <b>other</b>"]);
     expect(document.querySelector("b")).toBeNull(); // the title is text, never markup
@@ -293,7 +301,7 @@ describe("the upload area (A6, S12)", () => {
     await userEvent.keyboard("{Enter}");
     await userEvent.keyboard(" ");
     expect(click).toHaveBeenCalledTimes(3);
-    expect(input).toHaveAttribute("accept", copy.FILE_ACCEPT);
+    expect(input).toHaveAttribute("accept", FILE_ACCEPT);
   });
 
   it("uploads a chosen file into the selected document, once, and shows its row", async () => {
@@ -331,10 +339,52 @@ describe("the upload area (A6, S12)", () => {
   });
 });
 
+// docs/specs/m5b-redesign.md R4 (the open workspace, slice 5): names come from the uploader. A right-to-left override (U+202E) in one must not reorder
+// the words around it, so each name sits in its own <bdi>; long names and ids wrap inside the page, the selects shrink with it,
+// and the drag cue changes the border's style, not only its colour.
+// (a .txt file the picker accepts, which an override would show as "reporttxt.fdp")
+const RLO_NAME = "report‮pdf.txt";
+
+describe("uploader names are isolated and wrap (R4)", () => {
+  it("puts a document's title in a <bdi>, in its heading and in its as-of label", async () => {
+    const fake = installFake();
+    fake.extraDocument.value = true;
+    fake.extraTitle.value = RLO_NAME;
+    store();
+    mount();
+    const strong = await screen.findByText(RLO_NAME, HEADING);
+    expect(strong.parentElement?.tagName).toBe("STRONG");
+    expect(strong.parentElement?.className).toContain("break-all");
+    const label = (screen.getByLabelText(`${RLO_NAME}:`) as HTMLSelectElement).closest("label");
+    expect(label?.querySelector("bdi")?.textContent).toBe(RLO_NAME);
+  });
+
+  it("puts an upload's file name in a <bdi> in its row", async () => {
+    await open();
+    await userEvent.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File(["x"], RLO_NAME));
+    const name = await screen.findByText(RLO_NAME, { selector: "[data-job-row] bdi" });
+    expect(name.parentElement?.className).toContain("break-all");
+  });
+
+  it("lets the selects shrink and the workspace id wrap", async () => {
+    await open();
+    for (const select of document.querySelectorAll("select")) {
+      expect(select.className).toContain("max-w-full");
+      expect(select.className).toContain("min-w-0");
+    }
+    expect(screen.getByText(ID, { selector: "code" }).className).toContain("break-all");
+  });
+
+  it("shows dragging with a solid border, not only a colour", async () => {
+    await open();
+    expect(screen.getByRole("button", { name: copy.DROP_TEXT }).className).toContain("data-[dragging]:border-solid");
+  });
+});
+
 describe("the documents and the as-of choice (upload_flow 1 to 3)", () => {
   it("lists each document's latest version and timeline", async () => {
     await open();
-    expect(screen.getByText("memo.txt").closest("p")?.textContent).toBe("memo.txt (latest v2)");
+    expect(screen.getByText("memo.txt", HEADING).closest("p")?.textContent).toBe("memo.txt (latest v2)");
     expect(screen.getByText("v1 (superseded) \u2192 v2 (current)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "memo.txt: v1" })).toBeInTheDocument();
   });
@@ -344,7 +394,7 @@ describe("the documents and the as-of choice (upload_flow 1 to 3)", () => {
     fake.extraDocument.value = true;
     store();
     mount();
-    await screen.findByText("memo.txt");
+    await screen.findByText("memo.txt", HEADING);
     const first = screen.getByLabelText("memo.txt:") as HTMLSelectElement;
     const second = screen.getByLabelText("<b>other</b>:") as HTMLSelectElement;
     await userEvent.selectOptions(first, V1);
@@ -361,7 +411,7 @@ describe("the documents and the as-of choice (upload_flow 1 to 3)", () => {
     fake.extraInstant.value = V1;
     store();
     mount();
-    await screen.findByText("memo.txt");
+    await screen.findByText("memo.txt", HEADING);
     await userEvent.selectOptions(screen.getByLabelText("memo.txt:"), V1);
     expect((screen.getByLabelText("memo.txt:") as HTMLSelectElement).value).toBe(V1);
     expect((screen.getByLabelText("<b>other</b>:") as HTMLSelectElement).value).toBe("");
@@ -402,7 +452,7 @@ describe("what changed", () => {
     store();
     const fake = installFake();
     mount(drawer(opened));
-    await screen.findByText("memo.txt");
+    await screen.findByText("memo.txt", HEADING);
     await userEvent.click(screen.getByRole("button", { name: "memo.txt: v2" }));
     expect(await screen.findByText(copy.comparedHeader(1, 2, 3))).toBeInTheDocument();
     const call = fake.calls.find((c) => c.url.includes("/changes?"));
@@ -437,7 +487,7 @@ describe("the copy is the legacy page's, character for character (R30)", () => {
     ["AS_OF_TITLE", copy.AS_OF_TITLE],
     ["UPLOAD_AS", copy.UPLOAD_AS],
     ["DROP_TEXT", copy.DROP_TEXT],
-    ["FILE_ACCEPT", copy.FILE_ACCEPT],
+    ["FILE_ACCEPT", FILE_ACCEPT],
     ["NO_DOCUMENTS", copy.NO_DOCUMENTS],
   ])("%s occurs in index.html", (_name, text) => {
     expect(unescape(legacy)).toContain(squash(text));

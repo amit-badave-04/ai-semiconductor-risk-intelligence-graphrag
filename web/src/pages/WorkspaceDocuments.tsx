@@ -3,8 +3,10 @@
 // uploader, so they are text nodes. The as-of value is the provider's single `asOf`: the date field and these selectors write the
 // same value, so at most one choice is ever active, and the selector shown is derived from it (no copy of the state to drift).
 import { useId } from "react";
+import { deck } from "@/copy/deck";
 import { versionAskAsOfOptions, versionTimeline, type WsDocument } from "@/lib/workspace";
-import { NO_DOCUMENTS } from "./Workspace.copy";
+
+const { NO_DOCUMENTS } = deck.workspace;
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -29,8 +31,10 @@ function DocumentRow({ doc, pinned, asOf, setAsOf, onShowChanges }: RowProps) {
   return (
     <li className="border-b border-border py-3">
       <p className="m-0">
-        <strong>{name}</strong>
-        {doc.latest_version === null ? null : ` (latest v${doc.latest_version})`}
+        <strong className="break-all">
+          <bdi>{name}</bdi>
+        </strong>
+        {doc.latest_version === null ? null : deck.workspace.latest(doc.latest_version)}
       </p>
       <p className="m-0 mt-1 flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
         <span>{versionTimeline(doc.versions)}</span>
@@ -48,7 +52,8 @@ function DocumentRow({ doc, pinned, asOf, setAsOf, onShowChanges }: RowProps) {
         ))}
       </p>
       <label htmlFor={selectId} className="mt-1 block text-sm text-muted-foreground">
-        {`${name}: `}
+        <bdi className="break-all">{name}</bdi>
+        {": "}
         <select
           id={selectId}
           value={pinned ? asOf : ""}
@@ -57,7 +62,7 @@ function DocumentRow({ doc, pinned, asOf, setAsOf, onShowChanges }: RowProps) {
             // choosing "current" ends an instant, but leaves a date the visitor typed
             if (value !== "" || !DATE_ONLY.test(asOf)) setAsOf(value);
           }}
-          className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
+          className="h-8 max-w-full min-w-0 rounded-md border border-input bg-transparent px-2 text-sm"
         >
           {versionAskAsOfOptions(doc.versions).map((o, index) => (
             <option key={index} value={o.value}>

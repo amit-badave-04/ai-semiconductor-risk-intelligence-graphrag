@@ -2,6 +2,7 @@
 // 491-530). The report describes an UPLOADED document, so it is untrusted: the parser keeps only the fields the view shows,
 // takes every field of a mistyped value as empty, and keeps a passage's citation id only when it matches the generated grammar
 // (classifyId), so a chip can never be built from anything else. Nothing here is ever a URL or markup; the view renders text nodes.
+import { deck } from "@/copy/deck";
 import type { WorkspaceSession } from "@/state/useWorkspace";
 import { classifyId } from "./citations";
 import { detailOf } from "./refusal";
@@ -32,10 +33,10 @@ export type ChangeReport =
       skipped: number;
     };
 
-const UNKNOWN_REASON = "unknown reason";
+const UNKNOWN_REASON = deck.changesReport.unknownReason;
 const UNTITLED = "(untitled)";
-export const MSG_CHANGES_NETWORK = "network error loading the change report";
-export const MSG_CHANGES_FAILED = "could not load the change report";
+export const MSG_CHANGES_NETWORK = deck.changesReport.network;
+export const MSG_CHANGES_FAILED = deck.changesReport.failed;
 
 type Row = Record<string, unknown>;
 

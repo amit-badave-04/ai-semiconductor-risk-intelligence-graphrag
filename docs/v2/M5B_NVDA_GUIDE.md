@@ -230,7 +230,7 @@ page makes no requests of its own.
 ### 5.5 Workspace  (`/v2/workspace/`)
 
 The page shows its content only when the server has uploads switched on (`/api/stats`); if you see just the heading
-"Workspace", write "uploads off" and skip the rest (not a pass). Labels in the code (`Workspace.copy.ts`): a section
+"Workspace", write "uploads off" and skip the rest (not a pass). Labels in the code (`Workspace.copy.ts`, moved in R4 to `deck.workspace` in `web/src/copy/deck.ts`): a section
 "Your documents (private, 24h)" with a "Create a workspace" button, restore fields "workspace id" and "token" (the token
 field is a password field), a "Restore" button, a status line; once a workspace is open: a "Delete workspace" button, a date
 field named "Ask as of this date instead of the current version", a select labelled "upload as:" (first option "Upload a

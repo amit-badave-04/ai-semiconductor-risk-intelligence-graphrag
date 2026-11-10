@@ -15,7 +15,7 @@ mirror), so these checks live here. Five parts, as the spec numbers them:
    present; no change label says "removed" or "dropped"; no "verified", "unlimited" or "AI-powered" in the deck;
 5. the cost line's default form is the approved sentence (decision D-R5) and its numbers are the Settings defaults.
 
-Until a file folds into the deck, the legacy parity checks of the old test still run on it (``Ask.copy.ts`` and the four lib
+Until a file folded into the deck, the legacy parity checks of the old test ran on it (``Ask.copy.ts`` and the four lib
 files against the legacy page).
 """
 
@@ -46,13 +46,7 @@ SNAPSHOT = ROOT / "artifacts" / "m5b_copy_deck.json"
 COPY_HOMES = {"copy/deck.ts", "pages/Method.copy.ts", "lib/answerMeta.ts", "lib/steps.ts", "lib/evidenceView.ts",
               "lib/askStatus.ts"}
 # Files the redesign has not reached yet, with the number of sentences each holds today (R1 to R4 empty this list).
-NOT_YET_IN_THE_DECK = {
-    "lib/changes.ts": 3,
-    "lib/jobs.ts": 11,
-    "lib/workspace.ts": 7,
-    "pages/Workspace.copy.ts": 17,
-    "pages/WorkspaceDocuments.tsx": 1,
-}
+NOT_YET_IN_THE_DECK: dict[str, int] = {}
 # docs/specs/m5b-redesign.md section 4: Company.copy.ts keeps only the four KIND_* labels (pinned by the server's context layout); it
 # is a copy home only while those are all it exports, so no other copy can slip into it under the sentence counter.
 KIND_HOME = "pages/Company.copy.ts"

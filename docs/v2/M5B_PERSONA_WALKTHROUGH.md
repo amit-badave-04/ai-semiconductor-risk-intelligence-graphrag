@@ -57,7 +57,7 @@ The new app lives under `/v2/` on the preview deploy (increment I4). The old pag
    that page switches to the others.
 
 Note on wording: the words quoted in this document are the ones in the I3 build (`web/src/pages/Ask.copy.ts`, retired in R4 for `web/src/copy/deck.ts`,
-`Workspace.copy.ts`, `components/EvidenceDrawer.tsx`), checked on 2026-11-08. If something is named differently on the live
+`Workspace.copy.ts`, likewise retired in R4, `components/EvidenceDrawer.tsx`), checked on 2026-11-08. If something is named differently on the live
 preview, write down the new name, and also note whether you could still find it (that is a result, not a mistake). Every page
 also shows one plain freshness line under the menu (for example "Data as of <date> - checked <n> min ago - <n> filings pending", the words joined by a middle dot; or "freshness
 check unavailable" when the monitor is off or cannot be reached); read it once, it is the same line on every page and it is read once per page load.

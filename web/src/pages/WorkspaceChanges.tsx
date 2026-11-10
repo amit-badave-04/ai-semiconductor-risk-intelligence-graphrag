@@ -6,17 +6,9 @@
 import { Fragment, useMemo } from "react";
 import { Chip } from "@/components/Chips";
 import type { ChangeItem, ChangeReport } from "@/lib/changes";
-import {
-  SECTION_ADDED,
-  SECTION_CHANGED,
-  SECTION_MINOR,
-  SECTION_REMOVED,
-  comparedHeader,
-  firstVersion,
-  loadingChanges,
-  notCompared,
-  skippedNote,
-} from "./Workspace.copy";
+import { deck } from "@/copy/deck";
+
+const { SECTION_ADDED, SECTION_CHANGED, SECTION_MINOR, SECTION_REMOVED, comparedHeader, firstVersion, loadingChanges, notCompared, skippedNote } = deck.workspace;
 
 export type ChangesView =
   | { kind: "idle" }

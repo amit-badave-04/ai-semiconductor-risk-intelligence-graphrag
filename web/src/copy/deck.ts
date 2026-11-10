@@ -181,6 +181,73 @@ export const deck = {
     freshnessLink: "Freshness",
   },
 
+  workspace: {
+    /** R28/R30: the open workspace's words, as the legacy page had them (moved from pages/Workspace.copy.ts under the same
+     *  names; docs/specs/m5b-redesign.md R4). The first-time view's words are RD26's, below. */
+    PANEL_TITLE: "Your documents (private, 24h)",
+    INTRO: "Upload your own documents and ask questions that cite them, with versions and what-changed between them. " +
+      "Private to you, never shown to anyone else, and deleted automatically after 24 hours.",
+    CREATE_BUTTON: "Create a workspace",
+    HAVE_ONE: "have one already?",
+    ID_LABEL: "workspace id",
+    TOKEN_LABEL: "token",
+    RESTORE_BUTTON: "Restore",
+    CREATING: "creating\u2026",
+    RESTORING: "restoring\u2026",
+    DELETE_BUTTON: "Delete workspace",
+    WORKSPACE_WORD: "Workspace",
+    EXPIRES_WORD: "expires",
+    EXPIRES_UNKNOWN: "unknown",
+    AS_OF_TITLE: "Ask as of this date instead of the current version",
+    AS_OF_HINT: 'optional: ask as of an earlier date (or pick "ask as of vN" under a document below)',
+    UPLOAD_AS: "upload as:",
+    DROP_TEXT: "Drag a PDF, DOCX, Markdown, TXT or HTML file here, or click to choose one (up to about 20 pages).",
+    NO_DOCUMENTS: "No documents uploaded yet.",
+    loadingChanges: (older: number, newer: number): string =>
+      `loading what changed between v${older} and v${newer}\u2026`,
+    firstVersion: (newer: number): string => `v${newer} is the first version \u2014 nothing to compare.`,
+    notCompared: (older: number, newer: number, reason: string): string =>
+      `v${older} \u2192 v${newer}: comparison not available (${reason}).`,
+    comparedHeader: (older: number, newer: number, unchanged: number): string =>
+      `v${older} \u2192 v${newer}, ${unchanged} section(s) unchanged:`,
+    skippedNote: (skipped: number): string =>
+      `${skipped} section(s) were compared as whole sections, not sentence by sentence for negation changes.`,
+    SECTION_ADDED: "Added",
+    SECTION_REMOVED: "Removed",
+    SECTION_CHANGED: "Changed",
+    SECTION_MINOR: "Minor rewordings",
+    /** lib/workspace.ts: the create and restore refusals, the upload target and the as-of choices */
+    createNetwork: "network error creating a workspace",
+    createFailed: "could not create a workspace",
+    notFound: "workspace not found",
+    uploadNew: "Upload a new document",
+    newVersionOf: (title: string): string => `New version of ${title}`,
+    askAsOfCurrent: "ask as of: current",
+    askAsOfVersion: (version: number | string): string => `ask as of v${version}`,
+    /** pages/WorkspaceDocuments.tsx: after a document's title */
+    latest: (version: number): string => ` (latest v${version})`,
+  },
+
+  jobs: {
+    /** lib/jobs.ts: the upload queue's words, as the legacy page had them */
+    botTimeout: "bot check did not complete in time \u2014 try again",
+    configFailed: "could not load the bot check \u2014 reload the page and try again",
+    network: "network error",
+    cannotWatch: "could not watch this upload",
+    connectionLost: "connection lost while watching this upload \u2014 check its status later",
+    phase: { parsing: "reading the document", chunking: "splitting into sections", comparing: "comparing with the previous version" },
+    left: (seconds: number): string => ` (~${seconds}s left)`,
+    unknownError: "unknown error",
+    unchanged: (version: string): string => `unchanged (still v${version})`,
+  },
+
+  changesReport: {
+    /** lib/changes.ts: a workspace document's change report that could not load */
+    unknownReason: "unknown reason",
+    network: "network error loading the change report",
+    failed: "could not load the change report",
+  },
+
   notFound: {
     /** an address that is not a page (R9c) */
     title: "Page not found",

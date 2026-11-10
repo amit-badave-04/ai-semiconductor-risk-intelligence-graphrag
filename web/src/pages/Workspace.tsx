@@ -9,18 +9,10 @@ import { Button } from "@/components/ui/button";
 import { getStats, refreshStats, useStats } from "@/lib/statsStore";
 import { useWorkspace } from "@/state/useWorkspace";
 import { useWorkspaceUploads } from "@/state/useWorkspaceUploads";
-import {
-  CREATE_BUTTON,
-  CREATING,
-  HAVE_ONE,
-  ID_LABEL,
-  INTRO,
-  PANEL_TITLE,
-  RESTORE_BUTTON,
-  RESTORING,
-  TOKEN_LABEL,
-} from "./Workspace.copy";
+import { deck } from "@/copy/deck";
 import { WorkspaceActive } from "./WorkspaceActive";
+
+const { CREATE_BUTTON, CREATING, HAVE_ONE, ID_LABEL, INTRO, PANEL_TITLE, RESTORE_BUTTON, RESTORING, TOKEN_LABEL } = deck.workspace;
 
 const FIELD = "h-9 w-[150px] rounded-md border border-input bg-transparent px-2.5 text-sm";
 

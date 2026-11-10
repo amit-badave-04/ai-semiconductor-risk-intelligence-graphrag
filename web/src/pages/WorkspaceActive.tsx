@@ -8,10 +8,12 @@ import { fetchChanges } from "@/lib/changes";
 import type { WsDocument } from "@/lib/workspace";
 import { useWorkspace, type WorkspaceSession } from "@/state/useWorkspace";
 import { useWorkspaceUploads } from "@/state/useWorkspaceUploads";
-import { AS_OF_HINT, AS_OF_TITLE, DELETE_BUTTON, EXPIRES_UNKNOWN, EXPIRES_WORD, WORKSPACE_WORD } from "./Workspace.copy";
+import { deck } from "@/copy/deck";
 import { WorkspaceChanges, type ChangesView } from "./WorkspaceChanges";
 import { WorkspaceDocuments } from "./WorkspaceDocuments";
 import { WorkspaceUpload } from "./WorkspaceUpload";
+
+const { AS_OF_HINT, AS_OF_TITLE, DELETE_BUTTON, EXPIRES_UNKNOWN, EXPIRES_WORD, WORKSPACE_WORD } = deck.workspace;
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -60,8 +62,8 @@ export function WorkspaceActive({ session }: { session: WorkspaceSession }) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm text-muted-foreground">
-          {WORKSPACE_WORD} <code>{session.id}</code>
+        <span className="min-w-0 text-sm text-muted-foreground">
+          {WORKSPACE_WORD} <code className="break-all">{session.id}</code>
           {` \u00b7 ${EXPIRES_WORD} ${session.expires_at ?? EXPIRES_UNKNOWN}`}
         </span>
         <Button type="button" variant="outline" onClick={() => void remove()}>

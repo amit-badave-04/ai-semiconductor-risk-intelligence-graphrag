@@ -18,6 +18,7 @@
 //     watch that threw (the job may have finished unseen, and a new version changes the status of an older version's chunks).
 //     Never for an abort, never per event. `jobStream.watchJob` rethrows what `onJob` throws (the page's own failure); that is
 //     caught here and shown as a lost connection, the nearest legacy text (there is none for it, nor for a buffer overflow).
+import { deck } from "@/copy/deck";
 import type { WorkspaceSession } from "@/state/useWorkspace";
 import type { JobEvent } from "./events";
 import { watchJob, type WatchOptions, type WatchResult } from "./jobStream";
@@ -29,22 +30,22 @@ export const TOKEN_WAIT_MS = 15000;
 /** The server's own title cap (MAX_TITLE_CHARS), so a long file name is never refused. */
 export const MAX_UPLOAD_TITLE_CHARS = 120;
 
-export const BOT_TIMEOUT_TEXT = "bot check did not complete in time \u2014 try again";
+export const BOT_TIMEOUT_TEXT = deck.jobs.botTimeout;
 /** Owner 2026-11-08: /api/config FAILED, so it is unknown whether a bot check is due (R8): reloading is the way out. */
-export const CONFIG_FAILED_TEXT = "could not load the bot check \u2014 reload the page and try again";
+export const CONFIG_FAILED_TEXT = deck.jobs.configFailed;
 export const UPLOADING_TEXT = "uploading\u2026";
-export const NETWORK_TEXT = "network error";
+export const NETWORK_TEXT = deck.jobs.network;
 export const QUEUED_TEXT = "queued";
-export const CANNOT_WATCH_TEXT = "could not watch this upload";
-export const CONNECTION_LOST_TEXT = "connection lost while watching this upload \u2014 check its status later";
+export const CANNOT_WATCH_TEXT = deck.jobs.cannotWatch;
+export const CONNECTION_LOST_TEXT = deck.jobs.connectionLost;
 
 const JOB_STATE_TEXT: Readonly<Record<string, string>> = {
   received: "queued",
   validating: "checking",
-  parsing: "reading the document",
-  chunking: "splitting into sections",
+  parsing: deck.jobs.phase.parsing,
+  chunking: deck.jobs.phase.chunking,
   embedding: "embedding",
-  comparing: "comparing with the previous version",
+  comparing: deck.jobs.phase.comparing,
   indexing: "saving",
   ready: "ready",
   failed: "failed",
@@ -62,12 +63,12 @@ export function jobStateText(job: unknown): string {
   if (state === "embedding" && isRow(j.progress)) {
     const { done, total, eta_s: eta } = j.progress;
     const count = typeof done === "number" && typeof total === "number" ? ` ${done}/${total}` : "";
-    const left = typeof eta === "number" && eta > 0 ? ` (~${Math.ceil(eta)}s left)` : "";
+    const left = typeof eta === "number" && eta > 0 ? deck.jobs.left(Math.ceil(eta)) : "";
     return `${base}${count}${left}`;
   }
   if (state === "failed") {
     const error = isRow(j.error) ? j.error : {};
-    const why = (typeof error.message === "string" && error.message) || (typeof error.code === "string" && error.code) || "unknown error";
+    const why = (typeof error.message === "string" && error.message) || (typeof error.code === "string" && error.code) || deck.jobs.unknownError;
     return `failed: ${why}`;
   }
   return base;
@@ -258,7 +259,7 @@ export class UploadQueue {
     }
     const fields = isRow(body) ? body : {};
     if (fields.unchanged === true) {
-      this.setRow(pass, key, { text: `unchanged (still v${String(fields.version)})`, tone: "ok", terminal: true });
+      this.setRow(pass, key, { text: deck.jobs.unchanged(String(fields.version)), tone: "ok", terminal: true });
       if (this.live(pass)) this.deps.onUnchanged();
       return;
     }

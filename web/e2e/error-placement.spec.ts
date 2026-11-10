@@ -26,9 +26,11 @@ interface Refusal {
 const RECORDED = JSON.parse(readFileSync(path.join(repoRoot, "tests", "data", "sse", "refusals.json"), "utf-8")) as { refusals: Refusal[] };
 const ASK_REFUSALS = RECORDED.refusals.filter((r) => r.request.POST === "/api/ask");
 const JOB_REFUSALS = RECORDED.refusals.filter((r) => typeof r.request.GET === "string" && String(r.request.GET).includes("/jobs/"));
-/** What the page says for a job whose stream is gone (lib/jobs.ts CANNOT_WATCH_TEXT; the first test pins the two together). */
+/** What the page says for a job whose stream is gone (lib/jobs.ts CANNOT_WATCH_TEXT, worded by the deck's jobs.cannotWatch since R4;
+ *  the first test pins the three together). */
 const CANNOT_WATCH_TEXT = "could not watch this upload";
 const JOBS_SOURCE = readFileSync(path.join(repoRoot, "web", "src", "lib", "jobs.ts"), "utf-8");
+const DECK_SOURCE = readFileSync(path.join(repoRoot, "web", "src", "copy", "deck.ts"), "utf-8");
 const FAKE_JOB_ID = "0123456789abcdef";
 
 function fulfilment(refusal: Refusal) {
@@ -74,7 +76,8 @@ test("the recorded refusals: nine for POST /api/ask and the gone job", () => {
   ]);
   expect(JOB_REFUSALS.map((r) => r.name)).toEqual(["job_not_found"]);
   expect(ASK_REFUSALS.length + JOB_REFUSALS.length).toBe(RECORDED.refusals.length);
-  expect(JOBS_SOURCE).toContain(`export const CANNOT_WATCH_TEXT = ${JSON.stringify(CANNOT_WATCH_TEXT)};`);
+  expect(JOBS_SOURCE).toContain("export const CANNOT_WATCH_TEXT = deck.jobs.cannotWatch;");
+  expect(DECK_SOURCE).toContain(`cannotWatch: ${JSON.stringify(CANNOT_WATCH_TEXT)},`);
 });
 
 async function askAndMeet(page: Page, refusal: Refusal): Promise<void> {
