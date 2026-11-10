@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workspace - semigraph</title>
+<style>
+/* ===== shared tokens (identical in all four files) ===== */
+:root{
+  color-scheme: light dark;
+  --paper:#F4F6F4; --surface:#FFFFFF; --ink:#18211F; --muted:#4D5A56;
+  --oxide:#0E6B5E; --oxide-tint:#E3F0EC; --on-oxide:#FFFFFF;
+  --federal:#3A4588; --federal-tint:#E9EBF7;
+  --line:#D5DBD8; --edge:#76837F; --hl:#FCEFB4;
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Sitka Text","Iowan Old Style",Charter,Cambria,serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0F1513; --surface:#161E1C; --ink:#E5ECE9; --muted:#A3B1AC;
+    --oxide:#6CCBB8; --oxide-tint:#173029; --on-oxide:#0F1513;
+    --federal:#AEB7F2; --federal-tint:#1F2442;
+    --line:#2B3633; --edge:#6E7D78; --hl:#4A3F12;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.55 var(--sans);font-variant-numeric:tabular-nums lining-nums}
+a{color:var(--oxide);text-underline-offset:3px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--oxide);outline-offset:2px}
+.wrap{max-width:1200px;margin:0 auto;padding:0 32px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.icon{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* header */
+.site{background:var(--surface);border-bottom:1px solid var(--line)}
+.site .wrap{display:flex;align-items:center;gap:24px;min-height:64px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;letter-spacing:-.01em;color:var(--ink);text-decoration:none;padding:6px 0}
+.brand svg{width:26px;height:26px}
+.site nav ul{display:flex;flex-wrap:wrap;gap:2px;list-style:none;margin:0;padding:0}
+.site nav a{display:block;padding:8px 12px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:15px}
+.site nav a:hover{background:var(--oxide-tint)}
+.site nav a[aria-current="page"]{background:var(--oxide-tint);color:var(--oxide);font-weight:600}
+.fresh{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted);text-decoration:none;padding:8px 0}
+.fresh:hover{color:var(--ink);text-decoration:underline}
+.fresh svg{width:16px;height:16px}
+
+/* proof marks and chips */
+.mark{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--oxide-tint);color:var(--oxide);flex:none}
+.mark .icon{width:22px;height:22px}
+.mark.gov{background:var(--federal-tint);color:var(--federal);border:3px double var(--federal);border-radius:3px}
+.cite{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:2px 10px 2px 7px;margin:0 1px;border:1px solid var(--oxide);border-radius:999px;background:var(--oxide-tint);color:var(--oxide);font:600 14px/1.2 var(--sans);cursor:pointer;vertical-align:1px;text-align:left}
+.cite .icon{width:16px;height:16px}
+.cite:hover{background:var(--oxide);color:var(--on-oxide)}
+.cite[aria-expanded="true"]{background:var(--oxide);color:var(--on-oxide)}
+.cite.gov{border:3px double var(--federal);border-radius:3px;background:var(--federal-tint);color:var(--federal);padding:1px 9px 1px 6px}
+.cite.gov:hover{background:var(--federal);color:var(--federal-tint)}
+.gov-tag{display:inline-flex;align-items:center;gap:6px;font:600 13px/1 var(--sans);color:var(--federal);border:3px double var(--federal);border-radius:3px;padding:4px 8px 4px 6px;background:var(--federal-tint)}
+.gov-tag .icon{width:16px;height:16px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:10px;border:0;background:var(--oxide);color:var(--on-oxide);font-weight:600;font-size:16px;cursor:pointer;text-decoration:none}
+.btn:hover{filter:brightness(1.08)}
+.btn-quiet{background:transparent;color:var(--oxide);border:1px solid var(--edge)}
+.btn-quiet:hover{background:var(--oxide-tint);filter:none}
+.serif{font-family:var(--serif)}
+@media (max-width:720px){
+  .wrap{padding:0 16px}
+  .site .wrap{gap:0 12px;padding-top:4px;padding-bottom:4px}
+  .site nav{order:3;width:100%;margin:0 -12px}
+  .fresh{font-size:13px}
+  .site nav a{padding:8px 8px}
+}
+/* ===== end shared ===== */
+
+/* workspace page */
+.ws-top{display:grid;grid-template-columns:minmax(0,6fr) minmax(0,5fr);gap:40px;padding:40px 0 28px;align-items:start}
+.ws-top h1{font-size:40px;line-height:1.12;letter-spacing:-.02em;margin:0 0 12px}
+.lead{font-size:19px;line-height:1.5;color:var(--muted);margin:0 0 22px;max-width:56ch}
+.steps{list-style:none;margin:0 0 24px;padding:0;display:grid;gap:14px;counter-reset:s}
+.steps li{display:grid;grid-template-columns:36px minmax(0,1fr);gap:14px;align-items:start;counter-increment:s}
+.steps li::before{content:counter(s);width:36px;height:36px;border-radius:50%;border:1.5px solid var(--oxide);color:var(--oxide);display:grid;place-items:center;font-weight:700}
+.steps b{display:block;font-size:17px}
+.steps span{font-size:15px;color:var(--muted)}
+.start-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.start-row .note{font-size:14px;color:var(--muted)}
+.privacy{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px 24px}
+.privacy h2{display:flex;align-items:center;gap:10px;font-size:19px;margin:0 0 12px}
+.privacy h2 .icon{color:var(--oxide);width:22px;height:22px}
+.privacy ul{list-style:none;margin:0 0 16px;padding:0;display:grid;gap:10px}
+.privacy li{display:flex;gap:10px;font-size:16px;line-height:1.45}
+.privacy li .icon{width:18px;height:18px;margin-top:3px;color:var(--oxide)}
+details.reopen{border-top:1px solid var(--line);padding-top:12px}
+details.reopen summary{cursor:pointer;font-weight:600;color:var(--oxide);min-height:28px;padding:2px 0}
+.reopen .fields{display:grid;gap:10px;margin-top:10px}
+.reopen label{display:block;font-size:14px;font-weight:600;margin-bottom:4px}
+.reopen input{width:100%;min-height:44px;border:1.5px solid var(--edge);border-radius:10px;background:var(--paper);padding:0 12px}
+.sketch-h{font-size:21px;margin:12px 0 4px}
+.sketch-sub{color:var(--muted);font-size:15px;margin:0 0 14px}
+figure.sketch{margin:0 0 56px;background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.sk{display:grid;grid-template-columns:250px minmax(0,1fr) 300px;min-height:360px}
+.sk>div{padding:16px}
+.sk .docs{border-right:1px solid var(--line)}
+.sk .src{border-left:1px solid var(--line);background:var(--paper)}
+.sk h3{font-size:14px;color:var(--muted);font-weight:600;margin:0 0 10px}
+.doc{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;font-size:15px}
+.doc input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--oxide)}
+.doc small{display:block;color:var(--muted);font-size:13px}
+.add{display:flex;align-items:center;justify-content:center;gap:8px;border:1.5px dashed var(--edge);border-radius:10px;padding:10px;font-size:15px;color:var(--oxide);font-weight:600;background:transparent;width:100%;min-height:44px;cursor:pointer}
+.scope{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:14px;margin:0 0 10px}
+.scope b{font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--edge);border-radius:999px;padding:3px 10px;font-size:14px;background:transparent;min-height:28px;cursor:pointer}
+.pill .icon{width:16px;height:16px}
+.mini-ask{display:flex;gap:8px;margin:0 0 16px}
+.mini-ask input{flex:1;min-width:0;border:1.5px solid var(--edge);border-radius:10px;background:var(--surface);min-height:44px;padding:0 12px}
+.mini-ask input::placeholder{color:var(--muted);opacity:1}
+.sug h4{font-size:14px;color:var(--muted);font-weight:600;margin:0 0 6px}
+.sug button{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;background:transparent;padding:8px 12px;font-size:15px;margin-bottom:6px;min-height:40px;cursor:pointer}
+.bar{height:10px;border-radius:5px;background:var(--line);margin:8px 0}
+.asof{display:flex;align-items:center;gap:8px;font-size:14px}
+.asof input{border:1.5px solid var(--edge);border-radius:8px;background:var(--surface);min-height:32px;padding:0 8px}
+figcaption{font-size:14px;color:var(--muted);padding:10px 16px;border-top:1px solid var(--line)}
+@media (max-width:1000px){.ws-top{grid-template-columns:minmax(0,1fr);gap:24px}.sk{grid-template-columns:200px minmax(0,1fr)}.sk .src{display:none}}
+@media (max-width:720px){
+  .ws-top{padding:20px 0 20px}
+  .ws-top h1{font-size:30px}
+  .lead{font-size:16px}
+  .privacy{padding:16px}
+  .sk{grid-template-columns:minmax(0,1fr)}
+  .sk .docs{border-right:0;border-bottom:1px solid var(--line)}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="m-passage" viewBox="0 0 20 20"><path d="M8.5 4.5C5.8 5.4 4 7.6 4 10.6V15h4.2v-4.2H6.1M16 4.5c-2.7.9-4.5 3.1-4.5 6.1V15h4.2v-4.2h-2.1"/></symbol>
+  <symbol id="m-number" viewBox="0 0 20 20"><rect x="3" y="3.5" width="14" height="13" rx="2"/><path d="M3 8h14M3 12.3h14M9 8v8.5"/></symbol>
+  <symbol id="m-change" viewBox="0 0 20 20"><rect x="2.5" y="2.5" width="9.5" height="11.5" rx="1.5"/><path d="M8 6h8a1.5 1.5 0 0 1 1.5 1.5V16a1.5 1.5 0 0 1-1.5 1.5H9.5A1.5 1.5 0 0 1 8 16z"/><path d="M10.5 10h4.5M10.5 13h3"/></symbol>
+  <symbol id="m-rule" viewBox="0 0 20 20"><path d="M2.8 7.6 10 3.3l7.2 4.3zM3.5 7.6h13M5.3 9.6v5M8.4 9.6v5M11.6 9.6v5M14.7 9.6v5M2.8 16.6h14.4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6.2V10l2.6 1.6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 20 20"><path d="m8 5 5 5-5 5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 20 20"><path d="M4 10h11M11 5.5 15.5 10 11 14.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 20 20"><path d="M5 10h10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></symbol>
+  <symbol id="i-out" viewBox="0 0 20 20"><path d="M11 4h5v5M16 4l-7 7M14 12v3.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5H8"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 20 20"><rect x="4" y="9" width="12" height="8.5" rx="1.5"/><path d="M6.8 9V6.5a3.2 3.2 0 0 1 6.4 0V9"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></symbol>
+</svg>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="ask.html" aria-label="semigraph, start page">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="6" fill="var(--oxide)"/><path d="M8 9.5h6.5M8 13h10M8 16.5h4.5" stroke="var(--on-oxide)" stroke-width="2" stroke-linecap="round"/><circle cx="18" cy="9.5" r="1.6" fill="var(--on-oxide)"/></svg>
+      semigraph
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="ask.html">Ask</a></li>
+        <li><a href="company.html">Companies</a></li>
+        <li><a href="workspace.html" aria-current="page">Workspace</a></li>
+        <li><a href="#">How it works</a></li>
+      </ul>
+    </nav>
+    <a class="fresh" href="#" title="Data as of 24 Sep 2026. 9 newer filings are still being added."><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>Data checked 4 h ago</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+    <div class="ws-top">
+      <section aria-labelledby="wsh">
+        <h1 id="wsh">Your own documents, answered with sources.</h1>
+        <p class="lead">Add documents you already have and ask questions about them. Answers quote your documents the same way they quote SEC filings. Add a newer version and see what changed.</p>
+        <ol class="steps">
+          <li><div><b>Create a private workspace</b><span>One click. No account, no email.</span></div></li>
+          <li><div><b>Add a document</b><span>We suggest a few questions to start with.</span></div></li>
+          <li><div><b>Ask, or compare versions</b><span>Every claim opens the passage it came from.</span></div></li>
+        </ol>
+        <div class="start-row">
+          <button class="btn" type="button">Create a private workspace</button>
+          <span class="note">Free. Your workspace is deleted after 24 hours.</span>
+        </div>
+      </section>
+
+      <aside class="privacy" aria-labelledby="pv">
+        <h2 id="pv"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Your documents stay private</h2>
+        <ul>
+          <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Private to you, never shown to anyone else.</span></li>
+          <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Deleted automatically after 24 hours.</span></li>
+          <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>You get a workspace ID and an access key. Anyone with both can open the workspace, so keep them to yourself.</span></li>
+        </ul>
+        <details class="reopen">
+          <summary>Have one already? Reopen it</summary>
+          <form class="fields" action="#">
+            <div><label for="wid">Workspace ID</label><input id="wid" type="text" autocomplete="off"></div>
+            <div><label for="wkey">Access key</label><input id="wkey" type="password" autocomplete="off"></div>
+            <div><button class="btn btn-quiet" type="submit">Reopen workspace</button></div>
+          </form>
+        </details>
+      </aside>
+    </div>
+
+    <h2 class="sketch-h">What an open workspace looks like</h2>
+    <p class="sketch-sub">An example with two versions of one document.</p>
+    <figure class="sketch" aria-labelledby="skcap">
+      <div class="sk">
+        <div class="docs">
+          <h3>Your documents (2)</h3>
+          <label class="doc"><input type="checkbox" checked><span>Annual report draft, March<small>Version 1</small></span></label>
+          <label class="doc"><input type="checkbox" checked><span>Annual report draft, April<small>Version 2</small></span></label>
+          <button class="add" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add a document</button>
+        </div>
+        <div>
+          <p class="scope"><b>Answering from 2 of 2 documents</b>
+            <button class="pill" type="button"><svg class="icon" aria-hidden="true"><use href="#m-change"/></svg>Compare versions</button>
+            <span class="asof"><label for="asof">Ask as of</label><input id="asof" type="date" value="2026-03-31"></span></p>
+          <form class="mini-ask" action="#"><label class="sr" for="wq">Question about your documents</label><input id="wq" type="text" placeholder="Ask about your documents"><button class="btn" type="submit">Ask</button></form>
+          <div class="sug">
+            <h4>Suggested for these documents</h4>
+            <button type="button">What changed between the March and April drafts?</button>
+            <button type="button">Which risks does the April draft add?</button>
+          </div>
+        </div>
+        <div class="src" aria-hidden="true">
+          <h3>Source</h3>
+          <div class="bar" style="width:60%"></div><div class="bar"></div><div class="bar" style="width:90%;background:var(--hl)"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:70%"></div>
+        </div>
+      </div>
+      <figcaption id="skcap">Documents on the left, your question in the middle, the cited passage on the right. On a phone these become three tabs.</figcaption>
+    </figure>
+  </div>
+</main>
+</body>
+</html>

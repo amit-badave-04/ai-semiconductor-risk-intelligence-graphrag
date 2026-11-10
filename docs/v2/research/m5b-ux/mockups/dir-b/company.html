@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nvidia (NVDA) · semigraph</title>
+<style>
+/* ===== base tokens (shared by all four mockups) ===== */
+:root{
+  --paper:#F6F7F9; --surface:#FFFFFF; --ink:#17202A; --ink-2:#4F5A67;
+  --line:#D8DDE3; --line-2:#B9C1CA;
+  --green:#13654B; --green-fill:#E4F2EC; --green-line:#8FC2AC;
+  --gold:#7A4E00; --gold-fill:#FBF1D9; --gold-line:#B88A2E;
+  --mark:#FFE9A3; --focus:#1D4ED8;
+  --sans:"Source Sans 3","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Source Serif 4",Charter,"Iowan Old Style","Palatino Linotype",Cambria,Georgia,serif;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#121820; --surface:#1A212B; --ink:#E7ECF2; --ink-2:#A9B3BF;
+  --line:#2E3843; --line-2:#46525F;
+  --green:#74D3AB; --green-fill:#15302A; --green-line:#2F6B55;
+  --gold:#F0C463; --gold-fill:#2D2412; --gold-line:#9A7426;
+  --mark:#4D3F0E; --focus:#8AB4FF;
+}}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.5 var(--sans);font-variant-numeric:tabular-nums}
+a{color:var(--green);text-underline-offset:3px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* top bar */
+.top{background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:28px;min-height:60px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:19px;letter-spacing:-.01em;color:var(--ink);text-decoration:none}
+.brand svg{width:22px;height:22px}
+.nav{display:flex;gap:4px}
+.nav a{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border-radius:6px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:15px}
+.nav a:hover{color:var(--ink);background:var(--paper)}
+.nav a[aria-current="page"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--green);border-radius:0}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:14px}
+.fresh{display:flex;align-items:center;gap:8px;color:var(--ink-2);text-decoration:none}
+.fresh:hover{color:var(--ink)}
+.fresh b{color:var(--ink);font-weight:600}
+.fresh svg{width:16px;height:16px;color:var(--green)}
+.top-right .how{color:var(--ink-2);font-weight:600;text-decoration:none}
+.top-right .how:hover{color:var(--ink);text-decoration:underline}
+
+/* source stamps: the one memorable idea */
+.src{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:1px 8px 1px 6px;margin:0 1px;
+  font:600 14px/1.25 var(--sans);border:1px solid var(--green-line);border-radius:4px;background:var(--green-fill);color:var(--green);
+  vertical-align:baseline;text-align:left;text-decoration:none}
+.src svg{width:15px;height:15px;flex:none}
+.src .sub{font-weight:400;color:var(--ink)}
+.src:hover{border-color:var(--green)}
+.src--rule{border:3px double var(--gold-line);border-radius:0;background:var(--gold-fill);color:var(--gold);padding:0 8px 0 6px}
+.src--rule:hover{border-color:var(--gold)}
+.src[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--surface)}
+.src[aria-pressed="true"] .sub{color:var(--surface)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:8px;font-weight:700;font-size:16px;border:1px solid transparent;text-decoration:none}
+.btn-primary{background:var(--green);color:var(--surface)}
+@media (prefers-color-scheme:dark){.btn-primary{color:#0E1A15}}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-quiet{background:var(--surface);color:var(--ink);border-color:var(--line-2)}
+.btn-quiet:hover{border-color:var(--ink-2)}
+
+/* ===== page: company ===== */
+.co-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 32px;padding:18px 0 18px}
+.switch{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:10px;color:var(--ink-2)}
+.switch select{min-height:32px;padding:2px 8px;border:1px solid var(--line-2);border-radius:6px;background:var(--surface);font-weight:600;font-size:14px}
+.co-head h1{display:flex;align-items:baseline;gap:12px;margin:0;font-size:40px;line-height:1.1;letter-spacing:-.02em}
+.tick{font-size:16px;font-weight:700;color:var(--ink-2);border:1px solid var(--line-2);border-radius:4px;padding:1px 7px;letter-spacing:.02em}
+.co-head > div:first-child{flex:1 1 0;min-width:280px}
+.co-sub{margin:8px 0 0;color:var(--ink-2);font-size:16px;max-width:46em}
+.co-actions{display:flex;gap:10px}
+
+.glance{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border:1px solid var(--line-2);border-radius:10px}
+.cell{padding:14px 20px 16px;border-left:1px solid var(--line)}
+.cell:first-child{border-left:0}
+.cell h2{margin:0 0 4px;font-size:15px;font-weight:600;color:var(--ink-2)}
+.big{display:inline-flex;align-items:center;gap:8px;padding:0 2px;margin-left:-2px;border:0;background:none;font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1.2;color:var(--ink);
+  text-decoration:underline dotted var(--green-line);text-decoration-thickness:2px;text-underline-offset:6px}
+.big:hover{text-decoration-color:var(--green)}
+.big svg{width:16px;height:16px;color:var(--green)}
+.big.rule{text-decoration-color:var(--gold-line)}
+.big.rule svg{color:var(--gold)}
+.cell p{margin:4px 0 0;font-size:14px;color:var(--ink-2)}
+
+.tabs{display:flex;gap:4px;margin:20px 0 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs a{flex:none;display:inline-flex;align-items:center;min-height:44px;padding:0 14px;color:var(--ink-2);font-weight:600;font-size:15px;text-decoration:none}
+.tabs a:hover{color:var(--ink)}
+.tabs a[aria-current="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--green)}
+
+.cols{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:48px;padding:24px 0 64px;align-items:start}
+.sec-h{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px;margin-bottom:4px}
+.sec-h h2{margin:0;font-size:21px;letter-spacing:-.01em}
+.sec-note{margin:0 0 12px;font-size:14px;color:var(--ink-2)}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;cursor:pointer;min-height:32px}
+.toggle input{appearance:none;width:36px;height:20px;border-radius:999px;background:var(--line-2);position:relative;margin:0;cursor:pointer}
+.toggle input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:left .12s}
+.toggle input:checked{background:var(--green)}
+.toggle input:checked::after{left:18px}
+
+table.nums{width:100%;border-collapse:collapse;font-size:16px}
+.nums th,.nums td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;vertical-align:baseline}
+.nums thead th{font-size:14px;font-weight:700;color:var(--ink);border-bottom:1px solid var(--line-2)}
+.nums thead th small{display:block;font-weight:400;color:var(--ink-2)}
+.nums th[scope="row"],.nums thead th:first-child{text-align:left;font-weight:600}
+.nums thead th:first-child{color:var(--ink-2);font-weight:400}
+.num{border:0;background:none;padding:2px 2px;font:inherit;font-weight:600;color:var(--ink);text-decoration:underline dotted var(--green-line);text-decoration-thickness:2px;text-underline-offset:5px;min-height:28px}
+.num:hover{text-decoration-color:var(--green)}
+.nums .na{text-align:left;color:var(--ink-2);font-size:15px}
+.show-all{display:inline-block;margin-top:10px;font-weight:600;font-size:15px}
+
+.rel{margin-top:36px}
+.rel h3{font-size:16px;margin:16px 0 8px}
+.names{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px;padding:0;list-style:none}
+.names li{font-size:15px;border:1px solid var(--line-2);border-radius:999px;padding:2px 10px;background:var(--surface)}
+.rel p{margin:0 0 6px;font-size:15px}
+
+.rule-note{display:flex;gap:10px;padding:12px 14px;margin:6px 0 14px;background:var(--gold-fill);border:3px double var(--gold-line);font-size:15px;line-height:1.5;color:var(--ink)}
+.rule-note svg{flex:none;width:20px;height:20px;color:var(--gold);margin-top:1px}
+.rules{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.rules > li{border-bottom:1px solid var(--line)}
+.r-btn{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:start;width:100%;padding:12px 2px;border:0;background:none;text-align:left;font-size:15px;line-height:1.4}
+.r-btn:hover .r-title{text-decoration:underline;text-underline-offset:3px}
+.r-btn .src{pointer-events:none;margin:0}
+.r-title{font-weight:600;grid-column:1 / -1}
+.r-btn .src{justify-self:start}
+.r-date{color:var(--ink-2);font-size:14px;white-space:nowrap}
+.r-btn svg.chev{width:14px;height:14px;transition:transform .15s}
+.r-btn[aria-expanded="true"] svg.chev{transform:rotate(90deg)}
+.r-body{padding:0 0 16px 0}
+.r-body blockquote{margin:0 0 12px;padding:12px 14px;font-family:var(--serif);font-size:16px;line-height:1.65;background:var(--gold-fill);border-left:4px solid var(--gold-line)}
+.r-body .who{font:700 13px/1.3 var(--sans);color:var(--gold);display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.r-body .who svg{width:14px;height:14px}
+.own{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-left:4px solid var(--green);border-radius:4px;background:var(--surface)}
+.own p{margin:0 0 8px;font-size:14px;font-weight:700;color:var(--ink)}
+.own .chips{display:flex;flex-wrap:wrap;gap:6px}
+.own .more{font-size:14px;align-self:center}
+
+.pv{margin:0;inset:auto;position:fixed;position-area:bottom span-right;position-try-fallbacks:flip-block,flip-inline;
+  width:min(380px,calc(100vw - 32px));padding:14px 16px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface);color:var(--ink);
+  box-shadow:0 12px 32px rgba(20,30,40,.18);font-size:15px;margin-top:6px}
+.pv dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:8px 0 10px;font-size:14px}
+.pv dt{color:var(--ink-2)}
+.pv dd{margin:0}
+.pv .exact{font-size:22px;font-weight:700;margin:2px 0 0}
+.pv .kind{display:inline-flex;gap:6px;align-items:center;font-weight:700;font-size:14px;color:var(--green)}
+.pv .kind svg{width:15px;height:15px}
+
+@media (max-width:1100px){.cols{grid-template-columns:1fr}.glance{grid-template-columns:repeat(2,1fr)}.cell:nth-child(3){border-left:0}.cell:nth-child(n+3){border-top:1px solid var(--line)}}
+@media (max-width:720px){
+  .wrap{padding:0 16px}
+  .top .wrap{flex-wrap:wrap;gap:4px 12px;padding-top:8px;padding-bottom:4px}
+  .top-right{order:2;margin-left:auto;gap:12px}
+  .top-right .how{display:none}
+  .fresh .long{display:none}
+  .nav{order:3;width:100%;margin-left:-12px}
+  .tabs{flex-wrap:wrap;overflow:visible}
+  .co-head{padding-top:16px}
+  .co-head h1{font-size:32px}
+  .co-actions{width:100%}
+  .co-actions .btn{flex:1;padding:0 12px}
+  .cell{padding:12px 14px 14px}
+  .big{font-size:24px}
+  .nums{font-size:15px}
+  .nums th,.nums td{padding:8px 6px}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="ask.html" aria-label="semigraph, start page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.7 2v20M15.3 2v20M2 8.7h20M2 15.3h20" stroke="currentColor" stroke-width="1" opacity=".5"/><rect x="9.4" y="9.4" width="5.2" height="5.2" fill="var(--green)"/></svg>
+      semigraph
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="ask.html">Ask</a>
+      <a href="company.html" aria-current="page">Companies</a>
+      <a href="workspace.html">Workspace</a>
+    </nav>
+    <div class="top-right">
+      <a class="fresh" href="#freshness">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.5V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Data as of <b>Sep 24, 2026</b><span class="long">, 9 newer filings being added</span></span>
+      </a>
+      <a class="how" href="#method">How it works</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="co-head">
+    <div>
+      <div class="switch"><label for="co">Company</label>
+        <select id="co"><option selected>Nvidia (NVDA)</option><option>AMD (AMD)</option><option>Intel (INTC)</option><option>Broadcom (AVGO)</option><option>Qualcomm (QCOM)</option><option>Micron (MU)</option><option>Apple (AAPL)</option><option>Microsoft (MSFT)</option><option>Amazon (AMZN)</option><option>Alphabet (GOOGL)</option><option>Meta (META)</option><option>TSMC (TSM)</option><option>ASML (ASML)</option></select>
+      </div>
+      <h1>Nvidia <span class="tick" aria-label="ticker NVDA">NVDA</span></h1>
+      <p class="co-sub">Latest annual report: 10-K for the fiscal year ended Jan 25, 2026, filed Feb 25, 2026. Latest quarterly report: 10-Q filed Aug 26, 2026.</p>
+    </div>
+    <div class="co-actions">
+      <a class="btn btn-primary" href="ask.html">Ask about Nvidia</a>
+      <a class="btn btn-quiet" href="#compare">Compare filings</a>
+    </div>
+  </div>
+
+  <section class="glance" aria-label="At a glance, fiscal year 2026">
+    <div class="cell">
+      <h2>Revenue, FY2026</h2>
+      <button class="big" popovertarget="f-rev" style="anchor-name:--f1" aria-label="Revenue FY2026: $215,938,000,000. Open the reported number.">$215.9B<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14h12M4.2 11.5V8M8 11.5V3.5M11.8 11.5V6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+      <p>FY2025: $130.5B</p>
+    </div>
+    <div class="cell">
+      <h2>Net income, FY2026</h2>
+      <button class="big" popovertarget="f-ni" style="anchor-name:--f2" aria-label="Net income FY2026: $120,067,000,000. Open the reported number.">$120.1B<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14h12M4.2 11.5V8M8 11.5V3.5M11.8 11.5V6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+      <p>FY2025: $72.9B</p>
+    </div>
+    <div class="cell">
+      <h2>Research and development, FY2026</h2>
+      <button class="big" popovertarget="f-rnd" style="anchor-name:--f3" aria-label="Research and development FY2026: $18,497,000,000. Open the reported number.">$18.5B<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14h12M4.2 11.5V8M8 11.5V3.5M11.8 11.5V6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+      <p>FY2025: $12.9B</p>
+    </div>
+    <div class="cell">
+      <h2>Government rules</h2>
+      <a class="big rule" href="#rules" aria-label="8 government rules. Go to the list.">8<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 1.8 5.2h12.4z M2.4 14.2h11.2 M3.6 6.8v5.4M6.5 6.8v5.4M9.5 6.8v5.4M12.4 6.8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></a>
+      <p>Federal Register rules linked to Nvidia. Newest: Jul 14, 2026.</p>
+    </div>
+  </section>
+
+  <nav class="tabs" aria-label="Sections of this page">
+    <a href="#numbers" aria-current="true">Key numbers</a>
+    <a href="#rules">Government rules</a>
+    <a href="#relationships">Relationships</a>
+    <a href="#filings">Filings</a>
+    <a href="#changes">Risk changes</a>
+  </nav>
+
+  <div class="cols">
+    <div>
+      <section id="numbers" aria-labelledby="num-h">
+        <div class="sec-h">
+          <h2 id="num-h">Key numbers</h2>
+          <label class="toggle"><input type="checkbox" id="exact"> Show exact values</label>
+        </div>
+        <p class="sec-note">In US dollars, as reported in Nvidia’s annual reports. Nvidia’s fiscal year ends in late January. Select a number to see where it was filed.</p>
+        <table class="nums">
+          <thead><tr><th scope="col">Measure</th><th scope="col">FY2026<small>ended Jan 25, 2026</small></th><th scope="col">FY2025<small>ended Jan 26, 2025</small></th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Revenue</th><td><button class="num" data-exact="$215,938,000,000" aria-label="Revenue FY2026, $215,938,000,000">$215.9B</button></td><td><button class="num" data-exact="$130,497,000,000" aria-label="Revenue FY2025, $130,497,000,000">$130.5B</button></td></tr>
+            <tr><th scope="row">Net income</th><td><button class="num" data-exact="$120,067,000,000" aria-label="Net income FY2026, $120,067,000,000">$120.1B</button></td><td><button class="num" data-exact="$72,880,000,000" aria-label="Net income FY2025, $72,880,000,000">$72.9B</button></td></tr>
+            <tr><th scope="row">Research and development</th><td><button class="num" data-exact="$18,497,000,000" aria-label="Research and development FY2026, $18,497,000,000">$18.5B</button></td><td><button class="num" data-exact="$12,914,000,000" aria-label="Research and development FY2025, $12,914,000,000">$12.9B</button></td></tr>
+            <tr><th scope="row">Capital expenditures</th><td class="na" colspan="2">Not in our data for these years. The latest we hold is FY2012.</td></tr>
+          </tbody>
+        </table>
+        <a class="show-all" href="#all-metrics">Show all metrics and years</a>
+      </section>
+
+      <section class="rel" id="relationships" aria-labelledby="rel-h">
+        <h2 id="rel-h" style="font-size:21px;margin:0">Relationships</h2>
+        <h3>Competitors Nvidia names in its 10-K for fiscal 2026</h3>
+        <ul class="names"><li>AMD</li><li>Alphabet</li><li>Amazon</li><li>Broadcom</li><li>Huawei</li><li>Intel</li><li>Marvell</li><li>Microsoft</li><li>Qualcomm</li><li>Samsung</li><li>Tesla</li></ul>
+        <p>Source: <button class="src" type="button" aria-label="Filing passage: Nvidia 10-K for fiscal 2026, Item 1, paragraph 321"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3"/></svg>Nvidia 10-K FY2026 <span class="sub">Item 1 ¶0321</span></button></p>
+      </section>
+    </div>
+
+    <section id="rules" aria-labelledby="rules-h">
+      <div class="sec-h"><h2 id="rules-h">Government rules linked to Nvidia</h2></div>
+      <div class="rule-note">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 1.8 5.2h12.4z M2.4 14.2h11.2 M3.6 6.8v5.4M6.5 6.8v5.4M9.5 6.8v5.4M12.4 6.8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        <p style="margin:0">These are US export-control rules from the Federal Register, linked to Nvidia by matching keywords. They are actions by the government, <strong>not statements Nvidia made</strong>.</p>
+      </div>
+      <ul class="rules">
+        <li><button class="r-btn" type="button" aria-expanded="false">
+          <span class="src src--rule"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 1.8 5.2h12.4z M2.4 14.2h11.2 M3.6 6.8v5.4M6.5 6.8v5.4M9.5 6.8v5.4M12.4 6.8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Government rule</span>
+          <span class="r-date">Jul 14, 2026</span>
+          <span class="r-title">Enhanced Favorable Treatment for the United Arab Emirates Under the Export Administration Regulations</span>
+        </button></li>
+        <li><button class="r-btn" type="button" aria-expanded="false">
+          <span class="src src--rule"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 1.8 5.2h12.4z M2.4 14.2h11.2 M3.6 6.8v5.4M6.5 6.8v5.4M9.5 6.8v5.4M12.4 6.8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Government rule</span>
+          <span class="r-date">Apr 9, 2026</span>
+          <span class="r-title">Extension of Authorized Integrated Circuit (IC) Designer Status and Application Deadline To Become an Approved IC Designer</span>
+        </button></li>
+        <li><button class="r-btn" type="button" aria-expanded="true" aria-controls="r3">
+          <span class="src src--rule"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 1.8 5.2h12.4z M2.4 14.2h11.2 M3.6 6.8v5.4M6.5 6.8v5.4M9.5 6.8v5.4M12.4 6.8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Government rule</span>
+          <span class="r-date">Jan 15, 2026</span>
+          <span class="r-title">Revision to License Review Policy for Advanced Computing Commodities</span>
+        </button>
+          <div class="r-body" id="r3">
+            <blockquote>
+              <span class="who"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 1.8 5.2h12.4z M2.4 14.2h11.2 M3.6 6.8v5.4M6.5 6.8v5.4M9.5 6.8v5.4M12.4 6.8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Rule summary, Federal Register document 2026-00789</span>
+              The Bureau of Industry and Security (BIS) is revising its license review policy for exports of certain semiconductors to China and Macau--changing it from a presumption of denial to a case-by-case review. The semiconductors covered by this rule are the Nvidia H200 and its equivalents, as well as less advanced chips…
+            </blockquote>
+            <a href="#fr">Read the full rule on federalregister.gov</a>
+            <div class="own">
+              <p>What Nvidia itself says about export controls</p>
+              <div class="chips">
+                <button class="src" type="button" aria-label="Filing passage: Nvidia 10-K for fiscal 2026, Item 1, paragraph 323"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3"/></svg>Nvidia 10-K FY2026 <span class="sub">Item 1 ¶0323</span></button>
+                <a class="more" href="#more">and 9 more passages</a>
+              </div>
+            </div>
+          </div>
+        </li>
+      </ul>
+      <a class="show-all" href="#all-rules">Show all 8 rules</a>
+    </section>
+  </div>
+</main>
+
+<div id="f-rev" class="pv" popover style="position-anchor:--f1">
+  <span class="kind"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14h12M4.2 11.5V8M8 11.5V3.5M11.8 11.5V6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>Reported number</span>
+  <p class="exact">$215,938,000,000</p>
+  <dl><dt>Measure</dt><dd>Revenue (XBRL tag: Revenues)</dd><dt>Period</dt><dd>Jan 27, 2025 to Jan 25, 2026</dd><dt>Filed in</dt><dd>10-K, filed Feb 25, 2026</dd></dl>
+  <a href="#sec">Open the filing on sec.gov</a>
+</div>
+<div id="f-ni" class="pv" popover style="position-anchor:--f2">
+  <span class="kind">Reported number</span>
+  <p class="exact">$120,067,000,000</p>
+  <dl><dt>Measure</dt><dd>Net income</dd><dt>Period</dt><dd>Fiscal year ended Jan 25, 2026</dd></dl>
+</div>
+<div id="f-rnd" class="pv" popover style="position-anchor:--f3">
+  <span class="kind">Reported number</span>
+  <p class="exact">$18,497,000,000</p>
+  <dl><dt>Measure</dt><dd>Research and development</dd><dt>Period</dt><dd>Fiscal year ended Jan 25, 2026</dd></dl>
+</div>
+<script>
+  // Swap rounded and exact values in the Key numbers table.
+  const box = document.getElementById("exact");
+  const cells = [...document.querySelectorAll(".num")];
+  cells.forEach(b => { b.dataset.short = b.textContent; });
+  box.addEventListener("change", () => cells.forEach(b => { b.textContent = box.checked ? b.dataset.exact : b.dataset.short; }));
+</script>
+</body>
+</html>

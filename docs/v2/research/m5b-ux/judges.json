@@ -1,0 +1,305 @@
+{
+ "judge:analyst": {
+  "judge": "Senior equity and risk analyst (weekly user; evidence, number formatting, speed to source, findable power features)",
+  "scores": [
+   {
+    "dir": "dir-a",
+    "first_impression": "Quiet editorial page that proves its point before I type anything: a sample answer on the right shows filing words in yellow highlight with a pinned 10-K paragraph link. It reads like a careful research note. On desktop it feels sparse, and the power features are barely there.",
+    "grasp_in_10s_1_to_5": 4,
+    "trust_1_to_5": 5,
+    "elegance_1_to_5": 4,
+    "power_user_fit_1_to_5": 3,
+    "phone_1_to_5": 4,
+    "best_things": [
+     "Live sample answer on the Ask page (yellow highlight, 'Nvidia 10-K for fiscal 2024, Risk factors, paragraph 162'), so the citation contract is shown before the first question",
+     "The evidence panel's grey 'An older filing. Nvidia's next annual report, filed Feb 26, 2025, replaced it. The text is shown as it was filed.' band is the most honest version-status treatment of the three",
+     "Yellow highlight is impossible to miss, so it is fastest to see which exact words back the claim",
+     "'Read \u201cno longer appears as a separate risk factor\u201d with care' caveat and 'When two people checked 4 such cases by hand, 2 had been folded' shows the method has been tested by people. I could repeat that to a PM",
+     "Company hero cards show the rounded and the exact value ($215.9B / Exact: $215,938,000,000) plus the prior year",
+     "'Ask about this filing' and 'Open the full filing on sec.gov' buttons in the panel are good shortcuts to the source",
+     "Phone answer opens the source as a bottom sheet with the highlight visible on the first screen"
+    ],
+    "problems": [
+     "Power features are hidden: 'More options' gives no sign that search depth exists, and there is no Compare filings action on the company page",
+     "Key-numbers table shows bare '215.9' and '130.5' with the unit only in a caption ('US dollars, billions'). That is correct, but it reads less clearly than '$215.9B'",
+     "Header links are all underlined ('Filings through Sep 24, 2026, 9 newer being added', 'How it works'), which looks dated and noisy",
+     "Panel highlight is bold, italic, underlined and yellow at once. It reads heavy and slightly garish at length",
+     "Phone header takes 3 rows (logo, then freshness and How it works, then tabs), so first-screen space goes to chrome",
+     "Workspace preview is a thin sketch (grey bars) with no Upload control shown, so upload and compare-versions are barely sold to a power user",
+     "No answer-level source list visible on the first answer screen. Citations are only inline"
+    ]
+   },
+   {
+    "dir": "dir-b",
+    "first_impression": "Looks like a tool I would keep open: tickers listed on the home page, colour-coded source stamps (filing passage / reported number / government rule) explained in the subtitle, a Company page with tabs and Compare filings. It is the most data-forward, and still approachable at the top.",
+    "grasp_in_10s_1_to_5": 4,
+    "trust_1_to_5": 4,
+    "elegance_1_to_5": 4,
+    "power_user_fit_1_to_5": 5,
+    "phone_1_to_5": 3,
+    "best_things": [
+     "The subtitle teaches the three evidence kinds as the actual clickable chip styles ('filing passage', 'reported number', 'government rule'), so I learn the visual language in one line",
+     "'More options  Depth: Standard' shows the current depth setting next to the toggle, so a power user knows the setting exists without opening it",
+     "Companies-covered list with tickers (NVDA, AMD, INTC, AVGO, QCOM, MU, AAPL, MSFT, AMZN, GOOGL, META, TSM, ASML) on the Ask page. Good for analysts",
+     "Company page: 'Ask about Nvidia' and 'Compare filings' buttons, tabs (Key numbers, Government rules, Relationships, Filings, Risk changes), 'Show exact values' toggle, 'Show all metrics and years'. Everything a weekly user needs, without clutter",
+     "Numbers formatted properly with currency and unit ($215.9B, FY2025: $130.5B) and a chart glyph showing the figure is a reported number",
+     "Government rules are clearly fenced: amber callout 'not statements Nvidia made' plus a per-rule stamp and date",
+     "Answer page has a 'Sources (1)' card with 'Open in panel', 'Cited twice in this answer', a 'What was checked' list and 'How reliable are change claims?'",
+     "Workspace preview shows real controls: Upload, Compare versions, As of a date, a strike-through/underline version diff, and a grey stamp for own files"
+    ],
+    "problems": [
+     "Paragraph numbers are zero-padded in chips and panel ('\u00b60162', 'paragraph 0162'). It looks machine-generated. Use \u00b6162",
+     "On the phone answer screen the evidence panel is not visible on the first screen (A and C show a bottom sheet). Speed to source on phone is worse",
+     "Highlight in the panel is a faint green underline/tint. It is far less scannable than A's or C's yellow for spotting the exact cited words",
+     "The solid-filled green chip vs outline chip difference (first vs repeat citation) is unexplained and reads like a selected/unselected state",
+     "No short-answer lead. The answer opens with a long 'Comparing Nvidia's 10-K filed 2024-02-21...' sentence, which a PM will not read",
+     "Phone company tabs wrap to two rows ('Key numbers / Government rules' then 'Relationships / Filings / Risk changes')",
+     "Dates mix ISO (2024-02-21) in generated text with 'Feb 21, 2024' in the UI"
+    ]
+   },
+   {
+    "dir": "dir-c",
+    "first_impression": "The friendliest front door: 'Not sure what to ask? Start with what you need' with four jobs (Understand a company, Check a number, Track export rules, See what changed) each saying what proof you get. The answer leads with an 'In short' box. It suits beginners well, but it is card-heavy and has the most layout slips.",
+    "grasp_in_10s_1_to_5": 5,
+    "trust_1_to_5": 4,
+    "elegance_1_to_5": 3,
+    "power_user_fit_1_to_5": 3,
+    "phone_1_to_5": 3,
+    "best_things": [
+     "Job-grouped starter questions that each state the kind of proof ('You get the figure the company reported, and the filing it appears in'). This is the best onboarding of the three",
+     "'In short' bottom-line box with its own source chips, then 'The detail'. It is the shape a PM actually wants",
+     "Source panel names the kind of evidence in plain words ('Passage: the company's own words') and counts 'Source 1 of 2', with the comparison treated as its own source",
+     "Readable yellow highlight in the panel (calmer than A's, clearer than B's)",
+     "Government rule cards give 'Issued by Bureau of Industry and Security, document 2026-14132', 'Kind: Licensing policy', 'Read the rule' and '10 matching passages from Nvidia'. That is the best rule-to-filing traceability",
+     "Company header explains the fiscal year ('fiscal year 2026 (FY2026) ended on 25 Jan 2026') and gives a 'Try:' question plus 'All filings we hold (6)'",
+     "Answer ends with 'Ask next' follow-ups and a collapsible 'How to read this answer' legend",
+     "Workspace preview shows the real working layout: documents, 'Ask as of' date, Compare versions, a Source column and suggested questions"
+    ],
+    "problems": [
+     "Phone answer page loses its side gutter: 'All example questions', the question title and the 'In short' card touch the left edge of the 390 px screen. That is a visible layout bug",
+     "Desktop answer column starts at x\u2248120 while the header and logo start at x\u2248152, so the alignment is off",
+     "Header freshness is relative ('Data checked 4 h ago'). An analyst needs the absolute as-of date (24 Sep 2026) in the global header",
+     "Date formats are mixed: '21 Feb 2024' in the panel, '2024-02-21' in the answer text, '31-03-2026' in the workspace date input",
+     "'In short' is a paraphrase ('about its debt'). It is cited, but it is the most likely place for an unsupported gloss, and it needs the same verification as the detail",
+     "Card-in-card styling and the pill nav make it feel more consumer-app than research tool. Home starter cards are cut at the fold",
+     "No visible depth indicator next to More options, and no Compare filings action on the company page"
+    ]
+   }
+  ],
+  "my_pick": "dir-b",
+  "why": "In front of a portfolio manager, B is the one I would keep open weekly. It shows tickers, correctly formatted figures ($215.9B with FY2025 next to it, an exact-value toggle) and stamps that tell the three kinds of evidence apart, and that the subtitle teaches up front. The Company page puts Ask about Nvidia, Compare filings and Key numbers / Government rules / Relationships / Filings / Risk changes tabs within reach, and 'More options  Depth: Standard' tells me depth exists without opening it. It also has a Sources list and a 'What was checked' block on every answer. Those are the power features the brief asks for, findable and not cluttered. The top of B is still plain English, so a beginner is not lost. Its weaknesses can be fixed by borrowing from A and C rather than redesigning: the faint highlight, no bottom-line summary, the source panel missing from the first phone screen, and zero-padded \u00b60162. A has the strongest trust and C the best onboarding, but A under-serves power users and C has the most layout bugs (phone gutter, misalignment, mixed dates) and a more consumer feel.",
+  "must_borrow_from_others": [
+   "From A: the yellow verbatim highlight in the evidence panel (lighter than A's bold-italic-underline, closer to C's), replacing B's faint green underline",
+   "From A: the live sample answer on the Ask page that shows a highlighted filing quote with its paragraph link before the user types",
+   "From A: the grey 'An older filing ... replaced it. The text is shown as it was filed.' status band in the panel, and the 'Ask about this filing' and 'Open the full filing on sec.gov' actions",
+   "From A: the human-checked caveat ('When two people checked 4 such cases by hand, 2 had been folded into another risk factor') next to change claims",
+   "From A: the phone bottom-sheet evidence panel that is visible on the first screen after tapping a citation (B's phone answer does not show it)",
+   "From C: the 'In short' bottom-line box with its own source chips above 'The detail'",
+   "From C: starter questions grouped by job (Understand a company / Check a number / Track export rules / See what changed), each saying what proof you get. Keep B's compact topic labels for density",
+   "From C: the fiscal-year explainer line on the Company page and the 'Try:' suggested question",
+   "From C: government-rule cards with issuer, document number, kind, 'Read the rule' and 'N matching passages from <company>'",
+   "From C: 'Source 1 of 2' that counts a filing comparison as its own source, plus 'Ask next' follow-ups and the collapsible 'How to read this answer' legend",
+   "Fixes to B itself: drop zero-padding (\u00b6162 not \u00b60162), use one date format throughout (no ISO dates in answer text), keep tabs on one scrollable row on phone, and explain the solid vs outline chip difference or remove it"
+  ]
+ },
+ "judge:newcomer": {
+  "judge": "First-time visitor, no finance background, sent the link by a friend; about 10 seconds of patience per screen. Judged from the screenshots (ask, answer, company and workspace at desktop-light and phone-light, plus dark ask), not from the DESIGN.md files.",
+  "scores": [
+   {
+    "dir": "dir-a",
+    "first_impression": "Calm and readable, like a nicely typeset report. The yellow-highlighted sample on the right showed me what an answer looks like before I typed anything. ASK: first I'd click 'What was Nvidia's total revenue for fiscal 2026?' in the example list; I'd get lost only at 'paragraph 162' (I don't know what that refers to). ANSWER: first I'd read the yellow passage in the side panel, because it jumps out. I got lost in the opening paragraph ('10-K filed 2024-02-21 ... text check found at least 1 risk factor ...'), which is dense and has no one-line answer. COMPANY: first I'd look at the big $215.9B tile. The row labels 'Money from sales' and 'Profit after all costs and taxes' are the only place across all three directions where I understood what the numbers mean. I got lost at '10-Q quarterly report'. WORKSPACE: first I'd click 'Create a private workspace'. The sketch on the right is grey placeholder bars, so I couldn't tell what I'd get.",
+    "grasp_in_10s_1_to_5": 4,
+    "trust_1_to_5": 5,
+    "elegance_1_to_5": 4,
+    "power_user_fit_1_to_5": 3,
+    "phone_1_to_5": 4,
+    "best_things": [
+     "The strong yellow highlighter on the exact quoted words is the clearest 'this is really from the source' signal of the three, both in the panel and in the demo on the Ask screen",
+     "An 'What an answer looks like' demo on the Ask screen explains the promise without making me read",
+     "Plain-language subtitles under each figure ('Money from sales', 'Profit after all costs and taxes')",
+     "Honest notes build trust: the 'Read no longer appears... with care' caveat, the 'What was checked' list, and the 'An older filing... replaced it' notice",
+     "The header gives a dated freshness line ('Filings through Sep 24, 2026, 9 newer being added')",
+     "Phone: the evidence panel opens as a bottom sheet and the highlight still reads well"
+    ],
+    "problems": [
+     "The answer has no short summary; it opens with a dense, date-heavy sentence, so a beginner has to work to get the point",
+     "Underlined text links in the header and the plain black Ask button make it feel a little dated and document-like rather than inviting",
+     "Thin for power users: the company page has no tabs, there's no visible 'compare filings' action, and the workspace preview is placeholder bars with no visible upload",
+     "Citation labels like '10-K 2024, \u00b6162' are jargon",
+     "Phone company page: the 2x2 tiles wrap into tall, cramped boxes, and the 'Exact: $215,938,000,000' lines add noise",
+     "The 'More options' link doesn't say what's inside it"
+    ]
+   },
+   {
+    "dir": "dir-b",
+    "first_impression": "Clean and professional, but it feels like a tool for finance people. Before I've asked anything, it asks me to learn three labels (filing passage, reported number, government rule) and shows a column of stock tickers. ASK: first I'd click an example, probably the one labelled 'Revenue'. I got lost at 'BIS export-control rules' and the NVDA/AVGO/QCOM ticker column. ANSWER: first I'd notice the dark green chip 'Nvidia 10-K FY2024 \u00b60162' and click it. I got lost on '\u00b60162' and the dense opening paragraph, and the green underline highlight is easy to miss. COMPANY: first I'd click 'Ask about Nvidia', the green button. The tabs (Key numbers, Government rules, Relationships, Filings, Risk changes) are obvious, but 'Compare filings' and 'Capital expenditures' mean nothing to me. WORKSPACE: this preview was the clearest of the three. The struck-through and underlined example showed me what 'compare versions' means, and the upload box with listed file types told me exactly what to do.",
+    "grasp_in_10s_1_to_5": 3,
+    "trust_1_to_5": 4,
+    "elegance_1_to_5": 4,
+    "power_user_fit_1_to_5": 5,
+    "phone_1_to_5": 3,
+    "best_things": [
+     "The company page tabs (Key numbers / Government rules / Relationships / Filings / Risk changes) are the best structure for an advanced user",
+     "'Ask about Nvidia' and 'Compare filings' buttons sit right on the company page",
+     "A 'Show exact values' toggle hides the long exact numbers by default",
+     "The workspace preview demonstrates the version diff (struck vs underlined), lists the supported file types and shows an Upload box",
+     "Each kind of evidence gets its own stamp, and the government-rule notice ('not statements Nvidia made') is clear",
+     "'Source 1 of 1' and a labelled Close button make the panel easy to navigate",
+     "Dated freshness line in the header"
+    ],
+    "problems": [
+     "Too data-forward for a beginner: the first screen has a ticker list, three evidence labels to learn, 'BIS', and 'Depth: Standard'",
+     "The citation label '\u00b60162' has a leading zero and a pilcrow, which reads as pure jargon",
+     "The cited text is marked only by a light green underline, much weaker than A's yellow highlighter",
+     "Phone answer: the evidence panel isn't visible in the first screen (A and C both show a bottom sheet), so I couldn't confirm that tapping a citation opens the source on phone",
+     "Phone company page: the five tabs wrap onto two rows and look broken",
+     "Phone ask: a long block of fine print about rate limits sits before the examples",
+     "None of the row labels are explained in plain language"
+    ]
+   },
+   {
+    "dir": "dir-c",
+    "first_impression": "The friendliest of the three. The headline ('Questions about chip and AI companies, answered from the source') told me what the site is in one read, and 'Not sure what to ask? Start with what you need' grouped the examples by what I'd actually want. ASK: first I'd click a question under 'Understand a company' or 'Check a number'. I got lost only because the four card columns are a lot to scan, and the examples are cut off below the fold. ANSWER: first I'd read the 'In short' box, which gave me the point in plain English, then click the chip 'Nvidia 10-K FY2024, risk factors', which tells me what the source is without any \u00b6 codes. I got lost a little because there are many outlined chips. COMPANY: first I'd click the 'Try: What does Nvidia disclose about export controls...' link or 'Ask a question about Nvidia'. The fiscal-year explanation helped. I got lost at '10-Q' and 'Capital expenditure'. WORKSPACE: first I'd click 'Create a private workspace'. The numbered steps and the real-looking preview (as-of date, compare versions, source column) made it clear.",
+    "grasp_in_10s_1_to_5": 5,
+    "trust_1_to_5": 4,
+    "elegance_1_to_5": 4,
+    "power_user_fit_1_to_5": 4,
+    "phone_1_to_5": 3,
+    "best_things": [
+     "Grouping the examples by job ('Understand a company / Check a number / Track export rules / See what changed'), each saying what kind of proof you get, is the best on-ramp for a beginner",
+     "The 'In short' summary box at the top of the answer",
+     "Readable citation chips ('Nvidia 10-K FY2024, risk factors', 'Compared: FY2024 with FY2025') and 'Passage: the company's own words'",
+     "'Nvidia did not write these', plus 'Read the rule' and '10 matching passages from Nvidia' on each government rule",
+     "The company page explains the fiscal year, offers a 'Try:' question link and has a clear 'Ask a question about Nvidia' button",
+     "The workspace preview looks like the real tool (as-of date, compare versions, source pane), and 'How it works' sits in the main nav",
+     "Phone ask screen is clean, with the Ask button inline"
+    ],
+    "problems": [
+     "Phone answer (390 px): the back link, the question title and the 'In short' card sit flush against the left edge with no side margin, which looks like horizontal overflow and a broken page",
+     "Trust: the header says only 'Data checked 4 h ago', which sounds current but hides that the data runs through Sep 24 and that newer filings are still being added (A and B say both); the date appears only deeper, on the company page",
+     "The highlight in the source panel is pale yellow, much weaker than A's highlighter",
+     "Busy: many rounded outlined cards and chips, and four dense columns on the Ask screen",
+     "Phone company page: the long header (dates, Try link, button) pushes the key numbers below the first screen",
+     "No tabs on the company page for power users; the exact-value lines are always shown"
+    ]
+   }
+  ],
+  "my_pick": "dir-c",
+  "why": "As a beginner, C is the only direction where every screen told me what to do within a few seconds. The headline says what the site is, the examples are grouped by what I want ('Understand a company', 'Check a number'), the answer starts with an 'In short' summary, and the citation chips use words rather than codes like \u00b60162. A is the most trustworthy-looking and the most elegant to read, but its answers start with a dense paragraph and it is thin for advanced users. B is best for the advanced user who uses workspaces and file upload, but it made me learn tickers and three evidence labels before asking anything. Two conditions come with this pick. First, fix C's phone answer screen, where the title and 'In short' card touch the left screen edge (missing the 16 px side margin, likely horizontal overflow); as shipped, that would make the site look broken on the phone my friend sent the link to. Second, replace 'Data checked 4 h ago' with a dated coverage line.",
+  "must_borrow_from_others": [
+   "From A: the strong yellow highlighter on the exact quoted words in the source panel (C's pale yellow is too weak)",
+   "From A: a small 'What an answer looks like' demo on the Ask screen showing a highlighted quote and its source",
+   "From A: plain-language subtitles under each figure on the company page ('Money from sales', 'Profit after all costs and taxes')",
+   "From A: the 'Read ... with care' caveat, the 'What was checked' list and the 'older filing, replaced by...' notice in the panel",
+   "From A and B: a dated freshness line in the header ('Filings through Sep 24, 2026, 9 newer being added') instead of 'Data checked 4 h ago'",
+   "From B: company page tabs (Key numbers / Government rules / Relationships / Filings / Risk changes), laid out so they don't wrap onto two rows on a phone",
+   "From B: a 'Compare filings' button next to 'Ask a question about Nvidia'",
+   "From B: a 'Show exact values' toggle, with the long exact numbers hidden by default",
+   "From B: the workspace diff illustration (struck-through vs underlined wording), the list of supported file types and a visible Upload box",
+   "From B: 'Source 1 of 1' with a labelled Close button in the evidence panel"
+  ]
+ },
+ "judge:a11y-brand": {
+  "judge": "Senior accessibility specialist and brand designer. I read the ask, answer and company screenshots in desktop-light and phone-light for all three directions, the dark ask and dark answer for all three, the workspace desktop-light for all three, and the C ask and B answer full pages. I checked B's DESIGN.md to see how its phone evidence panel is meant to behave. Contrast is judged by eye, not measured. Focus states appear in none of the screenshots, so I could not assess focus visibility for any direction. B's DESIGN.md specifies a 3 px #1D4ED8 focus ring, but that ring is not shown in any screenshot.",
+  "scores": [
+   {
+    "dir": "dir-a",
+    "first_impression": "A quiet editorial page that looks like a well-run government or newspaper site. The yellow highlighter on a sample answer, placed right beside the question box, tells you what you will get before you type. It is honest and trustworthy, and a little austere and greyscale.",
+    "grasp_in_10s_1_to_5": 4,
+    "trust_1_to_5": 5,
+    "elegance_1_to_5": 4,
+    "power_user_fit_1_to_5": 3,
+    "phone_1_to_5": 4,
+    "best_things": [
+     "The ask page shows a live 'What an answer looks like' sample: a highlighted verbatim sentence, a citation and a legend line ('Yellow marks words copied exactly from the source'). This is the fastest way on any of the three ask pages to understand the product.",
+     "The best certainty calibration of the three: a 'Read \"no longer appears as a separate risk factor\" with care' note inside the answer, with a human-check stat (2 of 4 cases had been folded into another risk factor).",
+     "The older-filing notice in the evidence panel is a prominent grey band ('An older filing... replaced it. The text is shown as it was filed').",
+     "Freshness is stated honestly on every page: 'Filings through Sep 24, 2026, 9 newer being added'.",
+     "The yellow highlight carries black text in both light and dark mode (high contrast), and the highlight is underlined as well as coloured, so the meaning does not rely on colour alone.",
+     "On the phone, the evidence opens as a bottom sheet with a drag handle, so the highlighted passage is visible straight after the tap. The side gutters are correct and the text is large.",
+     "The company page labels government rules 'linked to Nvidia by keyword match. Not statements by Nvidia.'"
+    ],
+    "problems": [
+     "The evidence panel shows the quoted sentence in bold italic, right under a banner that says 'The text is shown as it was filed'. On a verbatim-source product, adding emphasis to the source contradicts that claim.",
+     "Citation chips read '10-K 2024, \u00b6162'. At chip size the pilcrow is easily misread as a '1', and '\u00b6' means nothing to a beginner.",
+     "Power-user depth is thin. The company page is one long scroll with no tabs and no exact-values toggle, and there are fewer visible controls (depth, compare) than in B.",
+     "Near-monochrome with a near-black Ask button: distinctive only through the highlighter. The rest reads as a generic docs or GOV.UK template.",
+     "Dark mode: hairline card and panel borders on near-black look very low contrast (likely under 3:1 for non-text UI; estimated by eye, not measured).",
+     "The panel's close X is a bare glyph with no visible box, so its tap target is probably under 24 px. 'More options' and 'See all' are small inline text targets.",
+     "On the phone, the header takes about 230 px (logo row, freshness row, tab row) before any content."
+    ]
+   },
+   {
+    "dir": "dir-b",
+    "first_impression": "A tidy analyst workbench that teaches its own vocabulary in the first sentence: the three source stamps (filing passage, reported number, government rule) are live chips in the hero line. It is data-forward without being intimidating, and it has the most complete trust apparatus.",
+    "grasp_in_10s_1_to_5": 4,
+    "trust_1_to_5": 4.5,
+    "elegance_1_to_5": 4,
+    "power_user_fit_1_to_5": 5,
+    "phone_1_to_5": 3,
+    "best_things": [
+     "The source-stamp system tells kinds of evidence apart by icon, border style and label, not colour alone. The government rule gets a double rule, square corners and the words 'Government rule', so it survives forced-colours mode.",
+     "Gold is reserved for government rules, and government rules are framed as 'actions by the government, not statements Nvidia made'. This is the clearest separation of what a company said from what the government did.",
+     "The answer page has a full 'What was checked' list (no dollar amounts matched, every source found, change found automatically), a 'How reliable are change claims?' link, a Sources list and 'Answered from data as of Sep 24, 2026. 9 newer filings are still being added'.",
+     "The best power-user fit: an 'Ask another question' bar on the answer page, depth shown inline ('Depth: Standard'), a company page with tabs (Key numbers, Government rules, Relationships, Filings, Risk changes), a 'Show exact values' toggle, a 'Compare filings' button, and a workspace preview with Upload, Compare versions and As of a date.",
+     "The evidence panel has a labelled 'Close' button (a large, clear target), plus Section, Covers, Filed and Status rows. Status reads 'Older filing, replaced by...'.",
+     "The 'Companies covered' rail with tickers turns scope into something you can see at a glance.",
+     "Good dark mode: mint actions with dark text, and the gold stamps stay legible."
+    ],
+    "problems": [
+     "Phone: DESIGN.md says that below 900 px the evidence panel stacks under the whole answer. In the phone capture the chip turns solid green but no evidence appears on screen, so a beginner taps and sees nothing happen. This is the biggest phone failure in the set.",
+     "Phone company page: the five tabs wrap onto two rows, with the active underline only on the first. It looks like two tab bars and breaks the tab pattern.",
+     "Certainty: filing passages and reported numbers both use solid green stamps, and the active chip fills dark green. Most people read green as 'verified' or 'OK', so every citation looks like an approval mark, and the highlight in the panel is also green. This leans toward making claims sound more certain than they are.",
+     "'\u00b60162' with a leading zero and a pilcrow looks like database output, and at small size it reads as '10162'.",
+     "Hero line breaks are awkward: 'or a' ends one line and '[government rule]' starts the next, inside a heavy double-bordered amber box.",
+     "The green-underline highlight is less instantly readable as 'these exact words were copied' than a yellow highlighter. The DESIGN.md dropped yellow to avoid clashing with Seal gold.",
+     "The amber 'Export rules' category label on grey and the grey category labels are small, and their contrast is borderline (estimated, not measured).",
+     "The workspace says documents are 'never shown to anyone else'. It does qualify this in the same box ('Only someone with the workspace ID and key can open it'), which is good."
+    ]
+   },
+   {
+    "dir": "dir-c",
+    "first_impression": "The friendliest front door. 'Questions about chip and AI companies, answered from the source', with starter questions grouped by the job people come with. It is the easiest for a complete beginner, but it looks like a generic AI-SaaS template (mint background, rounded cards inside cards, icons in tinted rounded squares, a pill nav), and it leans toward confident summaries.",
+    "grasp_in_10s_1_to_5": 5,
+    "trust_1_to_5": 3.5,
+    "elegance_1_to_5": 3,
+    "power_user_fit_1_to_5": 3.5,
+    "phone_1_to_5": 3,
+    "best_things": [
+     "Job-grouped starters (Understand a company, Check a number, Track export rules, See what changed in risk disclosures), each with a 'You get...' line naming the kind of proof. Excellent for beginners.",
+     "Plain-language source labels on chips and in the panel: 'Passage: the company's own words', and chips that read 'Nvidia 10-K FY2024, risk factors' rather than a pilcrow and a number.",
+     "The company page explains fiscal years in a full sentence ('so its fiscal year 2026 (FY2026) ended on 25 Jan 2026'), gives a ready 'Try: What does Nvidia disclose about export controls...' link and a big 'Ask a question about Nvidia' button.",
+     "The government-rules card says 'Nvidia did not write these' and explains the keyword link.",
+     "A boxed, roughly 36 px close button on the evidence panel, and a mobile bottom sheet that shows the source right away.",
+     "The yellow highlight with dark text in light mode reads clearly as copied words."
+    ],
+    "problems": [
+     "Freshness overclaim: 'Data checked 4 h ago' in the top bar suggests the data is current. The filings actually run only to Sep 24 and 9 newer filings are missing, and the 'being added' note is gone. This is a trust regression against A and B.",
+     "The 'In short' box restates the conclusion in large bold type with a coloured bar. It keeps the hedges ('at least', 'may'), but the paraphrase gets more visual weight than the evidence, which makes the claim sound more settled than the comparison supports.",
+     "The phone answer page loses its left gutter: the back link, title and 'In short' card sit flush against the screen edge.",
+     "It looks generic: rounded cards nested in a rounded container, icon tiles in tinted squares and a mint page background. This is the stock AI-product kit, the least distinctive of the three.",
+     "The workspace lists privacy as checkmarked guarantees ('Private to you, never shown to anyone else'), while the third item admits that anyone with the ID and key can open it. The checkmark styling overstates the guarantee.",
+     "Dark mode: the yellow highlight becomes a very low-tint olive behind light text, so the cited span barely stands out. The navy government-rule icon is low contrast on the near-black green (estimated by eye).",
+     "The active nav pill is green text on pale mint, which looks borderline for 4.5:1 (estimated, not measured).",
+     "Fewer power controls on the answer page: no ask-another bar and no visible depth setting. 'All example questions' is the only way back."
+    ]
+   }
+  ],
+  "my_pick": "dir-b",
+  "why": "B best serves both audiences in the brief. The first sentence teaches a beginner the three kinds of evidence through live stamps, and the analyst gets tabs, exact values, compare, depth and an ask-again bar without the front door feeling technical. Its stamp system tells sources apart without relying on colour. It keeps government rules visibly separate from company statements and has the most complete 'what was checked / data as of' apparatus, so trust is close to A's. A is the most honest and calm, but it is thin for power users and plain as a brand. C is the easiest for a first-timer, but it reads as a generic AI-SaaS template, hides staleness behind 'Data checked 4 h ago', puts a bold summary above the evidence, and breaks the phone gutter. B has to fix its phone evidence behaviour, its two-row tab wrap and its 'everything is green' certainty signal before it ships.",
+  "must_borrow_from_others": [
+   "From A: a live 'What an answer looks like' sample beside the ask box on the first screen (a highlighted verbatim sentence, a citation and a one-line legend). It beats the stamp list alone for 10-second understanding.",
+   "From A: the yellow highlighter with black text and an underline for cited words, plus the legend 'Highlighted: the words copied exactly from the source'. Re-key Seal gold, or give the highlight its own hue, so the two do not clash. Do NOT borrow A's bold italic on quoted text: verbatim text must keep the filing's own styling.",
+   "From A: the in-body 'Read ... with care' calibration note with its human-check result, placed in the answer text and not only inside 'What was checked'.",
+   "From A: the prominent grey older-filing band in the evidence panel ('An older filing... The text is shown as it was filed').",
+   "From A and C: on the phone, open evidence as a bottom sheet with a drag handle and a boxed close button (at least 44 px), so the source appears the moment a chip is tapped. Replace B's 'stack under the answer' behaviour.",
+   "From C: job-grouped starter questions with the 'You get...' line naming the proof type. Keep them as B's ruled rows, not C's nested rounded cards.",
+   "From C: plain-language source labels ('Passage: the company's own words'; 'Nvidia 10-K FY2024, risk factors' or 'paragraph 162') in place of '\u00b60162'.",
+   "From C: the company-page fiscal-year explainer sentence and the 'Try: <real question about this company>' link next to 'Ask about Nvidia'.",
+   "Fix within B: stop using green as the citation colour (green reads as 'verified'). Use neutral ink stamps where only the icon carries colour, and keep the active state as an outline or underline rather than a solid green fill.",
+   "Fix within B: on the phone, show the company tabs as one horizontally scrolling row (with an edge fade) or as a select, never two wrapped rows.",
+   "Keep B's top-bar 'Data as of Sep 24, 2026, 9 newer filings being added'. Never adopt C's 'Data checked 4 h ago'.",
+   "Before sign-off, verify what the screenshots could not show: the focus ring (DESIGN.md says 3 px #1D4ED8 / #8AB4FF) on chips, tabs, the toggle and the panel close; measured contrast for the amber category labels, the dark-mode hairlines and the highlight tint; and at least 24 px targets for the inline citation chips."
+  ]
+ }
+}

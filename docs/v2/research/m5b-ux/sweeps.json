@@ -1,0 +1,701 @@
+{
+ "sweep:finance-research": {
+  "products": [
+   {
+    "name": "AlphaSense (Generative Search + Document Viewer)",
+    "url": "https://help.alpha-sense.com/hc/en-us/articles/41666587181203-Interacting-with-Generative-Search",
+    "what_verified": "Verified from AlphaSense help-center pages (fetched): input, scoping controls, response layout, inline citations, Document Viewer, Ask in Doc, failure wording. Marketing page fetched too. NOT verified: actual screenshots, visual styling, streaming indicator (docs do not describe one), anything behind login. One help page still calls the feature beta; may be stale.",
+    "patterns": [
+     {
+      "area": "Answer layout",
+      "pattern": "A response is stacked: your original question, an expandable 'Research Plan' (arrow shows the steps being run), cited content, a short Summary or Conclusion, then suggested follow-up questions at the bottom.",
+      "source_url": "https://help.alpha-sense.com/hc/en-us/articles/41666587181203-Interacting-with-Generative-Search",
+      "fit_for_semigraph": "Strong fit. Show the answer with a collapsed 'How this was answered' (strategy, passages searched) and 2-3 follow-up chips. The collapsed plan is the plain-language home for what the hybrid/vector/agent select does today."
+     },
+     {
+      "area": "Progressive disclosure of power controls",
+      "pattern": "One search bar. Power controls sit behind a '+' button (add files, companies, document selector with filters) and a few dropdowns (All Sources, Web Search toggle, Mode: Auto / Think Longer / Deep Research). Time-cost is stated in the mode name's docs (1-3 min, 10+ min). Default timeframe is 12 months, stated.",
+      "source_url": "https://help.alpha-sense.com/hc/en-us/articles/41666587181203-Interacting-with-Generative-Search",
+      "fit_for_semigraph": "Strong fit. Replace the bare hybrid/vector/agent select with a 'Search depth' control, default Auto, labelled by effect ('Quick', 'Thorough (agent, slower)') and keep it next to a '+ Add your documents / pick a company' button that links to Workspace. Beginner sees one box; analyst opens options."
+     },
+     {
+      "area": "Citations and source panel",
+      "pattern": "Each summarized insight carries inline citations; selecting one opens the Document Viewer with the relevant passage highlighted. Viewer has a left 'Keyword Hits' pane (snippets with nearby context, click to jump) beside the full document, collapsible. 'Ask in Doc' opens a question box scoped to that one document.",
+      "source_url": "https://help.alpha-sense.com/hc/en-us/articles/52886436185363-Reviewing-Documents-in-AlphaSense",
+      "fit_for_semigraph": "Strong fit. Your evidence side panel already matches; add 'Ask about this filing' inside the panel (scopes the next question to that filing) and a 'more mentions in this filing' list. Keep the verbatim passage highlighted in context."
+     },
+     {
+      "area": "Verify-a-claim interaction",
+      "pattern": "Highlight any text in an answer to ask a follow-up or verify that claim.",
+      "source_url": "https://help.alpha-sense.com/hc/en-us/articles/41666587181203-Interacting-with-Generative-Search",
+      "fit_for_semigraph": "Good later-phase idea (select a sentence, 'Show the source for this'). Needs sentence-to-citation mapping; do not promise per-sentence support if citations are per paragraph."
+     },
+     {
+      "area": "Honest empty/failure state",
+      "pattern": "Docs state the system says so when nothing relevant is found rather than inventing an answer, and list likely causes: no relevant content, insufficient context, content unavailable.",
+      "source_url": "https://help.alpha-sense.com/hc/en-us/articles/41666587181203-Interacting-with-Generative-Search",
+      "fit_for_semigraph": "Direct fit for the empty/no-evidence state: 'We could not find this in the filings we have. Try naming a company or a year.' with the three causes as a short list."
+     },
+     {
+      "area": "History",
+      "pattern": "'Threads' in the left toolbar revisits past prompts, filterable by Report / Grid / Scheduled Agent.",
+      "source_url": "https://help.alpha-sense.com/hc/en-us/articles/41666587181203-Interacting-with-Generative-Search",
+      "fit_for_semigraph": "Optional for logged-in Workspace users; for anonymous visitors keep a local 'Recent questions' list (no server storage)."
+     }
+    ],
+    "avoid": [
+     "Marketing hero copy is vague ('single integrated platform for a limitless strategic advantage') and claims to 'eliminate uncertainty' with no stated limits (https://alpha-sense.com/platform/generative-search). The first-visitor test problem for semigraph is the opposite of what to copy: say concretely what the site is and what it cannot do.",
+     "Mode names like 'Think Longer' and 'Deep Research' are fine for finance pros but are jargon for a beginner; pair every mode with a plain cost-in-time phrase."
+    ]
+   },
+   {
+    "name": "Hebbia (Matrix)",
+    "url": "https://aichief.com/ai-productivity-tools/hebbia-ai/",
+    "what_verified": "Only secondary sources (review/directory sites). Hebbia's own docs and product UI could not be verified; the product is login/sales gated. Treat specifics as unconfirmed.",
+    "patterns": [
+     {
+      "area": "Data-dense Q&A grid",
+      "pattern": "Spreadsheet metaphor: documents are rows, questions are columns, each cell is filled by an agent and carries a citation to the exact page/paragraph, clickable to the source PDF (per third-party descriptions).",
+      "source_url": "https://dynamicbusiness.com/ai-tools/hebbia-revolutionizes-ai-interface-meet-the-matrix.html",
+      "fit_for_semigraph": "Fits the Workspace page as an advanced mode: rows = your uploaded documents (or versions), columns = questions, each cell a cited answer. Excellent for 'compare versions'. Keep it behind a 'Table view' toggle, not on the entry path."
+     },
+     {
+      "area": "Per-cell citation",
+      "pattern": "Every cell independently sourced, so a reader can audit one cell without trusting the whole table.",
+      "source_url": "https://aitoolsatlas.ai/tools/hebbia/tutorial",
+      "fit_for_semigraph": "Same rule for any table you build: a cell with no citation shows 'No source found', never a blank or guessed value."
+     }
+    ],
+    "avoid": [
+     "Do not copy terms such as 'agent swarm' or 'Verifiable Fact Layer' into the UI; they appear only on secondary sites and are insider language."
+    ]
+   },
+   {
+    "name": "BamSEC (Compare Filings)",
+    "url": "https://help.bamsec.com/docs/compare-filings",
+    "what_verified": "Help page text came via search snippet; direct fetch returned 403, so exact UI details beyond the snippet (change navigation, limits) are NOT verified. Product is subscription gated.",
+    "patterns": [
+     {
+      "area": "Filing diff / redline",
+      "pattern": "A 'Compare' button in the sidebar of any filing; pick the second filing; output is a single redline: green = text added in the more recent filing, red = text removed, unhighlighted = in both. Tables added/removed are also highlighted (third-party claim, less certain).",
+      "source_url": "https://help.bamsec.com/docs/compare-filings",
+      "fit_for_semigraph": "Fits Company page 'Compared risk disclosures'. Offer a literal redline view as the proof behind each hedged summary sentence: summary says 'appears to add language about X', link 'See the exact text change' opens the redline with a legend. Add text labels ('Added', 'Removed') and underline/strike-through so meaning does not rely on green/red alone (WCAG 1.4.1)."
+     },
+     {
+      "area": "Entry point in context",
+      "pattern": "Compare is launched from the filing you are already reading, not from a separate tool page.",
+      "source_url": "https://help.bamsec.com/docs/compare-filings",
+      "fit_for_semigraph": "Put 'Compare with previous filing' on each filing row and in the evidence panel header, defaulting the other side to the prior filing of the same form type."
+     }
+    ],
+    "avoid": [
+     "Redline alone is raw for a beginner; always precede it with a one-line plain summary and the hedge ('wording changed; this does not by itself mean the risk changed')."
+    ]
+   },
+   {
+    "name": "Fintool",
+    "url": "https://fintool.com/products/chat",
+    "what_verified": "Marketing and press claims via search snippets only; the product URL now redirects to Microsoft 365 (a third-party site claims Microsoft acquired Fintool, not confirmed by a primary source), so the live UI could not be inspected.",
+    "patterns": [
+     {
+      "area": "Trust wording",
+      "pattern": "Plain one-line promise: every answer is backed by direct quotes from filings and calls, click through to the original source to verify.",
+      "source_url": "https://fintool.com/products/chat",
+      "fit_for_semigraph": "Fits as the one-sentence value prop under the headline: 'Every answer quotes the filing it came from. Click any number or quote to see the original.' This is concrete and checkable, unlike generic 'AI-powered' copy."
+     }
+    ],
+    "avoid": [
+     "Self-reported benchmark claims (98% on FinanceBench) are company-published and unverified here; do not put accuracy percentages on the first screen unless you can reproduce them and link the method."
+    ]
+   },
+   {
+    "name": "Daloopa and Rogo",
+    "url": "https://daloopa.com/blog/product-updates/announcing-daloopas-partnership-with-rogo",
+    "what_verified": "Fetched the partnership post: it only says every datapoint is 'linked back to its original source'; no UI detail on how the link looks. Koyfin and Rogo's own UI could not be verified.",
+    "patterns": [
+     {
+      "area": "Number provenance",
+      "pattern": "The positioning is datapoint-level traceability: each financial number carries a link to where it was reported, 'audit-ready'.",
+      "source_url": "https://daloopa.com/blog/product-updates/announcing-daloopas-partnership-with-rogo",
+      "fit_for_semigraph": "Fits Company metrics table: make each number a link/chip (e.g. 'FY2025 revenue $130.5B') opening the evidence panel on the XBRL fact and its filing. Pattern is reported, UI not confirmed."
+     }
+    ],
+    "avoid": [
+     "Do not rely on this source for visual specifics; it is a partnership announcement."
+    ]
+   },
+   {
+    "name": "Koyfin",
+    "url": "https://www.koyfin.com/help/topic/functionality",
+    "what_verified": "Help-center topic list and third-party reviews only. Page layout not seen directly.",
+    "patterns": [
+     {
+      "area": "Statement views and exports",
+      "pattern": "Company financials are offered as named views: Financial Highlights, Income Statement, Balance Sheet, Cash Flow, Valuation. 'Highlights' is the short view, statements the long one.",
+      "source_url": "https://www.koyfin.com/help/topic/functionality",
+      "fit_for_semigraph": "Fits Company page: default to a short 'Key numbers' view (6-8 rows) with 'Show all metrics' to reveal the full list. Matches your readable-names plan."
+     },
+     {
+      "area": "Percentile context",
+      "pattern": "Company Snapshot offers percentile rank (0-100) to show where a value sits in a cohort.",
+      "source_url": "https://koyfin.com/help/global-equities-fundamentals-valuatiion",
+      "fit_for_semigraph": "Optional: show a tiny 'higher than N of 13 companies' context for beginners, only if computed from your own 13-company set and labelled as such."
+     }
+    ],
+    "avoid": [
+     "Export restrictions from upstream data vendors limit what can be downloaded; if semigraph adds CSV export, state what is included."
+    ]
+   },
+   {
+    "name": "Yahoo Finance (financials table)",
+    "url": "https://finance.yahoo.com/quote/NVDA/financials/",
+    "what_verified": "Fetched the live NVDA financials page text. Visual styling not seen. Google Finance and Bloomberg pages were not fetched.",
+    "patterns": [
+     {
+      "area": "Period formatting",
+      "pattern": "Annual/Quarterly toggle above the table; first column is TTM, then fiscal year-end columns newest to oldest (e.g. 1/31/2026, 1/31/2025...); costs as negatives; '--' for missing; an 'Expand All' control reveals breakdown rows under summary rows.",
+      "source_url": "https://finance.yahoo.com/quote/NVDA/financials/",
+      "fit_for_semigraph": "Adopt: newest year first, Annual/Quarterly toggle, collapsed summary rows with expandable detail, and a visible 'No data' marker with a hover/tap reason ('not reported in this filing') instead of a bare dash."
+     }
+    ],
+    "avoid": [
+     "Units note says 'All numbers in thousands' while the figures look like full dollars (e.g. 302,970,000), so label and values disagree. Always state units once, in the table header, and format as '$130.5B' or '$130,497M' consistently.",
+     "Tax rate shown as decimal 0.16 instead of 16%; show percentages as percentages.",
+     "Fiscal year-end shown as bare dates (1/31/2026) is opaque; Nvidia's fiscal 2026 ends January 2026, so label 'FY2026 (ended Jan 25, 2026)' to avoid beginner confusion."
+    ]
+   },
+   {
+    "name": "SEC EDGAR Full-Text Search",
+    "url": "https://www.sec.gov/edgar/search/",
+    "what_verified": "Fetched the live page: fields, filters, result table and facets confirmed in text. Result rendering not seen.",
+    "patterns": [
+     {
+      "area": "Simple entry with hidden advanced filters",
+      "pattern": "First screen shows a keyword box, an entity box (name, ticker or CIK), a form-type picker and date presets; location filters hide behind '+ more search options' and collapse with '- less search options'. A one-line banner states coverage ('since 2001'). Results have facet filters with counts and a CSV export.",
+      "source_url": "https://www.sec.gov/edgar/search/",
+      "fit_for_semigraph": "Fits Ask/Company: one question box plus an optional 'Limit to' row (company, filing type, year) tucked behind a disclosure; state coverage in one line ('13 companies, filings from 20XX, checked <date>') with a link to Freshness. Facets-with-counts is a good pattern for the 51 saved questions (filter by company or topic)."
+     }
+    ],
+    "avoid": [
+     "EDGAR's terminology (CIK, film number, file number) is insider language; do not expose internal ids in your tables."
+    ]
+   }
+  ],
+  "cross_cutting": [
+   "First screen recipe that survives every product checked: one headline sentence saying what the site is, one trust sentence (every answer quotes its source filing), the question box at the top, then a few starters. AlphaSense and EDGAR both put the input first and push options behind a '+' or 'more options' toggle. None of the products fetched shows 51 starters at once; the AlphaSense help describes no starter list at all, so a short list (about 6) plus 'show all' is a design choice supported by their restraint, not a copied pattern. Cite: https://help.alpha-sense.com/hc/en-us/articles/41666587181203-Interacting-with-Generative-Search and https://www.sec.gov/edgar/search/",
+   "Citation pattern shared by AlphaSense, Hebbia (per secondary sources) and Fintool (per marketing): inline citation, click opens the source with the passage highlighted, ideally with 'ask about this document' from inside. Keep semigraph's chips and side panel; add highlight-in-context, nearby-mentions list, and a scoped follow-up. Cite: https://help.alpha-sense.com/hc/en-us/articles/52886436185363-Reviewing-Documents-in-AlphaSense",
+   "Power features coexist with a simple entry through three devices: a '+' button for scope and files, a small set of labelled mode dropdowns with time-cost wording, and a separate expert surface (Grid/Matrix, Document Viewer tools) that you reach after the first answer. Map to semigraph: Ask stays a single box; Workspace becomes the expert surface; show a Table/Grid view only inside Workspace. Cite: https://help.alpha-sense.com/hc/en-us/articles/41666587181203-Interacting-with-Generative-Search and https://dynamicbusiness.com/ai-tools/hebbia-revolutionizes-ai-interface-meet-the-matrix.html",
+   "Honest failure wording is documented by AlphaSense (say nothing was found, do not fabricate, list causes). Mirror it for empty, rate-limited and error states, and add the cost line semigraph needs: 'Free to use. Saved questions answer instantly; new questions are limited per visitor.' No competitor fetched states a visitor-pays-nothing line because they are paid products, so this is semigraph-specific wording you must write yourself.",
+   "Filing-change presentation: BamSEC's redline (green added, red removed, plain = unchanged) is the proven pattern for diffs, launched from the filing in context. For semigraph add redundant cues (labels, strike-through) for WCAG 2.2 AA, a plain-English summary above it, and keep the hedge that wording changes are not proof the risk changed. Cite: https://help.bamsec.com/docs/compare-filings",
+   "Number formatting for non-experts (from Yahoo Finance's problems, https://finance.yahoo.com/quote/NVDA/financials/): state units once and make them match the digits; use compact units ($130.5B) with full value on hover/panel; newest period first; Annual/Quarterly toggle; collapsed summary rows with expand; show percentages as percentages; label fiscal years with their end date; mark missing values with a reason, not '--'. Make each number a citation chip to its XBRL fact/filing (Daloopa-style datapoint traceability, https://daloopa.com/blog/product-updates/announcing-daloopas-partnership-with-rogo).",
+   "Keep Federal Register rules visually and verbally separate from company statements: none of the products checked address this, so it is a semigraph-owned design rule (distinct 'Government rule' badge and section heading, never in the same list as 'What the company said').",
+   "Verification limits: AlphaSense and EDGAR UI facts come from fetched primary pages (text only, no screenshots). Hebbia, Fintool, Rogo, Daloopa, Koyfin, Bloomberg, Google Finance and Macrotrends (403) were not verified at the UI level; BamSEC details are from a search snippet only. Pages behind login (all paid products) were not seen. Recommend the owner or a follow-up sweep check free trials or demo videos before treating any unverified pattern as proven.",
+   "Self-hosted fonts and no third-party scripts are compatible with all patterns above; none require external widgets. AlphaSense offers embedded widgets for Generative Search (https://developer.alpha-sense.com/api/category/embedded-widgets), which semigraph should not use under its CSP."
+  ]
+ },
+ "sweep:answer-engines": {
+  "products": [
+   {
+    "name": "Perplexity (answer engine + Perplexity Finance)",
+    "url": "https://www.perplexity.ai/",
+    "what_verified": "Could NOT load perplexity.ai, /finance (returned only a title) or the help-center articles (404 or landing page only), so no first-party screen description. Verified only via third-party teardowns (aiuxplayground) and reviews. Free Pro Search allowance is reported inconsistently (3 vs 5 per day); treat as unverified. Pages behind login were not seen. Walnut's review is from a competitor.",
+    "patterns": [
+     {
+      "area": "Inline citation",
+      "pattern": "Domain-first chips at the end of the claim (example form 'northjersey +3'). The +N means several sources back the claim. The chip opens a popover with 1/N arrows and a snippet without leaving the thread. Bare numbers are described as weak because they hide who the source is.",
+      "source_url": "https://aiuxplayground.com/teardowns/compare/trust-privacy-settings",
+      "fit_for_semigraph": "Strong fit. Replace bare ids with chips showing form type, company and period (e.g. 'Nvidia 10-K FY2025 +2'); +N opens the evidence panel on the first source and pages through the rest. Keep the verbatim passage as the snippet."
+     },
+     {
+      "area": "Source panels",
+      "pattern": "Full audit lives in a Links tab (source cards) or a Sources sidebar opened from the answer bar, separate from the quick chip popover. Two tiers: skim (chips) and audit (panel).",
+      "source_url": "https://aiuxplayground.com/pattern/citations",
+      "fit_for_semigraph": "Fits the existing side panel. Add a 'Sources (N)' row under every answer that opens the same panel listing all evidence, so users do not have to hunt for chips."
+     },
+     {
+      "area": "Transparency / loading",
+      "pattern": "A collapsed 'Completed N steps' row expands to show the search and checking steps in plain language. Provenance is visible but optional.",
+      "source_url": "https://aiuxplayground.com/teardowns/compare/trust-privacy-settings",
+      "fit_for_semigraph": "Good for the agent/hybrid strategy: while streaming show 'Searching filings... Reading 3 passages...' then collapse to 'Checked 12 passages from 4 filings'. This replaces insider terms like 'cited ids were retrieved'. Make it an aria-live polite region and respect reduced motion."
+     },
+     {
+      "area": "Trust and feedback",
+      "pattern": "Negative feedback includes a 'Wrong sources' option, and selecting text lets the user run 'Check sources' on that passage. Feedback is per source, not global.",
+      "source_url": "https://aiuxplayground.com/teardowns/compare/trust-privacy-settings",
+      "fit_for_semigraph": "Partial fit. A per-source 'This does not support the claim' button in the evidence panel is cheap and useful; per-passage re-check is out of scope."
+     },
+     {
+      "area": "Data-dense finance pages",
+      "pattern": "Stock page tabs reported as Overview, Financials, Earnings, Holders, Predictions, Historical Data, Analysis, with at-a-glance figures (market cap, P/E, price move) at the top. Filings covered include 10-K, 10-Q, 20-F, 8-K, with an SEC-restricted search mode. One aggregator says every numeric output links to its source (unverified claim).",
+      "source_url": "https://gptprompts.ai/how-to-use-perplexity-for-stock-research",
+      "fit_for_semigraph": "Fits the Company page: a 3 to 5 tile 'at a glance' strip (revenue, net income, key risk count, latest filing date) above tabs (Overview, Financials, Risks, Rules, Compared filings). Each tile number should be a button opening the XBRL fact in the evidence panel. Use compact formats ($130.5B, not 130497000000) with exact value on hover/focus."
+     },
+     {
+      "area": "Honesty about staleness",
+      "pattern": "Reviews note an answer citing an outdated April source for a same-day question and that source quality varies even with citations. Lesson: show source dates beside every citation.",
+      "source_url": "https://gptprompts.ai/how-to-use-perplexity-for-stock-research",
+      "fit_for_semigraph": "Always show filing period and filing date in the chip or panel header, and a plain 'Data last checked' line from Freshness. Avoid implying real-time."
+     },
+     {
+      "area": "Free vs paid wording",
+      "pattern": "Free tier has unlimited basic searches plus a small daily allowance of Pro Searches (figure disputed: 3 or 5). The limit is expressed as a daily count.",
+      "source_url": "https://llmrefs.com/blog/perplexity-free-plan",
+      "fit_for_semigraph": "Use the same shape of sentence: 'Free to use. Saved questions are instant and unlimited; new questions are limited to N per hour.' Show a live remaining count only if it is reliable."
+     }
+    ],
+    "avoid": [
+     "Do not copy Perplexity's breadth-over-depth finance positioning; reviewers call it broad but thin. semigraph's depth is verbatim evidence and filing comparisons.",
+     "Do not claim 'every number links to source' unless every rendered number actually does.",
+     "Do not rely on source-quality signals from favicons; filings have none, so show form type and period instead."
+    ]
+   },
+   {
+    "name": "Google NotebookLM (now referred to as 'Gemini Notebook' on some Google help pages)",
+    "url": "https://support.google.com/notebooklm/answer/16206563",
+    "what_verified": "Verified from Google help pages and the Google blog: three-area layout, citations in chat, suggested options, and that citations may point at a whole document when the source is too short. Could NOT verify the first-screen visuals, hover previews, or the highlight behavior from first-party material; those come from third-party tutorials. A help page titled the product 'Gemini Notebook', suggesting a rename in progress; I did not confirm it. The free vs paid limits page did not list tier numbers.",
+    "patterns": [
+     {
+      "area": "Layout / progressive disclosure",
+      "pattern": "Three areas: Sources (what the answers are grounded in), Chat, and Studio (outputs generated from sources). Reported to collapse to a tab row on narrow windows, switching one panel at a time.",
+      "source_url": "https://blog.google/technology/google-labs/notebooklm-new-features-december-2024/",
+      "fit_for_semigraph": "Good model for Workspace: Sources list on the left with checkboxes, chat in the middle, evidence beside it. On phones use tabs, not three squeezed columns. Hide compare/'as of' controls behind a 'More options' disclosure for beginners."
+     },
+     {
+      "area": "Grounding scope",
+      "pattern": "Chat states that sources are always used, either all of them or the selected subset; notes only when selected; conversation history is used.",
+      "source_url": "https://support.google.com/notebooklm/answer/16269187",
+      "fit_for_semigraph": "Directly reusable in Workspace: a visible line above the box such as 'Answering from: 3 of 5 documents' with a way to change it. This is the plain-language trust line power users need."
+     },
+     {
+      "area": "Inline citation",
+      "pattern": "Numbered citations in chat and saved notes; clicking jumps to the original quote in the source (Google support page confirms the jump). Third-party descriptions add hover preview and passage highlight.",
+      "source_url": "https://support.google.com/notebooklm/answer/14276569",
+      "fit_for_semigraph": "Fits: the evidence panel should highlight the verbatim passage inside its surrounding paragraph. Hover/focus preview of the first 140 characters of the passage on each chip is cheap to add."
+     },
+     {
+      "area": "Citation failure state",
+      "pattern": "When source content is too short, citations may reference the whole document rather than a passage, and Google says so.",
+      "source_url": "https://support.google.com/notebooklm/answer/16269187",
+      "fit_for_semigraph": "Show an honest fallback chip ('Whole document') rather than a fake passage, with a plain note."
+     },
+     {
+      "area": "Starter prompts",
+      "pattern": "On opening, chat shows a generated summary of the sources and suggested questions as chips (suggested query chips reported by eWeek, secondary).",
+      "source_url": "https://support.google.com/notebooklm/answer/16206563",
+      "fit_for_semigraph": "For a new workspace document, auto-generate 3 suggested questions about that file. On Ask, show about 6 chips, not 51."
+     },
+     {
+      "area": "Free vs paid wording",
+      "pattern": "Paid tier phrased as more of the same ('more than five times the notebooks and sources'), not as feature gating of trust features.",
+      "source_url": "https://blog.google/technology/google-labs/notebooklm-new-features-december-2024/",
+      "fit_for_semigraph": "If limits are introduced, word as quantity ('more live questions per hour'), never as a lock on citations."
+     }
+    ],
+    "avoid": [
+     "Studio-style one-click generated outputs (audio overviews, slide decks) are out of scope and add technical surface.",
+     "Do not copy the silent whole-document citation fallback without labeling it."
+    ]
+   },
+   {
+    "name": "ChatGPT search / deep research (OpenAI)",
+    "url": "https://help.openai.com/en/articles/9237897-chatgpt-search",
+    "what_verified": "OpenAI help page returned 403 so no first-party text. Verified only through aiuxplayground teardown and search summaries. An August 2026 trade article claims the Sources button was moved into a three-dot More actions menu; only one source says this, so unconfirmed. Deep research UI was not examined.",
+    "patterns": [
+     {
+      "area": "Inline citation",
+      "pattern": "Publisher chips (favicon plus truncated name) placed right after the claim; +N when multiple sources; click opens a popover with publisher, headline and a short dated snippet; 1/N arrows step through sources.",
+      "source_url": "https://www.aiuxplayground.com/teardowns/chatgpt/citations",
+      "fit_for_semigraph": "Same pattern as Perplexity chips; use as the default chip popover. Add an explicit 'Open full passage' link, which the teardown says dense finance answers need."
+     },
+     {
+      "area": "Source panel",
+      "pattern": "A favicon stack labelled 'Sources' under the reply opens a right-hand panel of cards (logo, title, relative time, snippet) while the answer stays visible.",
+      "source_url": "https://www.aiuxplayground.com/teardowns/chatgpt/citations",
+      "fit_for_semigraph": "Matches semigraph's side panel. Improve on it: highlight the card matching the chip the user clicked, which the teardown notes ChatGPT does not do."
+     },
+     {
+      "area": "Known weaknesses",
+      "pattern": "Long names truncate hard; no list of all N titles in the popover; no highlight of the matching card; the Sources entry point has been reported as moved or hidden.",
+      "source_url": "https://www.relevantaudience.com/geo/chatgpt-sources-button-buried/",
+      "fit_for_semigraph": "Keep a persistent, visible 'Sources (N)' control under each answer, not buried in a menu. Truncate with accessible full names via aria-label."
+     },
+     {
+      "area": "Scope of citations",
+      "pattern": "Citations appear only when the answer is web-grounded; there is no research-steps UI.",
+      "source_url": "https://aiuxplayground.com/teardowns/compare/trust-privacy-settings",
+      "fit_for_semigraph": "semigraph can be stricter: every answer is grounded, so say 'Every claim below links to a filing' once, and flag any sentence without a source."
+     }
+    ],
+    "avoid": [
+     "Burying the Sources entry point in an overflow menu.",
+     "Treating chat as the brand with citations as decoration; for semigraph evidence is the product."
+    ]
+   },
+   {
+    "name": "Claude citations (Anthropic API docs and claude.ai web search)",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/citations",
+    "what_verified": "Verified from the live API docs: three citation location types (char_location, page_location, content_block_location), cited_text returned and not counted toward output tokens, and the parser guarantees valid pointers into the supplied documents. Could NOT find an official claude.ai help page describing the Sources UI, so UI details are from launch-era news (clickable inline citations, title, domain, sometimes a quoted passage). A 2026 arXiv preprint reports about 75% of cited results supported the attached claim (single study).",
+    "patterns": [
+     {
+      "area": "Citation data model",
+      "pattern": "Each citation carries the exact cited_text plus a location (character range, page range, or content-block index) into a named document. Pointers are validated by the API, not generated free-form by the model.",
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/citations",
+      "fit_for_semigraph": "The chip model should mirror this: {document, location, verbatim text}. If semigraph does not already store a character range per citation, add one so the panel can highlight the passage and so 'verbatim' can be checked mechanically."
+     },
+     {
+      "area": "Trust wording",
+      "pattern": "A citation guarantees a valid pointer, not that the passage supports the claim; independent research puts support at about three in four.",
+      "source_url": "https://arxiv.org/pdf/2605.23921",
+      "fit_for_semigraph": "Word the badge honestly: 'Every claim links to a passage you can read' rather than 'verified'. Pair with a per-claim 'Does this support it?' check state only if a real checker exists."
+     },
+     {
+      "area": "Inline citation (claude.ai)",
+      "pattern": "Clickable inline citations showing page title and domain, sometimes a short quoted passage, when web search is used.",
+      "source_url": "https://www.macrumors.com/2025/03/21/anthropic-claude-gets-web-search/",
+      "fit_for_semigraph": "Secondary source only. Confirms users expect chips to open the quote, not just a link."
+     }
+    ],
+    "avoid": [
+     "Do not present citation validity as factual correctness.",
+     "Do not generate page or passage references in free text; only render pointers the retrieval layer produced."
+    ]
+   },
+   {
+    "name": "Phind and You.com",
+    "url": "https://spin.atomicobject.com/phind-search-engine/",
+    "what_verified": "Very little. Only thin aggregator reviews: Phind shows sources on hover with conversational follow-ups and a summary-left, sources-right layout; one directory claims Phind shut down on 16 January 2026 (unconfirmed, others still describe it). You.com is described as flexible but dense by one source and clutter-free by another. No first-party UI evidence; do not rely on these.",
+    "patterns": [
+     {
+      "area": "Layout",
+      "pattern": "Summary on the left with sources in a persistent right column, follow-up questions keeping conversation context.",
+      "source_url": "https://spin.atomicobject.com/phind-search-engine/",
+      "fit_for_semigraph": "Weak evidence; consistent with the right-hand evidence panel already planned. Use only as corroboration."
+     }
+    ],
+    "avoid": [
+     "Do not cite Phind as a live reference product until its status is confirmed.",
+     "Avoid You.com's reported density (many modes visible at once); keep hybrid/vector/agent hidden behind an 'Advanced' disclosure."
+    ]
+   }
+  ],
+  "cross_cutting": [
+   "Two-tier citation pattern is universal: a lightweight inline chip (identity of source, +N for several) with a hover/focus/tap preview, plus a persistent 'Sources (N)' control under each answer that opens a full panel (aiuxplayground citation pattern page: https://aiuxplayground.com/pattern/citations). For semigraph, chip text should be form + company + period, because filings have no favicon identity.",
+   "Chips should identify the source, not be bare numbers: the teardown says numbered markers hide the publisher. Use 'Nvidia 10-K FY25' style labels, truncate with aria-label carrying the full name, and give the chip a text-contrast 4.5:1 and a visible focus ring.",
+   "Popover/panel improvements over ChatGPT and Perplexity that cost little: highlight the card matching the clicked chip, show all N source titles at once, and include an explicit 'Open full passage' link (https://www.aiuxplayground.com/teardowns/chatgpt/citations). On phones use a bottom sheet, not hover.",
+   "Make the input the hero. The first-party first screens could not be loaded, so this is a design judgement backed by the owner's own test results, not a verified competitor fact: lead with a one-line title, a two-sentence intro and the question box, then about six starter chips with 'Show all examples'. NotebookLM-style suggested question chips support the chip shape (secondary sources).",
+   "Scope line above the box (NotebookLM states what sources chat uses: https://support.google.com/notebooklm/answer/16269187). For Ask: 'Searching 13 companies' filings, XBRL numbers and Federal Register rules.' For Workspace: 'Answering from 3 of 5 documents.' This is the single best plain-language trust and power-user control.",
+   "Show progress in plain language and then collapse it: Perplexity's 'Completed N steps' row (https://aiuxplayground.com/teardowns/compare/trust-privacy-settings). For semigraph, replace 'cited ids were retrieved' with 'Found 12 passages in 4 filings' and 'served from cache' with 'Saved answer, instant and free'. Announce via a polite live region and honour prefers-reduced-motion.",
+   "Free vs paid wording: competitors express limits as quantities (Perplexity daily Pro Search counts, NotebookLM 'higher limits') and gate extras, not trust features (https://llmrefs.com/blog/perplexity-free-plan; https://blog.google/technology/google-labs/notebooklm-new-features-december-2024/). semigraph has no paid tier, so say it once near the box: 'Free, no account. Saved questions are instant; new questions are limited per hour.' Avoid the word 'cache'.",
+   "Honest failure states are rare in these products and are an opportunity: NotebookLM admits whole-document citations when the source is short (https://support.google.com/notebooklm/answer/16269187). Do the same: label no-passage cases, state 'none found in the filings we hold' instead of a bare 'none', and never imply a Federal Register rule is a company statement (give rules a distinct 'Government rule' chip style and label).",
+   "Do not oversell citation checking. Citations guarantee a pointer (Anthropic docs: https://platform.claude.com/docs/en/build-with-claude/citations) but a 2026 preprint found about 75% of cited results supported their claim (https://arxiv.org/pdf/2605.23921, single study). Wording like 'Every claim links to a passage you can read' is accurate; 'verified' is not unless a checker ran. The aiuxplayground advice 'citations first, verification badges later' matches this.",
+   "Data-dense pages: lead with an at-a-glance strip of 3 to 5 figures above tabs (Perplexity Finance reportedly does this: https://gptprompts.ai/how-to-use-perplexity-for-stock-research, secondary source). Format as $130.5B with units in the column header, readable metric names, newest year first, exact value on hover/focus and in the evidence panel. Each number should open its XBRL fact. Confirmation of Perplexity's own table formatting was NOT possible.",
+   "Progressive disclosure for power users: hide strategy (hybrid/vector/agent), 'as of' version and compare controls under a single 'Advanced' or 'More options' disclosure; keep Workspace's sources-left, chat-middle layout that collapses to tabs on narrow screens (NotebookLM, per a Mozilla support thread of mixed reliability).",
+   "Verification limits of this sweep: Perplexity's own site, Perplexity Finance, OpenAI's help page and the claude.ai help center were not retrievable, so no first-party first-screen description for any product was obtained. Perplexity's free Pro Search count (3 vs 5) and Phind's shutdown claim are unresolved. Before copying any layout, the owner or a follow-up agent should open the live products in a browser and screenshot them."
+  ]
+ },
+ "sweep:graph-and-research-ux": {
+  "products": [
+   {
+    "name": "Google PAIR People + AI Guidebook",
+    "url": "https://pair.withgoogle.com/guidebook/",
+    "what_verified": "Fetched the Explainability + Trust and Mental Models (onboarding) chapters in full text. The guidebook index page and the Errors chapter did not load (404 or empty); not verified. Guidance only, no UI screenshots.",
+    "patterns": [
+     {
+      "area": "Trust and confidence wording",
+      "pattern": "Show confidence only when it changes a decision, and avoid displays that create false certainty. If you do show it, use categorical buckets ('Best match', 'Good match', 'Match unsure') and define what action each implies. Avoid raw percentages: users do not know if 80% is high, and 97% can read as less reliable than a sure thing.",
+      "source_url": "https://pair.withgoogle.com/chapter/explainability-trust/",
+      "fit_for_semigraph": "Replace 'numbers not checked' and any numeric score with 2 or 3 plain buckets per answer (for example 'Every figure matched a filing', 'Some figures could not be matched', 'No figures'). Never show a percentage."
+     },
+     {
+      "area": "Provenance",
+      "pattern": "Articulate data sources by scope (what data, why), reach, and removal. Give partial explanations that cover what matters for trust, not a full account. Use a general 'how the system works' explanation plus a specific 'why this result' explanation. Tell users about limits such as data refresh rate before high-stakes decisions.",
+      "source_url": "https://pair.withgoogle.com/chapter/explainability-trust/",
+      "fit_for_semigraph": "A one-line 'Based on SEC filings and Federal Register rules for 13 companies, last checked <date>' under the answer, linking to Freshness. Per-answer 'why' lives in the evidence panel."
+     },
+     {
+      "area": "Onboarding",
+      "pattern": "Be upfront about capabilities and limits, explain benefits not technology, keep onboarding short, introduce features at the moment they are relevant, encourage low-risk experimentation. Messaging framework: what it is and its benefit, what it cannot do yet, that it changes over time, how users can help, why that is worth it. Avoid a 10-screen intro and 'AI magic' claims.",
+      "source_url": "https://pair.withgoogle.com/chapter/mental-models/",
+      "fit_for_semigraph": "Two-sentence hero (what it is, what it is for) plus one 'what it can't do' line (not financial advice, covers only these 13 companies, answers only from filings). No tour, no modal. Introduce Workspace and 'as of' only on those pages, in context."
+     },
+     {
+      "area": "Progressive disclosure",
+      "pattern": "Put technical detail in tooltips or progressive disclosure for those who want it; show explanations after a user action ties cause to effect.",
+      "source_url": "https://pair.withgoogle.com/chapter/mental-models/",
+      "fit_for_semigraph": "Strategy select (hybrid/vector/agent), retrieval details and check internals move behind a 'How this answer was made' disclosure; default strategy is hidden or labelled 'Automatic'."
+     }
+    ],
+    "avoid": [
+     "Raw percentage confidence scores",
+     "Long intro tours",
+     "Describing the system as human-like or 'AI magic'"
+    ]
+   },
+   {
+    "name": "Microsoft HAX Toolkit (Guidelines for Human-AI Interaction)",
+    "url": "https://www.microsoft.com/en-us/haxtoolkit/library/",
+    "what_verified": "Fetched the library index and confirmed the 18 guideline titles and four phases (initial interaction, during interaction, when wrong, over time). Individual guideline detail pages and examples were not fetched.",
+    "patterns": [
+     {
+      "area": "Capabilities and limits up front",
+      "pattern": "G1 'Make clear what the system can do' and G2 'Make clear how well the system can do what it can do'. Together they mandate a first-contact statement of scope and reliability.",
+      "source_url": "https://www.microsoft.com/en-us/haxtoolkit/library/",
+      "fit_for_semigraph": "Directly answers the 'no sentence says what the site is' failure: first screen states scope (13 companies, which document types) and a plain reliability line."
+     },
+     {
+      "area": "Scoping and explanation",
+      "pattern": "G10 'Scope services when in doubt' and G11 'Make clear why the system did what it did'. When retrieval is weak, say so and narrow or decline rather than guess.",
+      "source_url": "https://www.microsoft.com/en-us/haxtoolkit/library/",
+      "fit_for_semigraph": "For questions outside the corpus or with thin evidence, show 'We could not find this in the filings we cover' with 2 or 3 nearby answerable questions as buttons, instead of a hedged essay."
+     },
+     {
+      "area": "Correction, consequences, global controls",
+      "pattern": "G9 efficient correction, G15 granular feedback, G16 convey consequences of user actions, G17 provide global controls, G18 notify users about changes.",
+      "source_url": "https://www.microsoft.com/en-us/haxtoolkit/library/",
+      "fit_for_semigraph": "Per-answer 'Report a wrong citation' (thumbs plus reason), a visible 'data last updated' notice (G18), and in Workspace, plain consequence text before upload or delete (what is stored, who can see it, how to remove it)."
+     }
+    ],
+    "avoid": [
+     "Treating the 18 guidelines as a checklist to bolt on rather than shaping the first screen"
+    ]
+   },
+   {
+    "name": "shapeof.ai (AI UX pattern library)",
+    "url": "https://www.shapeof.ai/",
+    "what_verified": "Fetched the index plus the Citations, Suggestions, Caveat, Footprints and Stream of Thought pattern pages. The example-gallery page returned 404. Examples are described in text only; no screenshots.",
+    "patterns": [
+     {
+      "area": "Citations",
+      "pattern": "Offer both a quick hover preview and a click-through to the full source; deep link to the exact passage or pull the quote into the summary; use inline cues for sentence-level claims and panels or drawers for long exploration; show short metadata (title, site); do not hide broken or missing citations, state the gap; do not point to a broad document for a specific claim. Notes citations can make output look more authoritative than it is.",
+      "source_url": "https://www.shapeof.ai/patterns/citations",
+      "fit_for_semigraph": "Matches the existing chip plus evidence side panel. Add: hover/focus preview of the verbatim sentence, chip label in plain form ('Nvidia 10-K FY2025, p.14'), and an explicit 'source not found' state rather than dropping the chip."
+     },
+     {
+      "area": "Starter prompts",
+      "pattern": "Show about 3 to 6 suggestions (the page says 'too many options leads to scanning fatigue'); make each actionable (run or pre-fill); design for first-run learning; show a preview or confirmation if the action is costly or touches data; counterexample Typeform (suggestions shown before any context are irrelevant). Static, contextual and adaptive forms.",
+      "source_url": "https://www.shapeof.ai/patterns/suggestions",
+      "fit_for_semigraph": "Show about 6 on Ask (2 beginner, 2 analyst, 1 export-control, 1 compare-filings), 'Show all 51' behind a control. Contextual set on a Company page (questions about that company). A suggestion that triggers a live, rate-limited call is labelled so."
+     },
+     {
+      "area": "Caveats",
+      "pattern": "Plain, context-specific caveat placed next to the output where decisions happen, not in a footer; do not rely on it alone; plan as if it will be ignored; pair with citations and wayfinders.",
+      "source_url": "https://www.shapeof.ai/patterns/caveat",
+      "fit_for_semigraph": "Contextual line under each answer ('Check the cited passage; filings change between years') rather than a global disclaimer. For compared-risk text keep the hedge wording ('appears to', 'the filing language differs')."
+     },
+     {
+      "area": "Loading, steps, footprints",
+      "pattern": "Model each step as a state (queued, running, error, completed); keep plan, execution and evidence distinct; collapse process behind a click; Footprints expose retrieved sources and steps for verification.",
+      "source_url": "https://www.shapeof.ai/patterns/stream-of-thought",
+      "fit_for_semigraph": "While a live answer streams, show 3 plain steps ('Searching filings', 'Checking numbers', 'Writing'), then collapse into a 'How this was answered' disclosure containing strategy, sources retrieved and checks."
+     }
+    ],
+    "avoid": [
+     "A generic 'AI may make mistakes' footer as the only trust device",
+     "Showing process logs by default in simple Q and A"
+    ]
+   },
+   {
+    "name": "Nielsen Norman Group (AI chat UX)",
+    "url": "https://www.nngroup.com/articles/ai-chatbots-design-guidelines/",
+    "what_verified": "Fetched three primary NN/g articles: 10 chatbot design guidelines, new-user onboarding, and use-case prompt suggestions. A guessed citations URL returned 404, so there is no primary NN/g citations article verified. The '68% abandon' statistic seen in a secondary blog is unverified; do not use it. Studies were small (six participants for onboarding) and some are dated.",
+    "patterns": [
+     {
+      "area": "First message and scope",
+      "pattern": "The opening message should briefly name topics or tasks, tailored to the current page, without overpromising (Turo's 'any info you need' set false expectations).",
+      "source_url": "https://www.nngroup.com/articles/ai-chatbots-design-guidelines/",
+      "fit_for_semigraph": "Hero sentence and placeholder text in the question box name exactly what is answerable ('Ask about risks, revenue or export rules at Nvidia, AMD, TSMC...')."
+     },
+     {
+      "area": "Suggested questions",
+      "pattern": "Clickable suggested questions on first open and after answers, relevant to the conversation (not repeating skipped ones). Pills for short prompts, cards or an example library for longer ones; place near the input; manually curate; tailor complexity to experience; randomize order when measuring clicks.",
+      "source_url": "https://www.nngroup.com/articles/designing-use-case-prompt-suggestions/",
+      "fit_for_semigraph": "Pills under the input for the 6 shown; 'Show all' opens a grouped library (by company, by topic, by difficulty) rather than a flat list of 51. Add 2 or 3 follow-up pills after each answer."
+     },
+     {
+      "area": "Onboarding",
+      "pattern": "Keep onboarding brief or skip it; contextual help at the moment of use; remove popups (dismissed as ads); broad example prompts beat niche ones for newcomers; prompt-writing tips shown before users understand the interface are useless; the bot should accurately describe its own capabilities.",
+      "source_url": "https://www.nngroup.com/articles/new-AI-users-onboarding/",
+      "fit_for_semigraph": "No modal tour. Beginner examples should be broad ('What are Nvidia's biggest risks?'). A 'What can I ask?' help link that is accurate about Workspace uploads and rate limits."
+     },
+     {
+      "area": "Progressive disclosure and streaming",
+      "pattern": "Expand and collapse detail in place, do not append a new message that pushes content out of view; do not autoscroll during streaming (keep the top of the new message in view); let users save or share outputs.",
+      "source_url": "https://www.nngroup.com/articles/ai-chatbots-design-guidelines/",
+      "fit_for_semigraph": "Evidence panel and 'more details' expand in place; no autoscroll during streaming (also a WCAG-friendly choice); add 'Copy answer with citations' and share link."
+     }
+    ],
+    "avoid": [
+     "Niche, jargon-heavy example prompts as the first thing a beginner sees",
+     "Popups and tours",
+     "Quoting unverified secondary statistics about user abandonment"
+    ]
+   },
+   {
+    "name": "Elicit",
+    "url": "https://elicit.com/",
+    "what_verified": "Fetched the public landing page as extracted text (headline, CTA, transparency claim) and read third-party guides on the product table. The app itself is behind login and its help center articles did not load, so in-app layout, starter prompt count and citation hover behavior are NOT verified. Vendor claims (sentence-level citations) are marketing statements not independently checked.",
+    "patterns": [
+     {
+      "area": "Table of extracted data",
+      "pattern": "Results shown as a table of papers with user-definable or suggested columns (methodology, findings, limitations); each cell can be clicked to show the supporting quote highlighted in the paper (per a university writing-center guide and a clinical-data guide). Screening decisions carry a rationale and supporting quote.",
+      "source_url": "https://search.scu.edu/media/offices/provost/writing-center/resources/Finding-Sources-Elicit.pdf",
+      "fit_for_semigraph": "Company metrics and risk-comparison tables: each number or row opens the evidence panel with the exact filing line or XBRL fact. Reuse the pattern 'click a cell to see the quote'."
+     },
+     {
+      "area": "First screen and trust claim",
+      "pattern": "Landing headline 'Elicit helps researchers be 10x more evidence-based' with a 'Try now' button; the sentence-level-citation transparency statement sits far below the first screen, and visible and metadata user counts conflicted (5 vs 7 million).",
+      "source_url": "https://elicit.com/",
+      "fit_for_semigraph": "Lesson to avoid: put the provenance promise on the first screen, not below the fold, and keep any numbers on the page consistent."
+     }
+    ],
+    "avoid": [
+     "Burying the 'every claim is cited' promise below the fold",
+     "Superlative marketing metrics ('10x') that cannot be checked"
+    ]
+   },
+   {
+    "name": "Consensus",
+    "url": "https://consensus.app/",
+    "what_verified": "Fetched the landing page text (headline 'Research starts here', controls labelled Sources, Skills, Deep, Filter; Consensus Meter listed only in features). Help center returned 403. Meter behavior comes from third-party reviews and is described only as: appears for yes/no questions, counts studies as yes, no or possibly, reflects retrieved sample not a meta-analysis. Search box position, example queries and exact trust wording are NOT verified.",
+    "patterns": [
+     {
+      "area": "Plain-language agreement summary",
+      "pattern": "A Consensus Meter that shows what share of retrieved studies answer Yes, No or Possibly, and appears only when the question is yes/no; open questions get a written synthesis without it. Reviewers stress it counts studies rather than weighing them.",
+      "source_url": "https://consensus.app/",
+      "fit_for_semigraph": "Possible reuse for compared risk disclosures: a simple 'Added / Removed / Reworded' count between two filings, shown only when a comparison exists, with an explicit 'counts passages, does not judge importance' note. Do not show for single-answer questions."
+     },
+     {
+      "area": "Advanced controls as small labelled controls",
+      "pattern": "Mode and filter controls (Sources, Skills, Deep, Filter) sit as labelled chips beside the input rather than in a settings page.",
+      "source_url": "https://consensus.app/",
+      "fit_for_semigraph": "Strategy select becomes one 'Depth: Quick / Thorough' chip beside the box; Workspace scope becomes a 'Searching: All filings / My documents' chip."
+     }
+    ],
+    "avoid": [
+     "Any meter or score that implies a verdict from a count of retrieved items"
+    ]
+   },
+   {
+    "name": "Scite",
+    "url": "https://scite.ai/",
+    "what_verified": "Fetched the landing page text: headline 'AI for Research', subheadline 'Ask a question, get answers grounded in the scientific literature', claims each AI claim links to the specific sentence in the paper, Smart Citations show how later work 'supported, challenged, or discussed' a paper. Input placement and in-app appearance NOT verified. 'Never hallucinated' is a vendor claim.",
+    "patterns": [
+     {
+      "area": "Citation context labels",
+      "pattern": "Classify each citing statement in plain verbs (supported, challenged, discussed) and show the citing sentence itself, not just a link.",
+      "source_url": "https://scite.ai/",
+      "fit_for_semigraph": "For compared risk disclosures, plain verbs next to each changed passage ('New wording', 'Dropped', 'Reworded'), with both verbatim passages side by side and hedged text ('the wording differs; the filing does not say why')."
+     },
+     {
+      "area": "One-line value proposition",
+      "pattern": "Headline plus a single question-oriented subheadline stating the benefit and the grounding ('Ask a question, get answers grounded in...').",
+      "source_url": "https://scite.ai/",
+      "fit_for_semigraph": "Model for the hero: 'Ask a question about 13 chip and AI companies. Every answer links to the filing or rule it came from.'"
+     }
+    ],
+    "avoid": [
+     "Absolute claims such as 'never hallucinated'; semigraph should state what is checked and what is not"
+    ]
+   },
+   {
+    "name": "Glean Assistant",
+    "url": "https://docs.glean.com/user-guide/assistant/glean-chat/glean-chat-citations/glean-citations",
+    "what_verified": "Fetched official Glean docs on citations. Does not describe a side panel; behavior below is from the docs only. In-app visuals NOT verified (enterprise login).",
+    "patterns": [
+     {
+      "area": "Inline citations and sources list",
+      "pattern": "Numbered inline markers right after the supported statement, plus a 'View sources' section. Hovering a marker previews surrounding context; opening a source shows a preview that, with deep-linked citations, highlights the cited text and jumps to the page or slide before leaving the app. Items open only if the user has permission.",
+      "source_url": "https://docs.glean.com/user-guide/assistant/glean-chat/glean-chat-citations/glean-citations",
+      "fit_for_semigraph": "Hover/focus preview plus highlighted deep link in the evidence panel; for Workspace, state that only the user's own uploads are cited."
+     },
+     {
+      "area": "Explaining missing citations and bad-citation reporting",
+      "pattern": "Docs explain why citations may be missing (answered from model knowledge in fast mode, or 'No sources' mode) and give remedies; thumbs-down offers 'Used incorrect citation or source'.",
+      "source_url": "https://docs.glean.com/user-guide/assistant/glean-chat/glean-chat-citations/glean-citations",
+      "fit_for_semigraph": "If any answer sentence lacks a citation, label it 'Not from a source' visibly rather than silently; add a reason-coded thumbs-down including 'Citation does not support this'."
+     },
+     {
+      "area": "Source scope control",
+      "pattern": "A '+' menu selects 'Sources: Company sources only / Both / No sources'.",
+      "source_url": "https://docs.glean.com/user-guide/assistant/glean-chat/glean-chat-citations/glean-citations",
+      "fit_for_semigraph": "Workspace scope chip ('My documents only / My documents + public filings') is the plain-language way to introduce uploads to power users without showing it to beginners."
+     }
+    ],
+    "avoid": [
+     "Silently producing uncited text in fast mode"
+    ]
+   },
+   {
+    "name": "Microsoft GraphRAG ecosystem and Neo4j GraphRAG front ends",
+    "url": "https://github.com/neo4j-labs/llm-graph-builder",
+    "what_verified": "Fetched the Neo4j LLM Graph Builder README, the community graphrag-visualizer README, and the XGraphRAG paper (arXiv 2506.13782). Searched for an official Microsoft GraphRAG UI: found only the Azure-Samples accelerator (reported unmaintained by a mirror, not verified on GitHub) and community tools. No live demo was opened, so visual appearance is NOT verified. These are builder or debugging tools for engineers, not consumer products.",
+    "patterns": [
+     {
+      "area": "Retrieval mode exposure",
+      "pattern": "Neo4j LLM Graph Builder exposes seven chat modes (vector, graph_vector, graph, fulltext, entity_vector, global_vector...) via config and offers a standalone '/chat-only' route that removes the builder UI. Modes are settable per deployment.",
+      "source_url": "https://github.com/neo4j-labs/llm-graph-builder",
+      "fit_for_semigraph": "Confirms hiding mode names from users. Offer a clean chat-only surface for beginners; keep strategies as an 'Advanced' option, labelled by outcome ('Quick', 'Thorough'), never by retrieval jargon."
+     },
+     {
+      "area": "Graph and data views",
+      "pattern": "graphrag-visualizer gives a 2D/3D graph tab plus a data-tables tab and a search focused on nodes or relationships; Neo4j Builder previews graphs per file via Bloom.",
+      "source_url": "https://github.com/noworneverev/graphrag-visualizer",
+      "fit_for_semigraph": "A graph view is an optional 'See how these are connected' drilldown on Company pages for advanced users, not a default. Always pair with a table/list alternative for screen readers."
+     },
+     {
+      "area": "Evidence traceability for experts",
+      "pattern": "XGraphRAG: coordinated views (QA, inference trace, entity subgraph with size by frequency and color by type, LLM invocation view) so experts trace answer steps to source chunks; a 14-expert study found it improved accuracy and speed; participants asked for an onboarding tutorial and search filtering for large graphs.",
+      "source_url": "https://arxiv.org/html/2506.13782v1",
+      "fit_for_semigraph": "Validates a layered design: simple answer for everyone, an expert 'trace' drawer for analysts. Also evidence that even experts want an onboarding tutorial for graph views, so provide a short contextual one."
+     }
+    ],
+    "avoid": [
+     "Defaulting to a hairball graph visualization for non-expert users",
+     "Exposing retrieval-mode identifiers or prompt and LLM-invocation logs on the main path"
+    ]
+   },
+   {
+    "name": "Kagi Assistant",
+    "url": "https://help.kagi.com/kagi/ai/assistant.html",
+    "what_verified": "Fetched the official help page (controls, model dropdown, lenses, custom assistants, settings, privacy wording). The page does not describe citation display. Citation behavior comes from user feedback forum posts only (secondary, not official) and the app itself is behind login.",
+    "patterns": [
+     {
+      "area": "Progressive disclosure of power features",
+      "pattern": "Under the prompt field: a model dropdown with recommended models listed first, a lens selector and a web-access globe toggle; custom assistants and URL parameters (q, lens, internet) for power users; Settings tucked bottom-left; switchable mid-thread; Enter vs Ctrl+Enter submit configurable.",
+      "source_url": "https://help.kagi.com/kagi/ai/assistant.html",
+      "fit_for_semigraph": "Same shape for semigraph: a single row beneath the question box (Depth, Scope, 'As of' date) with defaults preselected and a recommended option marked; URL-prefill (?q=) so analysts can share and bookmark questions."
+     },
+     {
+      "area": "Plain privacy wording",
+      "pattern": "Short declarative statements: data 'never used to train AI models', no account information shared with LLM providers, threads expire after 24 hours of inactivity by default and this is changeable.",
+      "source_url": "https://help.kagi.com/kagi/ai/assistant.html",
+      "fit_for_semigraph": "Workspace upload notice in the same style: what happens to a file, how long it is kept, whether it trains anything, how to delete it."
+     },
+     {
+      "area": "Citation reliability lesson",
+      "pattern": "User reports: sources hidden behind a 'Searching with Kagi' link, reference lists disappearing, 'Document N' numbers in text not matching the numbered list, and one report of fabricated sources.",
+      "source_url": "https://kagifeedback.org/d/7944-sources-hidden-by-assistant",
+      "fit_for_semigraph": "Keep citation chip numbering generated from the same data structure as the evidence list, and test it; never show sources only behind a collapsed link."
+     }
+    ],
+    "avoid": [
+     "Sources hidden behind an obscure link",
+     "Citation numbers that can drift from the source list"
+    ]
+   }
+  ],
+  "cross_cutting": [
+   "First screen (verified pattern across Scite, Elicit, NN/g, PAIR, HAX): one short headline plus one subheadline that names the benefit and the grounding, then the input. Suggested wording for semigraph: 'Ask about 13 chip and AI companies. Every answer links to the filing or rule behind it.' Add a one-line 'free to use, no sign-up' and a rate-limit note ('live questions are limited per hour; saved examples are instant') directly under the box. Note that verifiable evidence of this exact sentence working is not available; it is a synthesis of the HAX G1/G2 and PAIR 'be upfront about capabilities and limits' guidance.",
+   "Input above examples: NN/g places suggestions near the input and shapeof.ai caps starters at about 3 to 6 because of scanning fatigue. For semigraph: box first, about 6 curated pills below, a 'Show all 51' control that opens a grouped library (by company, by topic). Each pill should be a real question, not a category. Optionally two audience rows ('New to filings' / 'Analyst') rather than a flat list.",
+   "Citations: converge on numbered or short plain-label chips inline after each claim, hover or focus preview showing the verbatim sentence, click opens a side panel with a highlighted deep link (Glean, shapeof.ai citations, Scite). Missing-citation and not-found states must be shown explicitly (shapeof.ai, Glean, Kagi feedback). Research on trust (arXiv 2501.01303, via search results, abstract only) found citations raised trust even when random and trust fell when participants checked them, so accuracy matters more than presence; this supports keeping verbatim passages and a visible 'sentence has no source' label.",
+   "Plain-language replacements for insider wording (synthesis, nothing here is a cited product string): 'Benchmark questions (instant, cached)' becomes 'Saved example questions (instant, free)'; 'served from cache - no model call' becomes 'Saved answer, shown instantly'; 'numbers not checked' becomes 'We did not compare the figures in this answer with the filings'; 'filings pending' becomes 'Filings still being added'; 'cited ids were retrieved' becomes 'Every source listed was found in our database'. Per PAIR, explain outcomes in what users care about, not technical methods.",
+   "Confidence and checks: use at most 2 or 3 categorical states with a defined meaning (PAIR). Do not show percentages. Do not claim absolutes such as 'never hallucinated' (Scite does; avoid). A check badge should say what was checked in a sentence and link to Method & Evidence for the long version.",
+   "Progressive disclosure ladder for the three audiences: Level 1 (everyone) hero, box, 6 examples, answer with chips. Level 2 (curious) 'How this answer was made' disclosure: steps, sources retrieved, checks. Level 3 (power) chips beside the box for Depth, Scope (all filings / my documents) and 'As of' date, with defaults preselected and one option marked recommended (Kagi pattern); Workspace and uploads appear as a clearly labelled nav item with a one-line description, not in the first-run flow. NN/g and PAIR both say introduce features in context, not in a tour; avoid popups.",
+   "Provenance in plain language: state the source scope and freshness in one line under every answer ('Filings and rules through <date>', linking to Freshness) per PAIR 'articulate data sources' and HAX G18. Always distinguish company statements from Federal Register rules with a label and different chip style, which none of the researched products do; this is specific to semigraph and must be designed in, with a non-colour cue.",
+   "Loading and streaming: show 3 plain steps while a live answer streams, then collapse them (shapeof.ai Stream of Thought); do not autoscroll during streaming and expand details in place (NN/g); label live versus saved answers; for rate-limit or error states give a next step (nearby saved example, retry time), per PAIR ('showing an error with no next step' is listed as what to avoid).",
+   "Data-dense views for non-experts: this sweep found no primary-source guidance on formatting financial tables for beginners (Elicit's table practice is the closest and is second-hand). Treat the Company-page fixes (formatted numbers, readable metric names, newest year first, a line explaining 'none') as design decisions to validate by testing rather than as sourced patterns. The Elicit and Scite precedent that supports them: every cell or row is clickable to its source quote.",
+   "Things to avoid across the field: generic caveat footers as the only trust device (shapeof.ai Caveat), niche jargon examples for newcomers (NN/g), tours and modals (NN/g, PAIR), numeric meters that imply verdicts from counts (Consensus reviews), absolute accuracy claims (Scite), burying the provenance promise below the fold (Elicit), citation numbering that can drift (Kagi feedback), exposing retrieval-mode names or LLM logs by default (Neo4j builder, XGraphRAG are expert tools).",
+   "Limits of this sweep: WebFetch returns extracted text only, so no screenshots or layouts were seen. Logged-in apps (Elicit, Consensus, Scite, Glean, Kagi) were not opened. Consensus and Elicit help centers were blocked or not returned. The NN/g chatbot-guidelines and onboarding articles are dated (roughly 195 to 1,019 days old per the search tool) and the onboarding study had six participants. The 'Errors + Graceful Failure' PAIR chapter and shapeof.ai example-gallery pages were not retrievable. No official Microsoft GraphRAG front end was verified."
+  ]
+ }
+}

@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask about 13 chip and AI companies · semigraph</title>
+<style>
+/* ===== base tokens (shared by all four mockups) ===== */
+:root{
+  --paper:#F6F7F9; --surface:#FFFFFF; --ink:#17202A; --ink-2:#4F5A67;
+  --line:#D8DDE3; --line-2:#B9C1CA;
+  --green:#13654B; --green-fill:#E4F2EC; --green-line:#8FC2AC;
+  --gold:#7A4E00; --gold-fill:#FBF1D9; --gold-line:#B88A2E;
+  --mark:#FFE9A3; --focus:#1D4ED8;
+  --sans:"Source Sans 3","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Source Serif 4",Charter,"Iowan Old Style","Palatino Linotype",Cambria,Georgia,serif;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#121820; --surface:#1A212B; --ink:#E7ECF2; --ink-2:#A9B3BF;
+  --line:#2E3843; --line-2:#46525F;
+  --green:#74D3AB; --green-fill:#15302A; --green-line:#2F6B55;
+  --gold:#F0C463; --gold-fill:#2D2412; --gold-line:#9A7426;
+  --mark:#4D3F0E; --focus:#8AB4FF;
+}}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.5 var(--sans);font-variant-numeric:tabular-nums}
+a{color:var(--green);text-underline-offset:3px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* top bar */
+.top{background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:28px;min-height:60px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:19px;letter-spacing:-.01em;color:var(--ink);text-decoration:none}
+.brand svg{width:22px;height:22px}
+.nav{display:flex;gap:4px}
+.nav a{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border-radius:6px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:15px}
+.nav a:hover{color:var(--ink);background:var(--paper)}
+.nav a[aria-current="page"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--green);border-radius:0}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:14px}
+.fresh{display:flex;align-items:center;gap:8px;color:var(--ink-2);text-decoration:none}
+.fresh:hover{color:var(--ink)}
+.fresh b{color:var(--ink);font-weight:600}
+.fresh svg{width:16px;height:16px;color:var(--green)}
+.top-right .how{color:var(--ink-2);font-weight:600;text-decoration:none}
+.top-right .how:hover{color:var(--ink);text-decoration:underline}
+
+/* source stamps: the one memorable idea */
+.src{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:1px 8px 1px 6px;margin:0 1px;
+  font:600 14px/1.25 var(--sans);border:1px solid var(--green-line);border-radius:4px;background:var(--green-fill);color:var(--green);
+  vertical-align:baseline;text-align:left;text-decoration:none}
+.src svg{width:15px;height:15px;flex:none}
+.src .sub{font-weight:400;color:var(--ink)}
+.src:hover{border-color:var(--green)}
+.src--rule{border:3px double var(--gold-line);border-radius:0;background:var(--gold-fill);color:var(--gold);padding:0 8px 0 6px}
+.src--rule:hover{border-color:var(--gold)}
+.src[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--surface)}
+.src[aria-pressed="true"] .sub{color:var(--surface)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:8px;font-weight:700;font-size:16px;border:1px solid transparent;text-decoration:none}
+.btn-primary{background:var(--green);color:var(--surface)}
+@media (prefers-color-scheme:dark){.btn-primary{color:#0E1A15}}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-quiet{background:var(--surface);color:var(--ink);border-color:var(--line-2)}
+.btn-quiet:hover{border-color:var(--ink-2)}
+
+/* ===== page: ask ===== */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:72px;padding:44px 0 56px;align-items:start}
+h1.head{font-size:44px;line-height:1.08;letter-spacing:-.025em;font-weight:700;margin:0 0 14px}
+.ground{font-size:20px;line-height:1.6;color:var(--ink);margin:0 0 28px;max-width:38em}
+.ground .src{font-size:16px;min-height:30px}
+
+.ask{background:var(--surface);border:1px solid var(--line-2);border-radius:12px;padding:14px 14px 12px 18px}
+.ask:focus-within{border-color:var(--green);box-shadow:0 0 0 3px var(--green-fill)}
+.ask label{display:block;font-weight:700;font-size:15px;margin-bottom:4px}
+.ask-row{display:flex;gap:12px;align-items:flex-end}
+.ask textarea{flex:1;min-height:56px;resize:vertical;border:0;background:transparent;font-size:19px;line-height:1.45;padding:2px 0}
+.ask textarea::placeholder{color:var(--ink-2);opacity:1}
+.ask textarea:focus-visible{outline:none}
+.ask .btn{min-width:88px}
+
+.opts{margin-top:10px;font-size:15px}
+.opts summary{display:inline-flex;align-items:center;gap:10px;min-height:32px;cursor:pointer;color:var(--ink-2);list-style:none;font-weight:600}
+.opts summary::-webkit-details-marker{display:none}
+.opts summary svg{width:14px;height:14px;transition:transform .15s}
+.opts[open] summary svg{transform:rotate(90deg)}
+.opts summary .state{font-weight:400}
+.opts-body{display:grid;grid-template-columns:1fr 1fr;gap:16px 32px;margin-top:10px;padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+legend{font-weight:700;font-size:15px;padding:0;margin-bottom:6px}
+.radio{display:flex;gap:8px;align-items:flex-start;padding:4px 0}
+.radio input{width:18px;height:18px;margin:3px 0 0;accent-color:var(--green)}
+.radio small{display:block;color:var(--ink-2);font-size:14px}
+
+.starters{margin-top:28px}
+.starters-h{display:flex;align-items:baseline;gap:12px;margin:0 0 12px}
+.starters-h h2{font-size:17px;margin:0}
+.starters-h p{margin:0;color:var(--ink-2);font-size:15px}
+.st-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;border-top:1px solid var(--line)}
+.st{display:flex;gap:14px;align-items:baseline;width:100%;min-height:52px;padding:12px 4px;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;font-size:16px;line-height:1.4}
+.st:hover{background:var(--surface)}
+.st:hover .q{text-decoration:underline;text-underline-offset:3px}
+.st .t{flex:none;width:92px;font-size:14px;font-weight:700;color:var(--ink-2)}
+.st .t.rule{color:var(--gold)}
+.more-ex{margin-top:12px;background:none;border:0;padding:6px 0;min-height:32px;font-weight:600;color:var(--green);font-size:15px}
+.more-ex:hover{text-decoration:underline;text-underline-offset:3px}
+
+.cost{margin-top:12px;font-size:15px;line-height:1.5;color:var(--ink-2);max-width:44em}
+.cost svg{flex:none;width:20px;height:20px;margin-top:2px;color:var(--green)}
+.cost p{margin:0}
+.cost strong{color:var(--ink)}
+
+.cover{border-left:1px solid var(--line);padding-left:32px}
+.cover h2{font-size:17px;margin:4px 0 4px}
+.cover > p{margin:0 0 14px;color:var(--ink-2);font-size:15px}
+.co{list-style:none;margin:0;padding:0;columns:2;column-gap:20px}
+.co li{break-inside:avoid}
+.co a{display:flex;justify-content:space-between;align-items:baseline;gap:8px;min-height:34px;padding:6px 0;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:15px}
+.co a span{color:var(--ink-2);font-size:13px;font-weight:600}
+.co a:hover{color:var(--green)}
+.cover .rules-note{margin-top:18px;font-size:14px;color:var(--ink-2)}
+
+/* popover previews for the specimen stamps */
+.pv{margin:0;inset:auto;position:fixed;position-area:bottom span-right;position-try-fallbacks:flip-block,flip-inline;
+  width:min(420px,calc(100vw - 32px));padding:16px 18px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface);color:var(--ink);
+  box-shadow:0 12px 32px rgba(20,30,40,.18);font-size:15px;margin-top:6px}
+.pv h3{font-size:15px;margin:0 0 4px}
+.pv .meta{color:var(--ink-2);font-size:14px;margin:0 0 10px}
+.pv blockquote{margin:0 0 10px;font-family:var(--serif);font-size:16px;line-height:1.6}
+.pv .row{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.pv .x{min-width:32px;min-height:32px;border:1px solid var(--line);border-radius:6px;background:none}
+.pv.rule{border:3px double var(--gold-line)}
+.pv .kind{display:inline-flex;gap:6px;align-items:center;font-weight:700;font-size:14px;color:var(--green)}
+.pv.rule .kind{color:var(--gold)}
+.pv .kind svg{width:15px;height:15px}
+
+@media (max-width:1060px){.hero{grid-template-columns:1fr;gap:40px}.cover{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:24px}}
+@media (max-width:720px){
+  .wrap{padding:0 16px}
+  .top .wrap{flex-wrap:wrap;gap:4px 12px;padding-top:8px;padding-bottom:4px}
+  .top-right{order:2;margin-left:auto;gap:12px}
+  .top-right .how{display:none}
+  .fresh .long{display:none}
+  .nav{order:3;width:100%;margin-left:-12px}
+  .tabs{flex-wrap:wrap;overflow:visible}
+  .hero{padding:28px 0 40px}
+  h1.head{font-size:34px}
+  .ground{font-size:18px}
+  .ask textarea{font-size:17px}
+  .ask-row{flex-direction:column;align-items:stretch}
+  .opts-body{grid-template-columns:1fr}
+  .starters-h{flex-direction:column;gap:2px}
+  .st-grid{grid-template-columns:1fr}
+  .st{flex-direction:column;gap:2px}
+  .co{columns:1}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="ask.html" aria-label="semigraph, start page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.7 2v20M15.3 2v20M2 8.7h20M2 15.3h20" stroke="currentColor" stroke-width="1" opacity=".5"/><rect x="9.4" y="9.4" width="5.2" height="5.2" fill="var(--green)"/></svg>
+      semigraph
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="ask.html" aria-current="page">Ask</a>
+      <a href="company.html">Companies</a>
+      <a href="workspace.html">Workspace</a>
+    </nav>
+    <div class="top-right">
+      <a class="fresh" href="#freshness">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.5V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Data as of <b>Sep 24, 2026</b><span class="long">, 9 newer filings being added</span></span>
+      </a>
+      <a class="how" href="#method">How it works</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <section aria-labelledby="h1">
+      <h1 class="head" id="h1">Ask about 13 chip and AI companies.</h1>
+      <p class="ground">Every answer shows where it came from: a
+        <button class="src" popovertarget="pv-filing" style="anchor-name:--a1" aria-label="Filing passage. Example: Nvidia 10-K for fiscal 2024, risk factors paragraph 162">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3"/></svg>filing passage</button>,
+        a
+        <button class="src" popovertarget="pv-number" style="anchor-name:--a2" aria-label="Reported number. Example: Nvidia revenue, fiscal year ended January 25, 2026">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14h12M4.2 11.5V8M8 11.5V3.5M11.8 11.5V6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>reported number</button>
+        or a
+        <button class="src src--rule" popovertarget="pv-rule" style="anchor-name:--a3" aria-label="Government rule. Example: Federal Register rule 2026-00789">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 1.8 5.2h12.4z M2.4 14.2h11.2 M3.6 6.8v5.4M6.5 6.8v5.4M9.5 6.8v5.4M12.4 6.8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>government rule</button>.
+        Click one to read the original.</p>
+
+      <form class="ask" action="answer.html" method="get" aria-describedby="cost-line">
+        <label for="q">Your question</label>
+        <div class="ask-row">
+          <textarea id="q" name="q" rows="2" placeholder="For example: Which export rules affect AMD?"></textarea>
+          <button class="btn btn-primary" type="submit">Ask</button>
+        </div>
+      </form>
+
+      <div class="cost" id="cost-line">
+        <p><strong>Free, no account needed.</strong> Examples answer instantly from saved answers. New questions run live, so they are limited to 5 every 10 minutes from one address, with a daily cap. Covers SEC filings and US export rules for 13 companies. Not financial advice. <a href="#method">How answers are made</a></p>
+      </div>
+
+      <details class="opts">
+        <summary><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>More options <span class="state">Depth: Standard</span></summary>
+        <div class="opts-body">
+          <fieldset>
+            <legend>Depth</legend>
+            <label class="radio"><input type="radio" name="depth" checked> <span>Standard (recommended)<small>Searches filings, numbers and rules together.</small></span></label>
+            <label class="radio"><input type="radio" name="depth"> <span>Deep research<small>Plans extra lookups first. Slower.</small></span></label>
+            <label class="radio"><input type="radio" name="depth"> <span>Basic text search<small>For comparison only. Cannot track changes over time.</small></span></label>
+          </fieldset>
+          <fieldset>
+            <legend>Ask as of a date</legend>
+            <label for="asof" class="vh">Date</label>
+            <input id="asof" type="date" disabled style="min-height:40px;padding:4px 8px;border:1px solid var(--line-2);border-radius:6px;background:var(--paper)">
+            <p style="margin:8px 0 0;font-size:14px;color:var(--ink-2)">Works on documents in your <a href="workspace.html">Workspace</a>. Public filings are always answered from the latest data we hold.</p>
+          </fieldset>
+        </div>
+      </details>
+
+      <section class="starters" aria-labelledby="ex-h">
+        <div class="starters-h">
+          <h2 id="ex-h">Or try an example</h2>
+          <p>These answer instantly.</p>
+        </div>
+        <div class="st-grid">
+          <button class="st" type="button"><span class="t">Revenue</span><span class="q">What was Nvidia's total revenue for the fiscal year ended January 25, 2026?</span></button>
+          <button class="st" type="button"><span class="t rule">Export rules</span><span class="q">Which BIS export-control rules is AMD affected by?</span></button>
+          <button class="st" type="button"><span class="t">Risk changes</span><span class="q">Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?</span></button>
+          <button class="st" type="button"><span class="t">Supply chain</span><span class="q">What supply-chain related risks does TSMC disclose in its annual report?</span></button>
+          <button class="st" type="button"><span class="t">Risks</span><span class="q">What geopolitical risks does ASML disclose?</span></button>
+          <button class="st" type="button"><span class="t">Compare</span><span class="q">Compare the competition risks disclosed by AMD and Nvidia.</span></button>
+        </div>
+        <button class="more-ex" type="button" aria-expanded="false">Show all examples, grouped by company</button>
+      </section>
+
+
+    </section>
+
+    <aside class="cover" aria-labelledby="cov-h">
+      <h2 id="cov-h">Companies covered</h2>
+      <p>Each has a page with key numbers, filings and the government rules linked to it.</p>
+      <ul class="co">
+        <li><a href="company.html">Nvidia <span>NVDA</span></a></li>
+        <li><a href="#">AMD <span>AMD</span></a></li>
+        <li><a href="#">Intel <span>INTC</span></a></li>
+        <li><a href="#">Broadcom <span>AVGO</span></a></li>
+        <li><a href="#">Qualcomm <span>QCOM</span></a></li>
+        <li><a href="#">Micron <span>MU</span></a></li>
+        <li><a href="#">Apple <span>AAPL</span></a></li>
+        <li><a href="#">Microsoft <span>MSFT</span></a></li>
+        <li><a href="#">Amazon <span>AMZN</span></a></li>
+        <li><a href="#">Alphabet <span>GOOGL</span></a></li>
+        <li><a href="#">Meta <span>META</span></a></li>
+        <li><a href="#">TSMC <span>TSM</span></a></li>
+        <li><a href="#">ASML <span>ASML</span></a></li>
+      </ul>
+      <p class="rules-note">Plus US export-control rules from the Federal Register. A rule is always shown as a <strong>government rule</strong>, never as something a company said.</p>
+    </aside>
+  </div>
+</main>
+
+<!-- specimen previews: real evidence text -->
+<div id="pv-filing" class="pv" popover style="position-anchor:--a1">
+  <div class="row"><span class="kind"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3"/></svg>Filing passage</span>
+  <button class="x" popovertarget="pv-filing" popovertargetaction="hide" aria-label="Close preview">&times;</button></div>
+  <h3>Nvidia 10-K for fiscal 2024, Item 1A Risk factors</h3>
+  <p class="meta">Filed Feb 21, 2024. Paragraph 0162.</p>
+  <blockquote>“Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations.”</blockquote>
+  <a href="answer.html">Open full passage</a>
+</div>
+<div id="pv-number" class="pv" popover style="position-anchor:--a2">
+  <div class="row"><span class="kind"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14h12M4.2 11.5V8M8 11.5V3.5M11.8 11.5V6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>Reported number</span>
+  <button class="x" popovertarget="pv-number" popovertargetaction="hide" aria-label="Close preview">&times;</button></div>
+  <h3>Nvidia revenue, fiscal year ended Jan 25, 2026</h3>
+  <p class="meta">From the company’s own financial data (XBRL), 10-K filed Feb 25, 2026.</p>
+  <p style="margin:0 0 10px;font-size:22px;font-weight:700">$215,938,000,000</p>
+  <a href="company.html">Open the number</a>
+</div>
+<div id="pv-rule" class="pv rule" popover style="position-anchor:--a3">
+  <div class="row"><span class="kind"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 1.8 5.2h12.4z M2.4 14.2h11.2 M3.6 6.8v5.4M6.5 6.8v5.4M9.5 6.8v5.4M12.4 6.8v5.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Government rule, not a company statement</span>
+  <button class="x" popovertarget="pv-rule" popovertargetaction="hide" aria-label="Close preview">&times;</button></div>
+  <h3>Revision to License Review Policy for Advanced Computing Commodities</h3>
+  <p class="meta">Federal Register, published Jan 15, 2026. Document 2026-00789.</p>
+  <blockquote>“The Bureau of Industry and Security (BIS) is revising its license review policy for exports of certain semiconductors to China and Macau--changing it from a presumption of denial to a case-by-case review.”</blockquote>
+  <a href="company.html#rules">Open the rule</a>
+</div>
+</body>
+</html>

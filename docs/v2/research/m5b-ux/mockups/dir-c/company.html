@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nvidia - semigraph</title>
+<style>
+/* ===== shared tokens (identical in all four files) ===== */
+:root{
+  color-scheme: light dark;
+  --paper:#F4F6F4; --surface:#FFFFFF; --ink:#18211F; --muted:#4D5A56;
+  --oxide:#0E6B5E; --oxide-tint:#E3F0EC; --on-oxide:#FFFFFF;
+  --federal:#3A4588; --federal-tint:#E9EBF7;
+  --line:#D5DBD8; --edge:#76837F; --hl:#FCEFB4;
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Sitka Text","Iowan Old Style",Charter,Cambria,serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#0F1513; --surface:#161E1C; --ink:#E5ECE9; --muted:#A3B1AC;
+    --oxide:#6CCBB8; --oxide-tint:#173029; --on-oxide:#0F1513;
+    --federal:#AEB7F2; --federal-tint:#1F2442;
+    --line:#2B3633; --edge:#6E7D78; --hl:#4A3F12;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.55 var(--sans);font-variant-numeric:tabular-nums lining-nums}
+a{color:var(--oxide);text-underline-offset:3px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--oxide);outline-offset:2px}
+.wrap{max-width:1200px;margin:0 auto;padding:0 32px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.icon{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* header */
+.site{background:var(--surface);border-bottom:1px solid var(--line)}
+.site .wrap{display:flex;align-items:center;gap:24px;min-height:64px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;letter-spacing:-.01em;color:var(--ink);text-decoration:none;padding:6px 0}
+.brand svg{width:26px;height:26px}
+.site nav ul{display:flex;flex-wrap:wrap;gap:2px;list-style:none;margin:0;padding:0}
+.site nav a{display:block;padding:8px 12px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:15px}
+.site nav a:hover{background:var(--oxide-tint)}
+.site nav a[aria-current="page"]{background:var(--oxide-tint);color:var(--oxide);font-weight:600}
+.fresh{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:14px;color:var(--muted);text-decoration:none;padding:8px 0}
+.fresh:hover{color:var(--ink);text-decoration:underline}
+.fresh svg{width:16px;height:16px}
+
+/* proof marks and chips */
+.mark{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--oxide-tint);color:var(--oxide);flex:none}
+.mark .icon{width:22px;height:22px}
+.mark.gov{background:var(--federal-tint);color:var(--federal);border:3px double var(--federal);border-radius:3px}
+.cite{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:2px 10px 2px 7px;margin:0 1px;border:1px solid var(--oxide);border-radius:999px;background:var(--oxide-tint);color:var(--oxide);font:600 14px/1.2 var(--sans);cursor:pointer;vertical-align:1px;text-align:left}
+.cite .icon{width:16px;height:16px}
+.cite:hover{background:var(--oxide);color:var(--on-oxide)}
+.cite[aria-expanded="true"]{background:var(--oxide);color:var(--on-oxide)}
+.cite.gov{border:3px double var(--federal);border-radius:3px;background:var(--federal-tint);color:var(--federal);padding:1px 9px 1px 6px}
+.cite.gov:hover{background:var(--federal);color:var(--federal-tint)}
+.gov-tag{display:inline-flex;align-items:center;gap:6px;font:600 13px/1 var(--sans);color:var(--federal);border:3px double var(--federal);border-radius:3px;padding:4px 8px 4px 6px;background:var(--federal-tint)}
+.gov-tag .icon{width:16px;height:16px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:10px;border:0;background:var(--oxide);color:var(--on-oxide);font-weight:600;font-size:16px;cursor:pointer;text-decoration:none}
+.btn:hover{filter:brightness(1.08)}
+.btn-quiet{background:transparent;color:var(--oxide);border:1px solid var(--edge)}
+.btn-quiet:hover{background:var(--oxide-tint);filter:none}
+.serif{font-family:var(--serif)}
+@media (max-width:720px){
+  .wrap{padding:0 16px}
+  .site .wrap{gap:0 12px;padding-top:4px;padding-bottom:4px}
+  .site nav{order:3;width:100%;margin:0 -12px}
+  .fresh{font-size:13px}
+  .site nav a{padding:8px 8px}
+}
+/* ===== end shared ===== */
+
+/* company page */
+.co-head{padding:22px 0 18px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 32px;align-items:end}
+.switch{display:flex;align-items:center;gap:10px;font-size:15px;grid-column:1/-1}
+.switch label{color:var(--muted)}
+.switch select{min-height:36px;border:1.5px solid var(--edge);border-radius:8px;background:var(--surface);padding:0 10px}
+.co-head h1{font-size:40px;line-height:1.1;letter-spacing:-.02em;margin:0;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.co-head h1 .tick{font-size:16px;font-weight:600;color:var(--muted);border:1px solid var(--edge);border-radius:6px;padding:2px 8px;letter-spacing:.02em}
+.co-head .fy{margin:8px 0 0;color:var(--muted);font-size:15px;max-width:70ch}
+.filings{display:flex;flex-wrap:wrap;gap:4px 24px;margin:10px 0 0;font-size:15px}
+.filings div{display:flex;gap:6px}
+.filings dt{color:var(--muted)}
+.filings dd{margin:0;font-weight:600}
+.try{margin:10px 0 0;font-size:15px;color:var(--muted)}
+.co-ask{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.glance{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:6px;margin:0 0 28px}
+.glance h2{grid-column:1/-1}
+.g{padding:12px 18px 14px;border-radius:12px}
+.g+.g{box-shadow:inset 1px 0 0 var(--line)}
+.g .lab{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);margin:0 0 2px}
+.g .lab .icon{width:16px;height:16px;color:var(--oxide)}
+.g .lab.gv .icon{color:var(--federal)}
+.num{display:inline-block;border:0;background:transparent;padding:0 4px;margin:0 -4px;border-radius:6px;font-size:32px;font-weight:700;letter-spacing:-.01em;line-height:1.2;cursor:pointer;color:var(--ink);text-decoration:underline dotted var(--edge) 2px;text-underline-offset:6px;min-height:24px}
+.num:hover{background:var(--oxide-tint)}
+.num[data-s]{font-size:24px!important;text-align:left}
+@media (max-width:720px){.num[data-s]{font-size:18px!important}}
+.g .sub{font-size:14px;color:var(--muted);margin:2px 0 0}
+.g .exact{font-size:13px;color:var(--muted);margin:0}
+.cols{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:28px;align-items:start;padding-bottom:48px}
+.sec{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px 20px 20px;margin-bottom:24px}
+.sec-h{display:flex;align-items:center;gap:12px;margin:0 0 4px}
+.sec-h h2{font-size:19px;line-height:1.25;margin:0}
+.sec .intro{font-size:15px;color:var(--muted);margin:4px 0 14px;max-width:62ch}
+table.keys{width:100%;border-collapse:collapse;font-size:16px}
+.keys caption{text-align:left;font-size:14px;color:var(--muted);padding:0 0 8px}
+.keys th,.keys td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+.keys thead th{font-size:14px;font-weight:600;color:var(--muted);line-height:1.3}
+.keys thead th small{display:block;font-weight:400}
+.keys th[scope="row"],.keys thead th:first-child{text-align:left;font-weight:600;color:var(--ink)}
+.keys tr:last-child th,.keys tr:last-child td{border-bottom:0}
+.cell{position:relative;border:0;background:transparent;font-size:16px;font-weight:600;cursor:pointer;padding:3px 6px;margin:-3px -6px;border-radius:6px;color:var(--ink);text-decoration:underline dotted var(--edge) 2px;text-underline-offset:5px;min-height:28px}
+.cell:hover,.cell:focus-visible{background:var(--oxide-tint)}
+.cell::after{content:attr(data-exact);position:absolute;right:0;bottom:calc(100% + 6px);white-space:nowrap;background:var(--ink);color:var(--paper);font-size:13px;font-weight:600;padding:5px 9px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .12s}
+.cell:hover::after,.cell:focus-visible::after{opacity:1}
+.keys td.none{font-size:14px;color:var(--muted);text-align:left}
+.keys .more{margin-top:10px;font-size:15px}
+.filter{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px;border:0;padding:0}
+.filter legend{font-size:14px;color:var(--muted);float:left;margin-right:6px;padding:6px 0}
+.filter label{position:relative}
+.filter input{position:absolute;opacity:0;inset:0}
+.filter span{display:inline-block;padding:5px 12px;border:1px solid var(--edge);border-radius:999px;font-size:14px;min-height:30px;cursor:pointer}
+.filter input:checked+span{background:var(--oxide);border-color:var(--oxide);color:var(--on-oxide);font-weight:600}
+.filter input:focus-visible+span{outline:3px solid var(--oxide);outline-offset:2px}
+.rel{list-style:none;margin:0;padding:0}
+.rel li{padding:12px 0;border-top:1px solid var(--line)}
+.rel li:first-child{border-top:0;padding-top:4px}
+.rel .who{font-weight:600;margin:0 0 4px}
+.rel q{display:block;font-family:var(--serif);font-size:16px;line-height:1.55;quotes:"\201C" "\201D";margin:0 0 6px;max-width:64ch}
+.gov-sec{border:3px double var(--federal);background:var(--surface)}
+.gov-sec .sec-h h2{color:var(--ink)}
+.rules{list-style:none;margin:0;padding:0}
+.rules li{padding:14px 0;border-top:1px solid var(--line)}
+.rules li:first-child{border-top:0;padding-top:2px}
+.rules h3{font-size:16px;line-height:1.4;margin:8px 0 4px;overflow-wrap:anywhere}
+.rules dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px;font-size:14px;margin:0 0 8px}
+.rules dt{color:var(--muted)}
+.rules dd{margin:0}
+.rules .acts{display:flex;flex-wrap:wrap;gap:8px}
+.showall{display:inline-flex;margin-top:8px;font-weight:600;font-size:15px;min-height:28px;align-items:center}
+@media (max-width:1000px){.cols{grid-template-columns:minmax(0,1fr)}.glance{grid-template-columns:repeat(2,minmax(0,1fr))}.g:nth-child(3){box-shadow:none}}
+@media (max-width:720px){
+  .co-head{grid-template-columns:minmax(0,1fr);padding:14px 0 14px}
+  .co-ask{align-items:stretch}
+  .co-head h1{font-size:32px}
+  .glance{grid-template-columns:repeat(2,minmax(0,1fr));padding:4px;margin-bottom:20px}
+  .g{padding:10px 12px 12px}
+  .g,.g+.g{box-shadow:none}
+  .glance{gap:2px}
+  .num.small{font-size:19px}
+  .num{font-size:24px}
+  .sec{padding:14px 14px 16px;border-radius:14px}
+  .keys th,.keys td{padding:9px 4px}
+  .keys{font-size:15px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="m-passage" viewBox="0 0 20 20"><path d="M8.5 4.5C5.8 5.4 4 7.6 4 10.6V15h4.2v-4.2H6.1M16 4.5c-2.7.9-4.5 3.1-4.5 6.1V15h4.2v-4.2h-2.1"/></symbol>
+  <symbol id="m-number" viewBox="0 0 20 20"><rect x="3" y="3.5" width="14" height="13" rx="2"/><path d="M3 8h14M3 12.3h14M9 8v8.5"/></symbol>
+  <symbol id="m-change" viewBox="0 0 20 20"><rect x="2.5" y="2.5" width="9.5" height="11.5" rx="1.5"/><path d="M8 6h8a1.5 1.5 0 0 1 1.5 1.5V16a1.5 1.5 0 0 1-1.5 1.5H9.5A1.5 1.5 0 0 1 8 16z"/><path d="M10.5 10h4.5M10.5 13h3"/></symbol>
+  <symbol id="m-rule" viewBox="0 0 20 20"><path d="M2.8 7.6 10 3.3l7.2 4.3zM3.5 7.6h13M5.3 9.6v5M8.4 9.6v5M11.6 9.6v5M14.7 9.6v5M2.8 16.6h14.4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6.2V10l2.6 1.6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 20 20"><path d="m8 5 5 5-5 5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 20 20"><path d="M4 10h11M11 5.5 15.5 10 11 14.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 20 20"><path d="M5 10h10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></symbol>
+  <symbol id="i-out" viewBox="0 0 20 20"><path d="M11 4h5v5M16 4l-7 7M14 12v3.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5H8"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 20 20"><rect x="4" y="9" width="12" height="8.5" rx="1.5"/><path d="M6.8 9V6.5a3.2 3.2 0 0 1 6.4 0V9"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></symbol>
+</svg>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="ask.html" aria-label="semigraph, start page">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="6" fill="var(--oxide)"/><path d="M8 9.5h6.5M8 13h10M8 16.5h4.5" stroke="var(--on-oxide)" stroke-width="2" stroke-linecap="round"/><circle cx="18" cy="9.5" r="1.6" fill="var(--on-oxide)"/></svg>
+      semigraph
+    </a>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="ask.html">Ask</a></li>
+        <li><a href="company.html" aria-current="page">Companies</a></li>
+        <li><a href="workspace.html">Workspace</a></li>
+        <li><a href="#">How it works</a></li>
+      </ul>
+    </nav>
+    <a class="fresh" href="#" title="Data as of 24 Sep 2026. 9 newer filings are still being added."><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>Data checked 4 h ago</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap">
+    <section class="co-head" aria-labelledby="coh">
+      <div class="switch"><label for="co">Company</label>
+        <select id="co"><option selected>Nvidia (NVDA)</option><option>AMD (AMD)</option><option>Intel (INTC)</option><option>Broadcom (AVGO)</option><option>Qualcomm (QCOM)</option><option>Micron (MU)</option><option>Apple (AAPL)</option><option>Microsoft (MSFT)</option><option>Amazon (AMZN)</option><option>Alphabet (GOOGL)</option><option>Meta (META)</option><option>TSMC (TSM)</option><option>ASML (ASML)</option></select>
+      </div>
+      <div>
+        <h1 id="coh">Nvidia <span class="tick" aria-label="ticker NVDA">NVDA</span></h1>
+        <p class="fy">Nvidia's fiscal year ends in late January, so its fiscal year 2026 (FY2026) ended on 25 Jan 2026.</p>
+        <dl class="filings">
+          <div><dt>Latest annual report (10-K):</dt><dd>filed 25 Feb 2026</dd></div>
+          <div><dt>Latest quarterly report (10-Q):</dt><dd>filed 26 Aug 2026</dd></div>
+          <div><dt>Data as of:</dt><dd>24 Sep 2026</dd></div>
+        </dl>
+        <p class="try">Try: <a href="#">What does Nvidia disclose about export controls affecting its sales to China?</a></p>
+      </div>
+      <div class="co-ask">
+        <a class="btn" href="ask.html">Ask a question about Nvidia</a>
+        <a href="#" style="font-size:15px;padding:4px 0">All filings we hold (6)</a>
+      </div>
+    </section>
+
+    <section class="glance" aria-labelledby="glance-h">
+      <h2 id="glance-h" class="sr">Nvidia at a glance</h2>
+      <div class="g">
+        <p class="lab"><svg class="icon" aria-hidden="true"><use href="#m-number"/></svg>Revenue, FY2026</p>
+        <button class="num" type="button" aria-label="Revenue, fiscal year 2026: $215,938,000,000. Open the reported figure.">$215.9B</button>
+        <p class="exact">Exact: $215,938,000,000</p>
+        <p class="sub">FY2025: $130.5B</p>
+      </div>
+      <div class="g">
+        <p class="lab"><svg class="icon" aria-hidden="true"><use href="#m-number"/></svg>Net income, FY2026</p>
+        <button class="num" type="button" aria-label="Net income, fiscal year 2026: $120,067,000,000. Open the reported figure.">$120.1B</button>
+        <p class="exact">Exact: $120,067,000,000</p>
+        <p class="sub">FY2025: $72.9B</p>
+      </div>
+      <div class="g">
+        <p class="lab"><svg class="icon" aria-hidden="true"><use href="#m-passage"/></svg>Latest filing</p>
+        <button class="num" type="button" aria-label="Latest filing: quarterly report 10-Q filed 26 August 2026. Open it." style="font-size:24px" data-s>10-Q, 26 Aug 2026</button>
+        <p class="sub">Quarterly report</p>
+      </div>
+      <div class="g">
+        <p class="lab gv"><svg class="icon" aria-hidden="true"><use href="#m-rule"/></svg>Government rules that mention Nvidia</p>
+        <a class="num" href="#rules-h" aria-label="8 government rules mention Nvidia. Go to the list." style="display:inline-block;min-width:44px">8</a>
+        <p class="sub">Newest published 14 Jul 2026</p>
+      </div>
+    </section>
+
+    <div class="cols">
+      <div>
+        <section class="sec" aria-labelledby="keys-h">
+          <div class="sec-h"><span class="mark"><svg class="icon" aria-hidden="true"><use href="#m-number"/></svg></span><h2 id="keys-h">Key numbers</h2></div>
+          <p class="intro">As Nvidia reported them to the SEC. Select a number to see the exact value and the filing it comes from.</p>
+          <table class="keys">
+            <caption>US dollars. Newest year first.</caption>
+            <thead><tr><th scope="col">Measure</th><th scope="col">FY2026<small>ended 25 Jan 2026</small></th><th scope="col">FY2025<small>ended 26 Jan 2025</small></th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Revenue</th>
+                <td><button class="cell" type="button" data-exact="$215,938,000,000" aria-label="Revenue FY2026: $215,938,000,000">$215.9B</button></td>
+                <td><button class="cell" type="button" data-exact="$130,497,000,000" aria-label="Revenue FY2025: $130,497,000,000">$130.5B</button></td></tr>
+              <tr><th scope="row">Net income</th>
+                <td><button class="cell" type="button" data-exact="$120,067,000,000" aria-label="Net income FY2026: $120,067,000,000">$120.1B</button></td>
+                <td><button class="cell" type="button" data-exact="$72,880,000,000" aria-label="Net income FY2025: $72,880,000,000">$72.9B</button></td></tr>
+              <tr><th scope="row">Research and development</th>
+                <td><button class="cell" type="button" data-exact="$18,497,000,000" aria-label="Research and development FY2026: $18,497,000,000">$18.5B</button></td>
+                <td><button class="cell" type="button" data-exact="$12,914,000,000" aria-label="Research and development FY2025: $12,914,000,000">$12.9B</button></td></tr>
+              <tr><th scope="row">Capital expenditure</th>
+                <td class="none" colspan="2">Not in the data we hold for these years. The latest we hold is FY2012.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="sec" aria-labelledby="rel-h">
+          <div class="sec-h"><span class="mark"><svg class="icon" aria-hidden="true"><use href="#m-passage"/></svg></span><h2 id="rel-h">Other companies, in the filings' own words</h2></div>
+          <p class="intro">Suppliers, customers and competitors named in a filing. Each line says whose filing it is.</p>
+          <fieldset class="filter">
+            <legend>Show</legend>
+            <label><input type="radio" name="rel" value="all"><span>All</span></label>
+            <label><input type="radio" name="rel" value="sup"><span>Suppliers</span></label>
+            <label><input type="radio" name="rel" value="cus"><span>Customers</span></label>
+            <label><input type="radio" name="rel" value="com" checked><span>Competitors</span></label>
+          </fieldset>
+          <ul class="rel">
+            <li><p class="who">Nvidia's filing names AMD, Huawei and Intel as competitors.</p>
+              <q>such as Advanced Micro Devices, Inc., or AMD, Huawei Technologies Co. Ltd., or Huawei, and Intel Corporation, or Intel</q>
+              <button class="cite" type="button" aria-label="Nvidia 10-K FY2026, business section, paragraph 0321. Open the passage."><svg class="icon" aria-hidden="true"><use href="#m-passage"/></svg>Nvidia 10-K FY2026, business</button></li>
+            <li><p class="who">Nvidia's filing names Alphabet, Amazon and Microsoft as competitors.</p>
+              <q>such as Alibaba Group, Alphabet Inc., Amazon, Inc., or Amazon, Baidu, Inc., Huawei, and Microsoft Corporation, or Microsoft</q>
+              <button class="cite" type="button" aria-label="Nvidia 10-K FY2026, business section, paragraph 0321. Open the passage."><svg class="icon" aria-hidden="true"><use href="#m-passage"/></svg>Nvidia 10-K FY2026, business</button></li>
+            <li><p class="who">Intel's filing names Nvidia as a competitor.</p>
+              <q>providers of GPU systems such as NVIDIA, whose GPU systems have experienced the highest demand in the market as AI workloads have become the dominant source of compute demand</q>
+              <button class="cite" type="button" aria-label="Intel 10-K, business section, paragraph 0006. Open the passage."><svg class="icon" aria-hidden="true"><use href="#m-passage"/></svg>Intel 10-K, business</button></li>
+          </ul>
+        </section>
+      </div>
+
+      <section class="sec gov-sec" aria-labelledby="rules-h">
+        <div class="sec-h"><span class="mark gov"><svg class="icon" aria-hidden="true"><use href="#m-rule"/></svg></span><h2 id="rules-h">Government rules that mention Nvidia</h2></div>
+        <p class="intro">US export-control rules published in the Federal Register. <strong>Nvidia did not write these.</strong> We link a rule to Nvidia when its topic matches words in Nvidia's filings.</p>
+        <ul class="rules">
+          <li>
+            <span class="gov-tag"><svg class="icon" aria-hidden="true"><use href="#m-rule"/></svg>Government rule</span>
+            <h3>Enhanced Favorable Treatment for the United Arab Emirates Under the Export Administration Regulations</h3>
+            <dl><dt>Published</dt><dd>14 Jul 2026</dd><dt>Issued by</dt><dd>Bureau of Industry and Security, document 2026-14132</dd><dt>Kind</dt><dd>Licensing policy</dd></dl>
+            <div class="acts">
+              <button class="cite gov" type="button" aria-label="Government rule 2026-14132. Read the rule."><svg class="icon" aria-hidden="true"><use href="#m-rule"/></svg>Read the rule</button>
+              <button class="cite" type="button" aria-label="10 passages in Nvidia's filings that match this rule. Open them."><svg class="icon" aria-hidden="true"><use href="#m-passage"/></svg>10 matching passages from Nvidia</button>
+            </div>
+          </li>
+          <li>
+            <span class="gov-tag"><svg class="icon" aria-hidden="true"><use href="#m-rule"/></svg>Government rule</span>
+            <h3>Extension of Authorized Integrated Circuit (IC) Designer Status and Application Deadline To Become an Approved IC Designer</h3>
+            <dl><dt>Published</dt><dd>9 Apr 2026</dd><dt>Issued by</dt><dd>Bureau of Industry and Security, document 2026-06851</dd><dt>Kind</dt><dd>Licensing policy</dd></dl>
+            <div class="acts">
+              <button class="cite gov" type="button" aria-label="Government rule 2026-06851. Read the rule."><svg class="icon" aria-hidden="true"><use href="#m-rule"/></svg>Read the rule</button>
+              <button class="cite" type="button" aria-label="10 passages in Nvidia's filings that match this rule. Open them."><svg class="icon" aria-hidden="true"><use href="#m-passage"/></svg>10 matching passages from Nvidia</button>
+            </div>
+          </li>
+          <li>
+            <span class="gov-tag"><svg class="icon" aria-hidden="true"><use href="#m-rule"/></svg>Government rule</span>
+            <h3>Revision to License Review Policy for Advanced Computing Commodities</h3>
+            <dl><dt>Published</dt><dd>15 Jan 2026</dd><dt>Issued by</dt><dd>Bureau of Industry and Security, document 2026-00789</dd><dt>Kind</dt><dd>Licensing policy</dd></dl>
+            <div class="acts">
+              <button class="cite gov" type="button" aria-label="Government rule 2026-00789. Read the rule."><svg class="icon" aria-hidden="true"><use href="#m-rule"/></svg>Read the rule</button>
+              <button class="cite" type="button" aria-label="10 passages in Nvidia's filings that match this rule. Open them."><svg class="icon" aria-hidden="true"><use href="#m-passage"/></svg>10 matching passages from Nvidia</button>
+            </div>
+          </li>
+        </ul>
+        <a class="showall" href="#">Show all 8 rules</a>
+      </section>
+    </div>
+  </div>
+</main>
+</body>
+</html>

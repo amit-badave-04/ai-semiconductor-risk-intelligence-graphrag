@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask about 13 chip and AI companies, semigraph</title>
+<style>
+:root{
+  --paper:#F3F4F1; --sheet:#FFFFFF; --ink:#17202D; --graphite:#4E5765; --rule:#D3D7D1; --field:#7A8391;
+  --docket:#1E4B8E; --register:#1B5A4A; --register-bg:#E6F0EB;
+  --mark:#FFE066; --mark-ink:#17202D; --mark-edge:#B88A00;
+  --sans:"Source Sans 3","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Source Serif 4","Iowan Old Style",Charter,Cambria,Georgia,serif;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#11151B; --sheet:#191E26; --ink:#E5E8EC; --graphite:#A6AFBB; --rule:#2C333D; --field:#7C8696;
+  --docket:#94B5EF; --register:#86CDB5; --register-bg:#15302A;
+  --mark:#EBCB52; --mark-ink:#15140C; --mark-edge:#FFE58A;
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.5 var(--sans);font-variant-numeric:tabular-nums lining-nums}
+a{color:var(--docket);text-underline-offset:3px;text-decoration-thickness:1px}
+:focus-visible{outline:2px solid var(--docket);outline-offset:2px}
+.skip{position:absolute;left:-9999px;top:8px;background:var(--sheet);padding:8px 12px;z-index:10}
+.skip:focus{left:16px}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px}
+/* header */
+.top{border-bottom:1px solid var(--rule)}
+.top-in{display:flex;align-items:center;gap:8px 28px;flex-wrap:wrap;padding-top:12px;padding-bottom:12px}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:650;font-size:19px;color:var(--ink);text-decoration:none;letter-spacing:-.01em;min-height:40px}
+.nav ul{display:flex;gap:2px;list-style:none;margin:0;padding:0}
+.nav a{display:inline-flex;align-items:center;min-height:40px;padding:0 12px;color:var(--ink);text-decoration:none;font-size:16px}
+.nav a[aria-current=page]{box-shadow:inset 0 -2px 0 var(--ink);font-weight:600}
+.top-aside{margin-left:auto;display:flex;gap:6px 22px;align-items:center;flex-wrap:wrap;font-size:14px}
+.top-aside a{color:var(--graphite);display:inline-flex;align-items:center;gap:6px;min-height:32px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--register);display:inline-block}
+/* ask */
+.ask{display:grid;grid-template-columns:minmax(0,660px) minmax(0,360px);gap:88px;padding-top:52px;padding-bottom:64px}
+h1{font-size:40px;line-height:1.12;letter-spacing:-.022em;font-weight:650;margin:0 0 14px;max-width:16ch}
+.lede{font-size:19px;line-height:1.45;color:var(--ink);margin:0 0 28px;max-width:34em}
+.lede span{color:var(--graphite)}
+.qlabel{display:block;font-weight:600;font-size:15px;margin:0 0 6px}
+.qrow{display:flex;gap:10px;align-items:stretch}
+textarea{flex:1;min-width:0;font:inherit;font-size:18px;line-height:1.4;color:var(--ink);background:var(--sheet);border:1.5px solid var(--field);border-radius:6px;padding:12px 14px;resize:vertical;min-height:58px}
+textarea::placeholder{color:var(--graphite);opacity:1}
+textarea:focus-visible{outline:2px solid var(--docket);outline-offset:1px;border-color:var(--docket)}
+.btn{font:inherit;font-weight:600;font-size:17px;border-radius:6px;padding:0 22px;min-height:44px;cursor:pointer}
+.btn-primary{background:var(--ink);color:var(--paper);border:1.5px solid var(--ink)}
+.cost{font-size:15px;color:var(--graphite);margin:10px 0 0;max-width:40em}
+.cost strong{color:var(--ink);font-weight:600}
+details.more{margin-top:10px;font-size:15px}
+details.more>summary{cursor:pointer;color:var(--docket);display:inline-flex;align-items:center;min-height:32px;list-style:none}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:"";width:7px;height:7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin-right:10px}
+details.more[open]>summary::before{transform:rotate(45deg)}
+.opts{border-left:2px solid var(--rule);padding:6px 0 4px 18px;margin:6px 0 0}
+fieldset{border:0;margin:0 0 12px;padding:0}
+legend{font-weight:600;color:var(--ink);padding:0;margin-bottom:4px}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:4px 0}
+.opt input{width:18px;height:18px;margin:3px 0 0;accent-color:var(--docket)}
+.opt span{color:var(--graphite)}
+.opt b{font-weight:600;color:var(--ink)}
+h2{font-size:21px;line-height:1.3;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+.examples{margin-top:40px}
+.examples p.sub{margin:0 0 12px;color:var(--graphite);font-size:15px}
+.starters{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+.starters a{display:block;padding:9px 0;color:var(--ink);text-decoration:none;border-top:1px solid var(--rule);line-height:1.35;min-height:24px}
+.starters a:hover{color:var(--docket);text-decoration:underline}
+details.all{margin-top:10px;font-size:15px}
+details.all>summary{cursor:pointer;color:var(--docket);min-height:32px;display:inline-flex;align-items:center}
+.groups{columns:2;column-gap:28px;margin-top:8px;color:var(--graphite)}
+.groups p{margin:0 0 6px;break-inside:avoid}
+/* margin column */
+.margin{padding-top:6px}
+.margin h2{font-size:15px;font-weight:600;color:var(--graphite);margin:0 0 10px;letter-spacing:0}
+.specimen{margin:0 0 36px}
+.spec-claim{font-size:16px;margin:0 0 10px}
+.spec-page{background:var(--sheet);border:1px solid var(--rule);padding:16px 18px 14px 44px;position:relative}
+.pnum{position:absolute;left:12px;top:17px;font:600 12px/1 var(--sans);color:var(--graphite)}
+.spec-page q{quotes:none;font:400 16px/1.6 var(--serif);display:block}
+mark{background:var(--mark);color:var(--mark-ink);box-shadow:inset 0 -2px 0 var(--mark-edge);padding:1px 2px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.spec-src{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:14px;color:var(--graphite)}
+.spec-cap{font-size:14px;color:var(--graphite);margin:10px 0 0}
+.cover p{margin:0 0 12px;font-size:16px}
+.cover .small{font-size:14px;color:var(--graphite)}
+.cite{display:inline-flex;align-items:center;gap:5px;min-height:26px;padding:0 7px;font:500 14px/1 var(--sans);color:var(--docket);background:var(--sheet);border:1px solid var(--field);border-radius:3px;white-space:nowrap;cursor:pointer;vertical-align:baseline}
+@media (max-width:1100px){.ask{grid-template-columns:minmax(0,1fr) minmax(0,300px);gap:48px}}
+@media (max-width:820px){
+  .wrap{padding:0 16px}
+  .top-in{gap:2px 12px}
+  .nav{order:3;width:100%;margin-left:-12px}
+  .top-aside{margin-left:auto;font-size:13px}
+  .top-aside .hide-s{display:none}
+  .ask{grid-template-columns:minmax(0,1fr);gap:40px;padding-top:24px}
+  h1{font-size:31px;max-width:none}
+  .lede{font-size:17px;margin-bottom:20px}
+  .qrow{flex-direction:column}
+  .btn-primary{width:100%}
+  .starters{grid-template-columns:1fr}
+  .groups{columns:1}
+  .examples{margin-top:32px}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the question box</a>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="ask.html">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="3.5" y="1.5" width="15" height="19" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5.5" y="8.6" width="11" height="4" fill="var(--mark)"/><path d="M7 5.5h8M7 10.6h8M7 15.5h8M7 18h5" stroke="currentColor" stroke-width="1.4"/></svg>
+      semigraph
+    </a>
+    <nav class="nav" aria-label="Main">
+      <ul>
+        <li><a href="ask.html" aria-current="page">Ask</a></li>
+        <li><a href="company.html">Companies</a></li>
+        <li><a href="workspace.html">Workspace</a></li>
+      </ul>
+    </nav>
+    <div class="top-aside">
+      <a href="#freshness" title="Filings through Sep 24, 2026. Checked 4 hours ago. 9 newer filings are being added."><span>Filings through Sep 24, 2026<span class="hide-s">, 9 newer being added</span></span></a>
+      <a href="#method">How it works</a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap ask">
+  <section aria-labelledby="h1">
+    <h1 id="h1">Ask about 13 chip and AI companies.</h1>
+    <p class="lede">Every answer quotes the SEC filing, reported number or government rule it came from. <span>Select a citation to read the source word for word.</span></p>
+
+    <form class="askform" action="answer.html" method="get">
+      <label class="qlabel" for="q">Your question</label>
+      <div class="qrow">
+        <textarea id="q" name="q" rows="2" aria-describedby="cost" placeholder="For example: What does Nvidia say about export rules for China?"></textarea>
+        <button class="btn btn-primary" type="submit">Ask</button>
+      </div>
+      <p class="cost" id="cost"><strong>Free, no account needed.</strong> Examples answer instantly. New questions are answered live: 5 every 10 minutes per address, with a daily cap.</p>
+
+      <details class="more">
+        <summary>More options</summary>
+        <div class="opts">
+          <fieldset>
+            <legend>How to search</legend>
+            <label class="opt"><input type="radio" name="depth" value="hybrid" checked><span><b>Standard (recommended).</b> Filings, reported figures, government rules and what changed between filings.</span></label>
+            <label class="opt"><input type="radio" name="depth" value="agent"><span><b>Deep research.</b> Plans extra lookups before answering. Slower.</span></label>
+            <label class="opt"><input type="radio" name="depth" value="vector"><span><b>Passage search only.</b> A simpler baseline for comparison. Cannot answer what-changed questions.</span></label>
+          </fieldset>
+          <p style="margin:0;color:var(--graphite)">Have your own documents? <a href="workspace.html">Ask about them in a Workspace</a>.</p>
+        </div>
+      </details>
+    </form>
+
+    <section class="examples" aria-labelledby="ex">
+      <h2 id="ex">Or start with an example</h2>
+      <p class="sub">Saved answers, shown instantly.</p>
+      <ul class="starters">
+        <li><a href="answer.html?ex=N2">What was Nvidia's total revenue for fiscal 2026?</a></li>
+        <li><a href="answer.html?ex=T7">Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?</a></li>
+        <li><a href="answer.html?ex=R1">Which export-control rules is AMD affected by?</a></li>
+        <li><a href="answer.html?ex=D1">Which companies does Nvidia depend on for chip manufacturing and assembly?</a></li>
+        <li><a href="answer.html?ex=K1">What supply-chain risks does TSMC disclose in its annual report?</a></li>
+        <li><a href="answer.html?ex=K3">Compare the competition risks disclosed by AMD and Nvidia.</a></li>
+      </ul>
+      <details class="all">
+        <summary>Show all 51 examples by topic</summary>
+        <div class="groups">
+          <p>Reported numbers (29)</p>
+          <p>Suppliers and customers (4)</p>
+          <p>Export-control rules (2)</p>
+          <p>What changed between filings (8)</p>
+          <p>Risks a company discloses (3)</p>
+          <p>Questions it should decline (2)</p>
+          <p>A rule, or what the company said? (3)</p>
+        </div>
+      </details>
+    </section>
+  </section>
+
+  <aside class="margin" aria-label="What an answer looks like, and what is covered">
+    <section class="specimen" aria-labelledby="spec">
+      <h2 id="spec">What an answer looks like</h2>
+      <p class="spec-claim">Nvidia's 2024 annual report listed a risk about its debt:</p>
+      <div class="spec-page">
+        <span class="pnum" aria-hidden="true">¶162</span>
+        <q><mark>Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations.</mark></q>
+        <p class="spec-src">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M5.5 8h5M5.5 10.5h5M5.5 13h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          <a href="answer.html?ex=T7">Nvidia 10-K for fiscal 2024, Risk factors, paragraph 162</a>
+        </p>
+      </div>
+      <p class="spec-cap">Yellow marks words copied exactly from the source. You can open every one.</p>
+    </section>
+
+    <section class="cover" aria-labelledby="cov">
+      <h2 id="cov">What it covers</h2>
+      <p>Nvidia, AMD, Intel, Broadcom, Qualcomm, Micron, Apple, Microsoft, Amazon, Alphabet, Meta, TSMC and ASML.</p>
+      <p>Their annual and quarterly reports to the SEC, the financial figures they report, and US export-control rules published in the Federal Register.</p>
+      <p class="small">Covers these 13 companies only. Not financial advice. <a href="#method">How answers are made</a></p>
+    </section>
+  </aside>
+</main>
+</body>
+</html>

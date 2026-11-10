@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Did Nvidia remove any risk factors? · semigraph</title>
+<style>
+/* ===== base tokens (shared by all four mockups) ===== */
+:root{
+  --paper:#F6F7F9; --surface:#FFFFFF; --ink:#17202A; --ink-2:#4F5A67;
+  --line:#D8DDE3; --line-2:#B9C1CA;
+  --green:#13654B; --green-fill:#E4F2EC; --green-line:#8FC2AC;
+  --gold:#7A4E00; --gold-fill:#FBF1D9; --gold-line:#B88A2E;
+  --mark:#FFE9A3; --focus:#1D4ED8;
+  --sans:"Source Sans 3","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Source Serif 4",Charter,"Iowan Old Style","Palatino Linotype",Cambria,Georgia,serif;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#121820; --surface:#1A212B; --ink:#E7ECF2; --ink-2:#A9B3BF;
+  --line:#2E3843; --line-2:#46525F;
+  --green:#74D3AB; --green-fill:#15302A; --green-line:#2F6B55;
+  --gold:#F0C463; --gold-fill:#2D2412; --gold-line:#9A7426;
+  --mark:#4D3F0E; --focus:#8AB4FF;
+}}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.5 var(--sans);font-variant-numeric:tabular-nums}
+a{color:var(--green);text-underline-offset:3px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* top bar */
+.top{background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:28px;min-height:60px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:19px;letter-spacing:-.01em;color:var(--ink);text-decoration:none}
+.brand svg{width:22px;height:22px}
+.nav{display:flex;gap:4px}
+.nav a{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border-radius:6px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:15px}
+.nav a:hover{color:var(--ink);background:var(--paper)}
+.nav a[aria-current="page"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--green);border-radius:0}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:14px}
+.fresh{display:flex;align-items:center;gap:8px;color:var(--ink-2);text-decoration:none}
+.fresh:hover{color:var(--ink)}
+.fresh b{color:var(--ink);font-weight:600}
+.fresh svg{width:16px;height:16px;color:var(--green)}
+.top-right .how{color:var(--ink-2);font-weight:600;text-decoration:none}
+.top-right .how:hover{color:var(--ink);text-decoration:underline}
+
+/* source stamps: the one memorable idea */
+.src{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:1px 8px 1px 6px;margin:0 1px;
+  font:600 14px/1.25 var(--sans);border:1px solid var(--green-line);border-radius:4px;background:var(--green-fill);color:var(--green);
+  vertical-align:baseline;text-align:left;text-decoration:none}
+.src svg{width:15px;height:15px;flex:none}
+.src .sub{font-weight:400;color:var(--ink)}
+.src:hover{border-color:var(--green)}
+.src--rule{border:3px double var(--gold-line);border-radius:0;background:var(--gold-fill);color:var(--gold);padding:0 8px 0 6px}
+.src--rule:hover{border-color:var(--gold)}
+.src[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--surface)}
+.src[aria-pressed="true"] .sub{color:var(--surface)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:8px;font-weight:700;font-size:16px;border:1px solid transparent;text-decoration:none}
+.btn-primary{background:var(--green);color:var(--surface)}
+@media (prefers-color-scheme:dark){.btn-primary{color:#0E1A15}}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-quiet{background:var(--surface);color:var(--ink);border-color:var(--line-2)}
+.btn-quiet:hover{border-color:var(--ink-2)}
+
+/* ===== page: answer ===== */
+.ans-grid{display:grid;grid-template-columns:minmax(0,1fr) 500px;gap:40px;padding-top:24px;padding-bottom:64px;align-items:start}
+.ask-mini{display:flex;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line-2);border-radius:10px;padding:6px 6px 6px 14px}
+.ask-mini:focus-within{border-color:var(--green);box-shadow:0 0 0 3px var(--green-fill)}
+.ask-mini label{flex:none;font-weight:700;font-size:14px;color:var(--ink-2)}
+.ask-mini input{flex:1;min-width:0;min-height:40px;border:0;background:transparent;font-size:16px}
+.ask-mini input:focus-visible{outline:none}
+.ask-mini .btn{min-height:40px;padding:0 18px}
+.opts{margin-top:6px;font-size:15px}
+.opts summary{display:inline-flex;align-items:center;gap:10px;min-height:32px;cursor:pointer;color:var(--ink-2);list-style:none;font-weight:600}
+.opts summary::-webkit-details-marker{display:none}
+.opts summary svg{width:14px;height:14px}
+.opts summary .state{font-weight:400}
+
+.status{display:flex;align-items:center;gap:8px;margin:26px 0 6px;font-size:14px;color:var(--ink-2);font-weight:600}
+.status svg{width:16px;height:16px;color:var(--green)}
+h1.question{font-size:28px;line-height:1.25;letter-spacing:-.015em;margin:0 0 18px;max-width:30em}
+.answer{max-width:44em;font-size:18px;line-height:1.65}
+.answer p{margin:0 0 14px}
+.answer blockquote{margin:0 0 16px;padding:4px 0 4px 18px;border-left:3px solid var(--line-2);font-family:var(--serif);font-size:18px;line-height:1.6}
+.answer .src{font-size:14px}
+
+.checks{margin:22px 0 0;max-width:44em;border-top:1px solid var(--line);padding-top:16px}
+.checks h2,.sources h2{font-size:16px;margin:0 0 10px}
+.checks ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.checks li{display:flex;gap:10px;font-size:15px;line-height:1.5}
+.checks li svg{flex:none;width:18px;height:18px;margin-top:2px;color:var(--ink-2)}
+.checks li b{font-weight:700}
+.checks .more{font-size:14px;margin-top:10px;display:inline-block}
+
+.sources{margin-top:24px;max-width:44em}
+.card{display:flex;gap:12px;align-items:flex-start;width:100%;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:6px;text-align:left;font-size:15px;line-height:1.45}
+.card svg{flex:none;width:18px;height:18px;margin-top:2px;color:var(--green)}
+.card .kind{display:block;font-weight:700;color:var(--green);font-size:14px}
+.card .meta{display:block;color:var(--ink-2);font-size:14px}
+.card .now{margin-left:auto;flex:none;font-size:13px;font-weight:700;color:var(--ink-2);border:1px solid var(--line-2);border-radius:999px;padding:1px 8px}
+
+.made{margin-top:20px;max-width:44em;border-top:1px solid var(--line);padding-top:6px}
+.made summary{min-height:40px;display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:var(--ink)}
+.made summary svg{width:14px;height:14px}
+.made ol{margin:4px 0 8px;padding-left:22px;font-size:15px;color:var(--ink-2)}
+.scope{margin:6px 0 0;font-size:14px;color:var(--ink-2);max-width:44em}
+
+/* evidence panel */
+.evidence{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto;background:var(--surface);border:1px solid var(--line-2);border-radius:10px}
+.ev-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px 12px 20px;background:var(--surface);border-bottom:1px solid var(--line)}
+.ev-head .kind{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:14px;color:var(--green)}
+.ev-head .kind svg{width:16px;height:16px}
+.ev-close{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;border:1px solid var(--line-2);border-radius:6px;background:none;font-size:14px;font-weight:600}
+.ev-close svg{width:14px;height:14px}
+.ev-body{padding:16px 20px 20px}
+.ev-body h2{font-size:21px;line-height:1.25;margin:0 0 12px;letter-spacing:-.01em}
+.ev-meta{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;margin:0 0 16px;font-size:14px}
+.ev-meta dt{color:var(--ink-2)}
+.ev-meta dd{margin:0}
+.ev-meta .old{display:inline-flex;align-items:center;gap:6px}
+.ev-meta .old svg{width:14px;height:14px;color:var(--ink-2)}
+.passage{font-family:var(--serif);font-size:16.5px;line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
+.passage p{margin:0 0 12px}
+.cited-label{display:inline-flex;align-items:center;gap:6px;font:700 13px/1 var(--sans);color:var(--ink);margin:0 0 6px}
+.cited-label svg{width:14px;height:14px}
+.passage mark{background:var(--green-fill);color:var(--ink);padding:1px 2px;box-shadow:inset 0 -2px 0 var(--green)}
+.ev-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.ev-actions .btn{min-height:40px;font-size:15px;padding:0 14px}
+.ev-actions svg{width:14px;height:14px}
+.tech{margin-top:12px;font-size:14px}
+.tech summary{min-height:32px;display:flex;align-items:center;cursor:pointer;color:var(--ink-2);font-weight:600}
+.tech dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:6px 0 0}
+.tech dt{color:var(--ink-2)}
+.tech dd{margin:0;overflow-wrap:anywhere}
+
+@media (max-width:1100px){.ans-grid{grid-template-columns:minmax(0,1fr) 420px;gap:28px}}
+@media (max-width:900px){
+  .ans-grid{grid-template-columns:1fr}
+  .evidence{position:static;max-height:none}
+}
+@media (max-width:720px){
+  .wrap{padding:0 16px}
+  .top .wrap{flex-wrap:wrap;gap:4px 12px;padding-top:8px;padding-bottom:4px}
+  .top-right{order:2;margin-left:auto;gap:12px}
+  .top-right .how{display:none}
+  .fresh .long{display:none}
+  .nav{order:3;width:100%;margin-left:-12px}
+  .tabs{flex-wrap:wrap;overflow:visible}
+  .ans-grid{padding-top:20px;padding-bottom:48px}
+  .ask-mini{flex-wrap:wrap;padding:10px}
+  .ask-mini label{width:100%}
+  .ask-mini input{flex:1 1 100%;border:1px solid var(--line);border-radius:6px;padding:0 10px}
+  .ask-mini .btn{width:100%}
+  h1.question{font-size:23px}
+  .answer{font-size:17px}
+  .card .now{display:none}
+  .ev-body{padding:14px 16px 18px}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="ask.html" aria-label="semigraph, start page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.7 2v20M15.3 2v20M2 8.7h20M2 15.3h20" stroke="currentColor" stroke-width="1" opacity=".5"/><rect x="9.4" y="9.4" width="5.2" height="5.2" fill="var(--green)"/></svg>
+      semigraph
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="ask.html" aria-current="page">Ask</a>
+      <a href="company.html">Companies</a>
+      <a href="workspace.html">Workspace</a>
+    </nav>
+    <div class="top-right">
+      <a class="fresh" href="#freshness">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.5V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Data as of <b>Sep 24, 2026</b><span class="long">, 9 newer filings being added</span></span>
+      </a>
+      <a class="how" href="#method">How it works</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap ans-grid">
+  <div>
+    <form class="ask-mini" action="answer.html" method="get">
+      <label for="q">Ask another question</label>
+      <input id="q" name="q" type="text" placeholder="Ask about any of the 13 companies">
+      <button class="btn btn-primary" type="submit">Ask</button>
+    </form>
+    <details class="opts">
+      <summary><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>More options <span class="state">Depth: Standard</span></summary>
+    </details>
+
+    <article aria-labelledby="qh">
+      <p class="status">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 1.5 3.5 9H8l-1 5.5L12.5 7H8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        Saved answer, shown instantly
+      </p>
+      <h1 class="question" id="qh">Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?</h1>
+
+      <div class="answer">
+        <p>Comparing Nvidia's 10-K filed 2024-02-21 (covering the fiscal year ended January 28, 2024) with the 10-K filed 2025-02-26 (covering the fiscal year ended January 26, 2025), the text check found at least 1 risk factor that no longer appears as a separate risk factor, meaning parts of its content may be covered inside other risk factors
+          <button class="src" type="button" aria-pressed="true" aria-controls="ev" aria-label="Source 1, filing passage: Nvidia 10-K for fiscal 2024, Item 1A risk factors, paragraph 162. Shown in the evidence panel.">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3"/></svg>Nvidia 10-K FY2024 <span class="sub">¶0162</span></button>.</p>
+        <blockquote>"Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations."
+          <button class="src" type="button" aria-pressed="false" aria-controls="ev" aria-label="Source 1, filing passage: Nvidia 10-K for fiscal 2024, Item 1A risk factors, paragraph 162. Open in the evidence panel.">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3"/></svg>Nvidia 10-K FY2024 <span class="sub">¶0162</span></button></blockquote>
+        <p>No "Not matched" list of older risk factors is shown for this filing pair, so none beyond the one listed above were flagged by the text comparison. Separately, no risk factor was found under "No matching risk factor found in the earlier filing," so this comparison does not identify any risk factor as newly added between these two filings.</p>
+      </div>
+
+      <section class="checks" aria-labelledby="ck-h">
+        <h2 id="ck-h">What was checked</h2>
+        <ul>
+          <li><svg viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 9h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span><b>No dollar amounts or percentages in this answer.</b> There was nothing to match against the financial data.</span></li>
+          <li><svg viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m5.6 9.2 2.3 2.3 4.6-4.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Every source shown was found for this question.</b> Open it to judge whether it supports the sentence.</span></li>
+          <li><svg viewBox="0 0 18 18" aria-hidden="true"><rect x="1.8" y="3" width="6" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="10.2" y="3" width="6" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4 7h2M4 9.5h2M12.4 7h2" stroke="currentColor" stroke-width="1.3"/></svg><span><b>Change found by comparing two filings automatically.</b> “No longer appears as a separate risk factor” does not mean Nvidia stopped disclosing the risk: its content may now sit inside another risk factor.</span></li>
+        </ul>
+        <a class="more" href="#method">How reliable are change claims?</a>
+      </section>
+
+      <section class="sources" aria-labelledby="src-h">
+        <h2 id="src-h">Sources (1)</h2>
+        <button class="card" type="button" aria-pressed="true" aria-controls="ev">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3"/></svg>
+          <span><span class="kind">Filing passage</span>Nvidia 10-K for fiscal 2024, Item 1A Risk factors, paragraph 0162<span class="meta">Filed Feb 21, 2024. Cited twice in this answer.</span></span>
+          <span class="now">Open in panel</span>
+        </button>
+      </section>
+
+      <details class="made">
+        <summary><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>How this answer was made</summary>
+        <ol>
+          <li>Found Nvidia's annual reports for fiscal 2024 and fiscal 2025.</li>
+          <li>Compared their risk factors with an automatic text check.</li>
+          <li>Wrote the answer from that comparison and linked the passage it quotes.</li>
+        </ol>
+      </details>
+      <p class="scope">Answered from data as of Sep 24, 2026. 9 newer filings are still being added. <a href="#freshness">See what is included</a></p>
+    </article>
+  </div>
+
+  <aside class="evidence" id="ev" aria-labelledby="ev-h">
+    <div class="ev-head">
+      <span class="kind"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3"/></svg>Filing passage, source 1 of 1</span>
+      <button class="ev-close" type="button"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="m3 3 8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Close</button>
+    </div>
+    <div class="ev-body">
+      <h2 id="ev-h">Nvidia 10-K for fiscal 2024</h2>
+      <dl class="ev-meta">
+        <dt>Section</dt><dd>Item 1A. Risk factors, paragraph 0162</dd>
+        <dt>Covers</dt><dd>Fiscal year ended Jan 28, 2024</dd>
+        <dt>Filed</dt><dd>Feb 21, 2024</dd>
+        <dt>Status</dt><dd><span class="old"><svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7 4v3.2l2 1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Older filing, replaced by the 10-K filed Feb 26, 2025</span></dd>
+      </dl>
+      <div class="passage">
+        <p class="cited-label"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2 3h10M2 7h10M2 11h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Cited text is highlighted</p>
+        <p><mark>Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations.</mark></p>
+        <p>As of January 28, 2024, we had net outstanding a total of $9.7 billion in notes due by 2060. As each series of senior notes matures, unless redeemed or repurchased, we must repay or refinance the notes. If we decide to refinance, we may receive less favorable terms, or we may be unable to refinance at all, which may adversely affect our financial condition. We also have a $575 million commercial paper program.</p>
+        <p>Maintenance of our current and future indebtedness and contractual restrictions could cause us to dedicate a substantial portion of our cash flows from operations towards debt service obligations and principal repayments; increase our vulnerability to adverse changes in general economic, industry and competitive conditions; limit our flexibility regarding changes in our business and our industry; impair our ability to obtain future financing; and restrict our ability to grant liens on property, enter into certain mergers, dispose of our assets, or materially change our business.</p>
+        <p>Our ability to comply with the covenants in our indenture may be affected by events beyond our control. If we breach any of the covenants without a waiver from the note holders or lenders, then any outstanding indebtedness may be declared immediately due and payable. Changes to our credit rating may negatively impact the value and liquidity of our securities, restrict our ability to obtain future financing and affect the terms of any such financing.</p>
+      </div>
+      <div class="ev-actions">
+        <a class="btn btn-quiet" href="#sec">Open the filing on sec.gov <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M5.5 2.5h6v6M11.5 2.5 5 9M9 11.5H2.5V5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <button class="btn btn-quiet" type="button">Ask about this filing</button>
+      </div>
+      <details class="tech">
+        <summary>Details for analysts</summary>
+        <dl>
+          <dt>Accession</dt><dd>0001045810-24-000029</dd>
+          <dt>Source id</dt><dd>0001045810-24-000029:I.1A:0162</dd>
+          <dt>Valid until</dt><dd>2025-02-26</dd>
+        </dl>
+      </details>
+    </div>
+  </aside>
+</main>
+</body>
+</html>

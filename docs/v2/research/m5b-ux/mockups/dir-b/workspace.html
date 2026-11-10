@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workspace · semigraph</title>
+<style>
+/* ===== base tokens (shared by all four mockups) ===== */
+:root{
+  --paper:#F6F7F9; --surface:#FFFFFF; --ink:#17202A; --ink-2:#4F5A67;
+  --line:#D8DDE3; --line-2:#B9C1CA;
+  --green:#13654B; --green-fill:#E4F2EC; --green-line:#8FC2AC;
+  --gold:#7A4E00; --gold-fill:#FBF1D9; --gold-line:#B88A2E;
+  --mark:#FFE9A3; --focus:#1D4ED8;
+  --sans:"Source Sans 3","Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --serif:"Source Serif 4",Charter,"Iowan Old Style","Palatino Linotype",Cambria,Georgia,serif;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#121820; --surface:#1A212B; --ink:#E7ECF2; --ink-2:#A9B3BF;
+  --line:#2E3843; --line-2:#46525F;
+  --green:#74D3AB; --green-fill:#15302A; --green-line:#2F6B55;
+  --gold:#F0C463; --gold-fill:#2D2412; --gold-line:#9A7426;
+  --mark:#4D3F0E; --focus:#8AB4FF;
+}}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.5 var(--sans);font-variant-numeric:tabular-nums}
+a{color:var(--green);text-underline-offset:3px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:3px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* top bar */
+.top{background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;align-items:center;gap:28px;min-height:60px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:19px;letter-spacing:-.01em;color:var(--ink);text-decoration:none}
+.brand svg{width:22px;height:22px}
+.nav{display:flex;gap:4px}
+.nav a{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border-radius:6px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:15px}
+.nav a:hover{color:var(--ink);background:var(--paper)}
+.nav a[aria-current="page"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--green);border-radius:0}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:14px}
+.fresh{display:flex;align-items:center;gap:8px;color:var(--ink-2);text-decoration:none}
+.fresh:hover{color:var(--ink)}
+.fresh b{color:var(--ink);font-weight:600}
+.fresh svg{width:16px;height:16px;color:var(--green)}
+.top-right .how{color:var(--ink-2);font-weight:600;text-decoration:none}
+.top-right .how:hover{color:var(--ink);text-decoration:underline}
+
+/* source stamps: the one memorable idea */
+.src{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:1px 8px 1px 6px;margin:0 1px;
+  font:600 14px/1.25 var(--sans);border:1px solid var(--green-line);border-radius:4px;background:var(--green-fill);color:var(--green);
+  vertical-align:baseline;text-align:left;text-decoration:none}
+.src svg{width:15px;height:15px;flex:none}
+.src .sub{font-weight:400;color:var(--ink)}
+.src:hover{border-color:var(--green)}
+.src--rule{border:3px double var(--gold-line);border-radius:0;background:var(--gold-fill);color:var(--gold);padding:0 8px 0 6px}
+.src--rule:hover{border-color:var(--gold)}
+.src[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--surface)}
+.src[aria-pressed="true"] .sub{color:var(--surface)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:8px;font-weight:700;font-size:16px;border:1px solid transparent;text-decoration:none}
+.btn-primary{background:var(--green);color:var(--surface)}
+@media (prefers-color-scheme:dark){.btn-primary{color:#0E1A15}}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-quiet{background:var(--surface);color:var(--ink);border-color:var(--line-2)}
+.btn-quiet:hover{border-color:var(--ink-2)}
+
+/* ===== page: workspace ===== */
+.ws{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:64px;padding-top:40px;padding-bottom:64px;align-items:start}
+.ws h1{font-size:40px;line-height:1.1;letter-spacing:-.02em;margin:0 0 12px}
+.lead{font-size:19px;line-height:1.55;margin:0 0 24px;max-width:32em}
+.priv{background:var(--surface);border:1px solid var(--line-2);border-radius:10px;padding:16px 20px 18px}
+.priv h2{display:flex;align-items:center;gap:8px;font-size:18px;margin:0 0 10px}
+.priv h2 svg{width:20px;height:20px;color:var(--green)}
+.priv ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.priv li{display:flex;gap:10px;font-size:16px;line-height:1.5}
+.priv li svg{flex:none;width:16px;height:16px;margin-top:4px;color:var(--ink-2)}
+.steps-h{font-size:18px;margin:28px 0 10px}
+.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:12px}
+.steps li{counter-increment:s;display:grid;grid-template-columns:32px 1fr;gap:12px;font-size:16px;line-height:1.5}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--green);color:var(--green);font-weight:700;font-size:15px}
+.steps b{display:block;color:var(--ink)}
+.steps span{color:var(--ink-2)}
+.start{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;margin-top:24px}
+.restore{margin-top:18px;font-size:15px}
+.restore summary{display:inline-flex;align-items:center;gap:8px;min-height:32px;cursor:pointer;font-weight:600;color:var(--ink-2)}
+.restore summary svg{width:14px;height:14px}
+.restore-body{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-top:10px}
+.field label{display:block;font-weight:600;font-size:14px;margin-bottom:4px}
+.field input{width:100%;min-height:40px;padding:0 10px;border:1px solid var(--line-2);border-radius:6px;background:var(--surface)}
+
+/* sketch of an open workspace */
+figure.sketch{margin:0}
+figure.sketch figcaption{font-size:15px;color:var(--ink-2);margin:0 0 10px}
+figure.sketch figcaption b{color:var(--ink)}
+.frame{border:1px solid var(--line-2);border-radius:10px;background:var(--surface);overflow:hidden;font-size:14px}
+.f-top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700}
+.f-top span{font-weight:400;color:var(--ink-2);font-size:13px}
+.f-body{display:grid;grid-template-columns:200px 1fr;min-height:330px}
+.docs{border-right:1px solid var(--line);padding:12px;background:var(--paper)}
+.docs .h{font-weight:700;margin-bottom:8px}
+.doc{display:flex;gap:8px;align-items:flex-start;padding:8px;border-radius:6px;margin-bottom:6px;background:var(--surface);border:1px solid var(--line)}
+.doc .ck{flex:none;width:14px;height:14px;margin-top:2px;border-radius:3px;background:var(--green);display:grid;place-items:center}
+.doc .ck svg{width:10px;height:10px;color:var(--surface)}
+.doc small{display:block;color:var(--ink-2)}
+.up{display:flex;align-items:center;gap:6px;margin-top:10px;padding:8px;border:1.5px dashed var(--line-2);border-radius:6px;color:var(--ink-2);font-weight:600;justify-content:center}
+.chat{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.scope-line{display:flex;align-items:center;gap:6px;color:var(--ink-2)}
+.scope-line b{color:var(--ink)}
+.f-ask{border:1px solid var(--line-2);border-radius:8px;padding:9px 12px;color:var(--ink-2)}
+.f-opts{display:flex;flex-wrap:wrap;gap:6px}
+.f-opts span{border:1px solid var(--line-2);border-radius:999px;padding:2px 10px;color:var(--ink)}
+.f-ans{border-top:1px solid var(--line);padding-top:12px}
+.f-ans .q{font-weight:700;margin-bottom:8px}
+.bar{height:9px;border-radius:5px;background:var(--line);margin:0 0 8px}
+.mine{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid var(--line-2);border-radius:4px;background:var(--paper);font-weight:600;font-size:13px}
+.mine svg{width:13px;height:13px}
+.diff{margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-family:var(--serif);font-size:13.5px;line-height:1.5}
+.diff div{padding:8px;border:1px solid var(--line);border-radius:4px}
+.diff .lab{display:block;font:700 12px/1.3 var(--sans);color:var(--ink-2);margin-bottom:4px}
+.diff del{text-decoration:line-through;color:var(--ink-2)}
+.diff ins{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:2px;color:var(--ink)}
+.note{margin:10px 0 0;font-size:14px;color:var(--ink-2)}
+
+@media (max-width:1060px){.ws{grid-template-columns:1fr;gap:40px}}
+@media (max-width:720px){
+  .wrap{padding:0 16px}
+  .top .wrap{flex-wrap:wrap;gap:4px 12px;padding-top:8px;padding-bottom:4px}
+  .top-right{order:2;margin-left:auto;gap:12px}
+  .top-right .how{display:none}
+  .fresh .long{display:none}
+  .nav{order:3;width:100%;margin-left:-12px}
+  .tabs{flex-wrap:wrap;overflow:visible}
+  .ws{padding-top:24px}
+  .ws h1{font-size:32px}
+  .lead{font-size:17px}
+  .start .btn{width:100%}
+  .restore-body{grid-template-columns:1fr}
+  .f-body{grid-template-columns:1fr}
+  .docs{border-right:0;border-bottom:1px solid var(--line)}
+  .diff{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="ask.html" aria-label="semigraph, start page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.7 2v20M15.3 2v20M2 8.7h20M2 15.3h20" stroke="currentColor" stroke-width="1" opacity=".5"/><rect x="9.4" y="9.4" width="5.2" height="5.2" fill="var(--green)"/></svg>
+      semigraph
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="ask.html">Ask</a>
+      <a href="company.html">Companies</a>
+      <a href="workspace.html" aria-current="page">Workspace</a>
+    </nav>
+    <div class="top-right">
+      <a class="fresh" href="#freshness">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.5V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Data as of <b>Sep 24, 2026</b><span class="long">, 9 newer filings being added</span></span>
+      </a>
+      <a class="how" href="#method">How it works</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap ws">
+  <section aria-labelledby="ws-h">
+    <h1 id="ws-h">Ask about your own documents</h1>
+    <p class="lead">Upload reports, memos or contracts and ask questions about them. Answers cite your files the same way they cite SEC filings, and you can compare two versions of a document.</p>
+
+    <div class="priv">
+      <h2><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="9" width="12" height="8.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6.8 9V6.5a3.2 3.2 0 0 1 6.4 0V9" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>Private, and deleted after 24 hours</h2>
+      <ul>
+        <li><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="currentColor"/></svg><span>Only someone with the workspace ID and key can open it. Your documents are never shown to anyone else.</span></li>
+        <li><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="currentColor"/></svg><span>Your documents are deleted automatically after 24 hours.</span></li>
+        <li><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="currentColor"/></svg><span>You get a workspace ID and a key. Save them: they are the only way back in.</span></li>
+      </ul>
+    </div>
+
+    <h2 class="steps-h">How to start</h2>
+    <ol class="steps">
+      <li><span><b>Create a workspace.</b>No account needed.</span></li>
+      <li><span><b>Upload your documents.</b>PDF, Word, Markdown, text or HTML files.</span></li>
+      <li><span><b>Ask a question.</b>Under More options you can compare two versions of a document or ask as of a date.</span></li>
+    </ol>
+
+    <div class="start">
+      <button class="btn btn-primary" type="button">Create a workspace</button>
+    </div>
+
+    <details class="restore">
+      <summary><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Open a workspace you already have</summary>
+      <form class="restore-body">
+        <div class="field"><label for="wid">Workspace ID</label><input id="wid" autocomplete="off"></div>
+        <div class="field"><label for="wkey">Key</label><input id="wkey" type="password" autocomplete="off"></div>
+        <button class="btn btn-quiet" type="submit" style="min-height:40px">Open workspace</button>
+      </form>
+    </details>
+  </section>
+
+  <figure class="sketch">
+    <figcaption><b>What an open workspace looks like.</b> Your documents on the left, questions and answers on the right.</figcaption>
+    <div class="frame" aria-hidden="true">
+      <div class="f-top">Your workspace <span>Deleted automatically after 24 hours</span></div>
+      <div class="f-body">
+        <div class="docs">
+          <div class="h">Documents (2)</div>
+          <div class="doc"><span class="ck"><svg viewBox="0 0 10 10"><path d="m2 5.2 2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span><span>Q2 board memo.pdf<small>First version</small></span></div>
+          <div class="doc"><span class="ck"><svg viewBox="0 0 10 10"><path d="m2 5.2 2 2 4-4.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span><span>Q2 board memo.pdf<small>New version</small></span></div>
+          <div class="up"><svg viewBox="0 0 14 14" width="14" height="14"><path d="M7 11V3M3.5 6.5 7 3l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Upload</div>
+        </div>
+        <div class="chat">
+          <div class="scope-line">Answering from <b>2 of 2 documents</b></div>
+          <div class="f-ask">Ask about your documents</div>
+          <div class="f-opts"><span>Compare versions</span><span>As of a date</span></div>
+          <div class="f-ans">
+            <div class="q">What changed between the two versions?</div>
+            <div class="bar" style="width:92%"></div><div class="bar" style="width:78%"></div>
+            <span class="mine"><svg viewBox="0 0 16 16"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="8" cy="10" r="1.6" fill="currentColor"/></svg>Your file: Q2 board memo.pdf, new version</span>
+            <div class="diff">
+              <div><span class="lab">First version</span>Wording that is <del>dropped</del> is struck through.</div>
+              <div><span class="lab">New version</span>Wording that is <ins>new</ins> is underlined.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="note">Your own files get a plain grey source stamp, so they are never confused with a company filing or a government rule.</p>
+  </figure>
+</main>
+</body>
+</html>
