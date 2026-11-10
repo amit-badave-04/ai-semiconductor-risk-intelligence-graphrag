@@ -26,17 +26,21 @@ function name(value: unknown): string {
   return typeof value === "string" ? value.trim().slice(0, MAX_NAME_CHARS) : "";
 }
 
+function accessionYear(id: string): string {
+  const match = ACCESSION_YEAR.exec(id);
+  return match === null ? "" : saneYear(2000 + Number(match[1]));
+}
+
 function chunkView(id: string, evidence: unknown): StampView {
   const paragraph = paragraphNumber(id.slice(id.lastIndexOf(":") + 1));
   if (evidence !== null && typeof evidence === "object") {
     const ev = evidence as Record<string, unknown>;
     const match = typeof ev.filing_date === "string" ? ISO_YEAR.exec(ev.filing_date) : null;
-    const year = match === null ? "" : saneYear(Number(match[1]));
-    return { kind: "chunk", loaded: true, filer: name(ev.filer), form: name(ev.form), year, paragraph };
+    const dated = match === null ? "" : saneYear(Number(match[1]));
+    // R2 review C3: a payload with no usable date keeps the year the accession number gives, as before it loaded
+    return { kind: "chunk", loaded: true, filer: name(ev.filer), form: name(ev.form), year: dated === "" ? accessionYear(id) : dated, paragraph };
   }
-  const match = ACCESSION_YEAR.exec(id);
-  const year = match === null ? "" : saneYear(2000 + Number(match[1]));
-  return { kind: "chunk", loaded: false, filer: "", form: "", year, paragraph };
+  return { kind: "chunk", loaded: false, filer: "", form: "", year: accessionYear(id), paragraph };
 }
 
 /** What the chip of `id` names; `evidence` is the chunk's /api/evidence payload once the drawer has loaded it. */

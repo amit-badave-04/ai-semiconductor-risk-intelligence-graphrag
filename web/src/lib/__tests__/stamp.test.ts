@@ -20,14 +20,16 @@ describe("stampView and the chip label (RD11)", () => {
     const evidence = { filer: "Nvidia", form: "10-K", filing_date: "2024-02-21" };
     expect(label(CHUNK, evidence)).toBe("Nvidia 10-K, filed 2024 \u00b7 paragraph 162");
     expect(label(CHUNK, { form: "10-K", filing_date: "2024-02-21" })).toBe("10-K, filed 2024 \u00b7 paragraph 162");
-    expect(label(CHUNK, { filer: "Nvidia", form: "10-K" })).toBe("Nvidia 10-K \u00b7 paragraph 162");
+    // R2 review C3: a payload with no usable filing date keeps the year the accession number gives
+    expect(label(CHUNK, { filer: "Nvidia", form: "10-K" })).toBe("Nvidia 10-K, filed 2024 \u00b7 paragraph 162");
   });
 
   it("never prints a fake year: an id that only passes the loose chunk grammar, or a year out of range, shows the paragraph only", () => {
     expect(label("1234567890-1:I.1A:0007")).toBe("Paragraph 7");
     expect(label("0000000000-99-000001:I.1A:0001")).toBe("Paragraph 1"); // 2099 is not a filing year
     expect(label("00000000001-24-000001:I.1A:0001")).toBe("Paragraph 1"); // eleven digits: not accession-shaped
-    expect(label(CHUNK, { filing_date: "not a date" })).toBe("Paragraph 162");
+    expect(label(CHUNK, { filing_date: "not a date" })).toBe("Filed 2024 \u00b7 paragraph 162");
+    expect(label("1234567890-1:I.1A:0007", { filing_date: "not a date" })).toBe("Paragraph 7");
     // a prefix outside 10..30 characters is a token to the tokenizer but no id to classifyId: the chip shows the bare id
     // (the pinned difference of tests/test_export_ids.py)
     expect(label("12-34:I.1A:0007")).toBe("12-34:I.1A:0007");
