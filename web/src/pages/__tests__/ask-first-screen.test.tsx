@@ -217,16 +217,18 @@ describe("review fixes", () => {
     await waitFor(() => expect(env.posts()).toHaveLength(1));
   });
 
-  it("an empty Ask marks the box invalid, and a second empty Ask changes the status text so it is announced again", async () => {
+  it("an empty Ask marks the box invalid, and a second empty Ask puts the note into the status region anew", async () => {
     const env = mountAsk();
     await env.user.click(askButton());
     expect(box()).toHaveAttribute("aria-invalid", "true");
-    const first = screen.getByRole("status").textContent ?? "";
-    expect(first.trim()).toBe("Type a question first, or pick an example below.");
+    const status = screen.getByRole("status");
+    const first = status.firstElementChild;
+    expect(status).toHaveTextContent("Type a question first, or pick an example below.");
     await env.user.click(askButton());
-    const second = screen.getByRole("status").textContent ?? "";
-    expect(second.trim()).toBe(first.trim());
-    expect(second).not.toBe(first); // an invisible difference, so the live region has a change to announce
+    const second = status.firstElementChild;
+    expect(status).toHaveTextContent("Type a question first, or pick an example below.");
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first); // a new node in the live region: an addition screen readers announce again
   });
 
   it("with a workspace open, the starters say why they are off", async () => {
@@ -247,5 +249,15 @@ describe("review fixes", () => {
     mountAsk({ examplesStatus: 503 });
     expect(await screen.findByText("The examples could not be loaded right now. You can still ask your own question.")).toBeInTheDocument();
     expect(screen.queryByText(/No saved example answers/)).toBeNull();
+  });
+});
+
+describe("RD6: what an answer looks like", () => {
+  it("comes after the question form and before the starters, so a phone shows it below the box", async () => {
+    mountAsk({ examples: STARTER_PAYLOAD });
+    const sample = screen.getByRole("region", { name: "What an answer looks like" });
+    const starters = await screen.findByRole("region", { name: "Or try an example" });
+    expect(askButton().compareDocumentPosition(sample) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sample.compareDocumentPosition(starters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

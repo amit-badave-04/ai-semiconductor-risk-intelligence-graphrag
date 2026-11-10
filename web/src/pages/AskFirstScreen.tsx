@@ -197,7 +197,7 @@ export function Starters({ off, onPick }: Omit<PickProps, "reasonId">) {
   const groups = split?.groups ?? RESERVED;
   const byCompany = split?.byCompany ?? [];
   return (
-    <section aria-labelledby={headingId} className="mt-6">
+    <section aria-labelledby={headingId}>
       <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
         <h2 id={headingId} className="m-0 text-xl font-semibold">
           {s.heading}
@@ -251,7 +251,7 @@ export function CompaniesCovered() {
   const c = deck.companies;
   const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className="lg:border-l lg:border-border lg:pl-8">
+    <section aria-labelledby={headingId} className="lg:pt-1">
       <h2 id={headingId} className="m-0 text-lg font-semibold">
         {c.heading}
       </h2>

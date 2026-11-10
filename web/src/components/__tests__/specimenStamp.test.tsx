@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetSpecimenCache } from "@/lib/specimenCache";
@@ -86,7 +86,7 @@ describe("SpecimenStamp", () => {
     await waitFor(() => expect(dialog).toHaveTextContent("Nvidia 10-K")); // the example has loaded, as a reader would see it
     await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true)); // Base UI has moved focus in (it does so late)
     stamp.focus();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await act(async () => {}); // let any focus handling settle, deterministically
     expect(stamp).toHaveAttribute("aria-expanded", "true");
     expect(dialog.contains(document.activeElement)).toBe(false);
     const seen: boolean[] = [];
@@ -98,11 +98,41 @@ describe("SpecimenStamp", () => {
     expect(seen).not.toContain(false); // the evidence drawer's listener never sees it unhandled
   });
 
-  it("says plainly when the example cannot be loaded", async () => {
+  it("says plainly when the example cannot be loaded, and the dialog keeps its name while loading and after a failure", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
     const user = userEvent.setup();
     render(<SpecimenStamp kind="number" />);
     await user.click(screen.getByRole("button", { name: "reported number" }));
+    expect(screen.getByRole("dialog", { name: "Example: reported number" })).toBeInTheDocument();
     expect(await screen.findByText("The example could not be loaded right now.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Example: reported number" })).toBeInTheDocument();
+  });
+
+  it("opened again after a failure, it tries again and never shows the old failure first", async () => {
+    let fail = true;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const id = decodeURIComponent(String(url).replace("/api/evidence/", ""));
+        if (fail) return new Response("{}", { status: 503 });
+        await gate; // the second attempt is still loading while the popover shows
+        return new Response(JSON.stringify(recorded.payloads[id]), { status: 200 });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<SpecimenStamp kind="number" />);
+    const stamp = screen.getByRole("button", { name: "reported number" });
+    await user.click(stamp);
+    await screen.findByText("The example could not be loaded right now.");
+    await user.keyboard("{Escape}");
+    fail = false;
+    await user.click(stamp);
+    await screen.findByRole("dialog");
+    expect(screen.queryByText("The example could not be loaded right now.")).toBeNull();
+    expect(screen.getByText("Loading the example…")).toBeInTheDocument();
+    release();
+    expect(await screen.findByText("$215.9B")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { AnswerSample } from "@/components/AnswerSample";
 import { AnswerMeta } from "@/components/Badges";
 import { AnswerText } from "@/components/Chips";
 import { PageHeading } from "@/components/Layout";
@@ -89,17 +90,19 @@ interface AnswerProps {
   ask: AskContextValue;
   stats: Stats | null;
   line: StatusLine;
+  /** a new value puts the line into the live region as a new node, so a repeated message is announced again */
+  announceKey: number;
   renderFailed: boolean;
   onRenderError: () => void;
 }
 
 /** The status line, the steps, the answer text and the footer of the answer; a failure of the page while rendering them is caught. */
-function AnswerArea({ ask, stats, line, renderFailed, onRenderError }: AnswerProps) {
+function AnswerArea({ ask, stats, line, announceKey, renderFailed, onRenderError }: AnswerProps) {
   const stale = ask.done !== null && !ask.done.cached ? (ask.done.workspace?.stale_citations ?? []) : [];
   return (
     <>
       <output id="status" aria-live="polite" className={`mt-3 block min-h-5 text-sm ${line.isError ? "text-destructive" : "text-muted-foreground"}`}>
-        {line.text}
+        <span key={announceKey}>{line.text}</span>
       </output>
       <Steps steps={agentEnabled(stats) ? ask.steps : []} />
       <div id="answer" className={ANSWER_CLASSES}>
@@ -139,7 +142,7 @@ export function Ask() {
   const submit = useCallback(() => {
     if (streaming) return; // the answer in progress keeps its status line
     if (question.trim() === "") {
-      // RD8: nothing is sent; each empty Ask counts, so a repeated one still changes the status text (see `line`)
+      // RD8: nothing is sent; each empty Ask counts, and the count keys the status text so a repeat is announced again
       setEmptyCount((n) => n + 1);
       return;
     }
@@ -156,9 +159,8 @@ export function Ask() {
   };
 
   const renderFailed = renderFailedAt === ask.seq && ask.seq > 0;
-  // a repeated empty Ask alternates an invisible trailing no-break space, so the polite status region announces it again
   const line: StatusLine = emptyShown
-    ? { text: `${deck.ask.emptyQuestion}${emptyCount % 2 === 0 ? "\u00a0" : ""}`, isError: true }
+    ? { text: deck.ask.emptyQuestion, isError: true }
     : renderFailed && ask.statusText === null
       ? { text: PAGE_FAILED_STATUS, isError: true }
       : statusLine(ask);
@@ -166,7 +168,9 @@ export function Ask() {
   return (
     <>
       <PageHeading title={deck.ask.heading(FILERS.length)} documentTitle={deck.nav.ask} display />
-      <div className="grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      {/* Two columns from lg: the question form beside RD6's sample, then the starters beside the companies (RD9). One column on a
+          phone, in the same order: form, sample, starters, companies. */}
+      <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0">
           <Grounding />
           {/* not a named region: its name would be "Your question" too, the same as the box (one name, one control) */}
@@ -189,8 +193,13 @@ export function Ask() {
                 ) : null
               }
             />
-            <AnswerArea ask={ask} stats={stats} line={line} renderFailed={renderFailed} onRenderError={() => setRenderFailedAt(ask.seq)} />
+            <AnswerArea ask={ask} stats={stats} line={line} announceKey={emptyCount} renderFailed={renderFailed} onRenderError={() => setRenderFailedAt(ask.seq)} />
           </section>
+        </div>
+        <div className="lg:pt-14">
+          <AnswerSample />
+        </div>
+        <div className="min-w-0">
           <Starters off={workspaceOpen ? "workspace" : streaming ? "busy" : null} onPick={pick} />
         </div>
         <CompaniesCovered />

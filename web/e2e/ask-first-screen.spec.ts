@@ -161,3 +161,17 @@ test("with the evidence drawer open, one Escape closes the specimen popover and 
   await page.keyboard.press("Escape"); // the next one is the drawer's
   await expect(drawer).toBeHidden();
 });
+
+// RD6: on a wide screen the sample sits beside the question box; on a phone it follows it.
+test("what an answer looks like sits beside the box at 1440 px and below it at 390 px", async ({ page }) => {
+  const sample = page.getByRole("region", { name: "What an answer looks like" });
+  const box = page.getByRole("textbox", { name: "Your question" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${PREVIEW}/v2/`);
+  const [s, b] = [await sample.boundingBox(), await box.boundingBox()];
+  expect(s && b && s.x >= b.x + b.width).toBe(true);
+  expect(s && b && s.y < b.y + b.height).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const [s2, b2] = [await sample.boundingBox(), await box.boundingBox()];
+  expect(s2 && b2 && s2.y >= b2.y + b2.height).toBe(true);
+});

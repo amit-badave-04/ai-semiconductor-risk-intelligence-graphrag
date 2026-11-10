@@ -64,6 +64,18 @@ export const deck = {
     emptyQuestion: "Type a question first, or pick an example below.",
   },
 
+  sample: {
+    /** RD6: a static sample answer. `quote` and `quoteAfter` are copied from Nvidia's FY2024 10-K, Item 1A, paragraph 162 (the
+     *  recorded fixture; components/__tests__/answerSample.test.tsx checks they are there word for word). */
+    heading: "What an answer looks like",
+    answer: "Nvidia had $9.7 billion of notes outstanding as of January 28, 2024.",
+    stamp: "Nvidia 10-K, paragraph 162",
+    quote: "As of January 28, 2024, we had net outstanding a total of $9.7 billion in notes due by 2060.",
+    quoteAfter: " As each series of senior notes matures, unless redeemed or repurchased, we must repay or refinance the notes.",
+    source: "Nvidia 10-K filed Feb 21, 2024 \u00b7 Item 1A. Risk Factors \u00b7 paragraph 162",
+    legend: "Highlighted: the words copied exactly from the source",
+  },
+
   specimen: {
     /** RD4: the example a specimen stamp opens (lib/specimens.ts). */
     passageHeading: (filer: string, form: string, section: string): string => `${filer} ${form}, ${section}`,
@@ -82,6 +94,7 @@ export const deck = {
     loading: "Loading the example\u2026",
     failed: "The example could not be loaded right now.",
     close: "Close",
+    dialogName: (stamp: string): string => `Example: ${stamp}`,
   },
 
   options: {

@@ -89,7 +89,7 @@ export function EvidenceDrawerProvider({ children }: { children: ReactNode }) {
           aria-label={EVIDENCE_CLOSE_LABEL}
           title={EVIDENCE_CLOSE_TITLE}
           onClick={() => close()}
-          className="float-right cursor-pointer border-0 bg-transparent text-xl text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="float-right cursor-pointer border-0 bg-transparent text-xl text-muted-foreground"
         >
           {"\u00d7"}
         </button>

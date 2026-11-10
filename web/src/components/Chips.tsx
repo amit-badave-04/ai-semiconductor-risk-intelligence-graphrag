@@ -32,7 +32,7 @@ export function Chip({ id, place, gen, nth, stale = false }: ChipProps) {
       data-chip-key={chipKey(place, gen, id, nth)}
       data-stale={stale ? "" : undefined}
       title={title}
-      className={`cite mx-0.5 inline cursor-pointer rounded-sm border bg-muted px-1 font-mono text-[0.85em] focus-visible:ring-2 focus-visible:ring-ring ${stale ? "stale border-amber-600 text-amber-700" : "border-border text-primary"}`}
+      className={`cite mx-0.5 inline cursor-pointer rounded-sm border bg-muted px-1 font-mono text-[0.85em] ${stale ? "stale border-amber-600 text-amber-700" : "border-border text-primary"}`}
       onClick={(event) => drawer.open(id, event.currentTarget, place)}
     >
       {chipLabel(id, evidence)}

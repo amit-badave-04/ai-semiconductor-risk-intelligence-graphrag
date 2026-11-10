@@ -41,7 +41,7 @@ function DocumentRow({ doc, pinned, asOf, setAsOf, onShowChanges }: RowProps) {
             type="button"
             aria-label={`${name}: v${v.version}`}
             onClick={() => onShowChanges(doc, v.version)}
-            className="rounded-md border border-border px-2 py-0.5 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-md border border-border px-2 py-0.5 hover:bg-muted"
           >
             {`v${v.version}`}
           </button>

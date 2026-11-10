@@ -4,7 +4,7 @@
 // the evidence drawer (which ignores a handled Escape) stays open, wherever focus is. Every value is rendered as a text node.
 import { Popover } from "@base-ui/react/popover";
 import { ChartNoAxesColumn, FileText, Landmark, type LucideIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { deck } from "@/copy/deck";
 import { SAFE_REL } from "@/lib/safeUrl";
 import { specimenEvidence } from "@/lib/specimenCache";
@@ -18,22 +18,23 @@ const STAMPS: Record<SpecimenKind, { icon: LucideIcon; tone: string }> = {
 
 type Loaded = { kind: "loading" } | { kind: "ready"; view: SpecimenView } | { kind: "failed" };
 
-/** The example, fetched the first time the popover opens. */
-function useSpecimen(kind: SpecimenKind, open: boolean): Loaded {
-  const [loaded, setLoaded] = useState<Loaded>({ kind: "loading" });
+/** The example of the current opening: each opening starts from "loading" (a failure is never shown again while a retry runs);
+ *  a success comes from the page's cache at once. */
+function useSpecimen(kind: SpecimenKind, opening: number): Loaded {
+  const [result, setResult] = useState<{ opening: number; loaded: Loaded }>({ opening: 0, loaded: { kind: "loading" } });
   useEffect(() => {
-    if (!open) return;
+    if (opening === 0) return;
     let current = true;
     void specimenEvidence(SPECIMENS[kind]).then((outcome) => {
       if (!current) return;
       const view = outcome.ok ? specimenView(kind, outcome.payload) : null;
-      setLoaded(view === null ? { kind: "failed" } : { kind: "ready", view });
+      setResult({ opening, loaded: view === null ? { kind: "failed" } : { kind: "ready", view } });
     });
     return () => {
       current = false;
     };
-  }, [kind, open]);
-  return loaded;
+  }, [kind, opening]);
+  return result.opening === opening ? result.loaded : { kind: "loading" };
 }
 
 /** SR9: while open, Escape anywhere closes this popover first and is marked handled for every later listener. */
@@ -41,7 +42,7 @@ function useEscapeFirst(open: boolean, close: () => void) {
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       event.preventDefault();
       close();
     };
@@ -75,9 +76,9 @@ function Example({ loaded }: { loaded: Loaded }) {
       )}
       {view.quote !== undefined && (
         <blockquote className="m-0 mt-2 border-l-4 border-mark-edge pl-3 font-serif text-base leading-relaxed">
-          {"“"}
+          {"\u201c"}
           {view.quote}
-          {"”"}
+          {"\u201d"}
         </blockquote>
       )}
       {view.note !== undefined && <p className="m-0 mt-2 text-muted-foreground">{view.note}</p>}
@@ -92,11 +93,17 @@ function Example({ loaded }: { loaded: Loaded }) {
 
 export function SpecimenStamp({ kind }: { kind: SpecimenKind }) {
   const [open, setOpen] = useState(false);
-  const loaded = useSpecimen(kind, open);
-  useEscapeFirst(open, () => setOpen(false));
+  const [opening, setOpening] = useState(0);
+  const loaded = useSpecimen(kind, opening);
+  const close = useCallback(() => setOpen(false), []);
+  useEscapeFirst(open, close);
+  const onOpenChange = (next: boolean) => {
+    if (next) setOpening((n) => n + 1);
+    setOpen(next);
+  };
   const { icon: Icon, tone } = STAMPS[kind];
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Trigger
         className={`inline-flex min-h-[24px] cursor-pointer items-center gap-1 rounded-md border px-1.5 align-baseline font-semibold whitespace-nowrap hover:underline ${tone}`}
       >
@@ -105,7 +112,8 @@ export function SpecimenStamp({ kind }: { kind: SpecimenKind }) {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner sideOffset={8} collisionPadding={16} className="z-20">
-          <Popover.Popup className="w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-border-strong bg-card p-4 text-sm text-card-foreground shadow-lg">
+          {/* named in every state (loading, failed, ready); once ready the example's title names it */}
+          <Popover.Popup aria-label={deck.specimen.dialogName(deck.ask.stamp[kind])} className="w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-border-strong bg-card p-4 text-sm text-card-foreground shadow-lg">
             <Example loaded={loaded} />
             <div className="mt-3 text-right">
               <Popover.Close className="inline-flex min-h-11 items-center rounded-md px-3 font-semibold hover:bg-muted">

@@ -51,7 +51,7 @@ function DropZone({ onFiles }: DropZoneProps) {
           setDragging(false);
           onFiles(event.dataTransfer.files);
         }}
-        className="mt-3 w-full rounded-md border-2 border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring data-[dragging]:bg-muted"
+        className="mt-3 w-full rounded-md border-2 border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground hover:bg-muted data-[dragging]:bg-muted"
       >
         {DROP_TEXT}
       </button>
