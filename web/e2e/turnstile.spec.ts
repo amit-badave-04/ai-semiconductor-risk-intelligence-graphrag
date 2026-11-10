@@ -27,7 +27,7 @@ test("a route change does not render, remove or reset the widget, and a token is
   await page.goto(`${SITE_KEY}/v2/`);
   await expect(page.locator("[data-widget]")).toHaveCount(1);
   const before = await stub(page);
-  await page.getByRole("link", { name: "Method & Evidence" }).click();
+  await page.getByRole("link", { name: "How it works" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Method & Evidence" })).toBeFocused();
   expect(await stub(page)).toEqual(before);
   await expect(page.locator("[data-widget]")).toHaveCount(1);

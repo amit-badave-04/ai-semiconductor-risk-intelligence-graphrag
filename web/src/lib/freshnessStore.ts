@@ -1,6 +1,6 @@
 // R26: GET /api/freshness for the shell header, as the legacy header reads it (index.html:639), once per page load. The Freshness
 // page asks through `loadFreshness` too, so a deep link to it joins the header's request instead of making a second one. A
-// failed request is worded by the legacy words for it ("freshness check unavailable"), which the header takes from freshnessLine.
+// failed request is worded by the header's lib/shellFreshness.ts (docs/specs/m5b-redesign.md RD3: "Data status unavailable").
 import { useSyncExternalStore } from "react";
 import { type Freshness, type FreshnessResult, fetchFreshness } from "@/pages/Freshness.lib";
 

@@ -21,6 +21,16 @@ export const deck = {
     howItWorks: "How it works",
   },
 
+  freshness: {
+    /** RD3: the header's freshness line (lib/shellFreshness.ts), a link to the Freshness page. */
+    dataAsOf: (date: string): string => `Data as of ${date}`,
+    dateUnknown: "Data date unknown",
+    newer: (count: number): string => (count === 1 ? "1 newer filing being added" : `${count} newer filings being added`),
+    checkFailedAfterDate: "the check for newer filings failed",
+    checkFailed: "The check for newer filings failed",
+    unavailable: "Data status unavailable",
+  },
+
   ask: {
     /** RD4: the h1, with the count of covered companies. */
     heading: (companies: number): string => `Ask about ${companies} chip and AI companies.`,

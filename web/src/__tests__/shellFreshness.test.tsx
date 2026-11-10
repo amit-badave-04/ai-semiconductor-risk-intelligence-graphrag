@@ -7,8 +7,9 @@ import { resetFreshnessStore } from "@/lib/freshnessStore";
 import { resetStatsStore } from "@/lib/statsStore";
 import { AppRoutes } from "@/routes";
 
-// R26 (owner 2026-11-08: yes): the shell header carries the freshness line the way the legacy header does: it reads
-// GET /api/freshness (index.html:639) once per page load and words it with freshnessLine (pages/Freshness.lib.ts). The
+// R26 (owner 2026-11-08: yes), reworded by docs/specs/m5b-redesign.md RD3: the shell header carries the freshness line as a
+// link to the Freshness page. It reads GET /api/freshness once per page load and words it with shellFreshness
+// (lib/shellFreshness.ts: "Data as of Sep 30, 2026, 2 newer filings being added", or the plain failed and unavailable forms). The
 // fixtures have the shape of the real payloads: monitor.py status_payload (:400-413) and the disabled payload of
 // monitor_routes.py (:30-32). Production /api/stats.freshness has no snapshot_as_of, which is why the header does not read it.
 
@@ -74,46 +75,53 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe("the freshness line of the shell header (R26)", () => {
-  it("words a healthy production payload as the legacy header does, with the data date", async () => {
+describe("the freshness line of the shell header (R26, RD3)", () => {
+  it("names the data date and the newer filings being added, in the one date style", async () => {
     stubFetch(HEALTHY);
     mount();
-    await waitFor(() =>
-      expect(screen.getByRole("banner")).toHaveTextContent("Data as of 2026-09-30 \u00b7 checked just now \u00b7 2 filings pending"),
-    );
-    expect(screen.getByRole("banner")).not.toHaveTextContent("Data freshness unknown");
+    await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("Data as of Sep 30, 2026, 2 newer filings being added"));
+    expect(screen.getByRole("banner")).not.toHaveTextContent("2026-09-30");
   });
 
-  it("says 'freshness check unavailable' for the disabled payload", async () => {
+  it("says the data status is unavailable for the disabled payload", async () => {
     stubFetch(DISABLED);
     mount();
-    await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("freshness check unavailable"));
+    await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("Data status unavailable"));
   });
 
-  it("says the check failed for an error status", async () => {
+  it("says in plain words that the check failed for an error status, keeping the data date", async () => {
     stubFetch({ ...HEALTHY, status: "error", last_error_at: new Date().toISOString() });
     mount();
-    await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("freshness check failed just now"));
+    await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("Data as of Sep 30, 2026; the check for newer filings failed"));
   });
 
-  it("says 'freshness check unavailable' (the legacy words) when /api/freshness fails or answers an error status", async () => {
+  it("says the data status is unavailable when /api/freshness fails or answers an error status", async () => {
     stubFetch(null);
     mount();
-    await waitFor(() => expect(document.getElementById("shell-freshness")).toHaveTextContent("freshness check unavailable"));
+    await waitFor(() => expect(screen.getByRole("link", { name: "Data status unavailable" })).toBeInTheDocument());
     cleanup();
     resetFreshnessStore();
     stubFetch({ detail: "Too many requests" }, 429);
     mount();
-    await waitFor(() => expect(document.getElementById("shell-freshness")).toHaveTextContent("freshness check unavailable"));
+    await waitFor(() => expect(screen.getByRole("link", { name: "Data status unavailable" })).toBeInTheDocument());
   });
 
-  it("is plain text: no live region and no link, so it is never announced on its own", async () => {
+  it("is a link to the Freshness page inside the main navigation, and never a live region", async () => {
     stubFetch(HEALTHY);
     mount();
-    const banner = screen.getByRole("banner");
-    await waitFor(() => expect(banner).toHaveTextContent("Data as of"));
-    expect(banner.querySelector("[aria-live], [role=status], output")).toBeNull();
-    expect(document.getElementById("shell-freshness")?.querySelector("*")).toBeNull();
+    const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    const link = await nav.findByRole("link", { name: /^Data as of Sep 30, 2026/ });
+    expect(link).toHaveAttribute("href", "/freshness/");
+    expect(screen.getByRole("banner").querySelector("[aria-live], [role=status], output")).toBeNull();
+  });
+
+  it("has no link and no text before /api/freshness answers, and keeps its height reserved", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    mount();
+    const slot = document.getElementById("shell-freshness");
+    expect(slot).not.toBeNull();
+    expect(slot).toHaveTextContent("");
+    expect(slot?.querySelector("a")).toBeNull();
   });
 
   it("asks /api/freshness once for a page load, across StrictMode and every route change, and never /api/stats for it", async () => {
@@ -122,35 +130,19 @@ describe("the freshness line of the shell header (R26)", () => {
     mount("/method/", true);
     await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("Data as of"));
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
-    await user.click(nav.getByRole("link", { name: "Company" }));
+    await user.click(nav.getByRole("link", { name: "Companies" }));
     await user.click(nav.getByRole("link", { name: "Ask" }));
     await user.click(nav.getByRole("link", { name: "Workspace" }));
     await act(async () => {});
     expect(calls(fn, "/api/freshness")).toBe(1);
   });
 
-  it("on the Freshness page the shell and the page share the one request, and the line is not repeated in the main area", async () => {
+  it("on the Freshness page the shell and the page share the one request", async () => {
     const fn = stubFetch(HEALTHY);
     mount("/freshness/", true);
-    await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("Data as of 2026-09-30"));
+    await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("Data as of Sep 30, 2026"));
     await waitFor(() => expect(within(screen.getByRole("main")).getByRole("list", { name: "Freshness fields" })).toBeInTheDocument());
     expect(calls(fn, "/api/freshness")).toBe(1);
-    expect(screen.getAllByText(/Data as of 2026-09-30 \u00b7 checked/)).toHaveLength(2); // banner + the page's own line, once each
-  });
-
-  it("keeps the header on the clock of its own load", async () => {
-    const MIN = 60000;
-    const t0 = Date.now();
-    const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
-    try {
-      stubFetch({ ...HEALTHY, checked_at: new Date(t0 - 5 * MIN).toISOString() });
-      mount("/method/");
-      await waitFor(() => expect(screen.getByRole("banner")).toHaveTextContent("checked 5 min ago"));
-      clock.mockReturnValue(t0 + 60 * MIN);
-      await act(async () => {});
-      expect(screen.getByRole("banner")).toHaveTextContent("checked 5 min ago");
-    } finally {
-      clock.mockRestore();
-    }
+    expect(within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", { name: /^Data as of/ })).toHaveAttribute("aria-current", "page");
   });
 });

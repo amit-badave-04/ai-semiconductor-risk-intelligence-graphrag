@@ -128,8 +128,8 @@ test("a multi-file drop with a route change in the middle: one POST per file, on
   });
   await dropZone(page).dispatchEvent("drop", { dataTransfer });
   await expect.poll(() => seen.documentPosts.length).toBeGreaterThanOrEqual(1);
-  await page.getByRole("link", { name: "Freshness" }).click(); // the route changes while the first job runs
-  await expect(page.getByRole("heading", { level: 1, name: "Freshness" })).toBeFocused();
+  await page.getByRole("link", { name: "How it works" }).click(); // the route changes while the first job runs
+  await expect(page.getByRole("heading", { level: 1, name: "Method & Evidence" })).toBeFocused();
   await page.getByRole("link", { name: "Workspace" }).click();
   const rows = page.locator("[data-job-row]");
   await expect(rows).toHaveCount(2);

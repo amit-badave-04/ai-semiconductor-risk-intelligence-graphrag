@@ -84,7 +84,7 @@ test("a route change closes the drawer without taking focus back: the new page's
   await answered(page);
   await chips(page).first().click();
   await expect(page.getByRole("complementary", { name: "Evidence" })).toBeVisible();
-  await page.getByRole("link", { name: "Method & Evidence" }).click();
+  await page.getByRole("link", { name: "How it works" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Method & Evidence" })).toBeFocused();
   await expect(drawer(page)).toHaveAttribute("inert", "");
 });

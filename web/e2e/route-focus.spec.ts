@@ -20,8 +20,8 @@ test("a route change moves focus to the new h1 and the title follows", async ({ 
   await page.goto(`${PREVIEW}/v2/`);
   await expect(page.getByRole("heading", { level: 1, name: "Ask" })).not.toBeFocused();
   const nav = page.getByRole("navigation", { name: "Main" });
-  for (const { path, heading } of PAGES.slice(1)) {
-    await nav.getByRole("link", { name: heading.startsWith("Nvidia") ? "Company" : heading }).click();
+  for (const { path, heading, nav: name } of PAGES.slice(1)) {
+    await nav.getByRole("link", { name }).click();
     await expect(page).toHaveURL(`${PREVIEW}/v2/${path}`);
     await expect(page.getByRole("heading", { level: 1, name: heading })).toBeFocused();
     await expect(page).toHaveTitle(`${heading} · semigraph`);

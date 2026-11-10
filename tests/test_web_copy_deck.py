@@ -49,7 +49,6 @@ NOT_YET_IN_THE_DECK = {
     "components/Chips.tsx": 1,
     "components/evidenceFetch.ts": 1,
     "components/Layout.tsx": 1,
-    "components/Nav.tsx": 1,
     "lib/changes.ts": 3,
     "lib/citations.ts": 2,
     "lib/company.ts": 1,
@@ -163,6 +162,8 @@ def location_problems(files: dict[str, list[str]]) -> list[str]:
         elif len(fragments) != allowed:
             problems.append(f"{rel}: {len(fragments)} sentence(s), the list says {allowed} (move new copy to the deck; "
                             "lower the count when copy moves out)")
+    problems += [f"{rel}: holds no copy now; remove it from NOT_YET_IN_THE_DECK" for rel in NOT_YET_IN_THE_DECK
+                 if rel in files and not files[rel]]
     return problems
 
 

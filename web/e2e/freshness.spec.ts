@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { PAGES, PREVIEW } from "./servers.ts";
+import { NAV_FRESHNESS, PAGES, PREVIEW } from "./servers.ts";
 import { problems, watch } from "./support.ts";
 
 // R26 / I2 gate "C1 pages pass axe": the Freshness page over the fixture server, whose /api/freshness is the real "disabled"
@@ -20,7 +20,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.goto(`${PREVIEW}/v2/freshness/`);
       await expect(page.getByRole("heading", { level: 1, name: "Freshness" })).toBeVisible();
       await expect(page.getByRole("main").getByText("freshness check unavailable")).toBeVisible();
-      await expect(page.getByRole("banner")).toContainText("freshness check unavailable"); // the shell line (R26)
+      await expect(page.getByRole("banner")).toContainText(NAV_FRESHNESS); // the shell line (R26, worded by RD3)
       await expect(page.getByRole("list", { name: "Freshness fields" })).toContainText("disabled");
       expect(responses).toEqual(["200"]);
       const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
@@ -42,15 +42,15 @@ for (const { path } of PAGES) {
       if (new URL(r.url()).pathname === "/api/freshness") freshnessRequests.push(r.url());
     });
     await page.goto(`${PREVIEW}/v2/${path}`);
-    await expect(page.getByRole("banner")).toContainText("freshness check unavailable");
+    await expect(page.getByRole("banner")).toContainText(NAV_FRESHNESS);
     await page.waitForLoadState("networkidle");
     expect(freshnessRequests).toHaveLength(1);
     expect(await problems(w)).toEqual([]);
   });
 }
 
-// The real shape of a healthy production payload (monitor.py status_payload): the header says the data date, as the legacy one.
-test("R26 shell line: a healthy production payload reads 'Data as of <date>' in the banner", async ({ page }) => {
+// The real shape of a healthy production payload (monitor.py status_payload): the header link names the data date (RD3).
+test("R26 shell line (RD3): a healthy production payload reads 'Data as of <date>' in the header link", async ({ page }) => {
   const w = await watch(page, PREVIEW);
   await page.route("**/api/freshness", (route) =>
     route.fulfill({
@@ -71,7 +71,8 @@ test("R26 shell line: a healthy production payload reads 'Data as of <date>' in 
     }),
   );
   await page.goto(`${PREVIEW}/v2/method/`);
-  await expect(page.getByRole("banner")).toContainText("Data as of 2026-09-30 \u00b7 checked just now \u00b7 0 filings pending");
-  await expect(page.getByRole("banner")).not.toContainText("Data freshness unknown");
+  // RD3: one date style, and no count when nothing newer is waiting
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data as of Sep 30, 2026", exact: true })).toBeVisible();
+  await expect(page.getByRole("banner")).not.toContainText("Data date unknown");
   expect(await problems(w)).toEqual([]);
 });

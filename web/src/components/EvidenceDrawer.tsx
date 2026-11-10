@@ -79,7 +79,9 @@ export function EvidenceDrawerProvider({ children }: { children: ReactNode }) {
         ref={aside}
         aria-label={EVIDENCE_LABEL}
         {...(openId !== null ? {} : { inert: true, "aria-hidden": true, hidden: true })}
-        className="fixed top-0 right-0 z-10 h-full w-[min(560px,100%)] overflow-auto border-l border-border bg-card p-5 shadow-lg"
+        // Until R2 (docs/specs/m5b-redesign.md RD16, a sticky column): on wide screens it starts below the one-row header (lg:h-14
+        // in Layout.tsx), so the header links stay usable while evidence is open.
+        className="fixed top-0 right-0 z-10 h-full w-[min(560px,100%)] overflow-auto border-l border-border bg-card p-5 shadow-lg lg:top-14 lg:h-[calc(100%-3.5rem)]"
       >
         <button
           ref={closeButton}

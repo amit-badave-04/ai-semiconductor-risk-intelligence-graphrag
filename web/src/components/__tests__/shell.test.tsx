@@ -59,10 +59,10 @@ describe("Layout and the drawer on a route change", () => {
     const drawer = spyDrawer();
     const user = userEvent.setup();
     mountWith(drawer);
-    await user.click(screen.getByRole("link", { name: "Freshness" }));
+    await user.click(screen.getByRole("link", { name: "How it works" }));
     expect(drawer.close).toHaveBeenCalledTimes(1);
     expect(drawer.close).toHaveBeenCalledWith({ restoreFocus: false });
-    expect(screen.getByRole("heading", { level: 1, name: "Freshness" })).toHaveFocus();
+    expect(screen.getByRole("heading", { level: 1, name: "Method & Evidence" })).toHaveFocus();
   });
 
   it("does not close the drawer when the same path is rendered again", async () => {
@@ -106,7 +106,7 @@ describe("App: the providers and the shell widgets", () => {
     render(<App />);
     await waitFor(() => expect(fake.live.size).toBe(1));
     const before = { renders: fake.renders, removes: fake.removes, resets: fake.resets };
-    await user.click(screen.getByRole("link", { name: "Freshness" }));
+    await user.click(screen.getByRole("link", { name: "How it works" }));
     await act(async () => {});
     expect({ renders: fake.renders, removes: fake.removes, resets: fake.resets }).toEqual(before);
     expect(fake.live.size).toBe(1);

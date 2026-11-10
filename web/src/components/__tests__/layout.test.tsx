@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AppRoutes } from "../../routes";
 
 function at(url: string, basename = "") {
@@ -30,26 +30,36 @@ describe("the app shell landmarks (A7)", () => {
     expect(screen.getByRole("main")).toHaveAttribute("id", "main");
   });
 
-  it("lists the five pages, under the basename, and marks the current one", () => {
+  it("lists the pages under the basename (RD3: Ask, Companies, Workspace, the freshness line, How it works) and marks the current one", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 }))); // the freshness line: "Data status unavailable"
     at("/workspace/", "/v2");
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    await nav.findByRole("link", { name: "Data status unavailable" });
     const links = nav.getAllByRole("link");
     // React Router joins the basename and "/" without a trailing slash; the server answers /v2 with a redirect to /v2/ (R9e).
     expect(links.map((l) => [l.textContent, l.getAttribute("href")])).toEqual([
       ["Ask", "/v2"],
-      ["Company", "/v2/company/NVDA/"],
+      ["Companies", "/v2/company/NVDA/"],
       ["Workspace", "/v2/workspace/"],
-      ["Freshness", "/v2/freshness/"],
-      ["Method & Evidence", "/v2/method/"],
+      ["Data status unavailable", "/v2/freshness/"],
+      ["How it works", "/v2/method/"],
     ]);
     expect(links.filter((l) => l.getAttribute("aria-current") === "page").map((l) => l.textContent)).toEqual(["Workspace"]);
+    vi.unstubAllGlobals();
   });
 
-  it("marks Company current for any company page", () => {
+  it("marks Companies current for any company page", () => {
     at("/company/AMD/");
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
-    expect(nav.getByRole("link", { name: "Company" })).toHaveAttribute("aria-current", "page");
+    expect(nav.getByRole("link", { name: "Companies" })).toHaveAttribute("aria-current", "page");
     expect(nav.getByRole("link", { name: "Ask" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("links the brand to the Ask page, outside the main navigation", () => {
+    at("/method/");
+    const brand = screen.getByRole("link", { name: "semigraph" });
+    expect(brand).toHaveAttribute("href", "/");
+    expect(within(screen.getByRole("navigation", { name: "Main" })).queryByRole("link", { name: "semigraph" })).toBeNull();
   });
 });
 
@@ -62,11 +72,11 @@ describe("focus on a route change (A7)", () => {
   it("moves focus to the new page's h1 when a nav link is followed", async () => {
     const user = userEvent.setup();
     at("/");
-    await user.click(screen.getByRole("link", { name: "Freshness" }));
-    const heading = screen.getByRole("heading", { level: 1, name: "Freshness" });
+    await user.click(screen.getByRole("link", { name: "How it works" }));
+    const heading = screen.getByRole("heading", { level: 1, name: "Method & Evidence" });
     expect(heading).toHaveFocus();
     expect(heading).toHaveAttribute("tabindex", "-1");
-    expect(document.title).toBe("Freshness · semigraph");
+    expect(document.title).toBe("Method & Evidence · semigraph");
   });
 
   it("keeps the focus where the user put it when nothing navigated", async () => {

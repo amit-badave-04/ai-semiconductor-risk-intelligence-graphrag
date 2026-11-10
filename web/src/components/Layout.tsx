@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-import { Outlet, useLocation } from "react-router";
-import { loadShellFreshness, useShellFreshness } from "@/lib/freshnessStore";
-import { freshnessLine } from "@/pages/Freshness.lib";
+import { Link, Outlet, useLocation } from "react-router";
+import { loadShellFreshness } from "@/lib/freshnessStore";
 import { Nav } from "./Nav";
 import { TurnstileWidget } from "./TurnstileWidget";
 import { useEvidenceDrawer } from "./useEvidenceDrawer";
@@ -18,15 +17,6 @@ export function PageHeading({ title }: { title: string }) {
       {title}
     </h1>
   );
-}
-
-/** R26: the freshness line of the header, read from GET /api/freshness and worded by freshnessLine exactly as the legacy header
- *  words it (index.html:507-520, :639). The height is reserved so the line's arrival moves nothing; a failed request reads as
- *  the legacy page words it ("freshness check unavailable"); before an answer there is no text. Plain text, no live region. */
-function ShellFreshness() {
-  const { freshness, failed, at: now } = useShellFreshness(); // the clock of the arrival: the words never mix an old clock with new data
-  const text = freshness === null && !failed ? "" : freshnessLine(freshness, now); // no payload: the legacy "freshness check unavailable"
-  return <p id="shell-freshness" className="m-0 min-h-5 basis-full text-sm text-muted-foreground">{text}</p>;
 }
 
 /**
@@ -56,12 +46,11 @@ export function Layout() {
         Skip to content
       </a>
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3">
-          <p className="m-0 text-lg font-semibold tracking-tight">
-            <span className="text-primary">semigraph</span>
-          </p>
+        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center gap-x-8 px-5 lg:h-14 lg:flex-nowrap">
+          <Link to="/" className="inline-flex min-h-11 items-center text-xl font-bold tracking-tight text-foreground">
+            {SITE_NAME}
+          </Link>
           <Nav />
-          <ShellFreshness />
         </div>
       </header>
       <main id="main" ref={main} className="mx-auto max-w-[1100px] px-5 pt-6 pb-16">

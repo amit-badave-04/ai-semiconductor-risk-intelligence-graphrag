@@ -136,7 +136,7 @@ test.describe("on the preview server", () => {
     await page.getByRole("combobox", { name: "Retrieval strategy" }).selectOption("vector");
     await ask(page, QUESTIONS.live);
     await expect(askButton(page)).toBeDisabled();
-    await page.getByRole("link", { name: "Method & Evidence" }).click();
+    await page.getByRole("link", { name: "How it works" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Method & Evidence" })).toBeFocused();
     release();
     await page.getByRole("link", { name: "Ask", exact: true }).click();

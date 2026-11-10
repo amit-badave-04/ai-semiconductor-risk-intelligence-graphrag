@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { FLIPPED, PAGES, PREVIEW } from "./servers.ts";
+import { FLIPPED, NAV_FRESHNESS, PAGES, PREVIEW } from "./servers.ts";
 import { problems, watch } from "./support.ts";
 
 // R12 / P5 / P6: ONE dist, served by the real ui_v2 router over fakes. Every deep link answers, with zero console errors, zero
@@ -50,10 +50,10 @@ test.describe("preview server (UI_V2_PREVIEW): the app at /v2/", () => {
 
   test("following the navigation stays in the app and keeps the /v2 prefix", async ({ page }) => {
     const { w } = await open(page, PREVIEW, "/v2/");
-    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Freshness" }).click();
+    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: NAV_FRESHNESS }).click();
     await expect(page).toHaveURL(`${PREVIEW}/v2/freshness/`);
     await expect(page.getByRole("heading", { level: 1, name: "Freshness" })).toBeFocused();
-    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Company" }).click();
+    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Companies" }).click();
     await expect(page).toHaveURL(`${PREVIEW}/v2/company/NVDA/`);
     expect(await problems(w)).toEqual([]);
   });
