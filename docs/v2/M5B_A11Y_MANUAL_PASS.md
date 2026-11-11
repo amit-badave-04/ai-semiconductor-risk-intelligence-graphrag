@@ -77,7 +77,7 @@ runs NVDA's browse mode reads):**
   list of companies the check could not look up ("TSMASML", now "TSM, ASML").
 - N4: "More options Depth: Standard" (one inline span); "Freshness: Data as of ..." (a no-break space after the hidden prefix),
   and the link has no tooltip, so the date line is read once.
-- N5: a chip's hover text is "Open the source"; the raw id is no longer read (the panel still shows the id).
+- N5: a chip's hover text is "Open the source"; the raw id is no longer in the tooltip (not re-heard; the panel still shows the id).
 
 ## Re-run on the redesign (release v21, 2026-11-11)
 
