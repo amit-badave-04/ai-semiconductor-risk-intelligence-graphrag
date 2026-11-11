@@ -51,7 +51,7 @@
   descent-override: 42.66%;
   line-gap-override: 0%;
 }
-/* The same fallback for semibold and bold text, so a first visit that misses the Semibold and Bold files (not preloaded)
+/* The same fallback for semibold and bold text, so a first visit that misses the Bold file (not preloaded) or a slow Semibold
    draws real bold Arial, not a synthesized one. */
 @font-face {
   font-family: "Source Sans 3 Fallback";

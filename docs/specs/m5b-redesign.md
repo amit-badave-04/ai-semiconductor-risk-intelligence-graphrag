@@ -48,8 +48,8 @@ Numbered RD (redesign). Section 7 maps each to its test.
   GitHub releases (about 405 KB for the four), vendored under `web/src/assets/fonts/` with each repository's licence text
   (the `LICENSE.md` at the same tag, saved as `OFL-SourceSans3.txt` and `OFL-SourceSerif4.txt`) and a README giving source
   URL, version and sha256 of every file. No npm font package, no subsetting (the OFL reserves the name for unmodified files),
-  no `data:` font. `font-display: optional`; only `SourceSans3-Regular` is preloaded (`<link rel="preload" as="font"
-  type="font/woff2" crossorigin>`); a size-adjusted fallback `@font-face` with `src: local(...)` keeps the fallback's
+  no `data:` font. `font-display: optional`; `SourceSans3-Regular` and `SourceSans3-Semibold` are preloaded (owner 2026-11-11, so headings draw in
+  Source Sans 3 on a slow first visit too; `<link rel="preload" as="font" type="font/woff2" crossorigin>`); a size-adjusted fallback `@font-face` with `src: local(...)` keeps the fallback's
   metrics close. Serif is used only for words copied from a source; everything semigraph writes, and every number, is sans.
 - RD3 Header: brand; Ask, Companies, Workspace; the freshness line as a link to Freshness, reading "Data as of <date>,
   <n> newer filings being added" (or the unavailable and failed forms in plain words); "How it works" to Method. All links
@@ -230,7 +230,7 @@ General:
 | Req | Test file | Assertion |
 |---|---|---|
 | RD1 | `format.test.ts`, `a11y.spec.ts` | tokens present both schemes; contrast via axe; rule hue distinct from mark |
-| RD2 | `test_dist_contract.py`, `test_web_licenses.py` | font rules of SR1; sha256 table; preload of Regular only |
+| RD2 | `test_dist_contract.py`, `test_web_licenses.py` | font rules of SR1; sha256 table; preload of Regular and Semibold only |
 | RD3 | `shell.test.tsx`, `shellFreshness.test.tsx`, `route-focus.spec.ts` | nav names, freshness sentence forms, UTC date |
 | RD4 | `ask-page.test.tsx`, `ask-first-screen.spec.ts` | order of h1, sentence, box, cost line; on screen at 1440x900 and 390x844 |
 | RD4a | `ask-page.test.tsx`, `test_web_copy_deck.py` | stats-driven numbers; defaults until loaded; approved sentence |
@@ -359,7 +359,7 @@ fields (three tests, not four); SR4 completed with the hybrid, depth-reset and w
 SR1 allows `local()` fallbacks and requires `crossorigin`; vendored-assets licence table (SR5) and D-R9; RD4a reads
 `/api/stats` with defaults and D-R5 names the daily cap; "In short" measured and deferred (D-R1), so R21 stays unchanged;
 RD14 covers the three answer sources; D1 and X4 never starters; owner decisions added (D-R4 batch, D-R5 to D-R9);
-traceability table; SR10 hash handling; fonts pinned by version, type and file, preload of Regular only, CLS at most 0.02;
+traceability table; SR10 hash handling; fonts pinned by version, type and file, preload of Regular and Semibold only, CLS at most 0.02;
 SR9 tests focus inside and outside the popover; RD19 20-F wording; the rule hue is not yellow; acceptance item 6 lists the
 real-person tasks; RD6 pinned to a fixture; RD26 states that passages go to the model provider and the deletion window.
 

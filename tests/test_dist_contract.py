@@ -362,12 +362,14 @@ FONT_PRELOAD = re.compile(r"<link\b[^>]*\brel=[\"']?preload[\"']?[^>]*\bas=[\"']
 HREF = re.compile(r"\bhref=[\"']?([^\"'\s>]+)", re.I)
 
 
-def test_the_built_page_preloads_only_the_regular_sans_face(real_dist):
-    # docs/specs/m5b-redesign.md RD2: only SourceSans3-Regular is preloaded; the other faces load when first used.
+def test_the_built_page_preloads_the_regular_and_semibold_sans_faces_only(real_dist):
+    # docs/specs/m5b-redesign.md RD2 (owner 2026-11-11): SourceSans3-Regular and SourceSans3-Semibold are preloaded, so headings
+    # draw in Source Sans 3 on a slow first visit too; Bold and the serif face load when first used.
     html = (real_dist / "index.html").read_text(encoding="utf-8")
     hrefs = [HREF.search(tag).group(1) for tag in FONT_PRELOAD.findall(html)]
-    assert len(hrefs) == 1, hrefs
+    assert len(hrefs) == 2, hrefs
     assert re.fullmatch(r"/v2/assets/SourceSans3-Regular\.ttf-[A-Za-z0-9_-]+\.woff2", hrefs[0]), hrefs
+    assert re.fullmatch(r"/v2/assets/SourceSans3-Semibold\.ttf-[A-Za-z0-9_-]+\.woff2", hrefs[1]), hrefs
 
 
 def test_the_built_css_declares_the_four_faces_with_font_display_optional(real_dist):
