@@ -2,6 +2,56 @@
 
 Status: **PARTIAL. A11 is NOT met by this record.** INTERNAL document: it states limits plainly.
 
+## Re-run on the redesign (release v21, 2026-11-11)
+
+Status: **A11 still PARTIAL.** Decision D-R7 (owner: as recommended, option a) asks for the agent's NVDA pass AND about ten
+minutes of a person listening to the Ask and Company pages. The agent's part is below; the listening is the owner's.
+
+**What NVDA said (NVDA 2026.3, Chrome, Windows 11, live `https://semigraph.fly.dev/v2/`).** NVDA ran with its log on; only
+the "Speaking" lines were kept and the raw log, which also records keystrokes, was deleted at once. On page load NVDA read:
+"Ask · semigraph", "banner landmark", "link semigraph", "Main navigation landmark", "list with 3 items", "link current page
+Ask", "link Companies", "link Workspace", "link Freshness:Data as of Sep 24, 2026, 9 newer filings being added", "link How it
+works", "main landmark", "heading level 1 Ask about 13 chip and AI companies.". That matches Ask-1, the landmark part of Ask-3,
+and X-5. After that NVDA said nothing for the scripted steps: keys and focus changes sent by the browser automation are not
+operating-system input, so NVDA does not hear them. The rows below are therefore keyboard and focus results, not speech.
+
+**What went wrong first, stated plainly.** The first attempt searched for navigation links with Tab and pressed Enter even when
+the search failed. Twice that Enter landed inside the Cloudflare bot-check widget: once on its "Privacy" link (Cloudflare's privacy
+page opened) and once while its "Verify you are human" check box had focus. No question was sent, nothing used a bot-check
+result, and that run is not counted. The second run focused each target directly, sent a key only when the target had focus,
+stopped any Tab walk at an iframe, and brought the test window to the front before each step; it touched nothing of the widget.
+NVDA also announced "alert Success!" once at page load: the widget passing on its own, with no input.
+
+**axe (WCAG 2.2 A and AA tags), live, light and dark scheme:** 0 violations on Ask, Nvidia, Freshness, Method, Workspace, the
+not-found page, and an answer with its evidence panel open (the bot-check frame excluded as third party).
+
+| # | Req | Observed on v21 (keyboard and focus; speech only where said) | Result |
+|---|---|---|---|
+| Ask-1 | A7 | NVDA said "Ask · semigraph" | PASS (speech) |
+| Ask-3 | A7 | NVDA said banner, "Main" navigation, main landmark; the named regions were not reached by speech | PASS for landmarks; regions by tree at v20 |
+| X-5 | A3, A8 | NVDA said "Freshness:Data as of Sep 24, 2026, 9 newer filings being added" as a link in Main, after Workspace | PASS (speech) |
+| Ask-4c | A1, A5 | Enter on the "filing passage" stamp opened its example; Escape returned focus to the stamp | PASS |
+| Ask-4b | A4 | Enter on More options, Tab into the Depth group, arrow keys move between the radio buttons | PASS (keyboard) |
+| Ask-5 | A3 | Enter on a starter: the answer came from cache, focus stayed on the starter | PASS (keyboard) |
+| Ask-6 | A1 | the first chip reads "Filing 2026 · paragraph 11"; after it was opened once, "AMD 10-K, filed 2026 · paragraph 11" | PASS |
+| Ask-7 | A1, A5 | Enter opened the panel with focus on "Close evidence"; Space did the same | PASS |
+| Ask-8 | A5 | Tab inside the panel went to "Open the filing on SEC.gov"; no trap | PASS |
+| Ask-9 | A2, A5 | Escape closed the panel and focus returned to the chip | PASS |
+| Co-5 (nav) | A7 | Enter on Companies in Main: focus on the h1 "Nvidia (NVDA)" | PASS |
+| Co-7, Co-7b | A1, A2 | a Key numbers figure is a button named "$215.9B, Revenue, FY2026 (ended Jan 25, 2026): $215,938,000,000..."; Enter opened its evidence, Escape returned focus to it | PASS |
+| Co-7c | A7 | Enter on "Filings" in On this page: focus on the h2 "Filings" | PASS |
+| Co-7e | A4 | Space on the "Show exact values" switch (a span with the switch role) | keyboard reached it; state not read back |
+| Co-5 | A7 | Enter on "AMD (AMD)" in the Companies switcher: focus on the h1 "AMD (AMD)" | PASS |
+| Fr, Me, Ws (nav) | A7 | Enter on each Main link: focus on its h1 (Freshness, Method & Evidence, Workspace) | PASS |
+| Ws-2 | A4 | Enter on "I have a workspace id and key"; Tab reaches the two fields and "Restore" | PASS (keyboard) |
+| Ws-6 (empty) | A4 | Restore with both fields empty sends nothing; focus moves to the empty id field | PASS |
+| X-1 | A5, A7 | panel open on Ask, then Companies in Main: focus on the h1 "Nvidia (NVDA)" | PASS |
+
+**Needed to close A11 (owner, about 10 minutes, D-R7 a):** with NVDA on, listen to the Ask page (rows Ask-2 to Ask-11 of
+`docs/v2/M5B_NVDA_GUIDE.md`) and the Nvidia page (Co-2 to Co-8). Write down anything that sounds wrong, or "heard, fine".
+
+## Release v20 record (2026-11-10)
+
 Spec A11 asks for a keyboard-only walk of every flow and one screen-reader pass with NVDA, by the owner or a person the owner
 names. On 2026-11-10 the owner asked the build agent to run the pass on their behalf. What the agent could do, and did:
 

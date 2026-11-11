@@ -70,6 +70,41 @@ All three said the same things, in this order:
 
 What worked for all three: the clean layout, an instant answer from one click, and the evidence panel with its source link.
 
+### 4b. The same three visitors on the redesign (release v21, 2026-11-11)
+
+Same method: three model agents with no knowledge of the project, shown only screenshots and page text of the live `/v2/`
+(laptop 1280x800 for two, phone 390x844 for the executive): the Ask page, one starter's answer with a source open, Nvidia,
+Method, Workspace and Freshness.
+
+| Visitor | Grasp (v20 -> v21) | Found where to type a question on the first screen? | Cost understood? | Would stay? |
+|---|---|---|---|---|
+| Curious non-technical adult, laptop | 2 -> 4 | Yes, in about 3 seconds | Mostly: free, with a limit | Yes, would click an example first |
+| Junior analyst, laptop | 3 -> 4 | Yes, at once | Mostly: free; "live" vs example only half clear | Yes, for a few minutes |
+| Busy executive, phone | 2 -> 4 | Yes, on the phone's first screen | Mostly: free but limited | Probably, if they care about chips |
+
+All three now say what the site is in one sentence (ask questions about 13 chip and AI companies, answered from their SEC
+filings with sources), find the box at once, and trusted the answer more after opening its source. The four v20 problems are
+gone or reduced: the h1 says what the site is; the box is above the examples; the cost line says it is free; the insider words
+("Benchmark questions", "cached", "served from cache") are gone from the first screen and the status line (the footer small
+print, kept word for word from the old page, still says "benchmark questions are served from a saved evaluation run").
+
+What still confused them (all three unless noted):
+
+1. **A chip says only "Filing 2026 · paragraph 11" until it is opened**; the company and form appear after the first open
+   (RD11 as built: "the company only once loaded"). All three asked "which company? which filing?".
+2. **Small print with model names**: "one gpt-6-luna call each", "claude-sonnet-5", "XBRL facts", "benchmark questions" in the
+   footer.
+3. **"Data as of Sep 24, 2026, 9 newer filings being added"** in the header read as "out of date?" to two of three.
+4. **"Depth: Standard"** under More options: unclear what it changes.
+5. **An answer sentence from the graph** ("the knowledge graph identifies GlobalFoundries as a supplier") has no visible source.
+6. **Method's withdrawn-accuracy note** reads as alarming to a newcomer (honest, but it lowers trust in change claims).
+7. Two of three: "Not in our data for these years. The latest we hold is FY2012." on Nvidia looks like a gap; the Nvidia page is
+   long; Workspace's purpose is unclear to someone who has no documents.
+
+What worked: the plain h1 and visible box; the three source stamps and the sample answer; examples grouped by what you get;
+the evidence panel with the real quote, date and SEC link; plain metric meanings on the company page; the honest Freshness
+page; Workspace's deletion and provider lines.
+
 ## 5. Findings
 
 ### 5.1 About the new pages themselves
