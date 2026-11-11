@@ -148,6 +148,21 @@ describe("RD5: six starters grouped by job, and the rest in a disclosure", () =>
     await waitFor(() => expect(env.posts()).toHaveLength(1));
     expect(JSON.parse(String(env.posts()[0].init?.body))).toMatchObject({ question: STARTER_PAYLOAD.examples[1].question, strategy: "hybrid" });
   });
+
+  // SR4 rules 1 and 2: whatever depth was chosen, a starter sends a Standard (hybrid) ask and resets the control to Standard.
+  it.each([
+    ["Basic text search", false],
+    ["Deep research", true],
+  ])("a starter picked after choosing %s still asks on Standard and resets the depth to Standard", async (depth, agent) => {
+    const env = mountAsk({ examples: STARTER_PAYLOAD, stats: { agent_enabled: agent }, ask: () => responseOf(fixtureBytes("cached_done")) });
+    await env.user.click(screen.getByRole("button", { name: /More options/ }));
+    await env.user.click(screen.getByRole("radio", { name: depth }));
+    expect(screen.getByRole("button", { name: /More options/ })).toHaveTextContent(`Depth: ${depth}`);
+    await env.user.click(await screen.findByRole("button", { name: STARTER_PAYLOAD.examples[1].question }));
+    await waitFor(() => expect(env.posts()).toHaveLength(1));
+    expect(JSON.parse(String(env.posts()[0].init?.body))).toMatchObject({ strategy: "hybrid" });
+    expect(screen.getByRole("button", { name: /More options/ })).toHaveTextContent("Depth: Standard");
+  });
 });
 
 describe("RD9: the covered companies, after the starters", () => {

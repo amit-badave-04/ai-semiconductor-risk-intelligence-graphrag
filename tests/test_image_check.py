@@ -210,6 +210,7 @@ def test_check_1_pins_the_mode_to_ci_so_the_canary_checks_cannot_be_skipped(work
     assert "-e IMAGE_CHECK_MODE=ci " in lines[0], lines[0]
 
 
+@pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX sh")
 def test_harness_prints_one_line_per_check_with_its_status(script):
     result = _run_harness(script, "report a PASS fine\nreport b FAIL bad\nfinish", "a b")
     lines = result.stdout.decode().splitlines()

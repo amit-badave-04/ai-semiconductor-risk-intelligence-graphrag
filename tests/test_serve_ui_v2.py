@@ -397,9 +397,20 @@ def test_assets_are_immutable_and_a_missing_asset_is_a_404_never_the_index(monke
         assert response.status_code == 404 and SPA_MARKER not in response.text, path
 
 
+def test_ui_v2_registers_the_woff2_type_itself_at_import():
+    """SR6 (security review LOW-2): the header test above passes on any host whose own MIME table maps ``.woff2`` (some Linux
+    images do), so it cannot see the registration go. This pins the module-level ``mimetypes.add_type`` call itself."""
+    tree = ast.parse(Path(ui_v2.__file__).read_text(encoding="utf-8"))
+    calls = [
+        node.value for node in tree.body
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "mimetypes.add_type"
+    ]
+    assert [[ast.literal_eval(arg) for arg in call.args] for call in calls] == [["font/woff2", ".woff2"]]
+
+
 def test_a_woff2_font_is_served_as_font_woff2_with_the_file_headers(monkeypatch, dist):
     """docs/specs/m5b-redesign.md SR6: Python 3.13's type table has no ``.woff2`` entry, so without a registration the self-hosted
-    fonts would go out as ``text/plain``. The type comes from the file name, so the immutable, nosniff and CSP headers stay."""
+    fonts would go out as ``application/octet-stream`` (Starlette's fallback). The type comes from the file name, so the immutable, nosniff and CSP headers stay."""
     (dist / "assets" / "SourceSans3-Regular-1a2b3c.woff2").write_bytes(b"wOF2\x00\x01\x00\x00")
     client = client_of(build_app(monkeypatch, dist, preview=True))
     response = client.get("/v2/assets/SourceSans3-Regular-1a2b3c.woff2")

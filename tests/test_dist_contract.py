@@ -221,6 +221,7 @@ def test_the_page_needs_a_title_a_language_and_a_viewport(missing):
     ("@font-face{font-family:x;src:url(https://fonts.example.com/x.woff2)}", "@font-face source"),
     ("@font-face{font-family:x;src:url(/v2/assets/x.ttf) format('truetype')}", "@font-face source"),
     ("@font-face{font-family:x;src:url(/v2/assets/x.woff) format('woff')}", "@font-face source"),
+    ("@font-face{font-family:x;src:url(/v2/assets/x.otf) format('opentype')}", "@font-face source"),
     ("@font-face{font-family:x;src:url(/fonts/x.woff2)}", "@font-face source"),
     ("@font-face{font-family:x;src:url(assets/x.woff2)}", "@font-face source"),
     ("@font-face{font-family:x;src:url(data:font/woff2;base64,AAAA)}", "data: font"),
@@ -309,6 +310,14 @@ def test_a_font_preload_needs_crossorigin_the_type_and_a_woff2(tmp_path, link, e
     (dist / "assets" / "f-abc.ttf").write_bytes(b"\x00")
     problems = check_dist(dist)
     assert any("preload" in p and expected in p for p in problems), problems
+
+
+def test_a_font_preload_of_a_woff2_missing_from_the_dist_is_a_finding(tmp_path):
+    """SR1: a preload points at a woff2 the dist holds; one that does not resolve is a finding."""
+    link = '<link rel="preload" as="font" type="font/woff2" crossorigin href="/v2/assets/gone-abc.woff2">'
+    dist = make_dist(tmp_path, html=GOOD_HTML.replace("</head>", link + "</head>"))
+    problems = check_dist(dist)
+    assert any("gone-abc.woff2" in p for p in problems), problems
 
 
 def test_a_correct_font_preload_passes(tmp_path):
