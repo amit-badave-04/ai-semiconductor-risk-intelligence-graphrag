@@ -58,6 +58,27 @@ Also heard: the Cloudflare widget says "alert, Success!" after every page change
 
 Not heard, to repeat after the fixes: Ask-4c (the three stamps' example windows) and Me-1 (the Method title).
 
+**Owner's decision (2026-11-11), word for word:** "fix first, then switch. (be careful. commit and push)", and about the
+re-listen: "don't need to do it. give me final making live commands." So the re-listen is **waived by the owner**: Ask-4c
+and Me-1 stay NOT HEARD, and A11 is recorded as **owner-accepted, with the fixes checked in Chrome and not re-heard**, not as
+PASS.
+
+**Fixed (each with a failing test first; `web/e2e/screen-reader-text.spec.ts` reads Chrome's own accessibility tree, the text
+runs NVDA's browse mode reads):**
+
+- N1: a close that gives focus back happens in two steps: the chip says collapsed at once while the panel and focus on Close
+  stay, and one animation frame later the panel hides and focus moves to the chip (chosen then, so an answer that re-rendered
+  meanwhile still gets the right chip); an open, a route or workspace change, or the page going away cancels the pending step.
+  Checked in Chrome: the chip's `aria-expanded` turns false at least one frame before it gets focus, and focus never falls to
+  the page body. Not re-heard with NVDA.
+- N2: the heading says "Risk changes", as its On this page link does (the agent's steps list keeps "Compared risk disclosures").
+- N3: a label ends in a no-break space, which no layout drops (Freshness rows, Key numbers row headers); found by the review of
+  the fixes and fixed the same way: the evidence panel's facts ("SectionItem 1A. Risk FactorsFiled...") and the Freshness page's
+  list of companies the check could not look up ("TSMASML", now "TSM, ASML").
+- N4: "More options Depth: Standard" (one inline span); "Freshness: Data as of ..." (a no-break space after the hidden prefix),
+  and the link has no tooltip, so the date line is read once.
+- N5: a chip's hover text is "Open the source"; the raw id is no longer read (the panel still shows the id).
+
 ## Re-run on the redesign (release v21, 2026-11-11)
 
 Status: **A11 still PARTIAL.** Decision D-R7 (owner: as recommended, option a) asks for the agent's NVDA pass AND about ten

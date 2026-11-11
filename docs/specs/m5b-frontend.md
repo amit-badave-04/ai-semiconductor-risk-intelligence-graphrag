@@ -376,7 +376,7 @@ stay until M6 decides their removal as its own item.
     `encodeURIComponent`; any other value renders the not-found view with no request. Test: `/company/..%2F..%2Fapi%2Fadmin%2Fstate`
     makes no request.
     **Owner 2026-11-08: R25 yes**: once the dossier is ok, the page also asks `/risk-changes` (never for a company whose
-    dossier is a 404 or an error) and shows the pairs under the heading "Compared risk disclosures" (index.html:350), each
+    dossier is a 404 or an error) and shows the pairs under the heading "Risk changes" (the legacy page's "Compared risk disclosures", index.html:350; renamed 2026-11-11 so it matches its On this page link, finding N2 of the owner's NVDA pass), each
     kind under the label the server's context layout pins ("No matching risk factor found in the earlier filing", "No longer
     appears as a separate risk factor", "Not matched", "Reworded"; never "removed"), text nodes only (S2), a pair that could not
     be compared in the legacy template "comparison not available (reason)". Owner 2026-11-08: each passage starts with its side's filing label and ": " (the older and the newer filing of the pair), or "earlier filing: " / "later filing: " when that filing has no label; a passage without a side has no prefix.
