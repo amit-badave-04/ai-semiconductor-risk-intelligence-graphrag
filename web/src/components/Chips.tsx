@@ -67,7 +67,7 @@ export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) 
       aria-controls={EVIDENCE_PANEL_ID}
       data-stale={stale ? "" : undefined}
       title={title}
-      className={`cite mx-0.5 inline min-h-[24px] min-w-[24px] max-w-full cursor-pointer border px-1 text-left text-[0.9em] font-semibold hover:underline ${stale ? STALE_LOOK : look}`}
+      className={`cite mx-0.5 inline min-h-[24px] min-w-[24px] max-w-full cursor-pointer border px-1 text-left text-sm font-semibold hover:underline ${stale ? STALE_LOOK : look}`}
       onClick={(event) => opener.open(event.currentTarget)}
     >
       <Icon aria-hidden="true" className="mr-1 inline size-[1em] align-[-0.125em]" />

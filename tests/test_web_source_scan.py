@@ -439,3 +439,29 @@ def test_the_package_deny_list_matches_exactly(name, banned):
 
 def test_s15_public_copy_in_web_src_states_no_withdrawn_claim():
     assert scan_copy(SRC) == {}
+
+
+# RD1 (docs/specs/m5b-redesign.md): one type scale, 13/15/17/21/28/44 px, as the --text-* tokens in web/src/index.css. An
+# arbitrary Tailwind font size (text-[0.9em], text-[11px], text-[length:...]) steps off it; sizes go through the tokens.
+ARBITRARY_FONT_SIZE = re.compile(r"\btext-\[(?:length:)?[0-9.]+(?:em|rem|px|%|vw|ch)\]")
+
+
+def off_scale_font_sizes(root: Path) -> list[str]:
+    found = []
+    for path in source_files(root):
+        if path.suffix not in {".ts", ".tsx"} or "__tests__" in path.parts or ".test." in path.name:
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if ARBITRARY_FONT_SIZE.search(line):
+                found.append(f"{path.relative_to(root).as_posix()}:{number}")
+    return found
+
+
+def test_rd1_font_sizes_stay_on_the_type_scale():
+    assert off_scale_font_sizes(SRC) == []
+
+
+@pytest.mark.parametrize("cls, off", [("text-[0.9em]", True), ("text-[11px]", True), ("text-[length:1.2rem]", True),
+                                      ("text-sm", False), ("text-[var(--x)]", False), ("size-[1em]", False)])
+def test_the_type_scale_check_matches_exactly(cls, off):
+    assert bool(ARBITRARY_FONT_SIZE.search(f'className="{cls}"')) is off
