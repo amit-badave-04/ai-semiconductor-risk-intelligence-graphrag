@@ -84,12 +84,12 @@ describe("the evidence panel body", () => {
     expect(mark.textContent).toBe("we had net outstanding a total of $9.7 billion in notes due by 2060");
     expect(mark.children).toHaveLength(0); // text only
     expect(mark.attributes).toHaveLength(0); // nothing from data on the element
-    expect(panel()).toHaveTextContent(deck.sample.legend);
+    expect(panel()).toHaveTextContent(deck.evidence.legend);
     expect(within(panel()).getByRole("blockquote").textContent).toBe(recorded.payloads[SPECIMENS.passage].text);
 
     api.current?.open(SPECIMENS.passage, null, "answer", ["a sentence that this passage does not hold at all"]);
     await waitFor(() => expect(panel().querySelector("mark")).toBeNull());
-    expect(panel()).not.toHaveTextContent(deck.sample.legend);
+    expect(panel()).not.toHaveTextContent(deck.evidence.legend);
   });
 
   it("never marks a reported number or a rule's abstract, and frames a rule as the government's", async () => {

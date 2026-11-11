@@ -344,6 +344,8 @@ export const deck = {
     close: "Close",
     /** the accessible name of Close (A5, unchanged from the legacy page) */
     closeName: "Close evidence",
+    /** RD17/RD18: shown only beside a mark, which is made only when an answer copied the words exactly (docs/decisions/003) */
+    legend: "Highlighted: the words copied exactly from the source",
     loading: "Loading the source\u2026",
     failed: (message: string): string => `Could not load this source: ${message}`,
     untitled: "Source",
@@ -542,7 +544,6 @@ export const deck = {
     quote: "As of January 28, 2024, we had net outstanding a total of $9.7 billion in notes due by 2060.",
     quoteAfter: " As each series of senior notes matures, unless redeemed or repurchased, we must repay or refinance the notes.",
     source: "Nvidia 10-K filed Feb 21, 2024 \u00b7 Item 1A. Risk Factors \u00b7 paragraph 162",
-    legend: "Highlighted: the words copied exactly from the source",
   },
 
   specimen: {

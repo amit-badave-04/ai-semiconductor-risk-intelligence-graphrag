@@ -21,7 +21,7 @@ function Passage({ body, quotes }: { body: Body; quotes: readonly string[] }) {
       {marked.marked && (
         <p className="m-0 mt-2 flex items-center gap-2 text-sm text-muted-foreground">
           <span aria-hidden="true" className="inline-block h-3 w-5 rounded-sm border border-mark-edge bg-mark" />
-          {deck.sample.legend}
+          {deck.evidence.legend}
         </p>
       )}
     </>
