@@ -55,6 +55,7 @@ interface Fake {
   extraInstant: { value: string };
   extraTitle: { value: string };
   createDelayMs: { value: number };
+  deleteDelayMs: { value: number };
   createResponse: { value: Response | null };
   restoreOk: { value: boolean };
   post: { value: (n: number) => Response };
@@ -71,6 +72,7 @@ function installFake(): Fake {
     extraInstant: { value: "2026-09-20T00:00:00Z" },
     extraTitle: { value: "<b>other</b>" },
     createDelayMs: { value: 0 },
+    deleteDelayMs: { value: 0 },
     createResponse: { value: null },
     restoreOk: { value: true },
     post: { value: () => json({ unchanged: true, document_id: DOC, version: 2 }) },
@@ -104,7 +106,10 @@ function installFake(): Fake {
       if (method === "GET" && /\/api\/workspace\/[0-9a-f]{32}$/.test(url)) {
         return fake.restoreOk.value ? json(docs(fake.extraDocument.value, fake.extraInstant.value, fake.extraTitle.value)) : json({ detail: "x" }, 404);
       }
-      if (method === "DELETE") return new Response(null, { status: 204 });
+      if (method === "DELETE") {
+        if (fake.deleteDelayMs.value > 0) await new Promise((r) => setTimeout(r, fake.deleteDelayMs.value));
+        return new Response(null, { status: 204 });
+      }
       return new Response("{}", { status: 404 });
     }),
   );
@@ -380,6 +385,51 @@ describe("the first-time view (RD26, decision 002)", () => {
     await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
     await screen.findByText(copy.DELETE_BUTTON);
     expect(fake.calls.filter((c) => c.url === `/api/workspace/${ID}`)).toEqual([]);
+  });
+
+  it("still moves focus to Create when Delete is pressed again while the first delete is in flight (R4 review C1/A1)", async () => {
+    const fake = installFake();
+    mount();
+    await userEvent.click(await screen.findByRole("button", { name: copy.CREATE_BUTTON }));
+    await screen.findByText(copy.DELETE_BUTTON);
+    fake.deleteDelayMs.value = 80;
+    await userEvent.dblClick(screen.getByRole("button", { name: copy.DELETE_BUTTON }));
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.CREATE_BUTTON })).toHaveFocus());
+    expect(fake.calls.filter((c) => c.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("points the restore fields at the status only for a restore's own message, not a create's (R4 review A3)", async () => {
+    const fake = installFake();
+    fake.createResponse.value = json({ detail: "Bot check failed \u2014 reload the page and try again." }, 403);
+    mount();
+    await userEvent.click(await screen.findByRole("button", { name: copy.CREATE_BUTTON }));
+    await screen.findByText("Bot check failed \u2014 reload the page and try again.");
+    await openRestore();
+    expect(screen.getByLabelText(copy.idLabel)).not.toHaveAttribute("aria-describedby");
+    expect(screen.getByLabelText(copy.keyLabel)).not.toHaveAttribute("aria-describedby");
+    await userEvent.type(screen.getByLabelText(copy.idLabel), "not-an-id");
+    await userEvent.type(screen.getByLabelText(copy.keyLabel), TOKEN);
+    await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
+    await screen.findByText(MSG_NOT_FOUND);
+    const status = within(section()).getByRole("status");
+    expect(screen.getByLabelText(copy.idLabel)).toHaveAttribute("aria-describedby", status.id);
+    expect(fake.calls.filter((c) => c.method === "GET" && c.url.startsWith("/api/workspace/"))).toEqual([]);
+  });
+
+  it("marks the empty restore field invalid and moves focus to it, with no request (R4 review A4)", async () => {
+    const fake = installFake();
+    mount();
+    await openRestore();
+    await userEvent.type(screen.getByLabelText(copy.idLabel), ID);
+    await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
+    const key = screen.getByLabelText(copy.keyLabel);
+    expect(key).toHaveAttribute("aria-invalid", "true");
+    expect(key).toHaveFocus();
+    expect(screen.getByLabelText(copy.idLabel)).not.toHaveAttribute("aria-invalid");
+    expect(fake.calls.filter((c) => c.url.startsWith("/api/workspace"))).toEqual([]);
+    await userEvent.type(key, TOKEN);
+    await userEvent.click(screen.getByRole("button", { name: copy.RESTORE_BUTTON }));
+    await screen.findByText("memo.txt", HEADING);
   });
 
   it("moves focus to the h2 after create and after restore, and to Create after delete", async () => {

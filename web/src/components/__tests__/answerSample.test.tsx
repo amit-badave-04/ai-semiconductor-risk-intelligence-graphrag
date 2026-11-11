@@ -18,7 +18,8 @@ const passage = recorded.payloads[SPECIMENS.passage];
 describe("AnswerSample", () => {
   it("quotes the recorded passage word for word: the sentence and the words after it are in the fixture's text", () => {
     const { quote, quoteAfter } = deck.sample;
-    expect(passage.text).toContain(`${quote} ${quoteAfter.trim()}`);
+    // exactly as the page renders it (no space added here: the deck's quoteAfter carries its own) (R4 review T6)
+    expect(passage.text).toContain(`${quote}${quoteAfter}`);
   });
 
   it("is a labelled region with the sample answer, the cited passage and the source line, and no highlight or legend", () => {
@@ -28,7 +29,7 @@ describe("AnswerSample", () => {
     expect(region.querySelector("blockquote")?.textContent).toBe(`${deck.sample.quote}${deck.sample.quoteAfter}`);
     expect(region.querySelector("mark")).toBeNull();
     expect(region).toHaveTextContent("Nvidia 10-K filed Feb 21, 2024 · Item 1A. Risk Factors · paragraph 162");
-    expect(region).not.toHaveTextContent("Highlighted: the words copied exactly from the source");
+    expect(region).not.toHaveTextContent(deck.evidence.legend);
   });
 
   it("names the same filing date and section as the fixture", () => {

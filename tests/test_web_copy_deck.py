@@ -135,8 +135,20 @@ def source_files() -> list[Path]:
     )
 
 
-def kind_home_exports() -> set[str]:
-    return set(re.findall(r"^export (?:const|function|interface|type) (\w+)", COMPANY_TS.read_text(encoding="utf-8"), re.M))
+def kind_home_exports(source: str | None = None) -> set[str]:
+    """Every name the KIND home exports: declarations, ``export { a, b as c }`` lists and a default export (R4 review T2)."""
+    text = COMPANY_TS.read_text(encoding="utf-8") if source is None else source
+    names = set(re.findall(r"^export (?:const|let|var|function|class|interface|type|enum) (\w+)", text, re.M))
+    for group in re.findall(r"\bexport\s*(?:type\s*)?\{([^}]*)\}", text):
+        names |= {part.split(" as ")[-1].strip() for part in group.split(",") if part.strip()}
+    if re.search(r"\bexport\s+default\b", text):
+        names.add("default")
+    return names
+
+
+def kind_labels() -> set[str]:
+    """The four labels' own words: the only sentences the KIND home may hold."""
+    return set(re.findall(r'^export const KIND_\w+ = "([^"]*)";', COMPANY_TS.read_text(encoding="utf-8"), re.M))
 
 
 def location_problems(files: dict[str, list[str]], counted: dict[str, int] | None = None) -> list[str]:
@@ -145,7 +157,9 @@ def location_problems(files: dict[str, list[str]], counted: dict[str, int] | Non
     counted = NOT_YET_IN_THE_DECK if counted is None else counted
     problems = []
     for rel, fragments in files.items():
-        if rel in COPY_HOMES or not fragments or (rel == KIND_HOME and kind_home_exports() == KIND_EXPORTS):
+        if rel == KIND_HOME and kind_home_exports() == KIND_EXPORTS:
+            fragments = [f for f in fragments if f not in kind_labels()]  # the exemption covers the four labels only
+        if rel in COPY_HOMES or not fragments:
             continue
         allowed = counted.get(rel)
         if allowed is None:
@@ -279,6 +293,20 @@ def test_the_company_page_s_limit_sentences_are_the_owner_s_words():
     for phrase in ("No export-control rule in our data was linked to", "by keyword matching. This is not a finding that none applies.",
                    "Summaries written by semigraph, not quotes", "Not in our data for these years.", "The latest we hold is"):
         assert phrase in text, phrase
+
+
+def test_the_kind_home_admits_only_its_four_labels():
+    # R4 review T2: the exemption covers the four labels, not the whole file: any other sentence in it is outside the deck.
+    own = file_fragments(COMPANY_TS)
+    assert location_problems({KIND_HOME: own}, counted={}) == []
+    assert location_problems({KIND_HOME: [*own, "Compared by machine, read with care."]}, counted={}) != []
+
+
+def test_the_kind_home_export_check_sees_export_lists_and_defaults():
+    source = COMPANY_TS.read_text(encoding="utf-8")
+    assert kind_home_exports(source) == KIND_EXPORTS
+    assert "NOTE" in kind_home_exports(source + '\nconst NOTE = "x";\nexport { NOTE };\n')
+    assert "default" in kind_home_exports(source + '\nexport default "x";\n')
 
 
 def test_company_copy_exports_only_the_four_kind_labels():

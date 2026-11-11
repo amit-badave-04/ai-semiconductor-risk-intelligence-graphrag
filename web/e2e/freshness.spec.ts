@@ -112,6 +112,21 @@ for (const width of [390, 320]) {
   });
 }
 
+// R4 review T7: values the page shows as the server wrote them, with no place to break, still wrap inside 320 px.
+const UNBROKEN = {
+  ...FULL,
+  status: "paused_by_admin_until_the_next_quarterly_filing_window_opens",
+  unresolved: ["TSM_ADR_LISTING_NOT_RESOLVED_IN_THE_FILER_INDEX"],
+  pending_filings: [{ ...FULL.pending_filings[0], ticker: "NVDA_CLASS_A_COMMON_STOCK_PENDING", accession_no: "0001045810-26-000045" }],
+};
+test("RD27 at 320 px values with no break opportunity wrap inside the screen", async ({ page }) => {
+  await page.route("**/api/freshness", (route) => route.fulfill({ json: UNBROKEN }));
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto(`${PREVIEW}/v2/freshness/`);
+  await expect(page.getByRole("list", { name: "Freshness details" })).toContainText("paused_by_admin_until_the_next_quarterly_filing_window_opens");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("RD27 forced colours: no axe violation on the details", async ({ page }, testInfo) => {
   await page.emulateMedia({ forcedColors: "active" });
   await page.route("**/api/freshness", (route) => route.fulfill({ json: FULL }));

@@ -191,7 +191,8 @@ test("the controls are labelled, the drop zone works from the keyboard, and axe 
 
 // docs/specs/m5b-redesign.md R4 (the open workspace): names come from the uploader. A 300-character name, markup and a right-to-left
 // override stay text, each in its own <bdi>, and nothing pushes the page sideways on a phone; the drag cue survives forced colours.
-const LONG_NAME = `${"quarterly-risk-report-".repeat(13)}final.txt`;
+// underscores give a browser no place to break the line, so only the page's own wrapping rule keeps it on screen (R4 review T1)
+const LONG_NAME = `${"Quarterly_Risk_Report_".repeat(13)}final.txt`;
 const MARKUP_NAME = '<img src=x onerror="window.__pwned=1">.txt';
 const RLO_NAME = "report‮pdf.txt";
 
@@ -309,7 +310,13 @@ test("at 320 px and in forced colours the first-time view fits, its targets are 
   }
   const chevron = page.getByRole("button", { name: TRIGGER }).locator("svg");
   await expect(chevron).toBeVisible();
-  expect(await chevron.evaluate((svg) => getComputedStyle(svg).color)).not.toBe("rgba(0, 0, 0, 0)");
+  // the chevron is drawn by its stroke: in forced colours it must take a system colour, never none or transparent (R4 review T3)
+  const drawn = await chevron.evaluate((svg) => {
+    const style = getComputedStyle(svg);
+    return { stroke: style.stroke, adjust: style.forcedColorAdjust };
+  });
+  expect(drawn.adjust).not.toBe("none");
+  expect(drawn.stroke).toMatch(/^rgb\(/);
   const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
 });
