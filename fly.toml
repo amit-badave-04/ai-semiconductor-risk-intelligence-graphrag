@@ -48,6 +48,9 @@ kill_timeout = 300
   # M5b I4 (docs/specs/m5b-frontend.md R7, docs/RUNBOOK.md "Frontend: flags, flip, rollback"): the new frontend at /v2/,
   # the old page stays at /. Roll back: "false" and the same-image deploy of R7.
   UI_V2_PREVIEW = "true"
+  # M5b I5 (docs/specs/m5b-redesign.md Status stage 8): the new frontend at / and its pages, the old page at /legacy, /v2/ an
+  # alias. The owner's sign-off, 2026-11-11: "fix first, then switch". Roll back: "false" and the same-image deploy of R7.
+  UI_V2 = "true"
   # M5a I4 (docs/RUNBOOK.md "Paid-ask limits and the state backend"): where the paid-ask counters live. "inprocess" =
   # memory on this one machine, with a durable row per ask in Neo4j (live). Rollback, or more than one machine:
   # "neo4j" (counters in Neo4j too), then redeploy. The live caps are pinned by the production validators in
