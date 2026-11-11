@@ -242,6 +242,12 @@ def test_the_not_yet_list_names_only_files_that_exist():
     assert [rel for rel in NOT_YET_IN_THE_DECK if not (WEB / rel).is_file()] == []
 
 
+def test_the_not_yet_list_is_empty():
+    # docs/specs/m5b-redesign.md R4: the copy sweep is done; every sentence the site shows lives in the deck, the facts file or the
+    # KIND_* home. A new file with copy in it fails the location check above instead of joining this list.
+    assert NOT_YET_IN_THE_DECK == {}
+
+
 # ---------------------------------------------------------------- 3. the snapshot
 
 
