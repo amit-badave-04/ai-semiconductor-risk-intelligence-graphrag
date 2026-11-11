@@ -2,6 +2,62 @@
 
 Status: **PARTIAL. A11 is NOT met by this record.** INTERNAL document: it states limits plainly.
 
+## Owner's NVDA pass (release v21, 2026-11-11)
+
+The owner listened with NVDA 2026.3 in Chrome on Windows 11, guided step by step through four scenarios (Ask basics; an answer
+and its sources; the Nvidia page; Freshness, Method and Workspace). NVDA's log was on; only the lines it spoke while the
+semigraph tab was in front were kept (1,165), the raw log (which records keystrokes) was deleted at once, and every row was
+graded from those lines by an Opus grader per scenario, with an Opus re-check of every FAIL.
+
+| # | Req | What NVDA said (short) | Result |
+|---|---|---|---|
+| Ask-1 | A7 | "Ask · semigraph" | PASS |
+| Ask-2 | A7 | "Ask about 13 chip and AI companies., heading, level 1", then "No next heading at level 1" | PASS |
+| Ask-3 | A7 | banner; "Main" navigation; main; regions "What an answer looks like", "Or try an example", "Companies covered" | PASS (each region name is said twice: the region, then its heading) |
+| Ask-4 | A4 | "Your question, edit, multi line, Control+Enter Meta+Enter, For example: ..." | NOTE: the raw shortcut text is read |
+| Ask-4b | A4 | "More optionsDepth: Standard, button, collapsed", "Depth, grouping", radio buttons with their hints | NOTE: no space between "options" and "Depth" |
+| Ask-4c | A1, A5 | the example windows of the three stamps were not reached | NOT HEARD |
+| Ask-11 | A3, A10 | "Type a question first, or pick an example below." once per press, without moving | PASS |
+| Ask-5 | A3 | "Saved answer, shown instantly."; the answer was not read out by itself | PASS with a NOTE: "Looking in the filings..." and "unavailable" first |
+| Ask-6 | A1 | "Filing 2026 · paragraph 11, button, collapsed, open evidence 0000002488-26-000018:I.1A:0011" | NOTE: the raw id is read as a description |
+| Ask-7 | A1, A5 | "Evidence, complementary landmark, Close evidence, button" (Enter and Space) | PASS |
+| Ask-9 | A2, A5 | focus back on the chip, now "AMD 10-K, filed 2026 · paragraph 11" ... "**expanded**" (3 of 3) although the panel is closed | FAIL (state): see N1 |
+| Ask-10 | A5 | no "Evidence" landmark while closed | PASS |
+| Ask-6b | content | "Sources (2)", "What was checked" | PASS |
+| Co-1 | A7 | "Nvidia (NVDA) · semigraph" | PASS |
+| Co-2 | A7 | six level 2 headings in order, then "**Compared risk disclosures**"; the On this page link says "Risk changes" | FAIL: see N2 |
+| Co-3 | A7 | three navigations with different names (Main, Companies, On this page); regions named | PASS with a NOTE |
+| Co-4, Co-5 | A7 | 13 links by name and ticker, current page marked; Enter: focus on "AMD (AMD), heading, level 1" | PASS |
+| Co-7, Co-7b | A1, A2, A5 | "$215.9B, Revenue, FY2026 (ended Jan 25, 2026): $215,938,000,000. Open source, button"; Enter opens Evidence with Close evidence; Escape returns | PASS; NOTE: raw id on stamps; row headers "RevenueMoney from sales" run together |
+| Co-7c | A7 | "Filings, heading, level 2" | PASS |
+| Co-7d | content | the Ask page opens with the box filled, nothing sent; focus at the top of the page | NOTE |
+| Co-7e | A4 | "Show exact values, switch, off" -> "on"; the figures change to exact values | PASS |
+| Co-8 | content | the Federal Register sentence word for word; each rule "Government rule" | PASS (NOTE: raw rule id read) |
+| Co-9 | A7 | "Page not found · semigraph"; h1 "Page not found" | PASS |
+| X-5 | A3, A8 | "Freshness:Data as of Sep 24, 2026, 9 newer filings being added, link, Data as of Sep 24, 2026, ..." | NOTE: no space after "Freshness:"; the date line is said twice |
+| Fr-1, Fr-2 | A7 | "Freshness · semigraph"; "Freshness, heading, level 1" | PASS |
+| Fr-3 | A7 | "Freshness details, list, with 7 items", "ChecksWorking", "Last checked3 h ago", "Next checkin 3 h" | FAIL (wording): see N3 |
+| Me-1 | A7 | title not read | NOT HEARD |
+| Me-2 | A7 | "Method & Evidence, heading, level 1", then the two level 2 headings | PASS |
+| Ws-1 | A7 | "Workspace, heading, level 1" | PASS |
+| Ws-2 | A4 | "I have a workspace id and key, button, collapsed", "expanded" (twice), "Workspace id, edit", the key "protected", "Restore, button" | PASS (NOTE: "expanded" twice) |
+| Ws-6 (empty) | A4, A10 | "Workspace id, edit, invalid entry, blank" | PASS |
+
+Also heard: the Cloudflare widget says "alert, Success!" after every page change (third party).
+
+**Findings to fix (proposed to the owner, 2026-11-11):**
+
+- **N1 (MEDIUM, A1/A5)**: when the evidence panel closes, the chip that gets focus back is announced "expanded" (3 of 3).
+- **N2 (MEDIUM, A7)**: the Company page's last section is headed "Compared risk disclosures" but its On this page link and the guide
+  say "Risk changes".
+- **N3 (LOW)**: label and value run together when read: Freshness rows ("ChecksWorking", "Next checkin 3 h", heard as
+  "check-in") and Key numbers row headers ("RevenueMoney from sales").
+- **N4 (LOW)**: missing spaces in two names ("More optionsDepth: Standard", "Freshness:Data as of ..."), and the freshness line
+  said twice.
+- **N5 (LOW)**: every source button reads its raw citation id ("open evidence 0001045810-...") from its tooltip.
+
+Not heard, to repeat after the fixes: Ask-4c (the three stamps' example windows) and Me-1 (the Method title).
+
 ## Re-run on the redesign (release v21, 2026-11-11)
 
 Status: **A11 still PARTIAL.** Decision D-R7 (owner: as recommended, option a) asks for the agent's NVDA pass AND about ten
