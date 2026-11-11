@@ -43,8 +43,9 @@ function Loaded({ id, payload, quotes }: { id: string; payload: unknown; quotes:
         <dl className="m-0 mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
           {body.facts.map((fact) => (
             <div key={fact.code} className="contents">
-              <dt className="text-muted-foreground">{w.fact[fact.code]}</dt>
-              <dd className="m-0 break-words">{fact.code === "status" ? w.status(fact.value) : fact.value}</dd>
+              {/* N3: each ends in a no-break space; as grid items NVDA read "SectionItem 1A. Risk FactorsFiled..." */}
+              <dt className="text-muted-foreground">{`${w.fact[fact.code]}\u00a0`}</dt>
+              <dd className="m-0 break-words">{`${fact.code === "status" ? w.status(fact.value) : fact.value}\u00a0`}</dd>
             </div>
           ))}
         </dl>

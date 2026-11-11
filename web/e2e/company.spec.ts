@@ -46,7 +46,7 @@ for (const scheme of ["light", "dark"] as const) {
       );
       await expect(page.getByRole("navigation", { name: "Companies" }).getByRole("link")).toHaveCount(13);
       // R25 (owner 2026-11-08): the recent risk changes, each kind under its pinned label, a pair that could not be compared
-      const changes = page.getByRole("region", { name: "Compared risk disclosures" });
+      const changes = page.getByRole("region", { name: "Risk changes" });
       await expect(changes).toContainText("10-K 2025-02-26 \u2192 10-K 2026-02-25");
       for (const label of ["No matching risk factor found in the earlier filing", "No longer appears as a separate risk factor", "Not matched", "Reworded"]) {
         await expect(changes.getByText(label, { exact: true })).toBeVisible();
@@ -72,7 +72,7 @@ for (const scheme of ["light", "dark"] as const) {
         if (path.startsWith("/api/evidence/")) evidenceGets.push(path);
       });
       await page.goto(`${PREVIEW}/v2/company/NVDA/`);
-      const changes = page.getByRole("region", { name: "Compared risk disclosures" });
+      const changes = page.getByRole("region", { name: "Risk changes" });
       const chip = changes.locator('button[data-id="0001045810-26-000021:I.1:0320"]');
       await chip.focus();
       await page.keyboard.press("Enter");
@@ -168,7 +168,7 @@ test("the risk changes are asked for once, only after the dossier is ok (R25)", 
     if (pathname.startsWith("/api/company/")) asked.push(pathname);
   });
   await page.goto(`${PREVIEW}/v2/company/NVDA/`);
-  await expect(page.getByRole("region", { name: "Compared risk disclosures" })).toContainText("Fixture older wording");
+  await expect(page.getByRole("region", { name: "Risk changes" })).toContainText("Fixture older wording");
   expect(asked).toEqual(["/api/company/NVDA/dossier", "/api/company/NVDA/risk-changes"]);
   asked.length = 0;
   await page.goto(`${PREVIEW}/v2/company/AMD/`);

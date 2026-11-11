@@ -52,6 +52,8 @@ function NumbersTable({ rows, columns, exact }: { rows: NumberRow[]; columns: Fi
             <tr key={row.metric} className="border-b border-border">
               <th scope="row" className="px-3 py-2 text-left align-top font-semibold">
                 {metricName(row)}
+                {/* N3: the name ends in a no-break space before the meaning's own line (NVDA read "RevenueMoney from sales") */}
+                {row.known && "\u00a0"}
                 {row.known && <span className="block text-xs font-normal text-muted-foreground">{w.metric[row.metric as keyof typeof w.metric].meaning}</span>}
               </th>
               {row.cells.every((cell) => cell === null) ? (

@@ -92,6 +92,14 @@ describe("Freshness page (RD27)", () => {
     expect(fields().textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
+  it("reads several tickers the check could not look up apart, not run together (review of N3)", async () => {
+    stubFetch({ ...FULL, unresolved: ["TSM", "ASML"] });
+    mount();
+    await act(async () => {});
+    await screen.findByRole("list", { name: "Freshness details" });
+    expect(row("Companies the check could not look up").textContent).toContain("TSM, ASML");
+  });
+
   it("words each check status, and shows one it does not know as the server wrote it", async () => {
     for (const [status, words] of [["error", "The last check failed"], ["stale", "Overdue"], ["unconfigured", "Not set up"], ["paused_by_admin", "paused_by_admin"], ["constructor", "constructor"]]) {
       stubFetch({ ...DISABLED, status });

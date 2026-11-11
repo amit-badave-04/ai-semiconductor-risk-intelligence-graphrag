@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode, useEffect, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -162,7 +162,8 @@ describe("EvidenceDrawer and Chips contract", () => {
     await userEvent.click(chip);
     expect(screen.getByRole("complementary", { name: "Evidence" })).toBeInTheDocument();
     act(() => seen.current?.close());
-    expect(screen.queryByRole("complementary", { name: "Evidence" })).toBeNull();
+    // N1 (the owner's NVDA pass): a close that gives focus back finishes one frame later, so these wait for it.
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Evidence" })).toBeNull());
     act(() => seen.current?.open(DOC, chip, "changes"));
     expect(screen.getByRole("complementary", { name: "Evidence" })).toBeInTheDocument();
     act(() => seen.current?.clearAll());

@@ -105,7 +105,7 @@ describe("Filings and Active risks (RD25)", () => {
 
   it("renders a 20-F risk item with no headline as its passage alone, with no empty label", async () => {
     mountCompany();
-    const changes = await screen.findByRole("region", { name: "Compared risk disclosures" });
+    const changes = await screen.findByRole("region", { name: "Risk changes" });
     await waitFor(() => expect(changes).toHaveTextContent("A new paragraph."));
     const item = within(changes).getByRole("listitem");
     expect(item.firstElementChild?.tagName).toBe("P"); // the passage leads; no empty label before it
@@ -121,7 +121,7 @@ describe("the header actions (RD19)", () => {
     const link = await screen.findByRole("link", { name: "Compare filings" });
     expect(link).toHaveAttribute("href", "#risk-changes");
     await user.click(link);
-    expect(screen.getByRole("heading", { level: 2, name: "Compared risk disclosures" })).toHaveFocus();
+    expect(screen.getByRole("heading", { level: 2, name: "Risk changes" })).toHaveFocus();
   });
 
   it("'Ask about Nvidia' opens Ask with the company in the router state", async () => {

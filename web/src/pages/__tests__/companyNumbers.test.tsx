@@ -65,10 +65,11 @@ describe("Key numbers (RD22)", () => {
     for (const h of within(table).getAllByRole("columnheader")) expect(h).toHaveAttribute("scope", "col");
     const rows = within(table).getAllByRole("rowheader");
     expect(rows.map((h) => h.textContent)).toEqual([
-      "RevenueMoney from sales",
-      "Net incomeProfit after all costs and taxes",
-      "Research and developmentMoney spent on developing new products",
-      "Capital spendingMoney spent on buildings and equipment",
+      // N3 (the owner's NVDA pass): the name ends in a no-break space, so it is not read run together with its meaning
+      "Revenue\u00a0Money from sales",
+      "Net income\u00a0Profit after all costs and taxes",
+      "Research and development\u00a0Money spent on developing new products",
+      "Capital spending\u00a0Money spent on buildings and equipment",
     ]);
     for (const h of rows) expect(h).toHaveAttribute("scope", "row");
     expect(numbers()).toHaveTextContent("Fiscal years are the company's own. Each column shows the date its year ended.");

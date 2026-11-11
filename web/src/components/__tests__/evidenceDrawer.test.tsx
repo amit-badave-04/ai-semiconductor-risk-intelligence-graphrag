@@ -153,7 +153,8 @@ describe("A5: a non-modal complementary landmark", () => {
     const chip = screen.getByRole("button", { name: /paragraph 361/ });
     await user.click(chip);
     await user.keyboard("{Escape}");
-    expect(drawer()).toHaveAttribute("inert");
+    // N1 (the owner's NVDA pass): a close that gives focus back finishes one frame later, so these wait for it.
+    await waitFor(() => expect(drawer()).toHaveAttribute("inert"));
     expect(chip).toHaveFocus();
   });
 
@@ -167,7 +168,7 @@ describe("A5: a non-modal complementary landmark", () => {
     document.removeEventListener("keydown", handled, true);
     expect(drawer()).not.toHaveAttribute("inert");
     await user.keyboard("{Escape}"); // the next Escape, with nothing above it, closes it
-    expect(drawer()).toHaveAttribute("inert");
+    await waitFor(() => expect(drawer()).toHaveAttribute("inert"));
   });
 
   it("the close button closes it and focus returns to the chip", async () => {
@@ -176,7 +177,7 @@ describe("A5: a non-modal complementary landmark", () => {
     const chip = screen.getByRole("button", { name: /paragraph 361/ });
     await user.click(chip);
     await user.click(screen.getByRole("button", { name: "Close evidence" }));
-    expect(drawer()).toHaveAttribute("inert");
+    await waitFor(() => expect(drawer()).toHaveAttribute("inert"));
     expect(chip).toHaveFocus();
   });
 
@@ -335,7 +336,7 @@ describe("A2: focus returns to the right chip", () => {
       </StrictMode>,
     );
     await user.keyboard("{Escape}");
-    expect(document.querySelector(`[data-chip-key="answer:1:${CHUNK}:1"]`)).toHaveFocus();
+    await waitFor(() => expect(document.querySelector(`[data-chip-key="answer:1:${CHUNK}:1"]`)).toHaveFocus());
   });
 
   it("when a new answer replaced the opener, focus goes to the answer heading, never to the body", async () => {
@@ -352,7 +353,7 @@ describe("A2: focus returns to the right chip", () => {
       </StrictMode>,
     );
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("heading", { name: "Ask the graph" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Ask the graph" })).toHaveFocus());
   });
 });
 

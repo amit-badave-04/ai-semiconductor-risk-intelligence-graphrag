@@ -67,15 +67,19 @@ const STEP_WORDS: Record<Exclude<StepCode, "unknown">, readonly [string, string]
 };
 
 /** R25's risk changes block (docs/specs/m5b-redesign.md R3/R4: moved from pages/Company.copy.ts, word for word): its heading
- *  (the legacy page's label of the risk_changes step), a filing as a pair header names it, the prefix of a passage, the line for
+ *  ("Risk changes", as its On this page link names it, N2; the legacy page said "Compared risk disclosures"), a filing as a pair header names it, the prefix of a passage, the line for
  *  a pair that could not be compared (the legacy template), and the quote marks. */
 interface FilingWords {
   form: string | null;
   filing_date: string | null;
 }
 const filingLabel = (f: FilingWords): string => [f.form, f.filing_date].filter((part): part is string => part !== null && part !== "").join(" ");
+/** N2 (the owner's NVDA pass): the risk changes block is headed as its On this page link names it (it was the agent step's label,
+ *  "Compared risk disclosures", which the agent's steps list keeps). */
+const RISK_CHANGES = "Risk changes";
+
 const COMPANY_CHANGES = {
-  title: STEP_WORDS.risk_changes[0],
+  title: RISK_CHANGES,
   filingLabel,
   /** a passage names its side by that side's filing, or "earlier filing" / "later filing" when it has no label; nothing for none */
   passageLabel: (side: "older" | "newer" | null, older: FilingWords, newer: FilingWords): string => {
@@ -445,7 +449,7 @@ export const deck = {
       rules: "Government rules",
       relationships: "Relationships",
       filings: "Filings",
-      changes: "Risk changes",
+      changes: RISK_CHANGES,
     },
     glance: {
       heading: "At a glance",
@@ -497,7 +501,7 @@ export const deck = {
       none: "none",
       unreadable: "could not load the company data",
     },
-    /** R25's risk changes block: its heading (the legacy page's label of the risk_changes step), the pair header, the
+    /** R25's risk changes block: its heading (as its On this page link names it, N2), the pair header, the
      *  passage prefix, the line for a pair that could not be compared (the legacy template), and the quote marks */
     changes: COMPANY_CHANGES,
     /** a request that never reached the server (the legacy page's words, index.html:680) */
@@ -527,8 +531,8 @@ export const deck = {
     },
     /** RD15: the list of an answer's distinct cited sources */
     sourcesHeading: (count: number): string => `Sources (${count})`,
-    /** a chip's tooltip, with its id for analysts (the label above says what it is) */
-    title: (id: string, stale: boolean): string => `open evidence ${id}${stale ? " \u2014 a newer version exists" : ""}`,
+    /** a chip's tooltip. N5 (the owner's NVDA pass): no raw id, which NVDA read out as the chip's description (the panel shows it) */
+    title: (stale: boolean): string => `Open the source${stale ? " \u2014 a newer version exists" : ""}`,
     /** the legacy label of a document chip (lib/citations.ts chipLabel, kept for the differential tests) */
     legacyDoc: "your document",
     /** shown after a stale chip's label (a workspace answer cited an older version of the document) */

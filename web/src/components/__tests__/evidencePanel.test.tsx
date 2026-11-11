@@ -65,7 +65,9 @@ describe("the evidence panel body", () => {
     const body = await screen.findByRole("complementary", { name: "Evidence" });
     await waitFor(() => expect(within(body).getByRole("heading", { name: "Nvidia 10-K, Item 1A. Risk Factors" })).toBeInTheDocument());
     const terms = within(body).getAllByRole("term").map((t) => t.textContent);
-    expect(terms).toEqual(["Section", "Filed", "Status"]);
+    // N3: each term ends in a no-break space so it is not read run together with its value
+    expect(terms.map((t) => t?.trim())).toEqual(["Section", "Filed", "Status"]);
+    for (const t of terms) expect(t?.endsWith("\u00a0")).toBe(true);
     expect(body).toHaveTextContent("Feb 21, 2024");
     expect(body).toHaveTextContent("Older filing: a newer filing has replaced it. It was current until Feb 26, 2025.");
     expect(within(body).getByRole("blockquote")).toHaveTextContent(/^As of January 28, 2024/);

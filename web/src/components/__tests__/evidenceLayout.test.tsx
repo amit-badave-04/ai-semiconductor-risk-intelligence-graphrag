@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnswerText } from "@/components/Chips";
@@ -48,7 +48,8 @@ describe("the evidence panel's layout (RD16)", () => {
     await user.click(chip());
     expect(root()).toHaveAttribute("data-evidence");
     await user.keyboard("{Escape}");
-    expect(root()).not.toHaveAttribute("data-evidence");
+    // N1 (the owner's NVDA pass): a close that gives focus back finishes one frame later, so these wait for it.
+    await waitFor(() => expect(root()).not.toHaveAttribute("data-evidence"));
   });
 
   it("clears the mark when the page unmounts with the panel open", async () => {
@@ -83,7 +84,7 @@ describe("the evidence panel's layout (RD16)", () => {
     expect(body.className).toMatch(/\boverflow-auto\b/);
     expect(body.contains(close)).toBe(false);
     act(() => close.click());
-    expect(chip()).toHaveFocus();
+    await waitFor(() => expect(chip()).toHaveFocus());
   });
 
   it("is a bottom sheet below 900 px and a column from 900 px, no longer offset under the header", () => {

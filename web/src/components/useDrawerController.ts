@@ -2,6 +2,9 @@
 // It ports openDrawer / closeDrawer / openSeq / chipPlace of the legacy page: `open` takes the opener, fetches (or reads the cache),
 // and lets only the LAST open fill the drawer; `close` decides where focus goes, after the commit that hides the drawer; a new workspace
 // identity closes the drawer and clears the cache, and a new doc-evidence epoch drops the cached `doc:` evidence.
+// A close that gives focus back to the chip happens in two steps (the owner's NVDA pass, N1: NVDA said "expanded" when focus came back,
+// because the chip's aria-expanded and the focus changed in the same frame): first the chip says collapsed, with the drawer still shown
+// and focus still on Close; one frame later the drawer hides and focus moves to the chip, so focus never falls to the page body.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
 import { rememberChunkEvidence } from "@/lib/chipEvidence";
 import { EvidenceCache } from "@/lib/evidenceCache";
@@ -36,6 +39,8 @@ interface Shell {
   opener: MutableRefObject<Opener>;
   /** The evidence GET in flight, if any: aborted by the next open, by close and by the provider going away. */
   fetching: MutableRefObject<AbortController | null>;
+  /** The frame that finishes a focus-returning close (N1), if one is pending: cancelled by an open, a plain close and unmount. */
+  closing: MutableRefObject<number | null>;
   live: MutableRefObject<Pick<WorkspaceContextValue, "workspace" | "headers">>;
 }
 
@@ -47,6 +52,7 @@ function useShell(workspace: WorkspaceContextValue["workspace"], headers: Worksp
     openSeq: { current: 0 },
     opener: { current: { element: null, key: null } },
     fetching: { current: null },
+    closing: { current: null },
     live: { current: { workspace, headers } },
   }));
   useLayoutEffect(() => {
@@ -62,6 +68,10 @@ function put<T>(box: { current: T }, value: T): void {
 function cancelFetch(shell: Shell): void {
   shell.fetching.current?.abort();
   put(shell.fetching, null);
+}
+function cancelClosing(shell: Shell): void {
+  if (shell.closing.current !== null) cancelAnimationFrame(shell.closing.current);
+  put(shell.closing, null);
 }
 function bump(box: { current: number }): number {
   box.current += 1;
@@ -91,6 +101,7 @@ function useOpen(shell: Shell, setOpenId: SetOpen, setOpened: SetOpened, setCont
     (id, element, _place, quotes = []) => {
       const seq = bump(shell.openSeq);
       cancelFetch(shell);
+      cancelClosing(shell); // an open during a pending close keeps the drawer: the close never finishes
       const previous = shell.opener.current;
       const from = element ?? (shell.isOpen.current ? previous.element : (document.activeElement as HTMLElement | null));
       put(shell.opener, { element: from, key: element ? element.getAttribute(OPENER_KEY_ATTR) : shell.isOpen.current ? previous.key : null });
@@ -121,16 +132,30 @@ function useOpen(shell: Shell, setOpenId: SetOpen, setOpened: SetOpened, setCont
 function useClose(shell: Shell, aside: RefObject<HTMLElement | null>, setOpenId: SetOpen, setOpened: SetOpened, setRestore: Dispatch<SetStateAction<Restore>>) {
   return useCallback<EvidenceDrawerApi["close"]>(
     ({ restoreFocus = true } = {}) => {
-      if (!shell.isOpen.current) return;
+      if (!shell.isOpen.current) {
+        // a plain close (a route or workspace change) while a focus-returning close is pending finishes it now, without the focus
+        if (!restoreFocus && shell.closing.current !== null) {
+          cancelClosing(shell);
+          setOpenId(null);
+        }
+        return;
+      }
       put(shell.isOpen, false);
       cancelFetch(shell);
       const active = document.activeElement;
       const focusWasHere = !active || active === document.body || (aside.current?.contains(active) ?? false);
-      const target = restoreFocus && focusWasHere ? focusTargetAfterClose(shell.opener.current.element, shell.opener.current.key) : null;
+      const { element, key } = shell.opener.current;
       put(shell.opener, { element: null, key: null });
-      setOpenId(null);
-      setOpened(NOTHING_OPENED);
-      setRestore((r) => ({ target, tick: r.tick + 1 }));
+      setOpened(NOTHING_OPENED); // the chip says collapsed now (aria-expanded)
+      const finish = (giveFocus: boolean): void => {
+        put(shell.closing, null);
+        setOpenId(null);
+        // chosen now, not before the frame: an answer that re-rendered meanwhile still gets focus on the same chip (A2)
+        const target = giveFocus ? focusTargetAfterClose(element, key) : null;
+        setRestore((r) => ({ target, tick: r.tick + 1 }));
+      };
+      if (!(restoreFocus && focusWasHere)) finish(false);
+      else put(shell.closing, requestAnimationFrame(() => finish(true))); // N1: focus moves a frame after the chip said collapsed
     },
     [shell, aside, setOpenId, setOpened, setRestore],
   );
@@ -158,7 +183,13 @@ export function useDrawerController(): DrawerController {
   const [restore, setRestore] = useState<Restore>({ target: null, tick: 0 });
   const open = useOpen(shell, setOpenId, setOpened, setContent, setFocusClose);
   const close = useClose(shell, aside, setOpenId, setOpened, setRestore);
-  useEffect(() => () => cancelFetch(shell), [shell]); // the provider going away cancels the request in flight
+  useEffect(
+    () => () => {
+      cancelFetch(shell); // the provider going away cancels the request in flight
+      cancelClosing(shell); // and a close still waiting for its frame
+    },
+    [shell],
+  );
   const dropDocEvidence = useCallback(() => shell.cache.current.dropDoc(), [shell]);
   const clearAll = useCallback(() => {
     shell.cache.current.clear();

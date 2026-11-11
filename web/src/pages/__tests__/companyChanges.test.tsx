@@ -134,7 +134,9 @@ describe("Company: the risk changes block", () => {
     expect(copy.KIND_DROPPED).toBe("No longer appears as a separate risk factor");
     expect(copy.KIND_UNSETTLED).toBe("Not matched");
     expect(copy.KIND_CHANGED).toBe("Reworded");
-    expect(deck.company.changes.title).toBe("Compared risk disclosures");
+    // N2 (the owner's NVDA pass): the section's heading says what its On this page link says
+    expect(deck.company.changes.title).toBe("Risk changes");
+    expect(deck.company.changes.title).toBe(deck.company.nav.changes);
   });
 
   it("quotes passages, and only a chunk id of the grammar becomes an evidence chip (R25)", async () => {

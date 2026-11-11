@@ -34,14 +34,16 @@ describe("the app shell landmarks (A7)", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 }))); // the freshness line: "Data status unavailable"
     at("/workspace/", "/v2");
     const nav = within(screen.getByRole("navigation", { name: "Main" }));
-    await nav.findByRole("link", { name: "Freshness: Data status unavailable" });
+    // N4: jsdom trims the hidden prefix's no-break space from the name; Chrome keeps it (e2e/screen-reader-text.spec.ts checks the
+    // space there), so the name here is matched with or without it.
+    await nav.findByRole("link", { name: /^Freshness:\s*Data status unavailable$/ });
     const links = nav.getAllByRole("link");
     // React Router joins the basename and "/" without a trailing slash; the server answers /v2 with a redirect to /v2/ (R9e).
     expect(links.map((l) => [l.textContent, l.getAttribute("href")])).toEqual([
       ["Ask", "/v2"],
       ["Companies", "/v2/company/NVDA/"],
       ["Workspace", "/v2/workspace/"],
-      ["Freshness: Data status unavailable", "/v2/freshness/"],
+      ["Freshness:\u00a0Data status unavailable", "/v2/freshness/"],
       ["How it works", "/v2/method/"],
     ]);
     expect(links.filter((l) => l.getAttribute("aria-current") === "page").map((l) => l.textContent)).toEqual(["Workspace"]);

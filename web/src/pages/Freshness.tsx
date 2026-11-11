@@ -24,10 +24,12 @@ interface Loaded {
 
 type State = { kind: "loading" } | { kind: "error"; detail: string } | ({ kind: "ok" } & Loaded);
 
+/** N3 (the owner's NVDA pass): the label ends in a no-break space, which no layout drops; between two flex items a plain space is
+ *  dropped, and NVDA read "ChecksWorking". */
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <li className="flex flex-wrap gap-x-3 border-b border-border py-2">
-      <span className="min-w-48 font-semibold">{label}</span>
+      <span className="min-w-48 font-semibold">{`${label}\u00a0`}</span>
       <span className="min-w-0 break-words">{children}</span>
     </li>
   );
@@ -62,13 +64,7 @@ function Fields({ freshness: f, now }: Loaded) {
       )}
       {fr === null ? null : <Row label={r.rules}>{w.rules(fr.graph_count, fr.live_count, fr.new_since)}</Row>}
       {f.unresolved.length === 0 ? null : (
-        <Row label={r.unresolved}>
-          {f.unresolved.map((t, i) => (
-            <span key={`${t}-${i}`} className="mr-2">
-              {t}
-            </span>
-          ))}
-        </Row>
+        <Row label={r.unresolved}>{f.unresolved.join(", ") /* one text run: as spans with a margin, NVDA read "TSMASML" */}</Row>
       )}
     </ul>
   );

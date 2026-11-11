@@ -87,8 +87,10 @@ export function MoreOptions({ options, depth, onDepth, workspaceOpen, note }: Mo
     <Collapsible.Root className="mt-2">
       <Collapsible.Trigger className="group inline-flex min-h-11 items-center gap-1.5 font-semibold">
         <ChevronRight aria-hidden="true" className="size-4 group-data-[panel-open]:rotate-90" />
-        {o.toggle}
-        <span className="font-normal text-muted-foreground">{o.summary(current.name)}</span>
+        {/* N4: one inline span, so the space is rendered (as two flex items NVDA read "More optionsDepth: Standard") */}
+        <span>
+          {o.toggle} <span className="font-normal text-muted-foreground">{o.summary(current.name)}</span>
+        </span>
       </Collapsible.Trigger>
       <Collapsible.Panel className="mt-1 mb-2 pl-6">
         <fieldset className="m-0 border-0 p-0">

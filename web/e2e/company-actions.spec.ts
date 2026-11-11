@@ -31,7 +31,7 @@ test("'Compare filings' focuses the risk changes; both actions are 24 px targets
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(24);
   }
   await page.getByRole("link", { name: "Compare filings" }).click();
-  await expect(page.getByRole("heading", { level: 2, name: "Compared risk disclosures" })).toBeFocused();
+  await expect(page.getByRole("heading", { level: 2, name: "Risk changes" })).toBeFocused();
 });
 
 test("the active risks say they are summaries written by semigraph", async ({ page }) => {

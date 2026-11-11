@@ -57,7 +57,7 @@ export function Chip({ id, place, gen, nth, stale = false, quotes }: ChipProps) 
   const view = stampView(id, evidence);
   const { icon: KindIcon, look } = KINDS[view.kind];
   const Icon = stale ? TriangleAlert : KindIcon;
-  const title = deck.chips.title(id, stale);
+  const title = deck.chips.title(stale);
   return (
     <button
       type="button"

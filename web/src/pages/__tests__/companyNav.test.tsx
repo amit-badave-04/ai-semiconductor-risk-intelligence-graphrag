@@ -73,7 +73,7 @@ describe("section navigation (RD21)", () => {
   it("puts every section in the page, in a fixed order, each headed by a focusable h2 with its id; no tabs", async () => {
     mount();
     await ready();
-    await screen.findByRole("heading", { level: 2, name: "Compared risk disclosures" });
+    await screen.findByRole("heading", { level: 2, name: "Risk changes" });
     const ids = Array.from(document.querySelectorAll("main h2[id], h2[id]"), (h) => h.id);
     expect(ids).toEqual(["at-a-glance", "key-numbers", "government-rules", "relationships", "filings", "active-risks", "risk-changes"]);
     for (const id of ids) expect(document.getElementById(id)).toHaveAttribute("tabindex", "-1");
@@ -127,7 +127,7 @@ describe("section navigation (RD21)", () => {
       ];
       mount(`/company/NVDA${hash}`); // the page opened at the hash
       await ready();
-      await screen.findByRole("heading", { level: 2, name: "Compared risk disclosures" });
+      await screen.findByRole("heading", { level: 2, name: "Risk changes" });
       expect(document.activeElement).toBe(document.body);
       act(() => go.to?.("")); // and the hash arriving later (the change path)
       act(() => go.to?.(hash));
