@@ -31,8 +31,8 @@ not-found page, and an answer with its evidence panel open (the bot-check frame 
 | Ask-3 | A7 | NVDA said banner, "Main" navigation, main landmark; the named regions were not reached by speech | PASS for landmarks; regions by tree at v20 |
 | X-5 | A3, A8 | NVDA said "Freshness:Data as of Sep 24, 2026, 9 newer filings being added" as a link in Main, after Workspace | PASS (speech) |
 | Ask-4c | A1, A5 | Enter on the "filing passage" stamp opened its example; Escape returned focus to the stamp | PASS |
-| Ask-4b | A4 | Enter on More options, Tab into the Depth group, arrow keys move between the radio buttons | PASS (keyboard) |
-| Ask-5 | A3 | Enter on a starter: the answer came from cache, focus stayed on the starter | PASS (keyboard) |
+| Ask-4b | A4 | Enter on More options, Tab into the Depth group, arrow keys move between the radio buttons | keyboard OK; not heard |
+| Ask-5 | A3 | Enter on a starter: the answer came from cache, focus stayed on the starter; whether the status line is spoken once was not heard | keyboard OK; not heard |
 | Ask-6 | A1 | the first chip reads "Filing 2026 · paragraph 11"; after it was opened once, "AMD 10-K, filed 2026 · paragraph 11" | PASS |
 | Ask-7 | A1, A5 | Enter opened the panel with focus on "Close evidence"; Space did the same | PASS |
 | Ask-8 | A5 | Tab inside the panel went to "Open the filing on SEC.gov"; no trap | PASS |
@@ -40,15 +40,19 @@ not-found page, and an answer with its evidence panel open (the bot-check frame 
 | Co-5 (nav) | A7 | Enter on Companies in Main: focus on the h1 "Nvidia (NVDA)" | PASS |
 | Co-7, Co-7b | A1, A2 | a Key numbers figure is a button named "$215.9B, Revenue, FY2026 (ended Jan 25, 2026): $215,938,000,000..."; Enter opened its evidence, Escape returned focus to it | PASS |
 | Co-7c | A7 | Enter on "Filings" in On this page: focus on the h2 "Filings" | PASS |
-| Co-7e | A4 | Space on the "Show exact values" switch (a span with the switch role) | keyboard reached it; state not read back |
+| Co-7e | A4 | Space on the "Show exact values" switch (a span with the switch role) | NOT SHOWN: reached by keyboard, its state was not read back and nothing was heard |
 | Co-5 | A7 | Enter on "AMD (AMD)" in the Companies switcher: focus on the h1 "AMD (AMD)" | PASS |
 | Fr, Me, Ws (nav) | A7 | Enter on each Main link: focus on its h1 (Freshness, Method & Evidence, Workspace) | PASS |
-| Ws-2 | A4 | Enter on "I have a workspace id and key"; Tab reaches the two fields and "Restore" | PASS (keyboard) |
+| Ws-2 | A4 | Enter on "I have a workspace id and key"; Tab reaches the two fields and "Restore" | keyboard OK; names not heard |
 | Ws-6 (empty) | A4 | Restore with both fields empty sends nothing; focus moves to the empty id field | PASS |
 | X-1 | A5, A7 | panel open on Ask, then Companies in Main: focus on the h1 "Nvidia (NVDA)" | PASS |
 
-**Needed to close A11 (owner, about 10 minutes, D-R7 a):** with NVDA on, listen to the Ask page (rows Ask-2 to Ask-11 of
-`docs/v2/M5B_NVDA_GUIDE.md`) and the Nvidia page (Co-2 to Co-8). Write down anything that sounds wrong, or "heard, fine".
+**By the guide's own rule a requirement passes only if every row citing it passes, so A1, A3, A4 and A5 stay open until someone
+listens**: the PASS rows above show the keyboard and focus behaviour, not what NVDA says. D-R7 (a) sized the person's part at
+about ten minutes on the assumption that the agent's speech log would cover the rest; it covers only the page load. To close
+A11 the owner either listens to the speech-dependent rows (Ask-2 to Ask-11, Co-2 to Co-8, a quick pass over Fr, Me and Ws; about
+15 minutes with `docs/v2/M5B_NVDA_GUIDE.md`), or accepts in writing this keyboard and focus evidence plus a ten-minute listen to
+Ask and Company.
 
 ## Release v20 record (2026-11-10)
 
