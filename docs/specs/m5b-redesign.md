@@ -45,9 +45,9 @@ Numbered RD (redesign). Section 7 maps each to its test.
   for every number.
 - RD2 Fonts: Source Sans 3 version 3.052R (Regular, Semibold, Bold) and Source Serif 4 version 4.005R (Regular, the
   `SourceSerif4-Regular` face, not an optical-size variant), the unmodified `WOFF2/TTF/*.ttf.woff2` files from Adobe's
-  GitHub releases (about 405 KB for the four), vendored under `web/src/assets/fonts/` with each repository's licence text
-  (the `LICENSE.md` at the same tag, saved as `OFL-SourceSans3.txt` and `OFL-SourceSerif4.txt`) and a README giving source
-  URL, version and sha256 of every file. No npm font package, no subsetting (the OFL reserves the name for unmodified files),
+  GitHub releases (about 405 KB for the four), vendored under `web/src/assets/fonts/` with a README giving source
+  URL, version and sha256 of every file; each repository's licence text (the `LICENSE.md` at the same tag, saved as
+  `OFL-SourceSans3.txt` and `OFL-SourceSerif4.txt`) sits in `web/public/licenses/`, so it ships in `dist` unchanged (SR5). No npm font package, no subsetting (the OFL reserves the name for unmodified files),
   no `data:` font. `font-display: optional`; `SourceSans3-Regular` and `SourceSans3-Semibold` are preloaded (owner 2026-11-11, so headings draw in
   Source Sans 3 on a slow first visit too; `<link rel="preload" as="font" type="font/woff2" crossorigin>`); a size-adjusted fallback `@font-face` with `src: local(...)` keeps the fallback's
   metrics close. Serif is used only for words copied from a source; everything semigraph writes, and every number, is sans.
@@ -69,9 +69,10 @@ Numbered RD (redesign). Section 7 maps each to its test.
   each group with a one-line "You get ..." naming the kind of proof; drawn as ruled rows, not cards. The six come from a
   curated id list (decision D-R6) intersected with `GET /api/examples`; D1 and X4 are never starters (their saved answers
   contradict a detail of their own source). "Show all examples" (a disclosure) lists the rest by company.
-- RD6 "What an answer looks like": beside the box on desktop (below it on a phone), a static sample with one highlighted
-  verbatim sentence, its source line and a one-line legend; the sentence and source come from a recorded evidence fixture
-  and a test checks the sentence is in that fixture's text.
+- RD6 "What an answer looks like": beside the box on desktop (below it on a phone), a static sample with one verbatim
+  sentence and its source line; the sentence and source come from a recorded evidence fixture and a test checks the
+  sentence is in that fixture's text. Amended 2026-11-11 by `docs/decisions/003-evidence-highlight.md`: the sample shows no
+  highlight and no legend (real answers rarely produce one); the highlight and its legend stay in the evidence panel (RD18).
 - RD7 More options: a disclosure holding "Depth" as a labelled radio group: Standard (recommended; `hybrid`), Deep research
   (slower; `agent`, shown only when `/api/stats.agent_enabled`), Basic text search (comparison only; `vector`). R23 holds:
   with a workspace open only Standard is offered.
@@ -235,7 +236,7 @@ General:
 | RD4 | `ask-page.test.tsx`, `ask-first-screen.spec.ts` | order of h1, sentence, box, cost line; on screen at 1440x900 and 390x844 |
 | RD4a | `ask-page.test.tsx`, `test_web_copy_deck.py` | stats-driven numbers; defaults until loaded; approved sentence |
 | RD5 | `ask-page.test.tsx` | six starters, curated ids only, D1/X4 never, missing id dropped, disclosure lists the rest |
-| RD6 | `sampleAnswer.test.tsx` | sentence found in its fixture text |
+| RD6 | `answerSample.test.tsx` | sentence found in its fixture text; no highlight or legend (decision 003) |
 | RD7 | `ask-page.test.tsx`, `a11y-labels.spec.ts` | radio group, agent option gated, workspace leaves Standard only |
 | RD8 | `ask-page.test.tsx`, `error-placement.spec.ts` | message next to the box and in status; no request |
 | RD9 | `ask-page.test.tsx` | company list after the starters |
