@@ -1,11 +1,12 @@
 # M5b I5: the screen-reader pass, step by step (NVDA)
 
 Status: INTERNAL working guide for the owner. It states limits plainly. Do not copy it into the README or the site.
-Spec: `docs/specs/m5b-frontend.md` (A1-A11, D14, D15, I5 in the increment table, B6/P8 in the gate map).
-Written 2026-11-08 and refreshed the same day against the I3 pages (Ask, Workspace, the evidence drawer, the header line)
-as they are in `web/src`. The labels below are the ones the code carries; if NVDA says something different, write down what
-it said and compare it with the meaning in the "Expect" column. A label in a table that was changed after the I3 build is
-a finding about this guide, not about the page.
+Spec: `docs/specs/m5b-frontend.md` (A1-A11, D14, D15, I5 in the increment table, B6/P8 in the gate map) and the redesign
+`docs/specs/m5b-redesign.md` (RD3-RD27).
+Written 2026-11-08 against the I3 pages and refreshed 2026-11-11 against the redesigned pages (Ask, Companies, Freshness, How it works,
+Workspace, the evidence drawer, the header) as they are in `web/src`; the words are in `web/src/copy/deck.ts`. The labels below are the
+ones the code carries; if NVDA says something different, write down what it said and compare it with the meaning in the "Expect" column.
+A label in a table that was changed after this refresh is a finding about this guide, not about the page.
 
 ## 1. What this pass is for, and how long it takes
 
@@ -96,7 +97,7 @@ User Guide (its "Commands Quick Reference" lists every key).
 1. In laptop layout, say-all is NVDA+A and "current line" is NVDA+L. Every other key in the table is the same in both layouts.
 2. If NVDA+Ctrl+V does not open the Speech settings, use the NVDA menu route in step 2.6.
 3. In Chrome and Firefox, "D" may land on landmarks that are not named. The code names the top `nav` "Main", the company
-   switcher "Companies" (Company page), and the drawer "Evidence".
+   switcher "Companies" and the in-page links "On this page" (Company page), and the drawer "Evidence".
 4. NVDA may announce "clickable" or "link" extras that depend on its settings. Judge meaning, not the exact extras.
 
 ## 4. Which browser, and the Narrator fallback
@@ -137,130 +138,150 @@ Start NVDA first, then the browser, then the `/v2/` address. For every page do t
 5. Then do the page-specific items below.
 
 Expected landmarks on every page (A7): banner (the header), navigation named "Main", main. The first Tab stop is a "Skip to
-content" link; Enter on it moves you to the main area. The top navigation links are Ask, Company, Workspace, Freshness,
-Method & Evidence; the current page's link is announced as "current page" (or similar). Under the navigation the banner
-carries one plain line of text about the data's freshness (see X-5); it is not a link or a control and is not announced by
-itself. The Turnstile bot-check box, when it is shown, sits after the main area at the bottom of the page, outside the landmarks.
+content" link; Enter on it moves you to the main area. Next comes the "semigraph" home link. The links in the navigation are Ask,
+Companies, Workspace, a freshness link (its name starts "Freshness:" and then one line about the data's date; it only appears once the
+data has loaded), and "How it works". The current page's link is announced as "current page" (or similar). The Turnstile bot-check box,
+when it is shown, sits after the main area at the bottom of the page, outside the landmarks.
 
-Page titles come from the code as "<page name> - semigraph" (the code uses a middle dot between the two parts; NVDA may say "dot" or nothing).
+Page titles come from the code as "<page name> [dot] semigraph" (the code uses a middle dot between the two parts; this guide writes it
+as [dot]; NVDA may say "dot" or nothing). The Ask page's title is just "Ask" before the dot, although its heading is a longer sentence.
 
 ### 5.1 Ask  (`/v2/`)
 
-Labels in the code (`web/src/copy/deck.ts` (Ask.copy.ts until R4), `Ask.tsx`, `components/EvidenceDrawer.tsx`, `components/Steps.tsx`): the
-level 1 heading is "Ask"; two named sections follow, "Benchmark questions (instant, cached)" (the examples) and "Ask the
-graph" (the question and the answer, a level 2 heading that takes focus when an answer is replaced under an open drawer); a
-box labelled "Your question"; a select named "Retrieval strategy" (options "hybrid GraphRAG (graph + XBRL + text-checked risk
-changes + vector search)" and "vector-only: comparison baseline, no temporal reasoning", plus "Deep research (agent): plans
-extra lookups first" only when the server offers it); an "Ask" button; and one status line that is a live region.
+Labels in the code (words in `web/src/copy/deck.ts`; `Ask.tsx`, `AskFirstScreen.tsx`, `AskParts.tsx`, `components/SpecimenStamp.tsx`,
+`components/AnswerSample.tsx`, `components/EvidenceDrawer.tsx`, `components/WhatWasChecked.tsx`, `components/AnswerNotes.tsx`): the level 1
+heading is "Ask about 13 chip and AI companies." (the tab title is just "Ask"). Under it a sentence "Answers cite their sources: a filing passage,
+a reported number or a government rule. Click one to see an example." where the three source names are buttons (stamps) that open a small
+example window. Then a level 2 heading "Your question" over a box named "Your question" and an "Ask" button; a cost line ("Free to use, up
+to ... live questions every ... minutes ..."), a link "How answers are made"; a disclosure button "More options" (it also reads "Depth:
+Standard") that opens a group "Depth" of radio buttons; one status line (a status region). Named regions: "What an answer looks like" (a
+static sample, only until the first answer), "Or try an example" (six starter questions in four groups: Understand a company, Check a number,
+Track export rules, See what changed; plus a disclosure "Show all examples, grouped by company") and "Companies covered" (13 links). The page
+ends with small print (cost, reliability). "Your question" is deliberately not a region.
 
 | # | Do | Expect | Req | Result |
 |---|---|---|---|---|
-| Ask-1 | NVDA+T on arrival | "Ask - semigraph" | A7 | |
-| Ask-2 | Press 1, then count level 1 headings | One level 1 heading, "Ask". After navigating from another page via the nav, focus lands on this heading and NVDA reads it | A7 | |
-| Ask-3 | Press D through landmarks | banner, navigation "Main", main, and inside main two named regions: "Benchmark questions (instant, cached)" and "Ask the graph". Any other region has a name | A7 | |
-| Ask-4 | Press E (edit field), F (next field) | The question box is announced as "Your question" (not "edit", not blank). The strategy select is announced as "Retrieval strategy". Every field you reach has a name | A4 | |
-| Ask-5 | Press Tab to reach the example questions (cached, free) and press Enter on one | The answer appears. NVDA announces something like "answer ready" through the status region, once. The answer text itself is NOT read aloud automatically while it streams | A3 | |
-| Ask-6 | Press B to walk the buttons in the answer | Each citation chip is a button with a readable name, not a raw id. The code's labels: a filing passage "Item 1A" + paragraph mark + number, sometimes with the form and year first ("10-K FY2025 ..."; NVDA may say "pilcrow" or "paragraph" for the mark); a number "XBRL revenue FY ended 2026-01-25"; a rule "BIS rule 2025-19001" | A1 | |
-| Ask-7 | On a chip press Enter. Repeat with Space | The evidence drawer opens. NVDA announces a landmark named "Evidence" (complementary). Focus moves to a close button named "Close evidence" (its tooltip says "close") | A1, A5 | |
+| Ask-1 | NVDA+T on arrival | "Ask [dot] semigraph" | A7 | |
+| Ask-2 | Press 1, then count level 1 headings | One level 1 heading, "Ask about 13 chip and AI companies." After navigating from another page via the nav, focus lands on this heading and NVDA reads it | A7 | |
+| Ask-3 | Press D through landmarks | banner, navigation "Main", main, and inside main the named regions "What an answer looks like", "Or try an example" and "Companies covered". Any other region has a name | A7 | |
+| Ask-4 | Press E (edit field), F (next field) | The question box is announced as "Your question" (not "edit", not blank). Every field you reach has a name | A4 | |
+| Ask-4b | Press Enter on "More options" (announced as collapsed, then expanded), then arrow or Tab through the radio buttons | The group is announced as "Depth". Options: "Standard (recommended)", "Basic text search", and "Deep research" only when the server offers it (that option is the paid agent: do not ask with it). Each is a radio button with its hint ("Searches filings, numbers and rules together." and so on) read as its description. The collapsed button reads "More options Depth: Standard" | A4 | |
+| Ask-4c | Tab to the three stamps in the sentence under the heading ("filing passage", "reported number", "government rule") and press Enter on one | Each is a button. A window opens named "Example: filing passage" (and so on), focus moves into it, and it shows a short example (it says "Loading the example..." first; if it cannot load it says "The example could not be loaded right now."). A "Close" button closes it; Esc closes it and the page behind stays as it was (check where focus lands) | A1, A5 | |
+| Ask-5 | Press Tab to reach the starter questions (cached, free) and press Enter on one | The question is sent at once. The status line says something like "Saved answer, shown instantly." (or "Answered earlier, shown instantly.") once; the answer text itself is NOT read aloud automatically while it streams. The answer is headed by a level 2 heading holding the question | A3 | |
+| Ask-6 | Press B to walk the buttons in the answer | Each citation chip is a button with a readable name, not a raw id. The code's labels: a filing passage "Nvidia 10-K, filed 2025 [dot] paragraph 162" once its company and form are known, or just "Filing 2025 [dot] paragraph 162" before; a number "Reported revenue, period ended <date>"; a rule "Government rule 2025-19001". A chip also says whether it is expanded. NVDA may read the tooltip ("open evidence <id>") as a description; that is a Note, not a Fail | A1 | |
+| Ask-6b | Under the answer, press H and D | If present: "Read with care" (level 3, region; it only appears for answers with change claims), "Sources (N)" (list of the same chips), "What was checked" (list of plain sentences, no icon read out) and a "Technical details" disclosure (collapsed). Each is announced once | content | |
+| Ask-7 | On a chip press Enter. Repeat with Space | The evidence drawer opens. NVDA announces a landmark named "Evidence" (complementary) with a level 2 heading "Evidence". Focus moves to a close button named "Close evidence" (its visible text is "Close") | A1, A5 | |
 | Ask-7b | In an evidence panel that shows highlighted words (rare: only when the answer copied words exactly; the evidence specimen popovers and a cached example may not have one) read the passage with the arrow keys | Note whether NVDA says anything for the highlighted words ("highlighted" or "marked") and reads the line "Highlighted: the words copied exactly from the source" under the passage. If the highlight is silent, write it down: decision 003 asks for this check | A1, decision 003 | |
 | Ask-8 | With the drawer open, Tab out of it to another chip in the answer and press Enter | The other chip works; the drawer is not a trap; the page behind it was not made unreachable | A5 | |
-| Ask-9 | Press Esc in the drawer | The drawer closes. NVDA focus returns to the chip you opened it from. (If the answer was replaced meanwhile, focus goes to the answer heading instead.) | A2, A5 | |
+| Ask-9 | Press Esc in the drawer | The drawer closes. NVDA focus returns to the chip you opened it from (check where it goes if the answer was replaced meanwhile) | A2, A5 | |
 | Ask-10 | With the drawer closed, Tab through the page | Nothing in the closed drawer is reachable: no stray "Close evidence" stop, no "Evidence" landmark in the D list | A5 | |
-| Ask-11 | Refusal: submit an empty question, or a question over the limit if you can, or any message the page shows when it refuses | The error text appears in the status line under the Ask button (the one live region) and NVDA says it without you moving. Not announced twice | A3, A10 | |
-| Ask-12 | Optional, one live question (paid; see Money in section 1). Solve the Turnstile check yourself in the browser, ask one short question, wait | Progress, "answer ready" and any error are spoken through the status region. If the stream is cut, the "cut" message is spoken | A3, A10 | |
-| Ask-13 | The research steps list. Normally SKIP: it only appears for an "agent" ask, the most expensive kind of paid ask. Write "not checked (needs a paid agent ask)" | If you did run one: new steps are announced politely as they appear; the list is named "What the research agent did" | A3 | |
+| Ask-11 | Refusal: press the "Ask" button with an empty box, or send a question over the limit if you can | An empty box says "Type a question first, or pick an example below." in the status line under the box and NVDA says it without you moving (the box is also marked invalid and points to the same sentence; check that it is not heard twice in a row). Other refusals use the same status line | A3, A10 | |
+| Ask-12 | Optional, one live question (paid; see Money in section 1). Type a short question, solve the Turnstile check yourself in the browser, press Ask, wait | Progress ("Looking in the filings...", then "Found ... Writing the answer...", then "Done.") and any error are spoken through the status line. If the stream is cut, the "connection lost before the answer finished ..." message is spoken | A3, A10 | |
+| Ask-13 | The research steps list. Normally SKIP: it only appears for a "Deep research" ask, the most expensive kind of paid ask. Write "not checked (needs a paid agent ask)" | If you did run one: new steps are announced politely as they appear; the list is named "What the research agent did" | A3 | |
 | Ask-14 | Turnstile bot check (a third-party widget, after the main area at the bottom of the page) | Note whether NVDA can reach it with Tab. If you cannot complete it with NVDA, record that as a finding. Do not try to bypass it. This is Cloudflare's widget, not ours; the finding is still worth writing | A10 note | |
 
-### 5.2 Company  (`/v2/company/NVDA/`, then another company)
+### 5.2 Companies  (`/v2/company/NVDA/`, then another company)
 
-Heading: the company name and ticker, for example "Nvidia (NVDA)". Switcher: a navigation named "Companies" with 13 links,
-the current one marked as the current page. Blocks (level 2 headings, each a named region): Filings, Metrics, Active risks,
-Relationships, Federal Register rules and "Compared risk disclosures" (the recent changes between filings; it appears once the
-company data has loaded, and says "loading..." until its own data arrives). Under that last heading each pair of filings has a
-level 3 heading such as "10-K 2025-02-26 -> 10-K 2026-02-25", then labels: "No matching risk factor found in the earlier
-filing", "No longer appears as a separate risk factor", "Not matched", "Reworded". A pair that could not be compared reads
-"<pair>: comparison not available (<reason>)." A line "Data as of <date>" may appear. A loading line near the top says
-"loading..." and is a status region. The citation ids on this page (including those under "Compared risk disclosures") are
-evidence chips: buttons that open the Evidence drawer, as in the Ask answers and the Workspace what-changed view.
+Nav link "Companies" opens the first company. Heading: the company name and ticker, for example "Nvidia (NVDA)". Switcher: a navigation
+named "Companies" with 13 links ("Nvidia (NVDA)", "AMD (AMD)" ...), the current one marked as the current page. A status line ("loading..."
+until the data arrives; a status region). Then lines saying which annual and quarterly reports are held (for example "10-K for the fiscal
+year ended <date>, filed <date>") and "Data as of <date>"; two links, "Ask about <company>" and "Compare filings"; and a navigation named
+"On this page" with five in-page links: Key numbers, Government rules, Relationships, Filings, Risk changes. Then the blocks, each a level 2
+heading and a named region, in this order: At a glance, Key numbers (a "Show exact values" switch, and a scrolling table region named
+"Key numbers table"), Government rules, Relationships (with a level 3 heading "Competitors named in its filings"), Filings (a table region named
+"Filings table"), Active risks, Risk changes (the recent changes between filings). Under Risk changes each pair of filings has a level 3 heading
+such as "10-K 2025-02-26 -> 10-K 2026-02-25" (the code writes an arrow), then labels like "No matching risk factor found in the earlier filing",
+"No longer appears as a separate risk factor", "Not matched", "Reworded" (check the exact set in `web/src/pages/CompanyChanges.tsx`). A pair that could not
+be compared reads "<pair>: comparison not available (<reason>)." Reported numbers (in At a glance and Key numbers) and the citation ids
+(Relationships, Risk changes) are source stamps: buttons that open the Evidence drawer, as in the Ask answers and the Workspace what-changed view.
 
 | # | Do | Expect | Req | Result |
 |---|---|---|---|---|
-| Co-1 | NVDA+T | "Nvidia (NVDA) - semigraph" | A7 | |
-| Co-2 | Press 1; press H through the others | One level 1 heading (company name). Blocks are level 2 headings, in the order above, each as a named region | A7 | |
-| Co-3 | Press D | banner, navigation "Main", main, then inside main a navigation "Companies" and the six named regions (Filings, Metrics, Active risks, Relationships, Federal Register rules, Compared risk disclosures). The two navigations have different names | A7 | |
+| Co-1 | NVDA+T | "Nvidia (NVDA) [dot] semigraph" | A7 | |
+| Co-2 | Press 1; press H through the others | One level 1 heading (company name). Level 2 headings in order: At a glance, Key numbers, Government rules, Relationships, Filings, Active risks, Risk changes, each as a named region | A7 | |
+| Co-3 | Press D | banner, navigation "Main", main, then inside main a navigation "Companies", a navigation "On this page", and the seven named regions above (plus the table regions "Key numbers table" and "Filings table"). The three navigations have different names | A7 | |
 | Co-4 | Press K through the switcher | 13 company links by name and ticker; the current one says current page | A7 | |
 | Co-5 | Activate "AMD (AMD)" with Enter | The page changes; NVDA reads the new level 1 heading "AMD (AMD)" (focus moved there); the title changes. You did not have to hunt for the new page | A7 | |
 | Co-6 | While it loads | "loading..." is spoken once (status region). If an error appears it is spoken through the same region; a company answer the page cannot read reads "could not load the company data" | A3, A10 | |
-| Co-7 | Tab to a citation chip under Relationships or under "Compared risk disclosures", press Enter, then Escape | Each chip is announced as a button with its label (for example "Item 1", then the paragraph sign and "0320"); Enter opens the Evidence drawer with focus on "Close evidence"; Escape closes it and focus returns to the same chip | A1, A2, A5 | |
-| Co-10 | Read "Compared risk disclosures" (press H, then arrow down) | The labels read as hedged statements ("No longer appears as a separate risk factor", never "removed"); a pair that could not be compared says so with its reason; each quoted passage of a reworded risk starts with its filing, for example "10-K 2025-02-26: " before the older wording and "10-K 2026-02-25: " before the newer | content | |
-| Co-8 | Read the Federal Register rules block | The line above the list says "The links to export-control rules are keyword matches to external Federal Register rules: outside events, not statements the company made." NVDA reads it | content | |
-| Co-9 | Type `/v2/company/XXXX/` (a made-up ticker) in the address bar | Title "Page not found - semigraph"; one level 1 heading "Page not found"; a link "Back to the start page". This is a fresh page load, so focus starts at the top, not on the heading (that is expected) | A7 | |
+| Co-7 | Tab to a source stamp under Relationships or under Risk changes, press Enter, then Escape | Each stamp is announced as a button with its label (for example "Filing 2026 [dot] paragraph 320", or the company and form first once loaded); Enter opens the Evidence drawer with focus on "Close evidence"; Escape closes it and focus returns to the same stamp | A1, A2, A5 | |
+| Co-7b | In Key numbers, Tab to a figure | A button whose name starts with the shown figure, then what it is, for example "$215.9B, Revenue, FY2026. Open source" (check the exact words); Enter opens the Evidence drawer | A1, A4 | |
+| Co-7c | Press Enter on a link in "On this page", for example "Filings" | Focus moves to that section's heading (NVDA reads "Filings", heading level 2) | A7 | |
+| Co-7d | Press Enter on "Ask about <company>" | The Ask page opens; its question box already holds a question about the company; nothing is sent (check where focus lands) | content | |
+| Co-7e | Tab to the "Show exact values" switch and press Space | Announced as a switch (or toggle button) named "Show exact values", on or off; the figures in the table change to exact values | A4 | |
+| Co-10 | Read Risk changes (press H, then arrow down) | The labels read as hedged statements ("No longer appears as a separate risk factor", never "removed"); a pair that could not be compared says so with its reason; each quoted passage of a reworded risk starts with its filing, for example "10-K 2025-02-26: " before the older wording and "10-K 2026-02-25: " before the newer | content | |
+| Co-8 | Read the Government rules block | A sentence at the top says "These US export-control rules come from the Federal Register and are linked to the company by keyword matching: actions by the government, not statements the company made." NVDA reads it; each rule is marked "Government rule" | content | |
+| Co-9 | Type `/v2/company/XXXX/` (a made-up ticker) in the address bar | Title "Page not found [dot] semigraph"; one level 1 heading "Page not found"; the line "There is nothing at this address."; a link "Back to the start page". This is a fresh page load, so focus starts at the top, not on the heading (that is expected) | A7 | |
 
 ### 5.3 Freshness  (`/v2/freshness/`)
 
-Heading "Freshness". A status line ("loading..." or an error) is a status region. Then a one-line summary (for example
-"Data as of <date> - 2 filings pending"), then a list named "Freshness fields" of
-label and value pairs: Status, Data as of, Last checked, Last failed check, Next check, Filings pending, Federal Register,
-Unresolved; and a list "Pending filings" when there are any. Rows with no value are left out.
+Heading "Freshness". Then one sentence of intro ("When the filings and the government rules were last checked for anything newer than
+our data."), then a status line ("Loading..." or "Data status unavailable: <detail>", a status region). Once loaded: a one-line summary
+(the same line as the nav link, for example "Data as of <date>, 2 newer filings being added"), then a list named "Freshness details"
+of label and value rows: Checks, Data as of, Last checked, Last failed check, Next check, Newer filings being added, Government
+rules, Companies the check could not look up; plus a nested list "Newer filings" when there are any. Rows with no value are left out.
+"Checks" is a word: Working, Overdue, The last check failed, Off or Not set up.
 
 | # | Do | Expect | Req | Result |
 |---|---|---|---|---|
-| Fr-1 | NVDA+T | "Freshness - semigraph" | A7 | |
-| Fr-2 | Press 1; D | One level 1 heading; banner, navigation "Main", main | A7 | |
-| Fr-3 | Press L (list) or read with the Down arrow | The list is announced as "Freshness fields" with its item count; each row reads as label then value, for example "Last checked 3 h ago (2026-...)" | A7 | |
-| Fr-4 | Watch the loading state | "loading..." once, then the data; or the error text, spoken. Nothing repeated | A3, A10 | |
-| Fr-5 | Status meaning | Status is words, never only a colour (it is read to you, so if you hear a word it passes) | A8 | |
+| Fr-1 | NVDA+T | "Freshness [dot] semigraph" | A7 | |
+| Fr-2 | Press 1; D | One level 1 heading "Freshness"; banner, navigation "Main", main. The freshness link in the navigation is announced as the current page | A7 | |
+| Fr-3 | Press L (list) or read with the Down arrow | The list is announced as "Freshness details" with its item count; each row reads as label then value, for example "Last checked 3 h ago (<date>)" | A7 | |
+| Fr-4 | Watch the loading state | "Loading..." once, then the data; or "Data status unavailable: <detail>", spoken. Nothing repeated | A3, A10 | |
+| Fr-5 | Status meaning | "Checks" is a word (Working, Overdue, ...), never only a colour (it is read to you, so if you hear a word it passes) | A8 | |
 | Fr-6 | Tab through the page | Only the header links are tab stops (it has no controls of its own); no trap | A7 | |
 
-### 5.4 Method & Evidence  (`/v2/method/`)
+### 5.4 How it works  (`/v2/method/`)
 
-Heading "Method & Evidence". An opening paragraph; a short unheaded note that earlier accuracy figures are withdrawn (it ends
-with the links "plan" and "review", which open GitHub pages in a new tab); a link "Freshness" (same tab, to the Freshness
-page); then two level 2 sections (each a named region): "What the checks mean" and "How reliable are change claims?". The
-page makes no requests of its own.
+Nav link "How it works"; the page heading is "Method & Evidence" (`web/src/pages/Method.tsx`). Heading "Method & Evidence", then a plain
+lead paragraph ("Answers are written from passages of the companies' SEC filings ..."), a technical paragraph, a short unheaded note
+that earlier accuracy figures are withdrawn (it ends with the links "plan" and "review", which open GitHub pages in a new tab), a link
+"Freshness" (same tab, to the Freshness page), then two level 2 sections (each a named region): "What the checks mean" and "How reliable
+are change claims?". The page makes no requests of its own.
 
 | # | Do | Expect | Req | Result |
 |---|---|---|---|---|
-| Me-1 | NVDA+T | "Method & Evidence - semigraph" (NVDA may read "&" as "and") | A7 | |
-| Me-2 | Press 1, then H | One level 1 heading, then the two level 2 headings, in order, no skipped levels | A7 | |
+| Me-1 | NVDA+T | "Method & Evidence [dot] semigraph" (NVDA may read "&" as "and") | A7 | |
+| Me-2 | Press 1, then H | One level 1 heading "Method & Evidence", then the two level 2 headings, "What the checks mean" then "How reliable are change claims?", no skipped levels | A7 | |
 | Me-3 | Press D | banner, navigation "Main", main, plus the two named regions | A7 | |
 | Me-4 | Press K | After the top navigation links: "plan", "review" and "Freshness". Judge whether, with the sentence around them, you can tell where they go; if not, write it as a Note (link wording is not one of the A-items) | note | |
 | Me-5 | Say-all (NVDA+Down) | The page reads as sensible prose: the unheaded note says plainly that earlier figures are withdrawn, as the spec requires. Stop with Ctrl | content | |
-| Me-6 | Press Enter on "Freshness" | The Freshness page opens in the same tab; NVDA reads its level 1 heading "Freshness" (focus moved there) | A7 | |
+| Me-6 | Press Enter on the "Freshness" link in the page | The Freshness page opens in the same tab; NVDA reads its level 1 heading "Freshness" (focus moved there) | A7 | |
+| Me-7 | From Ask, press Enter on the link "How answers are made", or on "How reliable change claims are" under an answer that shows "Read with care" | The Method page opens (the second link goes to the "How reliable are change claims?" section; check where focus lands) | A7 | |
 
 ### 5.5 Workspace  (`/v2/workspace/`)
 
 The page shows its content only when the server has uploads switched on (`/api/stats`); if you see just the heading
-"Workspace", write "uploads off" and skip the rest (not a pass). Labels in the code (`Workspace.copy.ts`, moved in R4 to `deck.workspace` in `web/src/copy/deck.ts`): a section
-"Your documents" that says what a workspace is, lists three steps as a numbered list, names the accepted file types and says
-who can open it, when it is deleted and what is sent to the AI model providers; a "Create a workspace" button; a disclosure
-button "I have a workspace id and key" that opens the restore fields "Workspace id" and "Workspace key" (the key field is a
-password field) and a "Restore" button; a status line; once a workspace is open: a "Delete workspace" button, a date
-field named "Ask as of this date instead of the current version", a select labelled "upload as:" (first option "Upload a
-new document"), and one drop-zone button whose text starts "Drag a PDF, DOCX, Markdown, TXT or HTML file here". There is no
-separate "choose file" button: the drop zone is the real button and Enter or Space on it opens the file picker.
+Labels in the code (the words are in `deck.workspace` in `web/src/copy/deck.ts`; `Workspace.tsx`, `WorkspaceActive.tsx`, `WorkspaceUpload.tsx`, `WorkspaceDocuments.tsx`, `WorkspaceChanges.tsx`): a level 2
+heading "Your documents"; a short paragraph on what a workspace is; a numbered list of three steps (Create a workspace. Upload a
+document. Ask a question about it on the Ask page.); a line on the accepted file types; three short lines on who can open it,
+when it is deleted and what is sent to the AI model providers; a "Create a workspace" button; a disclosure button "I have a
+workspace id and key" that opens the fields "Workspace id" and "Workspace key" (the key field is a password field) and a "Restore"
+button; a status line (a status region). Once a workspace is open: a line "Workspace <id>" with its expiry, a "Delete workspace"
+button, a date field named "Ask as of this date instead of the current version", a select labelled "upload as:" (first option
+"Upload a new document"), and one drop-zone button whose text starts "Drag a PDF, DOCX, Markdown, TXT or HTML file here". There
+is no separate "choose file" button: the drop zone is the real button and Enter or Space on it opens the file picker.
 
 | # | Do | Expect | Req | Result |
 |---|---|---|---|---|
-| Ws-1 | NVDA+T; press 1; D | "Workspace - semigraph"; one level 1 heading; banner, navigation "Main", main | A7 | |
-| Ws-2 | Press Enter on "I have a workspace id and key" (announced as collapsed, then expanded), then F (or E) through the fields | The restore fields are announced as "Workspace id" and "Workspace key"; the date field as "Ask as of this date instead of the current version"; the upload target select as "upload as:". None is "edit" or blank. The file input (hidden) is named by the drop-zone text | A4 | |
+| Ws-1 | NVDA+T; press 1; D | "Workspace [dot] semigraph"; one level 1 heading "Workspace"; banner, navigation "Main", main. The "Your documents" section is a level 2 heading and has no region name of its own | A7 | |
+| Ws-2 | Press Enter on "I have a workspace id and key" (announced as collapsed, then expanded), then F (or E) through the fields | The restore fields are announced as "Workspace id" and "Workspace key" (the second says it is a password field); then a "Restore" button. After a workspace is open: the date field as "Ask as of this date instead of the current version"; the upload target select as "upload as:". None is "edit" or blank. The file input (hidden) is named by the drop-zone text | A4 | |
 | Ws-3 | To reach the rows below you need an open workspace. Creating one and uploading a file make no paid model call (no money), but each needs the Turnstile check, and each upload counts toward the server's daily upload limit. Asking a question about the uploaded file IS a paid live ask (D14, ceiling $5); you do not need one here. Use a tiny text file you do not mind sharing (persona walkthrough task 6.4 shows how to make one), and click "Delete workspace" afterwards | | | |
 | Ws-4 | Tab to the drop zone | It is announced as a button named by its text ("Drag a PDF, DOCX, Markdown, TXT or HTML file here, or click to choose one ..."); Enter and Space open the file picker; there is no second button for it | A6 | |
 | Ws-5 | After an upload starts | Progress ("uploading...", "queued", "checking", "reading the document", "splitting into sections", "embedding", "comparing with the previous version", "saving", then "ready" or "failed"; on screen "uploading" ends in an ellipsis character, "embedding" adds a count and the time left, and "failed" adds the reason; if the bot-check settings could not be loaded the row reads "could not load the bot check - reload the page and try again", and if they are still loading the upload waits up to 15 seconds for them) is spoken through the status region, once per change | A3 | |
-| Ws-6 | A refusal (for example a wrong key on Restore) | The error is next to the field and is spoken without moving | A3, A10 | |
+| Ws-6 | A refusal (for example a wrong key on Restore) | The error text appears in the status line under the Restore row (the fields point to it) and is spoken without moving. Check that it is not spoken twice | A3, A10 | |
 | Ws-6b | Create a workspace, then Delete workspace | After Create, focus is on the heading "Your documents"; after Delete, on "Create a workspace" | A7 | |
-| Ws-7 | While a workspace is open, the examples on Ask | The example buttons are disabled and the strategy select offers only the "hybrid GraphRAG ..." option | content | |
+| Ws-7 | While a workspace is open, go to Ask | The starter question buttons are disabled and a line says "With a workspace open, the examples are off: each would become a paid live question about your documents." Under "More options" only the "Standard (recommended)" Depth is offered, with the line "With a workspace open, questions use Standard." | content | |
 | Ws-8 | Optional: after an upload, open the what-changed view of a second version (the version buttons are named "<document>: v2") and press Enter on a chip in it | The same drawer opens ("Evidence"), Esc closes it and focus returns to that chip | A1, A2, A5 | |
 
 ### 5.6 Across pages (3 minutes)
 
 | # | Do | Expect | Req |
 |---|---|---|---|
-| X-1 | Open the drawer on Ask, then use the "Company" link | The drawer closes and focus goes to the new page's heading (not back to the chip) | A5, A7 |
+| X-1 | Open the drawer on Ask, then use the "Companies" link | The drawer closes and focus goes to the new page's heading (not back to the chip) | A5, A7 |
 | X-2 | Press Tab for one full lap on any page | Focus is always visible (you can see a ring); you can always leave; the Skip link works | A7, A9 |
 | X-3 | Make the browser window narrow (drag its edge), or zoom in: hold Ctrl and press + (plus) until the zoom shows 200%. Ctrl+0 resets it | Single column; nothing is cut off; you can still reach everything | A9 |
 | X-4 | Windows dark mode on, then off (Settings, Personalization, Colors, "Choose your mode": Dark, then Light) | Text stays readable in both; status words never depend on colour alone | A8 |
-| X-5 | On any page, read the line under the main navigation in the banner (Down arrow from the nav) | One plain line, for example "Data as of <date> - checked <n> min ago - <n> filings pending" (the words are joined by a middle dot on screen), or "freshness check unavailable" when the monitor is off, or "freshness check failed <n> min ago"; if the freshness service cannot be reached, or answers with an error, the line reads "freshness check unavailable" (the old page showed that line only for an error answer, and no line at all when the service could not be reached). It is read once per page load, it is not a link, not announced by itself, and not repeated on route changes | A3, A8 |
+| X-5 | On any page, find the freshness link in the main navigation (K from the Workspace link, or Tab) | A link, after "Workspace" and before "How it works". Its name starts with "Freshness:" (said but not shown) and then one plain line, for example "Data as of <date>" or "Data as of <date>, 2 newer filings being added"; other lines: "Data date unknown", "Data as of <date>; the check for newer filings failed" or "is overdue", "Data status unavailable". No link at all appears until the freshness data has loaded. Enter opens the Freshness page, where the link is announced as the current page. It is read once per page load and not repeated on route changes | A3, A8 |
 
 A8 (contrast) and A9 (nothing moves) are checked by the automated audits. Here, just note anything that looks wrong to you.
 
@@ -324,7 +345,9 @@ If NVDA says something odd but the page still works (extra words, "clickable"), 
   the NVDA version you download.
 - Narrator's key list: Caps Lock+Space for scan mode, Narrator+Esc to quit, and that H/D/K/B/F work as in NVDA (check
   with Narrator key + F1).
-- The labels of the Ask, Workspace, evidence drawer, Company, Freshness, Method, header line, menu and skip-link controls
-  were read from the current code in `web/src` on 2026-11-08 (after the I3 build); none was heard through NVDA by the
-  author. If a later change moves a label, trust what NVDA says and note the difference.
+- The labels of the Ask, Workspace, evidence drawer, Company, Freshness, Method, header, menu and skip-link controls
+  were read from the redesigned code in `web/src` (words in `web/src/copy/deck.ts`) on 2026-11-11; none was heard through
+  NVDA by the author. If a later change moves a label, trust what NVDA says and note the difference.
+- Where a row says "check", the code does not settle it (for example exactly where focus lands, or whether NVDA reads
+  an element twice). Write down what you hear.
 - Whether Turnstile's challenge is operable with a screen reader: unknown until you try (Ask-14).
