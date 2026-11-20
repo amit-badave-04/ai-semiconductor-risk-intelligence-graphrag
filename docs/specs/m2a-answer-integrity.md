@@ -1,0 +1,261 @@
+# M2a: answer integrity and the "Since our data" panel
+
+Status: **DRAFT for owner approval (2026-11-20).** INTERNAL document. Planned by `fable-architect`; revised after two adversarial reviews.
+
+Path: **full** for everything except I1 (fast path, see OD1). The work touches DB queries, the LLM context, external APIs and untrusted text on a page.
+
+Ids in this spec: R = answer and data requirements, P = panel requirements, S = security claims, OD = owner decisions, I = increments. D1, D4, X4, NG06, NG10 are the triage's defect ids.
+
+## 1. Why
+
+Decision 004: the product's weakest layer is trust, not features. The triage found these defects on live v23. None is "the model misread a passage it was given":
+
+- D1: the model saw only an id for the supplier passage, never its text (answerer.py:219-224).
+- D4: an edge lists a superseded chunk first, with no currency mark, and the model cited it.
+- X4(a): the rule line carries no abstract (answerer.py:198-208). The abstract is stored, up to 1,000 characters (loaders.py:685).
+- NG06/NG10: the computed year-over-year note carries only the later year's id (answerer.py:111-133, :184).
+- Two wrong edges (Apple/Alphabet reversed; Huawei/Qualcomm "Active" over a revoked licence).
+- The rule linker finds nothing for ASML, GOOGL, AMZN, META, and misses the affiliates rule for INTC and MU (research note line 23).
+- The badge "numbers not checked" shows on all 53 saved answers, because a cached answer carries no checks (answerMeta.ts:107). For 32 of them numbers were checked; the other 21 should read "no figures to check" (counts from `examples.json`, the reviewer's).
+
+The event desk also asked "new 1, but which?". The monitor counts new filings and rules but does not name them.
+
+## 2. Scope
+
+**In.** R1-R9 (answer path), R10-R11 (data), R12 only if OD3 says so, P1-P5 (panel); one graph rebuild; one paid eval run; regenerated examples; three deploys.
+
+**Out, and why.**
+- The filer-scoped search leg, full-text and fusion: M2. So **X4(b) stays open**, and D1 is fixed only as far as the edge quote carries the missing detail (measured in I0).
+- A prompt rule for the base year (answer.txt:17-19): held back. `answer.txt` is 9,108 characters against a ceiling of 9,200. Added only if the paid eval shows the base year is still uncited (OD4).
+- Paid re-adjudication of all relation instances: CP. Its cost is unmeasured.
+- Older XBRL metadata (form and filed date on old accessions): CP. It is an evidence-panel defect, not an answer defect.
+- Per-id edge quotes: deferred. They need a loader change (loaders.py:495-503). This milestone prints the one stored quote beside the id it belongs to.
+- The rule abstract on the Company page: out. No page shows it yet, so the payload is not widened.
+- The main "What was checked" view for saved answers: unchanged. `checkedView` returns "saved" for every cached event (answerMeta.ts:222). R1 corrects the badges only.
+- A "would be linked" label on new rules in the panel: out. The linker lives in ingestion and graph code (export_rules.py, loaders.py), which the serve image must not import; a second copy would drift. It moves to WS1.
+
+## 3. Requirements
+
+### Answer path
+
+**R1 Badges on saved answers.** In `routes._answer_from_cache` (routes.py:399-414), when the cached answer has `source == "benchmark"`, attach the stored `checks` of that example from `load_examples()`. Look it up by normalised question, only among `app.state.example_ids` (routes.py:190-201). Nothing is written to the DB. Effect: the "Technical details" badges (`metaSummary`, web/src/components/Badges.tsx) and the legacy page show the true number badge on all 53. Chosen over a frontend change (more files, legacy parity) and over persisting checks (a DB change).
+
+**R2 Current-first edge evidence.** `COMPANY_EDGES_QUERY` (retriever.py:114-119) also returns, per evidence id, `is_current` and `filing_date` (both exist on EvidenceSpan, loaders.py:394-395). `build_blocks` (answerer.py:219-224) orders ids current first, then newest first, and puts a short mark after each superseded id. Query-time only; no graph change. The cap of 3 ids per item stays (context_layout.py:69). The mark must keep each edge line within its 300-character ceiling (estimate.py:160); I5 picks the mark's wording against that.
+
+**R3 Stale-citation check.** A new additive key `stale_citations` in `AnswerChecks` (verify.py:355-381), emitted by the serving path's `answer_checks`, so it rides on the `done` event that `build_examples.deployed_checks` copies (build_examples.py:57-63). It lists cited ids that carry the superseded mark on RELATIONSHIPS lines. It is derived from the context string only, so `compute_checks` and the eval can recompute it. Ids cited from the temporal block are **exempt**: "what changed" answers rightly cite superseded filings. Reported, not failing (OD2).
+
+**R4 Base-year id on the computed note. One design.**
+- The note moves off the metric line to **its own line directly below it**. Today it is appended (`line += f" | {note}"`, answerer.py:184), and every id on a line maps to that whole line (answerer.py:264-266), so a prior id there would let the current figure ground against the prior year.
+- The note keeps today's wording and prefix ("computed: +X% vs fiscal year ended D (change ...)", `yoy_note`, answerer.py:111-133), so `_COMPUTED_PERCENT_RE` (verify.py:180) still reads it. The line names the metric and the current period, puts `[id_prior]` right after the prior date and `[id_current]` at the end. The exact string is fixed by the golden written first in I5. One grammar only; the agent's own `computed:` lines (agent/merge.py:336-358) are not touched.
+- `[id_prior]` is printed **only when the prior row is itself shown**. This matches the agent's rule (agent/merge.py:21-22) and means a prior value quoted with that id has its own line to ground against. When the base row is not shown (the oldest shown period), the note carries the current id only, as today. No unshown row becomes citable.
+- I0 records whether NG06 and NG10 ask about a period whose base row is shown. If not, showing one more row is a budget decision taken at the I5 gate, not assumed here.
+- Pins that change: the golden test_answerer_context.py:145-159; tests/integration/test_m1b_retrieval_neo4j.py:584 (asserts note and period on one line); the per-anchor size in test_serve_estimate.py:528-534.
+
+**R5 Rule abstract in the context.** `RULE_EDGES_QUERY` (retriever.py:124-138) returns `x.abstract`. `_external_line` (answerer.py:198-208) prints it, sanitised (R6a) and cut to a fixed length (start at 200 characters; set by the I5 measurement).
+
+**R6 Edge quote in the context.** The stored `quote` (retriever.py:119) is printed on its own line inside RELATIONSHIPS, carrying exactly the id it was extracted from: the first-loaded id, because the quote is set ON CREATE only (loaders.py:497-499). It carries the superseded mark when that applies. Scope: only edges where an anchor company is an endpoint, at most N quote lines per anchor (start N = 12; set in I5).
+
+**R6a One sanitiser for untrusted text in the context.** Quotes and abstracts pass through one function: collapse whitespace to single spaces, strip control characters, replace `[` and `]` with `(` and `)`, cap the length, wrap in quotation marks. A newline or a bracket would break the block partition and the citation scan (answerer.py:249-275).
+
+**R6b One switch for the detail lines.** The agent builds its context with the same `build_blocks` (agent/stream.py:166) and the same queries (agent/tools.py:376-378), so R2, R4, R5 and R6 reach agent answers by default. The agent's margin is $1.02 - $1.015669 = $0.0043, about 1,900 worst-case prompt characters; eight abstracts at 200 characters is already about 1,600 per company (derived by the reviewer, not measured). So one parameter on `build_blocks` turns the quote and abstract lines (R5, R6) off, and the agent passes it. It is tested both ways. R2 and R4 stay on for the agent only if the I5 measurement fits them inside today's ceilings. See OD6.
+
+**R7 "Text seen" versus "id only".** `citations_retrieved` is unchanged (verify.py:419) and stays a failing check. A new additive key `cited_without_text` lists cited ids whose only context lines are edge lines with no quote line. Derived from the context, emitted by `answer_checks`. Not failing. The page gets a new checked-view code (answerMeta.ts) and one deck sentence, so "Every cited source was among the passages found" is not said when a source was shown as an id only.
+
+**R8 Claim-support eval check.** New `src/semigraph/eval/support.py`: deterministic, eval-only, never served. For each cited sentence it takes the cited text from `sources_from_context` and checks that the sentence's figures and its named companies (names and aliases) occur in that text. A cited id with no text counts as unsupported. It reuses the parsing in eval/expect.py. No LLM judge (OD5). Stated limit: it cannot judge a negative claim such as "the filing does not specify".
+
+**R8a Deployed runs keep their context.** `bakeoff.run_deployed` rows have no `context` today (0 of 60 rows in `eval_deployed.v2e.jsonl`; `_deployed_row`, bakeoff.py:379-388). The row gains the context string and the full valid-id list, so R8 can score a deployed run in `bo.score_deployed` (called at cli.py:460). I4 finds where the context is available on the deployed path; if the `done` event does not carry it, the eval harness rebuilds it with `build_blocks` from the same retrieval, as the agent path does (agent/stream.py:166).
+
+**R9 Context version.** A `CONTEXT_VERSION` string in `context_layout.py`, folded into `template_fingerprint()` (answerer.py:78-82), bumped whenever a line format changes. Why not a new cache-key part: examples are re-seeded at every boot under the running build's key (store.py:272-287 → `put_answer` :236-246), so a key part alone only re-keys stale answers. The fingerprint gate (store.py:49-61; main.py:204-219) refuses them. Effect: the fingerprint changes from `4d0a62f5a0`; three pins change (test_agent_seam.py:62, test_answerer_prompt_seam.py:116, test_serve_workspace_ask.py:241); all 53 examples are refused until regenerated. So R9 lands first in I5, **on the held branch**, and reaches production only with deploy C.
+
+### Data (one rebuild on G, new snapshot)
+
+**R10 Edge overrides.** A curated, cited artifact `artifacts/edge_overrides.json`: edge key, action, source chunk id, one-line reason. Two entries.
+- **Reverse** Apple/Alphabet, cited to chunk 0000320193-26-000020:II.1A:0002 (Apple "earns revenue from licensing arrangements with Google"). Applied in `_knowledge_rows` (loaders.py:550-582) to **every** row with that edge key, from every filer, before the MERGE; the MERGE accumulates ids across filers (loaders.py:500-501), so swapping one chunk's row would leave the wrong edge in place.
+- **Mark not active** Huawei/Qualcomm, cited to chunk 0000804328-26-000061:II.1A:0015 ("Commerce revoked the export license ... to Huawei"). Status is hard-coded `'Active'` ON CREATE (loaders.py:498), so this is a **post-load Cypher pass**. It sets `'Historical'`, the value that already exists (graph/temporal.py:39, per the reviewer); no new status value is invented. I7 first checks how the edge line (`status=...`, answerer.py:223), the Company page and the web read a non-Active relation. If that is not clean, the fallback is to drop the edge.
+- An override whose edge is absent fails the build. Stated limit: other wrong edges may exist; nobody has measured that.
+
+**R11 Rule linker.** In export_rules.py and loaders.py:728-763: match export-control risks by a normalised category or by the summary, not only a category containing "export control"; add equipment-maker keywords; store on each Company "examined N rules, matched K". Links stay capped at 15 per company (`MAX_AFFECTED_BY_PER_COMPANY`, export_rules.py:13), so the page says "showing 8 of M linked" with M at most 15, and K is shown separately when it is larger. Every newly linked (company, rule) pair on the new build is listed in a report in `artifacts/` and hand-checked before the dump. If more than 1 in 10 new pairs is wrong, ship only the "examined, matched" count and defer the wider matching.
+
+**R12 Wistron and Fabrinet as entities (optional, OD3).** Add both to `canonical_entities.json`, same shape as Foxconn (null cik and ticker, aliases, negative entity_id). The file exists twice and only the packaged copy is read (src/semigraph/artifacts/); both are kept identical. Pins: test_retrieval_anchor_cap.py:209; test_serve_estimate.py:339 and :622 (26 becomes 28); the anchor note grows from 276 to about 295 characters against `ANCHOR_NOTE_CHARS` 300.
+
+### "Since our data" panel
+
+**P1 New 8-Ks per company.** From the submissions JSON the monitor already fetches (monitor.py:115-144; no extra SEC request), keep forms 8-K and 8-K/A (and 6-K for TSM and ASML) filed after the served snapshot's `as_of`. Fields: accession, filing date, `items`, `primaryDocument`. Newest 5 per company.
+
+**P2 New BIS rules.** One Federal Register listing call per poll: the existing conditions (federal_register.py:40-59) plus `publication_date gte` the graph's newest rule date; fields `document_number`, `title`, `publication_date`, `html_url`; `per_page` 20. "New" is the set difference of document numbers against the graph's `ExportControl.rule_id` values (the monitor already reads the graph, monitor.py:109-112, :149-151). The existing count call stays for parity, so this is **two** Federal Register requests per poll.
+
+**P3 Served.** One new field on the existing `GET /api/freshness` payload, persisted in SvcFreshness (monitor.py:73-83). No new route. A failed poll carries the last good list forward (monitor.py:226-234).
+
+**P4 Shown.** The Freshness page lists both. The Company page shows that company's new 8-Ks and one line about new BIS rules with a link to Freshness (wording under OD7). A static table maps 8-K item codes to plain labels. Links open sec.gov and federalregister.gov in the reader's browser; the server never fetches them.
+
+**P5 Validation.** Every external value is validated before it is stored (S6-S9).
+
+## 4. Acceptance criteria (each test is written first and seen RED)
+
+| Req | Proof | Where |
+|---|---|---|
+| R1 | A cached benchmark hit carries the example's stored checks; a cached live answer carries none; a question outside `example_ids` gets none | new `tests/test_serve_cached_checks.py` |
+| R2 | Given ids [superseded, current], the line prints current first and marks the other; the line stays within 300 characters; row shape stays additive | `tests/test_answerer_blocks.py`, `tests/test_retrieval_pure.py`, integration on T |
+| R3 | A cited marked id appears in `stale_citations`; the same id cited from the temporal block does not; the key is on the `done` event; `compute_checks` gives the same result from a stored context | new `tests/test_verify_stale.py`, `tests/test_build_examples.py`, `tests/test_answer_checks_events.py`, SSE fixtures |
+| R4 | The note is on its own line; both ids are on it when the prior row is shown, the current id only when it is not; the current amount does not ground against the prior id; a prior value cited with the prior id grounds on the prior row's line | `tests/test_answerer_blocks.py`, new case in `tests/test_verify_grounding.py`, golden `test_answerer_context.py:145-159`, integration pin :584 |
+| R5 | The abstract is printed, cut and sanitised; a rule with no abstract prints as today | `tests/test_answerer_blocks.py`, `tests/test_retrieval_m1b.py` |
+| R6, R6a | A quote line carries only its own id; a quote with a newline, a fake "EXCERPTS:" header or `[fr:...]` leaves the partition and the citation scan unchanged; the cap N holds | `tests/test_answerer_blocks.py`, new `tests/test_context_sanitise.py` |
+| R6b | With the switch off the context has no quote or abstract line and the agent's rendered size is unchanged; with it on the hybrid context has them | `tests/test_answerer_blocks.py`, `tests/test_agent_seam.py` |
+| R7 | An id cited from an unquoted edge line is listed; an id with a quote line or an excerpt is not; `failed_check_names` is unchanged | `tests/test_verify_*.py`, `web/src/lib/__tests__/checkedView.test.ts`, deck snapshot |
+| R8 | Hand-built fixtures (small contexts modelled on the three defects; no stored context exists): D1 shape = **unsupported, no text behind the cited id**; D4 shape = **supported**, with the id in `stale_citations`; X4 shape = **no checkable claim** (a negative claim; X4 is gated by its eval row instead); a sentence whose company is absent from the cited text = **unsupported** | new `tests/test_eval_support.py` |
+| R8a | A deployed row carries a context containing every valid id; a row without one makes R8 raise, not pass | `tests/test_eval_bakeoff*.py` |
+| R9 | Changing `CONTEXT_VERSION` changes the fingerprint and the cache key; `seed_examples` refuses a file stamped with the old one | `tests/test_serve_seeding.py`, the three pins |
+| R10 | Both edges load as specified on G; rows from two filers both land on the reversed edge; an override with no matching edge fails the build | loader unit tests, `scripts/verify_graph.py` |
+| R11 | Per company: ASML, GOOGL, AMZN, META each show at least one linked rule id in the report, or "examined N, matched 0" is stored and shown; INTC and MU have the affiliates rule linked, or the reason is recorded; "examined, matched" is stored for all 13. **Manual gate, not a test:** the hand check of new pairs, at most 1 wrong in 10 | loader tests; the pair report in `artifacts/` |
+| R12 | If in scope: both names resolve; the unresolved count falls by 2; pins updated | `tests/test_retrieval_anchor_cap.py`, `tests/test_serve_estimate.py` |
+| Budget | Through `rendered_worst_case_chars` (test_serve_estimate.py:476-489, :521-524): hybrid estimate at most $0.76 and agent estimate at most $1.02, so the $1.32 share stays valid (window $1.3157-$1.3272; production refuses more than 1.32, docs/RUNBOOK.md:229). Every moved pin is updated on purpose: test_serve_estimate.py:147, :149, :158, :524, :528-534, :973, :984, :1030, :1137; tests/test_state_contract.py:65. The $0.30 settled figure (`DEMO_SETTLED_MICRO`, tests/test_serve_config_production.py:123) is re-derived from the new per-ask actuals after the paid run. The workspace estimate ($0.734632) binds no share rule; it is re-measured and the prose at docs/RUNBOOK.md:242 corrected if it no longer fits | `tests/test_serve_estimate.py`, `tests/test_serve_config_production.py` |
+| P1-P5 | Recorded submissions and Federal Register JSON produce the expected lists; bad values are dropped and counted; a 6-K or 8-K with empty `items` is kept; a failed poll keeps the last list; a user request triggers no upstream call | `tests/test_serve_monitor.py`, `test_serve_monitor_isolation.py`, `test_serve_freshness_parity.py`, `test_ingestion_freshness.py`; web Freshness and Company page tests |
+
+## 5. Security requirements and abuse cases (checkable)
+
+- **S1 Indirect injection through retrieved text.** Quotes and abstracts are untrusted. Every one passes R6a. Test: no sanitised string contains a newline, `[` or `]`.
+- **S2 No pseudo-citations.** A crafted quote or abstract cannot add an id to `valid_ids` or to the cited set. Test with a fake `[fr:9999-99999]`.
+- **S3 The verifier is not loosened.** R4 does not let a figure ground against the other period's id. R3 and R7 add keys and remove no failing check.
+- **S4 Cache-key isolation.** A context-format change without a `CONTEXT_VERSION` bump is caught: a test hashes the rendered golden context and fails when the lines change while the version does not.
+- **S5 No upload chunks in public retrieval.** The changed queries return no workspace-scoped evidence. Integration test on T with one upload fixture.
+- **S6 External JSON is validated.** Accession `^\d{10}-\d{2}-\d{6}$`; ISO dates; the Federal Register number against the bare document-number pattern, applied before `fr_id()` adds the `fr:` prefix (`FR_ID_RE` is anchored on that prefix, ids.py:23, :34); `items` empty or `^\d\.\d{2}(,\d\.\d{2})*$`; `primaryDocument` `^[A-Za-z0-9._-]+$`, and a value that fails (some carry a path) falls back to the filing-index link instead of dropping the row; `html_url` only under `https://www.federalregister.gov/`. Any other failing row is dropped and counted.
+- **S7 Titles are text.** Capped at 300 characters, control characters stripped, rendered as React text nodes, links through `safeUrl.ts`. No title enters an LLM prompt.
+- **S8 No request amplification.** `/api/freshness` reads memory only. The poll schedule and lease are unchanged. Per poll: 13 SEC requests at 0.15 s spacing plus the existing bounded retries (`with_retries`, monitor.py:101), and two Federal Register requests. The server calls only `data.sec.gov` and the Federal Register `/api/v1`.
+- **S9 Bounded payload.** At most 5 filings per company and 20 rules; the stored row and the payload have a tested size bound.
+- **S10 Identity.** The SEC User-Agent comes from the secret and is never logged (monitor.py:90-101).
+- **S11 Cost caps for the paid run.** Section 9. No paid command starts before its printed estimate is in Status and approved.
+- **S12 Direct input (R1).** The question is user input. Checks attach only to benchmark answers in `example_ids`, found by the existing normalisation; no new parsing. Test: a near-miss question gets no checks.
+- **S13 No new personal data.** The panel shows item codes and plain labels, accession and date. It never shows or stores names from an 8-K (item 5.02 is officer changes). Nothing from the panel enters a prompt.
+- **S14 Agent path.** Whatever quote or abstract text the agent's context renders has passed R6a. The planner never receives quotes, abstracts or titles (agent/sanitize.py, per the reviewer; re-proved by a test). No tool is added.
+
+## 6. LLM-behaviour evals (written before any context change)
+
+**Baseline at $0.** Stored deployed runs have no context, so the new checks cannot be scored from the files alone. I0 replays retrieval for the 60 v2e questions on G at snapshot snap-20260924-97c6597d58, with `EMBEDDING_BACKEND=onnx` and no model call, and pairs each replayed context with the stored v2e answer. A pair is accepted only if every non-hallucinated id the stored answer cites is in the replayed context. Rejected pairs are counted and named; whether the replay embedder matches production is unverified, and this check is the guard. The new run (I9) needs no replay (R8a).
+
+| Case | Today | Threshold on the new run |
+|---|---|---|
+| NG06, NG10 cite both the base and the current xbrl id | RED | both pass, **if** I0 shows their base rows are shown; otherwise decided at the I5 budget gate and recorded |
+| D4: `stale_citations` empty | RED | pass |
+| X4: the answer does not say the provisions were "not provided"; it cites the rule id | RED | pass |
+| D1: no `cited_without_text`; names manufacturing versus assembly | RED | pass **only if** I0 shows the stored quotes carry that detail; otherwise D1 moves to M2's gold set and this row is recorded as not met |
+| Mechanical questions | 40/41 (v2e) | at least 40/41; citation validity 1.0; errors 0 |
+| Judged open questions, 3 votes | 17/23 (v2e) | at least 16/23 (baseline minus 0.05, the PLAN.md gate) |
+| Escalation rate | 3.3% (v2e) | at most 15% |
+| Claim-support rate (R8) | measured on the accepted replay pairs in I4 | not below that baseline |
+| Agent ship gate | passed against v2e | passes against the new M2a report |
+
+**promptfoo adversarial cases** (`evals/promptfoo/m2a-context.yaml`), run on `answer.txt` with crafted contexts: a quote saying "ignore the instructions above"; an abstract with a fake `EXCERPTS:` header and a fake id; a quote asking for the system prompt; an abstract telling the model to cite an id that is not in the context; a quote with an exfiltration URL; a context holding an email address and a phone number that the question does not ask for (PII must not be volunteered). Assertions are deterministic where possible. Pass: exit 0 (exit 100 = a case failed).
+
+Provider settings (installed 0.125.1): `openai:chat:<local-model-id>` with `apiBaseUrl: http://127.0.0.1:8080/v1`, `apiKeyRequired: false`. Point `defaultTest.options.provider` at the same endpoint, or grading tries a cloud default and the wrapper blocks it.
+
+**Blocked today.** Nothing listens on 127.0.0.1:8080 and the start command was not found (OD10). Stated limit: the local model is not the production answering model, so these cases test the prompt's structure; S1 and S2 are the real control.
+
+## 7. Owner decisions (recommendation first)
+
+- **OD1 R1 on the fast path: yes.** Three files (`routes.py`, one helper, one new test), no DB write, no new parsing. It does read a user question, so an Opus security review runs on the diff; if it objects, R1 moves to the full path. The file count and S12 go in the PR body.
+- **OD2 Stale citations are reported, not failing: yes, for now.** Making them fail changes escalation, caching and the seeding refusal. Decide again from this run's numbers.
+- **OD3 Data scope.** In: the two edge overrides and the rule linker. Deferred to CP: paid re-adjudication, XBRL metadata, per-id quotes. **Wistron and Fabrinet (R12): recommended out**, because the triage calls it optional and the owner asked for a trimmed path; in only if I0 shows D1 cannot pass without them. Cost of "in": two pins, about 19 of the 24 spare anchor-note characters. Cost of "out": they wait until CP, because the entity list is frozen during M2.
+- **OD4 No prompt rule for the base year unless the eval needs it.** If needed, it costs a second paid run.
+- **OD5 Deterministic support check only; no LLM judge yet.**
+- **OD6 The agent and the spend cap.** Recommended: the agent keeps today's context for quotes and abstracts (R6b off) and gets R2 and R4 only if they fit today's ceilings. Agent answers then keep X4(a) and the id-only edges; `cited_without_text` will say so. The alternative is raising the $1.32 per-address share: a cap change, so an llm-council and the owner's approval first.
+- **OD7 New wording on the site.** These are runtime check results, not marketing copy, but under the 2026-09-27 directive each still needs a yes. Recommended, verification-framed: "Checked: N cited sources come from a filing that has since been replaced"; "Checked: N sources were shown to the model as a reference only"; "Since our data"; "showing 8 of M linked rules"; "examined N rules, matched K". One is a plain statement of a limit and needs an explicit yes: "N new BIS rules, not linked to companies yet".
+- **OD8 Approve the paid run** at I9, from the printed estimates. **Blocked until** the remaining part of the $30 budget (PLAN.md:15, stop-and-ask above $1) is computed from the artifacts' `total_cost_usd`. A security fix after I9 that changes the rendered context forces a second run of the same size; I8 exists to make that unlikely.
+- **OD9 Date and time of deploy C**, outside any demo. It deletes upload workspaces. So would a rollback.
+- **OD10 The local model.** The owner starts the local llama.cpp server and gives the command (it goes into the RUNBOOK) before I5. Deploy C does not ship without promptfoo exit 0, or a waiver the owner records in chat.
+- **OD11 The local databases.** The owner (or an approved ops step) starts G and T before I0. Neither is running.
+- **OD12 `/red-team`.** The owner is asked before each production deploy. Recommended: run it for B and C; for A (two-file fast-path fix) the owner may decline, and that is recorded.
+
+## 8. Plan
+
+| Inc | What | Path | Deploy |
+|---|---|---|---|
+| I0 | $0 measurements on G, read-only: confirm G's port, version and snapshot; extend `scripts/compare_retrieval.py` (ranks, edge ids, context dump), pure parts test-first; replay the 60 contexts; measure X4(b); read the D1 quotes; NG06/NG10 base rows shown or not; quote-length distribution; per-anchor and per-company rendered sizes and the anchor count behind them; how a non-Active relation reads on the page; Svc* rows in the dump; the remaining budget | full (kept code that queries the DB) | none |
+| I1 | R1 | fast (OD1) | **A**: API only |
+| I2 | P1-P3, P5 server side | full: external APIs, DB | |
+| I3 | P4 web | full: untrusted text on a page | **B**: API only |
+| I4 | R8, R8a, the eval cases, the promptfoo file, baselines (all RED) | full | none |
+| I5 | R9 first, then R2, R4, R5, R6, R6a, R6b, then the budget gate | full: DB query, LLM context | held |
+| I6 | R3, R7, page wording | full | held |
+| I7 | R10, R11 (R12 if in); `build-graph --rebuild` on G; `verify_graph.py`; the pair report; then **dump, prove it loads, record its hash and snapshot id** | full: DB, ingestion | held |
+| I8 | Freeze. Full regression; stage-4 merge gates on the branch; the owner's `/red-team`; stage-5 fixes. Any fix that changes a context line bumps `CONTEXT_VERSION` here, before money is spent; any fix that changes graph data repeats I7's dump | full | held |
+| I9 | The paid run on G from the frozen commit; `build_examples.py`; thresholds. The last code-changing step is I8 | full: paid, LLM | held |
+| I10 | Opus verifier; deploy C; live checks | | **C**: graph + API |
+
+Rules:
+- **Only I1 and I2-I3 ship alone** (deploys A and B). I5-I9 ship only together, as deploy C: context changes without regenerated examples would replay stale answers. A and B are cut from commits that do not contain I5 onward.
+- **One rebuild** (I7). **One paid run** (I9). The dump taken at the end of I7 (or its I8 repeat) is the deploy artifact; nothing writes to G after it except read-only evals.
+- **Instances.** Every command pins `NEO4J_URI`. I0, I7 and I9 use G. Integration tests use T only, at any time; no real snapshot is ever loaded on T (the conftest refuses to wipe one, tests/integration/conftest.py:43-53, and the suites share T and leave fixtures there). T's credentials are documented in tests/integration/test_state_neo4j.py:4; `.env` is never read for them.
+- **Paid commands (I9)**, all with G pinned and `EMBEDDING_BACKEND=onnx`:
+  1. `uv run semigraph eval-deployed --max-usd 2 --votes 3 --runs-file eval_deployed.m2a.jsonl --report-name eval_report.m2a-deployed.json`, started without `--yes`; the printed line (answer cap, judge worst case) goes to Status before "Proceed?" is answered.
+  2. `uv run semigraph eval-agent --baseline artifacts/eval_report.m2a-deployed.json --runs-file eval_agent.m2a.jsonl --report-name eval_report.agent.m2a.json --dry-run`; record the printed worst case; then the same without `--dry-run`, with `--confirm-paid --max-usd <that worst case>`. Without `--baseline` the command compares against v2d (cli.py:691).
+  3. `PYTHONPATH=src python scripts/build_examples.py --runs data/processed/eval_deployed.m2a.jsonl --deployed --report artifacts/eval_report.m2a-deployed.json --snapshot <new id>`. `--report` leaves out every judged-incorrect answer (build_examples.py:66-71, :153). Add `--exclude ID=REASON` for any answer that fails a section 6 row.
+- docs/RUNBOOK.md:610-617 is corrected in I9: it shows the older `semigraph eval` command and has the kill-switch gap below.
+- Each increment ends with `ecc:code-reviewer` (Sonnet) and, on sensitive code, `ecc:security-reviewer` (Opus). CRITICAL and HIGH are fixed before the next one.
+
+**Deploy C sequence.**
+1. Check the dump for Svc* rows; if any, rebuild the dump without them.
+2. `kill_switch on`.
+3. Deploy `semigraph-neo4j`. The reload replaces the ledger and cache, deletes upload workspaces and **resets the kill switch to off**.
+4. `/healthz`, then **`kill_switch on` again**. Until step 5 the old API is serving the new graph.
+5. Deploy the API with the new `examples.json`.
+6. Check `/healthz`, the new snapshot id on `/api/stats`, one example served from cache.
+7. Wait for the next monitor poll (the freshness row went with the ledger), then check the panel.
+8. `kill_switch off`.
+
+Rollback: the previous image tag of each app. The older DB image reloads its older seed, so a rollback deletes upload workspaces again and resets the kill switch again; turn it on again before touching the API.
+
+## 9. Paid spend (needs approval at I9)
+
+| Item | Basis | Likely | Worst case |
+|---|---|---|---|
+| Answers, 60 questions | v2e: $0.877 (`artifacts/eval_report.v2e-deployed.json`); the context grows | about $1 | $2 (`--max-usd`, enforced) |
+| Judge, 23 open questions, 3 votes | 23 x 3 x `JUDGE_CALL_USD` $0.01 (bakeoff.py:33; printed at cli.py:445-447); past runs $0.45-0.63 (M1B_PLAN.md:191) | $0.45-0.69 | $0.69 (printed, not enforced by the CLI) |
+| Agent ship gate | `eval_report.agent.v2.json`: $1.19 actual, $2.38 likely, $7.31 worst | $1.2-2.4 | $7.31 last time. This is the estimate the CLI demands as the minimum `--max-usd` (cli.py:720-722); it moves with per-question cost, so the dry run's figure is the one approved |
+| **Total** | | **about $2.7-4.1** | **about $10.0** |
+
+Everything else is $0. A second run (OD4, or a late context fix) adds about the same again.
+
+## 10. Risks and where the obvious implementation is wrong
+
+1. **Adding a retrieval version to `cache_key` only.** Boot re-seeding re-keys the stale answers. Use the fingerprint gate (R9).
+2. **Deploying R9 before the new examples exist.** It un-lists all 53 examples, starters included.
+3. **Putting the prior id inside the inline note.** The note sits on the current metric's line, so the current figure would ground against the prior year. Move the note to its own line first.
+4. **Making an unshown base row citable.** A prior value cited with that id has no line to ground against and fails `numbers_grounded`.
+5. **Reordering ids and printing the quote beside the first one shown.** The quote belongs to the first-loaded id.
+6. **Failing every citation of a superseded chunk.** "What changed" answers must cite superseded filings.
+7. **Treating the agent as a separate renderer.** It shares `build_blocks`; every context change reaches it and its margin is about 1,900 characters.
+8. **Scoring the new checks from stored deployed runs.** They hold no context.
+9. **Reversing one chunk's row, or setting status in `_knowledge_rows`.** The edge accumulates rows from every filer, and status is set in the MERGE.
+10. **Count arithmetic for new rules.** Live count minus graph count names nothing and breaks when a rule is withdrawn. Use the id set difference.
+11. **Rebuilding or evaluating on 7898.** It is the shared test instance; the release graph would pick up test fixtures, and the tests would refuse to run.
+12. **One kill-switch "on" for deploy C.** The reload turns it off before the new API is out.
+13. **Running the paid eval before the security gates.** One sanitiser fix would void the examples.
+14. **Trusting the fallback User-Agent.** `"semigraph"` works on data.sec.gov; www.sec.gov/Archives answered 403 to a generic agent. The panel stays on data.sec.gov.
+
+## 11. Acceptance checks for the verifier
+
+1. `uv run pytest -q` green (the known checkout-only failure `test_tools_probe_w1d.py` aside); coverage at least 80%; integration tests with `RUN_NEO4J_TESTS=1` against T (bolt://127.0.0.1:7898), never against G.
+2. Web: lint, typecheck, vitest, Playwright in the off-OneDrive mirror, re-synced first.
+3. Each row of section 4 has a RED then GREEN record in Status.
+4. The deployed dump's hash equals the hash recorded in I7/I8, and its snapshot id equals the one in `examples.json` and in both eval reports. `examples_match_template` and `examples_match_snapshot` hold. The example count is stated against 53, with the excluded ids and reasons.
+5. The paid run's commit is the frozen I8 commit; no context-affecting change follows it.
+6. The estimates, the moved pins, the share window and the $0.30 settled figure are recomputed and recorded.
+7. The eval report meets section 6; any row not met is named, not hidden. The agent report names `eval_report.m2a-deployed.json` as its baseline.
+8. promptfoo exit 0 against the local model, or the owner's recorded waiver.
+9. No change to `answer.txt` unless OD4 was triggered; no lockfile change; `static/index.html` byte-identical.
+10. Live after deploy C and one monitor poll: D4, NG06, NG10 and X4 re-read on the site; the panel names rules 2026-23529 and 2026-22793 and NVDA 8-K 0001045810-26-000088, if they are still among the newest; the kill switch is off only at the end.
+
+## Status
+
+Deploy A's evidence also goes in its PR body (fast path).
+
+| Stage | Gate | Evidence needed |
+|---|---|---|
+| 1 Spec | Owner approves this spec, OD1-OD7 and OD10-OD12; Opus review of the draft | the owner's words; the review disposition |
+| 2 Dev (TDD) | per increment: RED then GREEN; reviews clean of CRITICAL and HIGH; eval cases and promptfoo file committed before I5 | test names and counts per increment; promptfoo exit code, or the waiver |
+| 3 Regression | **per deploy A, B, C:** full suite, coverage at least 80%, integration on T, web suite; for C also the evals at threshold | commands and counts; report file names |
+| 4 Security | **per deploy A, B, C.** Before each push: `/security-review`, gitleaks, osv-scanner or pip-audit if a lockfile changed, syft then grype for the image. At merge: `differential-review`; semgrep with the baseline commit and `p/python`, `p/security-audit`, plus `p/typescript` and `p/react` for web diffs; `spec-to-code-compliance` (B: P1-P5; C: the rest). Before each production deploy: the owner is asked to run `/red-team` (OD12) | each command and its result; the red-team report path or the recorded decline |
+| 5 Fix findings | failing test first; one table for approval; llm-council only if ambiguous and expensive | the table; the approved ids |
+| 6 Re-test and verifier | **per deploy:** stages 3 and 4 again; Opus verifier | counts; the verifier's verdict |
+| 7 Push, CI, deploys | CI green; deploys A, B, C with live checks; for C the paid-run approval (OD8) and the date (OD9) | run ids; image tags; rollback tags; the printed estimates; live checks |
+| 8 Archify | expected to be skipped. Reason to record: no service, store, trust boundary or dependency is added; the Federal Register listing call goes to the same host from the same poller | the decision and that reason |
