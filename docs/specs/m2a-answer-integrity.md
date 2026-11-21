@@ -1,6 +1,6 @@
 # M2a: answer integrity and the "Since our data" panel
 
-Status: **DRAFT for owner approval (2026-11-20).** INTERNAL document. Planned by `fable-architect`; revised after two adversarial reviews.
+Status: **APPROVED** (the owner, 2026-11-21: "approve the plans and all recommendations": the spec, the plan and OD1-OD12 as recommended). INTERNAL document. Planned by `fable-architect`; revised after two adversarial reviews.
 
 Path: **full** for everything except I1 (fast path, see OD1). The work touches DB queries, the LLM context, external APIs and untrusted text on a page.
 
@@ -251,7 +251,7 @@ Deploy A's evidence also goes in its PR body (fast path).
 
 | Stage | Gate | Evidence needed |
 |---|---|---|
-| 1 Spec | Owner approves this spec, OD1-OD7 and OD10-OD12; Opus review of the draft | the owner's words; the review disposition |
+| 1 Spec | Owner approves this spec, OD1-OD7 and OD10-OD12; Opus review of the draft | **PASSED 2026-11-21**: the owner, 2026-11-21: "approve the plans and all recommendations". Reviews: two Opus critics (facts, process) of the draft in workflow wf_191853c1-6be; every valid correction applied, six disagreements recorded by the planner. Open owner actions: OD10 (start the local model server on 127.0.0.1:8080 and give its command; blocks I5) and OD11 (start the local graph G and the throwaway T; blocks I0) |
 | 2 Dev (TDD) | per increment: RED then GREEN; reviews clean of CRITICAL and HIGH; eval cases and promptfoo file committed before I5 | test names and counts per increment; promptfoo exit code, or the waiver |
 | 3 Regression | **per deploy A, B, C:** full suite, coverage at least 80%, integration on T, web suite; for C also the evals at threshold | commands and counts; report file names |
 | 4 Security | **per deploy A, B, C.** Before each push: `/security-review`, gitleaks, osv-scanner or pip-audit if a lockfile changed, syft then grype for the image. At merge: `differential-review`; semgrep with the baseline commit and `p/python`, `p/security-audit`, plus `p/typescript` and `p/react` for web diffs; `spec-to-code-compliance` (B: P1-P5; C: the rest). Before each production deploy: the owner is asked to run `/red-team` (OD12) | each command and its result; the red-team report path or the recorded decline |

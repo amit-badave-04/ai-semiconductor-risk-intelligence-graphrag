@@ -1,6 +1,6 @@
 # semigraph roadmap from 2026-11-20
 
-Status: **DRAFT for owner approval.** INTERNAL document. It states limits plainly. Do not copy it to the README or the site.
+Status: **APPROVED** (the owner, 2026-11-21: "approve the plans and all recommendations"; Q1-Q4 as recommended). INTERNAL document. It states limits plainly. Do not copy it to the README or the site.
 
 Basis: `docs/v2/research/m2-triage-and-next-milestones-2026-11-11.md` (fact-checked triage), `docs/decisions/004-next-milestone-m2-or-m5c.md` (council), `docs/v2/PLAN.md` section 6, three read-only checks on 2026-11-20 (code map, tooling, live re-verification), and two adversarial reviews of the first draft of this plan. This file replaces the order in PLAN.md section 6 for everything after M5b. PLAN.md and decision 004 are not edited before approval.
 
@@ -25,7 +25,7 @@ Basis: `docs/v2/research/m2-triage-and-next-milestones-2026-11-11.md` (fact-chec
 
 | Order | Name | Spec | State |
 |---|---|---|---|
-| 1 | **M2a Answer integrity + "Since our data"** | `docs/specs/m2a-answer-integrity.md` | DRAFT, for approval now |
+| 1 | **M2a Answer integrity + "Since our data"** | `docs/specs/m2a-answer-integrity.md` | APPROVED 2026-11-21; in progress |
 | 2 | **M2 Search upgrade (trimmed)** | `docs/specs/m2-search.md` | DRAFT, approved only after M2a closes |
 | 3 | **CP Add or remove a company** (local commands) | outline in `docs/specs/company-pipeline-and-web-search-outline.md` | outline |
 | 4 | **EK 8-K ingestion** | same outline | outline |
