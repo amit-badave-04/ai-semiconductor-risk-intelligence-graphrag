@@ -262,6 +262,9 @@ describe("parseFreshness since_data", () => {
       expect(rulesOf(withRules(rule({ publication_date: day }))), day).toEqual([]);
     }
     expect(rulesOf(withRules(rule({ title: "x".repeat(300) })))).toHaveLength(1);
+    // The server caps at 300 characters (code points, federal_register.clean_title): 300 emoji count 300, not 600.
+    expect(rulesOf(withRules(rule({ title: "\u{1F600}".repeat(300) })))).toHaveLength(1);
+    expect(rulesOf(withRules(rule({ title: "\u{1F600}".repeat(301) })))).toEqual([]);
   });
 
   it("keeps the document number, and drops a rule whose document number is not the Federal Register's form", () => {

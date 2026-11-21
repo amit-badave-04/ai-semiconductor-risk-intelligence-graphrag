@@ -156,7 +156,8 @@ function sinceRule(value: unknown): SinceRule | null {
   if (!isRow(value)) return null;
   const { title, publication_date: day, document_number: number } = value;
   if (typeof number !== "string" || !DOCUMENT_NUMBER.test(number)) return null;
-  if (typeof title !== "string" || title.length < 1 || title.length > RULE_TITLE_MAX || !isDay(day)) return null;
+  // Characters (code points), as the server's cap counts them: `title.length` counts UTF-16 units, so emoji would count twice.
+  if (typeof title !== "string" || title.length < 1 || [...title].length > RULE_TITLE_MAX || !isDay(day)) return null;
   return { document_number: number, title, publication_date: day, href: hostUrl(value.html_url, FEDERAL_REGISTER_HOST) };
 }
 
