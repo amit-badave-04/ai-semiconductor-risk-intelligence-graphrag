@@ -25,6 +25,7 @@ from ..artifacts import read_prompt
 from .answerer import build_blocks, dropped_anchors_field, sources_from_context, stream_answer_for_prompt
 from .ids import CITE_RE, classify_id
 from .retriever import hybrid_retrieve
+from .verify import SentenceScopedSources
 
 WORKSPACE_PROMPT = read_prompt("answer_workspace")
 
@@ -223,6 +224,16 @@ def _doc_excerpt_block(doc_chunks: list[dict]) -> str:
     return "\n".join(f"[{c['chunk_id']}]\n{c['text']}\n" for c in doc_chunks)
 
 
+_UPLOAD_MARK = "\n\nUPLOADED DOCUMENT EXCERPTS (user-provided, not filing evidence):\n"
+
+
+def sec_grounding(full_context: str) -> str:
+    """The SEC part of a workspace context (RT-004): the only text figures and "computed:" lines are grounded
+    against. A doc-cited figure is grounded by its own chunk (``sources``). The SEC part precedes the first mark.
+    # shortcut: assumes no filing text holds the mark verbatim, split structurally if build_blocks ever echoes one."""
+    return full_context.partition(_UPLOAD_MARK)[0]
+
+
 def build_workspace_prompt(question: str, r_sec: dict, r_ws: dict, delimiter: str):
     """The rendered workspace prompt, its full context (for numeric grounding), the citable ids (SEC + this
     workspace's retrieved chunks), the SEC chunk ids, and the EXPLICIT sources map (docs/v2/M4_PLAN.md 14.5):
@@ -233,11 +244,11 @@ def build_workspace_prompt(question: str, r_sec: dict, r_ws: dict, delimiter: st
     doc_block = _doc_excerpt_block(doc_chunks)
     prompt = WORKSPACE_PROMPT.format(question=question, delimiter=delimiter, doc_block=doc_block,
                                      **blocks._asdict())
-    full_context = sec_context + (
-        f"\n\nUPLOADED DOCUMENT EXCERPTS (user-provided, not filing evidence):\n{doc_block}\n")
+    full_context = sec_context + f"{_UPLOAD_MARK}{doc_block}\n"
     valid_ids = valid_ids | {c["chunk_id"] for c in doc_chunks}
     chunk_ids = [c["chunk_id"] for c in r_sec["chunks"]]
-    sources = {**sources_from_context(sec_context), **{c["chunk_id"]: c["text"] for c in doc_chunks}}
+    sources = SentenceScopedSources({**sources_from_context(sec_context),
+                                     **{c["chunk_id"]: c["text"] for c in doc_chunks}})   # F4: grounded per sentence
     return prompt, full_context, valid_ids, chunk_ids, sources
 
 
@@ -280,11 +291,12 @@ def stream_workspace_answer(question: str, driver, embedder, *, strategy: str = 
     # Only forwarded when set: TextStream's own defaults (a 1200-token budget, no timeout) must not be overridden by
     # a bare None from a caller (e.g. a direct test call) that never passed them.
     optional = {k: v for k, v in {"timeout": timeout, "max_tokens": max_tokens}.items() if v is not None}
-    for ev in stream_answer_for_prompt(question, prompt, full_context, valid_ids, chunk_ids, strategy,
-                                       sources=sources, llm_stream=llm_stream, escalation_model=escalation_model,
+    for ev in stream_answer_for_prompt(question, prompt, sec_grounding(full_context), valid_ids, chunk_ids,
+                                       strategy, sources=sources, llm_stream=llm_stream, escalation_model=escalation_model,
                                        escalation_stream=escalation_stream, postprocess=strip_links_images,
                                        force_buffered=True, **optional, **stream_kwargs):
         if ev["event"] == "done":
+            ev = {**ev, "context_chars": len(full_context)}   # what the model saw, not what grounds
             cited = set(ev.get("citations") or [])
             ev = {**ev, "workspace": {"id_hash": _id_hash(workspace_id), "doc_chunks": len(doc_chunks),
                                       "stale_citations": _stale_citations(driver, workspace_id, cited),

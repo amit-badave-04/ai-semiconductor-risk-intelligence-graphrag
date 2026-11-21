@@ -292,13 +292,15 @@ def test_a_cached_row_that_cannot_be_written_is_503_and_the_answer_is_not_served
     assert_json_refusal(ask(client), 503, routes.MSG_STATE_UNAVAILABLE)
 
 
-def test_the_cache_read_budget_is_one_bucket_for_the_process_and_an_empty_one_is_429_before_any_read(
+def test_the_cache_read_budget_is_one_bucket_for_the_process_and_an_empty_one_skips_the_read_before_the_bot_check(
         make_client, backend):
+    """RT-007 (spec F3): an empty budget is no longer a 429 before Turnstile. The pre-Turnstile read is skipped; once the
+    bot check passes the cache is read without a token (one more cache_get), and a miss goes on as a paid ask."""
     client = make_client(cache_rate=2)
     assert ask(client, Q + " one").status_code == 200 and ask(client, Q + " two").status_code == 200
     reads_before = backend.names().count("cache_get")
-    assert_json_refusal(ask(client, Q + " three"), 429, routes.MSG_READ_RATE)
-    assert backend.names().count("cache_get") == reads_before and backend.names().count("reserve") == 2
+    assert ask(client, Q + " three").status_code == 200
+    assert backend.names().count("cache_get") == reads_before + 1 and backend.names().count("reserve") == 3
 
 
 def test_the_token_bucket_refills_with_time_and_holds_one_seconds_worth():

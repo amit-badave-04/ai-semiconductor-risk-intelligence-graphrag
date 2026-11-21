@@ -34,7 +34,7 @@ from ..graph.client import DatabaseDriver, make_state_driver, run_cypher
 from ..graph.schema import PRIVATE_LABEL_PREFIXES, apply_schema, private_label_predicate
 from ..retrieval.answerer import template_fingerprint
 from ..uploads import jobs
-from .asgi_middleware import OriginAuth
+from .asgi_middleware import BodyLimit, OriginAuth
 from .embed import LimitedEmbedder
 from .guard import RateLimiter, TokenBucket
 from .limiters import LoopLagMonitor, make_limiters
@@ -447,6 +447,8 @@ def create_app() -> FastAPI:
     origin_secret = getattr(settings, "origin_auth_secret", "")
     if isinstance(origin_secret, str) and origin_secret:
         app.add_middleware(OriginAuth, secret=Concealed(origin_secret))
+    # RT-001/RT-002: added last, so outermost (runs before OriginAuth and routing); every environment.
+    app.add_middleware(BodyLimit, upload_max_bytes=getattr(settings, "upload_max_bytes", 15 * 1024 * 1024))
     app.include_router(health_router)         # before ``router``: the first route that matches GET /healthz answers
     app.include_router(router)
     for extra in (monitor_routes.router, dossier_routes.router, workspace_routes.router):   # M4

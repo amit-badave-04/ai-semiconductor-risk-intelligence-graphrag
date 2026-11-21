@@ -20,7 +20,9 @@ setting in production (``config.py``): the live site would answer 403 to every b
 construction is a second line of defence for a deployment that skips those validators.
 """
 
+import asyncio
 import hmac
+import time
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -86,3 +88,108 @@ class OriginAuth:
             return
         await send({"type": "http.response.start", "status": 403, "headers": list(_FORBIDDEN_HEADERS)})
         await send({"type": "http.response.body", "body": _BODY})
+
+
+# --- BodyLimit (red-team RT-001 / RT-002, docs/specs/redteam-2026-11-21-fixes.md F1) ---------------------------------
+JSON_BODY_MAX_BYTES = 64 * 1024        # far above the largest honest ask (~4,000 characters plus a Turnstile token)
+JSON_BODY_DEADLINE_S = 10.0
+UPLOAD_SLACK_BYTES = 8192              # same multipart framing allowance as workspace_routes.UPLOAD_SIZE_SLACK
+# Upload deadline: the full 15 MiB at a slow honest rate of 64 KiB/s (about 0.5 Mbit/s, a poor mobile link) takes 240 s;
+# 300 s leaves 25 % headroom. A client slower than ~51 KiB/s is cut off.
+UPLOAD_BODY_DEADLINE_S = 300.0
+_BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _is_upload_route(method: str, path: str) -> bool:
+    parts = path.split("/")
+    return (method == "POST" and len(parts) == 5 and parts[:3] == ["", "api", "workspace"] and bool(parts[3])
+            and parts[4] == "documents")
+
+
+class BodyLimit:
+    """Pure ASGI cap on the request body, in bytes and in time, before routing. JSON routes get ``json_max_bytes`` and
+    ``json_deadline_s``; ``POST /api/workspace/{id}/documents`` gets ``upload_max_bytes`` (+ framing slack) and
+    ``upload_deadline_s``. Over the cap (declared or counted) -> 413; body not complete in time -> 408 with
+    ``Connection: close``. A request that declares no body (no Content-Length above 0, no Transfer-Encoding) on a bodiless
+    method, and every non-http scope, passes through; responses (SSE) are never touched."""
+
+    def __init__(self, app: Callable[..., Any], *, upload_max_bytes: int, json_max_bytes: int = JSON_BODY_MAX_BYTES,
+                 json_deadline_s: float = JSON_BODY_DEADLINE_S, upload_deadline_s: float = UPLOAD_BODY_DEADLINE_S):
+        self._app = app
+        self._upload_max = upload_max_bytes + UPLOAD_SLACK_BYTES
+        self._json_max = json_max_bytes
+        self._json_deadline = json_deadline_s
+        self._upload_deadline = upload_deadline_s
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        method = scope.get("method", "")
+        request_headers = dict(scope.get("headers") or ())
+        declared = request_headers.get(b"content-length", b"")
+        # The framing decides, not the method: a GET, HEAD or OPTIONS that declares a body (a non-zero Content-Length or a
+        # Transfer-Encoding) is bounded like a POST, so it cannot hold a connection open past a deadline (RT-002).
+        declares_body = (declared.isdigit() and int(declared) > 0) or b"transfer-encoding" in request_headers
+        if method not in _BODY_METHODS and not declares_body:
+            await self._app(scope, receive, send)
+            return
+        upload = _is_upload_route(method, scope.get("path", ""))
+        cap = self._upload_max if upload else self._json_max
+        deadline = self._upload_deadline if upload else self._json_deadline
+        if declared.isdigit() and int(declared) > cap:
+            await _short_reply(send, 413, "Payload Too Large", close=True)
+            return
+        expects_body = declares_body
+        refused = False
+        seen = 0
+        body_done = False
+        started = time.monotonic()
+
+        async def guarded_receive() -> dict:
+            nonlocal refused, seen, body_done
+            if body_done:
+                return await receive()          # SSE: the app waits here for a disconnect; no body deadline applies
+            if refused:
+                return {"type": "http.disconnect"}
+            try:
+                message = await asyncio.wait_for(receive(), max(0.0, deadline - (time.monotonic() - started)))
+            except asyncio.TimeoutError:
+                refused = True
+                await _short_reply(send, 408, "Request Timeout", close=True)
+                return {"type": "http.disconnect"}
+            if message["type"] == "http.request":
+                seen += len(message.get("body", b""))
+                body_done = not message.get("more_body", False) and seen <= cap
+                if seen > cap:
+                    refused = True
+                    await _short_reply(send, 413, "Payload Too Large", close=True)
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def guarded_send(message: dict) -> None:
+            if refused:
+                return
+            if message["type"] == "http.response.start" and expects_body and not body_done:
+                # RT-002: a response that starts before the body is complete leaves unread bytes (and no deadline)
+                # on a keep-alive connection; uvicorn closes the transport after a response that says so.
+                headers = list(message.get("headers") or ())
+                if not any(name.lower() == b"connection" for name, _ in headers):
+                    message = {**message, "headers": [*headers, (b"connection", b"close")]}
+            await send(message)
+
+        try:
+            await self._app(scope, guarded_receive, guarded_send)
+        except Exception:
+            if not refused:
+                raise              # the app's own failure; only the disconnect we caused is swallowed
+
+
+async def _short_reply(send: Send, status: int, detail: str, *, close: bool) -> None:
+    body = ('{"detail":"%s"}' % detail).encode()
+    headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode()),
+               (b"cache-control", b"no-store")]
+    if close:
+        headers.append((b"connection", b"close"))
+    await send({"type": "http.response.start", "status": status, "headers": headers})
+    await send({"type": "http.response.body", "body": body})

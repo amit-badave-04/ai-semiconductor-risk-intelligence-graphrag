@@ -307,21 +307,41 @@ def _amount_status(amount: _Amount, known: list[tuple[float, str | None]], asked
     return "echoed" if _amount_known(amount, asked_known) else "unmatched"
 
 
-def _check_figures(text: str, cited: set[str], context: str, sources: Mapping[str, str], question: str) -> _Figures:
-    """Every amount and percentage of ``text`` against the context; what only the question states is ``echoed``."""
-    known, asked_amounts = _known_amounts(context), _amounts(question)
+class SentenceScopedSources(dict):
+    """A sources map whose figures are grounded per sentence (F4, the upload workspace): a figure is grounded by the
+    SEC context plus the sources its OWN sentence cites. A plain dict keeps the public path's pooled behaviour."""
+
+
+def _figure_findings(text: str, cited: set[str], context: str, sources: Mapping[str, str], asked_amounts: list,
+                     asked_percent: list[float]) -> list[tuple[int, str, str]]:
+    """(position, shown, status) of every amount and percentage of ``text``."""
+    known = _known_amounts(context)
+    if isinstance(sources, SentenceScopedSources):   # workspace only: a cited upload chunk grounds its own amounts
+        for citation in cited:                        # the public path grounds amounts on the context alone, as before
+            known += _known_amounts(sources.get(citation, ""))
     computed = [float(v.replace(",", "")) for v in _COMPUTED_PERCENT_RE.findall(context)]
     cited_percent = [k for citation in cited for k in _plain_percentages(sources.get(citation, ""))]
+    found = [(a.start, a.shown, _amount_status(a, known, asked_amounts)) for a in _amounts(text)]
+    found += [(m.start(), m.group(0).strip(), _percent_status(text, m, computed, cited_percent, asked_percent))
+              for m in _percent_matches(text)]
+    return sorted(found)
+
+
+def _check_figures(text: str, cited: set[str], context: str, sources: Mapping[str, str], question: str) -> _Figures:
+    """Every amount and percentage of ``text`` against the context; what only the question states is ``echoed``."""
+    asked_amounts = _amounts(question)
     asked_percent = _plain_percentages(question) + [
         float(v.replace(",", "")) for v in _COMPUTED_PERCENT_RE.findall(question)]
-    found: list[tuple[int, str, str]] = []
-    for a in _amounts(text):
-        found.append((a.start, a.shown, _amount_status(a, known, asked_amounts)))
-    for m in _percent_matches(text):
-        found.append((m.start(), m.group(0).strip(), _percent_status(text, m, computed, cited_percent, asked_percent)))
+    if isinstance(sources, SentenceScopedSources):
+        # shortcut: a citation in another clause of the same sentence does not ground this clause's figure; upgrade if
+        # the clause splitter proves too strict on real workspace answers.
+        found = [f for clause in _clauses(text) for f in _figure_findings(
+            clause, set(CITE_RE.findall(clause)), context, sources, asked_amounts, asked_percent)]
+    else:
+        found = _figure_findings(text, cited, context, sources, asked_amounts, asked_percent)
     unmatched: dict[str, None] = {}   # ordered sets: a membership test in a list is a scan per figure
     echoed: dict[str, None] = {}
-    for _, shown, status in sorted(found):
+    for _, shown, status in found:
         bucket = {"unmatched": unmatched, "echoed": echoed}.get(status)
         if bucket is not None:
             bucket.setdefault(shown)

@@ -250,4 +250,4 @@ def test_the_secret_is_not_in_the_repr_and_the_presented_value_is_never_logged(c
 def test_the_module_is_stdlib_only():
     source = (asgi_middleware.__file__ and open(asgi_middleware.__file__, encoding="utf-8").read())
     imports = {line.split()[1].split(".")[0] for line in source.splitlines() if line.startswith(("import ", "from "))}
-    assert imports <= {"hmac", "logging", "__future__", "collections", "typing"}, imports
+    assert imports <= {"asyncio", "hmac", "time", "logging", "__future__", "collections", "typing"}, imports

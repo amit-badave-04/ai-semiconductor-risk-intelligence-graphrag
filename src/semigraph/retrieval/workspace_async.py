@@ -78,6 +78,7 @@ from .workspace import (
     _id_hash,
     _stale_citations,
     build_workspace_prompt,
+    sec_grounding,
     looks_suspicious,
     make_delimiter,
     strip_links_images,
@@ -146,12 +147,13 @@ async def astream_workspace_answer(question: str, driver, embedder, *, limiters:
     # by a bare None from a caller that never passed them.
     optional = {k: v for k, v in {"timeout": timeout, "max_tokens": max_tokens}.items() if v is not None}
     events = astream_answer_for_prompt(
-        question, prompt, full_context, valid_ids, chunk_ids, strategy, sources=sources, llm_stream=llm_stream,
+        question, prompt, sec_grounding(full_context), valid_ids, chunk_ids, strategy, sources=sources, llm_stream=llm_stream,
         escalation_model=escalation_model, escalation_stream=escalation_stream, postprocess=strip_links_images,
         force_buffered=True, limiters=limiters, meter=meter, **optional, **stream_kwargs)
     async with aclosing(events) as inner:
         async for event in inner:
             if event["event"] == "done":
+                event = {**event, "context_chars": len(full_context)}
                 event = await _with_workspace_block(event, driver, workspace_id, limiters, doc_chunks=len(doc_chunks),
                                                     suspicious=suspicious)
             yield event

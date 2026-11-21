@@ -34,7 +34,7 @@ from serve_state_fakes import RouteSettings, build_route_app, fresh_drain  # noq
 from semigraph import config
 from semigraph.config import Settings
 from semigraph.serve import guard, main, routes
-from semigraph.serve.asgi_middleware import OriginAuth
+from semigraph.serve.asgi_middleware import BodyLimit, OriginAuth
 from semigraph.serve.limiters import make_limiters
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -565,9 +565,9 @@ def middleware_of(app) -> list[type]:
 
 
 def test_the_origin_gate_is_wired_only_when_the_secret_is_set(monkeypatch):
-    assert middleware_of(build_app(monkeypatch, SimpleNamespace(origin_auth_secret=""))) == []
-    assert middleware_of(build_app(monkeypatch, SimpleNamespace(origin_auth_secret=ORIGIN_SECRET))) == [OriginAuth]
-    assert middleware_of(build_app(monkeypatch, SimpleNamespace())) == []          # settings without the attribute: off
+    assert middleware_of(build_app(monkeypatch, SimpleNamespace(origin_auth_secret=""))) == [BodyLimit]
+    assert middleware_of(build_app(monkeypatch, SimpleNamespace(origin_auth_secret=ORIGIN_SECRET))) == [BodyLimit, OriginAuth]   # BodyLimit outermost
+    assert middleware_of(build_app(monkeypatch, SimpleNamespace())) == [BodyLimit]   # no attribute: gate off, body cap always on
 
 
 def test_without_a_secret_the_app_answers_everyone_as_it_always_did(monkeypatch):

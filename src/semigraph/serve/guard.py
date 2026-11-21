@@ -8,6 +8,7 @@ survive a restart (daily ceiling, kill switch) is in Neo4j instead.
 """
 
 import hashlib
+import heapq
 import hmac
 import ipaddress
 import logging
@@ -27,6 +28,7 @@ logger = logging.getLogger("semigraph.serve.guard")
 
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 MAX_BUCKETS = 20_000
+MIN_SWEEP_INTERVAL_S = 2.0      # while over the bound, sweep at most this often (F2)
 IP_HASH_HEX_CHARS = 16          # of the HMAC: 64 bits, the width every ledger row already has
 PROCESS_PEPPER_BYTES = 32
 STRATEGIES = ("hybrid", "vector")
@@ -44,6 +46,22 @@ class RateLimiter:
     def __init__(self, max_events: int, window_seconds: int):
         self.max_events, self.window = max_events, window_seconds
         self._buckets: dict[str, deque] = defaultdict(deque)
+        self._swept_at = time.monotonic()
+
+    def _sweep(self, now: float) -> None:
+        """Drop keys idle for a full window; then, if still over the bound, the keys idle longest (``heapq.nsmallest``
+        on the newest-event time, never a sort of the whole map).
+
+        Trade-off: a live key CAN be evicted when the map is over the bound, and it is not refused instead. Refusing new
+        keys would lock out every new visitor during a 20,000-address flood; an evicted key only gets a fresh window,
+        and the flooder already holds 20,000 windows of its own, so resetting one of them gains it nothing."""
+        self._swept_at = now
+        for k in [k for k, b in self._buckets.items() if not b or now - b[-1] > self.window]:
+            del self._buckets[k]
+        excess = len(self._buckets) - MAX_BUCKETS
+        if excess > 0:
+            for k in heapq.nsmallest(excess, self._buckets, key=lambda k: self._buckets[k][-1]):
+                del self._buckets[k]
 
     def allow(self, key: str) -> bool:
         if self.max_events <= 0:
@@ -55,9 +73,11 @@ class RateLimiter:
         if len(bucket) >= self.max_events:
             return False
         bucket.append(now)
-        if len(self._buckets) > MAX_BUCKETS:  # bound memory over long uptime
-            for k in [k for k, b in list(self._buckets.items()) if not b]:
-                self._buckets.pop(k, None)
+        # Bound memory: once per window, or every MIN_SWEEP_INTERVAL_S while over the bound (a day-window limiter under a
+        # key flood would otherwise grow for a whole day).
+        interval = MIN_SWEEP_INTERVAL_S if len(self._buckets) > MAX_BUCKETS else self.window
+        if now - self._swept_at > interval:
+            self._sweep(now)
         return True
 
     def seed(self, key: str, timestamps: Sequence[float]) -> None:

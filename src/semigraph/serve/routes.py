@@ -11,8 +11,11 @@ free slot) refuses, it never lets an ask through. The order, and what each gate 
 3. the free window (429 ``MSG_RATE``): the first gate that counts, so an unauthenticated client cannot write a ledger
    row without passing it;
 4. a workspace ask: its token (404 for a bad id or token alike) is read through the state driver under the cache read
-   budget; a public ask: a token of the cache read budget (429 ``MSG_READ_RATE`` when the process-wide bucket is empty),
-   then ``state.cache_get``. A hit is logged as a cached row (under the same state bound) and replayed. The database
+   budget (429 ``MSG_READ_RATE`` when the process-wide bucket is empty: within ``/api/ask`` only a workspace ask can get
+   it); a public ask: a token of the cache read budget, then ``state.cache_get``. When the bucket is empty a public ask is
+   NOT refused (RT-007): the pre-Turnstile read is skipped and, once Turnstile has passed (step 6), the cache is read
+   without a token, so an anonymous drain never starves a verified visitor and an unverified ask meets 403 ``MSG_BOT``.
+   A hit is logged as a cached row (under the same state bound) and replayed. The database
    being unreachable or slow is 503 ``MSG_STATE_UNAVAILABLE`` in both (``MSG_PAUSED`` is the kill switch's alone): a
    cached answer is never served on a guess, and a failed read never falls through to a paid call. A workspace ask
    never touches the answer cache;
@@ -325,6 +328,7 @@ async def ask(body: AskRequest, request: Request):
     strategy = guard.validate_strategy(body.strategy, agent_enabled=s.agent_enabled, workspace=in_workspace)
     as_of = guard.validate_as_of(body.as_of)
     workspace = None
+    budget_skipped = False
     if in_workspace:
         workspace = {"workspace_id": guard.validate_workspace_id(body.workspace_id), "as_of": as_of}
         if not uploads_available(st):
@@ -341,8 +345,10 @@ async def ask(body: AskRequest, request: Request):
         _take_free_window(st, iph)
         await _check_workspace_access(st, request, workspace["workspace_id"])
     else:
-        cached = await _answer_from_cache(st, s, iph, strategy, store.cache_key(question, strategy, snapshot_id))
-        if cached is not None:
+        cache_key = store.cache_key(question, strategy, snapshot_id)
+        cached = await _answer_from_cache(st, s, iph, strategy, cache_key)
+        budget_skipped = cached is _BUDGET_EMPTY
+        if cached is not None and not budget_skipped:
             return cached
 
     level = await _kill_level(st)
@@ -354,6 +360,10 @@ async def ask(body: AskRequest, request: Request):
                                         s.is_production, required=s.turnstile_required,
                                         stub=getattr(s, "turnstile_stub", False) is True):
         raise HTTPException(status_code=403, detail=MSG_BOT)
+    if budget_skipped:  # RT-007: the pre-Turnstile read was skipped (shared budget empty); a verified ask reads it free
+        hit = await _read_cache(st, s, cache_key, budgeted=False)
+        if hit is not None:
+            return await _serve_cached(st, s, iph, strategy, hit)
     if not st.rate_limiter.allow(iph):
         raise HTTPException(status_code=429, detail=MSG_RATE)
     # resolved before the reserve: an import error costs nothing
@@ -396,20 +406,29 @@ async def _check_workspace_access(st, request: Request, workspace_id: str) -> No
         raise HTTPException(status_code=404, detail=MSG_WORKSPACE_NOT_FOUND)
 
 
-async def _answer_from_cache(st, s, iph: str, strategy: str, key: str) -> EventSourceResponse | None:
+_BUDGET_EMPTY = object()  # _read_cache / _answer_from_cache result: the shared read budget had no token, nothing was read
+
+
+async def _answer_from_cache(st, s, iph: str, strategy: str, key: str):
     """Free window, then the answer cache, for a public ask: the cached answer's response, or None on a miss (the ask
-    goes on as a paid one). While draining the order flips, so a miss that is refused takes no window: the cache is read
-    first, a hit then takes the free window, a miss is 503 ``MSG_DRAINING``."""
+    goes on as a paid one), or ``_BUDGET_EMPTY`` when the shared read budget is empty (RT-007: no 429 before the bot
+    check; the caller reads the cache again, free, once Turnstile has passed). While draining the order flips, so a miss
+    that is refused takes no window: the cache is read first, a hit then takes the free window, a miss is 503
+    ``MSG_DRAINING``."""
     draining = drain.DRAIN.draining
     if not draining:
         _take_free_window(st, iph)
     cached = await _read_cache(st, s, key)
-    if cached is None:
+    if cached is None or cached is _BUDGET_EMPTY:
         if draining:
             raise HTTPException(status_code=503, detail=MSG_DRAINING, headers=DRAINING_HEADERS)
-        return None
+        return cached
     if draining:
         _take_free_window(st, iph)
+    return await _serve_cached(st, s, iph, strategy, cached)
+
+
+async def _serve_cached(st, s, iph: str, strategy: str, cached: dict) -> EventSourceResponse:
     await _log_cached_hit(st, s, iph, strategy)
     return EventSourceResponse(_one_event({"event": "done", "cached": True, **cached, **_seeded_checks(st, cached)}),
                                sep="\n")
@@ -440,11 +459,12 @@ def _seeded_checks(st, cached: dict) -> dict:
     return {"checks": dict(found[2])}
 
 
-async def _read_cache(st, s, key: str) -> dict | None:
-    """One token of the process-wide cache read budget, then ``state.cache_get``. Any failure is 503: a cached answer is
-    never served on a guess and a read that failed never falls through to a paid call."""
-    if not st.cache_budget.take():
-        raise HTTPException(status_code=429, detail=MSG_READ_RATE)
+async def _read_cache(st, s, key: str, *, budgeted: bool = True):
+    """One token of the process-wide cache read budget (none once the bot check has passed: ``budgeted=False``), then
+    ``state.cache_get``; ``_BUDGET_EMPTY`` when the budget has no token. Any failure is 503: a cached answer is never
+    served on a guess and a read that failed never falls through to a paid call."""
+    if budgeted and not st.cache_budget.take():
+        return _BUDGET_EMPTY
     try:
         return await state_call(st, st.state.cache_get, key, s.answer_cache_ttl_hours)
     except Exception as e:  # noqa: BLE001
