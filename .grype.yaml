@@ -5,8 +5,8 @@
 # without changing it. Both CVEs are recorded FIXED for trixie in openssl 3.5.7-1~deb13u2 (DSA-6465-1), and the image carries
 # 3.5.7-1~deb13u3 or newer. grype's own Debian-package matcher does not report either CVE against that package.
 # Each rule is scoped to the binary artifact /usr/bin/openssl at that version, so a real match on the deb package, another
-# file or another version still reports. Remove a rule if the image's OpenSSL changes (B2's upgrade is meant to bring 3.5.9,
-# which would make both rules inert: check at the post-deploy re-scan) or the tracker entry changes.
+# file or another version still reports. After deploy A the running image has OpenSSL 3.5.9 (B2's upgrade), so the rules match
+# nothing there; they stay for the pre-push scan of the pinned base image (3.5.7). Remove them when that digest moves on.
 ignore:
   - vulnerability: CVE-2026-63073
     package:
