@@ -38,7 +38,7 @@ import re
 import secrets
 import time
 from collections.abc import AsyncIterator
-from functools import partial
+from functools import cache, partial
 from typing import Literal
 
 import anyio
@@ -411,7 +411,33 @@ async def _answer_from_cache(st, s, iph: str, strategy: str, key: str) -> EventS
     if draining:
         _take_free_window(st, iph)
     await _log_cached_hit(st, s, iph, strategy)
-    return EventSourceResponse(_one_event({"event": "done", "cached": True, **cached}), sep="\n")
+    return EventSourceResponse(_one_event({"event": "done", "cached": True, **cached, **_seeded_checks(st, cached)}),
+                               sep="\n")
+
+
+@cache
+def _example_checks() -> dict[str, tuple[str, str, dict]]:
+    """Each packaged example's question -> (id, answer, the checks it was seeded with). Read once: the file ships in the
+    image."""
+    return {e["question"]: (e["id"], e["answer"], e["checks"])
+            for e in load_examples()["examples"] if isinstance(e.get("checks"), dict)}
+
+
+def _seeded_checks(st, cached: dict) -> dict:
+    """M2a R1: a saved example answer carries the checks it was seeded with, so the page shows what was checked instead
+    of "numbers not checked". Only a ``benchmark`` row whose stored question is an example this service seeded (the same
+    rule as ``/api/examples``); a live cached answer, or any other row, gets nothing. The question compared is the one
+    stored in the row, never the request's text, and the match is exact on purpose: ``seed_examples`` stores each
+    example's question verbatim, so a normalised match would only widen what can carry "checked" badges. The row's
+    answer must also be this file's answer: two releases with different example files can share a snapshot and a
+    template, and the badges must describe the answer actually shown. A copy is sent, never the cached object."""
+    if cached.get("source") != "benchmark":
+        return {}
+    found = _example_checks().get(cached.get("question"))
+    accepted = getattr(st, "example_ids", None)
+    if found is None or (accepted is not None and found[0] not in accepted) or cached.get("answer") != found[1]:
+        return {}
+    return {"checks": dict(found[2])}
 
 
 async def _read_cache(st, s, key: str) -> dict | None:
