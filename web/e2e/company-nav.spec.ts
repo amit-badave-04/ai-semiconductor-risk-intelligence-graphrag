@@ -43,7 +43,7 @@ for (const width of [390, 320]) {
 test("following a link focuses its section's heading and puts the section in the address", async ({ page }) => {
   await page.goto(`${PREVIEW}/v2/company/NVDA/`);
   await nav(page).getByRole("link", { name: "Filings" }).click();
-  await expect(page.getByRole("heading", { level: 2, name: "Filings" })).toBeFocused();
+  await expect(page.getByRole("heading", { level: 2, name: "Filings", exact: true })).toBeFocused();
   expect(new URL(page.url()).hash).toBe("#filings");
   await nav(page).getByRole("link", { name: "Government rules" }).press("Enter");
   await expect(page.getByRole("heading", { level: 2, name: "Government rules" })).toBeFocused();
@@ -53,7 +53,7 @@ test("a page opened at a section focuses its heading; Back returns to the previo
   await page.goto(`${PREVIEW}/v2/company/NVDA/#relationships`);
   await expect(page.getByRole("heading", { level: 2, name: "Relationships" })).toBeFocused();
   await nav(page).getByRole("link", { name: "Filings" }).click();
-  await expect(page.getByRole("heading", { level: 2, name: "Filings" })).toBeFocused();
+  await expect(page.getByRole("heading", { level: 2, name: "Filings", exact: true })).toBeFocused();
   await page.goBack();
   await expect(page.getByRole("heading", { level: 2, name: "Relationships" })).toBeFocused();
 });
@@ -76,7 +76,7 @@ test("with the evidence sheet open on a phone, a heading the navigation focuses 
   const sheet = page.getByRole("complementary", { name: "Evidence" });
   await expect(sheet).toBeVisible();
   await nav(page).getByRole("link", { name: "Filings" }).click();
-  const heading = page.getByRole("heading", { level: 2, name: "Filings" });
+  const heading = page.getByRole("heading", { level: 2, name: "Filings", exact: true });
   await expect(heading).toBeFocused();
   const h = await heading.boundingBox();
   const s = await sheet.boundingBox();

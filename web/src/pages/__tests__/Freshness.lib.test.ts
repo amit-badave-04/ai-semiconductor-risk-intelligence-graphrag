@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchFreshness, freshnessLine, parseFreshness, relativeTime } from "../Freshness.lib";
 
@@ -166,5 +168,175 @@ describe("fetchFreshness", () => {
     expect((await fetchFreshness()).kind).toBe("error");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("a", "AbortError")));
     await expect(fetchFreshness()).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+// docs/specs/m2a-answer-integrity.md P4 and S7: since_data is server data about other sites, so each row is validated here.
+describe("parseFreshness since_data", () => {
+  const sample = JSON.parse(
+    readFileSync(path.resolve(import.meta.dirname, "../../../../tests/data/freshness/since_data.sample.json"), "utf-8"),
+  ) as Record<string, unknown>;
+  const base = { status: "ok", checked_at: "2026-11-21T00:00:00Z" };
+  const withSince = (since: unknown) => parseFreshness({ ...base, since_data: since })?.since_data;
+  const nvda = (over: Record<string, unknown>) => ({ ...(sample.filings as Record<string, unknown>[])[0], ...over });
+  const withFilings = (...rows: unknown[]) => withSince({ ...sample, filings: rows });
+  const withRules = (...rows: unknown[]) => withSince({ ...sample, rules: rows });
+  const rule = (over: Record<string, unknown>) => ({ ...(sample.rules as Record<string, unknown>[])[0], ...over });
+  const filingsOf = (v: ReturnType<typeof withSince>) => (typeof v === "object" && v !== null ? v.filings : []);
+  const rulesOf = (v: ReturnType<typeof withSince>) => (typeof v === "object" && v !== null ? v.rules : []);
+
+  it("reads the sample the server's own keys are pinned to", () => {
+    const since = withSince(sample);
+    expect(since).toMatchObject({ since: "2026-09-24", rules_since: "2026-09-24", rules_more: false, filing_totals: { NVDA: 7, TSM: 1 }, dropped: { filings: 0, rules: 0 } });
+    expect(filingsOf(since)).toHaveLength(6);
+    expect(filingsOf(since)[0]).toEqual({
+      ticker: "NVDA", form: "8-K", filing_date: "2026-11-19", accession_no: "0001045810-26-000020", items: ["2.02", "9.01"],
+      href: "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000020/nvda-8k-results.htm",
+    });
+    expect(rulesOf(since)[0]).toMatchObject({ publication_date: "2026-11-18", title: "Export Administration Regulations: Advanced Computing Items" });
+  });
+
+  it("is null for null or missing, and invalid for a body that is not an object, a bad date or a non-array list", () => {
+    expect(withSince(null)).toBeNull();
+    expect(parseFreshness(base)?.since_data).toBeNull();
+    expect(withSince("x")).toBe("invalid");
+    expect(withSince([])).toBe("invalid");
+    expect(withSince({ ...sample, since: "yesterday" })).toBe("invalid");
+    expect(withSince({ ...sample, rules_since: "2026-13-1" })).toBe("invalid");
+    expect(withSince({ ...sample, filings: {} })).toBe("invalid");
+    expect(withSince({ ...sample, rules: "x" })).toBe("invalid");
+  });
+
+  it.each([
+    ["a ticker we do not cover", { ticker: "XYZ" }],
+    ["a form that is not an event form", { form: "10-K" }],
+    ["a bad accession", { accession_no: "0001045810-26-00002" }],
+    ["an accession with a non-ASCII digit", { accession_no: "000104581\u0660-26-000020" }],
+    ["a bad date", { filing_date: "Nov 19" }],
+    ["an item that is not a code", { items: ["2.02", "<b>"] }],
+    ["items that are not a list", { items: "2.02" }],
+    ["a date that is not a day (Feb 31)", { filing_date: "2026-02-31" }],
+    ["a date that is not a day (Apr 31)", { filing_date: "2026-04-31" }],
+    ["a date that is not a day (Feb 30)", { filing_date: "2026-02-30" }],
+    ["a date that is not a day (Feb 29 of a common year)", { filing_date: "2026-02-29" }],
+    ["a date with a trailing newline", { filing_date: "2026-11-19\n" }],
+    ["a date with a leading space", { filing_date: " 2026-11-19" }],
+    ["a date with a trailing space", { filing_date: "2026-11-19 " }],
+    ["a date with an extra character", { filing_date: "2026-11-19x" }],
+    ["a date with full-width digits", { filing_date: "\uff12\uff10\uff12\uff16-11-19" }],
+    ["a date with Arabic-Indic digits", { filing_date: "\u0662\u0660\u0662\u0666-11-19" }],
+    ["an accession with a trailing newline", { accession_no: "0001045810-26-000020\n" }],
+    ["an accession with a leading space", { accession_no: " 0001045810-26-000020" }],
+    ["an accession with a trailing space", { accession_no: "0001045810-26-000020 " }],
+    ["an accession with an extra digit", { accession_no: "0001045810-26-0000200" }],
+    ["an item code with a trailing newline", { items: ["2.02\n"] }],
+    ["an item code with a leading space", { items: [" 2.02"] }],
+    ["an item code with a trailing space", { items: ["2.02 "] }],
+    ["an item code with an extra digit", { items: ["2.021"] }],
+    ["an item code with a non-ASCII digit", { items: ["2.0\u0662"] }],
+  ])("drops a filing row with %s", (_name, over) => {
+    expect(filingsOf(withFilings(nvda(over)))).toEqual([]);
+  });
+
+  it("keeps a filing dated on a real leap day", () => {
+    expect(filingsOf(withFilings(nvda({ filing_date: "2028-02-29" })))[0]).toMatchObject({ filing_date: "2028-02-29" });
+  });
+
+  it.each(["2026-02-31", "2026-04-31", "2026-02-30", "2026-11-19\n", "2026-11-19 "])("is invalid for a since or rules_since of %j", (day) => {
+    expect(withSince({ ...sample, since: day })).toBe("invalid");
+    expect(withSince({ ...sample, rules_since: day })).toBe("invalid");
+  });
+
+  it("keeps a 6-K with no items and a row without a primary document", () => {
+    const tsm = (sample.filings as Record<string, unknown>[]).find((f) => f.form === "6-K");
+    expect(filingsOf(withFilings(tsm))[0]).toMatchObject({ ticker: "TSM", form: "6-K", items: [] });
+    expect(filingsOf(withFilings(nvda({ primary_document: null })))).toHaveLength(1);
+  });
+
+  it("drops a rule with an empty title, a 301-character title or a bad date, and keeps 300", () => {
+    expect(rulesOf(withRules(rule({ title: "" })))).toEqual([]);
+    expect(rulesOf(withRules(rule({ title: "x".repeat(301) })))).toEqual([]);
+    expect(rulesOf(withRules(rule({ title: 5 })))).toEqual([]);
+    expect(rulesOf(withRules(rule({ publication_date: "soon" })))).toEqual([]);
+    for (const day of ["2026-02-31", "2026-04-31", "2026-11-18\n", " 2026-11-18", "2026-11-18 ", "2026-11-18x", "\u0662\u0660\u0662\u0666-11-18"]) {
+      expect(rulesOf(withRules(rule({ publication_date: day }))), day).toEqual([]);
+    }
+    expect(rulesOf(withRules(rule({ title: "x".repeat(300) })))).toHaveLength(1);
+  });
+
+  it("keeps the document number, and drops a rule whose document number is not the Federal Register's form", () => {
+    expect(rulesOf(withRules(rule({})))[0]).toMatchObject({ document_number: "2026-23001" });
+    expect(rulesOf(withRules(rule({ document_number: "C1-2026-23001" })))[0]).toMatchObject({ document_number: "C1-2026-23001" });
+    for (const bad of [undefined, 5, "", "2026-23001\n", " 2026-23001", "2026-23001 ", "2026-230010x", "2026-123", "\u0662\u0660\u0662\u0666-23001"]) {
+      expect(rulesOf(withRules(rule({ document_number: bad }))), String(bad)).toEqual([]);
+    }
+  });
+
+  it("caps 5 filings per company and 20 rules, and says there are more rules when it trims", () => {
+    const many = Array.from({ length: 8 }, (_, i) => nvda({ accession_no: `0001045810-26-0000${String(10 + i)}` }));
+    expect(filingsOf(withFilings(...many))).toHaveLength(5);
+    const rules = Array.from({ length: 25 }, (_, i) => rule({ title: `Rule ${i}` }));
+    const trimmed = withRules(...rules.map((r, i) => ({ ...r, document_number: `2026-${String(10000 + i)}` })));
+    expect(rulesOf(trimmed)).toHaveLength(20);
+    expect(trimmed).toMatchObject({ rules_more: true });
+    expect(withRules(rule({}))).toMatchObject({ rules_more: false });
+  });
+
+  it("keeps one row per accession number (the first), counting each extra as dropped, across companies too", () => {
+    const tsm = (sample.filings as Record<string, unknown>[]).find((f) => f.ticker === "TSM");
+    const since = withFilings(nvda({}), nvda({ filing_date: "2026-11-01" }), { ...tsm, accession_no: "0001045810-26-000020" }, nvda({ accession_no: "0001045810-26-000021" }));
+    expect(filingsOf(since).map((f) => [f.ticker, f.accession_no, f.filing_date])).toEqual([
+      ["NVDA", "0001045810-26-000020", "2026-11-19"],
+      ["NVDA", "0001045810-26-000021", "2026-11-19"],
+    ]);
+    expect(since).toMatchObject({ dropped: { filings: 2, rules: 0 } });
+  });
+
+  it("keeps one rule per document number, counting the repeat as dropped", () => {
+    const since = withRules(rule({}), rule({ title: "Again" }));
+    expect(rulesOf(since)).toHaveLength(1);
+    expect(since).toMatchObject({ dropped: { filings: 0, rules: 1 } });
+  });
+
+  it.each([
+    ["a script scheme", ["java", "script:alert(1)"].join("")],
+    ["http:", "http://www.sec.gov/Archives/edgar/data/1/2/x.htm"],
+    ["another host", "https://evil.example/Archives/edgar/data/1/2/x.htm"],
+    ["a look-alike host", "https://www.sec.gov.evil.example/x"],
+    ["credentials", "https://user:pw@www.sec.gov/Archives/x.htm"],
+    ["a port", "https://www.sec.gov:8443/Archives/x.htm"],
+    ["a non-string", 5],
+  ])("keeps the filing as text with no link for %s", (_name, url) => {
+    const row = filingsOf(withFilings(nvda({ url })))[0];
+    expect(row.href).toBeNull();
+    expect(row.accession_no).toBe("0001045810-26-000020");
+  });
+
+  it("refuses a link with a port, and keeps one that names the default port", () => {
+    expect(filingsOf(withFilings(nvda({ url: "https://www.sec.gov:8443/x" })))[0].href).toBeNull();
+    expect(rulesOf(withRules(rule({ html_url: "https://www.federalregister.gov:4443/x" })))[0].href).toBeNull();
+    expect(filingsOf(withFilings(nvda({ url: "https://www.sec.gov:443/x" })))[0].href).toBe("https://www.sec.gov/x");
+  });
+
+  it("links a rule only on www.federalregister.gov", () => {
+    expect(rulesOf(withRules(rule({ html_url: "https://www.sec.gov/x" })))[0].href).toBeNull();
+    expect(rulesOf(withRules(rule({ html_url: "http://www.federalregister.gov/x" })))[0].href).toBeNull();
+    expect(rulesOf(withRules(rule({})))[0].href).toMatch(/^https:\/\/www\.federalregister\.gov\//);
+  });
+
+  it("reads rules_more only when it is true, dropped counts as numbers, and totals only for our companies", () => {
+    const since = withSince({ ...sample, rules_more: "yes", dropped: { filings: "2", rules: 3 }, filing_totals: { NVDA: 9, XYZ: 4, TSM: -1 } });
+    expect(since).toMatchObject({ rules_more: false, dropped: { filings: 0, rules: 3 }, filing_totals: { NVDA: 9 } });
+  });
+});
+
+describe("parseFreshness since_data rows the page drops itself", () => {
+  it("counts them as dropped, so an emptied list is never reported as nothing new", () => {
+    const sample = JSON.parse(
+      readFileSync(path.resolve(import.meta.dirname, "../../../../tests/data/freshness/since_data.sample.json"), "utf-8"),
+    ) as { filings: Record<string, unknown>[]; rules: Record<string, unknown>[] };
+    const body = { since_data: { ...sample, filings: [{ ...sample.filings[0], ticker: "XYZ" }], rules: [{ ...sample.rules[0], title: "" }] } };
+    const since = parseFreshness(body)?.since_data;
+    expect(since).toMatchObject({ filings: [], rules: [], dropped: { filings: 1, rules: 1 } });
   });
 });

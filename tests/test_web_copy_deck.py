@@ -448,3 +448,14 @@ def test_every_legacy_text_of_the_lib_files_is_a_sentence_of_the_legacy_page(pat
     source = path.read_text(encoding="utf-8")
     assert legacy_fragments(source), f"{path.name}: no sentence found (the scan is vacuous)"
     assert legacy_missing(source, haystack) == []
+
+
+def test_the_since_our_data_strings_are_the_owner_s_words():
+    # docs/specs/m2a-answer-integrity.md OD7: the panel wording and the I3 follow-ups (2026-11-21), word for word
+    text = _all_text(DECK_TS)
+    for phrase in ("Since our data", "New company filings since ", "New BIS rules since ", "Nothing new since our data",
+                   "Not checked yet", "New filings since our data", " new BIS rules, not linked to companies yet",
+                   " new BIS rule, not linked to companies yet", " since our data \u2014 see Freshness",
+                   "Mine Safety \u2013 Reporting of Shutdowns and Patterns of Violations",
+                   "Changes in Registrant\u2019s Certifying Accountant", "Financial Statements and Exhibits"):
+        assert phrase in text, phrase

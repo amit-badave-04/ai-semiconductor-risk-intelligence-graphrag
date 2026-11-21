@@ -1,20 +1,25 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
+import { FilingRows, RuleRows } from "@/components/SinceRows";
 import { PageHeading } from "@/components/Layout";
 import { deck } from "@/copy/deck";
 import { formatDate } from "@/lib/format";
 import { loadFreshness } from "@/lib/freshnessStore";
 import { shellFreshness } from "@/lib/shellFreshness";
+import { filingsPart, partOf, sinceState } from "@/lib/sinceView";
 import { type Freshness as FreshnessData, type PendingFiling, relativeTime } from "./Freshness.lib";
 
 // R26 and docs/specs/m5b-redesign.md RD27: every field of GET /api/freshness (monitor.py status_payload, and the "disabled" payload
 // of monitor_routes.py) is shown or listed here as omitted, in plain words through the deck.
 //   shown:   status, snapshot_as_of, checked_at, last_error_at, next_check_at, pending_count, pending_filings,
 //            federal_register, unresolved (and the summary line, the header's own: lib/shellFreshness.ts)
-//   omitted: configured and enabled (status says disabled or unconfigured), duration_s (an internal timing)
+//            since_data (M2a P4): the "Since our data" section after the list, as its own region
+//   omitted: configured and enabled (status says disabled or unconfigured), duration_s (an internal timing), and in since_data
+//            the counts `dropped` (they only decide whether a subsection says "nothing new") and the list's `rules_more` is shown as "20+"
 // A row whose value is null is left out rather than shown empty. Dates are in words, in UTC. Everything from the server is a
 // text node.
 
 const w = deck.freshness.page;
+const since = deck.since;
 
 interface Loaded {
   freshness: FreshnessData;
@@ -70,6 +75,55 @@ function Fields({ freshness: f, now }: Loaded) {
   );
 }
 
+const H3 = "mt-4 mb-1 text-base font-semibold";
+
+/** M2a P4, after the details list and never inside it. See lib/sinceView.ts for which parts show. */
+function SinceSection({ freshness }: { freshness: FreshnessData }) {
+  const base = useId();
+  const state = sinceState(freshness);
+  if (state.kind === "hidden") return null;
+  const heading = `${base}-since`;
+  const filingsHeading = `${base}-filings`;
+  const rulesHeading = `${base}-rules`;
+  let body: ReactNode = <p className="m-0 text-muted-foreground">{since.notChecked}</p>;
+  if (state.kind === "data") {
+    const { data } = state;
+    const filings = filingsPart(data, freshness.unresolved);
+    const rules = partOf(data.rules, data.dropped.rules);
+    if (filings.kind === "omitted" && rules.kind === "omitted") return null; // no bare heading
+    const nothing = <p className="m-0 text-muted-foreground">{since.nothingNew}</p>;
+    body = (
+      <>
+        {filings.kind === "omitted" ? null : (
+          <>
+            <h3 id={filingsHeading} className={H3}>{since.filingsHeading(formatDate(data.since))}</h3>
+            {filings.kind === "rows" ? <FilingRows rows={filings.rows} totals={data.filing_totals} labelledBy={filingsHeading} /> : nothing}
+          </>
+        )}
+        {rules.kind === "omitted" ? null : (
+          <>
+            <h3 id={rulesHeading} className={H3}>{since.rulesHeading(formatDate(data.rules_since))}</h3>
+            {rules.kind === "rows" ? (
+              <>
+                <RuleRows rows={rules.rows} labelledBy={rulesHeading} />
+                <p className="mt-2 mb-0 text-muted-foreground">{since.notLinked(rules.rows.length, data.rules_more)}</p>
+              </>
+            ) : (
+              nothing
+            )}
+          </>
+        )}
+      </>
+    );
+  }
+  return (
+    <section aria-labelledby={heading} className="mt-8">
+      <h2 id={heading} className="mb-2 text-lg font-semibold">{since.heading}</h2>
+      {body}
+    </section>
+  );
+}
+
 export function Freshness() {
   const [state, setState] = useState<State>({ kind: "loading" });
 
@@ -94,6 +148,7 @@ export function Freshness() {
         <>
           <p className="mb-4 font-semibold">{shellFreshness(state.freshness, false)}</p>
           <Fields freshness={state.freshness} now={state.now} />
+          <SinceSection freshness={state.freshness} />
         </>
       ) : null}
     </>

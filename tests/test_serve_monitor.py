@@ -1090,3 +1090,13 @@ def test_a_snapshot_with_an_unreadable_date_logs_why_the_panel_is_empty(monkeypa
         result = _since_check(monkeypatch, snapshot={"id": "snap-x", "as_of": "not-a-date"})
     assert result["since_data"] is None
     assert "snapshot" in caplog.text and "since" in caplog.text.lower()
+
+
+def test_the_since_data_sample_has_the_keys_check_once_returns(monkeypatch):
+    # The web tests load this sample; the server's own keys, so the sample cannot drift from them (M2a I3).
+    sample = json.loads((Path(__file__).parent / "data" / "freshness" / "since_data.sample.json").read_text("utf-8"))
+    served = _since_check(monkeypatch)["since_data"]
+    assert set(sample) == set(served)
+    assert set(sample["dropped"]) == set(served["dropped"])
+    assert set(sample["rules"][0]) == set(served["rules"][0])
+    assert {frozenset(r) for r in sample["filings"]} == {frozenset(served["filings"][0])}

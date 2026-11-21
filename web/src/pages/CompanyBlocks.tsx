@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/format";
 import { FILERS } from "@/lib/pages.generated";
 import { Block, ScrollRegion } from "./CompanySection";
 import { AtAGlance, KeyNumbers } from "./CompanyNumbers";
+import { CompanySince } from "./CompanySince";
 import { Relationships } from "./CompanyRelationships";
 import { GovernmentRules } from "./CompanyRules";
 
@@ -111,6 +112,7 @@ export function DossierBlocks({ dossier }: { dossier: Dossier }) {
       <GovernmentRules rules={dossier.rules} companyName={companyName} />
       <Relationships edges={dossier.edges} companyName={companyName} />
       <FilingsBlock filings={dossier.filings} />
+      <CompanySince ticker={dossier.company.ticker} />
       <RisksBlock risks={dossier.activeRisks} />
     </>
   );

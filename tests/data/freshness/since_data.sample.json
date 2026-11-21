@@ -1,0 +1,94 @@
+{
+  "since": "2026-09-24",
+  "filings": [
+    {
+      "ticker": "NVDA",
+      "form": "8-K",
+      "filing_date": "2026-11-19",
+      "accession_no": "0001045810-26-000020",
+      "items": [
+        "2.02",
+        "9.01"
+      ],
+      "primary_document": "nvda-8k-results.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000020/nvda-8k-results.htm"
+    },
+    {
+      "ticker": "NVDA",
+      "form": "8-K/A",
+      "filing_date": "2026-11-18",
+      "accession_no": "0001045810-26-000019",
+      "items": [
+        "5.02"
+      ],
+      "primary_document": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000019/"
+    },
+    {
+      "ticker": "NVDA",
+      "form": "8-K",
+      "filing_date": "2026-11-17",
+      "accession_no": "0001045810-26-000018",
+      "items": [
+        "7.01"
+      ],
+      "primary_document": "nvda-8k.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000018/nvda-8k.htm"
+    },
+    {
+      "ticker": "NVDA",
+      "form": "8-K",
+      "filing_date": "2026-11-16",
+      "accession_no": "0001045810-26-000017",
+      "items": [
+        "8.01"
+      ],
+      "primary_document": "nvda-8k2.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000017/nvda-8k2.htm"
+    },
+    {
+      "ticker": "NVDA",
+      "form": "8-K",
+      "filing_date": "2026-11-15",
+      "accession_no": "0001045810-26-000016",
+      "items": [
+        "1.01"
+      ],
+      "primary_document": "nvda-8k3.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000016/nvda-8k3.htm"
+    },
+    {
+      "ticker": "TSM",
+      "form": "6-K",
+      "filing_date": "2026-11-20",
+      "accession_no": "0001046179-26-000040",
+      "items": [],
+      "primary_document": "tsm-6k.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1046179/000104617926000040/tsm-6k.htm"
+    }
+  ],
+  "filing_totals": {
+    "NVDA": 7,
+    "TSM": 1
+  },
+  "rules_since": "2026-09-24",
+  "rules": [
+    {
+      "document_number": "2026-23001",
+      "title": "Export Administration Regulations: Advanced Computing Items",
+      "publication_date": "2026-11-18",
+      "html_url": "https://www.federalregister.gov/documents/2026/11/18/2026-23001/export-administration-regulations"
+    },
+    {
+      "document_number": "2026-22500",
+      "title": "Entity List Additions",
+      "publication_date": "2026-11-10",
+      "html_url": "https://www.federalregister.gov/documents/2026/11/10/2026-22500/entity-list-additions"
+    }
+  ],
+  "rules_more": false,
+  "dropped": {
+    "filings": 0,
+    "rules": 0
+  }
+}

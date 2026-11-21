@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { expect, test, type CDPSession, type Page } from "@playwright/test";
 import { PREVIEW } from "./servers.ts";
 import { firstStarter } from "./support.ts";
@@ -15,6 +17,7 @@ interface AXNode {
   backendDOMNodeId?: number;
   role?: { value: string };
   name?: { value: string };
+  description?: { value: string };
   childIds?: string[];
 }
 
@@ -36,6 +39,13 @@ async function axName(page: Page, selector: string): Promise<string> {
   const client = await cdp(page);
   const { nodes } = (await client.send("Accessibility.getPartialAXTree", { backendNodeId: await backendId(client, selector), fetchRelatives: false })) as { nodes: AXNode[] };
   return nodes[0]?.name?.value ?? "";
+}
+
+/** Chrome's accessible description of the element the selector finds. */
+async function axDescription(page: Page, selector: string): Promise<string> {
+  const client = await cdp(page);
+  const { nodes } = (await client.send("Accessibility.getPartialAXTree", { backendNodeId: await backendId(client, selector), fetchRelatives: false })) as { nodes: AXNode[] };
+  return nodes[0]?.description?.value ?? "";
 }
 
 /** The text runs Chrome exposes under the element, joined as they are (this is the text a screen reader's browse mode reads). */
@@ -169,4 +179,36 @@ test("N4: More options and the freshness link keep the space between their two p
   expect(await axName(page, "#shell-freshness a")).toMatch(/^Freshness:\s+\S/);
   // the date line is said once: no tooltip repeats it as a description
   await expect(link).not.toHaveAttribute("title", /.*/);
+});
+
+// docs/specs/m2a-answer-integrity.md P4: a "Since our data" row is one sentence in one text run; its link's NAME is the link's visible
+// words, a no-break space and the row's accession (or document) number, and its DESCRIPTION is the sentence. The page asks for the
+// sample the Python test pins to the server's own keys.
+test("each Since our data row is one text run, its link's name is its words and number, and its description is the sentence", async ({ page }) => {
+  const root = process.env.REPO_ROOT ?? path.resolve(import.meta.dirname, "..", "..");
+  const since = JSON.parse(readFileSync(path.join(root, "tests", "data", "freshness", "since_data.sample.json"), "utf-8")) as unknown;
+  await page.route("**/api/freshness", (route) =>
+    route.fulfill({ json: { status: "ok", checked_at: new Date().toISOString(), snapshot_as_of: "2026-09-24", pending_count: 0, since_data: since } }),
+  );
+  await page.goto(`${PREVIEW}/v2/freshness/`);
+  const rows = page.locator("main h3 + ul > li").filter({ has: page.locator("a") });
+  await expect(rows.first()).toBeVisible();
+  const count = await rows.count();
+  expect(count).toBeGreaterThan(5);
+  const names = new Set<string>();
+  for (let i = 0; i < count; i++) {
+    const sentence = (await rows.nth(i).locator("span").first().innerText()).trim();
+    const marker = `data-row-${i}`;
+    await rows.nth(i).evaluate((el, m) => el.setAttribute(m, ""), marker);
+    const visible = (await rows.nth(i).locator("a").evaluate((a) => a.firstChild?.textContent ?? "")).trim();
+    const number = ((await rows.nth(i).locator("a span").textContent()) ?? "").trim();
+    expect(number, `number ${i}`).toMatch(/^([0-9]{10}-[0-9]{2}-[0-9]{6}|(C[0-9]-)?[0-9]{4}-[0-9]{4,6})$/);
+    expect(await axText(page, `[${marker}]`), `row ${i}`).toBe(`${sentence}${visible}\u00a0${number}`);
+    const name = await axName(page, `[${marker}] a`);
+    // Chrome adds a plain space before the out-of-flow span as well as the no-break space the span starts with: words, a gap, number
+    expect(name.replace(/\s+/g, " "), `name ${i}`).toBe(`${visible} ${number}`);
+    expect(await axDescription(page, `[${marker}] a`), `description ${i}`).toBe(sentence);
+    names.add(name);
+  }
+  expect(names.size, "every link has its own name").toBe(count);
 });

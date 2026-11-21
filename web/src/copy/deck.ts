@@ -92,6 +92,46 @@ const COMPANY_CHANGES = {
   quoted: (text: string): string => `\u201c${text}\u201d`,
 };
 
+/** Form 8-K item codes and the SEC's names for them (verified 2026-11-21 against the SEC's Form 8-K). Read with Object.hasOwn only. */
+const ITEM_LABELS: Record<string, string> = {
+  "1.01": "Entry into a Material Definitive Agreement",
+  "1.02": "Termination of a Material Definitive Agreement",
+  "1.03": "Bankruptcy or Receivership",
+  "1.04": "Mine Safety \u2013 Reporting of Shutdowns and Patterns of Violations",
+  "1.05": "Material Cybersecurity Incidents",
+  "2.01": "Completion of Acquisition or Disposition of Assets",
+  "2.02": "Results of Operations and Financial Condition",
+  "2.03": "Creation of a Direct Financial Obligation or an Obligation under an Off-Balance Sheet Arrangement of a Registrant",
+  "2.04": "Triggering Events That Accelerate or Increase a Direct Financial Obligation or an Obligation under an Off-Balance Sheet Arrangement",
+  "2.05": "Costs Associated with Exit or Disposal Activities",
+  "2.06": "Material Impairments",
+  "3.01": "Notice of Delisting or Failure to Satisfy a Continued Listing Rule or Standard; Transfer of Listing",
+  "3.02": "Unregistered Sales of Equity Securities",
+  "3.03": "Material Modification to Rights of Security Holders",
+  "4.01": "Changes in Registrant\u2019s Certifying Accountant",
+  "4.02": "Non-Reliance on Previously Issued Financial Statements or a Related Audit Report or Completed Interim Review",
+  "5.01": "Changes in Control of Registrant",
+  "5.02": "Departure of Directors or Certain Officers; Election of Directors; Appointment of Certain Officers; Compensatory Arrangements of Certain Officers",
+  "5.03": "Amendments to Articles of Incorporation or Bylaws; Change in Fiscal Year",
+  "5.04": "Temporary Suspension of Trading Under Registrant\u2019s Employee Benefit Plans",
+  "5.05": "Amendments to the Registrant\u2019s Code of Ethics, or Waiver of a Provision of the Code of Ethics",
+  "5.06": "Change in Shell Company Status",
+  "5.07": "Submission of Matters to a Vote of Security Holders",
+  "5.08": "Shareholder Director Nominations",
+  "6.01": "ABS Informational and Computational Material",
+  "6.02": "Change of Servicer or Trustee",
+  "6.03": "Change in Credit Enhancement or Other External Support",
+  "6.04": "Failure to Make a Required Distribution",
+  "6.05": "Securities Act Updating Disclosure",
+  "6.06": "Static Pool",
+  "7.01": "Regulation FD Disclosure",
+  "8.01": "Other Events",
+  "9.01": "Financial Statements and Exhibits",
+};
+
+/** A count of rules, written "20+" when the server says there may be more than it shows. */
+const countOf = (count: number, more: boolean): string => (more ? `${count}+` : String(count));
+
 export const deck = {
   shell: {
     /** the first stop of the keyboard: jumps to the page's main content */
@@ -175,6 +215,29 @@ export const deck = {
       rules: (inData: number, published: number, newer: number): string =>
         `${inData} in our data, ${published} published, ${newer} not yet in our data`,
     },
+  },
+
+  since: {
+    /** docs/specs/m2a-answer-integrity.md P4 and OD7 (owner wording records of 2026-11-21): the "Since our data" panel. */
+    heading: "Since our data",
+    filingsHeading: (date: string): string => `New company filings since ${date}`,
+    filingRow: (r: { company: string; form: string; date: string; labels: string[] }): string => {
+      const head = `${r.company} filed ${r.form.startsWith("8") ? "an" : "a"} ${r.form} on ${r.date}`;
+      return r.labels.length === 0 ? head : `${head}: ${r.labels.join(" \u00b7 ")}`;
+    },
+    rulesHeading: (date: string): string => `New BIS rules since ${date}`,
+    ruleRow: (date: string, title: string): string => `${date} ${title}`,
+    /** `more`: the server shows 20 and says there may be more, so the count is written "20+". */
+    notLinked: (count: number, more: boolean): string =>
+      count === 1 && !more ? "1 new BIS rule, not linked to companies yet" : `${countOf(count, more)} new BIS rules, not linked to companies yet`,
+    nothingNew: "Nothing new since our data",
+    notChecked: "Not checked yet",
+    companyHeading: "New filings since our data",
+    companyRules: (count: number, more: boolean): string =>
+      count === 1 && !more ? "1 new BIS rule since our data \u2014 see Freshness" : `${countOf(count, more)} new BIS rules since our data \u2014 see Freshness`,
+    showingOf: (shown: number, total: number): string => `showing ${shown} of ${total}`,
+    /** The SEC's own item names (Form 8-K, checked 2026-11-21). A code not listed is shown as written. */
+    itemLabel: (code: string): string => (Object.hasOwn(ITEM_LABELS, code) ? ITEM_LABELS[code] : code),
   },
 
   method: {
