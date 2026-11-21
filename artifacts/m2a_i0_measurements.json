@@ -1,0 +1,3423 @@
+{
+ "graph": {
+  "replay": {
+   "graph": "bolt://localhost:7699",
+   "embedding_backend": "onnx",
+   "snapshot": [
+    {
+     "id": "snap-20260924-97c6597d58",
+     "as_of": "2026-09-24"
+    }
+   ]
+  },
+  "now": [
+   {
+    "id": "snap-20260924-97c6597d58",
+    "as_of": "2026-09-24"
+   }
+  ]
+ },
+ "replay": {
+  "pairs": 60,
+  "accepted": 60,
+  "rejected": {},
+  "errored_rows": [],
+  "unpaired": {
+   "stored_only": [],
+   "replay_only": []
+  }
+ },
+ "sizes": {
+  "context_total_chars": {
+   "n": 60,
+   "min": 10115,
+   "p50": 43102,
+   "p90": 58762,
+   "max": 73982
+  },
+  "edges_block_chars": {
+   "n": 60,
+   "min": 1944,
+   "p50": 6820,
+   "p90": 7361,
+   "max": 7642
+  },
+  "external_block_chars": {
+   "n": 60,
+   "min": 6,
+   "p50": 1375,
+   "p90": 1445,
+   "max": 2775
+  },
+  "metrics_block_chars": {
+   "n": 60,
+   "min": 6,
+   "p50": 2243,
+   "p90": 2649,
+   "max": 4379
+  },
+  "edge_chars_per_anchor": {
+   "n": 60,
+   "min": 71,
+   "p50": 1774,
+   "p90": 1908,
+   "max": 1926
+  },
+  "metric_chars_per_company": {
+   "n": 60,
+   "min": 1859,
+   "p50": 2226,
+   "p90": 2623,
+   "max": 4115
+  },
+  "anchor_count": {
+   "n": 60,
+   "min": 0,
+   "p50": 1,
+   "p90": 1,
+   "max": 2
+  },
+  "edge_lines_per_question": {
+   "n": 60,
+   "min": 19,
+   "p50": 66,
+   "p90": 71,
+   "max": 73
+  },
+  "rule_lines_per_question": {
+   "n": 60,
+   "min": 0,
+   "p50": 8,
+   "p90": 8,
+   "max": 16
+  }
+ },
+ "quote_chars_distinct_edges": {
+  "n": 73,
+  "min": 53,
+  "p50": 134,
+  "p90": 206,
+  "max": 241
+ },
+ "benchmark": {
+  "yoy_metric_ids_shown": {
+   "NG01": {
+    "xbrl:1045810:revenue:2026-01-25": true,
+    "xbrl:1045810:revenue:2025-01-26": true
+   },
+   "NG02": {
+    "xbrl:2488:net_income:2025-12-27": true,
+    "xbrl:2488:net_income:2024-12-28": true
+   },
+   "NG03": {
+    "xbrl:50863:revenue:2025-12-27": true,
+    "xbrl:50863:revenue:2024-12-28": true
+   },
+   "NG04": {
+    "xbrl:723125:rnd:2025-08-28": true,
+    "xbrl:723125:rnd:2024-08-29": true
+   },
+   "NG05": {
+    "xbrl:1730168:revenue:2025-11-02": true,
+    "xbrl:1730168:revenue:2024-11-03": true
+   },
+   "NG06": {
+    "xbrl:804328:net_income:2023-09-24": true,
+    "xbrl:804328:net_income:2022-09-25": true
+   },
+   "NG07": {
+    "xbrl:1326801:rnd:2025-12-31": true,
+    "xbrl:1326801:rnd:2024-12-31": true
+   },
+   "NG08": {
+    "xbrl:789019:revenue:2025-06-30": true,
+    "xbrl:789019:revenue:2024-06-30": true
+   },
+   "NG09": {
+    "xbrl:1018724:net_income:2025-12-31": true,
+    "xbrl:1018724:net_income:2024-12-31": true
+   },
+   "NG10": {
+    "xbrl:1652044:revenue:2022-12-31": true,
+    "xbrl:1652044:revenue:2021-12-31": true
+   }
+  }
+ },
+ "x4b": {
+  "candidates": 60,
+  "kept_by_mentions_filter": 39,
+  "gold": {
+   "0001045810-26-000021:I.1:0323": {
+    "candidate_rank": 25,
+    "kept": false
+   },
+   "0001045810-26-000021:I.1A:0355": {
+    "candidate_rank": 44,
+    "kept": false
+   },
+   "0001045810-26-000021:II.7:0368": {
+    "candidate_rank": 8,
+    "kept": true
+   }
+  },
+  "gold_facts": [
+   {
+    "chunk_id": "0001045810-26-000021:I.1:0323",
+    "is_current": true,
+    "retrievable": true,
+    "status": "current",
+    "filing_date": "2026-02-25",
+    "form": "10-K",
+    "mentions": []
+   },
+   {
+    "chunk_id": "0001045810-26-000021:I.1A:0355",
+    "is_current": true,
+    "retrievable": true,
+    "status": "current",
+    "filing_date": "2026-02-25",
+    "form": "10-K",
+    "mentions": []
+   },
+   {
+    "chunk_id": "0001045810-26-000021:II.7:0368",
+    "is_current": true,
+    "retrievable": true,
+    "status": "current",
+    "filing_date": "2026-02-25",
+    "form": "10-K",
+    "mentions": [
+     "Nvidia"
+    ]
+   }
+  ]
+ },
+ "d1_scope": {
+  "candidates": 60,
+  "kept_by_mentions_filter": 27,
+  "gold": {
+   "0001045810-26-000021:I.1:0320": {
+    "candidate_rank": 5,
+    "kept": false
+   }
+  },
+  "gold_facts": [
+   {
+    "chunk_id": "0001045810-26-000021:I.1:0320",
+    "is_current": true,
+    "retrievable": true,
+    "status": "current",
+    "filing_date": "2026-02-25",
+    "form": "10-K",
+    "mentions": [
+     "Foxconn",
+     "SK Hynix",
+     "Micron",
+     "TSMC",
+     "Samsung"
+    ]
+   }
+  ]
+ },
+ "edges_with_currency": {
+  "D1": [
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Marvell",
+    "status": "Active",
+    "quote": "include such as AMD, Arista Networks, Broadcom, Cisco Systems, Inc., Hewlett Packard Enterprise Company, Huawei, Intel, Lumentum Holdings Inc., and Marvell Technology, Inc",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Amazon",
+    "status": "Active",
+    "quote": "such as Alibaba Group, Alphabet Inc., Amazon, Inc., or Amazon, Baidu, Inc., Huawei, and Microsoft Corporation, or Microsoft",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Amazon",
+    "status": "Active",
+    "quote": "companies developing their own custom silicon, including many hyperscalers such as Amazon, Google, Meta and Microsoft",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Samsung",
+    "status": "Active",
+    "quote": "such as Ambarella, Inc., AMD, Broadcom, Intel, Qualcomm Incorporated, Renesas Electronics Corporation, and Samsung",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -DEPENDS_ON-> Samsung",
+    "status": "Active",
+    "quote": "We utilize foundries, such as Taiwan Semiconductor Manufacturing Company Limited, or TSMC, and Samsung Electronics Co., Ltd., or Samsung, to produce our semiconductor wafers.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -CUSTOMER_OF-> Samsung",
+    "status": "Active",
+    "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -DEPENDS_ON-> Samsung",
+    "status": "Active",
+    "quote": "we utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for the production of our ICs in the form of programmable logic devices",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -CUSTOMER_OF-> Samsung",
+    "status": "Active",
+    "quote": "We also utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for our integrated circuits (IC) in the form of programmable logic devices.",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0012",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Samsung",
+    "status": "Active",
+    "quote": "We also compete directly with Samsung in this market.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0000",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -DEPENDS_ON-> Samsung",
+    "status": "Active",
+    "quote": "The primary foundry suppliers for our various digital, analog/mixed-signal, RF and PM integrated circuits include Taiwan Semiconductor Manufacturing Company (TSMC), Samsung Electronics and Global Foundries.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Samsung -CUSTOMER_OF-> Qualcomm",
+    "status": "Active",
+    "quote": "revenues from Apple, Samsung and Xiaomi each comprised 10% or more of our consolidated revenues",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0012",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-25-000085:I.1A:0015",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0004",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0024",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0015",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0015",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Samsung -COMPETES_WITH-> Qualcomm",
+    "status": "Active",
+    "quote": "We expect continued intense competition, including from vertical integration by certain of our customers (for example, Apple and Samsung).",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:II.7:0023",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0004",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0024",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:I.2:0023",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -COMPETES_WITH-> Samsung",
+    "status": "Active",
+    "quote": "Examples (some of which are strategic partners of ours in other areas) include Broadcom, HiSilicon, MediaTek, Mobileye, Nvidia, NXP Semiconductors, Qorvo, Samsung, Skyworks, Texas Instruments and UNISOC.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1A:0034",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0023",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0034",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0034",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Micron -COMPETES_WITH-> Samsung",
+    "status": "Active",
+    "quote": "We face intense competition in the semiconductor memory and storage markets from a number of companies, including Samsung Electronics Co., Ltd.",
+    "ids": [
+     {
+      "id": "0000723125-25-000028:I.1:0010",
+      "is_current": true,
+      "filing_date": "2025-10-03",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-25-000028:I.1A:0010",
+      "is_current": true,
+      "filing_date": "2025-10-03",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-24-000027:I.1A:0009",
+      "is_current": false,
+      "filing_date": "2024-10-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-26-000015:II.1A:0009",
+      "is_current": true,
+      "filing_date": "2026-06-25",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Microsoft",
+    "status": "Active",
+    "quote": "such as Alibaba Group, Alphabet Inc., Amazon, Inc., or Amazon, Baidu, Inc., Huawei, and Microsoft Corporation, or Microsoft",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Microsoft",
+    "status": "Active",
+    "quote": "companies developing their own custom silicon, including many hyperscalers such as Amazon, Google, Meta and Microsoft",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "OpenAI -DEPENDS_ON-> Microsoft",
+    "status": "Active",
+    "quote": "The OpenAI API is exclusive to Azure, runs on Azure, and is available through the Azure OpenAI Service.",
+    "ids": [
+     {
+      "id": "0000950170-25-100235:II.7:0002",
+      "is_current": false,
+      "filing_date": "2025-07-30",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -DEPENDS_ON-> Microsoft",
+    "status": "Active",
+    "quote": "If we lose Microsoft Corporation\u2019s support for our products or other software vendors do not design and develop software to run on our products, our ability to sell our products could be materially adversely affected.",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1A:0003",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0015",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0003",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0016",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0003",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0016",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0003",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0016",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -SUPPLIES_TO-> Microsoft",
+    "status": "Active",
+    "quote": "the success of game console systems and next generation consoles for Sony and Microsoft",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1A:0008",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0008",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> AMD",
+    "status": "Active",
+    "quote": "such as Advanced Micro Devices, Inc., or AMD, Huawei Technologies Co. Ltd., or Huawei, and Intel Corporation, or Intel",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -COMPETES_WITH-> Arm",
+    "status": "Active",
+    "quote": "Some competitors are pursuing alternative computing architectures, such as Arm, which could grow the Arm ecosystem and increase competition in consumer, commercial and data center markets, reducing demand for our products.",
+    "ids": [
+     {
+      "id": "0000002488-26-000123:II.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -COMPETES_WITH-> Nvidia",
+    "status": "Active",
+    "quote": "we compete primarily against Intel Corporation (Intel) and Nvidia Corporation (Nvidia with our CPU, GPU DPU and AI NIC server products",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0020",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1:0021",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0002",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0007",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0007",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -COMPETES_WITH-> Intel",
+    "status": "Active",
+    "quote": "we compete primarily against Intel Corporation (Intel) and Nvidia Corporation (Nvidia with our CPU, GPU DPU and AI NIC server products",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0020",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1:0021",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0002",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0007",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0007",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> AMD",
+    "status": "Active",
+    "quote": "CCG's primary competitor is AMD, which like us designs processors based on the x86 architecture.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0005",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -CUSTOMER_OF-> TSMC",
+    "status": "Active",
+    "quote": "We also utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for our integrated circuits (IC) in the form of programmable logic devices.",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "OpenAI -CUSTOMER_OF-> AMD",
+    "status": "Active",
+    "quote": "with the deployment of the first gigawatt of capacity powered by our AMD Instinct MI450 series products",
+    "ids": [
+     {
+      "id": "0000002488-26-000021:II.7:0003",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K/A"
+     }
+    ]
+   },
+   {
+    "edge": "Meta -CUSTOMER_OF-> AMD",
+    "status": "Active",
+    "quote": "we amended a master purchase agreement with Meta Platforms, Inc. (Meta) and Meta agreed to deploy up to 6 gigawatts of AMD GPUs",
+    "ids": [
+     {
+      "id": "0000002488-26-000076:I.2:0002",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:I.2:0002",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -DEPENDS_ON-> GlobalFoundries",
+    "status": "Active",
+    "quote": "GLOBALFOUNDRIES Inc. (GF), with respect to wafer purchases for our HPC products at the 12 nm and 14 nm technology nodes",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0012",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "We utilize Taiwan Semiconductor Manufacturing Company Limited (TSMC) for the production of wafers for our HPC, FPGA and adaptive SoC products",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0012",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0012",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0013",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0013",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -SUPPLIES_TO-> OpenAI",
+    "status": "Active",
+    "quote": "we entered into a product purchase agreement with OpenAI OpCo, LLC, (OpenAI) to deploy 6 gigawatts of AMD GPUs",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0003",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:II.7:0003",
+      "is_current": false,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000021:II.7:0003",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K/A"
+     }
+    ]
+   },
+   {
+    "edge": "TSMC -SUPPLIES_TO-> AMD",
+    "status": "Active",
+    "quote": "We utilize Taiwan Semiconductor Manufacturing Company Limited (TSMC) for the production of wafers for our HPC, FPGA and adaptive SoC products",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0013",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "GlobalFoundries -SUPPLIES_TO-> AMD",
+    "status": "Active",
+    "quote": "GLOBALFOUNDRIES Inc. (GF), with respect to wafer purchases for our HPC products at the 12 nm and 14 nm technology nodes",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Alphabet",
+    "status": "Active",
+    "quote": "such as Alibaba Group, Alphabet Inc., Amazon, Inc., or Amazon, Baidu, Inc., Huawei, and Microsoft Corporation, or Microsoft",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Alphabet",
+    "status": "Active",
+    "quote": "companies developing their own custom silicon, including many hyperscalers such as Amazon, Google, Meta and Microsoft",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Meta -COMPETES_WITH-> Alphabet",
+    "status": "Active",
+    "quote": "each of Apple and Google have integrated competitive products with iOS and Android, respectively",
+    "ids": [
+     {
+      "id": "0001628280-26-003942:I.1A:0022",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0020",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0022",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0022",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Apple -CUSTOMER_OF-> Alphabet",
+    "status": "Active",
+    "quote": "the Company earns revenue from licensing arrangements with Google LLC (\u201cGoogle\u201d) and other companies to offer their search services on the Company\u2019s platforms and applications",
+    "ids": [
+     {
+      "id": "0000320193-26-000020:II.1A:0002",
+      "is_current": true,
+      "filing_date": "2026-07-31",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Meta -DEPENDS_ON-> Alphabet",
+    "status": "Active",
+    "quote": "changes to the content or application of third-party policies that limit our ability to deliver, target, or measure the effectiveness of advertising, including changes by mobile operating system and browser providers such as Apple and Google",
+    "ids": [
+     {
+      "id": "0001628280-26-003942:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-003942:I.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-003942:I.1A:0024",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0011",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0022",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0024",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:I.2:0006",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0024",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Huawei",
+    "status": "Active",
+    "quote": "such as Advanced Micro Devices, Inc., or AMD, Huawei Technologies Co. Ltd., or Huawei, and Intel Corporation, or Intel",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -SUPPLIES_TO-> Huawei",
+    "status": "Active",
+    "quote": "we previously sold 4G and other integrated circuit products, including Wi-Fi products, but excluding 5G products, to Huawei under export licenses from the U.S. Department of Commerce",
+    "ids": [
+     {
+      "id": "0000804328-24-000075:I.1A:0004",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Huawei -CUSTOMER_OF-> Qualcomm",
+    "status": "Active",
+    "quote": "the U.S. Department of Commerce revoked the export license under which we previously sold 4G and certain other integrated circuit products to Huawei, which is one of the largest smartphone OEMs in China",
+    "ids": [
+     {
+      "id": "0000804328-26-000061:II.1A:0015",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Intel",
+    "status": "Active",
+    "quote": "such as Advanced Micro Devices, Inc., or AMD, Huawei Technologies Co. Ltd., or Huawei, and Intel Corporation, or Intel",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> TSMC",
+    "status": "Active",
+    "quote": "Our primary competitor in leading-edge semiconductor process technology is TSMC, which holds a leading position in manufacturing at scale for the most advanced nodes.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1:0010",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0000",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0002",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-25-000009:I.1A:0002",
+      "is_current": false,
+      "filing_date": "2025-01-31",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Meta",
+    "status": "Active",
+    "quote": "companies developing their own custom silicon, including many hyperscalers such as Amazon, Google, Meta and Microsoft",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Nvidia",
+    "status": "Active",
+    "quote": "providers of GPU systems such as NVIDIA, whose GPU systems have experienced the highest demand in the market as AI workloads have become the dominant source of compute demand",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Qualcomm",
+    "status": "Active",
+    "quote": "Qualcomm with its Snapdragon products and MediaTek with its Kompanio products",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0005",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> GlobalFoundries",
+    "status": "Active",
+    "quote": "Other Intel Foundry competitors include GlobalFoundries, UMC and SMIC, which primarily focus on mature process technologies.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0000",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Apple",
+    "status": "Active",
+    "quote": "We also face significant competition from companies that design processors based on the ARM architecture, such as Apple with its M series products",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0005",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Broadcom",
+    "status": "Active",
+    "quote": "We also compete with Broadcom in the custom ASICs development market.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Apple -COMPETES_WITH-> Intel",
+    "status": "Active",
+    "quote": "in 2020, Apple introduced PC products utilizing its own internally developed ARM-based semiconductor designs in place of our client CPUs",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -CUSTOMER_OF-> TSMC",
+    "status": "Active",
+    "quote": "We expect to continue to use TSMC and other third-party foundry suppliers for various key tiles in a number of current and future products.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0010",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0004",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "we would expect, over time, to shift manufacturing to third-party foundries, particularly TSMC, as we develop products for nodes beyond Intel 18A and its derivative node, Intel 18A-P",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0002",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1:0010",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0002",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0004",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-25-000009:I.1A:0010",
+      "is_current": false,
+      "filing_date": "2025-01-31",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -DEPENDS_ON-> ASML",
+    "status": "Active",
+    "quote": "we are reliant upon sole-source providers, such as with the EUV lithography tools manufactured by ASML that are required for leading-edge process technologies",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0015",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "TSMC -SUPPLIES_TO-> Intel",
+    "status": "Active",
+    "quote": "To the extent there is any interruption in the supply of tiles manufactured by TSMC or any other third-party foundry supplier",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1A:0002",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Broadcom",
+    "status": "Active",
+    "quote": "such as Ambarella, Inc., AMD, Broadcom, Intel, Qualcomm Incorporated, Renesas Electronics Corporation, and Samsung",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -COMPETES_WITH-> Broadcom",
+    "status": "Active",
+    "quote": "Examples (some of which are strategic partners of ours in other areas) include Broadcom, HiSilicon, MediaTek, Mobileye, Nvidia, NXP Semiconductors, Qorvo, Samsung, Skyworks, Texas Instruments and UNISOC.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1A:0034",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0023",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0034",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0034",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Broadcom -CUSTOMER_OF-> TSMC",
+    "status": "Active",
+    "quote": "We believe our wafer requirements represent a meaningful portion of TSMC\u2019s total production capacity.",
+    "ids": [
+     {
+      "id": "0001730168-24-000139:I.1A:0013",
+      "is_current": false,
+      "filing_date": "2024-12-20",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-26-000054:II.1A:0009",
+      "is_current": false,
+      "filing_date": "2026-06-09",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Broadcom -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "The majority of our front-end wafer manufacturing operations is outsourced to external foundries, including Taiwan Semiconductor Manufacturing Company Limited (\u201cTSMC\u201d).",
+    "ids": [
+     {
+      "id": "0001730168-25-000121:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-12-18",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-25-000121:I.1A:0009",
+      "is_current": true,
+      "filing_date": "2025-12-18",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-24-000139:I.1A:0013",
+      "is_current": false,
+      "filing_date": "2024-12-20",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-26-000054:II.1A:0009",
+      "is_current": false,
+      "filing_date": "2026-06-09",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001730168-26-000080:II.1A:0009",
+      "is_current": true,
+      "filing_date": "2026-09-10",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "TSMC -SUPPLIES_TO-> Broadcom",
+    "status": "Active",
+    "quote": "The majority of our front-end wafer manufacturing operations is outsourced to external foundries, including Taiwan Semiconductor Manufacturing Company Limited (\u201cTSMC\u201d).",
+    "ids": [
+     {
+      "id": "0001730168-25-000121:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-12-18",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-26-000080:II.1A:0009",
+      "is_current": true,
+      "filing_date": "2026-09-10",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Qualcomm",
+    "status": "Active",
+    "quote": "such as Ambarella, Inc., AMD, Broadcom, Intel, Qualcomm Incorporated, Renesas Electronics Corporation, and Samsung",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -COMPETES_WITH-> Nvidia",
+    "status": "Active",
+    "quote": "Examples (some of which are strategic partners of ours in other areas) include Broadcom, HiSilicon, MediaTek, Mobileye, Nvidia, NXP Semiconductors, Qorvo, Samsung, Skyworks, Texas Instruments and UNISOC.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1A:0034",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0023",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0034",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0034",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Apple -COMPETES_WITH-> Qualcomm",
+    "status": "Active",
+    "quote": "We expect continued intense competition, including from vertical integration by certain of our customers (for example, Apple and Samsung).",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:II.7:0023",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0024",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:I.2:0023",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0015",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:I.2:0024",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Apple -CUSTOMER_OF-> Qualcomm",
+    "status": "Active",
+    "quote": "revenues from Apple, Samsung and Xiaomi each comprised 10% or more of our consolidated revenues",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0012",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-25-000085:I.1A:0013",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-25-000085:I.1A:0015",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-25-000085:II.7:0023",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0002",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0004",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0024",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:I.2:0023",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0013",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0015",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0015",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -DEPENDS_ON-> GlobalFoundries",
+    "status": "Active",
+    "quote": "The primary foundry suppliers for our various digital, analog/mixed-signal, RF and PM integrated circuits include Taiwan Semiconductor Manufacturing Company (TSMC), Samsung Electronics and Global Foundries.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "The primary foundry suppliers for our various digital, analog/mixed-signal, RF and PM integrated circuits include Taiwan Semiconductor Manufacturing Company (TSMC), Samsung Electronics and Global Foundries.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Tesla",
+    "status": "Active",
+    "quote": "companies with internal teams designing SoC products for their own products and services, such as Tesla, Inc.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -CUSTOMER_OF-> SK Hynix",
+    "status": "Active",
+    "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Micron -COMPETES_WITH-> SK Hynix",
+    "status": "Active",
+    "quote": "including Samsung Electronics Co., Ltd.; SK hynix Inc.; Kioxia Holdings Corporation; Sandisk Corporation; ChangXin Memory Technologies, Inc. (\u201cCXMT\u201d); and Yangtze Memory Technologies Co., Ltd. (\u201cYMTC\u201d)",
+    "ids": [
+     {
+      "id": "0000723125-25-000028:I.1:0010",
+      "is_current": true,
+      "filing_date": "2025-10-03",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-25-000028:I.1A:0010",
+      "is_current": true,
+      "filing_date": "2025-10-03",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-24-000027:I.1A:0009",
+      "is_current": false,
+      "filing_date": "2024-10-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-26-000015:II.1A:0009",
+      "is_current": true,
+      "filing_date": "2026-06-25",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -CUSTOMER_OF-> Micron",
+    "status": "Active",
+    "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "We utilize foundries, such as Taiwan Semiconductor Manufacturing Company Limited, or TSMC, and Samsung Electronics Co., Ltd., or Samsung, to produce our semiconductor wafers.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -DEPENDS_ON-> Foxconn",
+    "status": "Active",
+    "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -DEPENDS_ON-> OpenAI",
+    "status": "Active",
+    "quote": "If OpenAI does not perform its obligations or becomes subject to an insolvency event, and a guarantee is triggered, we may assume the applicable lease",
+    "ids": [
+     {
+      "id": "0001045810-26-000075:II.1A:0001",
+      "is_current": true,
+      "filing_date": "2026-08-26",
+      "form": "10-Q"
+     }
+    ]
+   }
+  ],
+  "D4": [
+   {
+    "edge": "AMD -COMPETES_WITH-> Arm",
+    "status": "Active",
+    "quote": "Some competitors are pursuing alternative computing architectures, such as Arm, which could grow the Arm ecosystem and increase competition in consumer, commercial and data center markets, reducing demand for our products.",
+    "ids": [
+     {
+      "id": "0000002488-26-000123:II.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -COMPETES_WITH-> Nvidia",
+    "status": "Active",
+    "quote": "we compete primarily against Intel Corporation (Intel) and Nvidia Corporation (Nvidia with our CPU, GPU DPU and AI NIC server products",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0020",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1:0021",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0002",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0007",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0007",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Marvell",
+    "status": "Active",
+    "quote": "include such as AMD, Arista Networks, Broadcom, Cisco Systems, Inc., Hewlett Packard Enterprise Company, Huawei, Intel, Lumentum Holdings Inc., and Marvell Technology, Inc",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Amazon",
+    "status": "Active",
+    "quote": "such as Alibaba Group, Alphabet Inc., Amazon, Inc., or Amazon, Baidu, Inc., Huawei, and Microsoft Corporation, or Microsoft",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Samsung",
+    "status": "Active",
+    "quote": "such as Ambarella, Inc., AMD, Broadcom, Intel, Qualcomm Incorporated, Renesas Electronics Corporation, and Samsung",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Microsoft",
+    "status": "Active",
+    "quote": "such as Alibaba Group, Alphabet Inc., Amazon, Inc., or Amazon, Baidu, Inc., Huawei, and Microsoft Corporation, or Microsoft",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> AMD",
+    "status": "Active",
+    "quote": "such as Advanced Micro Devices, Inc., or AMD, Huawei Technologies Co. Ltd., or Huawei, and Intel Corporation, or Intel",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Alphabet",
+    "status": "Active",
+    "quote": "such as Alibaba Group, Alphabet Inc., Amazon, Inc., or Amazon, Baidu, Inc., Huawei, and Microsoft Corporation, or Microsoft",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Huawei",
+    "status": "Active",
+    "quote": "such as Advanced Micro Devices, Inc., or AMD, Huawei Technologies Co. Ltd., or Huawei, and Intel Corporation, or Intel",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Intel",
+    "status": "Active",
+    "quote": "such as Advanced Micro Devices, Inc., or AMD, Huawei Technologies Co. Ltd., or Huawei, and Intel Corporation, or Intel",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Broadcom",
+    "status": "Active",
+    "quote": "such as Ambarella, Inc., AMD, Broadcom, Intel, Qualcomm Incorporated, Renesas Electronics Corporation, and Samsung",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Qualcomm",
+    "status": "Active",
+    "quote": "such as Ambarella, Inc., AMD, Broadcom, Intel, Qualcomm Incorporated, Renesas Electronics Corporation, and Samsung",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -COMPETES_WITH-> Tesla",
+    "status": "Active",
+    "quote": "companies with internal teams designing SoC products for their own products and services, such as Tesla, Inc.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0321",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Nvidia",
+    "status": "Active",
+    "quote": "providers of GPU systems such as NVIDIA, whose GPU systems have experienced the highest demand in the market as AI workloads have become the dominant source of compute demand",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -COMPETES_WITH-> Nvidia",
+    "status": "Active",
+    "quote": "Examples (some of which are strategic partners of ours in other areas) include Broadcom, HiSilicon, MediaTek, Mobileye, Nvidia, NXP Semiconductors, Qorvo, Samsung, Skyworks, Texas Instruments and UNISOC.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1A:0034",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0023",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0034",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0034",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -CUSTOMER_OF-> SK Hynix",
+    "status": "Active",
+    "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -CUSTOMER_OF-> Micron",
+    "status": "Active",
+    "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -CUSTOMER_OF-> Samsung",
+    "status": "Active",
+    "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "We utilize foundries, such as Taiwan Semiconductor Manufacturing Company Limited, or TSMC, and Samsung Electronics Co., Ltd., or Samsung, to produce our semiconductor wafers.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -DEPENDS_ON-> Foxconn",
+    "status": "Active",
+    "quote": "We engage with independent subcontractors and contract manufacturers such as Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to perform assembly, testing and packaging of our final products.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -DEPENDS_ON-> OpenAI",
+    "status": "Active",
+    "quote": "If OpenAI does not perform its obligations or becomes subject to an insolvency event, and a guarantee is triggered, we may assume the applicable lease",
+    "ids": [
+     {
+      "id": "0001045810-26-000075:II.1A:0001",
+      "is_current": true,
+      "filing_date": "2026-08-26",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Nvidia -DEPENDS_ON-> Samsung",
+    "status": "Active",
+    "quote": "We utilize foundries, such as Taiwan Semiconductor Manufacturing Company Limited, or TSMC, and Samsung Electronics Co., Ltd., or Samsung, to produce our semiconductor wafers.",
+    "ids": [
+     {
+      "id": "0001045810-26-000021:I.1:0320",
+      "is_current": true,
+      "filing_date": "2026-02-25",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -COMPETES_WITH-> Intel",
+    "status": "Active",
+    "quote": "we compete primarily against Intel Corporation (Intel) and Nvidia Corporation (Nvidia with our CPU, GPU DPU and AI NIC server products",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0020",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1:0021",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0002",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0007",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0007",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0007",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> TSMC",
+    "status": "Active",
+    "quote": "Our primary competitor in leading-edge semiconductor process technology is TSMC, which holds a leading position in manufacturing at scale for the most advanced nodes.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1:0010",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0000",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0002",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-25-000009:I.1A:0002",
+      "is_current": false,
+      "filing_date": "2025-01-31",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> AMD",
+    "status": "Active",
+    "quote": "CCG's primary competitor is AMD, which like us designs processors based on the x86 architecture.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0005",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Meta",
+    "status": "Active",
+    "quote": "companies developing their own custom silicon, including many hyperscalers such as Amazon, Google, Meta and Microsoft",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Qualcomm",
+    "status": "Active",
+    "quote": "Qualcomm with its Snapdragon products and MediaTek with its Kompanio products",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0005",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Microsoft",
+    "status": "Active",
+    "quote": "companies developing their own custom silicon, including many hyperscalers such as Amazon, Google, Meta and Microsoft",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> GlobalFoundries",
+    "status": "Active",
+    "quote": "Other Intel Foundry competitors include GlobalFoundries, UMC and SMIC, which primarily focus on mature process technologies.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0000",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Apple",
+    "status": "Active",
+    "quote": "We also face significant competition from companies that design processors based on the ARM architecture, such as Apple with its M series products",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0005",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Samsung",
+    "status": "Active",
+    "quote": "We also compete directly with Samsung in this market.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0000",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Broadcom",
+    "status": "Active",
+    "quote": "We also compete with Broadcom in the custom ASICs development market.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Alphabet",
+    "status": "Active",
+    "quote": "companies developing their own custom silicon, including many hyperscalers such as Amazon, Google, Meta and Microsoft",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -COMPETES_WITH-> Amazon",
+    "status": "Active",
+    "quote": "companies developing their own custom silicon, including many hyperscalers such as Amazon, Google, Meta and Microsoft",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0006",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Apple -COMPETES_WITH-> Intel",
+    "status": "Active",
+    "quote": "in 2020, Apple introduced PC products utilizing its own internally developed ARM-based semiconductor designs in place of our client CPUs",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:II.7:0047",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -CUSTOMER_OF-> TSMC",
+    "status": "Active",
+    "quote": "We expect to continue to use TSMC and other third-party foundry suppliers for various key tiles in a number of current and future products.",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0010",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0004",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "we would expect, over time, to shift manufacturing to third-party foundries, particularly TSMC, as we develop products for nodes beyond Intel 18A and its derivative node, Intel 18A-P",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0002",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1:0010",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0002",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0004",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-25-000009:I.1A:0010",
+      "is_current": false,
+      "filing_date": "2025-01-31",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Intel -DEPENDS_ON-> ASML",
+    "status": "Active",
+    "quote": "we are reliant upon sole-source providers, such as with the EUV lithography tools manufactured by ASML that are required for leading-edge process technologies",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1:0015",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "TSMC -SUPPLIES_TO-> Intel",
+    "status": "Active",
+    "quote": "To the extent there is any interruption in the supply of tiles manufactured by TSMC or any other third-party foundry supplier",
+    "ids": [
+     {
+      "id": "0000050863-26-000011:I.1A:0002",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     },
+     {
+      "id": "0000050863-26-000011:I.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-01-23",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -CUSTOMER_OF-> TSMC",
+    "status": "Active",
+    "quote": "We also utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for our integrated circuits (IC) in the form of programmable logic devices.",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Broadcom -CUSTOMER_OF-> TSMC",
+    "status": "Active",
+    "quote": "We believe our wafer requirements represent a meaningful portion of TSMC\u2019s total production capacity.",
+    "ids": [
+     {
+      "id": "0001730168-24-000139:I.1A:0013",
+      "is_current": false,
+      "filing_date": "2024-12-20",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-26-000054:II.1A:0009",
+      "is_current": false,
+      "filing_date": "2026-06-09",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "We utilize Taiwan Semiconductor Manufacturing Company Limited (TSMC) for the production of wafers for our HPC, FPGA and adaptive SoC products",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0012",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0012",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0013",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0013",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Broadcom -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "The majority of our front-end wafer manufacturing operations is outsourced to external foundries, including Taiwan Semiconductor Manufacturing Company Limited (\u201cTSMC\u201d).",
+    "ids": [
+     {
+      "id": "0001730168-25-000121:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-12-18",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-25-000121:I.1A:0009",
+      "is_current": true,
+      "filing_date": "2025-12-18",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-24-000139:I.1A:0013",
+      "is_current": false,
+      "filing_date": "2024-12-20",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-26-000054:II.1A:0009",
+      "is_current": false,
+      "filing_date": "2026-06-09",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001730168-26-000080:II.1A:0009",
+      "is_current": true,
+      "filing_date": "2026-09-10",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -DEPENDS_ON-> TSMC",
+    "status": "Active",
+    "quote": "The primary foundry suppliers for our various digital, analog/mixed-signal, RF and PM integrated circuits include Taiwan Semiconductor Manufacturing Company (TSMC), Samsung Electronics and Global Foundries.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "TSMC -SUPPLIES_TO-> Broadcom",
+    "status": "Active",
+    "quote": "The majority of our front-end wafer manufacturing operations is outsourced to external foundries, including Taiwan Semiconductor Manufacturing Company Limited (\u201cTSMC\u201d).",
+    "ids": [
+     {
+      "id": "0001730168-25-000121:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-12-18",
+      "form": "10-K"
+     },
+     {
+      "id": "0001730168-26-000080:II.1A:0009",
+      "is_current": true,
+      "filing_date": "2026-09-10",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "TSMC -SUPPLIES_TO-> AMD",
+    "status": "Active",
+    "quote": "We utilize Taiwan Semiconductor Manufacturing Company Limited (TSMC) for the production of wafers for our HPC, FPGA and adaptive SoC products",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0013",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -CUSTOMER_OF-> Samsung",
+    "status": "Active",
+    "quote": "We also utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for our integrated circuits (IC) in the form of programmable logic devices.",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0012",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -DEPENDS_ON-> Samsung",
+    "status": "Active",
+    "quote": "we utilize TSMC, United Microelectronics Corporation (UMC) and Samsung Electronics Co., Ltd. for the production of our ICs in the form of programmable logic devices",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -DEPENDS_ON-> Samsung",
+    "status": "Active",
+    "quote": "The primary foundry suppliers for our various digital, analog/mixed-signal, RF and PM integrated circuits include Taiwan Semiconductor Manufacturing Company (TSMC), Samsung Electronics and Global Foundries.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Samsung -CUSTOMER_OF-> Qualcomm",
+    "status": "Active",
+    "quote": "revenues from Apple, Samsung and Xiaomi each comprised 10% or more of our consolidated revenues",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0012",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-25-000085:I.1A:0015",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0004",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0024",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0015",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0015",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Samsung -COMPETES_WITH-> Qualcomm",
+    "status": "Active",
+    "quote": "We expect continued intense competition, including from vertical integration by certain of our customers (for example, Apple and Samsung).",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:II.7:0023",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0004",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0024",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:I.2:0023",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -COMPETES_WITH-> Samsung",
+    "status": "Active",
+    "quote": "Examples (some of which are strategic partners of ours in other areas) include Broadcom, HiSilicon, MediaTek, Mobileye, Nvidia, NXP Semiconductors, Qorvo, Samsung, Skyworks, Texas Instruments and UNISOC.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1A:0034",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-24-000075:I.1A:0023",
+      "is_current": false,
+      "filing_date": "2024-11-06",
+      "form": "10-K"
+     },
+     {
+      "id": "0000804328-26-000061:II.1A:0034",
+      "is_current": false,
+      "filing_date": "2026-04-29",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000804328-26-000086:II.1A:0034",
+      "is_current": true,
+      "filing_date": "2026-07-29",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Micron -COMPETES_WITH-> Samsung",
+    "status": "Active",
+    "quote": "We face intense competition in the semiconductor memory and storage markets from a number of companies, including Samsung Electronics Co., Ltd.",
+    "ids": [
+     {
+      "id": "0000723125-25-000028:I.1:0010",
+      "is_current": true,
+      "filing_date": "2025-10-03",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-25-000028:I.1A:0010",
+      "is_current": true,
+      "filing_date": "2025-10-03",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-24-000027:I.1A:0009",
+      "is_current": false,
+      "filing_date": "2024-10-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000723125-26-000015:II.1A:0009",
+      "is_current": true,
+      "filing_date": "2026-06-25",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "OpenAI -CUSTOMER_OF-> AMD",
+    "status": "Active",
+    "quote": "with the deployment of the first gigawatt of capacity powered by our AMD Instinct MI450 series products",
+    "ids": [
+     {
+      "id": "0000002488-26-000021:II.7:0003",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K/A"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -SUPPLIES_TO-> OpenAI",
+    "status": "Active",
+    "quote": "we entered into a product purchase agreement with OpenAI OpCo, LLC, (OpenAI) to deploy 6 gigawatts of AMD GPUs",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0003",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:II.7:0003",
+      "is_current": false,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000021:II.7:0003",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K/A"
+     }
+    ]
+   },
+   {
+    "edge": "OpenAI -DEPENDS_ON-> Microsoft",
+    "status": "Active",
+    "quote": "The OpenAI API is exclusive to Azure, runs on Azure, and is available through the Azure OpenAI Service.",
+    "ids": [
+     {
+      "id": "0000950170-25-100235:II.7:0002",
+      "is_current": false,
+      "filing_date": "2025-07-30",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Meta -CUSTOMER_OF-> AMD",
+    "status": "Active",
+    "quote": "we amended a master purchase agreement with Meta Platforms, Inc. (Meta) and Meta agreed to deploy up to 6 gigawatts of AMD GPUs",
+    "ids": [
+     {
+      "id": "0000002488-26-000076:I.2:0002",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:I.2:0002",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Meta -COMPETES_WITH-> Apple",
+    "status": "Active",
+    "quote": "each of Apple and Google have integrated competitive products with iOS and Android, respectively",
+    "ids": [
+     {
+      "id": "0001628280-26-003942:I.1A:0022",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0014",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0020",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0014",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0022",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0022",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Meta -COMPETES_WITH-> Alphabet",
+    "status": "Active",
+    "quote": "each of Apple and Google have integrated competitive products with iOS and Android, respectively",
+    "ids": [
+     {
+      "id": "0001628280-26-003942:I.1A:0022",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0020",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0022",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0022",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Meta -DEPENDS_ON-> Apple",
+    "status": "Active",
+    "quote": "changes to the content or application of third-party policies that limit our ability to deliver, target, or measure the effectiveness of advertising, including changes by mobile operating system and browser providers such as Apple and Google",
+    "ids": [
+     {
+      "id": "0001628280-26-003942:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-003942:I.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-003942:I.1A:0024",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-003942:II.7:0007",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0011",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0013",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0022",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-028526:I.2:0006",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0013",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0024",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:I.2:0006",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0024",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "Meta -DEPENDS_ON-> Alphabet",
+    "status": "Active",
+    "quote": "changes to the content or application of third-party policies that limit our ability to deliver, target, or measure the effectiveness of advertising, including changes by mobile operating system and browser providers such as Apple and Google",
+    "ids": [
+     {
+      "id": "0001628280-26-003942:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-003942:I.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-003942:I.1A:0024",
+      "is_current": true,
+      "filing_date": "2026-01-29",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0011",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001326801-25-000017:I.1A:0022",
+      "is_current": false,
+      "filing_date": "2025-01-30",
+      "form": "10-K"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-028526:II.1A:0024",
+      "is_current": false,
+      "filing_date": "2026-04-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:I.2:0006",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0013",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     },
+     {
+      "id": "0001628280-26-050705:II.1A:0024",
+      "is_current": true,
+      "filing_date": "2026-07-30",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -DEPENDS_ON-> GlobalFoundries",
+    "status": "Active",
+    "quote": "GLOBALFOUNDRIES Inc. (GF), with respect to wafer purchases for our HPC products at the 12 nm and 14 nm technology nodes",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0012",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0011",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "GlobalFoundries -SUPPLIES_TO-> AMD",
+    "status": "Active",
+    "quote": "GLOBALFOUNDRIES Inc. (GF), with respect to wafer purchases for our HPC products at the 12 nm and 14 nm technology nodes",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1:0024",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0011",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "Qualcomm -DEPENDS_ON-> GlobalFoundries",
+    "status": "Active",
+    "quote": "The primary foundry suppliers for our various digital, analog/mixed-signal, RF and PM integrated circuits include Taiwan Semiconductor Manufacturing Company (TSMC), Samsung Electronics and Global Foundries.",
+    "ids": [
+     {
+      "id": "0000804328-25-000085:I.1:0008",
+      "is_current": true,
+      "filing_date": "2025-11-05",
+      "form": "10-K"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -DEPENDS_ON-> Microsoft",
+    "status": "Active",
+    "quote": "If we lose Microsoft Corporation\u2019s support for our products or other software vendors do not design and develop software to run on our products, our ability to sell our products could be materially adversely affected.",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1A:0003",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000018:I.1A:0015",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0003",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0016",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0003",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000076:II.1A:0016",
+      "is_current": false,
+      "filing_date": "2026-05-06",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0003",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     },
+     {
+      "id": "0000002488-26-000123:II.1A:0016",
+      "is_current": true,
+      "filing_date": "2026-08-05",
+      "form": "10-Q"
+     }
+    ]
+   },
+   {
+    "edge": "AMD -SUPPLIES_TO-> Microsoft",
+    "status": "Active",
+    "quote": "the success of game console systems and next generation consoles for Sony and Microsoft",
+    "ids": [
+     {
+      "id": "0000002488-26-000018:I.1A:0008",
+      "is_current": true,
+      "filing_date": "2026-02-04",
+      "form": "10-K"
+     },
+     {
+      "id": "0000002488-25-000012:I.1A:0008",
+      "is_current": false,
+      "filing_date": "2025-02-05",
+      "form": "10-K"
+     }
+    ]
+   }
+  ]
+ },
+ "relation_statuses": [
+  {
+   "relation": "AFFECTED_BY",
+   "status": "Active",
+   "n": 94
+  },
+  {
+   "relation": "COMPETES_WITH",
+   "status": "Active",
+   "n": 36
+  },
+  {
+   "relation": "CUSTOMER_OF",
+   "status": "Active",
+   "n": 13
+  },
+  {
+   "relation": "DEPENDS_ON",
+   "status": "Active",
+   "n": 17
+  },
+  {
+   "relation": "SUPPLIES_TO",
+   "status": "Active",
+   "n": 7
+  }
+ ],
+ "svc_rows_in_graph": [
+  {
+   "label": "SvcAnswer",
+   "n": 51
+  },
+  {
+   "label": "SvcFreshness",
+   "n": 1
+  },
+  {
+   "label": "SvcLease",
+   "n": 1
+  },
+  {
+   "label": "SvcQuery",
+   "n": 17
+  },
+  {
+   "label": "SvcUploadDay",
+   "n": 2
+  }
+ ],
+ "paid_spend": {
+  "budget_usd": 30.0,
+  "recorded_total_cost_usd": {
+   "eval_report.deployed.json": 0.1339,
+   "eval_report.deployed.pre-review-fixes.json": 0.138097,
+   "eval_report.v2-deployed.json": 0.825683,
+   "eval_report.v2b-deployed.json": 0.910411,
+   "eval_report.v2c-deployed.json": 0.800328,
+   "eval_report.v2d-deployed.json": 0.853524,
+   "eval_report.v2e-deployed.json": 0.876986
+  },
+  "spent_usd": 4.538929,
+  "remaining_usd": 25.461071,
+  "limit": "only artifacts with a top-level total_cost_usd are counted; paid steps that record cost elsewhere (extraction, judging, agent evals) are not, so this remaining figure is an upper bound"
+ }
+}

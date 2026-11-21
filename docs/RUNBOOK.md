@@ -909,3 +909,26 @@ uv run uvicorn semigraph.serve.main:app --app-dir src --port 8080
 The ONNX model is built once with `uv run python scripts/build_onnx_embedder.py` (downloads the
 2.4 GB fp32 export, writes ~1.1 GB, verifies fidelity ≥ 0.98 cosine against sentence-transformers).
 Without it, `EMBEDDING_BACKEND=local` uses the torch model from the Hugging Face cache.
+
+### Local services for M2a (owner-run, each in its own PowerShell window; Ctrl+C stops it)
+
+None of these is production. Recorded 2026-11-21 (docs/specs/m2a-answer-integrity.md OD10, OD11).
+
+```
+# G, the real local graph (port 7699): rebuilds, dumps, traces and paid evals
+$env:JAVA_HOME = "$env:USERPROFILE\.Neo4jDesktop2\Cache\runtime\zulu21.50.19-ca-jre21.0.11-win_x64"
+cd <G's Neo4j home>              # the unpacked Neo4j Community 2026.07.1 that holds the real graph
+.\bin\neo4j.bat console
+
+# T, the shared throwaway (port 7898): integration tests only, synthetic data only
+$env:JAVA_HOME = "$env:USERPROFILE\.Neo4jDesktop2\Cache\runtime\zulu21.50.19-ca-jre21.0.11-win_x64"
+cd <T's Neo4j home>              # a second unpacked copy, used only by the integration tests
+.\bin\neo4j.bat console
+
+# The local model for promptfoo's adversarial evals (OpenAI-compatible, http://127.0.0.1:8080/v1; this PC only)
+cd "$env:LOCALAPPDATA\Programs\llama.cpp-b11960"
+.\llama-server.exe -m "$env:USERPROFILE\.lmstudio\models\lmstudio-community\gpt-oss-20b-GGUF\gpt-oss-20b-MXFP4.gguf" --host 127.0.0.1 --port 8080 -c 8192 -ngl 99 --jinja
+```
+
+Check: `foreach ($p in 7699, 7898, 8080) { "$p listening: $((Test-NetConnection 127.0.0.1 -Port $p -WarningAction SilentlyContinue).TcpTestSucceeded)" }`.
+The model server takes port 8080, which the uvicorn command above also uses: while it runs, start uvicorn with `--port 8000`.
