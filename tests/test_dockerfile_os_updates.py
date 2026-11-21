@@ -1,4 +1,5 @@
-"""Finding B2 (docs/security/accepted-risks.md, 2026-11-21): the pinned python:3.13-slim base lags Debian's released fixes
+"""Finding B2 of the 2026-11-21 base-image scan (commit 685e471; docs/security/accepted-risks.md rows B1 and B3): the pinned
+python:3.13-slim base lags Debian's released fixes
 (zlib1g CVE-2026-85091 fixed in 1:1.3.dfsg+really1.3.1-1+deb13u1; OpenSSL 3.5.9-1~deb13u1 in the trixie point release),
 so the shipped stage applies them at build time. The step runs as root, before anything is installed on top, before the
 setuid/setgid strip (a newly upgraded file must lose those bits too) and before the switch to the serving user, and leaves
