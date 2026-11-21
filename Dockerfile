@@ -73,6 +73,15 @@ RUN npm run build
 RUN chmod -R u=rwX,go=rX /web/dist
 
 FROM python:3.13-slim@sha256:09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc
+# Finding B2 (docs/security/accepted-risks.md, 2026-11-21): the pinned base lags Debian's released fixes (zlib1g, OpenSSL 3.5.9 in
+# the trixie point release), so the shipped stage applies them first, as root, before anything is installed on top and before
+# the setuid strip below (tests/test_dockerfile_os_updates.py).
+# shortcut: an unpinned apt upgrade, so two builds a month apart may differ; pin through snapshot.debian.org if a bit-for-bit
+# reproducible image is ever required.
+RUN apt-get update \
+    && apt-get -y --no-install-recommends upgrade \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 ARG EMBEDDER_VARIANT=q8
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 EMBEDDING_BACKEND=onnx \
     ONNX_MODEL_PATH=/srv/models/qwen3-embedding-0.6b-${EMBEDDER_VARIANT}/model_${EMBEDDER_VARIANT}.onnx
