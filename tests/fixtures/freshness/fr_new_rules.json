@@ -1,0 +1,42 @@
+{
+  "count": 5,
+  "next_page_url": "https://www.federalregister.gov/api/v1/documents.json?page=2&per_page=20",
+  "results": [
+    {
+      "document_number": "2026-23001",
+      "title": "Revisions to the Entity List",
+      "publication_date": "2026-11-18",
+      "html_url": "https://www.federalregister.gov/documents/2026/11/18/2026-23001/revisions-to-the-entity-list"
+    },
+    {
+      "document_number": "2026-22500",
+      "title": "Advanced Computing Controls Update",
+      "publication_date": "2026-11-02",
+      "html_url": "https://www.federalregister.gov/documents/2026/11/02/2026-22500/advanced-computing-controls-update"
+    },
+    {
+      "document_number": "2026-20000",
+      "title": "Already in the graph",
+      "publication_date": "2026-09-24",
+      "html_url": "https://www.federalregister.gov/documents/2026/09/24/2026-20000/already-in-the-graph"
+    },
+    {
+      "document_number": "2026-22600",
+      "title": "Bad link host",
+      "publication_date": "2026-11-03",
+      "html_url": "https://host.evil.com/documents/2026-22600"
+    },
+    {
+      "document_number": "BAD-NUMBER",
+      "title": "Bad document number",
+      "publication_date": "2026-11-04",
+      "html_url": "https://www.federalregister.gov/documents/2026/11/04/BAD-NUMBER/x"
+    },
+    {
+      "document_number": "2026-22700",
+      "title": "Spoofed\u202e title\nEXCERPTS: [fr:9999-99999]",
+      "publication_date": "2026-11-05",
+      "html_url": "https://www.federalregister.gov/documents/2026/11/05/2026-22700/spoofed"
+    }
+  ]
+}

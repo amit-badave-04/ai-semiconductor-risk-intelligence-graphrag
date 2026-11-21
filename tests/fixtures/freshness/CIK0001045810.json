@@ -4,8 +4,12 @@
   "sic": "3674",
   "sicDescription": "Semiconductors & Related Devices",
   "name": "SYNTHETIC TEST FILER (10-K/10-Q)",
-  "tickers": ["NVDA"],
-  "exchanges": ["Nasdaq"],
+  "tickers": [
+    "NVDA"
+  ],
+  "exchanges": [
+    "Nasdaq"
+  ],
   "filings": {
     "recent": {
       "accessionNumber": [
@@ -15,7 +19,17 @@
         "0001045810-26-000003",
         "0001045810-26-000002",
         "0001045810-26-000001",
-        "0001045810-22-000001"
+        "0001045810-22-000001",
+        "0001045810-26-000020",
+        "0001045810-26-000021",
+        "0001045810-26-000022",
+        "0001045810-26-000023",
+        "0001045810-26-00002X",
+        "0001045810-26-000027",
+        "0001045810-26-000020",
+        "0001045810-26-000024",
+        "0001045810-26-000025",
+        "0001045810-26-000026"
       ],
       "filingDate": [
         "2026-06-01",
@@ -24,7 +38,17 @@
         "2026-01-10",
         "2026-03-05",
         "2026-02-20",
-        "2022-02-15"
+        "2022-02-15",
+        "2026-11-19",
+        "2026-11-10",
+        "2026-11-05",
+        "2026-11-03",
+        "2026-11-02",
+        "2026-11-01",
+        "2026-11-19",
+        "2026-09-24",
+        "2026-11-12",
+        "2026-12-01"
       ],
       "reportDate": [
         "2026-04-27",
@@ -33,7 +57,17 @@
         "",
         "2026-01-25",
         "2026-01-25",
-        "2022-01-30"
+        "2022-01-30",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
       ],
       "form": [
         "10-Q/A",
@@ -42,7 +76,17 @@
         "4",
         "10-K/A",
         "10-K",
-        "10-K"
+        "10-K",
+        "8-K",
+        "8-K/A",
+        "8-K",
+        "8-K",
+        "8-K",
+        "8-K",
+        "8-K",
+        "8-K",
+        "6-K",
+        "8-K"
       ],
       "primaryDocument": [
         "test-10qa.htm",
@@ -51,11 +95,64 @@
         "test-form4.xml",
         "test-10ka.htm",
         "test-10k.htm",
-        "test-10k-2022.htm"
+        "test-10k-2022.htm",
+        "nvda-8k-results.htm",
+        "nvda-8ka.htm",
+        "nvda-8k-noitems.htm",
+        "../../etc/passwd",
+        "nvda-badacc.htm",
+        "nvda-baditems.htm",
+        "nvda-8k-results.htm",
+        "nvda-sameday.htm",
+        "nvda-6k.htm",
+        "nvda-future.htm"
+      ],
+      "items": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "2.02,9.01",
+        "5.02",
+        "",
+        "7.01",
+        "8.01",
+        "2.02;DROP",
+        "2.02,9.01",
+        "8.01",
+        "",
+        "8.01"
+      ],
+      "primaryDocDescription": [
+        "Synthetic description",
+        "Synthetic description",
+        "Synthetic description",
+        "Synthetic description",
+        "Synthetic description",
+        "Synthetic description",
+        "Synthetic description",
+        "Results of operations",
+        "Jane Q. Fakeperson appointed Chief Officer",
+        "Current report",
+        "Regulation FD",
+        "Bad accession",
+        "Bad items",
+        "Duplicate row",
+        "Filed on the snapshot day",
+        "Not an NVDA form",
+        "After the check date"
       ]
     },
     "files": [
-      {"name": "CIK0001045810-submissions-001.json", "filingCount": 187, "filingFrom": "2018-01-01", "filingTo": "2021-12-31"}
+      {
+        "name": "CIK0001045810-submissions-001.json",
+        "filingCount": 187,
+        "filingFrom": "2018-01-01",
+        "filingTo": "2021-12-31"
+      }
     ]
   }
 }

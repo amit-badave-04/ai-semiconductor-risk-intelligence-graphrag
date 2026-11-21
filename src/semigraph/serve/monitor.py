@@ -20,12 +20,12 @@ import threading
 import time
 import urllib.request
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from ..graph.client import NO_UNRECOGNIZED_NOTIFICATIONS, run_cypher
 from ..ingestion import federal_register
 from ..ingestion.edgar import FilingRecord, select_targets
-from ..ingestion.freshness import fetch_submissions, records_from_submissions
+from ..ingestion.freshness import event_filings_since, fetch_submissions, records_from_submissions
 from ..universe import ANNUAL_SINCE, FILERS
 
 logger = logging.getLogger("semigraph.serve.monitor")
@@ -46,6 +46,9 @@ NOT_ADMITTED_RETRY_S = 60
 COMPANY_CIK_QUERY = "MATCH (c:Company) WHERE c.ticker IS NOT NULL RETURN c.ticker AS ticker, c.cik AS cik"
 KNOWN_ACCESSIONS_QUERY = "MATCH (:Company)-[:FILED]->(f:Filing) RETURN f.accession_no AS accession_no"
 EXPORT_CONTROL_COUNT_QUERY = "MATCH (x:ExportControl) RETURN count(x) AS n"
+# The graph rule ids and publication dates: the set the "new rules" listing is differenced against, and its
+# newest date is where that listing starts. Read-only.
+EXPORT_CONTROL_RULES_QUERY = "MATCH (x:ExportControl) RETURN x.rule_id AS rule_id, toString(x.date) AS date"
 # The newest Snapshot: when the SERVED graph's data was built — never the same thing as `as_of` (the comparison
 # horizon a check runs with, "today" by default). Conflating the two would have the public page claim "Data as of
 # <today>" for a graph actually built days or weeks earlier.
@@ -74,13 +77,13 @@ GET_FRESHNESS_QUERY = """MATCH (f:SvcFreshness {key: 'latest'})
 RETURN f.checked_at AS checked_at, f.as_of AS as_of, f.snapshot_id AS snapshot_id,
        f.snapshot_as_of AS snapshot_as_of, f.status AS status, f.error AS error, f.last_error_at AS last_error_at,
        f.pending_json AS pending_json, f.fr_json AS fr_json, f.unresolved_json AS unresolved_json,
-       f.duration_s AS duration_s, f.pending_count AS pending_count"""
+       f.duration_s AS duration_s, f.pending_count AS pending_count, f.since_json AS since_json"""
 
 PUT_FRESHNESS_QUERY = """MERGE (f:SvcFreshness {key: 'latest'})
 SET f.checked_at = $checked_at, f.as_of = $as_of, f.snapshot_id = $snapshot_id,
     f.snapshot_as_of = $snapshot_as_of, f.status = $status, f.error = $error, f.last_error_at = $last_error_at,
     f.pending_json = $pending_json, f.fr_json = $fr_json, f.unresolved_json = $unresolved_json,
-    f.duration_s = $duration_s, f.pending_count = $pending_count"""
+    f.duration_s = $duration_s, f.pending_count = $pending_count, f.since_json = $since_json"""
 
 
 class MonitorBusy(Exception):
@@ -112,9 +115,8 @@ def _served_graph_state(driver) -> tuple[dict[str, int], set[str]]:
     return ciks, known
 
 
-def _pending_for_ticker(ticker: str, cik: int, fetch, as_of, known_accessions: set[str]) -> list[dict]:
+def _pending_for_ticker(ticker: str, submissions: dict, cik: int, as_of, known_accessions: set[str]) -> list[dict]:
     _, annual_form, quarterly_form = FILERS[ticker]
-    submissions = fetch_submissions(cik, fetch=fetch)
     records = records_from_submissions(ticker, cik, submissions)
     targets = select_targets(records, annual_form, quarterly_form, ANNUAL_SINCE, as_of)
     return [_pending_row(r) for r in targets if r.accession_no not in known_accessions]
@@ -134,22 +136,39 @@ def check_once(driver, settings, *, fetch=None, today=None) -> dict:
     real_fetch = fetch if fetch is not None else _default_sec_fetch(settings)
 
     ciks, known_accessions = _served_graph_state(driver)
+    snapshot = run_cypher(driver, SNAPSHOT_QUERY)
+    snapshot_id, snapshot_as_of = (snapshot[0]["id"], snapshot[0]["as_of"]) if snapshot else (None, None)
+    since = _parse_day(snapshot_as_of)
+    if snapshot and since is None:
+        logger.warning("the served snapshot has no readable as_of date; the 'since our data' lists are left empty")
     pending: list[dict] = []
+    events: list[dict] = []
+    totals: dict[str, int] = {}
+    dropped_filings = 0
     unresolved: list[str] = []
     for ticker in FILERS:
         cik = ciks.get(ticker)
         if cik is None:
             unresolved.append(ticker)
             continue
-        pending.extend(_pending_for_ticker(ticker, cik, real_fetch, as_of_date, known_accessions))
+        submissions = fetch_submissions(cik, fetch=real_fetch)   # one request per filer feeds both lists
+        pending.extend(_pending_for_ticker(ticker, submissions, cik, as_of_date, known_accessions))
+        if since is not None:
+            rows, total, dropped = event_filings_since(ticker, cik, submissions, since, as_of_date)
+            events.extend(rows)
+            dropped_filings += dropped
+            if total:
+                totals[ticker] = total
 
     # The SAME fetcher as the SEC calls above — one unified fair-access policy (20 s timeout, with_retries) for
     # every request this pass makes. `federal_register.make_fetcher` also works but defaults to a 30 s timeout,
     # stricter than section 4.1 asks for.
     live_count = int(real_fetch(federal_register.count_query_url(as_of_date))["count"])
     graph_count = run_cypher(driver, EXPORT_CONTROL_COUNT_QUERY)[0]["n"]
-    snapshot = run_cypher(driver, SNAPSHOT_QUERY)
-    snapshot_id, snapshot_as_of = (snapshot[0]["id"], snapshot[0]["as_of"]) if snapshot else (None, None)
+    since_data = None
+    if since is not None:
+        since_data = _since_data(real_fetch, run_cypher(driver, EXPORT_CONTROL_RULES_QUERY), as_of_date,
+                                 snapshot_as_of, events, totals, dropped_filings)
 
     return {
         "checked_at": checked_at.isoformat(),
@@ -162,7 +181,28 @@ def check_once(driver, settings, *, fetch=None, today=None) -> dict:
                               "new_since": max(0, live_count - graph_count)},
         "unresolved": sorted(unresolved),
         "duration_s": round(time.monotonic() - started, 3),
+        "since_data": since_data,
     }
+
+
+def _parse_day(value) -> date | None:
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
+def _since_data(fetch, rule_rows, as_of_date, snapshot_as_of, events, totals, dropped_filings) -> dict:
+    """The "Since our data" panel (M2a I2): new event filings (already validated) and the BIS rules in ONE Federal
+    Register listing call (through the same ``fetch`` as every other request; its ``next_page_url`` is never
+    followed) that the graph does not hold."""
+    known = {r["rule_id"] for r in rule_rows}
+    dates = [r["date"] for r in rule_rows if r["date"]]
+    rules_since = max(dates) if dates else federal_register.SINCE
+    listing = fetch(federal_register.new_rules_query_url(rules_since, as_of_date))
+    rules, dropped_rules, more = federal_register.new_rules(listing, known)
+    return {"since": snapshot_as_of, "filings": events, "filing_totals": totals, "rules_since": rules_since,
+            "rules": rules, "rules_more": more, "dropped": {"filings": dropped_filings, "rules": dropped_rules}}
 
 
 def _acquire_lease(driver, holder: str) -> bool:
@@ -178,6 +218,17 @@ def _release_lease(driver, holder: str) -> None:
         run_cypher(driver, RELEASE_LEASE_QUERY, me=holder)
     except Exception:  # noqa: BLE001 - see the docstring
         logger.exception("releasing the freshness lease failed")
+
+
+def _loads(raw, default):
+    """A stored JSON column, or ``default`` when it is empty or corrupt: a bad row must never kill the thread."""
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError, RecursionError):   # RecursionError: a hostile, deeply nested column
+        logger.warning("a persisted freshness column is not valid JSON; ignoring it")
+        return default
 
 
 def _load_persisted(driver) -> dict | None:
@@ -199,10 +250,10 @@ def _load_persisted(driver) -> dict | None:
     return {"checked_at": r["checked_at"], "as_of": r["as_of"], "snapshot_id": r["snapshot_id"],
             "snapshot_as_of": r["snapshot_as_of"], "status": r["status"], "error": r["error"],
             "last_error_at": r.get("last_error_at"), "pending_count": r["pending_count"] or 0,
-            "pending_filings": json.loads(r["pending_json"]) if r["pending_json"] else [],
-            "federal_register": json.loads(r["fr_json"]) if r["fr_json"] else None,
-            "unresolved": json.loads(r["unresolved_json"]) if r["unresolved_json"] else [],
-            "duration_s": r["duration_s"]}
+            "pending_filings": _loads(r["pending_json"], []),
+            "federal_register": _loads(r["fr_json"], None),
+            "unresolved": _loads(r["unresolved_json"], []),
+            "duration_s": r["duration_s"], "since_data": _loads(r.get("since_json"), None)}
 
 
 def _persist(driver, result: dict) -> None:
@@ -214,13 +265,16 @@ def _persist(driver, result: dict) -> None:
                    pending_json=json.dumps(result.get("pending_filings", []), default=str),
                    fr_json=json.dumps(result["federal_register"]) if result.get("federal_register") else None,
                    unresolved_json=json.dumps(result.get("unresolved", [])),
-                   duration_s=result.get("duration_s"), pending_count=result.get("pending_count", 0))
+                   duration_s=result.get("duration_s"), pending_count=result.get("pending_count", 0),
+                   since_json=(json.dumps(result["since_data"], ensure_ascii=False)
+                               if result.get("since_data") else None))
     except Exception:  # noqa: BLE001 - a bad write must never crash the monitor thread
         logger.exception("persisting the freshness result failed")
 
 
 _EMPTY_RESULT = {"checked_at": None, "as_of": None, "snapshot_id": None, "snapshot_as_of": None, "pending_count": 0,
-                 "pending_filings": [], "federal_register": None, "unresolved": [], "duration_s": None}
+                 "pending_filings": [], "federal_register": None, "unresolved": [], "duration_s": None,
+                 "since_data": None}
 
 
 def _error_result(previous: dict | None, exc: Exception) -> dict:
@@ -410,6 +464,7 @@ class FreshnessMonitor:
             "federal_register": last.get("federal_register"),
             "unresolved": last.get("unresolved", []),
             "duration_s": last.get("duration_s"),
+            "since_data": last.get("since_data"),
         }
 
     def _status_for(self, last: dict) -> str:

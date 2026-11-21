@@ -25,6 +25,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -403,3 +404,81 @@ def download_bis_rules(
         len(visible), sum(1 for r in visible if r["relevant"]),
     )
     return visible
+
+
+# ------------------------------------------------ new rules since the served graph (M2a I2)
+# The bare document number: "fr:" + this is exactly what ``retrieval.ids.FR_ID_RE`` matches (pinned by a test;
+# not imported here because ``retrieval/__init__`` pulls in the answerer, which the monitor must not load).
+DOCUMENT_NUMBER_RE = re.compile(r"^(?:C[0-9]-)?[0-9]{4}-[0-9]{4,6}\Z")
+_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+_HTML_URL_RE = re.compile(r"^https://www\.federalregister\.gov/[A-Za-z0-9/_.%-]{1,280}\Z")
+NEW_RULES_PER_PAGE = 20
+TITLE_CAP = 300
+
+
+def new_rules_query_url(since: date | str, as_of: date | str | None = None) -> str:
+    """One listing page of BIS rules published on or after ``since`` (and on or before ``as_of``): four fields, no
+    abstract, ``per_page`` 20. Same conditions as :func:`fr_query_url` and :func:`count_query_url`."""
+    params = {k: v for k, v in FR_PARAMS.items() if k not in ("fields[]", "per_page")}
+    params["conditions[publication_date][gte]"] = parse_as_of(since).isoformat()
+    params["fields[]"] = ["document_number", "title", "publication_date", "html_url"]
+    params["per_page"] = str(NEW_RULES_PER_PAGE)
+    bound = parse_as_of(as_of)
+    if bound is not None:
+        params["conditions[publication_date][lte]"] = bound.isoformat()
+    return FR_BASE_URL + "?" + urllib.parse.urlencode(params, doseq=True)
+
+
+def clean_title(value: object, cap: int = TITLE_CAP) -> str | None:
+    """A title as plain text: control, format, surrogate, private-use and unassigned characters and the line and
+    paragraph separators are removed, whitespace collapsed, cut to ``cap``. ``None`` when nothing is left."""
+    if not isinstance(value, str):
+        return None
+    kept = "".join(c for c in value if unicodedata.category(c)[0] != "C" and unicodedata.category(c) not in ("Zl", "Zp"))
+    return " ".join(kept.split())[:cap].strip() or None
+
+
+def _valid_day(value: object) -> bool:
+    if not isinstance(value, str) or not _DATE_RE.match(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def new_rules(
+    listing: dict, known_rule_ids: set[str], *, limit: int = NEW_RULES_PER_PAGE
+) -> tuple[list[dict], int, bool]:
+    """``(rows, dropped, more)``: the listing's rules whose document number is not among ``known_rule_ids``.
+
+    A row failing validation (document number, date, ``html_url`` host and charset, title) is dropped and counted;
+    the cap applies after validation. ``more`` means rules may exist beyond the rows shown (a further page, or
+    more valid rows than ``limit``). A count-only listing (``{"count": 0}``) has no ``results`` and gives nothing.
+    """
+    if not isinstance(listing, dict):
+        return [], 0, False
+    results = listing.get("results")
+    rows: list[dict] = []
+    dropped = 0
+    for item in results if isinstance(results, list) else []:
+        if not isinstance(item, dict):
+            dropped += 1
+            continue
+        number = item.get("document_number")
+        if not (isinstance(number, str) and DOCUMENT_NUMBER_RE.match(number)):   # validated BEFORE the set lookup
+            dropped += 1
+            continue
+        if number in known_rule_ids:
+            continue
+        title = clean_title(item.get("title"))
+        url = item.get("html_url")
+        if not (_valid_day(item.get("publication_date")) and isinstance(url, str) and _HTML_URL_RE.match(url)
+                and title is not None):
+            dropped += 1
+            continue
+        rows.append({"document_number": number, "title": title, "publication_date": item["publication_date"],
+                     "html_url": url})
+    more = len(rows) > limit or bool(listing.get("next_page_url"))
+    return rows[:limit], dropped, more

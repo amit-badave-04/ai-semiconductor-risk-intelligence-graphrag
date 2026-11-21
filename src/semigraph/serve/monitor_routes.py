@@ -29,7 +29,7 @@ MSG_UNCONFIGURED = "SEC_USER_AGENT is not configured — the freshness monitor i
 # (docs/v2/M4_PLAN.md 15.10: next_check_at is null only when disabled/unconfigured).
 _DISABLED_PAYLOAD = {"checked_at": None, "snapshot_as_of": None, "last_error_at": None, "next_check_at": None,
                      "pending_count": 0, "pending_filings": [], "federal_register": None, "unresolved": [],
-                     "duration_s": None}
+                     "duration_s": None, "since_data": None}
 
 
 def _read_gate(request: Request) -> None:

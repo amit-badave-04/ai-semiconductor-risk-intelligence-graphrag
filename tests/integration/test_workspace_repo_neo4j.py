@@ -771,13 +771,30 @@ def test_persist_and_load_freshness_state_round_trips_live(driver, clean_lease_a
              "snapshot_id": "snap-20260920-aaaaaaaaaa", "snapshot_as_of": "2026-09-20", "status": "ok",
              "error": None, "pending_filings": [{"ticker": "NVDA", "accession_no": "acc1"}],
              "federal_register": {"graph_count": 1, "live_count": 2, "new_since": 1}, "unresolved": ["TSM"],
-             "duration_s": 1.23, "pending_count": 1}
+             "duration_s": 1.23, "pending_count": 1,
+             "since_data": {"since": "2026-09-20", "filings": [], "filing_totals": {}, "rules_since": "2026-09-20",
+                            "rules": [{"document_number": "2026-23001", "title": "A é title",
+                                       "publication_date": "2026-11-18", "html_url": "https://www.federalregister.gov/d/x"}],
+                            "rules_more": False, "dropped": {"filings": 0, "rules": 0}}}
     monitor_mod._persist(driver, result)
     loaded = monitor_mod._load_persisted(driver)
+    assert loaded["since_data"] == result["since_data"]
     assert loaded["snapshot_as_of"] == "2026-09-20" and loaded["snapshot_id"] == "snap-20260920-aaaaaaaaaa"
     assert loaded["pending_filings"] == [{"ticker": "NVDA", "accession_no": "acc1"}]
     assert loaded["federal_register"]["live_count"] == 2
     assert loaded["unresolved"] == ["TSM"]
+
+
+def test_export_control_rules_query_returns_rule_ids_and_iso_dates_live(driver):
+    with driver.session() as session:
+        session.run("MATCH (x:ExportControl {rule_id: 'itest-i2-rule'}) DETACH DELETE x").consume()
+        session.run("CREATE (:ExportControl {rule_id: 'itest-i2-rule', date: date('2026-01-02')})").consume()
+    try:
+        rows = monitor_mod.run_cypher(driver, monitor_mod.EXPORT_CONTROL_RULES_QUERY)
+        assert {"rule_id": "itest-i2-rule", "date": "2026-01-02"} in rows
+    finally:
+        with driver.session() as session:
+            session.run("MATCH (x:ExportControl {rule_id: 'itest-i2-rule'}) DETACH DELETE x").consume()
 
 
 def test_check_once_runs_its_graph_queries_cleanly_against_a_real_empty_result(driver, clean_lease_and_freshness):

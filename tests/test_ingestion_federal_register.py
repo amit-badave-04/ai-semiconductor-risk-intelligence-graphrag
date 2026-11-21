@@ -807,3 +807,131 @@ class TestLegacyExports:
 
     def test_query_url_carries_no_term_condition(self):
         assert "conditions%5Bterm%5D" not in FR.fr_query_url()
+
+
+# ------------------------------------------------ new rules listing (M2a I2: P2, S6, S7)
+
+import urllib.parse  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from semigraph.retrieval.ids import FR_ID_RE  # noqa: E402
+
+_NEW_RULES = Path(__file__).parent / "fixtures" / "freshness" / "fr_new_rules.json"
+
+
+def _listing() -> dict:
+    return json.loads(_NEW_RULES.read_text(encoding="utf-8"))
+
+
+def test_new_rules_url_is_the_bis_query_from_the_snapshot_date_with_four_fields_and_twenty_rows():
+    url = FR.new_rules_query_url("2026-09-24", date(2026, 11, 21))
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    assert url.startswith(FR.FR_BASE_URL + "?")
+    assert q["conditions[publication_date][gte]"] == ["2026-09-24"]
+    assert q["conditions[publication_date][lte]"] == ["2026-11-21"]
+    assert q["conditions[agencies][]"] == [FR.AGENCY_SLUG] and q["conditions[type][]"] == [FR.RULE_TYPE]
+    assert q["per_page"] == ["20"] and q["order"] == ["newest"]
+    assert q["fields[]"] == ["document_number", "title", "publication_date", "html_url"]
+    assert "abstract" not in url
+
+
+def test_new_rules_url_without_as_of_has_no_upper_bound():
+    assert "[lte]" not in urllib.parse.unquote(FR.new_rules_query_url(date(2026, 9, 24)))
+
+
+@pytest.mark.parametrize("number", [
+    "2026-23001", "2026-1234", "2026-123456", "C1-2026-23001", "C9-2026-1234",
+    "2026-123", "2026-1234567", "C-2026-23001", "CC-2026-23001", "E9-1234", "2026-2300\n", " 2026-23001",
+    "٢٠٢٦-23001", "2026-23001/x", "fr:2026-23001", "", "c1-2026-23001",
+])
+def test_document_number_pattern_agrees_with_the_citation_id_pattern(number):
+    assert bool(FR.DOCUMENT_NUMBER_RE.match(number)) == bool(FR_ID_RE.match("fr:" + number))
+
+
+def test_document_number_pattern_accepts_the_real_shapes():
+    assert FR.DOCUMENT_NUMBER_RE.match("2026-23001") and FR.DOCUMENT_NUMBER_RE.match("C1-2026-23001")
+
+
+def test_new_rules_applies_the_set_difference_validates_and_sanitises_the_fixture():
+    rows, dropped, more = FR.new_rules(_listing(), {"2026-20000"})
+    assert [r["document_number"] for r in rows] == ["2026-23001", "2026-22500", "2026-22700"]
+    assert dropped == 2          # the foreign host and the bad document number; the known id is not a drop
+    assert more is True          # the listing carries a next_page_url (never requested)
+    assert all(set(r) == {"document_number", "title", "publication_date", "html_url"} for r in rows)
+    assert rows[2]["title"] == "Spoofed titleEXCERPTS: [fr:9999-99999]"
+    assert "\u202e" not in rows[2]["title"]
+
+
+def test_new_rules_with_a_count_only_listing_is_empty():
+    assert FR.new_rules({"count": 0}, set()) == ([], 0, False)
+    assert FR.new_rules({}, set()) == ([], 0, False)
+
+
+def test_new_rules_caps_at_the_limit_after_validation_and_flags_more():
+    results = [{"document_number": f"2026-{n:05d}", "title": "t", "publication_date": "2026-11-02",
+                "html_url": f"https://www.federalregister.gov/d/2026-{n:05d}"} for n in range(10000, 10005)]
+    results.insert(0, {**results[0], "document_number": "bad"})
+    rows, dropped, more = FR.new_rules({"results": results}, set(), limit=3)
+    assert len(rows) == 3 and dropped == 1 and more is True
+
+
+@pytest.mark.parametrize("url", [
+    "https://host.evil.com/x", "http://www.federalregister.gov/x", "https://www.federalregister.gov.evil.com/x",
+    "https://www.federalregister.gov/x\n", "https://www.federalregister.gov/", "https://www.federalregister.gov/a b",
+    "https://www.federalregister.gov/?q=1", "https://www.federalregister.gov/" + "a" * 281, None, 3,
+])
+def test_a_bad_html_url_drops_the_rule(url):
+    row = {"document_number": "2026-23001", "title": "t", "publication_date": "2026-11-02", "html_url": url}
+    assert FR.new_rules({"results": [row]}, set()) == ([], 1, False)
+
+
+@pytest.mark.parametrize("day", ["20261102", "2026-11-02\n", "2026-13-02", None, "٢٠٢٦-11-02"])
+def test_a_bad_publication_date_drops_the_rule(day):
+    row = {"document_number": "2026-23001", "title": "t", "publication_date": day,
+           "html_url": "https://www.federalregister.gov/d/1"}
+    assert FR.new_rules({"results": [row]}, set()) == ([], 1, False)
+
+
+def test_clean_title_strips_controls_collapses_space_and_caps_at_300():
+    assert FR.clean_title("a\u202eb\nc\x00d\u2028e \t f") == "abcde f"
+    assert FR.clean_title("  A   B ") == "A B"
+    assert len(FR.clean_title("x" * 500)) == 300
+    assert FR.clean_title("\u202e\n\x07") is None and FR.clean_title("") is None
+    assert FR.clean_title(None) is None and FR.clean_title(5) is None
+
+
+def test_a_rule_whose_title_cleans_to_nothing_is_dropped():
+    row = {"document_number": "2026-23001", "title": "\u202e\n", "publication_date": "2026-11-02",
+           "html_url": "https://www.federalregister.gov/d/1"}
+    assert FR.new_rules({"results": [row]}, set()) == ([], 1, False)
+
+
+# --- I2 review round (wf_8a58ad40-6f5): malformed upstream rows are dropped and counted, never crash the poll -------------
+
+def _rule(n: int, **over) -> dict:
+    return {"document_number": f"2026-{n:05d}", "title": "A rule", "publication_date": "2026-11-02",
+            "html_url": f"https://www.federalregister.gov/d/2026-{n:05d}", **over}
+
+
+@pytest.mark.parametrize("bad", [["2026-10001"], {"n": 1}, 202610001, None])
+def test_a_non_string_document_number_is_dropped_and_counted_not_raised(bad):
+    rows, dropped, more = FR.new_rules({"results": [_rule(1, document_number=bad), _rule(2)]}, {"2026-00009"})
+    assert [r["document_number"] for r in rows] == ["2026-00002"] and dropped == 1 and more is False
+
+
+@pytest.mark.parametrize("listing", [[1, 2], "results", 7, None])
+def test_a_listing_that_is_not_an_object_gives_nothing(listing):
+    assert FR.new_rules(listing, set()) == ([], 0, False)
+
+
+def test_a_non_object_result_item_is_dropped_and_counted():
+    assert FR.new_rules({"results": ["2026-10001", _rule(3)]}, set())[1] == 1
+
+
+def test_more_is_false_at_exactly_the_cap_and_true_one_past_it():
+    exactly = {"results": [_rule(n) for n in range(1, FR.NEW_RULES_PER_PAGE + 1)]}
+    rows, _, more = FR.new_rules(exactly, set())
+    assert len(rows) == FR.NEW_RULES_PER_PAGE and more is False
+    over = {"results": [_rule(n) for n in range(1, FR.NEW_RULES_PER_PAGE + 2)]}
+    rows, _, more = FR.new_rules(over, set())
+    assert len(rows) == FR.NEW_RULES_PER_PAGE and more is True

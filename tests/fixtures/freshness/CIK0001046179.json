@@ -4,43 +4,113 @@
   "sic": "3674",
   "sicDescription": "Semiconductors & Related Devices",
   "name": "SYNTHETIC TEST FILER (20-F, foreign private issuer)",
-  "tickers": ["TSM"],
-  "exchanges": ["NYSE"],
+  "tickers": [
+    "TSM"
+  ],
+  "exchanges": [
+    "NYSE"
+  ],
   "filings": {
     "recent": {
       "accessionNumber": [
         "0001046179-26-000005",
         "0001046179-26-000002",
         "0001046179-26-000001",
-        "0001046179-22-000001"
+        "0001046179-22-000001",
+        "0001046179-26-000101",
+        "0001046179-26-000102",
+        "0001046179-26-000103",
+        "0001046179-26-000104",
+        "0001046179-26-000105",
+        "0001046179-26-000106",
+        "0001046179-26-000107"
       ],
       "filingDate": [
         "2026-04-01",
         "2026-04-15",
         "2026-03-01",
-        "2022-03-01"
+        "2022-03-01",
+        "2026-11-01",
+        "2026-11-02",
+        "2026-11-03",
+        "2026-11-04",
+        "2026-11-05",
+        "2026-11-06",
+        "2026-11-07"
       ],
       "reportDate": [
         "",
         "2025-12-31",
         "2025-12-31",
-        "2021-12-31"
+        "2021-12-31",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
       ],
       "form": [
         "6-K",
         "20-F/A",
         "20-F",
-        "20-F"
+        "20-F",
+        "6-K",
+        "6-K",
+        "6-K",
+        "6-K",
+        "6-K",
+        "6-K",
+        "6-K"
       ],
       "primaryDocument": [
         "test-6k.htm",
         "test-20fa.htm",
         "test-20f.htm",
-        "test-20f-2022.htm"
+        "test-20f-2022.htm",
+        "tsm-6k-1.htm",
+        "tsm-6k-2.htm",
+        "tsm-6k-3.htm",
+        "tsm-6k-4.htm",
+        "tsm-6k-5.htm",
+        "tsm-6k-6.htm",
+        "tsm-6k-7.htm"
+      ],
+      "items": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "primaryDocDescription": [
+        "Synthetic description",
+        "Synthetic description",
+        "Synthetic description",
+        "Synthetic description",
+        "Report of foreign issuer",
+        "Report of foreign issuer",
+        "Report of foreign issuer",
+        "Report of foreign issuer",
+        "Report of foreign issuer",
+        "Report of foreign issuer",
+        "Report of foreign issuer"
       ]
     },
     "files": [
-      {"name": "CIK0001046179-submissions-001.json", "filingCount": 94, "filingFrom": "2019-01-01", "filingTo": "2021-12-31"}
+      {
+        "name": "CIK0001046179-submissions-001.json",
+        "filingCount": 94,
+        "filingFrom": "2019-01-01",
+        "filingTo": "2021-12-31"
+      }
     ]
   }
 }

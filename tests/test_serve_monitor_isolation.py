@@ -72,7 +72,8 @@ def test_the_monitor_module_itself_leaves_out_xbrl_and_graph_freshness():
     also imports pandas). Bare ``pandas`` is deliberately NOT asserted here — the neo4j driver imports it optionally
     when it is installed (``neo4j/_optional_deps.py``), which the dev ``.venv`` does and the serve-shipped venv does
     not; the two modules above are the actual, unconditional proof."""
-    done = _imports_leave_out("import semigraph.serve.monitor", "semigraph.ingestion.xbrl", "semigraph.graph.freshness")
+    done = _imports_leave_out("import semigraph.serve.monitor", "semigraph.ingestion.xbrl", "semigraph.graph.freshness",
+                              "semigraph.retrieval.answerer")
     assert done.returncode == 0, done.stdout + done.stderr
 
 

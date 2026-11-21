@@ -152,3 +152,30 @@ def test_admin_check_404_when_no_admin_token_is_configured_at_all(app_client):
     resp = client.post("/api/admin/freshness/check", headers={"X-Admin-Token": "anything"})
     assert resp.status_code == 404
     assert monitor.check_now_calls == 0
+
+
+# ---------------------------------------------------------------------- S8: a user request makes no upstream call
+
+def test_get_freshness_serves_since_data_from_memory_and_triggers_no_upstream_call(app_client, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("a user request must not reach the graph, the SEC or the Federal Register")
+
+    monkeypatch.setattr(monitor_mod, "run_cypher", boom)
+    monkeypatch.setattr(monitor_mod, "check_once", boom)
+    monkeypatch.setattr(monitor_mod.urllib.request, "urlopen", boom)
+    settings = FakeSettings()
+    settings.freshness_poll_hours, settings.freshness_boot_delay_s = 6, 0
+    real = monitor_mod.FreshnessMonitor(object(), settings)
+    since = {"since": "2026-09-24", "filings": [], "filing_totals": {}, "rules_since": "2026-09-24", "rules": [],
+             "rules_more": False, "dropped": {"filings": 0, "rules": 0}}
+    real._last = {"checked_at": "2099-01-01T00:00:00+00:00", "as_of": "2026-11-21", "status": "ok",
+                  "pending_count": 0, "pending_filings": [], "federal_register": None, "unresolved": [],
+                  "duration_s": 1.0, "since_data": since}
+    resp = app_client(monitor=real).get("/api/freshness")
+    assert resp.status_code == 200 and resp.json()["since_data"] == since
+
+
+def test_the_disabled_payload_carries_since_data_none(app_client):
+    client = app_client(monitor=None)
+    client.app.state.settings.freshness_enabled = False
+    assert client.get("/api/freshness").json()["since_data"] is None

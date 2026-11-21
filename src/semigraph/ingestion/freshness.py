@@ -20,6 +20,7 @@ newest filings, form 4s included) and lists older pages under
 
 import json
 import logging
+import re
 import time
 import urllib.request
 from collections.abc import Callable, Iterable
@@ -31,6 +32,7 @@ from ..universe import ANNUAL_SINCE, FILERS
 from . import federal_register as fr
 from .edgar import (
     FilingRecord,
+    _filing_folder_url,
     _identity,
     load_manifest,
     load_ticker_to_cik,
@@ -217,3 +219,86 @@ def federal_register_pending(
         "live_count": live_count,
         "new_since_stored": max(0, live_count - len(stored)),
     }
+
+
+# ----------------------------------------------------------------- event filings (M2a I2)
+# What the "Since our data" panel lists: 8-Ks (and 6-Ks for the 20-F filers) filed after the served snapshot. Every
+# external value is validated before it is kept. ASCII classes and ``\Z`` throughout: ``\d`` matches non-ASCII
+# digits and ``$`` matches before a trailing newline (the pattern ids.py follows).
+_ACCESSION_RE = re.compile(r"^[0-9]{10}-[0-9]{2}-[0-9]{6}\Z")
+_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+_ITEMS_RE = re.compile(r"^[0-9]\.[0-9]{2}(?:,[0-9]\.[0-9]{2}){0,19}\Z")
+_PRIMARY_DOC_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}\Z")
+EVENT_FILING_LIMIT = 5
+
+
+def event_forms_for(ticker: str) -> frozenset[str]:
+    """8-K and 8-K/A, plus 6-K for a 20-F filer (TSM, ASML)."""
+    forms = {"8-K", "8-K/A"}
+    if FILERS[ticker][1] == "20-F":
+        forms.add("6-K")
+    return frozenset(forms)
+
+
+def _valid_date(value) -> date | None:
+    if not isinstance(value, str) or not _DATE_RE.match(value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _valid_event_row(ticker, form, day, accession, items, doc) -> tuple[date, list[str], str | None] | None:
+    """(filing date, items list, primaryDocument or None) when the row is well formed, else None.
+    An invalid primaryDocument does not drop the row: the link falls back to the filing folder."""
+    filed = _valid_date(day)
+    if filed is None or not isinstance(accession, str) or not _ACCESSION_RE.match(accession):
+        return None
+    if items is None:
+        items = ""   # the SEC leaves `items` empty or absent on a 6-K
+    elif not isinstance(items, str):
+        return None
+    if items and not _ITEMS_RE.match(items):
+        return None
+    primary = doc if isinstance(doc, str) and _PRIMARY_DOC_RE.match(doc) else None
+    return filed, (items.split(",") if items else []), primary
+
+
+def event_filings_since(
+    ticker: str, cik: int, submissions: dict, since: date, as_of: date | None, *, limit: int = EVENT_FILING_LIMIT
+) -> tuple[list[dict], int, int]:
+    """``(rows, valid_total, dropped)``: this filer's event filings with ``since < filing_date <= as_of``.
+
+    Reads only the ``form``, ``filingDate``, ``accessionNumber``, ``items`` and ``primaryDocument`` arrays of
+    ``filings.recent`` (never a name, a description or the document). Order: filter by form, validate (an invalid
+    row is dropped and counted), de-duplicate by accession, apply the date window, sort newest first, THEN cap.
+    The link is built from the graph's ``cik``, never the accession prefix (agent-filed 8-Ks).
+    """
+    filings = submissions.get("filings") if isinstance(submissions, dict) else None
+    recent = filings.get("recent") if isinstance(filings, dict) else None
+    if not isinstance(recent, dict):
+        return [], 0, 0
+    cols = [recent.get(k) if isinstance(recent.get(k), list) else []
+            for k in ("form", "filingDate", "accessionNumber", "items", "primaryDocument")]
+    forms = event_forms_for(ticker)
+    seen: set[str] = set()
+    valid: list[dict] = []
+    dropped = 0
+    for form, day, accession, items, doc in zip_longest(*cols, fillvalue=None):
+        if not isinstance(form, str) or form not in forms:
+            continue
+        checked = _valid_event_row(ticker, form, day, accession, items, doc)
+        if checked is None:
+            dropped += 1
+            continue
+        filed, item_list, primary = checked
+        if accession in seen or filed <= since or (as_of is not None and filed > as_of):
+            continue
+        seen.add(accession)
+        folder = _filing_folder_url(FilingRecord(ticker=ticker, form=form, filing_date=filed,
+                                                 accession_no=accession, cik=cik))
+        valid.append({"ticker": ticker, "form": form, "filing_date": filed.isoformat(), "accession_no": accession,
+                      "items": item_list, "primary_document": primary, "url": folder + (primary or "")})
+    valid.sort(key=lambda r: (r["filing_date"], r["accession_no"]), reverse=True)
+    return valid[:limit], len(valid), dropped

@@ -33,7 +33,8 @@ def _submissions(forms, dates, accessions, periods=None):
                                    "reportDate": periods}}}
 
 
-def _driver_stub(monkeypatch, ciks=None, known=None, fr_count=0, lease_ok=True, snapshot=None, lease_error=None):
+def _driver_stub(monkeypatch, ciks=None, known=None, fr_count=0, lease_ok=True, snapshot=None, lease_error=None,
+                 rules=None):
     def fake_run_cypher(driver, query, **params):
         if query == monitor_mod.COMPANY_CIK_QUERY:
             return ciks or []
@@ -41,6 +42,8 @@ def _driver_stub(monkeypatch, ciks=None, known=None, fr_count=0, lease_ok=True, 
             return known or []
         if query == monitor_mod.EXPORT_CONTROL_COUNT_QUERY:
             return [{"n": fr_count}]
+        if query == monitor_mod.EXPORT_CONTROL_RULES_QUERY:
+            return rules or []
         if query == monitor_mod.SNAPSHOT_QUERY:
             return [snapshot] if snapshot else []
         if query == monitor_mod.LEASE_QUERY:
@@ -151,11 +154,14 @@ def _fixture_fetch():
     files = {"CIK0001045810.json": json.loads((FIXTURES / "CIK0001045810.json").read_text(encoding="utf-8")),
             "CIK0001046179.json": json.loads((FIXTURES / "CIK0001046179.json").read_text(encoding="utf-8"))}
     fr_count = json.loads((FIXTURES / "fr_count.json").read_text(encoding="utf-8"))
+    fr_new_rules = json.loads((FIXTURES / "fr_new_rules.json").read_text(encoding="utf-8"))
 
     def fetch(url: str) -> dict:
         for name, payload in files.items():
             if name.removesuffix(".json") in url:
                 return payload
+        if "federalregister.gov" in url and "html_url" in url:
+            return fr_new_rules   # the new-rules listing (it asks for html_url; the count query does not)
         return fr_count   # the Federal Register count-query URL
 
     return fetch
@@ -316,6 +322,8 @@ def test_every_other_monitor_query_keeps_the_default_notifications(monkeypatch):
             return [{"ok": True}]
         if query == monitor_mod.EXPORT_CONTROL_COUNT_QUERY:
             return [{"n": 0}]
+        if query == monitor_mod.SNAPSHOT_QUERY:
+            return [{"id": "snap-1", "as_of": "2026-09-20"}]
         return []
 
     monkeypatch.setattr(monitor_mod, "run_cypher", fake_run_cypher)
@@ -324,8 +332,8 @@ def test_every_other_monitor_query_keeps_the_default_notifications(monkeypatch):
     monitor_mod._release_lease(object(), "m1")
     monitor_mod._persist(object(), {"checked_at": "2026-09-24T00:00:00+00:00"})
     assert set(configs) == {monitor_mod.COMPANY_CIK_QUERY, monitor_mod.KNOWN_ACCESSIONS_QUERY,
-                            monitor_mod.EXPORT_CONTROL_COUNT_QUERY, monitor_mod.SNAPSHOT_QUERY,
-                            monitor_mod.LEASE_QUERY, monitor_mod.RELEASE_LEASE_QUERY,
+                            monitor_mod.EXPORT_CONTROL_COUNT_QUERY, monitor_mod.EXPORT_CONTROL_RULES_QUERY,
+                            monitor_mod.SNAPSHOT_QUERY, monitor_mod.LEASE_QUERY, monitor_mod.RELEASE_LEASE_QUERY,
                             monitor_mod.PUT_FRESHNESS_QUERY}
     assert all(config is None for config in configs.values())
 
@@ -673,7 +681,7 @@ def test_status_payload_reports_never_with_no_history(monkeypatch):
     assert payload == {"configured": True, "enabled": True, "status": "never", "checked_at": None,
                        "snapshot_as_of": None, "last_error_at": None, "next_check_at": expected_next_check,
                        "pending_count": 0, "pending_filings": [], "federal_register": None, "unresolved": [],
-                       "duration_s": None}
+                       "duration_s": None, "since_data": None}
 
 
 def test_status_payload_snapshot_as_of_is_the_graphs_data_date_not_the_check_date():
@@ -876,3 +884,209 @@ def test_start_if_enabled_logs_nothing_when_properly_configured(monkeypatch, cap
         assert not [r for r in caplog.records if r.levelname == "ERROR"]
     finally:
         monitor_mod.stop(App)
+
+
+# ---------------------------------------------------------------------- "Since our data" (M2a I2: P1-P3, P5, S8-S10)
+
+import logging  # noqa: E402
+import urllib.error  # noqa: E402
+import urllib.parse  # noqa: E402
+
+SNAP = {"id": "snap-20260924-aaaaaaaaaa", "as_of": "2026-09-24"}
+KNOWN_RULES = [{"rule_id": "2026-20000", "date": "2026-09-24"}, {"rule_id": "2026-10000", "date": "2026-01-05"}]
+CIKS = [{"ticker": "NVDA", "cik": 1045810}, {"ticker": "TSM", "cik": 1046179}]
+NVDA_FIRST = {"ticker": "NVDA", "form": "8-K", "filing_date": "2026-11-19", "accession_no": "0001045810-26-000020",
+              "items": ["2.02", "9.01"], "primary_document": "nvda-8k-results.htm",
+              "url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000020/nvda-8k-results.htm"}
+
+
+def _since_check(monkeypatch, fetch=None, **stub):
+    stub = {"ciks": CIKS, "snapshot": SNAP, "rules": KNOWN_RULES, **stub}
+    _driver_stub(monkeypatch, **stub)
+    return monitor_mod.check_once(object(), FakeSettings(), fetch=fetch or _fixture_fetch(), today="2026-11-21")
+
+
+def test_the_export_control_rules_query_reads_ids_and_dates_and_writes_nothing():
+    q = monitor_mod.EXPORT_CONTROL_RULES_QUERY
+    assert "ExportControl" in q and "x.rule_id" in q and "toString(x.date)" in q
+    assert not {"SET", "CREATE", "MERGE", "DELETE", "REMOVE"} & set(q.upper().split())
+
+
+def test_a_recorded_check_gives_the_fixed_since_data(monkeypatch):
+    since = _since_check(monkeypatch)["since_data"]
+    assert since["since"] == "2026-09-24" and since["rules_since"] == "2026-09-24"
+    assert len(since["filings"]) == 9 and since["filings"][0] == NVDA_FIRST
+    assert [r["ticker"] for r in since["filings"]] == ["NVDA"] * 4 + ["TSM"] * 5
+    assert since["filing_totals"] == {"NVDA": 4, "TSM": 7}
+    assert [r["document_number"] for r in since["rules"]] == ["2026-23001", "2026-22500", "2026-22700"]
+    assert since["rules_more"] is True
+    assert since["dropped"] == {"filings": 2, "rules": 2}
+
+
+def test_since_data_is_none_without_a_snapshot_and_rules_since_falls_back_without_rules(monkeypatch):
+    assert _since_check(monkeypatch, snapshot=None)["since_data"] is None
+    since = _since_check(monkeypatch, rules=[])["since_data"]
+    assert since["rules_since"] == monitor_mod.federal_register.SINCE
+
+
+def test_the_new_rules_set_difference_uses_the_graph_rule_ids(monkeypatch):
+    rules = KNOWN_RULES + [{"rule_id": "2026-23001", "date": "2026-11-18"}]
+    since = _since_check(monkeypatch, rules=rules)["since_data"]
+    assert since["rules_since"] == "2026-11-18"
+    assert [r["document_number"] for r in since["rules"]] == ["2026-22500", "2026-22700"]
+
+
+def test_s8_one_request_per_filer_plus_exactly_two_federal_register_calls(monkeypatch):
+    inner, log = _fixture_fetch(), []
+
+    def fetch(url):
+        log.append(url)
+        return inner(url)
+
+    _since_check(monkeypatch, fetch=fetch)
+    hosts = [urllib.parse.urlparse(u) for u in log]
+    sec = [u for u in log if "data.sec.gov" in u]
+    fr = [u for u in hosts if u.netloc == "www.federalregister.gov"]
+    assert len(sec) == 2 and len(set(sec)) == 2 and len(log) == 4 and len(fr) == 2
+    assert all(u.netloc in ("data.sec.gov", "www.federalregister.gov") for u in hosts)
+    assert all(u.path == "/api/v1/documents.json" for u in fr)
+    assert not any("page=2&" in u for u in log)   # the listing next_page_url is never requested
+
+
+def test_s9_an_adversarial_maximum_input_stays_under_100_kb(monkeypatch):
+    big_title, items = "\U0001F600" * 400, ",".join(["8.01"] * 20)
+    listing = {"results": [{"document_number": f"2026-{n:05d}", "title": big_title, "publication_date": "2026-11-02",
+                            "html_url": "https://www.federalregister.gov/" + "a" * 280} for n in range(10000, 10030)],
+               "next_page_url": "https://www.federalregister.gov/api/v1/documents.json?page=2"}
+    submissions = {"filings": {"recent": {
+        "form": ["8-K"] * 8, "filingDate": ["2026-11-02"] * 8,
+        "accessionNumber": [f"0001045810-26-{n:06d}" for n in range(8)],
+        "items": [items] * 8, "primaryDocument": ["a" * 100] * 8}}}
+
+    def fetch(url):
+        if "federalregister" in url:
+            return listing if "html_url" in url else {"count": 0}
+        return submissions
+
+    ciks = [{"ticker": t, "cik": 1000 + i} for i, t in enumerate(monitor_mod.FILERS)]
+    result = _since_check(monkeypatch, fetch=fetch, ciks=ciks)
+    since = result["since_data"]
+    assert len(since["rules"]) == 20 and len(since["filings"]) == 5 * len(monitor_mod.FILERS)
+    # UTF-8 bytes, as FastAPI serialises and as the row is stored (default json.dumps would escape each astral char to 12 bytes)
+    assert len(json.dumps(since, ensure_ascii=False).encode("utf-8")) < 100_000
+    params = {}
+    monkeypatch.setattr(monitor_mod, "run_cypher", lambda d, q, **p: params.update(p) or [])
+    monitor_mod._persist(object(), result)
+    assert len(params["since_json"].encode("utf-8")) < 100_000
+
+
+def test_a_failed_check_carries_the_last_since_data_forward():
+    previous = {**_stub_result(), "status": "ok", "since_data": {"since": "2026-09-24", "filings": []}}
+    assert monitor_mod._error_result(previous, RuntimeError("x"))["since_data"] == previous["since_data"]
+    assert monitor_mod._error_result(None, RuntimeError("x"))["since_data"] is None
+
+
+def test_status_payload_serves_since_data_and_blanks_it_once_unconfigured():
+    m = monitor_mod.FreshnessMonitor(object(), FakeSettings())
+    m._last = {**_stub_result(), "status": "ok", "since_data": {"since": "2026-09-24"}}
+    assert m.status_payload()["since_data"] == {"since": "2026-09-24"}
+    settings = FakeSettings()
+    settings.sec_user_agent = ""
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._last = {**_stub_result(), "status": "ok", "since_data": {"since": "2026-09-24"}}
+    assert m.status_payload()["since_data"] is None
+
+
+def test_since_data_round_trips_through_persist_and_load(monkeypatch):
+    store: dict = {}
+
+    def fake(driver, query, **params):
+        if query == monitor_mod.PUT_FRESHNESS_QUERY:
+            store.update(params)
+            return []
+        return [dict(store)]
+
+    monkeypatch.setattr(monitor_mod, "run_cypher", fake)
+    since = {"since": "2026-09-24", "filings": [NVDA_FIRST], "filing_totals": {"NVDA": 1}, "rules_since": "x",
+             "rules": [], "rules_more": False, "dropped": {"filings": 0, "rules": 0}}
+    monitor_mod._persist(object(), {"checked_at": "2026-11-21T00:00:00+00:00", "since_data": since})
+    assert monitor_mod._load_persisted(object())["since_data"] == since
+    store.clear()
+    monitor_mod._persist(object(), {"checked_at": "2026-11-21T00:00:00+00:00"})
+    assert store["since_json"] is None and monitor_mod._load_persisted(object())["since_data"] is None
+
+
+def _row(**over):
+    return {"checked_at": "2026-09-24T00:00:00+00:00", "as_of": "2026-09-24", "snapshot_id": None,
+            "snapshot_as_of": None, "status": "ok", "error": None, "last_error_at": None, "pending_json": None,
+            "fr_json": None, "unresolved_json": None, "duration_s": None, "pending_count": 0, **over}
+
+
+def test_an_old_row_without_since_json_loads_as_none(monkeypatch):
+    monkeypatch.setattr(monitor_mod, "run_cypher", lambda d, q, **p: [_row()])
+    assert monitor_mod._load_persisted(object())["since_data"] is None
+
+
+@pytest.mark.parametrize("field", ["since_json", "pending_json", "fr_json", "unresolved_json"])
+def test_a_corrupt_json_column_loads_as_empty_and_never_raises(monkeypatch, field):
+    monkeypatch.setattr(monitor_mod, "run_cypher", lambda d, q, **p: [_row(**{field: "{not json"})])
+    loaded = monitor_mod._load_persisted(object())
+    assert loaded is not None and loaded["since_data"] is None
+    assert loaded["pending_filings"] == [] and loaded["federal_register"] is None and loaded["unresolved"] == []
+
+
+def test_the_get_and_put_queries_carry_since_json():
+    assert "since_json" in monitor_mod.GET_FRESHNESS_QUERY and "since_json" in monitor_mod.PUT_FRESHNESS_QUERY
+
+
+def test_s10_the_sec_user_agent_never_reaches_the_logs_or_the_error(monkeypatch, caplog):
+    secret = "Secret Identity secret-contact@example.org"
+    settings = FakeSettings()
+    settings.sec_user_agent = secret
+
+    def boom(req, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    _driver_stub(monkeypatch, ciks=CIKS, snapshot=SNAP)
+    monkeypatch.setattr(monitor_mod.urllib.request, "urlopen", boom)
+    monkeypatch.setattr(monitor_mod.federal_register.time, "sleep", lambda s: None)
+    monkeypatch.setattr(monitor_mod.time, "sleep", lambda s: None)
+    m = monitor_mod.FreshnessMonitor(object(), settings)
+    m._busy.acquire()
+    with caplog.at_level(logging.DEBUG):
+        m._run_check()
+    assert m._last["status"] == "error"
+    assert secret not in caplog.text and "secret-contact" not in caplog.text
+    assert secret not in m._last["error"]
+
+
+# --- I2 review round (wf_8a58ad40-6f5) ---------------------------------------------------------------------------------------
+
+def test_the_rules_listing_asks_from_the_newest_graph_rule_date_up_to_the_check_date(monkeypatch):
+    inner, log = _fixture_fetch(), []
+
+    def fetch(url):
+        log.append(url)
+        return inner(url)
+
+    rules = KNOWN_RULES + [{"rule_id": "2026-23001", "date": "2026-11-18"}]
+    _since_check(monkeypatch, fetch=fetch, rules=rules)
+    queries = [urllib.parse.parse_qs(urllib.parse.urlparse(u).query) for u in log if "federalregister" in u]
+    listing = [q for q in queries if q.get("fields[]") == ["document_number", "title", "publication_date", "html_url"]]
+    assert len(listing) == 1
+    assert listing[0]["conditions[publication_date][gte]"] == ["2026-11-18"]
+    assert listing[0]["conditions[publication_date][lte]"] == ["2026-11-21"]
+
+
+def test_a_deeply_nested_json_column_loads_as_empty_and_never_raises(monkeypatch):
+    nested = "[" * 200_000 + "]" * 200_000
+    monkeypatch.setattr(monitor_mod, "run_cypher", lambda d, q, **p: [_row(since_json=nested, pending_json=nested)])
+    loaded = monitor_mod._load_persisted(object())
+    assert loaded["since_data"] is None and loaded["pending_filings"] == []
+
+
+def test_a_snapshot_with_an_unreadable_date_logs_why_the_panel_is_empty(monkeypatch, caplog):
+    with caplog.at_level(logging.WARNING, logger="semigraph.serve.monitor"):
+        result = _since_check(monkeypatch, snapshot={"id": "snap-x", "as_of": "not-a-date"})
+    assert result["since_data"] is None
+    assert "snapshot" in caplog.text and "since" in caplog.text.lower()

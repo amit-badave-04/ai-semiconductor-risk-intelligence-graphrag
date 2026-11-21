@@ -337,3 +337,175 @@ class TestFederalRegisterPending:
     def test_a_shrinking_live_count_never_reports_negative_new(self, settings):
         fr_cache(settings, ["2026-01-15", "2026-01-16"])
         assert F.federal_register_pending(settings, fetch=FakeFRCount(1))["new_since_stored"] == 0
+
+
+# ------------------------------------------------ event filings (M2a I2: P1, S6, S9, S13)
+
+from pathlib import Path  # noqa: E402
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "freshness"
+SINCE, TODAY = date(2026, 9, 24), date(2026, 11, 21)
+ROW_KEYS = {"ticker", "form", "filing_date", "accession_no", "items", "primary_document", "url"}
+NVDA_BASE = "https://www.sec.gov/Archives/edgar/data/1045810/"
+
+
+def _fixture(name: str) -> dict:
+    return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
+
+
+def _event(rows: list[tuple], **kw):
+    """rows: (form, filingDate, accession, items, primaryDocument) -> event_filings_since(NVDA ...)."""
+    recent = {
+        "form": [r[0] for r in rows], "filingDate": [r[1] for r in rows],
+        "accessionNumber": [r[2] for r in rows], "items": [r[3] for r in rows],
+        "primaryDocument": [r[4] for r in rows],
+    }
+    return F.event_filings_since("NVDA", NVDA_CIK, {"filings": {"recent": recent}}, SINCE, TODAY, **kw)
+
+
+def test_event_forms_are_8k_and_amendment_plus_6k_for_20f_filers_only():
+    assert F.event_forms_for("NVDA") == {"8-K", "8-K/A"}
+    assert F.event_forms_for("TSM") == {"8-K", "8-K/A", "6-K"}
+    assert F.event_forms_for("ASML") == {"8-K", "8-K/A", "6-K"}
+
+
+def test_recorded_nvda_submissions_give_the_exact_event_rows():
+    rows, total, dropped = F.event_filings_since(
+        "NVDA", NVDA_CIK, _fixture("CIK0001045810.json"), SINCE, TODAY)
+    assert rows == [
+        {"ticker": "NVDA", "form": "8-K", "filing_date": "2026-11-19", "accession_no": "0001045810-26-000020",
+         "items": ["2.02", "9.01"], "primary_document": "nvda-8k-results.htm",
+         "url": NVDA_BASE + "000104581026000020/nvda-8k-results.htm"},
+        {"ticker": "NVDA", "form": "8-K/A", "filing_date": "2026-11-10", "accession_no": "0001045810-26-000021",
+         "items": ["5.02"], "primary_document": "nvda-8ka.htm",
+         "url": NVDA_BASE + "000104581026000021/nvda-8ka.htm"},
+        {"ticker": "NVDA", "form": "8-K", "filing_date": "2026-11-05", "accession_no": "0001045810-26-000022",
+         "items": [], "primary_document": "nvda-8k-noitems.htm",
+         "url": NVDA_BASE + "000104581026000022/nvda-8k-noitems.htm"},
+        {"ticker": "NVDA", "form": "8-K", "filing_date": "2026-11-03", "accession_no": "0001045810-26-000023",
+         "items": ["7.01"], "primary_document": None, "url": NVDA_BASE + "000104581026000023/"},
+    ]
+    assert total == 4
+    assert dropped == 2   # the bad accession and the bad items value; the duplicate is not a drop
+
+
+def test_nvda_has_no_6k_and_same_day_and_future_rows_are_excluded():
+    rows, _, _ = F.event_filings_since("NVDA", NVDA_CIK, _fixture("CIK0001045810.json"), SINCE, TODAY)
+    accessions = {r["accession_no"] for r in rows}
+    assert not {"0001045810-26-000025", "0001045810-26-000024", "0001045810-26-000026"} & accessions
+    assert all(r["form"] in ("8-K", "8-K/A") for r in rows)
+
+
+def test_tsm_keeps_six_k_capped_at_five_with_the_valid_total_before_the_cap():
+    rows, total, dropped = F.event_filings_since(
+        "TSM", TSM_CIK, _fixture("CIK0001046179.json"), SINCE, TODAY)
+    assert [r["filing_date"] for r in rows] == ["2026-11-07", "2026-11-06", "2026-11-05", "2026-11-04", "2026-11-03"]
+    assert total == 7 and dropped == 0
+    assert all(r["form"] == "6-K" and r["items"] == [] for r in rows)
+
+
+def test_every_row_has_exactly_the_whitelisted_keys_and_the_officer_name_is_never_read():
+    nvda = F.event_filings_since("NVDA", NVDA_CIK, _fixture("CIK0001045810.json"), SINCE, TODAY)
+    tsm = F.event_filings_since("TSM", TSM_CIK, _fixture("CIK0001046179.json"), SINCE, TODAY)
+    for row in nvda[0] + tsm[0]:
+        assert set(row) == ROW_KEYS
+    assert "Fakeperson" not in json.dumps([nvda, tsm])
+    assert "Synthetic description" not in json.dumps([nvda, tsm])
+
+
+def test_a_dotdot_primary_document_is_rejected_to_the_folder_link_and_the_row_is_kept():
+    rows, _, dropped = _event([("8-K", "2026-11-05", "0001045810-26-000030", "8.01", "..")])
+    assert rows[0]["primary_document"] is None and rows[0]["url"].endswith("/000104581026000030/")
+    assert dropped == 0
+
+
+@pytest.mark.parametrize("doc", ["a/b.htm", "a\b.htm", ".hidden.htm", "x.htm\n", "é.htm", "", None, 5, "a" * 101])
+def test_a_bad_primary_document_falls_back_to_the_folder_link(doc):
+    rows, _, _ = _event([("8-K", "2026-11-05", "0001045810-26-000030", "8.01", doc)])
+    assert rows and rows[0]["primary_document"] is None
+
+
+@pytest.mark.parametrize("items", ["2.02;x", "2.02,", "２.02", "2.02\n", "12.02", "2.2", 7, ",2.02", "2.02, 9.01"])
+def test_a_bad_items_value_drops_and_counts_the_row(items):
+    rows, total, dropped = _event([("8-K", "2026-11-05", "0001045810-26-000030", items, "x.htm")])
+    assert (rows, total, dropped) == ([], 0, 1)
+
+
+@pytest.mark.parametrize("accession", ["0001045810-26-00003", "000104581026000030", "0001045810-26-000030\n",
+                                       "٠٠٠١٠٤٥٨١٠-26-000030", "0001045810-26-00003X"])
+def test_a_bad_accession_drops_and_counts_the_row(accession):
+    rows, _, dropped = _event([("8-K", "2026-11-05", accession, "8.01", "x.htm")])
+    assert rows == [] and dropped == 1
+
+
+@pytest.mark.parametrize("day", ["20261105", "2026-11-5", "2026-13-05", "2026-11-05\n", "٢٠٢٦-11-05"])
+def test_a_bad_filing_date_drops_and_counts_the_row(day):
+    rows, _, dropped = _event([("8-K", day, "0001045810-26-000030", "8.01", "x.htm")])
+    assert rows == [] and dropped == 1
+
+
+def test_items_are_stored_as_a_list_and_the_cap_runs_after_validation_and_dedupe():
+    rows = [("8-K", f"2026-11-{d:02d}", f"0001045810-26-0001{d:02d}", "8.01", "x.htm") for d in range(1, 9)]
+    rows += [("8-K", "2026-11-09", "0001045810-26-000130", "bad;items", "x.htm")]   # newest, invalid
+    rows += [rows[0]]   # a duplicate accession
+    got, total, dropped = _event(rows, limit=5)
+    assert [r["filing_date"] for r in got] == [f"2026-11-0{d}" for d in (8, 7, 6, 5, 4)]
+    assert (total, dropped) == (8, 1) and got[0]["items"] == ["8.01"]
+
+
+def test_the_url_uses_the_graph_cik_not_the_accession_prefix_of_an_agent_filer():
+    rows, _, _ = _event([("8-K", "2026-11-05", "0000950170-26-000007", "8.01", "x.htm")])
+    assert rows[0]["url"] == NVDA_BASE + "000095017026000007/x.htm"
+
+
+def test_missing_or_empty_submissions_give_no_rows():
+    assert F.event_filings_since("NVDA", NVDA_CIK, {}, SINCE, TODAY) == ([], 0, 0)
+    assert F.event_filings_since("NVDA", NVDA_CIK, {"filings": {"recent": {}}}, SINCE, None) == ([], 0, 0)
+
+
+def test_with_no_as_of_nothing_is_cut_off_at_the_top():
+    rows, _, _ = F.event_filings_since("NVDA", NVDA_CIK, _fixture("CIK0001045810.json"), SINCE, None)
+    assert "0001045810-26-000026" in {r["accession_no"] for r in rows}
+
+
+# --- I2 review round (wf_8a58ad40-6f5): boundaries and malformed columns ---------------------------------------------------
+
+def _acc(n: int) -> str:
+    return f"0001045810-26-{n:06d}"
+
+
+def test_a_filing_dated_exactly_as_of_is_included_and_one_day_later_is_not():
+    rows, total, _ = _event([("8-K", "2026-11-21", _acc(1), "8.01", "a.htm"), ("8-K", "2026-11-22", _acc(2), "8.01", "b.htm")])
+    assert [r["accession_no"] for r in rows] == [_acc(1)] and total == 1
+
+
+def test_same_day_filings_sort_by_accession_newest_first():
+    rows, _, _ = _event([("8-K", "2026-11-02", _acc(5), "8.01", "a.htm"), ("8-K", "2026-11-02", _acc(9), "8.01", "b.htm")])
+    assert [r["accession_no"] for r in rows] == [_acc(9), _acc(5)]
+
+
+def test_twenty_item_codes_are_kept_and_twenty_one_drop_the_row():
+    twenty, twenty_one = ",".join(["8.01"] * 20), ",".join(["8.01"] * 21)
+    rows, _, dropped = _event([("8-K", "2026-11-02", _acc(1), twenty, "a.htm"), ("8-K", "2026-11-03", _acc(2), twenty_one, "b.htm")])
+    assert [r["accession_no"] for r in rows] == [_acc(1)] and len(rows[0]["items"]) == 20 and dropped == 1
+
+
+@pytest.mark.parametrize("items_column", [None, [], ["8.01"]])
+def test_a_missing_or_short_items_column_keeps_the_rows_with_empty_items(items_column):
+    recent = {"form": ["8-K", "8-K"], "filingDate": ["2026-11-03", "2026-11-02"],
+              "accessionNumber": [_acc(2), _acc(1)], "primaryDocument": ["b.htm", "a.htm"]}
+    if items_column is not None:
+        recent["items"] = items_column
+    rows, total, dropped = F.event_filings_since("NVDA", NVDA_CIK, {"filings": {"recent": recent}}, SINCE, TODAY)
+    assert total == 2 and dropped == 0
+    assert rows[1]["items"] == []           # the row the column does not reach reads as "no items"
+
+
+@pytest.mark.parametrize("recent", [
+    {"form": [["8-K"]], "filingDate": ["2026-11-02"], "accessionNumber": [_acc(1)]},      # an unhashable form value
+    {"form": "8-K", "filingDate": "2026-11-02", "accessionNumber": _acc(1)},             # columns that are not lists
+    ["not", "an", "object"],
+])
+def test_malformed_submission_columns_give_no_rows_and_never_raise(recent):
+    rows, total, _ = F.event_filings_since("NVDA", NVDA_CIK, {"filings": {"recent": recent}}, SINCE, TODAY)
+    assert rows == [] and total == 0
