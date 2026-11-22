@@ -752,9 +752,9 @@ def test_the_replays_reserve_is_the_services_live_hybrid_estimate_computed_from_
     estimate, live, env = live_service_settings(monkeypatch)
     assert (plan.LIVE_ANSWER_MODEL, plan.LIVE_ESCALATION_MODEL, plan.LIVE_ANSWER_MAX_TOKENS) == (
         env["ANSWER_MODEL"], env["ESCALATION_MODEL"], int(env["LLM_ANSWER_MAX_TOKENS"]))      # fly.toml's, so a change there shows here
-    assert plan.ESTIMATE_MICRO == plan.live_hybrid_estimate_micro() == estimate.estimate_micro("hybrid", live) == 753_025
+    assert plan.ESTIMATE_MICRO == plan.live_hybrid_estimate_micro() == estimate.estimate_micro("hybrid", live) == 753_229
     source = (S7_DIR / "plan.py").read_text(encoding="utf-8")
-    assert "580_089" not in source and "753_025" not in source, "the estimate is computed, not typed"
+    assert "580_089" not in source and "753_229" not in source, "the estimate is computed, not typed"
 
 
 def test_the_replays_reserve_follows_the_estimate_when_the_services_arithmetic_changes(monkeypatch):
@@ -762,9 +762,9 @@ def test_the_replays_reserve_follows_the_estimate_when_the_services_arithmetic_c
     from decimal import Decimal
 
     from semigraph.serve import estimate
-    assert plan.live_hybrid_estimate_micro() == 753_025
+    assert plan.live_hybrid_estimate_micro() == 753_229
     monkeypatch.setitem(estimate.CHARS_PER_TOKEN_BY_MODEL, "anthropic/claude-sonnet-5", Decimal("2.5"))
-    assert plan.live_hybrid_estimate_micro() == 615_021
+    assert plan.live_hybrid_estimate_micro() == 615_185
 
 
 def test_the_replays_reserve_is_computed_without_building_a_settings(monkeypatch):
@@ -775,7 +775,7 @@ def test_the_replays_reserve_is_computed_without_building_a_settings(monkeypatch
 
     monkeypatch.setattr(Settings, "__init__", refuse)
     monkeypatch.setattr(Settings, "model_construct", classmethod(lambda cls, *a, **k: refuse()))
-    assert plan.live_hybrid_estimate_micro() == 753_025
+    assert plan.live_hybrid_estimate_micro() == 753_229
 
 
 # =====================================================================================================================

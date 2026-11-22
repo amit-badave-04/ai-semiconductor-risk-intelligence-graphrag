@@ -549,7 +549,7 @@ def test_anchor_defaulted_false_when_company_detected(caplog):
 def test_hybrid_result_shape_is_v1_plus_anchor_defaulted_and_temporal_pairs():
     out = hybrid_retrieve("How does Nvidia depend on TSMC?", FakeDriver(), FakeEmbedder())
     assert set(out) == {"anchors", "edges", "metrics", "metric_periods", "risks", "temporal", "temporal_pairs",
-                        "temporal_passages", "temporal_notices", "chunks", "anchor_defaulted"}
+                        "temporal_passages", "temporal_notices", "chunks", "anchor_defaulted", "question"}
     assert out["edges"] == [] and out["risks"] == []
 
 

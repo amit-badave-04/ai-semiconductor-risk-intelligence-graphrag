@@ -118,8 +118,8 @@ CHARS_PER_TOKEN_BY_MODEL = {"anthropic/claude-sonnet-5": SONNET_CHARS_PER_TOKEN}
 # go through chars_per_token(model, role)). The default is not every model's figure.
 
 # --- the prompt: templates, excerpts, graph blocks -------------------------------------------------------------------
-ANSWER_TEMPLATE_CHARS = 9_500          # prompts/answer.txt is 9,403 characters (9,108 before the M2a data-boundary rule, RT-003)
-WORKSPACE_TEMPLATE_CHARS = 10_600      # prompts/answer_workspace.txt is 10,505 (10,212 before the M2a data-boundary rule, RT-003)
+ANSWER_TEMPLATE_CHARS = 9_600          # prompts/answer.txt is 9,508 characters (9,403 before the base-year rule, 9,108 before the M2a data-boundary rule, RT-003)
+WORKSPACE_TEMPLATE_CHARS = 10_700      # prompts/answer_workspace.txt is 10,608 (10,505 before the base-year rule, 10,212 before the M2a data-boundary rule, RT-003)
 K_CHUNKS = 8                           # hybrid_retrieve k_chunks and vector_retrieve k; the route passes neither
 # The longest excerpt in the ingested corpus is 10,217 characters (5,894 chunks, 13 filers; measured); the chunker's
 # hard cap is 1,100 embedder tokens (parsing/chunker.MAX_TOKENS). A chunk's id line and the blank lines around it add

@@ -799,7 +799,7 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     logger.debug("hybrid_retrieve anchors=%s defaulted=%s edges=%d metrics=%d risks=%d "
                  "temporal=%d passages=%d chunks=%d", anchors, anchor_defaulted, len(edges), len(metrics),
                  len(risks), len(temporal), len(temporal_passages), len(chunks))
-    result = {"anchors": anchors, "edges": edges, "metrics": metrics, "metric_periods": periods, "risks": risks,
+    result = {"question": question, "anchors": anchors, "edges": edges, "metrics": metrics, "metric_periods": periods, "risks": risks,
               "temporal": temporal, "temporal_pairs": temporal_pairs, "temporal_passages": temporal_passages,
               "temporal_notices": temporal_notices, "chunks": chunks, "anchor_defaulted": anchor_defaulted}
     if dropped:

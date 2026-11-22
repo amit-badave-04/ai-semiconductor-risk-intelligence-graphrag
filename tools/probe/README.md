@@ -159,7 +159,7 @@ upload job must reach ready; at least one ask done while the job runs). `w1b_jud
 
 **The one change, the workload (registered in `deploy/staging/windows.json`, W1c `workload`, and recorded in every boot's JSON):**
 
-* **At most 13 salted asks (the cap).** 13 = floor(production max_spend_usd_per_day / the live hybrid estimate) = floor(10 / 0.753025) = floor(13.28) = 13. It is
+* **At most 13 salted asks (the cap).** 13 = floor(production max_spend_usd_per_day / the live hybrid estimate) = floor(10 / 0.753229) = floor(13.28) = 13. It is
   computed in code, `paced_asks.derive_ask_count()`: `semigraph.config.PRODUCTION_MAX_SPEND_USD_PER_DAY` over `semigraph.serve.estimate` for the
   models and token cap of `fly.toml`, in whole micro-dollars (10,000,000 // 753,025), and the driver refuses to run when the count registered in
   `windows.json` is not the one it derives (a test recomputes it and checks that it follows its inputs).

@@ -11,8 +11,27 @@
   "stored_rows": 60,
   "accepted_pairs": 60,
   "rejected_pairs": {},
-  "supported": 135,
-  "unsupported": 0,
-  "rate": 1.0,
-  "unsupported_by_row": {}
+  "supported": 128,
+  "unsupported": 7,
+  "rate": 0.9481481481481482,
+  "unsupported_by_row": {
+    "D1": [
+      "The context identifies **TSMC, Samsung, and Foxconn** as companies NVIDIA depends on. [0001045810-26-000021:I.1:0320]"
+    ],
+    "D2": [
+      "- SK Hynix [0001045810-26-000021:I.1:0320]",
+      "- Micron [0001045810-26-000021:I.1:0320]",
+      "- Samsung [0001045810-26-000021:I.1:0320]"
+    ],
+    "D3": [
+      "AMD relies on **TSMC** and **GlobalFoundries** for chip manufacturing: AMD\u2019s filing discusses TSMC manufacturing wafers for it, and the knowledge graph identifies GlobalFoundries as a supplier AMD depends on. [0000002488-26-000018:I.1A:0011] [0000002488-26-000018:I.1:0024]"
+    ],
+    "D4": [
+      "Meta is disclosed as an AMD customer. [0000002488-26-000076:I.2:0002]"
+    ],
+    "T3": [
+      "Nvidia also depends on OpenAI as disclosed in a subsequent quarterly filing [0001045810-26-000075:II.1A:0001]."
+    ]
+  },
+  "checker_note": "recomputed 2026-11-22 with the R8 checker that strips markdown emphasis and list markers"
 }

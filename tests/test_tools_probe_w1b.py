@@ -865,10 +865,10 @@ def recomputed_ask_count():
 def test_the_ask_count_is_worked_out_from_the_live_day_cap_and_the_live_hybrid_estimate():
     count, cap, hybrid = recomputed_ask_count()
     derived = paced_asks.derive_ask_count()
-    assert (cap, hybrid, count) == (10_000_000, 753_025, 13)
+    assert (cap, hybrid, count) == (10_000_000, 753_229, 13)
     assert (derived["day_cap_micro"], derived["hybrid_estimate_micro"], derived["asks"]) == (cap, hybrid, count)
-    assert derived["day_cap_usd"] == 10.0 and derived["hybrid_estimate_usd"] == 0.753025
-    assert derived["formula"] == "floor(day_cap_micro / hybrid_estimate_micro)" and derived["unrounded"] == pytest.approx(13.280, abs=1e-3)
+    assert derived["day_cap_usd"] == 10.0 and derived["hybrid_estimate_usd"] == 0.753229
+    assert derived["formula"] == "floor(day_cap_micro / hybrid_estimate_micro)" and derived["unrounded"] == pytest.approx(13.276, abs=1e-3)
     env = live_env()
     assert (env["ANSWER_MODEL"], env["ESCALATION_MODEL"]) == ("openai/gpt-6-luna", "anthropic/claude-sonnet-5")
     assert derived["models"] == {"answer": env["ANSWER_MODEL"], "escalation": env["ESCALATION_MODEL"]}
@@ -887,7 +887,7 @@ def test_the_ask_count_follows_its_inputs_so_it_is_not_a_number_written_into_the
     from semigraph import config
     from semigraph.serve import estimate
     monkeypatch.setattr(config, "PRODUCTION_MAX_SPEND_USD_PER_DAY", 20.0)
-    assert paced_asks.derive_ask_count()["asks"] == 20_000_000 // 753_025 == 26
+    assert paced_asks.derive_ask_count()["asks"] == 20_000_000 // 753_229 == 26
     monkeypatch.setattr(estimate, "estimate_micro", lambda ask_type, settings: 2_500_000)
     derived = paced_asks.derive_ask_count()
     assert derived["asks"] == 8 and derived["hybrid_estimate_micro"] == 2_500_000 and derived["day_cap_micro"] == 20_000_000
@@ -927,7 +927,7 @@ def test_the_readme_and_windows_json_state_the_reason_the_derivation_the_pacing_
     w1c = registered()
     for text in (readme, squash(w1c["note"])):
         assert REASON in text and STOP_RULE in text
-        assert "floor(10 / 0.753025) = floor(13.28) = 13" in text and "one ask every 30 s" in text and "from upload accept" in text
+        assert "floor(10 / 0.753229) = floor(13.28) = 13" in text and "one ask every 30 s" in text and "from upload accept" in text
         assert "at most 2 in flight" in text and "job ready plus 30 s" in text and "different X-Test-Client-IP" in text
         assert "the memory thresholds are unchanged" in text
 
@@ -1102,7 +1102,7 @@ def test_a_w1c_boot_records_its_window_mode_derivation_and_a_schedule_of_planned
     workload = report["workload"]
     assert workload["mode"] == "paced" and workload["asks_cap"] == 13 == workload["derivation"]["asks"]
     assert (workload["interval_s"], workload["max_in_flight"], workload["tail_s"]) == (0.05, 2, 0.05)
-    assert workload["derivation"]["day_cap_micro"] == 10_000_000 and workload["derivation"]["hybrid_estimate_micro"] == 753_025
+    assert workload["derivation"]["day_cap_micro"] == 10_000_000 and workload["derivation"]["hybrid_estimate_micro"] == 753_229
     asks = report["asks"]
     assert asks["sent"] == 13 == len(asks["schedule"]) and asks["unsent"] == 0 and asks["stopped_by"] == "cap"
     assert asks["planned_offsets_s"] == pytest.approx([0.05 * n for n in range(13)])
@@ -1174,7 +1174,7 @@ def test_a_w1b_boot_is_unchanged_it_runs_the_saturating_loop_and_records_no_sche
 # --- the W1c aggregate: the stop rule -------------------------------------------------------------------------------------------------------------
 
 W1C_WORKLOAD = {"mode": "paced", "asks_cap": 13, "interval_s": 30.0, "max_in_flight": 2, "tail_s": 30.0,
-                "derivation": {"asks": 13, "day_cap_micro": 10_000_000, "hybrid_estimate_micro": 753_025}}
+                "derivation": {"asks": 13, "day_cap_micro": 10_000_000, "hybrid_estimate_micro": 753_229}}
 INVALID_JOB = {"state": "timeout"}
 
 

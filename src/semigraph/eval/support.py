@@ -53,10 +53,20 @@ def _figure_supported(figure: float, pool: list[float]) -> bool:
     return any(abs(v - figure) / figure < AMOUNT_TOLERANCE for v in pool if figure)
 
 
+_LIST_MARKER_RE = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+")
+_EMPHASIS_RE = re.compile(r"\*+|_{2,}|`+|(?<!\w)_|_(?!\w)")
+
+
+def _plain(text: str) -> str:
+    """``text`` without markdown emphasis (``**`` ``__`` ``*`` ``_`` backticks) and a leading list marker, so a bulleted
+    ``- **TSMC**`` is matched as the name ``TSMC`` (``_`` between word characters, as in an id, stays)."""
+    return _EMPHASIS_RE.sub("", _LIST_MARKER_RE.sub("", text))
+
+
 def _sentence_supported(sentence: str, sources: dict[str, str]) -> bool | None:
     """True / False, or None when the sentence has no checkable claim (no citation, or a negative claim)."""
     ids = CITE_RE.findall(sentence)
-    body = _ANY_CITE_RE.sub("", sentence)
+    body = _plain(_ANY_CITE_RE.sub("", sentence))
     if not ids or _NEGATION_RE.search(body):
         return None
     texts = [sources.get(i, "") for i in ids]

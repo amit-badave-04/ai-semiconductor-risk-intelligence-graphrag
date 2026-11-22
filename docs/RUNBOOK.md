@@ -164,9 +164,9 @@ unless the average ask costs more than about 6.21 cents (6.03 cents when the ask
 charged the dearest the ask could cost (`serve/estimate.py`) until it settles, then its actual cost; a new ask is refused
 if today's spend plus its own estimate would pass $10. The estimates with the live models (each model sizes the prompt at
 its own characters per token: Claude Sonnet 5 at 2.0, every other model at 2.5; `tests/test_serve_estimate.py` derives them
-from `fly.toml`) are: a plain (hybrid) ask **$0.753025**, a vector ask $0.266485, an agent ask **$1.008529** (its companies
-are capped at the anchor cap, and it holds at most 4 filing comparisons per company) and an upload-workspace ask **$0.753604**, so an agent ask is refused earlier in the day than a
-plain one. (M2a, council decision 005, added the evidence-quote and rule-abstract lines to the hybrid and workspace context and raised the per-company allowance from 42,000 to 48,000 characters (45,000 for a workspace ask, which renders no quote lines or abstracts; both measured on a worst case with 7-digit CIKs, 17-character TWD amounts and every superseded mark): the hybrid and workspace estimates rose from $0.709573 and $0.734632, and the agent's context is unchanged apart from the larger answer template. The 2026-11-22 re-measurement (worst case rebuilt with 13-digit TWD amounts, two non-positive metric series, a superseded mark on every edge line) kept those allowances, re-measured the RELATIONSHIPS line allowance from 300 to 280 characters (the longest rendered line is 269) and set the agent's cap to 4 filing comparisons per company (5 rendered 50,228 characters per company, over its 50,000 allowance). The earlier figures, $0.58 / $0.22 / $0.83 / $0.60, priced Sonnet's prompt at 2.5 characters per token, which
+from `fly.toml`) are: a plain (hybrid) ask **$0.753229**, a vector ask $0.266689, an agent ask **$1.008733** (its companies
+are capped at the anchor cap, and it holds at most 4 filing comparisons per company) and an upload-workspace ask **$0.753808**, so an agent ask is refused earlier in the day than a
+plain one. (M2a, council decision 005, added the evidence-quote and rule-abstract lines to the hybrid and workspace context and raised the per-company allowance from 42,000 to 48,000 characters (45,000 for a workspace ask, which renders no quote lines or abstracts; both measured on a worst case with 7-digit CIKs, 17-character TWD amounts and every superseded mark): the hybrid and workspace estimates rose from $0.709573 and $0.734632, and the agent's context is unchanged apart from the larger answer template (9,508 and 10,608 characters after the base-year citation rule, ceilings 9,600 and 10,700). The 2026-11-22 re-measurement (worst case rebuilt with 13-digit TWD amounts, two non-positive metric series, a superseded mark on every edge line) kept those allowances, re-measured the RELATIONSHIPS line allowance from 300 to 280 characters (the longest rendered line is 269) and set the agent's cap to 4 filing comparisons per company (5 rendered 50,228 characters per company, over its 50,000 allowance). The earlier figures, $0.58 / $0.22 / $0.83 / $0.60, priced Sonnet's prompt at 2.5 characters per token, which
 the recorded Sonnet prompts did not hold to.) The estimates are written to the boot log, one
 line per ask type: `flyctl logs -a semigraph | Select-String "ask_type="`. An ask whose client leaves before the answer
 ends (or whose stream is cut) is charged what its **meter** says ("The per-address spend share" below): 0 when no paid model call had
@@ -231,16 +231,16 @@ An ask is admitted only while this holds for the visitor's address hash: `settle
 running asks + this ask's estimate <= the share`. The checks run after the per-address daily count and before the global
 in-flight cap (gate order above). The same rule runs on both backends (`inprocess`, `neo4j`).
 
-**Why 1.32** (council 4's two requirements, applied to the estimates of "Paid-ask limits": hybrid $0.753025, vector $0.266485,
-agent $1.008529, workspace $0.753604). (i') Pausing live asks takes at least eight addresses: after seven addresses have each
-spent a full share, the rest of the day still admits a hybrid ask, `10 - 7 x share >= 0.753025`, so the share is at most
-`(10 - 0.753025) / 7 = $1.3210`. (The first form of this rule, only `7 x share < 10`, was met by the earlier $1.40, which left
+**Why 1.32** (council 4's two requirements, applied to the estimates of "Paid-ask limits": hybrid $0.753229, vector $0.266689,
+agent $1.008733, workspace $0.753808). (i') Pausing live asks takes at least eight addresses: after seven addresses have each
+spent a full share, the rest of the day still admits a hybrid ask, `10 - 7 x share >= 0.753229`, so the share is at most
+`(10 - 0.753229) / 7 = $1.3210`. (The first form of this rule, only `7 x share < 10`, was met by the earlier $1.40, which left
 $0.20 of the day: less than any live ask, so seven addresses could stop live asks for the day, because the day cap is judged on
 estimates. Cached answers would still have worked.) (ii) The buyer demo from one office is admitted whole (20 asks with 3
 escalations and 2 agent asks: the second agent ask arrives with about $0.30 settled), so the share is at least
-`0.30 + 1.008529 = $1.3085`. The window is $1.3085 to $1.3210 and $1.32 is inside it, with margins of $0.0115 (agent side; the rule keeps $0.0025) and $0.0010 (hybrid side; the rule keeps $0.0005), and seven full shares plus a workspace ask end at $9.9936 of the $10 (`tests/test_m2a_spend_budget.py`). The old share, $1.25 (`$10 / 8`), fails
-(ii). Seven full shares at $1.32 are $9.24 and leave $0.76: a hybrid ask ($0.753025), an upload-workspace ask ($0.753604) and a vector
-ask ($0.266485) still fit, an agent ask ($1.008529) does not; an eighth address then pauses live asks. `tests/test_serve_config_production.py`
+`0.30 + 1.008733 = $1.3085`. The window is $1.3085 to $1.3210 and $1.32 is inside it, with margins of $0.0113 (agent side; the rule keeps $0.0025) and $0.0010 (hybrid side; the rule keeps $0.0005), and seven full shares plus a workspace ask end at $9.9936 of the $10 (`tests/test_m2a_spend_budget.py`). The old share, $1.25 (`$10 / 8`), fails
+(ii). Seven full shares at $1.32 are $9.24 and leave $0.76: a hybrid ask ($0.753229), an upload-workspace ask ($0.753808) and a vector
+ask ($0.266689) still fit, an agent ask ($1.008733) does not; an eighth address then pauses live asks. `tests/test_serve_config_production.py`
 computes both rules from the live estimates and the production caps, and `tests/test_state_contract.py` pins them on every
 backend; if an estimate or a cap moves, those tests fail until the share is re-derived.
 
@@ -248,12 +248,12 @@ What $1.32 allows one address at a time (a running ask counts at its estimate):
 
 | Ask | Admitted while the address's settled spend is at most |
 |---|---|
-| hybrid ($0.753025) | about $0.57 |
-| agent ($1.008529) | about $0.31 |
-| workspace ($0.753604) | about $0.57 |
-| vector ($0.266485) | about $1.05 |
+| hybrid ($0.753229) | about $0.57 |
+| agent ($1.008733) | about $0.31 |
+| workspace ($0.753808) | about $0.57 |
+| vector ($0.266689) | about $1.05 |
 
-Two hybrid asks in flight together from one address (2 x $0.753025 = $1.506) do not fit: the second is told the service is
+Two hybrid asks in flight together from one address (2 x $0.753229 = $1.506) do not fit: the second is told the service is
 busy until the first settles. An agent ask beside a hybrid one ($1.76) and a workspace ask beside a hybrid one ($1.51) do
 not fit either; a vector ask fits beside a hybrid ($1.02) or an agent ask ($1.28). Other addresses are unaffected.
 
@@ -280,15 +280,15 @@ not fit either; a vector ask fits beside a hybrid ($1.02) or an agent ask ($1.28
   recorded deployed-eval rows cost $0.066 (`V2E_ROW_MAX_USD` in `tests/test_serve_estimate.py`). The 20 live asks per
   address per day that `PAID_PER_IP_PER_DAY` admits therefore come to about $0.04 against a share of $1.32: about 20 live
   asks a day are still admitted, and `PAID_PER_IP_PER_DAY` is what ends the twenty-first. (A hybrid ask is admitted only while
-  the settled spend plus its own $0.753025 estimate fits $1.32, i.e. while settled spend is at most about $0.57: about 280 asks
+  the settled spend plus its own $0.753229 estimate fits $1.32, i.e. while settled spend is at most about $0.57: about 280 asks
   at $0.002, but only 9 asks if every one cost the dearest recorded $0.066, so a day of nothing but long escalated
   answers from one address would be cut off at its 10th ask.) While an ask runs it is
   counted at its ESTIMATE (about $0.75 for a hybrid ask, $1.01 for an agent ask; `tests/test_serve_estimate.py`). A demo with
   3 escalations ($0.04 each) and 2 agent asks ($0.15 each) has about $0.30 settled when its second agent ask arrives, which
-  fits ($0.30 + $1.008529 = $1.308529 <= $1.32, with $0.011 to spare; an agent ask is admitted only while the address's settled
+  fits ($0.30 + $1.008733 = $1.308733 <= $1.32, with $0.011 to spare; an agent ask is admitted only while the address's settled
   spend is at most about $0.31). What the share adds for one office is narrower: **one hybrid or one agent ask in
   flight leaves no room for a second hybrid ask from the same address even when the global cap (`MAX_CONCURRENT_ANSWERS`, 2
-  on the live app) has a free slot** (2 x $0.753025 = $1.506 is more than $1.32), and that second ask is told the service is busy
+  on the live app) has a free slot** (2 x $0.753229 = $1.506 is more than $1.32), and that second ask is told the service is busy
   (not the "allowance used" text) until the first ends. Other addresses are unaffected. Cached examples take no lease and are
   never refused by the share. A demo that needs more cannot raise the share (production refuses a value above 1.32): give the
   room a second address, run the asks one at a time, or show the examples.

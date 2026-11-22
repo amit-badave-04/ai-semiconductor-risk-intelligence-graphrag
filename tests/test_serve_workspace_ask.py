@@ -238,4 +238,4 @@ def test_an_injected_uploaded_chunk_flags_suspicious_without_blocking(client, mo
 
 
 def test_template_fingerprint_is_unchanged_after_the_workspace_template_was_added():
-    assert answerer.template_fingerprint() == "fbed8caa9e"
+    assert answerer.template_fingerprint() == "c96534e0e6"

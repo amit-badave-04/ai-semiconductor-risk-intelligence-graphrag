@@ -294,7 +294,7 @@ def test_a_question_at_or_under_the_cap_gets_no_dropped_key_and_no_note(names):
 def test_the_result_keys_of_an_uncapped_question_are_the_ones_the_old_shape_test_pins():
     r, _ = retrieve("How does Nvidia depend on TSMC?")
     assert set(r) == {"anchors", "edges", "metrics", "metric_periods", "risks", "temporal", "temporal_pairs",
-                      "temporal_passages", "temporal_notices", "chunks", "anchor_defaulted"}
+                      "temporal_passages", "temporal_notices", "chunks", "anchor_defaulted", "question"}
 
 
 # --- the note reaches the writer and cannot be mistaken for a finding ---------------------------------------------

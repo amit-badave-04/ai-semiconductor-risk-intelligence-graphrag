@@ -69,7 +69,7 @@ TEMPORAL_HEADER, AFTER_TEMPORAL_HEADER = CONTEXT_HEADERS[4], CONTEXT_HEADERS[5]
 # Bumped by hand WHENEVER a line format of the context changes (a new line, a moved id, a mark). It is folded into
 # ``answerer.template_fingerprint()``, so the answer cache and the seeded examples refuse anything written under the old
 # layout. tests/test_answerer_context.py hashes a rendered golden context and fails when the lines change without a bump.
-CONTEXT_VERSION = "m2a-1"
+CONTEXT_VERSION = "m2a-2"
 
 NONE_BLOCK = "(none)"
 MAX_CHUNK_IDS_PER_ITEM = 3          # ids printed per side of a temporal item, per passage (and per relation edge)
@@ -80,7 +80,7 @@ PASSAGE_QUOTE_CHARS = 450           # a passage is quoted up to here: graph/pass
 PASSAGE_WHERE_CHARS = 100           # the containing item's label beside a passage
 EDGE_QUOTE_CHARS = 240              # an edge's stored evidence quote (measured: max 241, p90 206 over 73 quotes)
 RULE_ABSTRACT_CHARS = 120           # a rule's stored abstract (up to 1,000 characters) is cut here (council 005)
-QUOTES_PER_ANCHOR = 6               # evidence-quote lines per anchor company (M2a council 005; the live hybrid estimate is $0.753025, decision 005 F5)
+QUOTES_PER_ANCHOR = 6               # evidence-quote lines per anchor company (M2a council 005; the live hybrid estimate is $0.753229, decision 005 F5)
 DETAIL_LINES_KEY = "detail_lines"   # a retrieval dict that sets this False renders no edge quote lines and no rule abstracts (R6b)
 YOY_PRIOR_IDS_KEY = "yoy_prior_ids"  # how a computed year-over-year note is rendered (R4): YOY_ALL (default), YOY_NAMED or YOY_OFF
 YOY_ALL = "all"                     # every note with a prior row shown is its own line carrying the prior and the current id (R4)

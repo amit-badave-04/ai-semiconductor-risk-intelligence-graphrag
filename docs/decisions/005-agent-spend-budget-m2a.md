@@ -210,9 +210,9 @@ the real merge (with its cap note) is 50,228 characters per company, over the 50
 (the graph holds at most 4 consecutive comparisons of any company, AMD: five filings; nothing the data holds is cut). The agent ceiling is not
 raised. Raising the cap back to 5 needs a 50,500 allowance (agent estimate about $1.0126, still inside the share window).
 
-Final estimates (live models): hybrid $0.753025 (target 0.755), workspace $0.753604 (0.755), agent $1.008529 (1.0175), vector $0.266485. Margins:
-`0.30 + agent = 1.308529 <= 1.32 - 0.0025`; `(10 - 0.753025) / 7 = 1.320996 >= 1.32 + 0.0005`; `7 x 1.32 + workspace = 9.993604 <= 10 - 0.0005`.
-Pinned in `tests/test_m2a_spend_budget.py`. The probe ask count `floor(10 / 0.753025)` is still 13. Other pins moved: `tests/test_serve_estimate.py`,
+Final estimates (live models): hybrid $0.753229 (target 0.755), workspace $0.753808 (0.755), agent $1.008733 (1.0175), vector $0.266689. Margins:
+`0.30 + agent = 1.308733 <= 1.32 - 0.0025`; `(10 - 0.753229) / 7 = 1.320967 >= 1.32 + 0.0005`; `7 x 1.32 + workspace = 9.993808 <= 10 - 0.0005`.
+Pinned in `tests/test_m2a_spend_budget.py`. The probe ask count `floor(10 / 0.753229)` is still 13. Other pins moved: `tests/test_serve_estimate.py`,
 `tests/test_state_contract.py`, `tests/test_tools_probe_w1b.py`, `tests/test_tools_s7.py`, `deploy/staging/windows.json`, `tools/probe/README.md`,
 `docs/RUNBOOK.md`, `src/semigraph/config.py` (share-window rationale).
 
@@ -222,3 +222,14 @@ Pinned in `tests/test_m2a_spend_budget.py`. The probe ask count `floor(10 / 0.75
 cannot be re-judged against what the model saw); the operator passes a new `--runs-file`. When a question names no company, retrieval anchors
 on the default company with `anchors = {}`; `build_blocks` now treats that default company as an anchor when `anchor_defaulted`, inside the same
 per-anchor quote cap.
+
+### F6. After the first paid eval: quote relevance, base-year rule, checker (2026-11-22)
+
+The first paid eval (`artifacts/eval_report.m2a-deployed.json`) missed three section-6 rows; each got one fix. R6: quote lines are chosen per
+anchor by relevance to the question (shared content words, the relation the question names, the other endpoint), ties in query order, so the
+cap of 6 no longer cuts a DEPENDS_ON quote behind six COMPETES_WITH ones; `CONTEXT_VERSION` is `m2a-2`. OD4: one rule in `answer.txt` and
+`answer_workspace.txt` asks that a change taken from a "computed:" line cite both ids printed on it. The templates are now 9,508 and 10,608
+characters, so `ANSWER_TEMPLATE_CHARS` is 9,600 and `WORKSPACE_TEMPLATE_CHARS` is 10,700 (the rule adds 105 characters to each).
+Final estimates: hybrid $0.753229 (target 0.755), workspace $0.753808 (0.755), agent $1.008733 (1.0175), vector $0.266689. Margins:
+`0.30 + agent = 1.308733` (11,267 micro-dollars under 1.32), `(10 - 0.753229) / 7 = 1.320967` (967 over), `7 x 1.32 + workspace = 9.993808`.
+The probe ask count `floor(10 / 0.753229)` is still 13. The examples fingerprint changed; the seeded examples are regenerated after the next paid run.

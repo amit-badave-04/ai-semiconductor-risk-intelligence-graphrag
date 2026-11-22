@@ -81,3 +81,11 @@ def test_an_id_seen_only_on_a_relationships_edge_line_has_no_text():            
     row = {"id": "e", "answer": f"Nvidia relies on TSMC [{edge_id}].", "context": ctx}
     res = support.claim_support_rate([row])
     assert res["unsupported"] == 1 and res["supported"] == 0
+
+
+@pytest.mark.parametrize("bullet", ["- **TSMC** [{i}]", "- __TSMC__ [{i}]", "* `TSMC` [{i}]", "1. *TSMC* [{i}]"])
+def test_markdown_emphasis_and_list_markers_do_not_hide_a_company_name_d3_shape(bullet):
+    i = "0000002488-26-000018:I.1:0024"
+    sources = {i: "AMD relies on TSMC to manufacture its products."}
+    assert support.claim_support(bullet.format(i=i), sources)["rate"] == 1.0
+    assert support.claim_support("- **Intel** [%s]" % i, sources)["unsupported"] == 1       # still checked, not waved through

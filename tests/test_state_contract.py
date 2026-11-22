@@ -62,18 +62,18 @@ OPEN = dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=
             max_concurrent_answers=1000)
 KINDS = ["inprocess", "inprocess-db", "neo4j"]
 SHARE_MICRO = 1_320_000                          # one address's share of the day's spend (config.py has the arithmetic)
-HYBRID_ESTIMATE, AGENT_ESTIMATE = 753_025, 1_008_529    # the live worst-case estimates (tests/test_serve_estimate.py); were
-#                                                          742_825 / 1_008_529 with the first M2a allowance, 709_573 / 1_015_669 before the M2a context (council 005: quote lines, rule
+HYBRID_ESTIMATE, AGENT_ESTIMATE = 753_229, 1_008_733    # the live worst-case estimates (tests/test_serve_estimate.py); were
+#                                                          742_825 / 1_008_733 with the first M2a allowance, 709_573 / 1_015_669 before the M2a context (council 005: quote lines, rule
 #                                                          abstracts, a bigger per-anchor allowance), 580_089 / 827_661 before Sonnet
 #                                                          had a characters-per-token figure of its own: a test below pins them to the service
-VECTOR_ESTIMATE = 266_485                                # the cheapest live ask (was 223_389), same source
-WORKSPACE_ESTIMATE = 753_604                             # an upload workspace ask, same source
+VECTOR_ESTIMATE = 266_689                                # the cheapest live ask (was 223_389), same source
+WORKSPACE_ESTIMATE = 753_808                             # an upload workspace ask, same source
 # Council 4's test (b), a buyer demo from one office: 15 plain answers ($0.002), 3 escalations ($0.04) and 2 agent asks ($0.15), the
 # agent asks last. Settled spend when the SECOND agent ask arrives: 15 x 2_000 + 3 x 40_000 + 150_000 = 300_000.
 DEMO_PLAN = ([("hybrid", HYBRID_ESTIMATE, 2_000)] * 15 + [("hybrid", HYBRID_ESTIMATE, 40_000)] * 3
              + [("agent", AGENT_ESTIMATE, 150_000)] * 2)
 DEMO_SETTLED_BEFORE_THE_SECOND_AGENT_ASK = 15 * 2_000 + 3 * 40_000 + 150_000
-SONNET_ATTEMPT_AT_THE_CEILING = 369_012                  # one Sonnet attempt at the hybrid ceiling: 172,506 x $2 + 2,400 x $10
+SONNET_ATTEMPT_AT_THE_CEILING = 369_112                  # one Sonnet attempt at the hybrid ceiling: 172,556 x $2 + 2,400 x $10
 _tests_run = itertools.count()
 
 
@@ -395,17 +395,17 @@ def test_the_share_these_tests_use_is_the_production_share_and_meets_the_two_rul
     """Drift guard: the cases below are built on ``SHARE_MICRO``. Rule (i'): pausing live asks needs at least eight addresses,
     so what seven full shares leave of the day still holds a hybrid ask (the first form, ``7 x share < cap``, let $1.40 leave
     $0.20, less than any live ask). Rule (ii): the buyer demo's second agent ask fits (settled 300,000 + the agent estimate).
-    The live estimates (hybrid 753,025, agent 1,008,529, workspace 753,604) leave real margins on the $1.32 share: the agent
-    side by 11,471 micro-dollars (1,320,000 - 1,308,529; the rule asks for 2,500), the hybrid side by 996 micro-dollars of
-    share ((10,000,000 - 753,025) / 7 = 1,320,996; the rule asks for 500), and seven full shares plus a workspace ask end at 9,993,604 of the
-    10,000,000 (a margin of 6,396; 500 is required). tests/test_m2a_spend_budget.py pins those margins. The estimates are
+    The live estimates (hybrid 753,229, agent 1,008,733, workspace 753,808) leave real margins on the $1.32 share: the agent
+    side by 11,267 micro-dollars (1,320,000 - 1,308,733; the rule asks for 2,500), the hybrid side by 967 micro-dollars of
+    share ((10,000,000 - 753,229) / 7 = 1,320,967; the rule asks for 500), and seven full shares plus a workspace ask end at 9,993,808 of the
+    10,000,000 (a margin of 6,192; 500 is required). tests/test_m2a_spend_budget.py pins those margins. The estimates are
     pinned to the service two tests below, and tests/test_serve_config_production.py computes both rules from the service
     itself."""
     from semigraph.config import PRODUCTION_MAX_SPEND_USD_PER_DAY, PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD
     day_cap = usd_to_micro(PRODUCTION_MAX_SPEND_USD_PER_DAY)
     assert usd_to_micro(PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD) == SHARE_MICRO == usd_to_micro(SHARE["paid_spend_share_per_ip_usd"])
     assert day_cap == usd_to_micro(SHARE["max_spend_usd_per_day"])
-    assert day_cap - 7 * SHARE_MICRO >= HYBRID_ESTIMATE                                  # (i'): 760_000 >= 753_025 (margin 6_975)
+    assert day_cap - 7 * SHARE_MICRO >= HYBRID_ESTIMATE                                  # (i'): 760_000 >= 753_229 (margin 6_975)
     assert SHARE_MICRO >= DEMO_SETTLED_BEFORE_THE_SECOND_AGENT_ASK + AGENT_ESTIMATE      # (ii): 1_320_000 >= 1_308_529
 
 

@@ -390,7 +390,9 @@ DETAIL_RETRIEVAL = {
 }
 # One hash per CONTEXT_VERSION, never edited: a line change without a new version fails here, and the cure is a new version
 # (which re-keys the answer cache and refuses the seeded examples), not a new hash under the old one.
-GOLDEN_CONTEXT_HASHES = {"m2a-1": "c10e162434ee3261dc00c678e0b3a590e41ee4078baf7f34f2b72484efea6c87"}
+GOLDEN_CONTEXT_HASHES = {"m2a-1": "c10e162434ee3261dc00c678e0b3a590e41ee4078baf7f34f2b72484efea6c87",
+                         # m2a-2: quote lines are picked by relevance to the question (R6); this question-less golden renders as before
+                         "m2a-2": "c10e162434ee3261dc00c678e0b3a590e41ee4078baf7f34f2b72484efea6c87"}
 
 
 def test_a_context_line_change_needs_a_context_version_bump():

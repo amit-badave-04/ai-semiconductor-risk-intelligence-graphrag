@@ -67,7 +67,7 @@ from .context_layout import (  # noqa: F401 - re-exported: eval/bakeoff and the 
     sanitise_untrusted,
     temporal_block,
 )
-from .retriever import DEFAULT_ANCHOR_CIK, METRIC_PERIODS_SHOWN, hybrid_retrieve, vector_retrieve
+from .retriever import DEFAULT_ANCHOR_CIK, METRIC_PERIODS_SHOWN, _content_tokens, hybrid_retrieve, vector_retrieve
 from .router import needs_strong_model
 from .verify import answer_checks, verify_answer
 
@@ -286,6 +286,21 @@ def _quote_line(edge: Mapping, quote_id: str | None, meta: Mapping[str, Mapping]
     return f"  evidence {_id_marks([quote_id], meta)}: {text}"
 
 
+_RELATION_STEMS = {"DEPENDS_ON": ("depend", "rely", "relie", "relian"), "SUPPLIES_TO": ("suppl",),
+                   "CUSTOMER_OF": ("custom", "buyer", "buys"), "COMPETES_WITH": ("compet", "rival")}
+
+
+def _quote_relevance(edge: Mapping, question_tokens: set[str]) -> int:
+    """How much of the question an edge's quote speaks to (R6): content words shared with the quote text or the other
+    endpoint's name, plus two for the relation the question names. Ties keep query order (the caller's stable sort)."""
+    if not question_tokens:
+        return 0
+    stems = _RELATION_STEMS.get(edge.get("relation"), ())
+    relation = 2 if any(t.startswith(stem) for t in question_tokens for stem in stems) else 0
+    ends = _content_tokens(f"{edge.get('source')} {edge.get('target')}")
+    return relation + len(question_tokens & _content_tokens(edge.get("quote"))) + len(question_tokens & ends)
+
+
 def build_blocks(r: dict, *, detail_lines: bool | None = None) -> tuple[ContextBlocks, str, set[str]]:
     """Assemble prompt blocks + the full context string + the set of valid (citable) ids from a retrieval result.
 
@@ -304,14 +319,22 @@ def build_blocks(r: dict, *, detail_lines: bool | None = None) -> tuple[ContextB
     anchor_ciks, quotes_shown = set((r.get("anchors") or {}).values()), Counter()
     if r.get("anchor_defaulted"):
         anchor_ciks.add(DEFAULT_ANCHOR_CIK)       # no company was named: retrieval anchored on the default one, with anchors = {} (R6)
-    for e in (e for e in r["edges"] if e["relation"] != RULE_RELATION):
+    edges = [e for e in r["edges"] if e["relation"] != RULE_RELATION]
+    question_tokens = _content_tokens(r.get("question"))
+    quote_order = sorted(range(len(edges)), key=lambda i: -_quote_relevance(edges[i], question_tokens))   # stable: ties keep query order
+    quotes: dict[int, str] = {}
+    for i in quote_order if detail_lines else ():
+        ids = edges[i].get("chunk_ids") or []
+        if quote := _quote_line(edges[i], ids[0] if ids else None, _evidence_meta(edges[i]), anchor_ciks, quotes_shown):
+            quotes[i] = quote       # the quote's id is the FIRST-LOADED one, taken before any reordering
+    for i, e in enumerate(edges):
         ids = e.get("chunk_ids") or []
         valid_ids.update(ids)
         meta = _evidence_meta(e)
         shown = _current_first(ids, meta)[:MAX_CHUNK_IDS_PER_ITEM]
         e_lines.append(f"- {e['source']} {e['relation']} {e['target']} (status={e.get('status')}) {_id_marks(shown, meta)}")
-        if detail_lines and (quote := _quote_line(e, ids[0] if ids else None, meta, anchor_ciks, quotes_shown)):
-            e_lines.append(quote)       # the quote's id is the FIRST-LOADED one, taken before the reordering above
+        if i in quotes:
+            e_lines.append(quotes[i])
     x_lines = [_external_line(e, valid_ids, detail_lines=detail_lines) for e in r["edges"] if e["relation"] == RULE_RELATION]
     periods = r.get("metric_periods") or {}
     m_lines, metric_ids = metrics_lines(r["metrics"], years=periods.get("years") or (), dates=periods.get("dates") or (),

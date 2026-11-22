@@ -51,9 +51,9 @@ SONNET_IN, SONNET_OUT = Fraction(2), Fraction(10)
 #   agent:     9,500 + 500 + 96,512 + 8 more excerpts (96,512) + 46,200 + 40 edges x 280 + 6 more risks x 700 + 4
 #              computed x 400 + 4 companies' blocks (the agent covers no more companies than a plain ask: its tools
 #              are refused past the anchor cap) x 50,000 + 300         = 466,524 chars -> 186,610          233,262
-PROMPT_CHARS = {"vector": 106_512, "hybrid": 345_012, "workspace": 345_296, "agent": 466_524}
-LUNA_PROMPT_TOKENS = {"vector": 42_605, "hybrid": 138_005, "workspace": 138_119, "agent": 186_610}       # chars / 2.5, up
-SONNET_PROMPT_TOKENS = {"vector": 53_256, "hybrid": 172_506, "workspace": 172_648, "agent": 233_262}     # chars / 2.0, up
+PROMPT_CHARS = {"vector": 106_612, "hybrid": 345_112, "workspace": 345_396, "agent": 466_624}
+LUNA_PROMPT_TOKENS = {"vector": 42_645, "hybrid": 138_045, "workspace": 138_159, "agent": 186_650}       # chars / 2.5, up
+SONNET_PROMPT_TOKENS = {"vector": 53_306, "hybrid": 172_556, "workspace": 172_698, "agent": 233_312}     # chars / 2.0, up
 OUT_TOKENS = 2_400                    # fly.toml LLM_ANSWER_MAX_TOKENS
 PLANNER_IN_TOKENS, PLANNER_OUT_TOKENS = 23_400, 400   # (8,000 fixed + 500 question + 50,000 growth) / 2.5 (Luna); the cap
 PLANNER_CALLS = 3                     # agent_max_model_calls
@@ -146,9 +146,9 @@ def test_live_shape_estimate_equals_the_hand_computation(ask_type):
 def test_hand_computed_live_numbers_are_the_ones_reported_to_the_owner():
     # hybrid: Luna 138,005 x 0.10 + 2,400 x 0.50 = 15,120.5; Sonnet 2 x (172,506 x 2 + 2,400 x 10) = 744,024 -> 753,025
     # workspace: Luna 138,119 x 0.10 + 1,200 = 15,131.9; Sonnet 2 x (172,648 x 2 + 24,000) = 744,592 -> 753,604
-    assert [expected_micro(t) for t in ("hybrid", "vector", "workspace")] == [753_025, 266_485, 753_604]
+    assert [expected_micro(t) for t in ("hybrid", "vector", "workspace")] == [753_229, 266_689, 753_808]
     # agent: Luna 186,610 x 0.10 + 1,200 = 20,013; Sonnet 2 x (233,262 x 2 + 24,000) = 988,648; planner 3 x 2,540 = 7,620
-    assert expected_micro("agent") == 1_008_529
+    assert expected_micro("agent") == 1_008_733
 
 
 def test_the_estimates_before_sonnet_had_a_ratio_of_its_own_are_what_this_change_moved_from():
@@ -157,7 +157,7 @@ def test_the_estimates_before_sonnet_had_a_ratio_of_its_own_are_what_this_change
     recorded Sonnet prompts), so every estimate rose by 19 to 30 percent."""
     old = {"hybrid": 580_089, "vector": 223_389, "workspace": 600_236, "agent": 827_661}
     new = {t: est.estimate_micro(t, make_settings()) for t in ASK_TYPES}
-    assert new == {"hybrid": 753_025, "vector": 266_485, "workspace": 753_604, "agent": 1_008_529}   # + M2a context (council 005)
+    assert new == {"hybrid": 753_229, "vector": 266_689, "workspace": 753_808, "agent": 1_008_733}   # + M2a context (council 005)
     assert {t: round(new[t] / old[t], 2) for t in ASK_TYPES} == {"hybrid": 1.3, "vector": 1.19, "workspace": 1.26,
                                                                   "agent": 1.22}
 
@@ -294,7 +294,7 @@ def test_every_models_prompt_ceiling_is_within_its_context_window_and_sonnet_has
     settings = make_settings()
     strong = {t: est.prompt_tokens(t, settings, SONNET, "strong") for t in ASK_TYPES}
     assert max(strong.values()) <= SONNET_MAX_INPUT_TOKENS, strong
-    assert max(strong.values()) == SONNET_PROMPT_TOKENS["agent"] == 233_262          # 4x inside the window
+    assert max(strong.values()) == SONNET_PROMPT_TOKENS["agent"] == 233_312          # 4x inside the window
 
     # a flat price: one (input, output) pair per model, and nothing in the price lookup takes a size
     assert KNOWN_PRICES_PER_MTOK[SONNET] == (float(SONNET_IN), float(SONNET_OUT))
@@ -568,7 +568,7 @@ def test_every_estimate_covers_the_worst_case_prompt_rendered_at_the_caps_on_the
 def test_the_rendered_worst_cases_are_the_prompts_the_hand_arithmetic_describes():
     """The rendered sizes (characters), so a change to a layout or a cap shows here first."""
     assert {t: rendered_worst_case_chars(t) for t in ASK_TYPES} == {
-        "vector": 106_121, "hybrid": 340_415, "workspace": 341_164, "agent": 461_715}
+        "vector": 106_228, "hybrid": 340_522, "workspace": 341_271, "agent": 461_822}
 
 
 @pytest.mark.parametrize("pairs", [1, 2])
@@ -644,7 +644,7 @@ def test_without_the_cap_the_same_calls_cost_more_than_the_agent_estimate_holds(
     at the live prices, above the 1,008,529 the estimate holds. The cap, not the data, is what keeps it a bound."""
     r = merged_agent_context(AGENT_COMPANIES, pair_cap=100)
     assert sum(1 for p in r["temporal_pairs"] if p["cik"] == CIK_BASE + 1) == 10
-    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (581_739, 1_243_570)
+    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (581_846, 1_243_786)
     assert math.ceil(writer_floor_micro("agent", _prompt_chars(r))) > est.estimate_micro("agent", live_settings())
 
 
@@ -687,10 +687,10 @@ def test_the_ceiling_by_anchor_cap_is_the_table_the_cap_was_chosen_from(monkeypa
         monkeypatch.setattr(retriever, "MAX_ANCHORS", anchors)
         for ask_type in tokens:
             tokens[ask_type][anchors] = est.prompt_tokens(ask_type, make_settings(), SONNET, "strong")
-    assert tokens["hybrid"] == {1: 100_506, 2: 124_506, 3: 148_506, 4: 172_506, 5: 196_506, 6: 220_506, 7: 244_506,
-                                8: 268_506, 9: 292_506, 10: 316_506}
-    assert tokens["workspace"] == {1: 105_148, 2: 127_648, 3: 150_148, 4: 172_648, 5: 195_148, 6: 217_648, 7: 240_148,
-                                   8: 262_648, 9: 285_148, 10: 307_648}
+    assert tokens["hybrid"] == {1: 100_556, 2: 124_556, 3: 148_556, 4: 172_556, 5: 196_556, 6: 220_556, 7: 244_556,
+                                8: 268_556, 9: 292_556, 10: 316_556}
+    assert tokens["workspace"] == {1: 105_198, 2: 127_698, 3: 150_198, 4: 172_698, 5: 195_198, 6: 217_698, 7: 240_198,
+                                   8: 262_698, 9: 285_198, 10: 307_698}
     assert [n for n, t in tokens["hybrid"].items() if t < 200_000] == list(range(1, 6))
     assert [n for n, t in tokens["workspace"].items() if t < 200_000] == list(range(1, 6))
 
@@ -723,12 +723,12 @@ def test_without_an_escalation_model_the_answer_model_is_the_only_call_and_keeps
 
 def test_an_escalation_model_equal_to_the_answer_model_is_one_model_in_both_roles():
     """answerer.stream_answer_for_prompt drops the escalation when it equals the answering model (the documented
-    rollback). Sonnet alone is sized at Sonnet's ratio: 172,506 tokens a call, twice, with no draft."""
+    rollback). Sonnet alone is sized at Sonnet's ratio: 172,556 tokens a call, twice, with no draft."""
     same = est.estimate("hybrid", make_settings(answer_model=SONNET, escalation_model=SONNET))
     assert [c.name for c in same.components] == ["answer"]
     assert same.micro == est.estimate_micro("hybrid", make_settings(answer_model=SONNET, escalation_model=""))
     assert same.micro == math.ceil(cost_micro(SONNET_PROMPT_TOKENS["hybrid"], OUT_TOKENS, SONNET_IN, SONNET_OUT,
-                                              STRONG_CALLS)) == 738_024
+                                              STRONG_CALLS)) == 738_224
     assert same.components[0].input_tokens == SONNET_PROMPT_TOKENS["hybrid"]
 
 
@@ -1023,7 +1023,7 @@ def test_the_live_estimates_to_the_cent():
     s = live_settings()
     assert round(est.estimate_usd("hybrid", s), 2) == 0.75
     assert [round(est.estimate_usd(t, s), 2) for t in ("vector", "workspace", "agent")] == [0.27, 0.75, 1.01]
-    assert [est.estimate_micro(t, s) for t in ASK_TYPES] == [753_025, 266_485, 1_008_529, 753_604]
+    assert [est.estimate_micro(t, s) for t in ASK_TYPES] == [753_229, 266_689, 1_008_733, 753_808]
 
 
 def test_the_agent_estimate_is_the_anchor_capped_one_and_the_company_cap_is_the_one_place_that_sets_it():
@@ -1034,7 +1034,7 @@ def test_the_agent_estimate_is_the_anchor_capped_one_and_the_company_cap_is_the_
     ``agent_company_blocks`` is the one place that reads that cap."""
     from semigraph.agent import merge
     live = live_settings()
-    assert est.estimate_micro("agent", live) == 1_008_529
+    assert est.estimate_micro("agent", live) == 1_008_733
     assert est.agent_company_blocks() == merge.company_cap() == AGENT_COMPANIES == MAX_ANCHORS
 
 
@@ -1080,8 +1080,8 @@ def test_which_cap_binds_first_the_150_ask_count_or_the_10_dollar_estimate():
     live in-flight cap is 2."""
     s = live_settings()
     hybrid, agent = est.estimate_micro("hybrid", s), est.estimate_micro("agent", s)
-    assert (hybrid, agent) == (753_025, 1_008_529)
-    assert 150 * hybrid / 1_000_000 == pytest.approx(112.95, abs=0.01)
+    assert (hybrid, agent) == (753_229, 1_008_733)
+    assert 150 * hybrid / 1_000_000 == pytest.approx(112.98, abs=0.01)
     assert CAP_MICRO // hybrid == 13                       # at the estimate the 14th ask cannot reserve
     dearest, mean = round(V2E_ROW_MAX_USD * 1_000_000), round(V2E_MEAN_ROW_USD * 1_000_000)
     assert asks_granted(mean, hybrid) == COUNT_CAP
@@ -1089,13 +1089,13 @@ def test_which_cap_binds_first_the_150_ask_count_or_the_10_dollar_estimate():
     assert asks_granted(round(V2E_STRONG_ROW_MAX_USD * 1_000_000), hybrid) == COUNT_CAP
     assert asks_granted(dearest, hybrid) == 141            # the 142nd is denied by the $10 cap
     assert asks_granted(dearest, hybrid, in_flight=1) == 130     # one other lease in flight (the live cap is 2)
-    assert (CAP_MICRO - hybrid) // (COUNT_CAP - 1) == 62_060       # the break-even cost per ask: the dearest that still
-    assert asks_granted(62_060, hybrid) == COUNT_CAP and asks_granted(62_061, hybrid) == COUNT_CAP - 1   # gets all 150
+    assert (CAP_MICRO - hybrid) // (COUNT_CAP - 1) == 62_058       # the break-even cost per ask: the dearest that still
+    assert asks_granted(62_058, hybrid) == COUNT_CAP and asks_granted(62_059, hybrid) == COUNT_CAP - 1   # gets all 150
     agent_dearest, agent_mean = round(AGENT_ROW_MAX_USD * 1_000_000), round(AGENT_MEAN_ROW_USD * 1_000_000)
     assert asks_granted(agent_mean, agent) == COUNT_CAP and asks_granted(agent_dearest, agent) == 128
     assert 150 * agent_mean / 1_000_000 == pytest.approx(2.17, abs=0.01)
-    assert (CAP_MICRO - agent) // (COUNT_CAP - 1) == 60_345        # the agent's break-even cost per ask
-    assert asks_granted(60_345, agent) == COUNT_CAP and asks_granted(60_346, agent) == COUNT_CAP - 1
+    assert (CAP_MICRO - agent) // (COUNT_CAP - 1) == 60_344        # the agent's break-even cost per ask
+    assert asks_granted(60_344, agent) == COUNT_CAP and asks_granted(60_345, agent) == COUNT_CAP - 1
     assert CAP_MICRO // agent == 9        # nine agent asks at their estimate fill the day (a ceiling, not a charge)
 
 
@@ -1211,10 +1211,10 @@ def test_boot_estimates_logs_one_info_line_per_ask_type_with_the_number_and_its_
     assert len(lines) == 4 and not [r for r in caplog.records if r.levelno > logging.INFO]
     by_type = {t: next(r.getMessage() for r in lines if f"ask_type={t} " in r.getMessage()) for t in ASK_TYPES}
     hybrid = by_type["hybrid"]
-    # each component carries ITS model's tokens: Luna 138,005, Sonnet 172,506 (the ask's own prompt_tokens is the larger)
-    for fragment in ("usd=0.753025", "micro=753025", "prompt_tokens=172506", "anchors_max=4", "company_blocks=4", LUNA,
-                     SONNET, "x2", "unpriced=none", f"[{LUNA} x1: in 138005 out 2400 = 15001]",
-                     f"[{SONNET} x2: in 172506 out 2400 = 738024]"):
+    # each component carries ITS model's tokens: Luna 138,045, Sonnet 172,556 (the ask's own prompt_tokens is the larger)
+    for fragment in ("usd=0.753229", "micro=753229", "prompt_tokens=172556", "anchors_max=4", "company_blocks=4", LUNA,
+                     SONNET, "x2", "unpriced=none", f"[{LUNA} x1: in 138045 out 2400 = 15005]",
+                     f"[{SONNET} x2: in 172556 out 2400 = 738224]"):
         assert fragment in hybrid, fragment
     assert "anchors_assumed" not in hybrid
     assert "company_blocks=4" in by_type["agent"] and "company_blocks=0" in by_type["vector"]

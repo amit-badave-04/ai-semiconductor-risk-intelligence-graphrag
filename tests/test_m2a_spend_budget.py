@@ -34,7 +34,7 @@ TARGET_USD = {"hybrid": 0.755, "agent": 1.0175, "vector": 0.27, "workspace": 0.7
 # shares plus a workspace ask keep 500 micro-dollars of the day cap.
 AGENT_SIDE_MARGIN, HYBRID_SIDE_MARGIN, WORKSPACE_DAY_MARGIN = 0.0025, 0.0005, 0.0005
 LIVE_SHARE, DAY_CAP, AGENT_SETTLED_BEFORE = 1.32, 10.0, 0.30
-AGENT_ALLOWANCE_PER_COMPANY, AGENT_ALLOWANCE_TOTAL = 50_000, 466_524      # 4 companies x 50,000 + the shared context
+AGENT_ALLOWANCE_PER_COMPANY, AGENT_ALLOWANCE_TOTAL = 50_000, 466_624      # 4 companies x 50,000 + the shared context
 LIVE_FIELDS = ("answer_model", "escalation_model", "agent_planner_model", "llm_answer_max_tokens",
                "llm_input_price_per_mtok", "llm_output_price_per_mtok", "agent_max_model_calls", "agent_max_tool_calls",
                "max_question_chars")

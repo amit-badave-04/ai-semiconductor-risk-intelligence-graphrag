@@ -26,25 +26,25 @@ MIN_PRODUCTION_ADMIN_TOKEN_CHARS = 32       # secrets.token_urlsafe(32) is 43; a
 PRODUCTION_CLIENT_IP_HEADER = "fly-client-ip"
 PRODUCTION_MAX_SPEND_USD_PER_DAY = 10.0
 # One address's share of that day's spend (docs/v2/research/m5-councils/council4/verdict.md); 0 means "off". It must meet
-# council 4's two requirements, applied to the live estimates (hybrid $0.753025, vector $0.266485, agent $1.008529,
-# workspace $0.753604; serve/estimate.py, per-model characters per token, worst case re-measured 2026-11-22, decision 005 F5):
+# council 4's two requirements, applied to the live estimates (hybrid $0.753229, vector $0.266689, agent $1.008733,
+# workspace $0.753808; serve/estimate.py, per-model characters per token, worst case re-measured 2026-11-22, decision 005 F5):
 #   (i') pausing LIVE ASKS needs at least eight addresses: after seven addresses have each spent a full share, the rest of
 #        the day still admits a hybrid ask, max_spend_usd_per_day - 7 x share >= hybrid estimate
-#        (10 - 9.24 = 0.76 >= 0.753025), so share <= (10 - 0.753025) / 7 = $1.3210. (The first form of this rule, only
+#        (10 - 9.24 = 0.76 >= 0.753229), so share <= (10 - 0.753229) / 7 = $1.3210. (The first form of this rule, only
 #        7 x share < 10, was met by $1.40 with $0.20 left, less than any live ask: seven addresses could stop live asks
 #        for the day, because the day cap is judged on estimates.)
 #   (ii) the buyer demo from one office (council test (b), tests/test_state_contract.py) is admitted whole: 20 asks including
 #        3 escalations and 2 agent asks, the second agent ask arriving with $0.30 settled,
-#        share >= 0.30 + 1.008529 = $1.3085.
-# The window is $1.3085 to $1.3210; $1.32 is inside it, with margins of 11,471 micro-dollars on the agent side (the rule keeps
-# 2,500) and 996 on the hybrid side (the rule keeps 500); seven full shares plus a workspace ask end at 9,993,604 of the
+#        share >= 0.30 + 1.008733 = $1.3085.
+# The window is $1.3085 to $1.3210; $1.32 is inside it, with margins of 11,267 micro-dollars on the agent side (the rule keeps
+# 2,500) and 967 on the hybrid side (the rule keeps 500); seven full shares plus a workspace ask end at 9,993,808 of the
 # 10,000,000 (the rule keeps 500). tests/test_m2a_spend_budget.py pins those margins. The old $1.25 ($10 / 8) fails
 # (ii). tests/test_serve_config_production.py and tests/test_state_contract.py compute both rules from the live estimates and
 # the production caps: a changed estimate or cap fails them instead of leaving the number quietly wrong.
 # What $1.32 means for one address (a running ask counts at its estimate): two concurrent hybrid asks do not fit (2 x
-# 0.753025 > 1.32), so the second is refused with the busy text while the first runs; an agent ask is admitted while the
-# address's settled spend is at most about $0.31 (1.32 - 1.008529), a hybrid ask while it is at most about $0.57
-# (1.32 - 0.753025), a workspace ask about $0.57, a vector ask about $1.05.
+# 0.753229 > 1.32), so the second is refused with the busy text while the first runs; an agent ask is admitted while the
+# address's settled spend is at most about $0.31 (1.32 - 1.008733), a hybrid ask while it is at most about $0.57
+# (1.32 - 0.753229), a workspace ask about $0.57, a vector ask about $1.05.
 PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD = 1.32
 # Counts a live deployment may run at most (each 1 or more). The windows are "not looser than live": fly.toml [env] sets
 # none of the last five, so what runs today is the code default, which is the owner-approved value. The Settings class

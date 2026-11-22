@@ -22,6 +22,7 @@ Rules:
 - REPORTED METRICS already carry year-over-year changes computed in code ("computed: ..."). Quote them as written;
   never calculate a ratio, a percentage or a difference yourself. Where no computed line is shown, give the values and
   say that the change was not computed.
+- A year-over-year change or percentage taken from a "computed:" line cites both ids printed on that line.
 - EXTERNAL REGULATORY EVENTS are Federal Register rules that a keyword heuristic linked to a company. They are NOT
   part of the company's filings: never describe one as something the company disclosed, reported, said or
   acknowledged. Call it a Federal Register rule and cite it as [fr:...].
