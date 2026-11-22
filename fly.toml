@@ -39,8 +39,10 @@ kill_timeout = 300
   # it, so it lives here where scripts/check_env_fly.py and a reader of the repo can see it. TURNSTILE_SECRET_KEY stays a Fly secret.
   TURNSTILE_REQUIRED = "true"
   # Opt-in retrieval-planning agent (strategy=agent), docs/RUNBOOK.md "The M3 agent" / docs/v2/M3_AGENT_PLAN.md section 7.
-  # Enabled 2026-09-27 after a live paid ship-gate evaluation showed no regression vs the fixed path. Revert: set "false".
-  AGENT_ENABLED = "true"
+  # Enabled 2026-09-27 after a live paid ship-gate evaluation showed no regression vs the fixed path. Turned OFF for M2a's
+  # deploy C (owner, 2026-11-22: "Ship with agent OFF"): its ship gate (artifacts/eval_report.agent.m2a.json) scored 17/23
+  # against the improved fixed path's 21/23 (tolerance 1). Re-enable only after a passing agent gate. Revert: set "true".
+  AGENT_ENABLED = "false"
   # M4 (docs/RUNBOOK.md "Freshness monitor" / "Upload workspaces"). SEC_USER_AGENT is a Fly SECRET (it names a real person).
   # Revert either feature: set it to "false" and redeploy (workspaces still expire on schedule: the sweeper always runs).
   FRESHNESS_ENABLED = "true"
