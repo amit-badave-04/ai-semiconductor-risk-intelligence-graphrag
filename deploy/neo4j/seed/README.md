@@ -2,7 +2,14 @@
 
 `neo4j.dump` (git-ignored, ~110 MB) is the knowledge graph the Fly database boots with.
 
-## v1.1 (current): built and dumped on Neo4j Community 2026.07.1
+## v1.2 (current, M2a deploy C): snapshot snap-20260924-b1128354c4
+
+Built and dumped as v1.1 describes below, on 2026-11-22 (docs/specs/m2a-answer-integrity.md, I7): 149,171,398 bytes, SHA-256
+starting `0cc20d0240badd34`; the local graph's Svc* and User* nodes were deleted before the dump; loaded into a scratch
+install of the same version: 0 invariant failures, 0 private-label nodes. The v1.1 seed (snap-20260924-97c6597d58,
+`f8211546df347d82`) is kept outside git as `data/backups/fly-seed-v1.1-snap-97c6597d58.neo4j.dump` for rollback.
+
+## v1.1: built and dumped on Neo4j Community 2026.07.1
 
 `semigraph build-graph --rebuild` writes an aligned-format store on Community, so it is dumped as is
 (no `copy` step: Community has no `neo4j-admin database copy`). The dump includes the transaction

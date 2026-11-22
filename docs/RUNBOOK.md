@@ -607,17 +607,37 @@ flyctl ips allocate-v4 --shared -a semigraph; flyctl ips allocate-v6 -a semigrap
    `build-graph` refuses tables whose `alignment_provenance.json` shows they were built before the checkpoints reached their present
    state: whenever a checkpoint changed after the tables were written (a buying run's own tables are already consistent), rerun the plain
    `align-items`, and only after every paid run has finished (a job still running rewrites the tables with the code it was started with).
-2. Run the benchmark on the new graph into its own runs file and regenerate the example answers
-   (they carry the snapshot id; the service does NOT seed examples from another snapshot):
-   `semigraph eval --runs-file eval_runs.<snap>.jsonl --report-suffix .<snap> --max-answer-usd 1.75`, then
-   `PYTHONPATH=src python scripts/build_examples.py --runs data/processed/eval_runs.<snap>.jsonl --snapshot <snap id>`.
-3. `python -m scripts.kill_switch on`, then `cd deploy\neo4j; flyctl deploy --ha=false --remote-only --yes` — the
-   entrypoint detects the new dump hash and reloads it on boot (this replaces the service ledger/cache, resets the
-   kill switch to off and deletes every live upload workspace: avoid it during a demo). Then from the repo root `flyctl deploy --ha=false --remote-only --yes` (new examples.json),
-   verify (`/healthz`, `/api/stats` shows the new snapshot id, an example click is served cached), then `kill_switch off`.
-4. Rollback: `flyctl deploy --image registry.fly.io/<app>:<previous deployment tag>` for each app (find the tags in
-   `flyctl releases -a <app>`); the older DB image carries the older seed and reloads it. Keep the previous dump outside git
-   (`data/backups/`). The Turnstile gate rejects scripted clients, so a live paid question can only be tested from a browser.
+2. Run the benchmark on the new graph through the DEPLOYED path into a NEW runs file (a file whose rows carry no context is
+   refused) and regenerate the example answers (they carry the snapshot id; the service does NOT seed examples from another
+   snapshot), all with the local graph pinned (`NEO4J_URI=bolt://localhost:7699`):
+   `semigraph eval-deployed --model openai/gpt-6-luna --escalation-model anthropic/claude-sonnet-5 --max-usd 2 --votes 3
+   --runs-file eval_deployed.<snap>.jsonl --report-name eval_report.<snap>-deployed.json` (it prints the answer cap and the
+   judge worst case and asks before spending), then
+   `PYTHONPATH=src python scripts/build_examples.py --runs data/processed/eval_deployed.<snap>.jsonl --deployed
+   --report artifacts/eval_report.<snap>-deployed.json --snapshot <snap id>`. After any change to the shared answer prompt or
+   the context, re-run the agent ship gate (`semigraph eval-agent ... --dry-run`, then `--confirm-paid --max-usd <its worst
+   case>`) before `AGENT_ENABLED` may be true.
+3. Deploy the graph and the API together, with the kill switch on across BOTH reloads (the DB reload resets it to off, and
+   until the API deploy the old API serves the new graph). From the repository root, in PowerShell:
+   ```
+   flyctl releases -a semigraph-neo4j        # note the current image tag: the DB rollback target
+   flyctl releases -a semigraph              # note the current image tag: the API rollback target
+   uv run python -m scripts.check_env_fly
+   uv run python -m scripts.kill_switch on ; uv run python -m scripts.kill_switch get   # expect: on
+   cd deploy\neo4j ; flyctl deploy --ha=false --remote-only --yes ; cd ..\..
+   curl.exe -s https://semigraph.fly.dev/healthz
+   uv run python -m scripts.kill_switch on ; uv run python -m scripts.kill_switch get   # the reload reset it: expect on
+   flyctl deploy --ha=false --remote-only --yes
+   flyctl ssh console -a semigraph -C "setpriv --reuid app --regid app --clear-groups env IMAGE_CHECK_MODE=deployed sh /srv/checks/image_check.sh"
+   ```
+   Verify: `/healthz`; `/api/stats` shows the new snapshot id; an example click is served cached; `/api/freshness` still
+   serves `since_data` after the monitor's first poll. Then `uv run python -m scripts.kill_switch off` and `get` (expect off).
+   The kill-switch script reads `APP_BASE_URL` and `ADMIN_TOKEN` from `.env.fly` and prints no secret. The reload replaces
+   the service ledger and cache and deletes every live upload workspace: avoid it during a demo.
+4. Rollback: kill switch on, then `flyctl deploy --image registry.fly.io/<app>:<tag noted in step 3>` for the DB first and
+   then the API; the older DB image carries the older seed and reloads it (which resets the kill switch again: set it on
+   again before the API). Keep the previous dump outside git (`data/backups/`). The Turnstile gate rejects scripted clients,
+   so a live paid question can only be tested from a browser.
 
 ## Answering models (v1.2)
 
