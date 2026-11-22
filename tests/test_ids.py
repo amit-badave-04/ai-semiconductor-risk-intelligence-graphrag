@@ -132,18 +132,25 @@ def test_doc_id_builds_and_parses_the_citation():
 
 
 def test_the_grammar_change_leaves_every_shipped_example_citation_unchanged():
-    """examples_citations_pre_m4.json was recorded from the pre-M4 grammar (commit cff2415): adding ``doc:`` ids must not
-    change what any of the 53 shipped answers cites, nor how any cited id is classified."""
+    """examples_citations_pre_m4.json was recorded from the pre-M4 grammar (commit cff2415). Adding ``doc:`` ids must
+    not change how any recorded citation is found or classified, and every currently shipped answer must cite only
+    pre-M4 id kinds, with its ``citations`` field equal to what the grammar finds in the answer text. The shipped
+    set is regenerated with the graph snapshot, so it is not pinned to the recorded answers or their count."""
     import json
     from pathlib import Path
 
     from semigraph.artifacts import load_examples
 
     recorded = json.loads((Path(__file__).parent / "data" / "examples_citations_pre_m4.json").read_text(encoding="utf-8"))
-    examples = {e["id"]: e for e in load_examples()["examples"]}
-    assert set(examples) == set(recorded) and len(recorded) == 53
+    assert len(recorded) == 53
     for example_id, rec in recorded.items():
-        cites = ids.CITE_RE.findall(examples[example_id]["answer"])
-        assert cites == rec["citations"], example_id
-        assert [ids.classify_id(c) for c in cites] == rec["kinds"], example_id
-        assert sorted(set(cites)) == sorted(examples[example_id]["citations"]), example_id
+        text = " ".join(f"[{c}]" for c in rec["citations"])
+        assert ids.CITE_RE.findall(text) == rec["citations"], example_id
+        assert [ids.classify_id(c) for c in rec["citations"]] == rec["kinds"], example_id
+
+    examples = load_examples()["examples"]
+    assert examples
+    for example in examples:
+        cites = ids.CITE_RE.findall(example["answer"])
+        assert sorted(set(cites)) == sorted(set(example["citations"])), example["id"]
+        assert {ids.classify_id(c) for c in cites} <= {"chunk", "xbrl", "fr"}, example["id"]

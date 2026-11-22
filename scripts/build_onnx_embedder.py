@@ -24,7 +24,7 @@
 4. --verify-patched (self-contained; the gate that runs in the Docker model stage):
    (a) fails unless every MatMulNBits node has accuracy_level == the requested level;
    (b) writes a temporary UNPATCHED twin (level 0; a small graph file that points at the
-   same weights sidecar, so no second copy of the weights), embeds 53 realistic
+   same weights sidecar, so no second copy of the weights), embeds the example (realistic)
    questions with both models one after the other, and fails unless the cosine between
    the two has mean >= 0.998 and min >= 0.997. The twin is always deleted. The result is
    written next to the model as patch_fidelity.json. It is checked BEFORE the slow build
@@ -86,7 +86,7 @@ ACCURACY_ATTR = "accuracy_level"
 ACCURACY_LEVEL_DEFAULT = 0
 ACCURACY_LEVELS = (0, 1, 2, 3, 4)  # the MatMulNBits contrib op's range; 0 = unset (the op's own default)
 
-# The --verify-patched gate (M5 decision 2.1): thresholds fixed before any run, on the 53 example questions with the
+# The --verify-patched gate (M5 decision 2.1): thresholds fixed before any run, on the example questions with the
 # serving prompt (patched vs a level-0 twin of the same weights). Measured 2026-10-03 on a patched copy of the shipped
 # model: cosine mean 0.99877, min 0.99825 (docs/v2/research/m5-spikes/patch_gate_report.json).
 PATCH_COS_MEAN_MIN = 0.998
@@ -97,7 +97,7 @@ MAX_TOKENS = 8192  # the serving backend's truncation (bounds memory; queries ar
 # Identical to semigraph.embeddings.QUERY_PROMPT (pinned by tests/test_build_onnx_embedder.py): no trailing space.
 QUERY_PROMPT = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
 
-# The 53 example questions of src/semigraph/artifacts/examples.json, inlined because the Docker model stage copies only
+# The example questions of src/semigraph/artifacts/examples.json, inlined because the Docker model stage copies only
 # this script (no semigraph package, no data/). A test pins the list to examples.json.
 GATE_QUESTIONS: tuple[str, ...] = (
     "What was Nvidia's total revenue for the fiscal year ended January 28, 2024?",
@@ -109,75 +109,55 @@ GATE_QUESTIONS: tuple[str, ...] = (
     "Which foundries does AMD rely on to manufacture its chips?",
     "Which hyperscaler is disclosed as a customer of AMD in the knowledge graph?",
     "Which BIS export-control rules is AMD affected by?",
+    "Which companies in the graph are affected by US export-control rules?",
     "What does Nvidia disclose about export controls affecting its sales to China?",
     "Did Nvidia stop disclosing any risk factors in its latest 10-K that appeared in earlier 10-Ks?",
+    "What new supply-chain or geopolitical risks appeared in Meta's most recent annual report?",
     "What supply-chain related risks does TSMC disclose in its annual report?",
     "What geopolitical risks does ASML disclose?",
     "Compare the competition risks disclosed by AMD and Nvidia.",
-    "By how much did Nvidia's annual revenue grow from the fiscal year ended January 28, 2024 to the "
-    "fiscal year ended January 25, 2026?",
+    "By how much did Nvidia's annual revenue grow from the fiscal year ended January 28, 2024 to the fiscal year ended January 25, 2026?",
     "What is Samsung's total annual revenue according to its SEC filings?",
     "What did Nvidia's CEO say on the most recent earnings call?",
-    "By what percentage did Nvidia's total revenue change from the fiscal year ended January 26, 2025 to "
-    "the fiscal year ended January 25, 2026?",
-    "By what percentage did AMD's net income change from the fiscal year ended December 28, 2024 to the "
-    "fiscal year ended December 27, 2025?",
-    "By what percentage did Intel's total revenue change from the fiscal year ended December 28, 2024 to "
-    "the fiscal year ended December 27, 2025?",
-    "By what percentage did Micron's research and development expense change from the fiscal year ended "
-    "August 29, 2024 to the fiscal year ended August 28, 2025?",
-    "By what percentage did Broadcom's total revenue change from the fiscal year ended November 3, 2024 "
-    "to the fiscal year ended November 2, 2025?",
-    "By what percentage did Qualcomm's net income change from the fiscal year ended September 25, 2022 to "
-    "the fiscal year ended September 24, 2023?",
-    "By what percentage did Meta's research and development expense change from the fiscal year ended "
-    "December 31, 2024 to the fiscal year ended December 31, 2025?",
-    "By what percentage did Microsoft's total revenue change from the fiscal year ended June 30, 2024 to "
-    "the fiscal year ended June 30, 2025?",
-    "By what percentage did Amazon's net income change from the fiscal year ended December 31, 2024 to "
-    "the fiscal year ended December 31, 2025?",
-    "By what percentage did Alphabet's total revenue change from the fiscal year ended December 31, 2021 "
-    "to the fiscal year ended December 31, 2022?",
+    "By what percentage did Nvidia's total revenue change from the fiscal year ended January 26, 2025 to the fiscal year ended January 25, 2026?",
+    "By what percentage did AMD's net income change from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025?",
+    "By what percentage did Intel's total revenue change from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025?",
+    "By what percentage did Micron's research and development expense change from the fiscal year ended August 29, 2024 to the fiscal year ended August 28, 2025?",
+    "By what percentage did Broadcom's total revenue change from the fiscal year ended November 3, 2024 to the fiscal year ended November 2, 2025?",
+    "By what percentage did Qualcomm's net income change from the fiscal year ended September 25, 2022 to the fiscal year ended September 24, 2023?",
+    "By what percentage did Meta's research and development expense change from the fiscal year ended December 31, 2024 to the fiscal year ended December 31, 2025?",
+    "By what percentage did Microsoft's total revenue change from the fiscal year ended June 30, 2024 to the fiscal year ended June 30, 2025?",
+    "By what percentage did Amazon's net income change from the fiscal year ended December 31, 2024 to the fiscal year ended December 31, 2025?",
+    "By what percentage did Alphabet's total revenue change from the fiscal year ended December 31, 2021 to the fiscal year ended December 31, 2022?",
     "What were Nvidia's total revenue and net income for the fiscal year ended January 25, 2026?",
     "What were AMD's total revenue and research and development expense for the fiscal year ended December 28, 2024?",
     "What were Meta's total revenue and net income for the fiscal year ended December 31, 2025?",
     "What were Apple's total revenue and net income for the fiscal year ended September 28, 2024?",
     "What were Micron's total revenue and capital expenditures for the fiscal year ended August 28, 2025?",
     "What were Broadcom's total revenue and net income for the fiscal year ended October 29, 2023?",
-    "What were Nvidia's research and development expense for the fiscal years ended January 25, 2026 and "
-    "January 29, 2023?",
+    "What were Nvidia's research and development expense for the fiscal years ended January 25, 2026 and January 29, 2023?",
     "What were Intel's net income for the fiscal years ended December 27, 2025 and December 30, 2023?",
     "What were Qualcomm's total revenue for the fiscal years ended September 28, 2025 and September 26, 2021?",
     "What were Microsoft's net income for the fiscal years ended June 30, 2025 and June 30, 2023?",
     "What were Amazon's total revenue for the fiscal years ended December 31, 2025 and December 31, 2022?",
-    "What were Alphabet's research and development expense for the fiscal years ended December 31, 2025 "
-    "and December 31, 2023?",
+    "What were Alphabet's research and development expense for the fiscal years ended December 31, 2025 and December 31, 2023?",
     "What was TSMC's total revenue for the fiscal year ended December 31, 2025, and in which currency is it reported?",
     "What was ASML's net income for the fiscal year ended December 31, 2025, and in which currency is it reported?",
     "What did NVIDIA disclose about the BIS 50% affiliates rule?",
     "What did AMD disclose about the BIS AI Diffusion Rule?",
     "What did Intel disclose about the BIS revocation of Validated End-User authorizations in China?",
-    "What did NVIDIA disclose about the BIS license review policy for advanced computing chips published "
-    "in January 2026?",
+    "What did NVIDIA disclose about the BIS license review policy for advanced computing chips published in January 2026?",
+    "Did AMD remove any risk factors between its FY2024 and FY2025 annual reports?",
     "Did Meta remove any risk factors between its FY2024 and FY2025 annual reports?",
     "Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?",
-    "Did AMD stop disclosing its risk about \"Our ability to design and introduce new products in a timely "
-    "manner includes the use of third-party intellectual property.\" between its FY2024 and FY2025 annual "
-    "reports?",
-    "Did Micron stop disclosing its risk about \"We may be unable to generate sufficient cash flows or "
-    "obtain access to external financing necessary to fund our operations, make scheduled debt payments, "
-    "pay our dividend, and make adequate capital investments.\" between its FY2024 and FY2025 annual "
-    "reports?",
-    "Did Nvidia stop disclosing its risk about \"We may not be able to realize the potential benefits of "
-    "business investments or acquisitions, and we may not be able to successfully integrate acquired "
-    "companies, which could hurt our ability to grow our business, develop new products or sell our "
-    "products.\" between its FY2024 and FY2025 annual reports?",
-    "Does NVIDIA's FY2026 10-K still say that the Notified Advanced Computing (NAC) process has not "
-    "resulted in approvals for exports of products to customers in China, or was that statement removed?",
-    "Does NVIDIA's FY2026 10-K still say that it transitioned some operations out of China and Hong Kong "
-    "after the 2022 export controls, or was that statement removed?",
-    "Does NVIDIA's FY2026 10-K still say that the AI Diffusion IFR would confer special benefits on "
-    "select \"Universal Verified End Users\" (UVEU), or was that statement removed?",
+    "Did Nvidia remove any risk factors between its FY2025 and FY2026 annual reports?",
+    "Did TSMC remove any risk factors between its FY2024 and FY2025 annual reports?",
+    "Did AMD stop disclosing its risk about \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property.\" between its FY2024 and FY2025 annual reports?",
+    "Did Micron stop disclosing its risk about \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.\" between its FY2024 and FY2025 annual reports?",
+    "Did Nvidia stop disclosing its risk about \"We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.\" between its FY2024 and FY2025 annual reports?",
+    "Does NVIDIA's FY2026 10-K still say that the Notified Advanced Computing (NAC) process has not resulted in approvals for exports of products to customers in China, or was that statement removed?",
+    "Does NVIDIA's FY2026 10-K still say that it transitioned some operations out of China and Hong Kong after the 2022 export controls, or was that statement removed?",
+    "Does NVIDIA's FY2026 10-K still say that the AI Diffusion IFR would confer special benefits on select \"Universal Verified End Users\" (UVEU), or was that statement removed?",
 )
 
 EmbedFn = Callable[[Path, Path, Sequence[str]], np.ndarray]  # (model, tokenizer.json, questions) -> unit-norm rows

@@ -610,9 +610,13 @@ SECRETS_OK = json.dumps([{"Name": n} for n in ("IP_HASH_PEPPER", "ADMIN_TOKEN", 
 CONFIG_OK = json.dumps({"env": {"ENVIRONMENT": "staging", "NEO4J_URI": "bolt://semigraph-neo4j-stg.internal:7687",
                                 "OPENAI_API_BASE": "http://semigraph-mockllm.internal:8000/v1"}}).encode()
 EXAMPLES_FILE = ROOT / "src" / "semigraph" / "artifacts" / "examples.json"
-# What the baked seed holds: the examples the serving code's seeding accepts (it refuses X1 and T15 on their stored checks, so
-# 51 of the file's 53), the count the M4 live gate recorded. NOT len(examples), which counts the two that are never cached.
-EXAMPLES = json.loads((ROOT / "artifacts" / "m4_live_gates.json").read_text(encoding="utf-8"))["G9_http"]["expected_example_count"]
+# What the baked seed holds: the examples the serving code's seeding accepts (it refuses the ones whose stored checks fail, e.g.
+# the removal-claim check), derived from the file by that rule so a regenerated examples.json needs no edit here. NOT
+# len(examples), which also counts the questions that are never cached.
+from semigraph.serve.store import refusal_reason  # noqa: E402
+
+_IN_FILE = json.loads(EXAMPLES_FILE.read_text(encoding="utf-8"))["examples"]
+EXAMPLES = sum(1 for _e in _IN_FILE if refusal_reason(_e) is None)
 
 
 def healthy(cypher, params):
@@ -650,13 +654,12 @@ def test_preflight_fails_on_each_database_condition(world, name, handler):
 
 
 def test_preflight_expects_the_examples_the_seeding_accepts_not_every_question_in_the_file(world):
-    """Seen on Fly 2026-11-05: ``examples: 51 cached examples, 53 expected`` on a correctly seeded window. The file holds 53
-    questions; the seeding refuses X1 and T15 (their stored checks fail), so the dump holds 51 and 51 is clean."""
-    from semigraph.serve.store import refusal_reason
-
+    """Seen on Fly 2026-11-05: ``examples: 51 cached examples, 53 expected`` on a correctly seeded window. The file holds more
+    questions than the seeding accepts (it refuses those whose stored checks fail), so the dump holds only the accepted ones
+    and that count is clean."""
     in_file = json.loads(EXAMPLES_FILE.read_text(encoding="utf-8"))["examples"]
     seeded = [e["id"] for e in in_file if refusal_reason(e) is None]
-    assert len(seeded) == EXAMPLES and len(in_file) > EXAMPLES, "the file must hold questions the seeding refuses (X1, T15)"
+    assert len(seeded) == EXAMPLES and len(in_file) > EXAMPLES, "the file must hold questions the seeding refuses (e.g. T13, T15)"
     tool, _ = preflight_world(world)
     assert tool._expected_examples() == EXAMPLES
     assert tool.preflight("W4") == 0, "\n".join(world.log.lines())
