@@ -46,6 +46,13 @@ from bisect import bisect_left
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
+from .context_layout import (
+    AFTER_TEMPORAL_HEADER,
+    CONTEXT_HEADERS,
+    LEGACY_CONTEXT_HEADERS,
+    SUPERSEDED_MARK,
+    TEMPORAL_HEADER,
+)
 from .ids import CITE_RE
 from .removal_claims import unsupported_removal_claims
 from .textutil import A as _A
@@ -370,6 +377,54 @@ def _pseudo_citations(text: str, cited: set[str], valid_ids: set[str]) -> tuple[
     return tuple(found)
 
 
+# --- stale citations and ids shown without text (M2a R3, R7) ---------------------------------------------------------------
+
+_SECTION_HEADS = frozenset(h.strip() for h in (*CONTEXT_HEADERS, *LEGACY_CONTEXT_HEADERS))
+_RELATIONSHIPS_HEAD = "RELATIONSHIPS:"
+_TEMPORAL_HEAD, _EXCERPTS_HEAD = TEMPORAL_HEADER.strip(), AFTER_TEMPORAL_HEADER.strip()
+_EDGE_LINE_PREFIX = "- "
+_MARKED_ID_RE = re.compile(rf"{CITE_RE.pattern}\s*{re.escape(SUPERSEDED_MARK)}")
+
+
+def _context_lines(context: str) -> Iterator[tuple[str, str]]:
+    """(section header line, line) over a full context string, current or legacy template. Excerpt text is never read as
+    a header: once EXCERPTS starts it runs to the end."""
+    section = ""
+    for line in context.split("\n"):
+        if section != _EXCERPTS_HEAD and line in _SECTION_HEADS:
+            section = line
+            continue
+        yield section, line
+
+
+def _edge_and_text_ids(context: str) -> tuple[set[str], set[str], set[str], set[str]]:
+    """(ids on RELATIONSHIPS edge lines, ids carrying the superseded mark there, ids in the temporal block, ids on any
+    other line: a quote line, risk, metric, rule, temporal item or excerpt)."""
+    edge, marked, temporal, texted = set(), set(), set(), set()
+    for section, line in _context_lines(context):
+        ids = CITE_RE.findall(line)
+        if section == _TEMPORAL_HEAD:
+            temporal.update(ids)
+        if section == _RELATIONSHIPS_HEAD:
+            # R3: the superseded mark counts on the quote lines too (a pushed-out edge line leaves only its quote)
+            marked.update(m.group(1) for m in _MARKED_ID_RE.finditer(line))
+        if section == _RELATIONSHIPS_HEAD and line.startswith(_EDGE_LINE_PREFIX):
+            edge.update(ids)
+        elif ids:
+            texted.update(ids)
+    return edge, marked, temporal, texted
+
+
+def _evidence_flags(cited: set[str], context: str | None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(stale_citations, cited_without_text), each sorted. Read from the context string alone, so the eval recomputes
+    them from a stored context. An id the temporal block also lists is exempt from the first: "what changed" answers
+    rightly cite superseded filings. An excerpt's own ``[id]`` header line counts as text for the second."""
+    if context is None:
+        return (), ()
+    edge, marked, temporal, texted = _edge_and_text_ids(context)
+    return tuple(sorted((cited & marked) - temporal)), tuple(sorted((cited & edge) - texted))
+
+
 # --- the checks object -----------------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -390,6 +445,8 @@ class AnswerChecks:
     has_citation: bool = True
     is_refusal: bool = False
     removal_claims: tuple[str, ...] = ()
+    stale_citations: tuple[str, ...] = ()       # R3, reported only: cited ids whose filing has since been replaced
+    cited_without_text: tuple[str, ...] = ()    # R7, reported only: cited ids the model saw only as an edge's id
 
     def as_dict(self) -> dict:
         out = {"citations_retrieved": self.citations_retrieved, "numbers_grounded": self.numbers_grounded,
@@ -397,7 +454,8 @@ class AnswerChecks:
                "echoed_numbers": list(self.echoed_numbers), "pseudo_citations": list(self.pseudo_citations),
                "has_citation": self.has_citation, "is_refusal": self.is_refusal,
                "unsupported_removal_claim": bool(self.removal_claims),
-               "unsupported_removal_sentences": list(self.removal_claims)}
+               "unsupported_removal_sentences": list(self.removal_claims),
+               "stale_citations": list(self.stale_citations), "cited_without_text": list(self.cited_without_text)}
         return out
 
 
@@ -435,7 +493,9 @@ def answer_checks(text: str, cited: set[str], valid_ids: set[str], context: str 
     numbers or removal claims against, and none is claimed unmatched."""
     figures = (_Figures() if context is None
                else _check_figures(text, cited, context, sources or {}, question or ""))
+    stale, no_text = _evidence_flags(cited, context)
     return AnswerChecks(
+        stale_citations=stale, cited_without_text=no_text,
         citations_retrieved=not (cited - valid_ids), numbers_grounded=not (figures.unmatched or figures.echoed),
         unmatched_numbers=figures.unmatched, pseudo_citations=_pseudo_citations(text, cited, valid_ids),
         echoed_numbers=figures.echoed, numbers_checked=figures.checked, has_citation=bool(cited),

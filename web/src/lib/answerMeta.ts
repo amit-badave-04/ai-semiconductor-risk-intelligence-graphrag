@@ -166,6 +166,8 @@ export type CheckedCode =
   | "earlier"
   | "sourcesOk"
   | "sourcesMissing"
+  | "sourcesReplaced"
+  | "sourcesReferenceOnly"
   | "noCitation"
   | "declines"
   | "figuresMatched"
@@ -196,9 +198,22 @@ const joined = (items: unknown[]): string => {
   return text.length > MAX_NAMED_CHARS ? `${text.slice(0, MAX_NAMED_CHARS)}\u2026` : text;
 };
 
+/** M2a R3 and R7 (additive keys, reported only: neither fails an answer). A payload that predates them carries none: no line. */
+function evidenceLines(c: Dict | null): CheckedLine[] {
+  if (c === null) return [];
+  const stale = list(c.stale_citations).length;
+  const referenceOnly = list(c.cited_without_text).length;
+  const lines: CheckedLine[] = [];
+  if (stale > 0) lines.push({ code: "sourcesReplaced", tone: "warn", params: { count: stale } });
+  if (referenceOnly > 0) lines.push({ code: "sourcesReferenceOnly", tone: "plain", params: { count: referenceOnly } });
+  return lines;
+}
+
 function sourcesLine(cites: unknown[], hall: unknown[], c: Dict | null): CheckedLine | null {
   if (hall.length || (c !== null && c.citations_retrieved === false)) return { code: "sourcesMissing", tone: "bad", params: { count: hall.length } };
   if (c !== null && c.has_citation === false) return c.is_refusal === true ? { code: "declines", tone: "plain" } : { code: "noCitation", tone: "warn" };
+  // "Every cited source was among the passages found" is not said while a cited source was shown as an id only (R7).
+  if (c !== null && list(c.cited_without_text).length > 0) return null;
   return cites.length ? { code: "sourcesOk", tone: "ok" } : null;
 }
 
@@ -224,6 +239,7 @@ export function checkedView(event: unknown): CheckedView {
   const lines: CheckedLine[] = [];
   const sources = sourcesLine(list(ev.citations), list(ev.hallucinated), c);
   if (sources !== null) lines.push(sources);
+  lines.push(...evidenceLines(c));
   lines.push(...figureLines(c));
   if (c !== null && list(c.pseudo_citations).length) lines.push({ code: "pseudoCitation", tone: "warn", params: { items: joined(list(c.pseudo_citations)) } });
   if (c !== null && c.unsupported_removal_claim === true) lines.push({ code: "removalClaim", tone: "warn" });

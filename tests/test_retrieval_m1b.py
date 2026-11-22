@@ -131,6 +131,12 @@ def test_rule_edges_carry_the_document_number_date_url_and_link_provenance_with_
     assert "*" not in q                                     # still no variable-length path through a rule node
 
 
+def test_rule_edges_also_return_the_stored_abstract_for_the_context_line():
+    """M2a R5: the abstract is printed (sanitised and cut) beside the rule; the Company API payload is projected onto the
+    old keys, so the column does not widen it (tests/test_dossier_projection.py)."""
+    assert "x.abstract AS abstract" in RULE_EDGES_QUERY
+
+
 # ---------------------------------------------------------------- temporal: the item-based query
 
 def return_columns(member: str) -> list[str]:

@@ -5,7 +5,7 @@ tool calls: that is what makes "the agent degrades to today's behaviour" true (a
 what lets the tests compare a snapshot of the prefetch before and after a tool-heavy run.
 
 Caps (each is a context-size guard): chunks 16 in total, edges 40 ADDED PER RUN (never per call), risks 12 in total, computed
-lines 4, filing pairs 5 PER COMPANY in total. None of them ever drops a chunk, edge, risk, computed line or pair the prefetch
+lines 4, filing pairs 4 PER COMPANY in total. None of them ever drops a chunk, edge, risk, computed line or pair the prefetch
 already had. The temporal layer's PAIRS and NOTICES are the same: a pair or notice the prefetch already holds is never
 dropped, only added to (see :func:`merge_temporal`). Its per-pair ITEM and PASSAGE lines are the one exception: when a company
 gains a second pair, the two pairs share the same total line budget one pair always had
@@ -28,6 +28,7 @@ from datetime import date
 
 from ..retrieval import ids as _ids
 from ..retrieval import retriever as R
+from ..retrieval.context_layout import DETAIL_LINES_KEY, YOY_OFF, YOY_PRIOR_IDS_KEY
 from .sanitize import company_for_id, safe_unit
 
 MAX_CHUNKS = 16
@@ -36,9 +37,10 @@ MAX_RISKS = 12
 MAX_COMPUTED = 4
 # Filing pairs of ONE company in the context, over every tool call. A call reads at most ``retriever.MAX_PAIRS_PER_COMPANY``
 # (2) of them and the prefetch holds at most as many, so without this the count was bounded only by the graph (at most 4
-# consecutive comparisons of any company today). With it the agent's spend estimate is a bound the code enforces:
-# ``serve.estimate.AGENT_GRAPH_CHARS_PER_COMPANY`` prices up to 5 (a test renders 5 through the real layout), and 6 do not fit.
-MAX_PAIRS_HELD_PER_COMPANY = 5
+# consecutive comparisons of any company today, so 4 never cuts a comparison the data holds). With it the agent's spend
+# estimate is a bound the code enforces: ``serve.estimate.AGENT_GRAPH_CHARS_PER_COMPANY`` (50,000) prices up to 4 through the
+# real merge and layout (49,699 characters per company with the cap note); 5 measure 50,228 and do not fit (M2a follow-up F5).
+MAX_PAIRS_HELD_PER_COMPANY = 4
 PERIOD_LENGTH_TOLERANCE_DAYS = 10     # two periods are "the same kind" when their lengths differ by no more than this
 
 
@@ -133,6 +135,17 @@ def merge_chunks(r: dict, rows: Iterable[Mapping], *, cap: int = MAX_CHUNKS) -> 
         have.add(chunk_id)
         added.append(dict(row))
     return {**r, "chunks": [*r["chunks"], *added]}
+
+
+def without_detail_lines(r: dict) -> dict:
+    """``r`` as the agent's WRITER context is rendered (M2a, council decision 005): the edge quote lines and rule abstracts switched
+    off (R6b, OD6) and the computed year-over-year note left in today's inline form, without the prior-year id (R4 off, ``YOY_OFF``).
+    Partial R4 (``YOY_NAMED``: the prior id on the latest row and the rows the question names) was MEASURED for the agent and does
+    not fit: its worst case is 51,676 characters per company (at the 4 pairs held) against the 50,000 allowance (the 466,524 total fits),
+    so by the council's rule R4 is off here and no row is dropped to force a fit. The agent's own computed lines carry both years'
+    ids. ``build_blocks`` reads the switches from the dict, so the writer and ``agent_answer`` render the same size without passing
+    a flag around. The planner never sees either way (``sanitize`` builds its view from counts and ids)."""
+    return {**r, DETAIL_LINES_KEY: False, YOY_PRIOR_IDS_KEY: YOY_OFF}
 
 
 def _union(existing: Iterable, more: Iterable) -> list:

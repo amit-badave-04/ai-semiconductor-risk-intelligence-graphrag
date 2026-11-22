@@ -39,26 +39,27 @@ SONNET_IN, SONNET_OUT = Fraction(2), Fraction(10)
 #   characters per token PER MODEL: 2.5 for Luna (and every model with no figure of its own), 2.0 for Claude Sonnet 5
 #   (artifacts/chars_per_token_check.json: Sonnet's lowest exact row is 2.0997, Luna's 3.0224; the old single 2.5 failed for
 #   Sonnet); one excerpt 12,000 chars + 64 framing; 8 excerpts = 96,512; the RELATIONSHIPS allowance 150
-#   lines x 300 = 45,000 and 6 risk lines x 700 = 4,200 (49,200 shared by every company count); one anchor's blocks
-#   42,000; the anchor cap 4 (retriever.MAX_ANCHORS) = 168,000; the note naming the dropped companies 300; templates
-#   9,200 (answer) / 10,300 (workspace).
+#   lines x 280 = 42,000 (the longest rendered line is 268 characters + newline) and 6 risk lines x 700 = 4,200 (46,200 shared by
+#   every company count); one anchor's blocks
+#   48,000 (a workspace ask 45,000: no quote lines or abstracts; the measured worst cases are 47,505 and 44,613); the anchor cap 4 (retriever.MAX_ANCHORS) x 48,000 = 192,000; the note naming the dropped companies 300; templates
+#   9,500 (answer) / 10,600 (workspace).
 #                                                                                       Luna (2.5)     Sonnet (2.0)
-#   vector:    9,200 + 500 + 96,512                                   = 106,212 chars -> 42,485 tokens   53,106
-#   hybrid:    9,200 + 500 + 96,512 + 49,200 + 168,000 + 300          = 323,712 chars -> 129,485          161,856
-#   workspace: 10,300 + 500 + 96,512 + 49,200 + 168,000 + 300 + 6 x (1,800 + 64) = 11,184
-#                                                                     = 335,996 chars -> 134,399          167,998
-#   agent:     9,200 + 500 + 96,512 + 8 more excerpts (96,512) + 49,200 + 40 edges x 300 + 6 more risks x 700 + 4
+#   vector:    9,500 + 500 + 96,512                                   = 106,512 chars -> 42,605 tokens   53,256
+#   hybrid:    9,500 + 500 + 96,512 + 46,200 + 192,000 + 300          = 345,012 chars -> 138,005          172,506
+#   workspace: 10,600 + 500 + 96,512 + 46,200 + 180,000 + 300 + 6 x (1,800 + 64) = 11,184
+#                                                                     = 345,296 chars -> 138,119          172,648
+#   agent:     9,500 + 500 + 96,512 + 8 more excerpts (96,512) + 46,200 + 40 edges x 280 + 6 more risks x 700 + 4
 #              computed x 400 + 4 companies' blocks (the agent covers no more companies than a plain ask: its tools
-#              are refused past the anchor cap) x 50,000 + 300         = 470,024 chars -> 188,010          235,012
-PROMPT_CHARS = {"vector": 106_212, "hybrid": 323_712, "workspace": 335_996, "agent": 470_024}
-LUNA_PROMPT_TOKENS = {"vector": 42_485, "hybrid": 129_485, "workspace": 134_399, "agent": 188_010}       # chars / 2.5, up
-SONNET_PROMPT_TOKENS = {"vector": 53_106, "hybrid": 161_856, "workspace": 167_998, "agent": 235_012}     # chars / 2.0, up
+#              are refused past the anchor cap) x 50,000 + 300         = 466,524 chars -> 186,610          233,262
+PROMPT_CHARS = {"vector": 106_512, "hybrid": 345_012, "workspace": 345_296, "agent": 466_524}
+LUNA_PROMPT_TOKENS = {"vector": 42_605, "hybrid": 138_005, "workspace": 138_119, "agent": 186_610}       # chars / 2.5, up
+SONNET_PROMPT_TOKENS = {"vector": 53_256, "hybrid": 172_506, "workspace": 172_648, "agent": 233_262}     # chars / 2.0, up
 OUT_TOKENS = 2_400                    # fly.toml LLM_ANSWER_MAX_TOKENS
 PLANNER_IN_TOKENS, PLANNER_OUT_TOKENS = 23_400, 400   # (8,000 fixed + 500 question + 50,000 growth) / 2.5 (Luna); the cap
 PLANNER_CALLS = 3                     # agent_max_model_calls
 MAX_ANCHORS = 4                       # retriever.MAX_ANCHORS: twice the most any recorded question names (2)
 AGENT_COMPANIES = MAX_ANCHORS         # the agent's merge refuses a tool call past the anchor cap (agent/merge.py)
-AGENT_PAIRS = 5                       # filing pairs per company the agent allowance covers (the graph holds at most 4)
+AGENT_PAIRS = 4                       # filing pairs per company the agent holds (merge cap) and the allowance covers: the graph holds at most 4
 DRAFT_CALLS, STRONG_CALLS = 1, 2      # the draft is forced to one attempt; the strong stream keeps the default two
 
 # The recorded paid runs (provenance in each comment; the file-reading test below re-derives them when the files exist).
@@ -75,7 +76,7 @@ LARGEST_RECORDED_CONTEXT_CHARS = 64_427   # eval_runs.jsonl, system=hybrid, row 
 LARGEST_CHUNK_CHARS = 10_217          # data/processed/chunks, 5,894 chunks of 13 filers: the longest (AMD)
 
 CAP_MICRO, COUNT_CAP = 10_000_000, 150   # decision 5: $10 a day, 150 paid asks a day
-SANITY_CEILING_USD = 2.0              # owner decision 2: no live estimate may be dearer (the agent's is $1.0157)
+SANITY_CEILING_USD = 2.0              # owner decision 2: no live estimate may be dearer (the agent's is $1.0163)
 
 
 def make_settings(**override) -> Settings:
@@ -143,21 +144,22 @@ def test_live_shape_estimate_equals_the_hand_computation(ask_type):
 
 
 def test_hand_computed_live_numbers_are_the_ones_reported_to_the_owner():
-    # hybrid: Luna 129,485 x 0.10 + 2,400 x 0.50 = 14,148.5; Sonnet 2 x (161,856 x 2 + 2,400 x 10) = 695,424 -> 709,573
-    assert [expected_micro(t) for t in ("hybrid", "vector", "workspace")] == [709_573, 265_873, 734_632]
-    # agent: Luna 188,010 x 0.10 + 1,200 = 20,001; Sonnet 2 x (235,012 x 2 + 24,000) = 988,048; planner 3 x 2,540 = 7,620
-    assert expected_micro("agent") == 1_015_669
+    # hybrid: Luna 138,005 x 0.10 + 2,400 x 0.50 = 15,120.5; Sonnet 2 x (172,506 x 2 + 2,400 x 10) = 744,024 -> 753,025
+    # workspace: Luna 138,119 x 0.10 + 1,200 = 15,131.9; Sonnet 2 x (172,648 x 2 + 24,000) = 744,592 -> 753,604
+    assert [expected_micro(t) for t in ("hybrid", "vector", "workspace")] == [753_025, 266_485, 753_604]
+    # agent: Luna 186,610 x 0.10 + 1,200 = 20,013; Sonnet 2 x (233,262 x 2 + 24,000) = 988,648; planner 3 x 2,540 = 7,620
+    assert expected_micro("agent") == 1_008_529
 
 
 def test_the_estimates_before_sonnet_had_a_ratio_of_its_own_are_what_this_change_moved_from():
     """The old single 2.5 characters per token gave 580,089 / 223,389 / 600,236 / 827,661 (hybrid, vector, workspace,
     agent). Sonnet carries about 98% of an estimate and its ratio moved from 2.5 to 2.0 (the old figure failed on the
-    recorded Sonnet prompts), so every estimate rose by 19 to 23 percent."""
+    recorded Sonnet prompts), so every estimate rose by 19 to 30 percent."""
     old = {"hybrid": 580_089, "vector": 223_389, "workspace": 600_236, "agent": 827_661}
     new = {t: est.estimate_micro(t, make_settings()) for t in ASK_TYPES}
-    assert new == {"hybrid": 709_573, "vector": 265_873, "workspace": 734_632, "agent": 1_015_669}
-    assert {t: round(new[t] / old[t], 2) for t in ASK_TYPES} == {"hybrid": 1.22, "vector": 1.19, "workspace": 1.22,
-                                                                  "agent": 1.23}
+    assert new == {"hybrid": 753_025, "vector": 266_485, "workspace": 753_604, "agent": 1_008_529}   # + M2a context (council 005)
+    assert {t: round(new[t] / old[t], 2) for t in ASK_TYPES} == {"hybrid": 1.3, "vector": 1.19, "workspace": 1.26,
+                                                                  "agent": 1.22}
 
 
 def test_chars_per_token_is_per_model_mock_aliases_resolve_to_the_real_model_and_the_rest_get_the_default():
@@ -284,7 +286,7 @@ def known_prices_note() -> tuple[str, str]:
 
 def test_every_models_prompt_ceiling_is_within_its_context_window_and_sonnet_has_no_long_context_premium():
     """Owner decision 1, resolved by a verified fact (see SONNET_MAX_INPUT_TOKENS): Claude Sonnet 5 prices its whole
-    1,000,000-token window at the standard rate, so the agent ceiling's 235,012 tokens (past 200,000) cost no more than the
+    1,000,000-token window at the standard rate, so the agent ceiling's 233,262 tokens (past 200,000) cost no more than the
     estimate's flat price says. What stays true and is asserted: Sonnet's ceilings fit its window, its price is one flat
     pair that does not depend on the prompt, the table's note records a long-context tier for Luna only, and Luna's
     ceilings stay under the tripwire above."""
@@ -292,7 +294,7 @@ def test_every_models_prompt_ceiling_is_within_its_context_window_and_sonnet_has
     settings = make_settings()
     strong = {t: est.prompt_tokens(t, settings, SONNET, "strong") for t in ASK_TYPES}
     assert max(strong.values()) <= SONNET_MAX_INPUT_TOKENS, strong
-    assert max(strong.values()) == SONNET_PROMPT_TOKENS["agent"] == 235_012          # 4x inside the window
+    assert max(strong.values()) == SONNET_PROMPT_TOKENS["agent"] == 233_262          # 4x inside the window
 
     # a flat price: one (input, output) pair per model, and nothing in the price lookup takes a size
     assert KNOWN_PRICES_PER_MTOK[SONNET] == (float(SONNET_IN), float(SONNET_OUT))
@@ -346,7 +348,7 @@ def test_the_estimate_reads_the_anchor_bound_from_the_retriever_and_assumes_none
     before = {t: est.context_chars(t) for t in ASK_TYPES}
     monkeypatch.setattr(retriever, "MAX_ANCHORS", MAX_ANCHORS + 3)
     assert est.max_anchors() == MAX_ANCHORS + 3
-    assert est.context_chars("hybrid") - before["hybrid"] == 3 * 42_000
+    assert est.context_chars("hybrid") - before["hybrid"] == 3 * 48_000
     assert est.context_chars("agent") - before["agent"] == 3 * 50_000        # the agent's merge reads the same cap
     assert est.context_chars("vector") == before["vector"]                    # no company blocks at all
     assert est.agent_company_blocks() == est.company_blocks("agent") == MAX_ANCHORS + 3
@@ -355,8 +357,9 @@ def test_the_estimate_reads_the_anchor_bound_from_the_retriever_and_assumes_none
 
 def test_the_allowances_are_the_measured_worst_cases_rounded_up():
     """The measured figures are in the tests below; these are the numbers the estimate rests on."""
-    assert (est.GRAPH_CHARS_PER_ANCHOR, est.AGENT_GRAPH_CHARS_PER_COMPANY) == (42_000, 50_000)
-    assert (est.EDGE_LINES_ALLOWED, est.EDGE_LINE_CHARS, est.ANCHOR_NOTE_CHARS) == (150, 300, 300)
+    assert (est.GRAPH_CHARS_PER_ANCHOR, est.AGENT_GRAPH_CHARS_PER_COMPANY) == (48_000, 50_000)
+    assert est.GRAPH_CHARS_PER_ANCHOR_WORKSPACE == 45_000
+    assert (est.EDGE_LINES_ALLOWED, est.EDGE_LINE_CHARS, est.ANCHOR_NOTE_CHARS) == (150, 280, 300)
 
 
 # The worst case, built from the retriever's own caps and rendered through the real code (answerer.build_blocks and
@@ -365,16 +368,17 @@ def test_the_allowances_are_the_measured_worst_cases_rounded_up():
 # item's label at 240 but NOT a reworded item's earlier wording), a Federal Register title 234 (built at 300), a chunk
 # id 31 characters (built at 31), 19 annual rows of one metric of one company (data/processed/xbrl), 4 metrics.
 QUESTION = "Q" * 500
+CIK_BASE = 1_000_000                  # real CIKs are 7 digits (NVIDIA 1045810): company n is CIK_BASE + n
 EDGE_LINES_BUILT = 150                # the RELATIONSHIPS lines the estimate allows (graph-bounded, not capped in code)
 OLDER_HEADLINE_CHARS, RULE_TITLE_CHARS, NOTICE_CHARS = 542, 300, 330
 
 
 def _company(n: int) -> str:
-    return f"Company {n:02d} " + "N" * 36        # 50 characters, distinct per company (a metric series is keyed by it)
+    return f"Company {n % CIK_BASE:02d} " + "N" * 36        # 50 characters, distinct per company (a metric series is keyed by it)
 
 
 def _ids(base: int) -> list[str]:
-    return [f"0001045810-26-{(base + k) % 1_000_000:06d}:I.1A:{(base + k) % 10_000:04d}" for k in range(3)]
+    return [f"0001045810-26-{(base + k) % 1_000_000:06d}:II.1A:{(base + k) % 10_000:04d}" for k in range(3)]
 
 
 def _per_pair(caps: dict[str, int], pairs: int) -> dict[str, int]:
@@ -412,18 +416,46 @@ def _temporal(cik: int, pairs: int, first: int = 0) -> tuple[list, list, list, l
     return items, pair_rows, passages, notices
 
 
+NOT_POSITIVE_SERIES = ("capex", "rnd")     # two series whose values (so every prior) are not positive: the longer n/m notes
+
+
 def _metrics(cik: int, rows: int) -> list[dict]:
-    return [{"cik": cik, "company": _company(cik), "metric": metric, "value": 900_000_000_000.0 - y * 7e10,
-             "unit": "USD", "period_start": f"{2024 - y}-01-27", "period_end": f"{2025 - y}-01-26"}
+    """4 series of ``rows`` rows in TWD at 13 digits (17-character amounts, 18 with a minus sign); two of them negative, so
+    their computed notes are the longer ``n/m ... prior value not positive`` ones."""
+    return [{"cik": cik, "company": _company(cik), "metric": metric, "unit": "TWD",
+             "value": (-1 if metric in NOT_POSITIVE_SERIES else 1) * (9_000_000_000_000.0 - y * 7e10),
+             "period_start": f"{2024 - y}-01-27", "period_end": f"{2025 - y}-01-26"}
             for metric in ("capex", "net_income", "revenue", "rnd") for y in range(rows)]
+
+
+RULE_ABSTRACT_STORED_CHARS = 1_000     # a stored rule abstract is up to 1,000 characters (loaders.py)
+EDGE_QUOTE_STORED_CHARS = 400          # longer than the quote cap: the sanitiser cuts it, the render is the worst case
 
 
 def _rules(cik: int) -> list[dict]:
     from semigraph.retrieval import retriever
     return [{"source": _company(cik), "relation": "AFFECTED_BY", "target": "R" * RULE_TITLE_CHARS, "status": "Active",
-             "quote": "q", "chunk_ids": [], "rule_id": f"2024-{10_000 + cik * 10 + j}", "date": f"2024-10-0{j + 1}",
+             "quote": "q", "chunk_ids": [], "rule_id": f"2024-{10_000 + (cik % CIK_BASE) * 10 + j}", "date": f"2024-10-0{j + 1}",
              "url": "u", "kind": "rule", "link_source": "federal_register", "link_method": "keyword",
-             "external": True} for j in range(retriever.RULES_PER_COMPANY)]
+             "external": True, "abstract": "A" * RULE_ABSTRACT_STORED_CHARS} for j in range(retriever.RULES_PER_COMPANY)]
+
+
+def _superseded(ids: list[str]) -> list[dict]:
+    """Evidence metadata that marks every id of an edge line as superseded (every mark renders)."""
+    return [{"id": i, "is_current": False, "filing_date": "2025-01-01"} for i in ids]
+
+
+def _anchor_quote_edges(cik: int) -> list[dict]:
+    """M2a: the edges of one anchor that get a quote line (R6), QUOTES_PER_ANCHOR of them, each at the longest names, with a
+    stored quote past the cap and three evidence ids that are all superseded (three marks on the line)."""
+    from semigraph.retrieval.context_layout import QUOTES_PER_ANCHOR
+    rows = []
+    for j in range(QUOTES_PER_ANCHOR):
+        ids = _ids(50_000 + cik * 100 + j)
+        rows.append({"source": _company(90), "relation": "COMPETES_WITH", "target": _company(91), "status": "Historical",
+                     "quote": "Q" * EDGE_QUOTE_STORED_CHARS, "chunk_ids": ids, "source_cik": cik, "target_cik": 91,
+                     "evidence": _superseded(ids)})
+    return rows
 
 
 def worst_case_retrieval(companies: int, *, pairs: int = 1, metric_rows: int = 14, show_all: bool = False,
@@ -432,12 +464,15 @@ def worst_case_retrieval(companies: int, *, pairs: int = 1, metric_rows: int = 1
     """A retrieval dict at its caps for ``companies`` anchors (the shape ``hybrid_retrieve`` returns)."""
     from semigraph.retrieval import retriever
     named = list(range(2007, 2026)) if show_all else [2017, 2019, 2021, 2023]     # 4 named years, each with its prior
-    r = {"anchors": {f"A{i}": i for i in range(1, companies + 1)}, "anchor_defaulted": False, "temporal": [],
+    r = {"anchors": {f"A{i}": CIK_BASE + i for i in range(1, companies + 1)}, "anchor_defaulted": False, "temporal": [],
          "metric_periods": {"years": named if companies else [], "dates": []}, "metrics": [], "temporal_pairs": [],
          "temporal_passages": [], "temporal_notices": [], "computed": ["c" * 400] * computed,
-         "edges": [{"source": _company(90), "relation": "COMPETES_WITH", "target": _company(91), "status": "Active",
-                    "quote": "q", "chunk_ids": _ids(i)} for i in range(edge_lines + extra_edges)]}
-    for cik in range(1, companies + 1):
+         "edges": [{"source": _company(90), "relation": "COMPETES_WITH", "target": _company(91), "status": "Historical",
+                    "quote": "q", "chunk_ids": _ids(i), "evidence": _superseded(_ids(i))}
+                   for i in range(edge_lines + extra_edges)]}
+    quote_edges = [e for cik in range(CIK_BASE + 1, CIK_BASE + companies + 1) for e in _anchor_quote_edges(cik)][:edge_lines]
+    r["edges"][:len(quote_edges)] = quote_edges           # the quote edges are PART of the edge lines, not extra ones
+    for cik in range(CIK_BASE + 1, CIK_BASE + companies + 1):
         items, pair_rows, passages, notices = _temporal(cik, pairs)
         r["edges"] += _rules(cik)
         r["metrics"] += _metrics(cik, metric_rows)
@@ -458,10 +493,14 @@ def _prompt_chars(r: dict) -> int:
     return len(answerer.render_prompt(QUESTION, answerer.build_blocks(r)[0]))
 
 
-def _company_chars(*, pairs: int, metric_rows: int, show_all: bool) -> int:
-    """What one more company's rules, metrics and temporal block add to the rendered prompt."""
+def _company_chars(*, pairs: int, metric_rows: int, show_all: bool, agent: bool = False) -> int:
+    """What one more company's rules, metrics and temporal block add to the rendered prompt (``agent``: as the agent's writer
+    renders it, without quote lines, abstracts or the prior id on the computed notes)."""
+    from semigraph.agent.merge import without_detail_lines
+
     def one(n):
-        return _prompt_chars(worst_case_retrieval(n, pairs=pairs, metric_rows=metric_rows, show_all=show_all))
+        r = worst_case_retrieval(n, pairs=pairs, metric_rows=metric_rows, show_all=show_all)
+        return _prompt_chars(without_detail_lines(r) if agent else r)
     return one(2) - one(1)
 
 
@@ -469,19 +508,27 @@ def agent_worst_case(pairs: int) -> dict:
     """The agent's dearest merged context: the anchor cap's companies, each with ``pairs`` filing pairs and every annual
     metric row shown, all 16 excerpts, 12 risks, 40 added edges, 4 computed lines and the note for a question that
     named all 26 companies."""
-    return worst_case_retrieval(AGENT_COMPANIES, pairs=pairs, metric_rows=19, show_all=True, chunks=16, risks=12,
-                                extra_edges=40, computed=4, dropped=ALL_26[MAX_ANCHORS:])
+    from semigraph.agent.merge import without_detail_lines
+    return without_detail_lines(worst_case_retrieval(AGENT_COMPANIES, pairs=pairs, metric_rows=19, show_all=True, chunks=16,
+                                                     risks=12, extra_edges=40, computed=4, dropped=ALL_26[MAX_ANCHORS:]))
 
 
-def rendered_worst_case_chars(ask_type: str) -> int:
-    """The characters of the prompt the writer is sent for the dearest context the caps allow, per ask type."""
+def rendered_worst_case_chars(ask_type: str, detail_lines: bool | None = None) -> int:
+    """The characters of the prompt the writer is sent for the dearest context the caps allow, per ask type.
+
+    ``detail_lines`` (M2a R6b) switches the edge quote lines and rule abstracts on or off; None is what production does: on
+    for the hybrid and workspace asks, off for the agent (``agent.merge.without_detail_lines``)."""
+    from semigraph.agent.merge import without_detail_lines
     from semigraph.retrieval import workspace
     dropped = ALL_26[MAX_ANCHORS:]            # a question naming all 26 companies keeps 4: the note names the other 22
+
+    def switched(r: dict, default: bool) -> dict:
+        return r if (default if detail_lines is None else detail_lines) else without_detail_lines(r)
     if ask_type == "vector":
         return _prompt_chars(worst_case_retrieval(0, risks=0, edge_lines=0))
     if ask_type == "agent":
-        return _prompt_chars(agent_worst_case(AGENT_PAIRS))
-    r_sec = worst_case_retrieval(MAX_ANCHORS, pairs=2, dropped=dropped)
+        return _prompt_chars(switched(agent_worst_case(AGENT_PAIRS), False))
+    r_sec = switched(worst_case_retrieval(MAX_ANCHORS, pairs=2, dropped=dropped), True)
     if ask_type == "hybrid":
         return _prompt_chars(r_sec)
     docs = [{"chunk_id": f"workspace-document-chunk-{i:036d}", "text": "D" * 1_800} for i in range(6)]
@@ -521,7 +568,7 @@ def test_every_estimate_covers_the_worst_case_prompt_rendered_at_the_caps_on_the
 def test_the_rendered_worst_cases_are_the_prompts_the_hand_arithmetic_describes():
     """The rendered sizes (characters), so a change to a layout or a cap shows here first."""
     assert {t: rendered_worst_case_chars(t) for t in ASK_TYPES} == {
-        "vector": 105_820, "hybrid": 298_060, "workspace": 310_377, "agent": 447_830}
+        "vector": 106_121, "hybrid": 340_415, "workspace": 341_164, "agent": 461_715}
 
 
 @pytest.mark.parametrize("pairs", [1, 2])
@@ -537,13 +584,17 @@ def test_one_plain_anchors_blocks_at_their_caps_fit_the_per_anchor_allowance(pai
 def test_one_agent_companys_blocks_fit_the_agent_allowance_up_to_the_pair_count_the_allowance_covers():
     """The agent's tools add metrics (every annual row: 19 per series, all shown) and temporal pairs (up to 2 per
     company per call, so 4 calls could offer one company 8). The company count AND the pairs a company holds are capped
-    in the code (agent/merge.py): the allowance covers exactly AGENT_PAIRS (5), the cap, one more than the graph holds
-    (4 consecutive comparisons, see the data test below); 6 and more do not fit it, and 8, what 4 calls offer, is 66,410
-    characters (what the cap keeps out)."""
-    cost = {p: _company_chars(pairs=p, metric_rows=19, show_all=True) for p in range(1, 9)}
-    assert cost == {1: 44_578, 2: 46_490, 3: 42_177, 4: 48_510, 5: 48_650, 6: 54_570, 7: 60_490, 8: 66_410}
+    in the code (agent/merge.py): the allowance covers exactly AGENT_PAIRS (4), the cap and what the graph holds
+    (4 consecutive comparisons, see the data test below); 5 pairs through the real merge (50,228) and 6 and more do not fit,
+    and 8, what 4 calls offer, is 67,828 characters (what the cap keeps out)."""
+    cost = {p: _company_chars(pairs=p, metric_rows=19, show_all=True, agent=True) for p in range(1, 9)}
+    assert cost == {1: 45_930, 2: 47_842, 3: 43_496, 4: 49_856, 5: 49_987, 6: 55_934, 7: 61_881, 8: 67_828}
     assert all(cost[p] <= est.AGENT_GRAPH_CHARS_PER_COMPANY for p in range(1, AGENT_PAIRS + 1))
-    assert cost[AGENT_PAIRS + 1] > est.AGENT_GRAPH_CHARS_PER_COMPANY
+    assert cost[AGENT_PAIRS + 2] > est.AGENT_GRAPH_CHARS_PER_COMPANY
+    # 5 pairs fit in this bare rendering (49,987) but not through the real merge, which adds its cap note (50,228, below)
+    from semigraph.agent.merge import MAX_PAIRS_HELD_PER_COMPANY
+    one_company = _prompt_chars(merged_agent_context(2, pair_cap=AGENT_PAIRS + 1)) - _prompt_chars(merged_agent_context(1, pair_cap=AGENT_PAIRS + 1))
+    assert MAX_PAIRS_HELD_PER_COMPANY == AGENT_PAIRS and one_company == 50_228 > est.AGENT_GRAPH_CHARS_PER_COMPANY
 
 
 def merged_agent_context(companies: int, *, pair_cap: int | None = None) -> dict:
@@ -555,10 +606,10 @@ def merged_agent_context(companies: int, *, pair_cap: int | None = None) -> dict
     r = worst_case_retrieval(companies, pairs=2, metric_rows=19, show_all=True, chunks=16, risks=12, extra_edges=40,
                              computed=4, dropped=ALL_26[MAX_ANCHORS:])
     for call in range(4):
-        layers = [_temporal(cik, 2, first=2 + 2 * call) for cik in range(1, companies + 1)]
+        layers = [_temporal(cik, 2, first=2 + 2 * call) for cik in range(CIK_BASE + 1, CIK_BASE + companies + 1)]
         items, pairs, passages, notices = ([row for layer in layers for row in layer[i]] for i in range(4))
         r = merge.merge_temporal(r, items=items, pairs=pairs, passages=passages, notices=notices, question=QUESTION, **cap)
-    return r
+    return merge.without_detail_lines(r)        # what the agent's writer renders (R6b; R4 off: partial R4 did not fit)
 
 
 def test_the_agent_estimate_covers_every_pair_count_up_to_the_cap():
@@ -570,16 +621,16 @@ def test_the_agent_estimate_covers_every_pair_count_up_to_the_cap():
 def test_the_agent_estimate_is_a_bound_the_code_enforces_even_when_four_calls_offer_ten_pairs_of_every_company():
     """THE CLOSED RESIDUAL. Without a cap on the pairs of a company, four companies at 8 pairs each rendered 518,870
     characters (259,435 tokens on Sonnet, 207,548 on Luna) and cost 1,115,315 micro-dollars of writer and planner calls
-    at the live prices, above the 1,015,669 the agent estimate holds (it needed 9 annual filings of one company; the
-    graph has at most 5). The real merge now holds each company to 5 pairs: the context it builds renders within the
+    at the live prices, above the 1,008,529 the agent estimate holds (it needed 9 annual filings of one company; the
+    graph has at most 4 pairs). The real merge now holds each company to 4 pairs: the context it builds renders within the
     estimate's prompt ceiling, and one company's blocks within AGENT_GRAPH_CHARS_PER_COMPANY."""
     from semigraph.agent import merge
     live = live_settings()
     r = merged_agent_context(AGENT_COMPANIES)
-    held = {cik: sum(1 for p in r["temporal_pairs"] if p["cik"] == cik) for cik in range(1, AGENT_COMPANIES + 1)}
-    assert held == dict.fromkeys(range(1, AGENT_COMPANIES + 1), merge.MAX_PAIRS_HELD_PER_COMPANY)
+    held = {cik: sum(1 for p in r["temporal_pairs"] if p["cik"] == cik) for cik in range(CIK_BASE + 1, CIK_BASE + AGENT_COMPANIES + 1)}
+    assert held == dict.fromkeys(range(CIK_BASE + 1, CIK_BASE + AGENT_COMPANIES + 1), merge.MAX_PAIRS_HELD_PER_COMPANY)
     chars = _prompt_chars(r)
-    assert chars - _prompt_chars(agent_worst_case(AGENT_PAIRS)) <= AGENT_COMPANIES * 300, "5 pairs each, plus a cap note each"
+    assert chars - _prompt_chars(agent_worst_case(AGENT_PAIRS)) <= AGENT_COMPANIES * 300, "4 pairs each, plus a cap note each"
     assert est.prompt_tokens("agent", live, LUNA) >= tokens_of(chars, LUNA)
     assert est.prompt_tokens("agent", live, SONNET) >= tokens_of(chars, SONNET)
     assert est.estimate_micro("agent", live) >= math.ceil(writer_floor_micro("agent", chars))
@@ -589,11 +640,11 @@ def test_the_agent_estimate_is_a_bound_the_code_enforces_even_when_four_calls_of
 
 def test_without_the_cap_the_same_calls_cost_more_than_the_agent_estimate_holds():
     """The control, so the test above cannot pass on its own: the same four calls through a merge whose cap is out of
-    reach end with 10 pairs of every company, 566,790 characters and 1,213,072 micro-dollars of writer and planner calls
-    at the live prices, above the 1,015,669 the estimate holds. The cap, not the data, is what keeps it a bound."""
+    reach end with 10 pairs of every company, 581,739 characters and 1,243,570 micro-dollars of writer and planner calls
+    at the live prices, above the 1,008,529 the estimate holds. The cap, not the data, is what keeps it a bound."""
     r = merged_agent_context(AGENT_COMPANIES, pair_cap=100)
-    assert sum(1 for p in r["temporal_pairs"] if p["cik"] == 1) == 10
-    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (566_790, 1_213_072)
+    assert sum(1 for p in r["temporal_pairs"] if p["cik"] == CIK_BASE + 1) == 10
+    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (581_739, 1_243_570)
     assert math.ceil(writer_floor_micro("agent", _prompt_chars(r))) > est.estimate_micro("agent", live_settings())
 
 
@@ -625,8 +676,8 @@ def test_the_note_at_its_longest_fits_its_allowance():
 
 
 def test_the_ceiling_by_anchor_cap_is_the_table_the_cap_was_chosen_from(monkeypatch):
-    """Prompt tokens of a hybrid ask on the strong model (Sonnet, 2.0 characters per token) at 1..10 anchors: 42,000
-    characters, 21,000 tokens an anchor (16,800 on Luna at 2.5). The 200,000-token mark (a price boundary for no model
+    """Prompt tokens of a hybrid ask on the strong model (Sonnet, 2.0 characters per token) at 1..10 anchors: 48,000
+    characters, 24,000 tokens an anchor (19,200 on Luna at 2.5; a workspace ask 45,000 and 22,500). The 200,000-token mark (a price boundary for no model
     the estimate prices Sonnet at; Luna's threshold is not recorded, see ``LUNA_TRIPWIRE_TOKENS``) is passed after 5
     anchors for a hybrid ask and after 5 for a workspace ask on Sonnet (after 8 and 7 at the old single 2.5); the cap is
     4."""
@@ -636,10 +687,10 @@ def test_the_ceiling_by_anchor_cap_is_the_table_the_cap_was_chosen_from(monkeypa
         monkeypatch.setattr(retriever, "MAX_ANCHORS", anchors)
         for ask_type in tokens:
             tokens[ask_type][anchors] = est.prompt_tokens(ask_type, make_settings(), SONNET, "strong")
-    assert tokens["hybrid"] == {1: 98_856, 2: 119_856, 3: 140_856, 4: 161_856, 5: 182_856, 6: 203_856, 7: 224_856,
-                                8: 245_856, 9: 266_856, 10: 287_856}
-    assert tokens["workspace"] == {1: 104_998, 2: 125_998, 3: 146_998, 4: 167_998, 5: 188_998, 6: 209_998, 7: 230_998,
-                                   8: 251_998, 9: 272_998, 10: 293_998}
+    assert tokens["hybrid"] == {1: 100_506, 2: 124_506, 3: 148_506, 4: 172_506, 5: 196_506, 6: 220_506, 7: 244_506,
+                                8: 268_506, 9: 292_506, 10: 316_506}
+    assert tokens["workspace"] == {1: 105_148, 2: 127_648, 3: 150_148, 4: 172_648, 5: 195_148, 6: 217_648, 7: 240_148,
+                                   8: 262_648, 9: 285_148, 10: 307_648}
     assert [n for n, t in tokens["hybrid"].items() if t < 200_000] == list(range(1, 6))
     assert [n for n, t in tokens["workspace"].items() if t < 200_000] == list(range(1, 6))
 
@@ -672,12 +723,12 @@ def test_without_an_escalation_model_the_answer_model_is_the_only_call_and_keeps
 
 def test_an_escalation_model_equal_to_the_answer_model_is_one_model_in_both_roles():
     """answerer.stream_answer_for_prompt drops the escalation when it equals the answering model (the documented
-    rollback). Sonnet alone is sized at Sonnet's ratio: 161,856 tokens a call, twice, with no draft."""
+    rollback). Sonnet alone is sized at Sonnet's ratio: 172,506 tokens a call, twice, with no draft."""
     same = est.estimate("hybrid", make_settings(answer_model=SONNET, escalation_model=SONNET))
     assert [c.name for c in same.components] == ["answer"]
     assert same.micro == est.estimate_micro("hybrid", make_settings(answer_model=SONNET, escalation_model=""))
     assert same.micro == math.ceil(cost_micro(SONNET_PROMPT_TOKENS["hybrid"], OUT_TOKENS, SONNET_IN, SONNET_OUT,
-                                              STRONG_CALLS)) == 695_424
+                                              STRONG_CALLS)) == 738_024
     assert same.components[0].input_tokens == SONNET_PROMPT_TOKENS["hybrid"]
 
 
@@ -706,7 +757,9 @@ def test_the_planner_is_priced_at_its_own_model():
 def test_a_workspace_ask_costs_at_least_a_hybrid_ask_and_adds_the_document_excerpts():
     s = make_settings()
     assert est.estimate_micro("workspace", s) > est.estimate_micro("hybrid", s)
-    assert est.context_chars("workspace") - est.context_chars("hybrid") == 6 * (1_800 + 64)
+    # the documents add 6 excerpts; the workspace renders no quote lines or abstracts, so its anchors are allowed 3,000 less each
+    assert (est.context_chars("workspace") - est.context_chars("hybrid")
+            == 6 * (1_800 + 64) - MAX_ANCHORS * (est.GRAPH_CHARS_PER_ANCHOR - est.GRAPH_CHARS_PER_ANCHOR_WORKSPACE))
 
 
 def test_ceilings_are_ordered_by_how_much_each_ask_can_carry():
@@ -951,7 +1004,7 @@ def test_the_live_estimates_are_cents_not_dollars_and_not_zero():
     stream's second attempt and a context two to eleven times the largest recorded; the agent's also three planner calls.
 
     OWNER DECISION 2: the bound was one dollar while the agent estimate was 83 cents; at Sonnet's 2.0 characters per token
-    (the old 2.5 failed on the recorded Sonnet prompts) it is $1.0157 (the others 27 to 73 cents), and that is the honest
+    (the old 2.5 failed on the recorded Sonnet prompts) it is $1.0163 (the others 27 to 77 cents), and that is the honest
     upper bound, so the sanity bound moved to two dollars. It is only a sanity check: it catches an estimate that is off by
     an order of magnitude (a price per million read as a price per token, a ceiling nobody capped). What limits money is
     the $10 day cap and the per-address share, pinned in tests/test_state_contract.py, not this assertion."""
@@ -966,22 +1019,22 @@ def test_the_live_estimates_are_cents_not_dollars_and_not_zero():
 
 
 def test_the_live_estimates_to_the_cent():
-    """What the owner is told: hybrid 71 cents, vector 27, workspace 73, agent 102 (it was 58 / 22 / 60 / 83)."""
+    """What the owner is told: hybrid 75 cents, vector 27, workspace 75, agent 101 (it was 58 / 22 / 60 / 83)."""
     s = live_settings()
-    assert round(est.estimate_usd("hybrid", s), 2) == 0.71
-    assert [round(est.estimate_usd(t, s), 2) for t in ("vector", "workspace", "agent")] == [0.27, 0.73, 1.02]
-    assert [est.estimate_micro(t, s) for t in ASK_TYPES] == [709_573, 265_873, 1_015_669, 734_632]
+    assert round(est.estimate_usd("hybrid", s), 2) == 0.75
+    assert [round(est.estimate_usd(t, s), 2) for t in ("vector", "workspace", "agent")] == [0.27, 0.75, 1.01]
+    assert [est.estimate_micro(t, s) for t in ASK_TYPES] == [753_025, 266_485, 1_008_529, 753_604]
 
 
 def test_the_agent_estimate_is_the_anchor_capped_one_and_the_company_cap_is_the_one_place_that_sets_it():
     """OWNER DECISION (option b): capping the companies in the agent's merge at MAX_ANCHORS (agent/merge.py and
     agent/tools.py) took the estimate from $1.57 (13 companies' blocks, a 368,010-token prompt) to $0.83 (4 companies,
-    188,010 tokens) at the single 2.5 characters per token; at Sonnet's 2.0 the same ceiling is 235,012 tokens on the
+    188,010 tokens) at the single 2.5 characters per token; at Sonnet's 2.0 the same ceiling is 233,262 tokens on the
     strong model and $1.02 (inside Sonnet's 1,000,000-token window at its flat price, see the long-context test above).
     ``agent_company_blocks`` is the one place that reads that cap."""
     from semigraph.agent import merge
     live = live_settings()
-    assert est.estimate_micro("agent", live) == 1_015_669
+    assert est.estimate_micro("agent", live) == 1_008_529
     assert est.agent_company_blocks() == merge.company_cap() == AGENT_COMPANIES == MAX_ANCHORS
 
 
@@ -1027,22 +1080,22 @@ def test_which_cap_binds_first_the_150_ask_count_or_the_10_dollar_estimate():
     live in-flight cap is 2."""
     s = live_settings()
     hybrid, agent = est.estimate_micro("hybrid", s), est.estimate_micro("agent", s)
-    assert (hybrid, agent) == (709_573, 1_015_669)
-    assert 150 * hybrid / 1_000_000 == pytest.approx(106.44, abs=0.01)
-    assert CAP_MICRO // hybrid == 14                       # at the estimate the 15th ask cannot reserve
+    assert (hybrid, agent) == (753_025, 1_008_529)
+    assert 150 * hybrid / 1_000_000 == pytest.approx(112.95, abs=0.01)
+    assert CAP_MICRO // hybrid == 13                       # at the estimate the 14th ask cannot reserve
     dearest, mean = round(V2E_ROW_MAX_USD * 1_000_000), round(V2E_MEAN_ROW_USD * 1_000_000)
     assert asks_granted(mean, hybrid) == COUNT_CAP
     assert 150 * mean / 1_000_000 == pytest.approx(2.19, abs=0.01)
     assert asks_granted(round(V2E_STRONG_ROW_MAX_USD * 1_000_000), hybrid) == COUNT_CAP
-    assert asks_granted(dearest, hybrid) == 142            # the 143rd is denied by the $10 cap
-    assert asks_granted(dearest, hybrid, in_flight=1) == 131     # one other lease in flight (the live cap is 2)
-    assert (CAP_MICRO - hybrid) // (COUNT_CAP - 1) == 62_351       # the break-even cost per ask: the dearest that still
-    assert asks_granted(62_351, hybrid) == COUNT_CAP and asks_granted(62_352, hybrid) == COUNT_CAP - 1   # gets all 150
+    assert asks_granted(dearest, hybrid) == 141            # the 142nd is denied by the $10 cap
+    assert asks_granted(dearest, hybrid, in_flight=1) == 130     # one other lease in flight (the live cap is 2)
+    assert (CAP_MICRO - hybrid) // (COUNT_CAP - 1) == 62_060       # the break-even cost per ask: the dearest that still
+    assert asks_granted(62_060, hybrid) == COUNT_CAP and asks_granted(62_061, hybrid) == COUNT_CAP - 1   # gets all 150
     agent_dearest, agent_mean = round(AGENT_ROW_MAX_USD * 1_000_000), round(AGENT_MEAN_ROW_USD * 1_000_000)
     assert asks_granted(agent_mean, agent) == COUNT_CAP and asks_granted(agent_dearest, agent) == 128
     assert 150 * agent_mean / 1_000_000 == pytest.approx(2.17, abs=0.01)
-    assert (CAP_MICRO - agent) // (COUNT_CAP - 1) == 60_297        # the agent's break-even cost per ask
-    assert asks_granted(60_297, agent) == COUNT_CAP and asks_granted(60_298, agent) == COUNT_CAP - 1
+    assert (CAP_MICRO - agent) // (COUNT_CAP - 1) == 60_345        # the agent's break-even cost per ask
+    assert asks_granted(60_345, agent) == COUNT_CAP and asks_granted(60_346, agent) == COUNT_CAP - 1
     assert CAP_MICRO // agent == 9        # nine agent asks at their estimate fill the day (a ceiling, not a charge)
 
 
@@ -1071,6 +1124,31 @@ def test_the_retrieval_defaults_are_what_the_ceiling_counts():
     assert retriever.ACTIVE_RISKS_TOP == est.ACTIVE_RISKS_TOP
 
 
+def test_the_worst_case_fixture_builds_what_the_estimate_says_was_measured():
+    """17-character TWD amounts, n/m notes on two series, every edge line's marks, 7-digit CIKs and ':II.1A:' ids."""
+    from semigraph.retrieval import answerer
+    blocks, _, _ = answerer.build_blocks(worst_case_retrieval(1, pairs=1))
+    assert re.search(r"[: ]-?\d{1,3}(,\d{3}){4} TWD", blocks.metrics_block) and "9,000,000,000,000 TWD" in blocks.metrics_block
+    assert blocks.metrics_block.count("computed: n/m") > 0 and "percentage not meaningful" in blocks.metrics_block
+    assert blocks.metrics_block.count("computed: +") + blocks.metrics_block.count("computed: -") > 0
+    edge_lines = [ln for ln in blocks.edges_block.splitlines() if ln.startswith("- ")]
+    assert len(edge_lines) == EDGE_LINES_BUILT and all(ln.count("(superseded)") == 3 for ln in edge_lines)
+    assert ":xbrl:" not in blocks.metrics_block and "xbrl:1000001:" in blocks.metrics_block      # a 7-digit CIK
+    assert ":II.1A:" in blocks.edges_block and ":II.1A:" in blocks.temporal_block
+
+
+def test_the_edge_and_risk_line_allowances_cover_the_longest_rendered_lines():
+    """EDGE_LINE_CHARS (280) was re-measured from the real render: a RELATIONSHIPS line at the longest values the code can
+    emit (COMPETES_WITH, the longest of the four relation types in extraction/schemas.py; the status 'Historical', the longer of
+    'Active' / 'Historical'; 50-character company names, the longest SEC name of the 26 canonical companies; three ids, three
+    superseded marks) is 272 characters (273 with its newline); a risk line at the measured maxima is 513."""
+    from semigraph.retrieval import answerer
+    blocks, _, _ = answerer.build_blocks(worst_case_retrieval(1, pairs=1))
+    edge_lines = [ln for ln in blocks.edges_block.splitlines() if ln.startswith("- ")]
+    assert max(len(ln) for ln in edge_lines) + 1 == 273 <= est.EDGE_LINE_CHARS
+    assert max(len(ln) for ln in blocks.risks_block.splitlines()) + 1 <= est.RISK_LINE_CHARS
+
+
 def test_the_per_company_caps_are_the_ones_the_worst_case_was_built_from():
     """Raising a cap (or a layout cut) changes what one company's blocks can weigh: re-measure the allowances, then edit
     the literals here and the estimate's."""
@@ -1082,7 +1160,7 @@ def test_the_per_company_caps_are_the_ones_the_worst_case_was_built_from():
     assert (context_layout.HEADLINE_MAX_CHARS, context_layout.PASSAGE_QUOTE_CHARS,
             context_layout.PASSAGE_WHERE_CHARS, context_layout.MAX_CHUNK_IDS_PER_ITEM) == (240, 450, 100, 3)
     assert retriever.MAX_ANCHORS == MAX_ANCHORS
-    assert est.EDGE_LINE_CHARS == 300 and est.RISK_LINE_CHARS == 700
+    assert est.EDGE_LINE_CHARS == 280 and est.RISK_LINE_CHARS == 700
 
 
 def test_the_agent_code_is_what_the_agent_allowance_was_measured_against():
@@ -1090,8 +1168,8 @@ def test_the_agent_code_is_what_the_agent_allowance_was_measured_against():
     from semigraph.retrieval import retriever
     assert merge.company_cap() == est.agent_company_blocks() == retriever.MAX_ANCHORS
     assert retriever.MAX_PAIRS_PER_COMPANY == 2          # the pairs a single call can offer per company
-    assert Settings.model_fields["agent_max_tool_calls"].default == 4     # 4 calls x 2 pairs offered (the cap keeps 5 in all)
-    assert merge.MAX_PAIRS_HELD_PER_COMPANY == AGENT_PAIRS == 5          # the pairs the allowance was measured at, held by the merge
+    assert Settings.model_fields["agent_max_tool_calls"].default == 4     # 4 calls x 2 pairs offered (the cap keeps 4 in all)
+    assert merge.MAX_PAIRS_HELD_PER_COMPANY == AGENT_PAIRS == 4          # the pairs the allowance was measured at, held by the merge
     assert set(sanitize.KNOWN_METRICS) == {"revenue", "net_income", "rnd", "capex"}
 
 
@@ -1133,10 +1211,10 @@ def test_boot_estimates_logs_one_info_line_per_ask_type_with_the_number_and_its_
     assert len(lines) == 4 and not [r for r in caplog.records if r.levelno > logging.INFO]
     by_type = {t: next(r.getMessage() for r in lines if f"ask_type={t} " in r.getMessage()) for t in ASK_TYPES}
     hybrid = by_type["hybrid"]
-    # each component carries ITS model's tokens: Luna 129,485, Sonnet 161,856 (the ask's own prompt_tokens is the larger)
-    for fragment in ("usd=0.709573", "micro=709573", "prompt_tokens=161856", "anchors_max=4", "company_blocks=4", LUNA,
-                     SONNET, "x2", "unpriced=none", f"[{LUNA} x1: in 129485 out 2400 = 14149]",
-                     f"[{SONNET} x2: in 161856 out 2400 = 695424]"):
+    # each component carries ITS model's tokens: Luna 138,005, Sonnet 172,506 (the ask's own prompt_tokens is the larger)
+    for fragment in ("usd=0.753025", "micro=753025", "prompt_tokens=172506", "anchors_max=4", "company_blocks=4", LUNA,
+                     SONNET, "x2", "unpriced=none", f"[{LUNA} x1: in 138005 out 2400 = 15001]",
+                     f"[{SONNET} x2: in 172506 out 2400 = 738024]"):
         assert fragment in hybrid, fragment
     assert "anchors_assumed" not in hybrid
     assert "company_blocks=4" in by_type["agent"] and "company_blocks=0" in by_type["vector"]

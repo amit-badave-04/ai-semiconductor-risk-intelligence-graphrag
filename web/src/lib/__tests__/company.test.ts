@@ -126,6 +126,18 @@ describe("fetchDossier", () => {
   });
 });
 
+describe("parseDossier: the rules summary (M2a R11)", () => {
+  const base = { company: { ticker: "NVDA", name: "Nvidia", cik: 1 } };
+  it("reads the three counts, and a mistyped or negative one as null", () => {
+    expect(parseDossier({ ...base, rules_summary: { rules_examined: 90, rules_matched: 20, rules_linked: 15 } })?.rulesSummary).toEqual({ examined: 90, matched: 20, linked: 15 });
+    expect(parseDossier({ ...base, rules_summary: { rules_examined: null, rules_matched: "3", rules_linked: -1 } })?.rulesSummary).toEqual({ examined: null, matched: null, linked: null });
+  });
+  it("has no summary at all when the server sent none", () => {
+    expect(parseDossier(base)?.rulesSummary).toBeUndefined();
+    expect(parseDossier({ ...base, rules_summary: 4 })?.rulesSummary).toBeUndefined();
+  });
+});
+
 describe("parseDossier (a type guard that ignores unknown fields)", () => {
   it("keeps the known fields and drops the unknown ones", () => {
     const dossier = parseDossier({

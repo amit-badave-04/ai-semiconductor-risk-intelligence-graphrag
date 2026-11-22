@@ -451,6 +451,10 @@ export const deck = {
           return count > 0
             ? `${count} cited ${count === 1 ? "source was" : "sources were"} not among the passages found for this question.`
             : "Some cited sources were not among the passages found for this question.";
+        case "sourcesReplaced":
+          return `Checked: ${count} cited ${count === 1 ? "source comes" : "sources come"} from a filing that has since been replaced`;
+        case "sourcesReferenceOnly":
+          return `Checked: ${count} ${count === 1 ? "source was" : "sources were"} shown to the model as a reference only`;
         case "noCitation":
           return "This answer cites no source: read it as unsupported.";
         case "declines":
@@ -546,6 +550,10 @@ export const deck = {
         "These US export-control rules come from the Federal Register and are linked to the company by keyword matching: actions by the government, not statements the company made.",
       /** D-R3 */
       none: (name: string): string => `No export-control rule in our data was linked to ${name} by keyword matching. This is not a finding that none applies.`,
+      /** docs/specs/m2a-answer-integrity.md R11 and OD7 (approved wording): the linker's counts under the list. */
+      showing: (shown: number, linked: number): string => `showing ${shown} of ${linked} linked rules`,
+      examined: (examined: number, matched: number): string =>
+        `examined ${examined} ${examined === 1 ? "rule" : "rules"}, matched ${matched}`,
     },
     relationships: {
       heading: "Relationships",

@@ -1,0 +1,26 @@
+[
+  {
+    "source": "Apple",
+    "type": "CUSTOMER_OF",
+    "target": "Alphabet",
+    "action": "reverse",
+    "chunk_id": "0000320193-26-000020:II.1A:0002",
+    "reason": "Apple earns revenue from licensing arrangements with Google, so Google is Apple's customer, not the reverse."
+  },
+  {
+    "source": "Huawei",
+    "type": "CUSTOMER_OF",
+    "target": "Qualcomm",
+    "action": "inactive",
+    "chunk_id": "0000804328-26-000061:II.1A:0015",
+    "reason": "Commerce revoked the export license under which Qualcomm sold to Huawei, so the relationship is no longer active."
+  },
+  {
+    "source": "Qualcomm",
+    "type": "SUPPLIES_TO",
+    "target": "Huawei",
+    "action": "inactive",
+    "chunk_id": "0000804328-26-000061:II.1A:0015",
+    "reason": "Twin of Huawei CUSTOMER_OF Qualcomm: the same revoked export licence, so Qualcomm no longer supplies Huawei."
+  }
+]

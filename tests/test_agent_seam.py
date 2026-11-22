@@ -59,7 +59,7 @@ def test_computed_lines_are_appended_to_the_metrics_block_as_data_and_change_not
 def test_the_template_is_not_touched_by_the_seam():
     """Computed lines are DATA in METRICS: the agent must never change the prompt template (seeded examples, the cache and the
     eval baselines are keyed to it). A deliberate template change updates this pin AND re-runs the benchmark."""
-    assert template_fingerprint() == "4d0a62f5a0"
+    assert template_fingerprint() == "fbed8caa9e"
 
 
 def test_stream_answer_for_context_is_what_answer_stream_delegates_to():
@@ -98,3 +98,78 @@ def test_every_twin_a_route_can_stream_through_takes_the_paid_call_meter_as_its_
         meter = inspect.signature(twin).parameters["meter"]
         assert meter.kind is inspect.Parameter.KEYWORD_ONLY and meter.default is None, twin.__name__
     assert inspect.signature(routes.aanswer_stream).parameters["limiters"].kind is inspect.Parameter.KEYWORD_ONLY
+
+
+# --- M2a R6b / S14: the detail lines (edge quotes, rule abstracts) are the plain hybrid ask's; the agent switches them off -------------
+
+DETAIL_EDGE = {"source": "Nvidia", "relation": "SUPPLIES_TO", "target": "AMD", "status": "Active", "chunk_ids": ["0001-25-000001:I.1:0001"],
+               "quote": "SECRETQUOTE we ship GPUs.", "source_cik": 1045810, "target_cik": 2,
+               "evidence": [{"id": "0001-25-000001:I.1:0001", "is_current": True, "filing_date": "2026-01-01"}]}
+DETAIL_RULE = {"source": "Nvidia", "relation": "AFFECTED_BY", "target": "SECRETTITLE rule", "status": "Active", "quote": None,
+               "chunk_ids": [], "rule_id": "2026-12345", "date": "2026-01-02", "link_method": "keyword",
+               "abstract": "SECRETABSTRACT what it does."}
+
+
+def _detail_retrieval():
+    return _retrieval(anchors={"Nvidia": 1045810}, edges=[DETAIL_EDGE, DETAIL_RULE],
+                      chunks=[{"chunk_id": "0001-25-000001:I.1:0001", "text": "Nvidia ships GPUs."}])
+
+
+def _fake_run_agent(r):
+    from semigraph.agent.graph import AgentResult
+
+    def run_agent(*args, **kwargs):
+        if False:
+            yield
+        return AgentResult(r=r, tool_calls=[], model_calls=1, elapsed_s=0.0, fallback_reason=None, stop_reason="done",
+                           planner_usage={"prompt_tokens": 10, "completion_tokens": 1})
+    return run_agent
+
+
+def test_the_agent_writer_gets_no_quote_or_abstract_lines_and_the_hybrid_writer_gets_them(monkeypatch):
+    from agent_fakes import FakeWriter, ScriptedPlanner, make_settings, turn
+
+    from semigraph.agent import stream as S
+
+    monkeypatch.setattr(S, "run_agent", _fake_run_agent(_detail_retrieval()))
+    agent_writer = FakeWriter("Nvidia ships GPUs [0001-25-000001:I.1:0001].")
+    events = list(S.agent_answer_stream("q?", None, None, planner=ScriptedPlanner(turn()), settings=make_settings(),
+                                        llm_stream=agent_writer))
+    assert events[-1]["event"] == "done"
+    prompt = agent_writer.prompts[0]
+    assert "SECRETQUOTE" not in prompt and "SECRETABSTRACT" not in prompt and "evidence [" not in prompt
+    assert "SECRETTITLE rule" in prompt                       # R2 and the rule line itself stay
+    hybrid_writer = FakeWriter("Nvidia ships GPUs [0001-25-000001:I.1:0001].")
+    list(answerer.stream_answer_for_context("q?", _detail_retrieval(), "hybrid", llm_stream=hybrid_writer))
+    assert "SECRETQUOTE" in hybrid_writer.prompts[0] and "SECRETABSTRACT" in hybrid_writer.prompts[0]
+
+
+def test_agent_answer_rebuilds_the_context_with_the_switch_off(monkeypatch):
+    from agent_fakes import FakeWriter, ScriptedPlanner, make_settings, turn
+
+    from semigraph.agent import stream as S
+
+    monkeypatch.setattr(S, "run_agent", _fake_run_agent(_detail_retrieval()))
+    out = S.agent_answer("q?", None, None, planner=ScriptedPlanner(turn()), settings=make_settings(),
+                         llm_stream=FakeWriter("Nvidia ships GPUs [0001-25-000001:I.1:0001]."))
+    assert "SECRETQUOTE" not in out["context"] and "SECRETABSTRACT" not in out["context"]
+    assert "detail_lines" not in out["retrieval"]             # the switch is applied for rendering only
+
+
+def test_the_async_agent_writer_is_handed_the_switched_off_retrieval():
+    """The async twin builds its writer call from ``plan.r`` at one place; it must go through the same switch."""
+    from semigraph.agent import stream_async
+
+    assert "question, without_detail_lines(plan.r), strategy" in inspect.getsource(stream_async)
+
+
+def test_the_planner_view_never_receives_quotes_abstracts_or_titles():
+    import json
+
+    from semigraph.agent import sanitize
+
+    r = _detail_retrieval()
+    views = [sanitize.view_edges(r["edges"]), sanitize.prefetch_summary(r)]
+    dumped = json.dumps(views)
+    assert "SECRETQUOTE" not in dumped and "SECRETABSTRACT" not in dumped and "SECRETTITLE" not in dumped
+    assert "we ship GPUs" not in dumped and "what it does" not in dumped

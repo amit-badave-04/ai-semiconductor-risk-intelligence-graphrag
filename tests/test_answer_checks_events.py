@@ -15,7 +15,8 @@ def clean(numbers_checked):
     """The ``checks`` of an answer that passed everything, having examined ``numbers_checked`` figures."""
     return {"citations_retrieved": True, "numbers_grounded": True, "numbers_checked": numbers_checked,
             "unmatched_numbers": [], "echoed_numbers": [], "pseudo_citations": [], "has_citation": True,
-            "is_refusal": False, "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+            "is_refusal": False, "unsupported_removal_claim": False, "unsupported_removal_sentences": [], "stale_citations": [],
+    "cited_without_text": []}
 
 
 RETRIEVAL = {

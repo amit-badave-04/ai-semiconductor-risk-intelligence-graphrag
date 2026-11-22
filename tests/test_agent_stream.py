@@ -131,10 +131,16 @@ def plain_events(writer):
     (lambda: ScriptedPlanner(turn(("run_cypher", {"query": "MATCH (n) RETURN n"})), turn()), None),
     (lambda: ScriptedPlanner(turn(FM), RuntimeError("down after a good tool call")), "planner_error:RuntimeError"),
 ], ids=["no-tool", "planner-error", "refused-tool", "error-after-a-tool"])
-def test_a_planner_that_adds_nothing_gives_the_writer_the_byte_identical_prompt(make_planner, fallback):
-    """A run that adds nothing, and EVERY fallback (even after a tool call that worked), answers exactly like the fixed path."""
+def test_a_planner_that_adds_nothing_gives_the_writer_the_byte_identical_prompt(make_planner, fallback, monkeypatch):
+    """A run that adds nothing, and EVERY fallback (even after a tool call that worked), answers exactly like the fixed path
+    rendered the way the agent's writer renders (M2a council 005: no edge quote lines or rule abstracts, and the computed note
+    inline without the prior id: ``agent.merge.without_detail_lines``). The fixed path itself keeps all of them."""
+    from semigraph.agent.merge import without_detail_lines
+    real = answerer_mod.hybrid_retrieve
+    monkeypatch.setattr(answerer_mod, "hybrid_retrieve", lambda *a, **k: without_detail_lines(real(*a, **k)))
     plain_writer, agent_writer = FakeWriter(GOOD), FakeWriter(GOOD)
     plain = plain_events(plain_writer)
+    monkeypatch.setattr(answerer_mod, "hybrid_retrieve", real)
     agent = stream(make_planner(), agent_writer, fallback=fallback)
     assert agent_writer.prompts == plain_writer.prompts
     assert [e for e in agent if e["event"] == "retrieval"] == [e for e in plain if e["event"] == "retrieval"]

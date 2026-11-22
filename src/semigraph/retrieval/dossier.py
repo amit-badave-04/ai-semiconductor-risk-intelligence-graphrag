@@ -52,7 +52,9 @@ from .retriever import (
 RISK_CHANGES_LIMIT_CAP = 50
 DOSSIER_METRIC_PERIODS = 4   # the latest four fiscal years (docs/specs/m5b-redesign.md D-R2; was two, docs/v2/M4_PLAN.md 4.5)
 
-COMPANY_QUERY = "MATCH (c:Company {ticker: $ticker}) RETURN c.cik AS cik, c.name AS name"
+COMPANY_QUERY = """MATCH (c:Company {ticker: $ticker}) RETURN c.cik AS cik, c.name AS name,
+       c.rules_examined AS rules_examined, c.rules_matched AS rules_matched,
+       COUNT { (c)-[:AFFECTED_BY]->() } AS rules_linked"""
 
 FILINGS_QUERY = """MATCH (c:Company {cik: $cik})-[:FILED]->(f:Filing)
 RETURN f.accession_no AS accession_no, f.form AS form, toString(f.filing_date) AS filing_date,
@@ -78,6 +80,23 @@ def _resolve_company(driver, ticker: str) -> dict | None:
     return rows[0] if rows else None
 
 
+# The Company API payload carries the edge and rule columns it always had. The queries also return context-only columns
+# (source_cik, target_cik, evidence, abstract: M2a), which must not widen that payload (spec section 2: the rule abstract is
+# not shown on the Company page), so the rows are projected onto the old keys here.
+_EDGE_KEYS = ("source", "relation", "target", "status", "quote", "chunk_ids")
+_RULE_KEYS = (*_EDGE_KEYS, "rule_id", "date", "url", "kind", "link_source", "link_method", "external")
+
+
+def _project(rows: list[dict], keys: tuple[str, ...]) -> list[dict]:
+    return [{k: row[k] for k in keys if k in row} for row in rows]
+
+
+def _active(rows: list[dict]) -> list[dict]:
+    """The Company page never renders edge status, so a Historical edge (M2a R10) would read as current: only ACTIVE
+    company relations are returned here. The answer path keeps every edge and states its status."""
+    return [row for row in rows if row.get("status") == "Active"]
+
+
 def get_dossier(driver, ticker: str, *, data_as_of: str | None = None) -> dict | None:
     """None for a ticker outside :data:`semigraph.universe.FILERS` or absent from the graph (the route 404s either)."""
     if ticker not in FILERS:
@@ -92,9 +111,11 @@ def get_dossier(driver, ticker: str, *, data_as_of: str | None = None) -> dict |
         "filings": run_cypher(driver, FILINGS_QUERY, cik=cik),
         "metrics": run_cypher(driver, METRICS_QUERY, ids=[cik], periods=DOSSIER_METRIC_PERIODS, years=[], dates=[]),
         "active_risks": run_cypher(driver, DOSSIER_ACTIVE_RISKS_QUERY, cik=cik),
-        "edges": run_cypher(driver, company_edges_query(1), ids=[cik]),
-        "rules": run_cypher(driver, RULE_EDGES_QUERY, ids=[cik], include_neighbours=False,
-                            per_company=RULES_PER_COMPANY),
+        "edges": _project(_active(run_cypher(driver, company_edges_query(1), ids=[cik])), _EDGE_KEYS),
+        "rules": _project(run_cypher(driver, RULE_EDGES_QUERY, ids=[cik], include_neighbours=False,
+                                     per_company=RULES_PER_COMPANY), _RULE_KEYS),
+        # M2a R11: the linker's own counts. examined/matched are null on a graph built before R11; linked <= 15 (the cap)
+        "rules_summary": {k: company.get(k) for k in ("rules_examined", "rules_matched", "rules_linked")},
     }
 
 

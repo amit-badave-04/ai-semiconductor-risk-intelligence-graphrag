@@ -350,11 +350,13 @@ def test_a_workspace_token_read_that_fails_is_503_unavailable_not_a_500_and_rese
 
 
 def test_the_workspace_token_read_takes_a_token_of_the_cache_read_budget(workspace_client, backend):
+    """RT-007: an empty budget is no refusal before Turnstile; after Turnstile a bad token is 404 with no paid window,
+    and a good token proceeds."""
     assert ws_ask(workspace_client, "a").status_code == 404 and ws_ask(workspace_client, "b").status_code == 404
-    reads = len(workspace_client.seen)
-    assert_json_refusal(ws_ask(workspace_client, TOKEN), 429, routes.MSG_READ_RATE)
-    # no graph read once the budget is empty
-    assert len(workspace_client.seen) == reads
+    assert ws_ask(workspace_client, "c").status_code == 404                          # budget empty: still 404, never 429
+    assert backend.names().count("reserve") == 0                                      # no paid window for a bad token
+    assert events_of(ws_ask(workspace_client, TOKEN))[-1]["event"] == "done"          # a good token proceeds
+    assert backend.names().count("reserve") == 1
 
 
 def test_the_workspace_token_is_checked_before_the_kill_level(workspace_client, backend):

@@ -97,7 +97,8 @@ def test_get_dossier_shapes_every_block(monkeypatch):
             assert params == {"cik": CIK}
             return [{"risk_id": "r1", "summary": "s", "category": "c", "last_evidenced_at": "2026-01-01"}]
         if query == dossier.company_edges_query(1):
-            return [{"source": "Nvidia", "relation": "SUPPLIES_TO", "target": "X"}]
+            return [{"source": "Nvidia", "relation": "SUPPLIES_TO", "target": "X", "status": "Active"},
+                    {"source": "Nvidia", "relation": "SUPPLIES_TO", "target": "Y", "status": "Historical"}]
         if query == dossier.RULE_EDGES_QUERY:
             assert params["ids"] == [CIK] and params["include_neighbours"] is False
             assert params["per_company"] == dossier.RULES_PER_COMPANY

@@ -173,7 +173,7 @@ def graph_calls(monkeypatch, tmp_path):
     from datetime import date
 
     from semigraph import cli, snapshot
-    from semigraph.graph import client, item_loader, items, loaders, schema, temporal
+    from semigraph.graph import client, item_loader, items, loaders, overrides, schema, temporal
 
     log: list[tuple[str, dict]] = []
 
@@ -196,6 +196,7 @@ def graph_calls(monkeypatch, tmp_path):
     for name in ("load_companies", "load_filings_and_sections", "load_metrics", "load_evidence_spans",
                  "load_knowledge", "load_export_controls"):
         monkeypatch.setattr(loaders, name, rec(name, {}))
+    monkeypatch.setattr(overrides, "apply_inactive_overrides", rec("apply_inactive_overrides", {}))
     monkeypatch.setattr(loaders, "stamp_snapshot", rec("stamp_snapshot", "x"))
     monkeypatch.setattr(temporal, "normalize_categories", rec("normalize_categories", 0))
     monkeypatch.setattr(temporal, "apply_current_status", rec("apply_current_status", {}))
@@ -221,6 +222,7 @@ def test_build_graph_loads_in_dependency_order_and_stamps_the_snapshot(graph_cal
     order = names(graph_calls)
     assert order.index("apply_schema") < order.index("load_companies") < order.index("load_filings_and_sections")
     assert order.index("load_evidence_spans") < order.index("load_knowledge")     # relation post-pass needs spans
+    assert order.index("load_knowledge") < order.index("apply_inactive_overrides") < order.index("load_risk_items")
     assert order.index("load_knowledge") < order.index("load_risk_items")         # OF_ITEM needs the RiskFactors, SPANS the spans
     assert order.index("load_risk_items") < order.index("load_export_controls")
     assert order.index("normalize_categories") < order.index("load_export_controls")

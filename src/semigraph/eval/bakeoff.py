@@ -20,11 +20,14 @@ from pathlib import Path
 from ..llm import TRANSIENT
 from ..llm_shape import completion_params
 from ..retrieval.answerer import (ANSWER_PROMPT, CITE_RE, CONTEXT_HEADERS, LEGACY_CONTEXT_HEADERS, NONE_BLOCK,
-                                  ContextBlocks, answer_stream, render_prompt, sources_from_context, usage_cost)
+                                  ContextBlocks, build_blocks, render_prompt, sources_from_context, stream_answer_for_context,
+                                  usage_cost)
+from ..retrieval.retriever import hybrid_retrieve
 from ..retrieval.verify import failed_check_names, verify_answer
 from .expect import check_expectation
 from .runner import (JUDGE_MAX_TOKENS, JUDGE_PROMPT, JUDGE_PROMPT_VERSION, NUM_PAT, REFUSAL_PAT, is_refusal_answer,  # noqa: F401
                      AnswerBudgetExceeded, Correct, needs_judge, parse_numbers, render_judge_prompt)
+from .support import claim_support_rate
 
 logger = logging.getLogger("semigraph.bakeoff")
 
@@ -349,6 +352,20 @@ def model_prices(model: str) -> tuple[float, float]:
 
 # --- the deployed configuration, end to end ---------------------------------------------------------------
 
+class StaleRunsFile(ValueError):
+    """An existing deployed-runs file holds rows recorded before the context was saved with them."""
+
+
+def check_deployed_runs_resumable(path: Path) -> None:
+    """Refuse to resume ``path`` when any existing row lacks a string ``context``: such rows cannot be claim-support scored, so
+    resuming would pay for the remaining questions and then fail in :func:`score_deployed`. Raises :class:`StaleRunsFile`."""
+    stale = [r.get("id") for r in _read_rows(path) if not isinstance(r.get("context"), str)]
+    if stale:
+        raise StaleRunsFile(
+            f"{path} holds {len(stale)} row(s) with no saved context (first: {stale[0]}); they predate the context being "
+            f"recorded and cannot be resumed. Pass a new --runs-file instead of reusing {path.name}.")
+
+
 def run_deployed(benchmark: list[dict], driver, embedder, path: Path, *, model: str, escalation_model: str,
                  max_usd: float | None, max_tokens: int = ANSWER_MAX_TOKENS, timeout: int = 90) -> list[dict]:
     """Answer every benchmark question through ``answer_stream`` exactly as the service does (router, cheap
@@ -356,6 +373,7 @@ def run_deployed(benchmark: list[dict], driver, embedder, path: Path, *, model: 
 
     Checkpointed per question and capped like :func:`answer_candidates`."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    check_deployed_runs_resumable(path)
     existing = _read_rows(path)
     done = {r["id"]: r for r in existing}
     spent = sum(r.get("cost_usd") or 0.0 for r in existing)
@@ -366,9 +384,12 @@ def run_deployed(benchmark: list[dict], driver, embedder, path: Path, *, model: 
             if max_usd is not None and spent >= max_usd:
                 raise AnswerBudgetExceeded(f"spend ${spent:.3f} reached the ${max_usd:.2f} cap before {q['id']}")
             t0 = time.monotonic()
-            events = list(answer_stream(q["q"], driver, embedder, strategy="hybrid", model=model, escalation_model=escalation_model,
-                                        max_tokens=max_tokens, timeout=timeout))
-            row = _deployed_row(q, events, round(time.monotonic() - t0, 3))
+            # what answer_stream does (k_chunks=8, hops=2), split in two so the context is kept: one retrieval, the served path untouched
+            r = hybrid_retrieve(q["q"], driver, embedder, k_chunks=8, hops=2)
+            context = build_blocks(r)[1]
+            events = list(stream_answer_for_context(q["q"], r, "hybrid", model=model, escalation_model=escalation_model,
+                                                    max_tokens=max_tokens, timeout=timeout))
+            row = _deployed_row(q, events, round(time.monotonic() - t0, 3), context)
             spent += row["cost_usd"] or 0.0
             sink.write(json.dumps(row) + "\n")
             sink.flush()
@@ -376,10 +397,16 @@ def run_deployed(benchmark: list[dict], driver, embedder, path: Path, *, model: 
     return [done[q["id"]] for q in benchmark if q["id"] in done]
 
 
-def _deployed_row(q: dict, events: list[dict], latency: float) -> dict:
+def _deployed_row(q: dict, events: list[dict], latency: float, context: str | None = None) -> dict:
+    """One row; ``context`` is the full context string the model saw and ``context_ids`` the ids printed in it (R8a: the
+    claim-support score reads the text behind each cited id from it). ``valid_ids`` keeps its older meaning (cited and valid).
+    Agent rows pass no context and carry neither key; ``claim_support_rate`` raises on such a row, so a hybrid row never
+    passes unscored. ``valid_ids`` keeps its older meaning."""
     terminal = next((e for e in reversed(events) if e["event"] in ("done", "error")), None)
     base = {"id": q["id"], "type": q["type"], "q": q["q"], "answer": "", "cited": [], "hallucinated": [], "valid_ids": [],
             "finish_reason": None, "usage": None, "cost_usd": 0.0, "latency_s": latency, "routed": None, "escalated": False}
+    if context is not None:
+        base.update(context=context, context_ids=sorted(set(CITE_RE.findall(context))))
     if terminal is None or terminal["event"] == "error":
         e = terminal or {}
         return {**base, "error": e.get("detail", "no terminal event"), "usage": e.get("usage"), "cost_usd": e.get("cost_usd") or 0.0}
@@ -405,6 +432,7 @@ def score_deployed(rows: list[dict], benchmark: list[dict], judge, *, votes: int
     ``judge_prompt_version`` names the correctness-judge prompt that graded the open questions (``runner.JUDGE_PROMPT_VERSION``)."""
     score = score_mechanical([{**r, "model": "deployed"} for r in rows], benchmark)
     score["judge_prompt_version"] = JUDGE_PROMPT_VERSION
+    score["claim_support"] = claim_support_rate(rows)       # R8: raises on a row without context, before anything is paid for
     score["judged"] = judge_open(rows, benchmark, judge, votes=votes, model=judge_model, as_of=as_of, detail=True)   # keep every vote's reason
     routes: dict[str, int] = {}
     for r in rows:

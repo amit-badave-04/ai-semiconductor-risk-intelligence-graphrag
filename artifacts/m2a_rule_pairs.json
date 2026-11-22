@@ -1,0 +1,207 @@
+{
+  "decision": "R11 hand check failed: 10 of 13 new pairs wrong (limit 1 in 10). Shipped: only the stored 'examined N, matched K' counts, computed by the old matching. The wider matching (normalised category or summary match, equipment keywords euv/duv/chipmaking equipment) is DEFERRED; see the spec. Re-running this script against the shipped linker shows zero new pairs.",
+  "hand_check": [
+    {
+      "ticker": "ASML",
+      "rule_id": "2026-14132",
+      "kind": "licensing_policy",
+      "matched_keyword": "export license",
+      "verdict": "wrong",
+      "reason": "ASML's EUV/DUV export-licence sentence matched on 'export license' against a rule about chip/compute licensing policy; different subject."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2026-06851",
+      "kind": "licensing_policy",
+      "matched_keyword": "export license",
+      "verdict": "wrong",
+      "reason": "ASML's EUV/DUV export-licence sentence matched on 'export license' against a rule about chip/compute licensing policy; different subject."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2026-00789",
+      "kind": "licensing_policy",
+      "matched_keyword": "export license",
+      "verdict": "wrong",
+      "reason": "ASML's EUV/DUV export-licence sentence matched on 'export license' against a rule about chip/compute licensing policy; different subject."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2025-16735",
+      "kind": "licensing_policy",
+      "matched_keyword": "export license",
+      "verdict": "wrong",
+      "reason": "ASML's EUV/DUV export-licence sentence matched on 'export license' against a rule about chip/compute licensing policy; different subject."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2024-28267",
+      "kind": "licensing_policy",
+      "matched_keyword": "export license",
+      "verdict": "wrong",
+      "reason": "ASML's EUV/DUV export-licence sentence matched on 'export license' against a rule about chip/compute licensing policy; different subject."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2024-22587",
+      "kind": "licensing_policy",
+      "matched_keyword": "export license",
+      "verdict": "wrong",
+      "reason": "ASML's EUV/DUV export-licence sentence matched on 'export license' against a rule about chip/compute licensing policy; different subject."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2024-19633",
+      "kind": "semiconductor_equipment",
+      "matched_keyword": "lithography",
+      "verdict": "right",
+      "reason": "Equipment-maker lithography risk text against an equipment export-control rule."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2023-23312",
+      "kind": "licensing_policy",
+      "matched_keyword": "export license",
+      "verdict": "wrong",
+      "reason": "ASML's EUV/DUV export-licence sentence matched on 'export license' against a rule about chip/compute licensing policy; different subject."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2023-23049",
+      "kind": "semiconductor_equipment",
+      "matched_keyword": "lithography",
+      "verdict": "right",
+      "reason": "Equipment-maker lithography risk text against an equipment export-control rule."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2023-22873",
+      "kind": "licensing_policy",
+      "matched_keyword": "export license",
+      "verdict": "wrong",
+      "reason": "ASML's EUV/DUV export-licence sentence matched on 'export license' against a rule about chip/compute licensing policy; different subject."
+    },
+    {
+      "ticker": "ASML",
+      "rule_id": "2022-17125",
+      "kind": "semiconductor_equipment",
+      "matched_keyword": "lithography",
+      "verdict": "right",
+      "reason": "Equipment-maker lithography risk text against an equipment export-control rule."
+    },
+    {
+      "ticker": "TSM",
+      "rule_id": "2025-19846",
+      "kind": "affiliates_rule",
+      "matched_keyword": "affiliate",
+      "verdict": "wrong",
+      "reason": "TSM's chunk is cybersecurity text; 'affiliate' there is not the Entity List affiliates rule."
+    },
+    {
+      "ticker": "TSM",
+      "rule_id": "2025-19001",
+      "kind": "affiliates_rule",
+      "matched_keyword": "affiliate",
+      "verdict": "wrong",
+      "reason": "TSM's chunk is cybersecurity text; 'affiliate' there is not the Entity List affiliates rule."
+    }
+  ],
+  "graph": "local, READ sessions only",
+  "old_edges": 94,
+  "new_edges": 94,
+  "new_pairs_total": 0,
+  "per_company": {
+    "AMD": {
+      "rules_examined": 26,
+      "rules_matched": 26,
+      "old_links": 15,
+      "new_links": 15,
+      "new_pairs": 0
+    },
+    "INTC": {
+      "rules_examined": 26,
+      "rules_matched": 22,
+      "old_links": 15,
+      "new_links": 15,
+      "new_pairs": 0
+    },
+    "AAPL": {
+      "rules_examined": 26,
+      "rules_matched": 3,
+      "old_links": 3,
+      "new_links": 3,
+      "new_pairs": 0
+    },
+    "MU": {
+      "rules_examined": 26,
+      "rules_matched": 3,
+      "old_links": 3,
+      "new_links": 3,
+      "new_pairs": 0
+    },
+    "MSFT": {
+      "rules_examined": 26,
+      "rules_matched": 10,
+      "old_links": 10,
+      "new_links": 10,
+      "new_pairs": 0
+    },
+    "QCOM": {
+      "rules_examined": 26,
+      "rules_matched": 13,
+      "old_links": 13,
+      "new_links": 13,
+      "new_pairs": 0
+    },
+    "ASML": {
+      "rules_examined": 26,
+      "rules_matched": 0,
+      "old_links": 0,
+      "new_links": 0,
+      "new_pairs": 0
+    },
+    "AMZN": {
+      "rules_examined": 26,
+      "rules_matched": 0,
+      "old_links": 0,
+      "new_links": 0,
+      "new_pairs": 0
+    },
+    "NVDA": {
+      "rules_examined": 26,
+      "rules_matched": 23,
+      "old_links": 15,
+      "new_links": 15,
+      "new_pairs": 0
+    },
+    "TSM": {
+      "rules_examined": 26,
+      "rules_matched": 22,
+      "old_links": 15,
+      "new_links": 15,
+      "new_pairs": 0
+    },
+    "META": {
+      "rules_examined": 26,
+      "rules_matched": 0,
+      "old_links": 0,
+      "new_links": 0,
+      "new_pairs": 0
+    },
+    "GOOGL": {
+      "rules_examined": 26,
+      "rules_matched": 0,
+      "old_links": 0,
+      "new_links": 0,
+      "new_pairs": 0
+    },
+    "AVGO": {
+      "rules_examined": 26,
+      "rules_matched": 5,
+      "old_links": 5,
+      "new_links": 5,
+      "new_pairs": 0
+    }
+  },
+  "new_pairs": []
+}

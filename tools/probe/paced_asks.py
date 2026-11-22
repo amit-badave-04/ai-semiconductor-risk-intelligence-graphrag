@@ -6,7 +6,7 @@ upload past its 1,200 s embed timeout on the throttled machine. W1c sends a pace
 
 * the COUNT is ``floor(production max_spend_usd_per_day / the live hybrid estimate)``, worked out in whole micro-dollars by
   :func:`derive_ask_count` from ``semigraph.config`` and ``semigraph.serve.estimate`` for the models in ``fly.toml``
-  (10,000,000 // 709,573 = 14), never written down here; ``deploy/staging/windows.json`` registers the same number and the driver
+  (10,000,000 // 753,025 = 13), never written down here; ``deploy/staging/windows.json`` registers the same number and the driver
   refuses to run when the two differ;
 * the SCHEDULE is one ask every ``interval_s`` seconds from the upload's acceptance (the first ask AT the acceptance), anchored to that
   moment and never re-anchored, each ask from its own client address, at most ``max_in_flight`` in flight at once: when that many
@@ -74,7 +74,7 @@ def derive_ask_count(live_toml: Path = LIVE_TOML) -> dict:
 # ---- the schedule: a pure decision ---------------------------------------------------------------------------------------------------
 
 def planned_offsets(count: int, interval_s: float) -> list[float]:
-    """Seconds after the upload's acceptance at which each ask is due: ``0, interval, 2 x interval, ...`` (14 asks at 30 s span 390 s)."""
+    """Seconds after the upload's acceptance at which each ask is due: ``0, interval, 2 x interval, ...`` (13 asks at 30 s span 360 s)."""
     return [round(interval_s * n, 3) for n in range(count)]
 
 

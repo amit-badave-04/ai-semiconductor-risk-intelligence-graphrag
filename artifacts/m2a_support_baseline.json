@@ -1,0 +1,18 @@
+{
+  "what": "R8 claim-support rate of the stored v2e answers on the replayed contexts (m2a I0), accepted pairs only",
+  "answers_file": "data/processed/eval_deployed.v2e.jsonl",
+  "contexts_file": "data/backups/m2a_i0_contexts.json",
+  "snapshot": [
+    {
+      "id": "snap-20260924-97c6597d58",
+      "as_of": "2026-09-24"
+    }
+  ],
+  "stored_rows": 60,
+  "accepted_pairs": 60,
+  "rejected_pairs": {},
+  "supported": 135,
+  "unsupported": 0,
+  "rate": 1.0,
+  "unsupported_by_row": {}
+}

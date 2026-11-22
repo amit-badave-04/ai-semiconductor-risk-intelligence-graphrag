@@ -581,7 +581,9 @@ class TestPeriodAwareMetrics:
         lines, ids = metrics_lines(rows, years=[2022])
         heads = [ln for ln in lines if ln.startswith("Nvidia:")]
         assert heads == [f"Nvidia: fiscal year ended {y}-01-26" for y in (2026, 2025, 2024, 2022, 2021)]
-        assert any("2022-01-26" in ln and "computed: +100.0% vs fiscal year ended 2021-01-26" in ln for ln in lines)
+        # the note is its own line below the 2022 metric line; the 2021 base row is shown, so its id sits right after its date
+        assert any(ln.startswith("  computed: +100.0% vs fiscal year ended 2021-01-26 [xbrl:") and "fiscal year ended 2022-01-26 [xbrl:" in ln
+                   for ln in lines)
         assert f"xbrl:{NVDA}:revenue:2022-01-26" in ids and f"xbrl:{NVDA}:revenue:2021-01-26" in ids
 
 

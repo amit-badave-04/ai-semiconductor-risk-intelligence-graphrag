@@ -148,37 +148,38 @@ def accessions(*years: int) -> list[str]:
     return sorted(_acc(year) for year in years)
 
 
-def test_the_cap_on_the_pairs_of_one_company_is_five():
-    """Pinned to 5 on purpose: the agent's spend estimate prices up to 5 pairs of a company (serve/estimate.py)."""
-    assert M.MAX_PAIRS_HELD_PER_COMPANY == 5
+def test_the_cap_on_the_pairs_of_one_company_is_four():
+    """Pinned to 4 on purpose: the agent's spend estimate prices up to 4 pairs of a company (serve/estimate.py); the graph holds
+    at most 4 consecutive comparisons of any company. 5 measure 50,228 characters per company and do not fit the allowance."""
+    assert M.MAX_PAIRS_HELD_PER_COMPANY == 4
 
 
 @pytest.mark.parametrize("years", [range(15, 25), range(24, 14, -1)], ids=["oldest first", "newest first"])
 def test_temporal_merge_holds_at_most_the_cap_of_pairs_of_a_company_and_keeps_the_newest(years):
-    """A tool can return more pairs than the cap (4 calls of 2 pairs, or one call of ten): the five NEWEST stay, whatever
+    """A tool can return more pairs than the cap (4 calls of 2 pairs, or one call of ten): the four NEWEST stay, whatever
     order the call lists them in, and the items and passages of the others do not get in."""
     out = pure(M.merge_temporal, retrieval(), **years_call(years))
-    keep = accessions(20, 21, 22, 23, 24)
+    keep = accessions(21, 22, 23, 24)
     assert newer_accessions(out) == keep
     assert newer_accessions(out, "temporal") == keep and newer_accessions(out, "temporal_passages") == keep
-    assert not {row["headline"] for row in out["temporal"]} & {f"{kind} in {year}" for kind in ("gone", "new") for year in range(15, 20)}
+    assert not {row["headline"] for row in out["temporal"]} & {f"{kind} in {year}" for kind in ("gone", "new") for year in range(15, 21)}
 
 
 def test_temporal_merge_never_drops_a_pair_the_prefetch_held_to_make_room_for_a_new_one():
     prefetch = years_call([25, 26])
     r = holding(prefetch)
-    out = pure(M.merge_temporal, r, **years_call(range(18, 25)))                  # seven older pairs, room for three
-    assert newer_accessions(out) == accessions(22, 23, 24, 25, 26)
+    out = pure(M.merge_temporal, r, **years_call(range(18, 25)))                  # seven older pairs, room for two
+    assert newer_accessions(out) == accessions(23, 24, 25, 26)
     assert {"gone in 25", "new in 25", "gone in 26", "new in 26"} <= {row["headline"] for row in out["temporal"]}
     assert {row["passage_id"] for row in prefetch["passages"]} <= {row["passage_id"] for row in out["temporal_passages"]}
 
 
 def test_temporal_merge_repeating_a_held_pair_at_the_cap_replaces_it_and_adds_nothing():
-    r = holding(years_call(range(20, 25)))
+    r = holding(years_call(range(21, 25)))
     again = years_call([24])
     again["items"] = [{**row, "headline": "refreshed"} for row in again["items"]]
     out = pure(M.merge_temporal, r, **again)
-    assert newer_accessions(out) == accessions(20, 21, 22, 23, 24) and out["temporal_notices"] == []
+    assert newer_accessions(out) == accessions(21, 22, 23, 24) and out["temporal_notices"] == []
     headlines = {row["headline"] for row in out["temporal"]}
     assert "refreshed" in headlines and "gone in 24" not in headlines
 
@@ -190,33 +191,33 @@ def test_temporal_merge_over_a_lowered_cap_keeps_every_pair_it_holds_and_adds_no
 
 
 def test_temporal_merge_caps_each_company_on_its_own():
-    r = holding(years_call(range(20, 25)))
+    r = holding(years_call(range(21, 25)))
     call = combined(years_call([25]), years_call([23, 24], cik=2488, company="AMD"))
     out = pure(M.merge_temporal, r, **call)
-    assert newer_accessions(out) == accessions(20, 21, 22, 23, 24)                  # Nvidia is full: 25 is refused
+    assert newer_accessions(out) == accessions(21, 22, 23, 24)                      # Nvidia is full: 25 is refused
     assert newer_accessions(out, cik=2488) == accessions(23, 24)                    # AMD has room for both
     assert [n["company"] for n in out["temporal_notices"]] == ["Nvidia"]
 
 
 def test_temporal_merge_says_so_once_when_it_refuses_a_pair_and_says_nothing_otherwise():
-    r = holding(years_call(range(20, 25)))
+    r = holding(years_call(range(21, 25)))
     out = pure(M.merge_temporal, r, **years_call([25]))
     (notice,) = out["temporal_notices"]
-    assert (notice["cik"], notice["company"]) == (NVDA, "Nvidia") and "5 annual-filing comparisons" in notice["text"]
+    assert (notice["cik"], notice["company"]) == (NVDA, "Nvidia") and "4 annual-filing comparisons" in notice["text"]
     again = M.merge_temporal(out, **years_call([26]))
     assert again["temporal_notices"] == out["temporal_notices"], "the same note is not stacked up call after call"
     assert M.merge_temporal(retrieval(), **years_call([25]))["temporal_notices"] == []
 
 
 def test_the_note_about_a_refused_pair_reaches_the_writer_and_the_refused_pair_does_not():
-    out = M.merge_temporal(holding(years_call(range(20, 25))), **years_call([25]))
+    out = M.merge_temporal(holding(years_call(range(21, 25))), **years_call([25]))
     _, context, _ = build_blocks(out)
-    assert context.count("Note for Nvidia: the context holds 5 annual-filing comparisons") == 1
+    assert context.count("Note for Nvidia: the context holds 4 annual-filing comparisons") == 1
     assert "gone in 25" not in context and "new in 25" not in context and "gone in 24" in context
 
 
 def test_temporal_merge_keeps_the_notices_the_caller_passes_beside_the_cap_note():
-    r = holding(years_call(range(20, 25)))
+    r = holding(years_call(range(21, 25)))
     mine = {"cik": NVDA, "company": "Nvidia", "text": "showing the 2 most recent of 6 annual-filing comparisons for Nvidia"}
     out = pure(M.merge_temporal, r, **{**years_call([25]), "notices": [mine]})
     assert mine in out["temporal_notices"] and len(out["temporal_notices"]) == 2

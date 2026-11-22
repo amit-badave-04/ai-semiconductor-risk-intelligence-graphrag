@@ -84,6 +84,29 @@ describe("Government rules (RD23)", () => {
     expect(rules()).toHaveTextContent("No export-control rule in our data was linked to ASML by keyword matching. This is not a finding that none applies.");
   });
 
+  it("M2a R11: says how many linked rules are shown and how many the linker examined and matched", () => {
+    const eight = Array.from({ length: 8 }, (_, i) => rule(`2025-0000${i}`, `Rule ${i}`, "2025-01-16"));
+    show(dossier({ rules: eight, rulesSummary: { examined: 90, matched: 20, linked: 15 } }));
+    expect(rules()).toHaveTextContent("showing 8 of 15 linked rules; examined 90 rules, matched 20");
+  });
+
+  it("R11: no 'showing' piece when every linked rule is shown, and 'examined' alone when matched is 0", () => {
+    show(dossier({ rules: [rule("2025-00711", "T", "2025-01-16")], rulesSummary: { examined: 1, matched: 1, linked: 1 } }));
+    expect(rules()).toHaveTextContent("examined 1 rule, matched 1");
+    expect(rules().textContent).not.toMatch(/showing/);
+  });
+
+  it("R11: an empty list still reads the counts, and a null or absent summary renders nothing", () => {
+    const { unmount } = show(dossier({ rulesSummary: { examined: 60, matched: 0, linked: 0 } }));
+    expect(rules()).toHaveTextContent("examined 60 rules, matched 0");
+    unmount();
+    const nulls = show(dossier({ rulesSummary: { examined: null, matched: null, linked: null } }));
+    expect(rules().textContent).not.toMatch(/examined|showing/);
+    nulls.unmount();
+    show(dossier());
+    expect(rules().textContent).not.toMatch(/examined|showing/);
+  });
+
   it("never makes the rule's url a link", () => {
     show(dossier({ rules: [{ ...rule("2025-00711", "T", "2025-01-16"), url: "https://evil.example/x" } as Rule] }));
     expect(within(rules()).queryAllByRole("link")).toHaveLength(0);

@@ -113,7 +113,7 @@ def test_an_uploaded_document_excerpt_is_a_grounding_source_like_a_filing_excerp
 
 
 def test_the_excerpt_line_change_does_not_touch_the_template_fingerprint():
-    assert answerer.template_fingerprint() == "4d0a62f5a0"
+    assert answerer.template_fingerprint() == "fbed8caa9e"
 
 
 def _prompt_run(streams: dict, **kwargs) -> list[dict]:

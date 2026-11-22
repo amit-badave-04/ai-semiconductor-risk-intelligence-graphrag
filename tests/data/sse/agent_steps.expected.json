@@ -82,7 +82,9 @@
     "has_citation": true,
     "is_refusal": false,
     "unsupported_removal_claim": false,
-    "unsupported_removal_sentences": []
+    "unsupported_removal_sentences": [],
+    "stale_citations": [],
+    "cited_without_text": []
    },
    "finish_reason": "stop",
    "usage": {

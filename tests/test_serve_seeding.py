@@ -57,6 +57,15 @@ def test_changing_the_answer_prompt_or_a_context_header_changes_every_cache_key(
     assert len({before, after_prompt, after_header}) == 3
 
 
+def test_a_context_version_change_changes_the_fingerprint_and_every_cache_key(monkeypatch):
+    """M2a R9: a context line format change bumps ``CONTEXT_VERSION``, which is folded into the fingerprint, so no answer
+    written under the old layout is replayed."""
+    fingerprint, key = template_fingerprint(), store.cache_key("What about Nvidia?", "hybrid", SNAP)
+    monkeypatch.setattr(answerer_mod, "CONTEXT_VERSION", answerer_mod.CONTEXT_VERSION + "-next")
+    assert template_fingerprint() != fingerprint
+    assert store.cache_key("What about Nvidia?", "hybrid", SNAP) != key
+
+
 def test_the_key_still_ignores_case_spacing_and_trailing_punctuation_and_still_separates_strategies():
     a = store.cache_key("What about  Nvidia?", "hybrid")
     assert a == store.cache_key("what about nvidia", "hybrid") and a != store.cache_key("what about nvidia", "vector")
@@ -160,6 +169,21 @@ def test_examples_of_the_current_template_are_seeded_and_only_the_valid_ones_are
     assert any("N2" in w and "no stored checks" in w for w in warnings)
     assert any("N3" in w and "no_citation" in w for w in warnings)
     assert any("seeded 1 of 3" in r.getMessage() for r in caplog.records)
+
+
+def test_examples_stamped_with_the_previous_context_version_are_refused_at_boot(monkeypatch, caplog):
+    """M2a R9: the fingerprint gate (not the cache key) is what stops boot re-seeding stale answers under the new key."""
+    with monkeypatch.context() as old:
+        old.setattr(answerer_mod, "CONTEXT_VERSION", "m2a-0")
+        stamped = template_fingerprint()
+    assert stamped != template_fingerprint()
+    doc = {"source": "s", "snapshot_id": SNAP, "template_fingerprint": stamped, "examples": [example("N1")]}
+    assert store.examples_match_template(doc) is False
+    boot = Boot(monkeypatch, doc)
+    caplog.set_level(logging.INFO, logger="semigraph.serve.main")
+    *_, example_ids = boot.run()
+    assert boot.puts == [] and example_ids == frozenset()
+    assert any("template" in r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING)
 
 
 def test_examples_from_another_snapshot_are_still_not_seeded(monkeypatch, caplog):

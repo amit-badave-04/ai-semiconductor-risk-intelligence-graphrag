@@ -449,16 +449,18 @@ def test_a_question_that_names_a_year_gets_that_year_and_the_one_before_it_besid
                     "Nvidia: fiscal year ended 2024-01-26", "Nvidia: fiscal year ended 2021-01-26",
                     "Nvidia: fiscal year ended 2020-01-26"]
     assert "xbrl:1045810:revenue:2021-01-26" in ids and "xbrl:1045810:revenue:2020-01-26" in ids
-    named = next(ln for ln in lines if "2021-01-26]" in ln)
-    assert "computed: n/m vs fiscal year ended 2020-01-26" in named      # its prior year is the base (a zero prior: n/m)
+    at = next(i for i, ln in enumerate(lines) if ln.startswith("- ") and "2021-01-26]" in ln)
+    note = lines[at + 1]                                                  # R4: the note is the line right below the metric line
+    assert "computed: n/m vs fiscal year ended 2020-01-26 [xbrl:1045810:revenue:2020-01-26]" in note   # prior is the base (zero: n/m)
 
 
 def test_the_named_year_carries_its_computed_change_against_the_year_before():
     rows = [metric(50.0, "2021-01-26"), metric(40.0, "2020-01-26"), metric(300.0, "2026-01-26"), metric(200.0, "2025-01-26"),
             metric(100.0, "2024-01-26"), metric(90.0, "2023-01-26")]
     lines, _ = metrics_lines(rows, years=[2021])
-    line = next(ln for ln in lines if "2021-01-26]" in ln)
-    assert "computed: +25.0% vs fiscal year ended 2020-01-26 (change +10 USD)" in line
+    at = next(i for i, ln in enumerate(lines) if ln.startswith("- ") and "2021-01-26]" in ln)
+    note = lines[at + 1]                                                  # R4: the note is the line right below the metric line
+    assert "computed: +25.0% vs fiscal year ended 2020-01-26 [xbrl:1045810:revenue:2020-01-26] (change +10 USD)" in note
 
 
 def test_a_named_date_selects_that_period_end_only():

@@ -159,15 +159,15 @@ upload job must reach ready; at least one ask done while the job runs). `w1b_jud
 
 **The one change, the workload (registered in `deploy/staging/windows.json`, W1c `workload`, and recorded in every boot's JSON):**
 
-* **At most 14 salted asks (the cap).** 14 = floor(production max_spend_usd_per_day / the live hybrid estimate) = floor(10 / 0.709573) = floor(14.09) = 14. It is
+* **At most 13 salted asks (the cap).** 13 = floor(production max_spend_usd_per_day / the live hybrid estimate) = floor(10 / 0.753025) = floor(13.28) = 13. It is
   computed in code, `paced_asks.derive_ask_count()`: `semigraph.config.PRODUCTION_MAX_SPEND_USD_PER_DAY` over `semigraph.serve.estimate` for the
-  models and token cap of `fly.toml`, in whole micro-dollars (10,000,000 // 709,573), and the driver refuses to run when the count registered in
+  models and token cap of `fly.toml`, in whole micro-dollars (10,000,000 // 753,025), and the driver refuses to run when the count registered in
   `windows.json` is not the one it derives (a test recomputes it and checks that it follows its inputs).
-* **Pacing:** one ask every 30 s from upload accept (the first ask at upload accept; 14 asks span 390 s), each ask from a different X-Test-Client-IP,
+* **Pacing:** one ask every 30 s from upload accept (the first ask at upload accept; 13 asks span 360 s), each ask from a different X-Test-Client-IP,
   at most 2 in flight. When two are still in flight at the moment the next is due, the next waits and the delay is recorded; it is not skipped and the
   schedule is not shifted (every ask is planned at accept + 30 s x n).
-* **Measurement:** until the upload job is ready plus 30 s. Sending stops at job ready plus 30 s: the 14 is a cap, not a target. An upload that is ready
-  early gets fewer asks, one that outlasts the schedule gets no more after the 14th, and the boot records how many were sent (`asks.sent`, `asks.unsent`,
+* **Measurement:** until the upload job is ready plus 30 s. Sending stops at job ready plus 30 s: the 13 is a cap, not a target. An upload that is ready
+  early gets fewer asks, one that outlasts the schedule gets no more after the 13th, and the boot records how many were sent (`asks.sent`, `asks.unsent`,
   `asks.stopped_by`).
 * **The boot JSON records** `window`, `attempt`, `workload` (mode `paced`, `asks_cap`, `interval_s`, `max_in_flight`, `tail_s` and the `derivation`:
   day cap and estimate in micro-dollars, the models) and `asks.schedule` (for each ask sent: `planned_s`, `sent_s`, `delay_s`, `end_s`, `outcome`, in

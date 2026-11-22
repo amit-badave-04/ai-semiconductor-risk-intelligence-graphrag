@@ -324,7 +324,10 @@ def test_company_edges_query_keeps_the_v1_row_shape():
     q = company_edges_query(2)
     for col in ("AS source", "AS relation", "AS target", "AS status", "AS quote", "AS chunk_ids"):
         assert col in q
-    assert "RETURN DISTINCT" in q
+    assert "WITH DISTINCT rel" in q      # one row per relationship, as RETURN DISTINCT gave before the evidence join
+    # M2a additive columns: which endpoints are anchors, and per evidence id its currency and filing date (R2, R6)
+    for col in ("AS source_cik", "AS target_cik", "AS evidence", "is_current", "filing_date"):
+        assert col in q
 
 
 @pytest.mark.parametrize("hops", [1, 2, 3])

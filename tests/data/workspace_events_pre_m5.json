@@ -98,7 +98,9 @@
       "has_citation": true,
       "is_refusal": false,
       "unsupported_removal_claim": false,
-      "unsupported_removal_sentences": []
+      "unsupported_removal_sentences": [],
+      "stale_citations": [],
+      "cited_without_text": []
      },
      "finish_reason": "stop",
      "usage": {
@@ -116,7 +118,7 @@
       "0001045810-26-000021:I.1A:0007",
       "0001045810-26-000021:I.1A:0008"
      ],
-     "context_chars": 3711,
+     "context_chars": 4363,
      "workspace": {
       "id_hash": "cd93782b7fb9",
       "doc_chunks": 2,
@@ -136,7 +138,7 @@
    },
    "observed": {
     "prompt_hashes": [
-     "0c0b3b3ed594bbbe"
+     "9c91778542cbaaf5"
     ],
     "upload_queries": [
      [
@@ -214,7 +216,9 @@
       "has_citation": false,
       "is_refusal": true,
       "unsupported_removal_claim": false,
-      "unsupported_removal_sentences": []
+      "unsupported_removal_sentences": [],
+      "stale_citations": [],
+      "cited_without_text": []
      },
      "finish_reason": "stop",
      "usage": {
@@ -232,7 +236,7 @@
       "0001045810-26-000021:I.1A:0007",
       "0001045810-26-000021:I.1A:0008"
      ],
-     "context_chars": 3624,
+     "context_chars": 4276,
      "workspace": {
       "id_hash": "cd93782b7fb9",
       "doc_chunks": 0,
@@ -252,7 +256,7 @@
    },
    "observed": {
     "prompt_hashes": [
-     "c2976db8d9692984"
+     "e87763d48dcb2fe3"
     ],
     "upload_queries": [
      [
@@ -370,7 +374,9 @@
       "has_citation": true,
       "is_refusal": false,
       "unsupported_removal_claim": false,
-      "unsupported_removal_sentences": []
+      "unsupported_removal_sentences": [],
+      "stale_citations": [],
+      "cited_without_text": []
      },
      "finish_reason": "stop",
      "usage": {
@@ -388,7 +394,7 @@
       "0001045810-26-000021:I.1A:0007",
       "0001045810-26-000021:I.1A:0008"
      ],
-     "context_chars": 3711,
+     "context_chars": 4363,
      "escalated": true,
      "escalation_reasons": [
       "invalid_citation",
@@ -415,8 +421,8 @@
    },
    "observed": {
     "prompt_hashes": [
-     "0c0b3b3ed594bbbe",
-     "0c0b3b3ed594bbbe"
+     "9c91778542cbaaf5",
+     "9c91778542cbaaf5"
     ],
     "upload_queries": [
      [
@@ -507,7 +513,9 @@
       "has_citation": true,
       "is_refusal": false,
       "unsupported_removal_claim": false,
-      "unsupported_removal_sentences": []
+      "unsupported_removal_sentences": [],
+      "stale_citations": [],
+      "cited_without_text": []
      },
      "finish_reason": "stop",
      "usage": {
@@ -525,7 +533,7 @@
       "0001045810-26-000021:I.1A:0007",
       "0001045810-26-000021:I.1A:0008"
      ],
-     "context_chars": 3671,
+     "context_chars": 4323,
      "workspace": {
       "id_hash": "cd93782b7fb9",
       "doc_chunks": 1,
@@ -547,7 +555,7 @@
    },
    "observed": {
     "prompt_hashes": [
-     "89a4e65e3bb1262d"
+     "f867fcf4feaad600"
     ],
     "upload_queries": [
      [

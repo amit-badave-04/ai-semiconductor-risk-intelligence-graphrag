@@ -40,7 +40,9 @@
     "has_citation": true,
     "is_refusal": false,
     "unsupported_removal_claim": false,
-    "unsupported_removal_sentences": []
+    "unsupported_removal_sentences": [],
+    "stale_citations": [],
+    "cited_without_text": []
    },
    "finish_reason": "stop",
    "usage": {
@@ -58,7 +60,7 @@
     "0001045810-26-000021:I.1A:0007",
     "0001045810-26-000021:I.1A:0008"
    ],
-   "context_chars": 3711,
+   "context_chars": 4363,
    "workspace": {
     "id_hash": "cd93782b7fb9",
     "doc_chunks": 2,

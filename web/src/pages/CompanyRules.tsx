@@ -7,13 +7,14 @@ import { Landmark } from "lucide-react";
 import { useId } from "react";
 import { deck } from "@/copy/deck";
 import { numberOccurrences } from "@/lib/citations";
-import { CITE_GROUP, type Rule } from "@/lib/company";
+import { CITE_GROUP, type Dossier, type Rule, rulesSummaryLine } from "@/lib/company";
 import { formatDate } from "@/lib/format";
 import { Block, Cite } from "./CompanySection";
 
-export function GovernmentRules({ rules, companyName }: { rules: Rule[]; companyName: string }) {
+export function GovernmentRules({ rules, companyName, summary }: { rules: Rule[]; companyName: string; summary?: Dossier["rulesSummary"] }) {
   const noticeId = useId();
   const w = deck.company.rules;
+  const summaryLine = rulesSummaryLine(summary, rules.length);
   const nths = numberOccurrences(rules.map((r) => (r.cite === null ? [] : [r.cite]))); // a rule listed twice keeps two keys (A2)
   return (
     <Block id="government-rules" title={w.heading}>
@@ -42,6 +43,7 @@ export function GovernmentRules({ rules, companyName }: { rules: Rule[]; company
           ))}
         </ul>
       )}
+      {summaryLine !== "" && <p className="mt-3 mb-0 text-sm text-muted-foreground">{summaryLine}</p>}
     </Block>
   );
 }

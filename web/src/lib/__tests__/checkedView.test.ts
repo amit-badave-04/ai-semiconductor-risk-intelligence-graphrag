@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { deck } from "@/copy/deck";
-import { checkedView, type CheckedLine } from "../answerMeta";
+import { checkedView, checksPassed, type CheckedLine } from "../answerMeta";
 
 // docs/specs/m5b-redesign.md RD14 and section 4: "What was checked" as codes the UI words from the deck. Three cases, read from
 // the done event: a saved benchmark answer (cached, source "benchmark"), a repeated live answer from the cache (cached, any other
@@ -64,6 +64,29 @@ describe("checkedView: a live answer's lines", () => {
     expect(codes(live({}, { finish_reason: "length" }).lines)).toContain("truncated");
   });
 
+  it("M2a R3: a stale citation gets its own line and does not change the source line", () => {
+    const view = live({ citations_retrieved: true, has_citation: true, numbers_checked: 0, stale_citations: ["a", "b"] });
+    expect(view.lines).toContainEqual({ code: "sourcesReplaced", tone: "warn", params: { count: 2 } });
+    expect(codes(view.lines)).toContain("sourcesOk");
+  });
+
+  it("M2a R7: a source shown as an id only replaces the 'every cited source' line, whatever else is true", () => {
+    const view = live({ citations_retrieved: true, has_citation: true, numbers_checked: 0, cited_without_text: ["a"] });
+    expect(codes(view.lines)).not.toContain("sourcesOk");
+    expect(view.lines).toContainEqual({ code: "sourcesReferenceOnly", tone: "plain", params: { count: 1 } });
+    expect(live({ citations_retrieved: false, cited_without_text: ["a"] }).lines[0].code).toBe("sourcesMissing");
+  });
+
+  it("empty or absent R3 and R7 keys add no line (an older payload)", () => {
+    const base = { citations_retrieved: true, has_citation: true, numbers_checked: 1, numbers_grounded: true };
+    expect(codes(live({ ...base, stale_citations: [], cited_without_text: [] }).lines)).toEqual(["sourcesOk", "figuresMatched"]);
+    expect(codes(live(base).lines)).toEqual(["sourcesOk", "figuresMatched"]);
+  });
+
+  it("neither key makes the answer fail the checks", () => {
+    expect(checksPassed({ citations_retrieved: true, has_citation: true, stale_citations: ["a"], cited_without_text: ["b"] })).toBe(true);
+  });
+
   it("never throws on a malformed event, and an empty one reads as a live answer with nothing checked", () => {
     for (const bad of [null, undefined, 3, "x", [], { checks: "nope" }]) expect(() => checkedView(bad)).not.toThrow();
     expect(codes(checkedView({}).lines)).toEqual(["figuresUnchecked"]);
@@ -77,6 +100,8 @@ describe("the deck words every code, plainly", () => {
     { code: "sourcesOk", tone: "ok" },
     { code: "sourcesMissing", tone: "bad", params: { count: 2 } },
     { code: "sourcesMissing", tone: "bad", params: { count: 0 } },
+    { code: "sourcesReplaced", tone: "warn", params: { count: 2 } },
+    { code: "sourcesReferenceOnly", tone: "plain", params: { count: 2 } },
     { code: "noCitation", tone: "warn" },
     { code: "declines", tone: "plain" },
     { code: "figuresMatched", tone: "ok" },
@@ -107,6 +132,14 @@ describe("the deck words every code, plainly", () => {
     expect(deck.checked.line({ code: "figuresMatched", tone: "ok" })).toBe("All figures matched the filings.");
     expect(deck.checked.line({ code: "figuresUnmatched", tone: "bad", params: { figures: "" } })).toBe("Some figures could not be matched.");
     expect(deck.checked.line({ code: "figuresNone", tone: "plain" })).toBe("No dollar amounts or percentages in this answer.");
+  });
+
+  it("words R3 and R7 exactly as the owner approved (OD7), singular by the sourcesMissing pattern", () => {
+    const line = (code: "sourcesReplaced" | "sourcesReferenceOnly", count: number) => deck.checked.line({ code, tone: "plain", params: { count } });
+    expect(line("sourcesReplaced", 3)).toBe("Checked: 3 cited sources come from a filing that has since been replaced");
+    expect(line("sourcesReplaced", 1)).toBe("Checked: 1 cited source comes from a filing that has since been replaced");
+    expect(line("sourcesReferenceOnly", 2)).toBe("Checked: 2 sources were shown to the model as a reference only");
+    expect(line("sourcesReferenceOnly", 1)).toBe("Checked: 1 source was shown to the model as a reference only");
   });
 
   it("reads the recorded live answers without a gap: every line of each has a sentence", () => {

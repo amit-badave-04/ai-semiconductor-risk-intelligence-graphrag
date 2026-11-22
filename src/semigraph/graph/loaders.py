@@ -51,8 +51,10 @@ from ..embeddings import Embedder
 from ..snapshot import compute_snapshot_id
 from ..universe import FILERS, HIST_ANNUALS, RISK_SECTIONS, UNIVERSE  # noqa: F401 — re-exported for callers
 from .client import run_cypher
+from .overrides import apply_reverse_overrides, load_edge_overrides, require_reverse_hits
 from .export_rules import (  # noqa: F401 — re-exported: the pure helpers are part of this module's API
     EXPORT_CONTROLS_CATEGORY,
+    build_affected_by,
     KIND_EVIDENCE_KEYWORDS,
     LEGACY_KIND,
     MAX_AFFECTED_BY_PER_COMPANY,
@@ -646,6 +648,8 @@ def load_knowledge(driver: Driver, settings: Settings | None = None,
     alias_lookup = {_normalize_name(a): n
                     for n, spec in canonical.items() for a in [n] + spec["aliases"]}
 
+    overrides = load_edge_overrides()
+    override_hits: dict[int, int] = {}
     totals = {"relations": 0, "new_risks": 0, "product_mentions": 0, "unresolved": 0}
     dropped_all: list[dict] = []
     for ticker in tickers:
@@ -659,12 +663,16 @@ def load_knowledge(driver: Driver, settings: Settings | None = None,
         _, states = _ticker_freshness(manifest, ticker, ch)
         rel_rows, risk_rows, prod_rows, dropped = _knowledge_rows(
             records, ticker, ch, states, int(ch["cik"].iloc[0]), canonical, alias_lookup)
+        rel_rows, hits = apply_reverse_overrides(rel_rows, overrides, canonical)   # R10, BEFORE the MERGE, every filer
+        override_hits = {i: override_hits.get(i, 0) + n for i, n in hits.items()}
         dropped_all += dropped
         totals["new_risks"] += _load_ticker_knowledge(
             driver, embedder, ticker, rel_rows, risk_rows, prod_rows, snapshot_id)
         totals["relations"] += len(rel_rows)
         totals["product_mentions"] += len(prod_rows)
 
+    if full_universe:
+        require_reverse_hits(overrides, override_hits)
     stamp_relation_evidence(driver)
     totals["unresolved"] = len(dropped_all)
     if full_universe:
@@ -725,6 +733,12 @@ def load_export_controls(driver: Driver, settings: Settings | None = None, *,
             "exposed_companies": n_exposed}
 
 
+FILER_CIKS_CYPHER = "MATCH (c:Company) WHERE c.ticker IN $tickers RETURN c.cik AS cik"
+
+_RULE_COUNTS_CYPHER = """UNWIND $rows AS row MATCH (c:Company {cik: row.cik})
+    SET c.rules_examined = row.rules_examined, c.rules_matched = row.rules_matched"""
+
+
 def _current_export_control_evidence(driver: Driver) -> dict[int, list[dict]]:
     """company cik -> evidence chunks of its CURRENT 'Export Controls' risks."""
     rows = run_cypher(driver, """
@@ -756,10 +770,12 @@ def link_affected_by(driver: Driver, rules: list[dict]) -> tuple[int, int]:
     Returns (n_edges, n_exposed_companies).
     """
     exposures = _current_export_control_evidence(driver)
-    edges = build_affected_by_rows(exposures, [normalize_rule(r) for r in rules])
+    ciks = [r["cik"] for r in run_cypher(driver, FILER_CIKS_CYPHER, tickers=list(FILERS))]
+    edges, counts = build_affected_by(exposures, [normalize_rule(r) for r in rules], ciks)
     with driver.session() as session:
         session.run("MATCH ()-[r:AFFECTED_BY]->() DELETE r")
     _run_batched(driver, _AFFECTED_BY_CYPHER, edges)
+    _run_batched(driver, _RULE_COUNTS_CYPHER, [{"cik": cik, **c} for cik, c in counts.items()])
     return len(edges), len(exposures)
 
 

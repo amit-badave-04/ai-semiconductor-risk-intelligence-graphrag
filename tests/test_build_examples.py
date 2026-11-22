@@ -53,7 +53,8 @@ def test_each_example_stores_the_checks_the_service_computes_for_that_answer():
     n1, u1 = doc["examples"]
     assert n1["checks"] == {"citations_retrieved": True, "numbers_grounded": True, "numbers_checked": 1,
                             "unmatched_numbers": [], "echoed_numbers": [], "pseudo_citations": [], "has_citation": True,
-                            "is_refusal": False, "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+                            "is_refusal": False, "unsupported_removal_claim": False, "unsupported_removal_sentences": [], "stale_citations": [],
+    "cited_without_text": []}
     assert u1["checks"]["has_citation"] is False and u1["checks"]["is_refusal"] is True        # a refusal is not a failure
     assert failed_check_names(n1["checks"]) == [] == failed_check_names(u1["checks"])
 
@@ -172,7 +173,8 @@ def test_snapshot_must_look_like_a_real_snapshot_id():
 
 CLEAN = {"citations_retrieved": True, "numbers_grounded": True, "numbers_checked": 1, "unmatched_numbers": [],
          "echoed_numbers": [], "pseudo_citations": [], "has_citation": True, "is_refusal": False,
-         "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+         "unsupported_removal_claim": False, "unsupported_removal_sentences": [], "stale_citations": [],
+    "cited_without_text": []}
 REFUSAL = {**CLEAN, "numbers_checked": 0, "has_citation": False, "is_refusal": True}
 
 

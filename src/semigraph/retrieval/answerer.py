@@ -32,7 +32,8 @@ import hashlib
 import logging
 import re
 import time
-from collections.abc import Iterable
+from collections import Counter
+from collections.abc import Iterable, Mapping
 from datetime import date
 from functools import partial
 from typing import NamedTuple
@@ -47,12 +48,24 @@ from ..llm_shape import KNOWN_PRICES_PER_MTOK, MOCK_ALIASES, completion_params, 
 from . import ids as _ids
 from .context_layout import (  # noqa: F401 - re-exported: eval/bakeoff and the tests import these from here
     CONTEXT_HEADERS,
+    CONTEXT_VERSION,
+    DETAIL_LINES_KEY,
+    EDGE_QUOTE_CHARS,
     LEGACY_CONTEXT_HEADERS,
     MAX_CHUNK_IDS_PER_ITEM,
     NONE_BLOCK,
+    QUOTES_PER_ANCHOR,
+    RULE_ABSTRACT_CHARS,
+    SUPERSEDED_MARK,
+    YOY_ALL,
+    YOY_NAMED,
+    YOY_NAMED_ROWS_MAX,
+    YOY_OFF,
+    YOY_PRIOR_IDS_KEY,
+    sanitise_untrusted,
     temporal_block,
 )
-from .retriever import METRIC_PERIODS_SHOWN, hybrid_retrieve, vector_retrieve
+from .retriever import DEFAULT_ANCHOR_CIK, METRIC_PERIODS_SHOWN, hybrid_retrieve, vector_retrieve
 from .router import needs_strong_model
 from .verify import answer_checks, verify_answer
 
@@ -76,10 +89,10 @@ YOY_GAP_DAYS = (350, 380)           # the prior fiscal year ends this many days 
 
 
 def template_fingerprint() -> str:
-    """A short hash of everything that shapes what the model is asked and shown: the answer prompt and the context
-    headers. It is part of the answer-cache key and of the seeded examples, so a prompt or template change can never
-    replay an answer that was written under the old one."""
-    return hashlib.sha256("\x00".join([ANSWER_PROMPT, *CONTEXT_HEADERS]).encode("utf-8")).hexdigest()[:10]
+    """A short hash of everything that shapes what the model is asked and shown: the answer prompt, the context headers and
+    ``CONTEXT_VERSION`` (bumped whenever a context line format changes). It is part of the answer-cache key and of the seeded
+    examples, so a prompt or template change can never replay an answer that was written under the old one."""
+    return hashlib.sha256("\x00".join([ANSWER_PROMPT, CONTEXT_VERSION, *CONTEXT_HEADERS]).encode("utf-8")).hexdigest()[:10]
 
 
 class ContextBlocks(NamedTuple):
@@ -133,6 +146,21 @@ def yoy_note(current: dict, prior: dict | None) -> str | None:
     return f"computed: {(now - before) / before * 100:+.1f}% vs fiscal year ended {prior['period_end']} (change {change})"
 
 
+def _note_line(name: str, current: dict, prior: dict, current_id: str | None, prior_id: str | None) -> str | None:
+    """The computed year-over-year note as a line of its own, below the metric line (R4). The wording and the ``computed:`` prefix
+    are :func:`yoy_note`'s (the verifier reads the percentage from it); the prior fiscal year's id sits right after its date
+    (only when that row is shown, so no unshown row becomes citable) and the current id at the end, so each figure grounds
+    against its own metric line and the line names the metric and the current period."""
+    note = yoy_note(current, prior)
+    if note is None:
+        return None
+    if prior_id:
+        marker = f"vs fiscal year ended {prior['period_end']}"
+        note = note.replace(marker, f"{marker} [{prior_id}]", 1)
+    tail = f" in {name} for the fiscal year ended {current['period_end']}"
+    return f"  {note}{tail}" + (f" [{current_id}]" if current_id else "")
+
+
 def _metric_citation(m: dict) -> str | None:
     """The ``xbrl:<cik>:<metric>:<period_end>`` id of a metric row, or None when it cannot form a well-formed one."""
     try:
@@ -159,8 +187,20 @@ def _shown_rows(group: list[dict], years: Iterable[int], dates: Iterable[str]) -
     return sorted(shown)
 
 
-def metrics_lines(metrics: list[dict], *, years: Iterable[int] = (),
-                  dates: Iterable[str] = ()) -> tuple[list[str], set[str]]:
+def _note_rows(group: list[dict], shown: list[int], years: Iterable[int], dates: Iterable[str], mode: str) -> set[int]:
+    """The indexes of the shown rows whose computed note is its own line with the prior id (R4). ``YOY_ALL``: every shown row;
+    ``YOY_OFF``: none; ``YOY_NAMED`` (the agent): the latest row and the newest :data:`YOY_NAMED_ROWS_MAX` rows the periods name.
+    A row left out keeps today's inline note, and no row is ever dropped to make room."""
+    if mode == YOY_ALL:
+        return set(shown)
+    if mode != YOY_NAMED:
+        return set()
+    named = [i for i in shown if _named_period(group[i], years, dates)][:YOY_NAMED_ROWS_MAX]
+    return {0, *named} & set(shown)
+
+
+def metrics_lines(metrics: list[dict], *, years: Iterable[int] = (), dates: Iterable[str] = (),
+                  yoy_prior_ids: str = YOY_ALL) -> tuple[list[str], set[str]]:
     """The METRICS block lines and the ids they make citable.
 
     Rows are grouped per (company, metric) and the last :data:`METRIC_PERIODS_SHOWN` fiscal periods shown (the next older
@@ -175,13 +215,20 @@ def metrics_lines(metrics: list[dict], *, years: Iterable[int] = (),
     for (company, name), group in series.items():
         rank.setdefault(company, len(rank))
         group.sort(key=lambda m: m["period_end"], reverse=True)
-        for i in _shown_rows(group, years, dates):
+        shown = _shown_rows(group, years, dates)
+        own_line = _note_rows(group, shown, years, dates, yoy_prior_ids)
+        for i in shown:
             m = group[i]
-            note = yoy_note(m, group[i + 1] if i + 1 < len(group) else None)
+            prior = group[i + 1] if i + 1 < len(group) else None
             citation = _metric_citation(m)
             line = f"- {name} for period {m['period_start']}..{m['period_end']}: {_metric_amount(m)}"
             line += f" [{citation}]" if citation else ""
-            line += f" | {note}" if note else ""
+            if prior is not None and i in own_line:
+                prior_id = _metric_citation(prior) if i + 1 in shown else None
+                if note := _note_line(name, m, prior, citation, prior_id):
+                    line += "\n" + note
+            elif prior is not None and (note := yoy_note(m, prior)):
+                line += f" | {note}"
             entries.append((company, m["period_end"], name, line, citation))
     entries.sort(key=lambda e: e[2])
     entries.sort(key=lambda e: e[1], reverse=True)
@@ -191,11 +238,11 @@ def metrics_lines(metrics: list[dict], *, years: Iterable[int] = (),
         if (company, period_end) != group_key:
             group_key = (company, period_end)
             lines.append(f"{company}: fiscal year ended {period_end}")
-        lines.append(line)
+        lines.extend(line.split("\n"))        # a metric line and its computed note (R4) are two lines
     return lines, {citation for *_, citation in entries if citation}
 
 
-def _external_line(edge: dict, valid_ids: set[str]) -> str:
+def _external_line(edge: dict, valid_ids: set[str], *, detail_lines: bool = True) -> str:
     """One dated line for a Federal Register rule linked to a company; the rule's own ``fr:`` id is its citation. The
     company chunk ids on the edge are NOT printed: they are the company's own filing text that matched keywords, and
     beside a rule they read as its source."""
@@ -205,26 +252,67 @@ def _external_line(edge: dict, valid_ids: set[str]) -> str:
     if citation:
         valid_ids.add(citation)
     label = " ".join([edge.get("date") or "undated", *([f"[{citation}]"] if citation else []), edge["target"]])
-    return f"- {label} (linked to {edge['source']} by {edge.get('link_method') or 'keyword'} match)"
+    line = f"- {label} (linked to {edge['source']} by {edge.get('link_method') or 'keyword'} match)"
+    abstract = sanitise_untrusted(edge.get("abstract"), RULE_ABSTRACT_CHARS) if detail_lines else ""
+    return f"{line} | abstract: {abstract}" if abstract else line
 
 
-def build_blocks(r: dict) -> tuple[ContextBlocks, str, set[str]]:
+def _evidence_meta(edge: Mapping) -> dict[str, Mapping]:
+    return {m["id"]: m for m in edge.get("evidence") or () if isinstance(m, Mapping) and m.get("id")}
+
+
+def _current_first(ids: list[str], meta: Mapping[str, Mapping]) -> list[str]:
+    """``ids`` ordered current filings first, then newest first (R2); an id with no metadata counts as current and undated."""
+    newest = sorted(ids, key=lambda i: str((meta.get(i) or {}).get("filing_date") or ""), reverse=True)
+    return sorted(newest, key=lambda i: (meta.get(i) or {}).get("is_current") is False)
+
+
+def _id_marks(ids: list[str], meta: Mapping[str, Mapping]) -> str:
+    return " ".join(f"[{i}]" + (f" {SUPERSEDED_MARK}" if (meta.get(i) or {}).get("is_current") is False else "") for i in ids)
+
+
+def _quote_line(edge: Mapping, quote_id: str | None, meta: Mapping[str, Mapping], anchor_ciks: set,
+                shown: Counter) -> str | None:
+    """The edge's stored quote on a line of its own, carrying exactly the id it was extracted from (R6). Only for an edge with
+    an anchor company as an endpoint, and while every such anchor has fewer than :data:`QUOTES_PER_ANCHOR` quote lines."""
+    anchors = {c for c in (edge.get("source_cik"), edge.get("target_cik")) if c in anchor_ciks}
+    text = sanitise_untrusted(edge.get("quote"), EDGE_QUOTE_CHARS)
+    if not (quote_id and anchors and text) or any(shown[c] >= QUOTES_PER_ANCHOR for c in anchors):
+        return None
+    shown.update(anchors)
+    return f"  evidence {_id_marks([quote_id], meta)}: {text}"
+
+
+def build_blocks(r: dict, *, detail_lines: bool | None = None) -> tuple[ContextBlocks, str, set[str]]:
     """Assemble prompt blocks + the full context string + the set of valid (citable) ids from a retrieval result.
 
     Ported from notebook 14, changed in M1b (the goldens in ``tests/test_answerer_context.py``): AFFECTED_BY rows leave
     RELATIONSHIPS for their own EXTERNAL REGULATORY EVENTS block; METRICS is grouped by fiscal year with ids and computed
     year-over-year; the temporal block is the text-verified removed / added / reworded item list. The valid ids are
-    chunk ids (relations, risks, excerpts, temporal items), ``xbrl:`` ids and ``fr:`` ids."""
+    chunk ids (relations, risks, excerpts, temporal items), ``xbrl:`` ids and ``fr:`` ids.
+
+    ``detail_lines`` (R6b) switches the edge quote lines and the rule abstracts off; None reads ``r[DETAIL_LINES_KEY]`` (the agent
+    sets it once, ``agent.merge.without_detail_lines``), absent means on. ``r[YOY_PRIOR_IDS_KEY]`` picks how the computed notes
+    render (R4; the agent sets ``YOY_NAMED``), absent means every note on its own line with the prior id."""
+    if detail_lines is None:
+        detail_lines = r.get(DETAIL_LINES_KEY, True)
     valid_ids: set[str] = set()
     e_lines = []
+    anchor_ciks, quotes_shown = set((r.get("anchors") or {}).values()), Counter()
+    if r.get("anchor_defaulted"):
+        anchor_ciks.add(DEFAULT_ANCHOR_CIK)       # no company was named: retrieval anchored on the default one, with anchors = {} (R6)
     for e in (e for e in r["edges"] if e["relation"] != RULE_RELATION):
         ids = e.get("chunk_ids") or []
         valid_ids.update(ids)
-        e_lines.append(f"- {e['source']} {e['relation']} {e['target']} (status={e.get('status')}) "
-                       f"{' '.join('[' + i + ']' for i in ids[:MAX_CHUNK_IDS_PER_ITEM])}")
-    x_lines = [_external_line(e, valid_ids) for e in r["edges"] if e["relation"] == RULE_RELATION]
+        meta = _evidence_meta(e)
+        shown = _current_first(ids, meta)[:MAX_CHUNK_IDS_PER_ITEM]
+        e_lines.append(f"- {e['source']} {e['relation']} {e['target']} (status={e.get('status')}) {_id_marks(shown, meta)}")
+        if detail_lines and (quote := _quote_line(e, ids[0] if ids else None, meta, anchor_ciks, quotes_shown)):
+            e_lines.append(quote)       # the quote's id is the FIRST-LOADED one, taken before the reordering above
+    x_lines = [_external_line(e, valid_ids, detail_lines=detail_lines) for e in r["edges"] if e["relation"] == RULE_RELATION]
     periods = r.get("metric_periods") or {}
-    m_lines, metric_ids = metrics_lines(r["metrics"], years=periods.get("years") or (), dates=periods.get("dates") or ())
+    m_lines, metric_ids = metrics_lines(r["metrics"], years=periods.get("years") or (), dates=periods.get("dates") or (),
+                                        yoy_prior_ids=r.get(YOY_PRIOR_IDS_KEY, YOY_ALL))
     valid_ids |= metric_ids
     # Lines a planner computed in code from cited facts (``semigraph.agent``) ride in METRICS as plain data: no template change.
     # They carry the ``[xbrl:...]`` ids of the facts they derive from, so the verifier reads their figures from those sources.

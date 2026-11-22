@@ -23,6 +23,7 @@ import string
 
 from ..artifacts import read_prompt
 from .answerer import build_blocks, dropped_anchors_field, sources_from_context, stream_answer_for_prompt
+from .context_layout import DETAIL_LINES_KEY
 from .ids import CITE_RE, classify_id
 from .retriever import hybrid_retrieve
 from .verify import SentenceScopedSources
@@ -239,7 +240,9 @@ def build_workspace_prompt(question: str, r_sec: dict, r_ws: dict, delimiter: st
     workspace's retrieved chunks), the SEC chunk ids, and the EXPLICIT sources map (docs/v2/M4_PLAN.md 14.5):
     ``sources_from_context`` of the SEC context alone, merged with ``{doc chunk id: its own text}`` — never derived
     by re-parsing the combined context, so a chunk's grounding text is exactly what was retrieved, nothing more."""
-    blocks, sec_context, valid_ids = build_blocks(r_sec)
+    # M2a: no edge quote lines or rule abstracts here (R6b), as for the agent; R2 order, R4 and the superseded marks stay.
+    # That is what keeps seven full shares plus a workspace ask under the day cap (decision 005, Follow-ups).
+    blocks, sec_context, valid_ids = build_blocks({**r_sec, DETAIL_LINES_KEY: False})
     doc_chunks = r_ws["doc_chunks"]
     doc_block = _doc_excerpt_block(doc_chunks)
     prompt = WORKSPACE_PROMPT.format(question=question, delimiter=delimiter, doc_block=doc_block,

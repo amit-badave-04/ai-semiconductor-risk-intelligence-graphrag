@@ -201,7 +201,8 @@ def test_checks_report_an_uncited_unretrieved_and_ungrounded_answer_without_hidi
         "citations_retrieved": False, "numbers_grounded": False, "numbers_checked": 1,
         "unmatched_numbers": ["$190 billion"], "echoed_numbers": [], "pseudo_citations": ["Reported Metrics"],
         "has_citation": True, "is_refusal": False, "unsupported_removal_claim": False,
-        "unsupported_removal_sentences": []}
+        "unsupported_removal_sentences": [], "stale_citations": [],
+    "cited_without_text": []}
 
 
 def test_checks_are_json_serialisable():
@@ -211,7 +212,8 @@ def test_checks_are_json_serialisable():
     assert json.loads(json.dumps(checks.as_dict())) == {
         "citations_retrieved": True, "numbers_grounded": True, "numbers_checked": 0, "unmatched_numbers": [],
         "echoed_numbers": [], "pseudo_citations": [], "has_citation": True, "is_refusal": False,
-        "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+        "unsupported_removal_claim": False, "unsupported_removal_sentences": [], "stale_citations": [],
+    "cited_without_text": []}
 
 
 # --- a figure only the QUESTION states is echoed however the answer wraps it (closing reviews 1 and 2 removed the quoted-name exemption:
@@ -232,3 +234,42 @@ def test_a_figure_only_the_question_states_is_echoed_quoted_or_not(question, tex
     checks = answer_checks(text, {"x:1:1", "fr:2025-19001", "xbrl:x"}, {"x:1:1", "fr:2025-19001", "xbrl:x"}, "context without the figure",
                            sources={}, question=question)
     assert checks.echoed_numbers or checks.unmatched_numbers, text
+
+
+# --- M2a S3: the computed note carries the prior id on its own line without loosening the grounding ---
+
+def _note_context():
+    from semigraph.retrieval.answerer import build_blocks, sources_from_context
+
+    rows = [{"company": "Nvidia", "cik": 1045810, "metric": "revenue", "value": v, "period_start": "s", "period_end": e}
+            for v, e in ((215938000000.0, "2026-01-25"), (130497000000.0, "2025-01-26"))]
+    _, context, valid = build_blocks({"anchors": {}, "edges": [], "metrics": rows, "risks": [], "temporal": [],
+                                      "temporal_pairs": [], "chunks": []})
+    return context, valid, sources_from_context(context)
+
+
+def test_the_note_names_both_ids_but_no_row_text_leaks_to_the_other_id():
+    context, valid, sources = _note_context()
+    note = next(ln for ln in context.splitlines() if ln.startswith("  computed:"))
+    assert f"[{REV25}]" in note and note.endswith(f"[{REV26}]")             # the prior id sits on the note, the current id ends it
+    assert "215,938,000,000" not in sources[REV25] and "130,497,000,000" not in sources[REV26]   # a row's amount stays on its own line
+    assert "215,938,000,000" in sources[REV26] and "130,497,000,000" in sources[REV25]
+    assert "+85,441,000,000" in sources[REV25] and "+85,441,000,000" in sources[REV26]            # the change belongs to both periods
+
+
+def test_the_verifier_reaches_the_same_verdicts_on_the_new_note_as_on_the_old_inline_one():
+    """The public path grounds amounts against the whole context and percentages against the computed lines, so moving the note
+    to its own line (and naming the prior id on it) neither loosens nor tightens any verdict. The old context is CTX above."""
+    context, valid, sources = _note_context()
+    answers = [
+        (f"Revenue was $215.938 billion [{REV26}], up 65.5% from $130.497 billion [{REV25}].", {REV26, REV25}),
+        (f"Revenue was $215.938 billion [{REV26}], up 70% from $130.497 billion [{REV25}].", {REV26, REV25}),
+        (f"Revenue was $190 billion [{REV26}].", {REV26}),
+        (f"Revenue fell 65.5% [{REV26}].", {REV26}),
+        (f"Revenue rose by $85.441 billion [{REV26}] [{REV25}].", {REV26, REV25}),
+    ]
+    for text, cited in answers:
+        new = verify_answer(text, cited, valid, "stop", context=context, sources=sources)
+        old = verify_answer(text, cited, VALID, "stop", context=CTX, sources=SOURCES)
+        assert new == old, text
+    assert verify_answer(answers[1][0], answers[1][1], valid, "stop", context=context, sources=sources) == ["ungrounded_number"]

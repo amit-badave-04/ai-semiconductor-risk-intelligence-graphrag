@@ -216,7 +216,8 @@ def build_graph(
     _setup_logging(verbose)
     from semigraph.embeddings import Embedder
     from semigraph.extraction import extractor
-    from semigraph.graph import client, item_loader, items, loaders, schema, temporal
+    from semigraph.artifacts import load_canonical_entities
+    from semigraph.graph import client, item_loader, items, loaders, overrides, schema, temporal
     from semigraph.snapshot import compute_snapshot_id
 
     settings = _settings()
@@ -253,6 +254,9 @@ def build_graph(
         loaders.load_evidence_spans(driver, settings, embedder, tickers, snapshot_id=snapshot_id)
         typer.echo("== Knowledge (relations, risks, products) ==")
         loaders.load_knowledge(driver, settings, embedder, tickers, snapshot_id=snapshot_id)
+        if tickers is None:   # a partial build may not hold the edge; the full build must (R10)
+            typer.echo("== Edge overrides (status) == " + json.dumps(overrides.apply_inactive_overrides(
+                driver, overrides.load_edge_overrides(), load_canonical_entities())))
         typer.echo("== Risk items (text-grounded alignment, passages, OF_ITEM) ==")
         typer.echo(json.dumps(item_loader.load_risk_items(driver, settings, tickers, snapshot_id=snapshot_id)))
         typer.echo("== Categories + export controls + AFFECTED_BY ==")
@@ -441,6 +445,11 @@ def eval_deployed_cmd(
     if not escalation_model:
         raise typer.BadParameter("no escalation model: pass --escalation-model or set ESCALATION_MODEL")
     benchmark = load_benchmark()
+    try:
+        bo.check_deployed_runs_resumable(settings.processed_dir / runs_file)     # before the prompt: nothing is paid for a stale file
+    except bo.StaleRunsFile as e:
+        typer.echo(f"Refused: {e}", err=True)
+        raise typer.Exit(2) from e
     n_open = bo.open_question_count(benchmark)
     judge_usd = n_open * votes * bo.JUDGE_CALL_USD
     typer.echo(f"eval-deployed: {len(benchmark)} questions, default {model}, escalation {escalation_model}; "

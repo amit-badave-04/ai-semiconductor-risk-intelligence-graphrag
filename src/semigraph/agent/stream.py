@@ -22,6 +22,7 @@ from ..config import get_settings
 from ..retrieval.answerer import build_blocks, stream_answer_for_context, usage_cost
 from . import planner as P
 from .graph import AgentResult, run_agent
+from .merge import without_detail_lines
 from .planner import LiteLLMPlanner
 from .state import Ledger, Limits
 from .trace import as_safe
@@ -93,7 +94,7 @@ def _run(question: str, driver, embedder, strategy: str, *, timeout, max_tokens,
                 span.set(tool_calls=len(plan.tool_calls), model_calls=plan.model_calls, fallback_reason=plan.fallback_reason,
                          stop_reason=plan.stop_reason, planner_cost_usd=planner_cost)
                 try:
-                    for event in stream_answer_for_context(question, plan.r, strategy, llm_stream=llm_stream,
+                    for event in stream_answer_for_context(question, without_detail_lines(plan.r), strategy, llm_stream=llm_stream,
                                                            escalation_model=escalation_model, escalation_stream=escalation_stream,
                                                            max_tokens=max_tokens, **writer_kwargs):
                         event = _fold_spend(event, planner_cost, agent)
@@ -163,7 +164,7 @@ def agent_answer(question: str, driver, embedder, strategy: str = "agent", **kwa
     terminal = events[-1]
     if terminal["event"] != "done":
         raise AgentAnswerError(terminal)
-    _, context, valid_ids = build_blocks(final_r)
+    _, context, valid_ids = build_blocks(without_detail_lines(final_r))
     cited = set(terminal["citations"])
     return {"question": question, "strategy": strategy, "answer": terminal["answer"], "citations": terminal["citations"], "cited": cited,
             "valid_ids": valid_ids, "hallucinated": cited - valid_ids, "context": context, "checks": terminal["checks"],

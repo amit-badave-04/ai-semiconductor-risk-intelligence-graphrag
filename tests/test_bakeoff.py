@@ -303,11 +303,17 @@ def test_a_previous_judgement_made_with_a_different_vote_count_is_not_reused(tmp
 
 # --- the deployed configuration, end to end (answer_stream with router + verifier + escalation) ---
 
+def _install(monkeypatch, stream):
+    """run_deployed retrieves, then streams: patch both halves (the retrieval is a fixed fake dict)."""
+    monkeypatch.setattr(bo, "hybrid_retrieve", lambda *a, **kw: retrieval())
+    monkeypatch.setattr(bo, "stream_answer_for_context", stream)
+
+
 def _fake_answer_stream(script):
-    """answer_stream double: script maps a question -> the list of events to emit after 'retrieval'."""
+    """stream_answer_for_context double: script maps a question -> the list of events to emit after 'retrieval'."""
     calls = []
 
-    def stream(question, driver, embedder, strategy="hybrid", **kw):
+    def stream(question, r, strategy="hybrid", **kw):
         calls.append((question, kw))
         yield {"event": "retrieval", "anchors": {}, "counts": {}}
         yield from script[question]
@@ -324,7 +330,7 @@ def test_run_deployed_records_the_route_cost_and_checkpoints(tmp_path, monkeypat
     stream, calls = _fake_answer_stream({
         "Revenue FY26?": [_done("It was $215.9 billion.", [])],
         "Dropped risks?": [_done("Yes, several.", [VALID[0]], routed="strong", by="strong/m", cost=0.03)]})
-    monkeypatch.setattr(bo, "answer_stream", stream)
+    _install(monkeypatch, stream)
     bench = [b for b in BENCH if b["id"] in ("N2", "T1")]
     rows = bo.run_deployed(bench, None, None, tmp_path / "d.jsonl", model="cheap/m", escalation_model="strong/m", max_usd=None)
     assert [r["id"] for r in rows] == ["N2", "T1"] and rows[1]["routed"] == "strong" and rows[1]["cost_usd"] == 0.03
@@ -334,9 +340,20 @@ def test_run_deployed_records_the_route_cost_and_checkpoints(tmp_path, monkeypat
     assert len(calls) == 2  # resumed: nothing bought twice
 
 
+def test_run_deployed_refuses_to_resume_a_runs_file_whose_rows_have_no_context(tmp_path, monkeypatch):
+    stream, calls = _fake_answer_stream({b["q"]: [_done("x", [])] for b in BENCH})
+    _install(monkeypatch, stream)
+    old = tmp_path / "old.jsonl"
+    old.write_text(json.dumps({"id": "N2", "answer": "x", "cost_usd": 0.01}) + "\n", encoding="utf-8")   # recorded before context was saved
+    with pytest.raises(bo.StaleRunsFile) as exc:
+        bo.run_deployed(BENCH, None, None, old, model="c/m", escalation_model="s/m", max_usd=None)
+    assert "old.jsonl" in str(exc.value) and "--runs-file" in str(exc.value)
+    assert calls == [] and len(old.read_text(encoding="utf-8").splitlines()) == 1      # nothing was bought or appended
+
+
 def test_run_deployed_stops_at_the_cap(tmp_path, monkeypatch):
     stream, calls = _fake_answer_stream({b["q"]: [_done("x", [], cost=0.02)] for b in BENCH})
-    monkeypatch.setattr(bo, "answer_stream", stream)
+    _install(monkeypatch, stream)
     with pytest.raises(AnswerBudgetExceeded):
         bo.run_deployed(BENCH, None, None, tmp_path / "d.jsonl", model="c/m", escalation_model="s/m", max_usd=0.03)
     assert len(calls) == 2
@@ -344,18 +361,18 @@ def test_run_deployed_stops_at_the_cap(tmp_path, monkeypatch):
 
 def test_run_deployed_turns_a_stream_error_into_a_failed_row(tmp_path, monkeypatch):
     stream, _ = _fake_answer_stream({"Revenue FY26?": [{"event": "error", "detail": "boom", "usage": None, "cost_usd": 0.004}]})
-    monkeypatch.setattr(bo, "answer_stream", stream)
+    _install(monkeypatch, stream)
     [row] = bo.run_deployed([BENCH[0]], None, None, tmp_path / "d.jsonl", model="c/m", escalation_model="s/m", max_usd=None)
     assert row["error"] == "boom" and row["answer"] == "" and row["cost_usd"] == 0.004
 
 
 def test_score_deployed_counts_routes_escalations_and_judges_the_open_questions():
     rows = [{"id": "N2", "answer": "It was $215.9 billion.", "cited": [], "hallucinated": [], "valid_ids": [], "finish_reason": "stop",
-             "usage": {"prompt_tokens": 10, "completion_tokens": 5}, "cost_usd": 0.001, "latency_s": 2.0, "routed": "cheap", "escalated": False},
+             "usage": {"prompt_tokens": 10, "completion_tokens": 5}, "cost_usd": 0.001, "latency_s": 2.0, "routed": "cheap", "escalated": False, "context": context()},
             {"id": "D1", "answer": "TSMC [%s]" % VALID[0], "cited": [VALID[0]], "hallucinated": [], "valid_ids": VALID, "finish_reason": "stop",
-             "usage": None, "cost_usd": 0.03, "latency_s": 9.0, "routed": "cheap", "escalated": True, "answered_by": "strong/m"},
+             "usage": None, "cost_usd": 0.03, "latency_s": 9.0, "routed": "cheap", "escalated": True, "answered_by": "strong/m", "context": context()},
             {"id": "T1", "answer": "Yes [%s]" % VALID[0], "cited": [VALID[0]], "hallucinated": [], "valid_ids": VALID, "finish_reason": "stop",
-             "usage": None, "cost_usd": 0.03, "latency_s": 9.0, "routed": "strong", "escalated": False}]
+             "usage": None, "cost_usd": 0.03, "latency_s": 9.0, "routed": "strong", "escalated": False, "context": context()}]
     s = bo.score_deployed(rows, BENCH, VoteJudge([True]), votes=3)
     assert s["routes"] == {"cheap": 2, "strong": 1} and s["escalated"] == 1
     assert s["mechanical"] == {"passed": 2, "of": 2} and s["judged"]["open_correct"] == 1
@@ -371,7 +388,7 @@ def test_a_deployed_row_carries_the_services_checks_and_the_score_lists_the_fail
     stream, _ = _fake_answer_stream({
         "Revenue FY26?": [{**_done("It was $215.9 billion.", []), "checks": clean}],
         "Dropped risks?": [{**_done("Yes [%s]" % VALID[0], [VALID[0]]), "checks": bad}]})
-    monkeypatch.setattr(bo, "answer_stream", stream)
+    _install(monkeypatch, stream)
     bench = [b for b in BENCH if b["id"] in ("N2", "T1")]
     rows = bo.run_deployed(bench, None, None, tmp_path / "d.jsonl", model="c/m", escalation_model="s/m", max_usd=None)
     assert rows[0]["checks"] == clean and rows[1]["checks"] == bad

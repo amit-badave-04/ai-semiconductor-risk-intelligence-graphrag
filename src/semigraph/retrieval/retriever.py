@@ -108,15 +108,25 @@ _PARAGRAPH_KIND = "paragraph"      # RiskItem.unit_kind of a unit with no detect
 
 # --- queries (module constants so the row shapes/limits can be unit-tested) ---
 
+# ``source_cik`` / ``target_cik`` say which endpoints are anchors (the quote lines of the context are printed only for those);
+# ``evidence`` is, per stored evidence id in stored order, ``{id, is_current, filing_date}`` of its EvidenceSpan (null when the
+# id has no span), so the context can list a current filing's id before a superseded one (M2a R2). Additive keys: the
+# Company API payload projects the old ones only (retrieval/dossier.py).
 # (i) Company relations, undirected, variable length. ``{hops}`` is substituted by
 # :func:`company_edges_query` (Cypher cannot parameterise path bounds). Endpoints are
 # Companies; ExportControl can never appear, so no company reaches another via a rule.
 COMPANY_EDGES_QUERY = """MATCH (a:Company) WHERE a.cik IN $ids
 MATCH p = (a)-[:SUPPLIES_TO|DEPENDS_ON|CUSTOMER_OF|COMPETES_WITH*1..{hops}]-(b:Company)
 UNWIND relationships(p) AS rel
-RETURN DISTINCT coalesce(startNode(rel).name, startNode(rel).title) AS source, type(rel) AS relation,
+WITH DISTINCT rel
+UNWIND coalesce(rel.evidence_chunk_ids, []) + [null] AS cid
+OPTIONAL MATCH (e:EvidenceSpan {{chunk_id: cid}})
+WITH rel, collect(CASE WHEN e IS NULL THEN NULL
+                       ELSE {{id: e.chunk_id, is_current: e.is_current, filing_date: toString(e.filing_date)}} END) AS evidence
+RETURN coalesce(startNode(rel).name, startNode(rel).title) AS source, type(rel) AS relation,
        coalesce(endNode(rel).name, endNode(rel).title) AS target,
-       rel.status AS status, rel.evidence_quote AS quote, rel.evidence_chunk_ids AS chunk_ids"""
+       rel.status AS status, rel.evidence_quote AS quote, rel.evidence_chunk_ids AS chunk_ids,
+       startNode(rel).cik AS source_cik, endNode(rel).cik AS target_cik, evidence"""
 
 # (ii) AFFECTED_BY rules for the anchors and (when ``$include_neighbours``) their direct
 # company neighbours. Only Company->ExportControl at hop 1; newest ``$per_company`` rules
@@ -133,7 +143,7 @@ CALL (c) {
 }
 RETURN c.name AS source, type(r) AS relation, x.title AS target,
        r.status AS status, r.evidence_quote AS quote, r.evidence_chunk_ids AS chunk_ids,
-       x.rule_id AS rule_id, toString(x.date) AS date, x.url AS url, x.kind AS kind,
+       x.rule_id AS rule_id, toString(x.date) AS date, x.url AS url, x.kind AS kind, x.abstract AS abstract,
        coalesce(r.source, 'federal_register') AS link_source, coalesce(r.link_method, 'keyword') AS link_method,
        coalesce(r.external, true) AS external"""
 

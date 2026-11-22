@@ -109,7 +109,7 @@ export function DossierBlocks({ dossier }: { dossier: Dossier }) {
     <>
       <AtAGlance metrics={dossier.metrics} rulesListed={dossier.rules.length} />
       <KeyNumbers metrics={dossier.metrics} />
-      <GovernmentRules rules={dossier.rules} companyName={companyName} />
+      <GovernmentRules rules={dossier.rules} companyName={companyName} summary={dossier.rulesSummary} />
       <Relationships edges={dossier.edges} companyName={companyName} />
       <FilingsBlock filings={dossier.filings} />
       <CompanySince ticker={dossier.company.ticker} />

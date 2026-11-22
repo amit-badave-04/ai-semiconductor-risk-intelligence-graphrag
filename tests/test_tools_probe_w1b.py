@@ -865,10 +865,10 @@ def recomputed_ask_count():
 def test_the_ask_count_is_worked_out_from_the_live_day_cap_and_the_live_hybrid_estimate():
     count, cap, hybrid = recomputed_ask_count()
     derived = paced_asks.derive_ask_count()
-    assert (cap, hybrid, count) == (10_000_000, 709_573, 14)
+    assert (cap, hybrid, count) == (10_000_000, 753_025, 13)
     assert (derived["day_cap_micro"], derived["hybrid_estimate_micro"], derived["asks"]) == (cap, hybrid, count)
-    assert derived["day_cap_usd"] == 10.0 and derived["hybrid_estimate_usd"] == 0.709573
-    assert derived["formula"] == "floor(day_cap_micro / hybrid_estimate_micro)" and derived["unrounded"] == pytest.approx(14.093, abs=1e-3)
+    assert derived["day_cap_usd"] == 10.0 and derived["hybrid_estimate_usd"] == 0.753025
+    assert derived["formula"] == "floor(day_cap_micro / hybrid_estimate_micro)" and derived["unrounded"] == pytest.approx(13.280, abs=1e-3)
     env = live_env()
     assert (env["ANSWER_MODEL"], env["ESCALATION_MODEL"]) == ("openai/gpt-6-luna", "anthropic/claude-sonnet-5")
     assert derived["models"] == {"answer": env["ANSWER_MODEL"], "escalation": env["ESCALATION_MODEL"]}
@@ -887,7 +887,7 @@ def test_the_ask_count_follows_its_inputs_so_it_is_not_a_number_written_into_the
     from semigraph import config
     from semigraph.serve import estimate
     monkeypatch.setattr(config, "PRODUCTION_MAX_SPEND_USD_PER_DAY", 20.0)
-    assert paced_asks.derive_ask_count()["asks"] == 20_000_000 // 709_573 == 28
+    assert paced_asks.derive_ask_count()["asks"] == 20_000_000 // 753_025 == 26
     monkeypatch.setattr(estimate, "estimate_micro", lambda ask_type, settings: 2_500_000)
     derived = paced_asks.derive_ask_count()
     assert derived["asks"] == 8 and derived["hybrid_estimate_micro"] == 2_500_000 and derived["day_cap_micro"] == 20_000_000
@@ -903,7 +903,7 @@ def test_a_day_cap_that_admits_no_hybrid_ask_is_refused_not_rounded_to_zero(monk
 
 def test_w1c_registers_the_derived_count_and_the_paced_schedule_and_w1b_registers_no_workload():
     workload = registered()["workload"]
-    assert workload["asks"] == paced_asks.derive_ask_count()["asks"] == 14
+    assert workload["asks"] == paced_asks.derive_ask_count()["asks"] == 13
     assert (workload["mode"], workload["interval_s"], workload["max_in_flight"], workload["tail_s"]) == ("paced", 30, 2, 30)
     assert workload["max_in_flight"] == w1b.LIVE_MAX_CONCURRENT_ANSWERS and workload["tail_s"] == w1b.TAIL_S
     assert (w1b_judge.W1C_INTERVAL_S, w1b_judge.W1C_MAX_IN_FLIGHT, w1b_judge.W1C_TAIL_S) == (30.0, 2, 30.0)
@@ -927,7 +927,7 @@ def test_the_readme_and_windows_json_state_the_reason_the_derivation_the_pacing_
     w1c = registered()
     for text in (readme, squash(w1c["note"])):
         assert REASON in text and STOP_RULE in text
-        assert "floor(10 / 0.709573) = floor(14.09) = 14" in text and "one ask every 30 s" in text and "from upload accept" in text
+        assert "floor(10 / 0.753025) = floor(13.28) = 13" in text and "one ask every 30 s" in text and "from upload accept" in text
         assert "at most 2 in flight" in text and "job ready plus 30 s" in text and "different X-Test-Client-IP" in text
         assert "the memory thresholds are unchanged" in text
 
@@ -1097,37 +1097,37 @@ def drive_w1c(state_dir, tmp_path, *, service=None, fly=None, interval_s=0.05, t
 
 
 def test_a_w1c_boot_records_its_window_mode_derivation_and_a_schedule_of_planned_against_actual_sends(state_dir, tmp_path):
-    code, report, out, err, service, fly = drive_w1c(state_dir, tmp_path, service=FakeService(job_asks_needed=14))
+    code, report, out, err, service, fly = drive_w1c(state_dir, tmp_path, service=FakeService(job_asks_needed=13))
     assert code == 0 and report["verdict"] == "PASS" and report["window"] == "W1c" and report["attempt"] == 1
     workload = report["workload"]
-    assert workload["mode"] == "paced" and workload["asks_cap"] == 14 == workload["derivation"]["asks"]
+    assert workload["mode"] == "paced" and workload["asks_cap"] == 13 == workload["derivation"]["asks"]
     assert (workload["interval_s"], workload["max_in_flight"], workload["tail_s"]) == (0.05, 2, 0.05)
-    assert workload["derivation"]["day_cap_micro"] == 10_000_000 and workload["derivation"]["hybrid_estimate_micro"] == 709_573
+    assert workload["derivation"]["day_cap_micro"] == 10_000_000 and workload["derivation"]["hybrid_estimate_micro"] == 753_025
     asks = report["asks"]
-    assert asks["sent"] == 14 == len(asks["schedule"]) and asks["unsent"] == 0 and asks["stopped_by"] == "cap"
-    assert asks["planned_offsets_s"] == pytest.approx([0.05 * n for n in range(14)])
-    assert [e["n"] for e in asks["schedule"]] == list(range(14))
+    assert asks["sent"] == 13 == len(asks["schedule"]) and asks["unsent"] == 0 and asks["stopped_by"] == "cap"
+    assert asks["planned_offsets_s"] == pytest.approx([0.05 * n for n in range(13)])
+    assert [e["n"] for e in asks["schedule"]] == list(range(13))
     for entry in asks["schedule"]:
         assert entry["sent_s"] >= entry["planned_s"] - 0.01 and entry["delay_s"] == pytest.approx(entry["sent_s"] - entry["planned_s"], abs=2e-3)
-    assert asks["schedule"][0]["sent_s"] < 0.5 and asks["max_in_flight_seen"] <= 2 and asks["distinct_addresses"] == 14
+    assert asks["schedule"][0]["sent_s"] < 0.5 and asks["max_in_flight_seen"] <= 2 and asks["distinct_addresses"] == 13
     ips = [a["ip"] for a in service.asks]
-    assert len(set(ips)) == 14 and all(re.fullmatch(r"10\.1\.\d+\.\d+", ip) for ip in ips) and service.max_inflight <= 2
-    assert len({a["body"]["question"] for a in service.asks}) == 14 and all("(ref 1" in a["body"]["question"] for a in service.asks)
+    assert len(set(ips)) == 13 and all(re.fullmatch(r"10\.1\.\d+\.\d+", ip) for ip in ips) and service.max_inflight <= 2
+    assert len({a["body"]["question"] for a in service.asks}) == 13 and all("(ref 1" in a["body"]["question"] for a in service.asks)
 
 
 def test_a_w1c_boot_stops_sending_at_job_ready_plus_the_tail_and_says_how_many_went_out(state_dir, tmp_path):
     _, report, *_ = drive_w1c(state_dir, tmp_path, service=FakeService(job_asks_needed=2), interval_s=0.3)
     asks = report["asks"]
-    assert asks["sent"] == 2 and asks["unsent"] == 12 and asks["stopped_by"] == "job_ready_plus_tail" and report["verdict"] == "PASS"
-    assert len(asks["planned_offsets_s"]) == 14 and report["job"]["ready_s"] >= 0.3
+    assert asks["sent"] == 2 and asks["unsent"] == 11 and asks["stopped_by"] == "job_ready_plus_tail" and report["verdict"] == "PASS"
+    assert len(asks["planned_offsets_s"]) == 13 and report["job"]["ready_s"] >= 0.3
 
 
 def test_a_w1c_boot_with_asks_that_outlast_the_interval_waits_records_the_delay_and_keeps_two_in_flight(state_dir, tmp_path):
-    service = FakeService(job_asks_needed=14, ask_seconds=0.12)
+    service = FakeService(job_asks_needed=13, ask_seconds=0.12)
     _, report, *_ = drive_w1c(state_dir, tmp_path, service=service, interval_s=0.03)
     asks = report["asks"]
-    assert asks["sent"] == 14 and service.max_inflight <= 2 == asks["max_in_flight_seen"] and any(e["delay_s"] > 0.05 for e in asks["schedule"])
-    assert [e["planned_s"] for e in asks["schedule"]] == pytest.approx([0.03 * n for n in range(14)], abs=2e-3)
+    assert asks["sent"] == 13 and service.max_inflight <= 2 == asks["max_in_flight_seen"] and any(e["delay_s"] > 0.05 for e in asks["schedule"])
+    assert [e["planned_s"] for e in asks["schedule"]] == pytest.approx([0.03 * n for n in range(13)], abs=2e-3)
 
 
 def test_a_w1c_boot_reads_the_secrets_of_its_own_state_file(state_dir, tmp_path):
@@ -1140,7 +1140,7 @@ def test_a_w1c_boot_reads_the_secrets_of_its_own_state_file(state_dir, tmp_path)
 
 def test_w1c_refuses_to_run_when_the_registered_count_is_not_the_one_the_code_derives(state_dir, tmp_path):
     service, fly = FakeService(), FakeFly()
-    code, report, out, err, *_ = drive_w1c(state_dir, tmp_path, service=service, fly=fly, asks=13)
+    code, report, out, err, *_ = drive_w1c(state_dir, tmp_path, service=service, fly=fly, asks=14)
     assert code == 2 and report is None and "derived" in err and "13" in err and service.requests == [] and fly.calls == []
 
 
@@ -1173,8 +1173,8 @@ def test_a_w1b_boot_is_unchanged_it_runs_the_saturating_loop_and_records_no_sche
 
 # --- the W1c aggregate: the stop rule -------------------------------------------------------------------------------------------------------------
 
-W1C_WORKLOAD = {"mode": "paced", "asks_cap": 14, "interval_s": 30.0, "max_in_flight": 2, "tail_s": 30.0,
-                "derivation": {"asks": 14, "day_cap_micro": 10_000_000, "hybrid_estimate_micro": 709_573}}
+W1C_WORKLOAD = {"mode": "paced", "asks_cap": 13, "interval_s": 30.0, "max_in_flight": 2, "tail_s": 30.0,
+                "derivation": {"asks": 13, "day_cap_micro": 10_000_000, "hybrid_estimate_micro": 753_025}}
 INVALID_JOB = {"state": "timeout"}
 
 
@@ -1259,7 +1259,7 @@ def test_w1b_and_w1c_boot_files_are_never_aggregated_together_and_a_file_without
 
 @pytest.mark.parametrize("workload", [
     {**W1C_WORKLOAD, "interval_s": 0.05}, {**W1C_WORKLOAD, "max_in_flight": 1}, {**W1C_WORKLOAD, "tail_s": 0.05},
-    {**W1C_WORKLOAD, "mode": "saturating"}, {**W1C_WORKLOAD, "asks_cap": 13}, {**W1C_WORKLOAD, "asks_cap": 15},
+    {**W1C_WORKLOAD, "mode": "saturating"}, {**W1C_WORKLOAD, "asks_cap": 12}, {**W1C_WORKLOAD, "asks_cap": 14},
     {**W1C_WORKLOAD, "derivation": {**W1C_WORKLOAD["derivation"], "hybrid_estimate_micro": 1_000_000}},
     {**W1C_WORKLOAD, "derivation": {}}, {}])
 def test_a_w1c_boot_that_did_not_run_the_registered_workload_can_never_aggregate_to_a_pass(workload):

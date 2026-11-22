@@ -11,8 +11,9 @@ free slot) refuses, it never lets an ask through. The order, and what each gate 
 3. the free window (429 ``MSG_RATE``): the first gate that counts, so an unauthenticated client cannot write a ledger
    row without passing it;
 4. a workspace ask: its token (404 for a bad id or token alike) is read through the state driver under the cache read
-   budget (429 ``MSG_READ_RATE`` when the process-wide bucket is empty: within ``/api/ask`` only a workspace ask can get
-   it); a public ask: a token of the cache read budget, then ``state.cache_get``. When the bucket is empty a public ask is
+   budget. When the process-wide bucket is empty it is NOT refused (RT-007 residual): the check is deferred to just
+   after Turnstile (step 6), runs without a token and before the paid window, so a bad token takes no window and an
+   anonymous drain never starves a workspace user; it is never skipped. A public ask: a token of the cache read budget, then ``state.cache_get``. When the bucket is empty a public ask is
    NOT refused (RT-007): the pre-Turnstile read is skipped and, once Turnstile has passed (step 6), the cache is read
    without a token, so an anonymous drain never starves a verified visitor and an unverified ask meets 403 ``MSG_BOT``.
    A hit is logged as a cached row (under the same state bound) and replayed. The database
@@ -343,7 +344,7 @@ async def ask(body: AskRequest, request: Request):
         # Always paid, never cached: refused before it takes a window while draining.
         _refuse_while_draining()
         _take_free_window(st, iph)
-        await _check_workspace_access(st, request, workspace["workspace_id"])
+        budget_skipped = not await _check_workspace_access(st, request, workspace["workspace_id"])
     else:
         cache_key = store.cache_key(question, strategy, snapshot_id)
         cached = await _answer_from_cache(st, s, iph, strategy, cache_key)
@@ -360,7 +361,9 @@ async def ask(body: AskRequest, request: Request):
                                         s.is_production, required=s.turnstile_required,
                                         stub=getattr(s, "turnstile_stub", False) is True):
         raise HTTPException(status_code=403, detail=MSG_BOT)
-    if budget_skipped:  # RT-007: the pre-Turnstile read was skipped (shared budget empty); a verified ask reads it free
+    if budget_skipped and workspace is not None:  # RT-007: budget was empty; token check runs now, unbudgeted
+        await _check_workspace_access(st, request, workspace["workspace_id"], budgeted=False)
+    elif budget_skipped:  # RT-007: the pre-Turnstile read was skipped (shared budget empty); a verified ask reads it free
         hit = await _read_cache(st, s, cache_key, budgeted=False)
         if hit is not None:
             return await _serve_cached(st, s, iph, strategy, hit)
@@ -390,13 +393,14 @@ def _take_free_window(st, iph: str) -> None:
         raise HTTPException(status_code=429, detail=MSG_RATE)
 
 
-async def _check_workspace_access(st, request: Request, workspace_id: str) -> None:
+async def _check_workspace_access(st, request: Request, workspace_id: str, *, budgeted: bool = True) -> bool:
     """The workspace token (404 for a bad id and a bad token alike) through the bounded state driver, under the cache
-    read budget: it is a graph read before the bot check. An empty budget is 429, an unreachable or slow database
-    503."""
+    read budget: it is a graph read before the bot check. RT-007: with the budget empty nothing is read and False is
+    returned (no 429); the caller runs it again unbudgeted (``budgeted=False``) after Turnstile. True once checked. An
+    unreachable or slow database is 503."""
     token = request.headers.get("x-workspace-token", "")
-    if not st.cache_budget.take():
-        raise HTTPException(status_code=429, detail=MSG_READ_RATE)
+    if budgeted and not st.cache_budget.take():
+        return False
     try:
         ok = await state_call(st, _workspace_token_ok, st.state_store_driver, workspace_id, token)
     except Exception as e:  # noqa: BLE001
@@ -404,6 +408,7 @@ async def _check_workspace_access(st, request: Request, workspace_id: str) -> No
         raise HTTPException(status_code=503, detail=MSG_STATE_UNAVAILABLE) from None
     if not ok:
         raise HTTPException(status_code=404, detail=MSG_WORKSPACE_NOT_FOUND)
+    return True
 
 
 _BUDGET_EMPTY = object()  # _read_cache / _answer_from_cache result: the shared read budget had no token, nothing was read

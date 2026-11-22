@@ -62,17 +62,18 @@ OPEN = dict(max_queries_per_day=0, max_spend_usd_per_day=0, paid_per_ip_per_day=
             max_concurrent_answers=1000)
 KINDS = ["inprocess", "inprocess-db", "neo4j"]
 SHARE_MICRO = 1_320_000                          # one address's share of the day's spend (config.py has the arithmetic)
-HYBRID_ESTIMATE, AGENT_ESTIMATE = 709_573, 1_015_669    # the live worst-case estimates (tests/test_serve_estimate.py); were
-#                                                          580_089 / 827_661 before Sonnet had a characters-per-token figure of
-#                                                          its own (2.0, not the old single 2.5): a test below pins them to the service
-VECTOR_ESTIMATE = 265_873                                # the cheapest live ask (was 223_389), same source
-WORKSPACE_ESTIMATE = 734_632                             # an upload workspace ask, same source
+HYBRID_ESTIMATE, AGENT_ESTIMATE = 753_025, 1_008_529    # the live worst-case estimates (tests/test_serve_estimate.py); were
+#                                                          742_825 / 1_008_529 with the first M2a allowance, 709_573 / 1_015_669 before the M2a context (council 005: quote lines, rule
+#                                                          abstracts, a bigger per-anchor allowance), 580_089 / 827_661 before Sonnet
+#                                                          had a characters-per-token figure of its own: a test below pins them to the service
+VECTOR_ESTIMATE = 266_485                                # the cheapest live ask (was 223_389), same source
+WORKSPACE_ESTIMATE = 753_604                             # an upload workspace ask, same source
 # Council 4's test (b), a buyer demo from one office: 15 plain answers ($0.002), 3 escalations ($0.04) and 2 agent asks ($0.15), the
 # agent asks last. Settled spend when the SECOND agent ask arrives: 15 x 2_000 + 3 x 40_000 + 150_000 = 300_000.
 DEMO_PLAN = ([("hybrid", HYBRID_ESTIMATE, 2_000)] * 15 + [("hybrid", HYBRID_ESTIMATE, 40_000)] * 3
              + [("agent", AGENT_ESTIMATE, 150_000)] * 2)
 DEMO_SETTLED_BEFORE_THE_SECOND_AGENT_ASK = 15 * 2_000 + 3 * 40_000 + 150_000
-SONNET_ATTEMPT_AT_THE_CEILING = 347_712                  # one Sonnet attempt at the hybrid ceiling: 161,856 x $2 + 2,400 x $10
+SONNET_ATTEMPT_AT_THE_CEILING = 369_012                  # one Sonnet attempt at the hybrid ceiling: 172,506 x $2 + 2,400 x $10
 _tests_run = itertools.count()
 
 
@@ -394,14 +395,18 @@ def test_the_share_these_tests_use_is_the_production_share_and_meets_the_two_rul
     """Drift guard: the cases below are built on ``SHARE_MICRO``. Rule (i'): pausing live asks needs at least eight addresses,
     so what seven full shares leave of the day still holds a hybrid ask (the first form, ``7 x share < cap``, let $1.40 leave
     $0.20, less than any live ask). Rule (ii): the buyer demo's second agent ask fits (settled 300,000 + the agent estimate).
-    The estimates are pinned to the service two tests below, and tests/test_serve_config_production.py computes both rules
-    from the service itself."""
+    The live estimates (hybrid 753,025, agent 1,008,529, workspace 753,604) leave real margins on the $1.32 share: the agent
+    side by 11,471 micro-dollars (1,320,000 - 1,308,529; the rule asks for 2,500), the hybrid side by 996 micro-dollars of
+    share ((10,000,000 - 753,025) / 7 = 1,320,996; the rule asks for 500), and seven full shares plus a workspace ask end at 9,993,604 of the
+    10,000,000 (a margin of 6,396; 500 is required). tests/test_m2a_spend_budget.py pins those margins. The estimates are
+    pinned to the service two tests below, and tests/test_serve_config_production.py computes both rules from the service
+    itself."""
     from semigraph.config import PRODUCTION_MAX_SPEND_USD_PER_DAY, PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD
     day_cap = usd_to_micro(PRODUCTION_MAX_SPEND_USD_PER_DAY)
     assert usd_to_micro(PRODUCTION_PAID_SPEND_SHARE_PER_IP_USD) == SHARE_MICRO == usd_to_micro(SHARE["paid_spend_share_per_ip_usd"])
     assert day_cap == usd_to_micro(SHARE["max_spend_usd_per_day"])
-    assert day_cap - 7 * SHARE_MICRO >= HYBRID_ESTIMATE                                  # (i'): 760_000 >= 709_573
-    assert SHARE_MICRO >= DEMO_SETTLED_BEFORE_THE_SECOND_AGENT_ASK + AGENT_ESTIMATE      # (ii): 1_320_000 >= 1_315_669
+    assert day_cap - 7 * SHARE_MICRO >= HYBRID_ESTIMATE                                  # (i'): 760_000 >= 753_025 (margin 6_975)
+    assert SHARE_MICRO >= DEMO_SETTLED_BEFORE_THE_SECOND_AGENT_ASK + AGENT_ESTIMATE      # (ii): 1_320_000 >= 1_308_529
 
 
 def ask_and_settle(h, backend, *, ip, estimate, cost, outcome="done", **kw):
@@ -468,7 +473,7 @@ def test_the_estimate_constants_above_are_the_services_own_live_estimates():
 def test_pausing_the_day_takes_eight_addresses(harness):
     """Rule (i'): seven addresses cannot stop live asks, an eighth can. Each address records at most its share, so seven of
     them that each used the whole of it (7 x 1,320,000 = 9,240,000, the worst case the share allows) leave 760,000 of the
-    $10, and that still holds a real hybrid ask (709,573). Filling a share is synthetic (two asks of half a share, charged in
+    $10, and that still holds a real hybrid ask (753,025). Filling a share is synthetic (two asks of half a share, charged in
     full, abandoned); every ask a VISITOR or the eighth address makes after that carries the service's own live estimate, so
     the day cap is judged on what the service really reserves.
 
@@ -527,8 +532,8 @@ def test_twenty_asks_with_three_escalations_and_two_agent_asks_from_one_address_
     pytest.param(SHARE_MICRO - AGENT_ESTIMATE + 1, False, id="one-micro-dollar-over"),
 ])
 def test_an_agent_ask_is_admitted_exactly_while_settled_spend_plus_its_estimate_fits_the_share(harness, settled, admitted):
-    """The verdict's cost, to the micro-dollar: an agent ask is refused once the address has settled more than $0.304331
-    (1,320,000 - 1,015,669; it was $0.42 at the old $0.83 estimate and $1.25 share, $0.234 at the new estimate and that share,
+    """The verdict's cost, to the micro-dollar: an agent ask is refused once the address has settled more than $0.311471
+    (1,320,000 - 1,008,529; it was $0.304331 at the first M2a estimate, $0.42 at the old $0.83 estimate and $1.25 share, $0.234 at the new estimate and that share,
     $0.384331 at the $1.40 share this one replaced)."""
     backend = harness.make(**SHARE)
     assert isinstance(ask_and_settle(harness, backend, ip="office", estimate=settled, cost=settled), Lease)
@@ -567,8 +572,8 @@ def test_what_one_address_can_have_in_flight_at_once_at_the_production_share(har
 def test_a_vector_ask_fits_beside_a_running_agent_ask_from_the_same_address_and_a_hybrid_one_does_not(harness):
     backend = harness.make(**SHARE)
     assert isinstance(harness.ask(backend, ip="office", estimate=AGENT_ESTIMATE, strategy="agent"), Lease)
-    assert harness.ask(backend, ip="office", estimate=HYBRID_ESTIMATE) is Denied.IP_SPEND_INFLIGHT        # 1,725,242 > 1,320,000
-    assert isinstance(harness.ask(backend, ip="office", estimate=VECTOR_ESTIMATE), Lease)                  # 1,281,542 fits
+    assert harness.ask(backend, ip="office", estimate=HYBRID_ESTIMATE) is Denied.IP_SPEND_INFLIGHT        # 1,761,554 > 1,320,000
+    assert isinstance(harness.ask(backend, ip="office", estimate=VECTOR_ESTIMATE), Lease)                  # 1,275,014 fits
 
 
 def test_two_concurrent_asks_from_one_address_cannot_both_pass_on_the_same_remaining_share(harness):

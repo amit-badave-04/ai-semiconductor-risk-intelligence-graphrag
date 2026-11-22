@@ -273,7 +273,8 @@ def test_the_checks_object_has_one_settled_json_shape():
     assert json.loads(json.dumps(c.as_dict())) == {
         "citations_retrieved": True, "numbers_grounded": True, "numbers_checked": 2, "unmatched_numbers": [],
         "echoed_numbers": [], "pseudo_citations": [], "has_citation": True, "is_refusal": False,
-        "unsupported_removal_claim": False, "unsupported_removal_sentences": []}
+        "unsupported_removal_claim": False, "unsupported_removal_sentences": [], "stale_citations": [],
+    "cited_without_text": []}
 
 
 def test_the_dataclass_defaults_describe_a_clean_answer():

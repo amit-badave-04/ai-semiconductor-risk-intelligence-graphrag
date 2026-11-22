@@ -80,30 +80,45 @@ def rule_matches_evidence(rule: Mapping, text: str) -> bool:
     return bool(pattern and pattern.search(text))
 
 
-def select_affected_rules(chunks: list[dict], rules: Iterable[Mapping],
-                          cap: int = MAX_AFFECTED_BY_PER_COMPANY) -> list[dict]:
-    """AFFECTED_BY link rows (without the company) for ONE company's current
-    export-control evidence chunks (``[{chunk_id, text}]``).
-
-    Only relevant rules whose kind keywords appear in some chunk are linked;
-    the edge carries the matching chunk ids (capped). At most ``cap`` links are
-    kept, newest rule first (ties: higher document number), so the count cannot
-    grow with the number of rules on the Federal Register.
-    """
-    links = []
+def match_rules(chunks: list[dict], rules: Iterable[Mapping]) -> tuple[list[dict], int]:
+    """(every matching link, newest first, UNCAPPED; number of relevant rules examined) for ONE company's current
+    export-control evidence chunks (``[{chunk_id, text}]``)."""
+    links, examined = [], 0
     for rule in rules:
         if not rule["relevant"]:
             continue
+        examined += 1
         matched = [c["chunk_id"] for c in chunks if rule_matches_evidence(rule, c["text"])]
         if matched:
             links.append({"rule_id": rule["document_number"], "date": rule["publication_date"],
                           "chunks": matched[:MAX_EDGE_EVIDENCE_CHUNKS]})
     links.sort(key=lambda link: (link["date"], link["rule_id"]), reverse=True)
-    return links[:cap]
+    return links, examined
+
+
+def select_affected_rules(chunks: list[dict], rules: Iterable[Mapping],
+                          cap: int = MAX_AFFECTED_BY_PER_COMPANY) -> list[dict]:
+    """AFFECTED_BY link rows (without the company) for ONE company's current export-control evidence chunks.
+
+    Only relevant rules whose kind keywords appear in some chunk are linked; the edge carries the matching chunk ids
+    (capped). At most ``cap`` links are kept, newest rule first (ties: higher document number), so the count cannot
+    grow with the number of rules on the Federal Register.
+    """
+    return match_rules(chunks, rules)[0][:cap]
+
+
+def build_affected_by(exposures: Mapping[int, list[dict]], rules: Iterable[Mapping],
+                      ciks: Iterable[int] = ()) -> tuple[list[dict], dict[int, dict]]:
+    """(AFFECTED_BY rows, per-company ``{rules_examined, rules_matched}``) (M2a R11). Counts cover every cik in ``ciks``
+    and every exposed company; ``rules_matched`` is the match count BEFORE the per-company cap."""
+    rules = list(rules)
+    rows, counts = [], {}
+    for cik in sorted({*ciks, *exposures}):
+        links, examined = match_rules(exposures.get(cik, []), rules)
+        counts[cik] = {"rules_examined": examined, "rules_matched": len(links)}
+        rows += [{"cik": cik, **link} for link in links[:MAX_AFFECTED_BY_PER_COMPANY]]
+    return rows, counts
 
 
 def build_affected_by_rows(exposures: Mapping[int, list[dict]], rules: Iterable[Mapping]) -> list[dict]:
-    rules = list(rules)
-    return [{"cik": cik, **link}
-            for cik, chunks in sorted(exposures.items())
-            for link in select_affected_rules(chunks, rules)]
+    return build_affected_by(exposures, rules)[0]

@@ -177,7 +177,9 @@
       "has_citation": true,
       "is_refusal": false,
       "unsupported_removal_claim": false,
-      "unsupported_removal_sentences": []
+      "unsupported_removal_sentences": [],
+      "stale_citations": [],
+      "cited_without_text": []
      },
      "finish_reason": "stop",
      "usage": {
@@ -259,7 +261,7 @@
    },
    "observed": {
     "prompt_hashes": [
-     "88f7d2be524febcd"
+     "67fd3693e63f2517"
     ],
     "planner_message_hashes": [
      "479d03ee9faac376",
@@ -456,7 +458,9 @@
       "has_citation": true,
       "is_refusal": false,
       "unsupported_removal_claim": false,
-      "unsupported_removal_sentences": []
+      "unsupported_removal_sentences": [],
+      "stale_citations": [],
+      "cited_without_text": []
      },
      "finish_reason": "stop",
      "usage": {
@@ -527,8 +531,8 @@
    },
    "observed": {
     "prompt_hashes": [
-     "7a932e77ff1d5951",
-     "7a932e77ff1d5951"
+     "1e5db4869e3439bd",
+     "1e5db4869e3439bd"
     ],
     "planner_message_hashes": [
      "479d03ee9faac376",
@@ -674,7 +678,9 @@
       "has_citation": true,
       "is_refusal": false,
       "unsupported_removal_claim": false,
-      "unsupported_removal_sentences": []
+      "unsupported_removal_sentences": [],
+      "stale_citations": [],
+      "cited_without_text": []
      },
      "finish_reason": "stop",
      "usage": {
@@ -732,7 +738,7 @@
    },
    "observed": {
     "prompt_hashes": [
-     "7a932e77ff1d5951"
+     "1e5db4869e3439bd"
     ],
     "planner_message_hashes": [
      "479d03ee9faac376",
@@ -855,7 +861,9 @@
       "has_citation": true,
       "is_refusal": false,
       "unsupported_removal_claim": false,
-      "unsupported_removal_sentences": []
+      "unsupported_removal_sentences": [],
+      "stale_citations": [],
+      "cited_without_text": []
      },
      "finish_reason": "stop",
      "usage": {
@@ -907,7 +915,7 @@
    },
    "observed": {
     "prompt_hashes": [
-     "7a932e77ff1d5951"
+     "1e5db4869e3439bd"
     ],
     "planner_message_hashes": [
      "479d03ee9faac376"
@@ -1058,7 +1066,7 @@
    },
    "observed": {
     "prompt_hashes": [
-     "7a932e77ff1d5951"
+     "1e5db4869e3439bd"
     ],
     "planner_message_hashes": [
      "479d03ee9faac376",
@@ -1322,7 +1330,7 @@
    },
    "observed": {
     "prompt_hashes": [
-     "7a932e77ff1d5951"
+     "1e5db4869e3439bd"
     ],
     "planner_message_hashes": [
      "479d03ee9faac376",

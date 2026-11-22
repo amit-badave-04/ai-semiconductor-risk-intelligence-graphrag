@@ -52,7 +52,9 @@
     "has_citation": true,
     "is_refusal": false,
     "unsupported_removal_claim": false,
-    "unsupported_removal_sentences": []
+    "unsupported_removal_sentences": [],
+    "stale_citations": [],
+    "cited_without_text": []
    },
    "finish_reason": "stop",
    "usage": {
@@ -70,7 +72,7 @@
     "0001045810-26-000021:I.1A:0007",
     "0001045810-26-000021:I.1A:0008"
    ],
-   "context_chars": 3843,
+   "context_chars": 4611,
    "escalated": true,
    "escalation_reasons": [
     "invalid_citation"

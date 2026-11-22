@@ -57,6 +57,13 @@ export interface Rule extends Edge {
   cite: string | null;
 }
 
+/** M2a R11: the rule linker's own counts for this company. Each is null on a graph built before R11. */
+export interface RulesSummary {
+  examined: number | null;
+  matched: number | null;
+  linked: number | null;
+}
+
 export interface Dossier {
   company: { ticker: string; name: string; cik: number | null };
   dataAsOf: string | null;
@@ -65,6 +72,8 @@ export interface Dossier {
   activeRisks: ActiveRisk[];
   edges: Edge[];
   rules: Rule[];
+  /** Absent when the server sent no `rules_summary` (an older server): the page then says nothing about the counts. */
+  rulesSummary?: RulesSummary;
 }
 
 export type DossierResult =
@@ -153,6 +162,23 @@ function metricCite(cik: unknown, metric: string | null, periodEnd: string | nul
   return XBRL_ID_RE.test(id) ? id : null;
 }
 
+const count = (value: unknown): number | null => (typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null);
+
+function toRulesSummary(value: unknown): RulesSummary | undefined {
+  return isRow(value) ? { examined: count(value.rules_examined), matched: count(value.rules_matched), linked: count(value.rules_linked) } : undefined;
+}
+
+/** M2a R11: the linker's counts as one line, from the approved pieces: "showing N of M linked rules" only when M is more than
+ *  the list shows, "examined N rules, matched K" whenever both are known. Nothing for a missing or null summary (an older graph). */
+export function rulesSummaryLine(summary: RulesSummary | undefined, shown: number): string {
+  if (summary === undefined) return "";
+  const w = deck.company.rules;
+  const parts: string[] = [];
+  if (summary.linked !== null && summary.linked > shown) parts.push(w.showing(shown, summary.linked));
+  if (summary.examined !== null && summary.matched !== null) parts.push(w.examined(summary.examined, summary.matched));
+  return parts.join("; ");
+}
+
 function ruleCite(ruleId: string | null): string | null {
   if (ruleId === null) return null;
   return [ruleId, `fr:${ruleId}`].find((id) => FR_ID_RE.test(id)) ?? null;
@@ -219,6 +245,7 @@ export function parseDossier(body: unknown): Dossier | null {
       const ruleId = str(r.rule_id);
       return { ...toEdge(r), rule_id: ruleId, date: str(r.date), kind: str(r.kind), cite: ruleCite(ruleId) };
     }),
+    ...(isRow(body.rules_summary) ? { rulesSummary: toRulesSummary(body.rules_summary) } : {}),
   };
 }
 

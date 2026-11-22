@@ -44,8 +44,8 @@ the model's characters per token``; the context ceiling is :func:`context_chars`
   retriever when an estimate is computed, so the two cannot drift: the first companies in detection order are kept and
   the rest are named in a note) and, per company, the rules, the metrics rows and the temporal block (the retriever's
   caps and the layout's cuts). One company's blocks at their caps were MEASURED by rendering a worst-case retrieval
-  through the real ``build_blocks`` / ``render_prompt`` (tests/test_serve_estimate.py): 39,686 characters at the most
-  (two pairs), allowed at GRAPH_CHARS_PER_ANCHOR.
+  through the real ``build_blocks`` / ``render_prompt`` (tests/test_serve_estimate.py): 47,505 characters at the most
+  (two pairs), allowed at GRAPH_CHARS_PER_ANCHOR (GRAPH_CHARS_PER_ANCHOR_WORKSPACE for an upload-workspace ask).
 - CAPPED IN THE CODE, THE AGENT TOO: its companies. The agent's tools add companies themselves, but a tool that would
   take the merged context past ``retriever.MAX_ANCHORS`` companies in all is refused before it runs a query
   (agent/merge.check_company_cap; the default company counts when none was detected), so an agent ask carries as many
@@ -55,11 +55,12 @@ the model's characters per token``; the context ceiling is :func:`context_chars`
   single 2.5 characters per token; at Sonnet's 2.0 the agent ceiling is $1.02 and 235,012 tokens on Sonnet, inside its
   1,000,000-token window at its flat price: see LONG CONTEXT above).
 - CAPPED IN THE CODE, THE AGENT'S FILING PAIRS: those of one company. Each ``risk_changes`` call adds up to 2 pairs per
-  company, so 4 calls could give one company 8 (66,410 characters, an agent prompt of 518,870 characters: about $0.91
-  at the single 2.5 characters per token, $1.12 at Sonnet's 2.0) if the graph held 9 annual filings of it. ``agent.merge.merge_temporal`` now holds a
-  company to MAX_PAIRS_HELD_PER_COMPANY (5) pairs in all, whatever the calls return and whatever the graph holds (today
+  company, so 4 calls could give one company 8 (67,828 characters, an agent prompt of about 520,000 characters: more than
+  $1.1 at Sonnet's 2.0) if the graph held 9 annual filings of it. ``agent.merge.merge_temporal`` now holds a
+  company to MAX_PAIRS_HELD_PER_COMPANY (4) pairs in all, whatever the calls return and whatever the graph holds (today
   at most 5 annual filings of a company, AMD: four 10-Ks and a 10-K/A, so at most 4 consecutive comparisons), and
-  AGENT_GRAPH_CHARS_PER_COMPANY covers exactly 5 (tests/test_serve_estimate.py offers 10 pairs of every company, the
+  AGENT_GRAPH_CHARS_PER_COMPANY covers exactly 4: 49,699 through the real merge with its cap note, where 5 would be 50,228
+  and would not fit (tests/test_serve_estimate.py offers 10 pairs of every company, the
   prefetch's 2 and four calls of 2, to the real merge and renders what it holds through the real layout).
 - ALLOWANCES, NOT CAPS (measured, rounded up): the RELATIONSHIPS block (EDGE_LINES_ALLOWED lines: the code has no cap,
   the graph has 73 company relations), the earlier wording of a reworded item (542 characters at most in the corpus; the
@@ -117,8 +118,8 @@ CHARS_PER_TOKEN_BY_MODEL = {"anthropic/claude-sonnet-5": SONNET_CHARS_PER_TOKEN}
 # go through chars_per_token(model, role)). The default is not every model's figure.
 
 # --- the prompt: templates, excerpts, graph blocks -------------------------------------------------------------------
-ANSWER_TEMPLATE_CHARS = 9_200          # prompts/answer.txt is 9,108 characters
-WORKSPACE_TEMPLATE_CHARS = 10_300      # prompts/answer_workspace.txt is 10,208
+ANSWER_TEMPLATE_CHARS = 9_500          # prompts/answer.txt is 9,403 characters (9,108 before the M2a data-boundary rule, RT-003)
+WORKSPACE_TEMPLATE_CHARS = 10_600      # prompts/answer_workspace.txt is 10,505 (10,212 before the M2a data-boundary rule, RT-003)
 K_CHUNKS = 8                           # hybrid_retrieve k_chunks and vector_retrieve k; the route passes neither
 # The longest excerpt in the ingested corpus is 10,217 characters (5,894 chunks, 13 filers; measured); the chunker's
 # hard cap is 1,100 embedder tokens (parsing/chunker.MAX_TOKENS). A chunk's id line and the blank lines around it add
@@ -127,14 +128,24 @@ CHUNK_TEXT_MAX_CHARS = 12_000
 EXCERPT_FRAMING_CHARS = 64
 # One company's rules, metrics rows and temporal block at their caps, MEASURED through the real build_blocks (the test
 # renders it): a plain ask shows 8 rules, 4 metric series of 11 rows (the latest 3 years and 4 named years, each with
-# its prior) and, for a question that names fiscal years, two filing pairs sharing the 26-item, 16-passage budget:
-# 39,686 characters (37,772 with one pair), allowed at 42,000. The recorded contexts are far smaller (at most 16,121
-# graph characters for one company) and no recorded question names more than two companies.
-GRAPH_CHARS_PER_ANCHOR = 42_000
+# its prior) and, for a question that names fiscal years, two filing pairs sharing the 26-item, 16-passage budget. The
+# worst case is built like the corpus's dearest data (tests/test_serve_estimate.py): 7-digit CIKs, 13-digit TWD amounts
+# (17 characters), ':II.1A:' chunk ids, two series whose priors are not positive (the longer n/m notes), every edge
+# line's evidence superseded (every mark renders), 6 quote lines and 120-character rule abstracts. Measured: 47,505
+# characters at two pairs (45,593 with one), allowed at 48,000 (the measurement rounded up to the next 500). The recorded
+# contexts are far smaller (at most 16,121 graph characters for one company) and no recorded question names more than
+# two companies.
+GRAPH_CHARS_PER_ANCHOR = 48_000
+# The upload-workspace ask renders WITHOUT the edge quote lines and rule abstracts (R6b, workspace.build_workspace_prompt;
+# R2, R4 and the superseded marks stay): the same worst case measures 44,613 characters per company at two pairs (42,701 with
+# one), allowed at 45,000 (the next 500). With EDGE_LINE_CHARS this keeps the workspace estimate under $0.755, which seven
+# full per-address shares leave of the day cap with margin (decision 005, Follow-ups).
+GRAPH_CHARS_PER_ANCHOR_WORKSPACE = 45_000
 # What every company count shares: the RELATIONSHIPS block. The code does not cap it (the traversal is two hops, every
 # relation line is one edge); the graph bounds it: the loader MERGEs one edge per (source, relation, target) between
 # canonical companies and the extractions hold 73 of them, so 150 lines is twice that. A line is a name, a relation, a
-# name, a status and up to three ids (226 characters built from the longest names), allowed at EDGE_LINE_CHARS. The
+# name, a status and up to three ids, each with its superseded mark: 272 characters (273 with the newline) built from
+# 50-character names, COMPETES_WITH (the longest relation type) and the status 'Historical', allowed at EDGE_LINE_CHARS (280). The
 # 6 risk lines of the plain retrieval come with it.
 EDGE_LINES_ALLOWED = 150
 # The note that names the companies a question named beyond the anchor cap: at most 22 names (26 detectable, 4 kept).
@@ -142,10 +153,12 @@ ANCHOR_NOTE_CHARS = 300
 # What the agent's tools add per company: every annual metric row (up to 19 per series, all shown) and temporal pairs
 # (up to MAX_PAIRS_PER_COMPANY per call, so one company can collect several over the tool calls). Both the company COUNT
 # (agent_company_blocks) and the pairs per company are capped in the code: agent/merge.py holds a company to
-# MAX_PAIRS_HELD_PER_COMPANY = 5 pairs in all, however many the calls return. Measured through the real renderer: 46,490
-# characters per company at 2 pairs and 48,650 at 5 (42,177 at 3: the pairs share one line budget), allowed at 50,000.
-# At 6 pairs a company is 54,570 and at 8 (what 4 calls could add without the cap) 66,410: the cap is what keeps those
-# out, so a change to it must come with a new measurement here (a test pins the cap to 5 and renders the result).
+# MAX_PAIRS_HELD_PER_COMPANY = 4 pairs in all, however many the calls return. Measured through the real renderer (the agent writer drops quote lines, abstracts and the note's prior id, M2a council 005):
+# 45,930 characters per company at 1 pair, 47,842 at 2, 43,496 at 3 (the pairs share one line budget) and 49,856 at 4, allowed at
+# 50,000 (144 characters to spare; 49,699 through the real merge with its cap note; the worst case renders 461,715 characters in
+# all against 466,524 allowed). 5 pairs measure 49,987 bare but 50,228 through the real merge, so the cap is 4. Partial R4 does not
+# fit (decision 005). At 6 pairs a company is 55,934 and at 8 (what 4 calls could add without the cap) 67,828: the cap is what keeps
+# those out, so a change to it must come with a new measurement here (a test pins the cap to 4 and renders the result).
 AGENT_GRAPH_CHARS_PER_COMPANY = 50_000
 # Uploaded-document excerpts (the workspace ask): DEFAULT_K_DOC_CHUNKS of at most uploads.units.DEFAULT_MAX_CHARS
 # characters.
@@ -157,7 +170,7 @@ AGENT_MAX_EDGES_ADDED = 40
 AGENT_MAX_RISKS = 12
 AGENT_MAX_COMPUTED = 4
 ACTIVE_RISKS_TOP = 6                   # the risks the plain retrieval already holds
-EDGE_LINE_CHARS, RISK_LINE_CHARS, COMPUTED_LINE_CHARS = 300, 700, 400
+EDGE_LINE_CHARS, RISK_LINE_CHARS, COMPUTED_LINE_CHARS = 280, 700, 400
 # The planner's prompt: the system prompt and the tool schemas (1,685 + 5,967 characters measured), then the question,
 # the prefetch summary (about 16,000), up to agent_max_tool_calls results (about 7,000 each) and its own earlier turns.
 # The runs showed at most 2,300 input tokens per call; every planner call is priced at this ceiling.
@@ -325,10 +338,10 @@ def context_chars(ask_type: str, settings: Settings | None = None) -> int:
                 + AGENT_MAX_EDGES_ADDED * EDGE_LINE_CHARS + (AGENT_MAX_RISKS - ACTIVE_RISKS_TOP) * RISK_LINE_CHARS
                 + AGENT_MAX_COMPUTED * COMPUTED_LINE_CHARS
                 + agent_company_blocks(settings) * AGENT_GRAPH_CHARS_PER_COMPANY)
-    sec = shared + max_anchors() * GRAPH_CHARS_PER_ANCHOR
     if ask_type == "workspace":
-        return sec + _excerpts(K_DOC_CHUNKS, DOC_CHUNK_MAX_CHARS)
-    return sec
+        return (shared + max_anchors() * GRAPH_CHARS_PER_ANCHOR_WORKSPACE
+                + _excerpts(K_DOC_CHUNKS, DOC_CHUNK_MAX_CHARS))
+    return shared + max_anchors() * GRAPH_CHARS_PER_ANCHOR
 
 
 def prompt_chars(ask_type: str, settings: Settings) -> int:

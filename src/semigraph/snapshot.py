@@ -45,6 +45,7 @@ _CODE_FILES = (
     _PACKAGE / "artifacts" / "schema.cypher",
 )
 _ENTITIES = _PACKAGE / "artifacts" / "canonical_entities.json"
+_EDGE_OVERRIDES = _PACKAGE / "artifacts" / "edge_overrides.json"
 # next to the alignment parquets: the two checkpoints (graph/adjudicate, graph/passage_adjudicate) and the provenance sidecar
 _ALIGNMENT_SIDE_FILES = ("adjudications.jsonl", "passage_adjudications.jsonl", "alignment_provenance.json")
 
@@ -83,6 +84,7 @@ def snapshot_inputs(settings: Settings) -> dict:
                            **{name: sha for pattern in _ALIGNMENT_SIDE_FILES
                               for name, sha in _hashes(settings.interim_dir / "risk_alignment", pattern).items()}},
         "entities": _file_sha1(_ENTITIES) if _ENTITIES.exists() else None,
+        "edge_overrides": _file_sha1(_EDGE_OVERRIDES) if _EDGE_OVERRIDES.exists() else None,
         "code": code_fingerprint(),
     }
 
@@ -95,6 +97,8 @@ def compute_snapshot_id(settings: Settings, as_of: date | str | None = None, *,
     digest = hashlib.sha1()
     digest.update(f"{as_of_d}|{code_version}|{inputs['manifest']}|{inputs['federal_register']}"
                   f"|{inputs['entities']}|{inputs['code']}".encode())
+    if inputs["edge_overrides"]:   # only when present, so an id computed without the file is unchanged
+        digest.update(f"|edge_overrides:{inputs['edge_overrides']}".encode())
     for section in ("extractions", "xbrl_metrics", "chunks", "section_texts", "risk_items", "risk_alignment"):
         for name, sha in sorted(inputs[section].items()):
             digest.update(f"|{section}:{name}:{sha}".encode())

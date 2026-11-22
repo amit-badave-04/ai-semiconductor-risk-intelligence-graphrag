@@ -142,21 +142,27 @@ GOLDEN_EXTERNAL = (
 
 GOLDEN_METRICS = (
     'Nvidia: fiscal year ended 2026-01-25\n'
-    '- revenue for period 2025-01-27..2026-01-25: 215,938,000,000 USD [xbrl:1045810:revenue:2026-01-25] | computed: +65.5% vs fiscal year ended 2025-01-26 (change +85,441,000,000 USD)\n'
-    '- rnd for period 2025-01-27..2026-01-25: 18,497,000,000 USD [xbrl:1045810:rnd:2026-01-25] | computed: +43.2% vs fiscal year ended 2025-01-26 (change +5,583,000,000 USD)\n'
+    '- revenue for period 2025-01-27..2026-01-25: 215,938,000,000 USD [xbrl:1045810:revenue:2026-01-25]\n'
+    '  computed: +65.5% vs fiscal year ended 2025-01-26 [xbrl:1045810:revenue:2025-01-26] (change +85,441,000,000 USD) in revenue for the fiscal year ended 2026-01-25 [xbrl:1045810:revenue:2026-01-25]\n'
+    '- rnd for period 2025-01-27..2026-01-25: 18,497,000,000 USD [xbrl:1045810:rnd:2026-01-25]\n'
+    '  computed: +43.2% vs fiscal year ended 2025-01-26 [xbrl:1045810:rnd:2025-01-26] (change +5,583,000,000 USD) in rnd for the fiscal year ended 2026-01-25 [xbrl:1045810:rnd:2026-01-25]\n'
     'Nvidia: fiscal year ended 2025-01-26\n'
-    '- revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD [xbrl:1045810:revenue:2025-01-26] | computed: +114.2% vs fiscal year ended 2024-01-28 (change +69,575,000,000 USD)\n'
+    '- revenue for period 2024-01-29..2025-01-26: 130,497,000,000 USD [xbrl:1045810:revenue:2025-01-26]\n'
+    '  computed: +114.2% vs fiscal year ended 2024-01-28 [xbrl:1045810:revenue:2024-01-28] (change +69,575,000,000 USD) in revenue for the fiscal year ended 2025-01-26 [xbrl:1045810:revenue:2025-01-26]\n'
     '- rnd for period 2024-01-29..2025-01-26: 12,914,000,000 USD [xbrl:1045810:rnd:2025-01-26]\n'
     'Nvidia: fiscal year ended 2024-01-28\n'
-    '- revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD [xbrl:1045810:revenue:2024-01-28] | computed: +125.9% vs fiscal year ended 2023-01-29 (change +33,948,000,000 USD)\n'
+    '- revenue for period 2023-01-30..2024-01-28: 60,922,000,000 USD [xbrl:1045810:revenue:2024-01-28]\n'
+    '  computed: +125.9% vs fiscal year ended 2023-01-29 (change +33,948,000,000 USD) in revenue for the fiscal year ended 2024-01-28 [xbrl:1045810:revenue:2024-01-28]\n'
     'AMD: fiscal year ended 2024-12-28\n'
     '- net_income for period 2024-01-01..2024-12-28: 1,641,000,000 USD [xbrl:2488:net_income:2024-12-28]\n'
     'Intel: fiscal year ended 2025-12-27\n'
-    '- net_income for period 2024-12-29..2025-12-27: -267,000,000 USD [xbrl:50863:net_income:2025-12-27] | computed: n/m vs fiscal year ended 2024-12-28 (change +18,489,000,000 USD; percentage not meaningful, prior value not positive)\n'
+    '- net_income for period 2024-12-29..2025-12-27: -267,000,000 USD [xbrl:50863:net_income:2025-12-27]\n'
+    '  computed: n/m vs fiscal year ended 2024-12-28 [xbrl:50863:net_income:2024-12-28] (change +18,489,000,000 USD; percentage not meaningful, prior value not positive) in net_income for the fiscal year ended 2025-12-27 [xbrl:50863:net_income:2025-12-27]\n'
     'Intel: fiscal year ended 2024-12-28\n'
     '- net_income for period 2023-12-31..2024-12-28: -18,756,000,000 USD [xbrl:50863:net_income:2024-12-28]\n'
     'TSMC: fiscal year ended 2024-12-31\n'
-    '- revenue for period 2024-01-01..2024-12-31: 2,894,308,000,000 TWD [xbrl:1046179:revenue:2024-12-31] | computed: +33.9% vs fiscal year ended 2023-12-31 (change +732,572,000,000 TWD)\n'
+    '- revenue for period 2024-01-01..2024-12-31: 2,894,308,000,000 TWD [xbrl:1046179:revenue:2024-12-31]\n'
+    '  computed: +33.9% vs fiscal year ended 2023-12-31 [xbrl:1046179:revenue:2023-12-31] (change +732,572,000,000 TWD) in revenue for the fiscal year ended 2024-12-31 [xbrl:1046179:revenue:2024-12-31]\n'
     'TSMC: fiscal year ended 2023-12-31\n'
     '- revenue for period 2023-01-01..2023-12-31: 2,161,736,000,000 TWD [xbrl:1046179:revenue:2023-12-31]'
 )
@@ -367,3 +373,32 @@ def test_answer_result_carries_anchor_defaulted_in_raw_retrieval(monkeypatch):
     out = answer(QUESTION, None, None, llm=lambda p: "No context.")
     assert out["retrieval"]["anchor_defaulted"] is True
     assert out["context"] == GOLDEN_CONTEXT
+
+
+# --- M2a S4: a context line change without a CONTEXT_VERSION bump is caught ---
+
+DETAIL_RETRIEVAL = {
+    "anchors": {"Nvidia": 1045810}, "metrics": [], "risks": [], "temporal": [], "temporal_pairs": [], "chunks": [],
+    "edges": [
+        {"source": "Nvidia", "relation": "SUPPLIES_TO", "target": "AMD", "status": "Active", "quote": 'Meta buys "AMD" GPUs [x].',
+         "chunk_ids": ["0000002488-26-000076:I.2:0002", "0000002488-26-000123:I.2:0002"], "source_cik": 1045810, "target_cik": 2488,
+         "evidence": [{"id": "0000002488-26-000076:I.2:0002", "is_current": False, "filing_date": "2026-05-06"},
+                      {"id": "0000002488-26-000123:I.2:0002", "is_current": True, "filing_date": "2026-08-05"}]},
+        {"source": "Nvidia", "relation": "AFFECTED_BY", "target": "A rule", "status": "Active", "quote": None, "chunk_ids": [],
+         "rule_id": "2026-19537", "date": "2026-03-12", "link_method": "keyword", "abstract": "What the rule\ndoes."},
+    ],
+}
+# One hash per CONTEXT_VERSION, never edited: a line change without a new version fails here, and the cure is a new version
+# (which re-keys the answer cache and refuses the seeded examples), not a new hash under the old one.
+GOLDEN_CONTEXT_HASHES = {"m2a-1": "c10e162434ee3261dc00c678e0b3a590e41ee4078baf7f34f2b72484efea6c87"}
+
+
+def test_a_context_line_change_needs_a_context_version_bump():
+    import hashlib
+
+    from semigraph.retrieval.context_layout import CONTEXT_VERSION
+
+    rendered = GOLDEN_CONTEXT + "\x00" + build_blocks(DETAIL_RETRIEVAL)[1]
+    assert CONTEXT_VERSION in GOLDEN_CONTEXT_HASHES, "bump CONTEXT_VERSION and add its hash"
+    assert hashlib.sha256(rendered.encode()).hexdigest() == GOLDEN_CONTEXT_HASHES[CONTEXT_VERSION], (
+        "the rendered context lines changed: bump CONTEXT_VERSION (context_layout.py), then add the new hash for it")
