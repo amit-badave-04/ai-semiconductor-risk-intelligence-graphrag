@@ -56,12 +56,14 @@ from .context_layout import (  # noqa: F401 - re-exported: eval/bakeoff and the 
     NONE_BLOCK,
     QUOTES_PER_ANCHOR,
     RULE_ABSTRACT_CHARS,
+    RULE_TITLE_MAX_CHARS,
     SUPERSEDED_MARK,
     YOY_ALL,
     YOY_NAMED,
     YOY_NAMED_ROWS_MAX,
     YOY_OFF,
     YOY_PRIOR_IDS_KEY,
+    inline_untrusted,
     sanitise_untrusted,
     temporal_block,
 )
@@ -251,7 +253,8 @@ def _external_line(edge: dict, valid_ids: set[str], *, detail_lines: bool = True
         citation = None
     if citation:
         valid_ids.add(citation)
-    label = " ".join([edge.get("date") or "undated", *([f"[{citation}]"] if citation else []), edge["target"]])
+    title = inline_untrusted(edge["target"], RULE_TITLE_MAX_CHARS)   # untrusted like the abstract (I8 review)
+    label = " ".join([edge.get("date") or "undated", *([f"[{citation}]"] if citation else []), title])
     line = f"- {label} (linked to {edge['source']} by {edge.get('link_method') or 'keyword'} match)"
     abstract = sanitise_untrusted(edge.get("abstract"), RULE_ABSTRACT_CHARS) if detail_lines else ""
     return f"{line} | abstract: {abstract}" if abstract else line

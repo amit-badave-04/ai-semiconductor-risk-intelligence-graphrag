@@ -137,10 +137,27 @@ def sanitise_untrusted(text: str | None, limit: int) -> str:
     partition and the ``EXCERPTS:`` marker cannot be forged), ``[`` and ``]`` become ``(`` and ``)`` (so no ``[id]`` can be
     forged for the citation scan), a double quote becomes a single quote, the text is cut to ``limit`` characters and wrapped in
     quotation marks. Empty text gives ``""`` (nothing to print)."""
-    spaced = "".join(" " if unicodedata.category(c)[0] == "C" else c for c in (text or ""))
-    flat = " ".join(spaced.split()).replace("[", "(").replace("]", ")").replace('"', "'")
-    flat = COMPUTED_MARKER_RE.sub(lambda m: m.group(0)[:-1].rstrip() + " -", flat)   # a quote cannot forge a computed figure
+    flat = _neutralised(text).replace('"', "'")
     return f'"{_cut(flat, limit)}"' if flat else ""
+
+
+# A Federal Register rule title: the longest in the corpus is 234 characters; the spend fixture builds titles at this cap
+# (tests/test_serve_estimate.py RULE_TITLE_CHARS pins 234 <= 300).
+RULE_TITLE_MAX_CHARS = 300
+
+
+def inline_untrusted(text: str | None, limit: int) -> str:
+    """Untrusted text printed bare inside a context line (a rule title): the same neutralisation as
+    :func:`sanitise_untrusted` (one line, no ``[``/``]``, no ``computed:`` marker) but no quotation marks, so a plain title
+    renders byte for byte as before; cut to ``limit``."""
+    return _cut(_neutralised(text), limit)
+
+
+def _neutralised(text: str | None) -> str:
+    """One line with no control or format characters, no brackets and no ``computed:`` marker (R6a's shared core)."""
+    spaced = "".join(" " if unicodedata.category(c)[0] == "C" else c for c in (text or ""))
+    flat = " ".join(spaced.split()).replace("[", "(").replace("]", ")")
+    return COMPUTED_MARKER_RE.sub(lambda m: m.group(0)[:-1].rstrip() + " -", flat)   # cannot forge a computed figure
 
 
 def first_sentence(text: str | None, limit: int = LEAD_MAX_CHARS) -> str:
