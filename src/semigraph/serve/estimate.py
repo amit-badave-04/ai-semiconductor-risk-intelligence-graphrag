@@ -44,7 +44,7 @@ the model's characters per token``; the context ceiling is :func:`context_chars`
   retriever when an estimate is computed, so the two cannot drift: the first companies in detection order are kept and
   the rest are named in a note) and, per company, the rules, the metrics rows and the temporal block (the retriever's
   caps and the layout's cuts). One company's blocks at their caps were MEASURED by rendering a worst-case retrieval
-  through the real ``build_blocks`` / ``render_prompt`` (tests/test_serve_estimate.py): 47,505 characters at the most
+  through the real ``build_blocks`` / ``render_prompt`` (tests/test_serve_estimate.py): 47,370 characters at the most
   (two pairs), allowed at GRAPH_CHARS_PER_ANCHOR (GRAPH_CHARS_PER_ANCHOR_WORKSPACE for an upload-workspace ask).
 - CAPPED IN THE CODE, THE AGENT TOO: its companies. The agent's tools add companies themselves, but a tool that would
   take the merged context past ``retriever.MAX_ANCHORS`` companies in all is refused before it runs a query
@@ -131,8 +131,8 @@ EXCERPT_FRAMING_CHARS = 64
 # its prior) and, for a question that names fiscal years, two filing pairs sharing the 26-item, 16-passage budget. The
 # worst case is built like the corpus's dearest data (tests/test_serve_estimate.py): 7-digit CIKs, 13-digit TWD amounts
 # (17 characters), ':II.1A:' chunk ids, two series whose priors are not positive (the longer n/m notes), every edge
-# line's evidence superseded (every mark renders), 6 quote lines and 120-character rule abstracts. Measured: 47,505
-# characters at two pairs (45,593 with one), allowed at 48,000 (the measurement rounded up to the next 500). The recorded
+# line's evidence superseded (every mark renders), 6 quote lines and 3 rule abstracts of 300 characters (F7; 5 rules without one). Measured: 47,370
+# characters at two pairs (45,458 with one), allowed at 48,000 (the measurement rounded up to the next 500). The recorded
 # contexts are far smaller (at most 16,121 graph characters for one company) and no recorded question names more than
 # two companies.
 GRAPH_CHARS_PER_ANCHOR = 48_000

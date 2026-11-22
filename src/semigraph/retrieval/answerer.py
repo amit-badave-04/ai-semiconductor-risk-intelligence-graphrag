@@ -56,6 +56,7 @@ from .context_layout import (  # noqa: F401 - re-exported: eval/bakeoff and the 
     NONE_BLOCK,
     QUOTES_PER_ANCHOR,
     RULE_ABSTRACT_CHARS,
+    RULE_ABSTRACTS_PER_ANCHOR,
     RULE_TITLE_MAX_CHARS,
     SUPERSEDED_MARK,
     YOY_ALL,
@@ -244,7 +245,7 @@ def metrics_lines(metrics: list[dict], *, years: Iterable[int] = (), dates: Iter
     return lines, {citation for *_, citation in entries if citation}
 
 
-def _external_line(edge: dict, valid_ids: set[str], *, detail_lines: bool = True) -> str:
+def _external_line(edge: dict, valid_ids: set[str], *, detail_lines: bool = True, with_abstract: bool = True) -> str:
     """One dated line for a Federal Register rule linked to a company; the rule's own ``fr:`` id is its citation. The
     company chunk ids on the edge are NOT printed: they are the company's own filing text that matched keywords, and
     beside a rule they read as its source."""
@@ -256,7 +257,7 @@ def _external_line(edge: dict, valid_ids: set[str], *, detail_lines: bool = True
     title = inline_untrusted(edge["target"], RULE_TITLE_MAX_CHARS)   # untrusted like the abstract (I8 review)
     label = " ".join([edge.get("date") or "undated", *([f"[{citation}]"] if citation else []), title])
     line = f"- {label} (linked to {edge['source']} by {edge.get('link_method') or 'keyword'} match)"
-    abstract = sanitise_untrusted(edge.get("abstract"), RULE_ABSTRACT_CHARS) if detail_lines else ""
+    abstract = sanitise_untrusted(edge.get("abstract"), RULE_ABSTRACT_CHARS) if detail_lines and with_abstract else ""
     return f"{line} | abstract: {abstract}" if abstract else line
 
 
@@ -301,6 +302,26 @@ def _quote_relevance(edge: Mapping, question_tokens: set[str]) -> int:
     return relation + len(question_tokens & _content_tokens(edge.get("quote"))) + len(question_tokens & ends)
 
 
+def _rule_relevance(edge: Mapping, question_tokens: set[str]) -> int:
+    """How much of the question a rule speaks to (R5): content words shared with its title and its abstract."""
+    if not question_tokens:
+        return 0
+    return (len(question_tokens & _content_tokens(edge.get("target")))
+            + len(question_tokens & _content_tokens(edge.get("abstract"))))
+
+
+def _abstract_rules(rules: list[Mapping], question_tokens: set[str]) -> set[int]:
+    """Indexes (into ``rules``) of the rules that carry an abstract: per anchor company (the edge's ``source``) the
+    :data:`RULE_ABSTRACTS_PER_ANCHOR` most relevant to the question; ties keep query order (stable sort). Line order is untouched."""
+    by_company: dict[object, list[int]] = {}
+    for i, rule in enumerate(rules):
+        by_company.setdefault(rule.get("source"), []).append(i)
+    keep: set[int] = set()
+    for idx in by_company.values():
+        keep.update(sorted(idx, key=lambda i: -_rule_relevance(rules[i], question_tokens))[:RULE_ABSTRACTS_PER_ANCHOR])
+    return keep
+
+
 def build_blocks(r: dict, *, detail_lines: bool | None = None) -> tuple[ContextBlocks, str, set[str]]:
     """Assemble prompt blocks + the full context string + the set of valid (citable) ids from a retrieval result.
 
@@ -335,7 +356,10 @@ def build_blocks(r: dict, *, detail_lines: bool | None = None) -> tuple[ContextB
         e_lines.append(f"- {e['source']} {e['relation']} {e['target']} (status={e.get('status')}) {_id_marks(shown, meta)}")
         if i in quotes:
             e_lines.append(quotes[i])
-    x_lines = [_external_line(e, valid_ids, detail_lines=detail_lines) for e in r["edges"] if e["relation"] == RULE_RELATION]
+    rules = [e for e in r["edges"] if e["relation"] == RULE_RELATION]
+    with_abstract = _abstract_rules(rules, question_tokens) if detail_lines else set()
+    x_lines = [_external_line(e, valid_ids, detail_lines=detail_lines, with_abstract=i in with_abstract)
+               for i, e in enumerate(rules)]
     periods = r.get("metric_periods") or {}
     m_lines, metric_ids = metrics_lines(r["metrics"], years=periods.get("years") or (), dates=periods.get("dates") or (),
                                         yoy_prior_ids=r.get(YOY_PRIOR_IDS_KEY, YOY_ALL))

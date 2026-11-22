@@ -41,7 +41,7 @@ SONNET_IN, SONNET_OUT = Fraction(2), Fraction(10)
 #   Sonnet); one excerpt 12,000 chars + 64 framing; 8 excerpts = 96,512; the RELATIONSHIPS allowance 150
 #   lines x 280 = 42,000 (the longest rendered line is 268 characters + newline) and 6 risk lines x 700 = 4,200 (46,200 shared by
 #   every company count); one anchor's blocks
-#   48,000 (a workspace ask 45,000: no quote lines or abstracts; the measured worst cases are 47,505 and 44,613); the anchor cap 4 (retriever.MAX_ANCHORS) x 48,000 = 192,000; the note naming the dropped companies 300; templates
+#   48,000 (a workspace ask 45,000: no quote lines or abstracts; the measured worst cases are 47,370 and 44,613); the anchor cap 4 (retriever.MAX_ANCHORS) x 48,000 = 192,000; the note naming the dropped companies 300; templates
 #   9,500 (answer) / 10,600 (workspace).
 #                                                                                       Luna (2.5)     Sonnet (2.0)
 #   vector:    9,500 + 500 + 96,512                                   = 106,512 chars -> 42,605 tokens   53,256
@@ -568,14 +568,14 @@ def test_every_estimate_covers_the_worst_case_prompt_rendered_at_the_caps_on_the
 def test_the_rendered_worst_cases_are_the_prompts_the_hand_arithmetic_describes():
     """The rendered sizes (characters), so a change to a layout or a cap shows here first."""
     assert {t: rendered_worst_case_chars(t) for t in ASK_TYPES} == {
-        "vector": 106_228, "hybrid": 340_522, "workspace": 341_271, "agent": 461_822}
+        "vector": 106_228, "hybrid": 339_982, "workspace": 341_271, "agent": 461_822}
 
 
 @pytest.mark.parametrize("pairs", [1, 2])
 def test_one_plain_anchors_blocks_at_their_caps_fit_the_per_anchor_allowance(pairs):
     """MEASURED through the real code: rules (8), metrics (4 series, the latest 3 years and 4 named years with their
     priors = 11 rows each) and the temporal block (26 items, 16 passages; a question that names fiscal years reads two
-    pairs that share the same line budget). 39,686 characters at two pairs, 37,772 at one."""
+    pairs that share the same line budget). 47,370 characters at two pairs, 45,458 at one."""
     measured = _company_chars(pairs=pairs, metric_rows=14, show_all=False)
     assert measured > 35_000, "the synthetic company must really be near the caps for this test to mean anything"
     assert measured <= est.GRAPH_CHARS_PER_ANCHOR

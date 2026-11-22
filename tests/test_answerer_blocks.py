@@ -501,7 +501,7 @@ def test_a_rule_with_no_abstract_prints_as_before_and_a_long_one_is_cut():
     assert plain == "- 2026-03-12 [fr:2026-19537] A rule (linked to Nvidia by keyword match)"
     long_rule = {**rule("Nvidia", "2026-19537", "A rule", "2026-03-12"), "abstract": "word " * 400}
     block = build_blocks(retrieval(edges=[long_rule]))[0].external_block
-    assert block.startswith(plain + ' | abstract: "word word') and block.endswith('..."') and len(block) < len(plain) + 230
+    assert block.startswith(plain + ' | abstract: "word word') and block.endswith('..."') and len(block) < len(plain) + 400
 
 
 def test_the_note_names_both_ids_when_the_prior_row_is_shown_and_the_current_only_when_it_is_not():
@@ -539,3 +539,19 @@ def test_quote_lines_are_ranked_by_relevance_to_the_question_before_the_cap_d1()
     assert any(ln.startswith("  evidence") and "Hon Hai" in ln for ln in lines)
     assert sum(ln.startswith("  evidence") for ln in lines) == 6
     assert [ln for ln in lines if ln.startswith("- ")][:6] == [ln for ln in build_blocks(r)[0].edges_block.splitlines() if ln.startswith("- ")][:6]
+
+
+def test_x4_the_license_review_rule_last_in_query_order_still_gets_its_abstract_and_only_three_rules_carry_one():
+    """F7: an anchor's 8 rules rank by relevance to the question; the January 2026 license-review rule (LAST in query order) carries
+    its abstract, including the sentence past character 120, and the lines keep their query order."""
+    h200 = ("This rule revises the license review policy for exports of advanced computing chips to China, changing it from a "
+            "presumption of denial to a case-by-case review. The semiconductors covered by this rule are the Nvidia H200 and its equivalents.")
+    others = [{**rule("Nvidia", f"2025-1000{i}", f"Entity list additions {i}", f"2025-0{i + 1}-10"), "abstract": "Adds entities. " * 30}
+              for i in range(7)]
+    last = {**rule("Nvidia", "2026-00789", "Revision to License Review Policy for Advanced Computing Commodities", "2026-01-15"),
+            "abstract": h200}
+    question = "What are the terms of the January 2026 rule on license review for Nvidia H200 chips to China?"
+    lines = build_blocks({**retrieval(edges=[*others, last]), "question": question})[0].external_block.splitlines()
+    assert len(lines) == 8 and "[fr:2026-00789]" in lines[-1]
+    assert "presumption of denial" in lines[-1] and "case-by-case" in lines[-1]
+    assert sum("| abstract:" in ln for ln in lines) == 3

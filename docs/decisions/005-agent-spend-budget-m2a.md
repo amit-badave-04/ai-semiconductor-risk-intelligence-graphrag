@@ -233,3 +233,20 @@ characters, so `ANSWER_TEMPLATE_CHARS` is 9,600 and `WORKSPACE_TEMPLATE_CHARS` i
 Final estimates: hybrid $0.753229 (target 0.755), workspace $0.753808 (0.755), agent $1.008733 (1.0175), vector $0.266689. Margins:
 `0.30 + agent = 1.308733` (11,267 micro-dollars under 1.32), `(10 - 0.753229) / 7 = 1.320967` (967 over), `7 x 1.32 + workspace = 9.993808`.
 The probe ask count `floor(10 / 0.753229)` is still 13. The examples fingerprint changed; the seeded examples are regenerated after the next paid run.
+
+### F7. After the second paid eval: rule abstracts chosen by relevance, cut at 300 (2026-11-22)
+
+The second paid run showed X4 still marked incorrect: R5 cut every abstract at 120 characters for all 8 rules per company, and the
+rule's key fact ("presumption of denial" to "case-by-case review", the H200 scope) sits after character 120 (stored abstracts: p50 622, p90
+1,000 characters). Fix: per anchor, the AFFECTED_BY rules are ranked by relevance to the question (question content words shared with the
+rule title and abstract, the same tokeniser as the quote ranking, ties in query order), and only the top `RULE_ABSTRACTS_PER_ANCHOR = 3`
+carry an abstract, cut at `RULE_ABSTRACT_CHARS = 300` (sanitised as before). The other rule lines render as before; line order is unchanged.
+The agent and the workspace still print no detail lines. `CONTEXT_VERSION` is `m2a-3` (template fingerprint `2a6910aa5d`).
+Spend: 3 x 300 = 900 characters of abstract per anchor replaces 8 x 120 = 960, so the budget did not rise. The worst case (every rule
+abstract stored at 1,000 characters, 3 shown, 5 without) measures 47,370 characters per plain anchor at two pairs (45,458 at one; was
+47,505 and 45,593), inside `GRAPH_CHARS_PER_ANCHOR = 48,000`, which is unchanged. The rendered hybrid worst case is 339,982 characters
+(was 340,522); the workspace (341,271), agent (461,822) and vector (106,228) worst cases are unchanged. So the estimates and every margin are
+those of F6: hybrid $0.753229, workspace $0.753808, agent $1.008733, vector $0.266689; `0.30 + agent` 11,267 micro-dollars under 1.32,
+`(10 - hybrid) / 7` 967 over, `7 x 1.32 + workspace = 9.993808`. The examples fingerprint changed again; the seeded examples are regenerated
+after the next paid run. The event fixtures re-recorded byte-identical (they hold no fingerprint). Regression test:
+`tests/test_answerer_blocks.py::test_x4_the_license_review_rule_last_in_query_order_...`.
