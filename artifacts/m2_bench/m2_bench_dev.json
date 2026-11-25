@@ -1,0 +1,1642 @@
+{
+ "version": 1,
+ "spec": "docs/specs/m2-search.md section 7",
+ "split": "dev",
+ "gold_policy": "every verbatim copy of each quote: grade 2 in the newest annual filing and later 10-Qs, grade 1 older",
+ "drafting": "blind Claude drafters (filing passages only) + independent Opus check; rounds and seeds in sample_manifest.json",
+ "questions": [
+  {
+   "id": "M2-A00",
+   "type": "A",
+   "q": "According to Meta Platforms, what has it obtained in the U.S. and other jurisdictions that gives it more flexibility in how its Payments offerings may evolve and helps reduce regulatory uncertainty?",
+   "answer": "Certain payments licenses for its regulated Payments-related products and activities.",
+   "quotes": [
+    "We have received certain payments licenses in the United States and other jurisdictions for our regulated Payments-related products and activities."
+   ],
+   "anchors": [
+    1326801
+   ],
+   "family": "META:2903f08f9b",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-003942:I.1A:0049",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001628280-26-028526:II.1A:0049",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001628280-26-050705:II.1A:0048",
+     "grade": 2,
+     "anchor": 1326801
+    }
+   ],
+   "check": "fix",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-A02",
+   "type": "A",
+   "q": "On which company does AMD say its ability to innovate beyond the Intel-controlled x86 instruction set partially depend for operating system support?",
+   "answer": "Microsoft.",
+   "quotes": [
+    "depends partially on Microsoft designing and developing its operating systems to run on or support our x86-based microprocessor products"
+   ],
+   "anchors": [
+    2488
+   ],
+   "family": "AMD:06ee700923",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0015",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0016",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0016",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-25-000012:I.1A:0016",
+     "grade": 1,
+     "anchor": 2488
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000002488-23-000047:I.1A:0020",
+    "0000002488-24-000012:I.1A:0019"
+   ],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-A17",
+   "type": "A",
+   "q": "Approximately what share of Micron's 2025 revenue came from products shipped to customer locations outside the United States?",
+   "answer": "About 80%.",
+   "quotes": [
+    "approximately 80% of our revenue in 2025 was from products shipped to customer locations outside the United States"
+   ],
+   "anchors": [
+    723125
+   ],
+   "family": "MU:97758a1342",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000723125-25-000028:I.1A:0008",
+     "grade": 2,
+     "anchor": 723125
+    },
+    {
+     "chunk_id": "0000723125-26-000015:II.1A:0008",
+     "grade": 2,
+     "anchor": 723125
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000723125-25-000046:II.1A:0008",
+    "0000723125-26-000006:II.1A:0008"
+   ],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-A21",
+   "type": "A",
+   "q": "To what amount per share did NVIDIA raise its quarterly cash dividend on May 18, 2026?",
+   "answer": "$0.25 per share, up from $0.01.",
+   "quotes": [
+    "we increased our quarterly cash dividend from $0.01 per share to $0.25 per share"
+   ],
+   "anchors": [
+    1045810
+   ],
+   "family": "NVDA:0756c3d1b2",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000052:I.2:0424",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-26-000075:I.2:0026",
+     "grade": 2,
+     "anchor": 1045810
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-A40",
+   "type": "A",
+   "q": "Over the past five years covered in Micron's fiscal 2025 10-K, what range did annual percentage changes in its DRAM average selling prices span?",
+   "answer": "From a plus low 40% to a minus high 40% range.",
+   "quotes": [
+    "annual percentage changes in DRAM average selling prices have ranged from plus low 40% to a minus high 40% range"
+   ],
+   "anchors": [
+    723125
+   ],
+   "family": "MU:fd7fbd2fd6",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000723125-25-000028:I.1A:0005",
+     "grade": 2,
+     "anchor": 723125
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000723125-25-000046:II.1A:0005",
+    "0000723125-26-000006:II.1A:0005"
+   ],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-A46",
+   "type": "A",
+   "q": "What assessment and certification requirements does Meta say accompany the privacy program required under its FTC consent order?",
+   "answer": "Regular certification of compliance to the FTC and regular assessments by an independent third-party assessor.",
+   "quotes": [
+    "a process to regularly certify our compliance with the privacy program to the FTC, and regular assessments of our privacy program by an independent third-party assessor"
+   ],
+   "anchors": [
+    1326801
+   ],
+   "family": "META:d9546f5789",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-003942:I.1A:0045",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001628280-26-028526:II.1A:0045",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001628280-26-050705:II.1A:0044",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001326801-25-000017:I.1A:0042",
+     "grade": 1,
+     "anchor": 1326801
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0001326801-23-000013:I.1A:0037",
+    "0001326801-24-000012:I.1A:0041"
+   ],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 1
+  },
+  {
+   "id": "M2-B01",
+   "type": "B",
+   "q": "What does Intel say is distinctive about its Intel 14A node in its 10-K filed January 2026?",
+   "answer": "It is Intel's first node designed from inception as an offering to external customers.",
+   "quotes": [
+    "We are actively seeking customers for our future Intel 14A node, which is our first node designed from inception as an offering to external customers."
+   ],
+   "anchors": [
+    50863
+   ],
+   "family": "INTC:5031cf2a14",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000050863-26-000011:I.1:0003",
+     "grade": 2,
+     "anchor": 50863
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-B14",
+   "type": "B",
+   "q": "How did Alphabet's TAC rate change between the three months ended March 31, 2025 and March 31, 2026?",
+   "answer": "It decreased from 20.6% to 19.7%.",
+   "quotes": [
+    "The TAC rate decreased from 20.6% to 19.7% from the three months ended March 31, 2025 to the three months ended March 31, 2026"
+   ],
+   "anchors": [
+    1652044
+   ],
+   "family": "GOOGL:8612f27daf",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001652044-26-000048:I.2:0032",
+     "grade": 2,
+     "anchor": 1652044
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-B23",
+   "type": "B",
+   "q": "Since when has Hock E. Tan served as Broadcom's President and Chief Executive Officer?",
+   "answer": "March 2006",
+   "quotes": [
+    "Hock E. Tan has served as our President and Chief Executive Officer since March 2006."
+   ],
+   "anchors": [
+    1730168
+   ],
+   "family": "AVGO:a61fe7c79f",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001730168-25-000121:I.1:0016",
+     "grade": 2,
+     "anchor": 1730168
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0001730168-23-000096:I.1:0020",
+    "0001730168-24-000139:I.1:0019"
+   ],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-B28",
+   "type": "B",
+   "q": "How much in net inventory and related charges did AMD incur in 2025 because of the April 2025 license requirement affecting its AMD Instinct MI308 products?",
+   "answer": "Approximately $440 million",
+   "quotes": [
+    "As a result of the restriction, we incurred approximately $440 million of net inventory and related charges in 2025."
+   ],
+   "anchors": [
+    2488
+   ],
+   "family": "AMD:30f973ca90",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0015",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0021",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0015",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0021",
+     "grade": 2,
+     "anchor": 2488
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-B41",
+   "type": "B",
+   "q": "In NVIDIA's fiscal year 2026 10-K, what workloads is the NVIDIA Blackwell Ultra platform optimized for?",
+   "answer": "Agentic, reasoning, and physical AI (launched and scaled in fiscal year 2026)",
+   "quotes": [
+    "In fiscal year 2026, we launched and scaled the NVIDIA Blackwell Ultra platform, optimized for agentic, reasoning, and physical AI."
+   ],
+   "anchors": [
+    1045810
+   ],
+   "family": "NVDA:8142d08551",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0309",
+     "grade": 2,
+     "anchor": 1045810
+    }
+   ],
+   "check": "fix",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-B61",
+   "type": "B",
+   "q": "What charge related to H20 excess inventory and purchase obligations affected NVIDIA's gross margin in fiscal year 2026?",
+   "answer": "$4.5 billion",
+   "quotes": [
+    "The gross margin decrease was also impacted by a $4.5 billion charge associated with H20 excess inventory and purchase obligations."
+   ],
+   "anchors": [
+    1045810
+   ],
+   "family": "NVDA:737101b6e5",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0370",
+     "grade": 2,
+     "anchor": 1045810
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 1
+  },
+  {
+   "id": "M2-B63",
+   "type": "B",
+   "q": "How did Alphabet's TAC rate change from 2024 to 2025?",
+   "answer": "It decreased from 20.7% to 20.3%",
+   "quotes": [
+    "The TAC rate decreased from 20.7% to 20.3% from 2024 to 2025, primarily due to a revenue mix shift from Google Network properties"
+   ],
+   "anchors": [
+    1652044
+   ],
+   "family": "GOOGL:39131b5746",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001652044-26-000018:II.7:0034",
+     "grade": 2,
+     "anchor": 1652044
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "reserve",
+   "reserve_order": 2
+  },
+  {
+   "id": "M2-C11",
+   "type": "C",
+   "q": "How much in cash, cash equivalents, and marketable debt securities did Nvidia report as of April 26, 2026?",
+   "answer": "$50.3 billion",
+   "quotes": [
+    "As of April 26, 2026, we had $50.3 billion in cash, cash equivalents, and marketable debt securities as well as $30.2 billion of marketable equity securities."
+   ],
+   "anchors": [
+    1045810
+   ],
+   "family": "NVDA:a427989f81",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000052:I.2:0423",
+     "grade": 2,
+     "anchor": 1045810
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-C13",
+   "type": "C",
+   "q": "How much of its common stock did Apple repurchase during the third quarter of fiscal 2026?",
+   "answer": "$25.8 billion",
+   "quotes": [
+    "During the third quarter of 2026, the Company repurchased $25.8 billion of its common stock and paid dividends and dividend equivalents of $4.0 billion."
+   ],
+   "anchors": [
+    320193
+   ],
+   "family": "AAPL:d948b4b24e",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000320193-26-000020:I.2:0035",
+     "grade": 2,
+     "anchor": 320193
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-C21",
+   "type": "C",
+   "q": "By how much did Alphabet's Google Network revenues decrease from 2024 to 2025?",
+   "answer": "$567 million",
+   "quotes": [
+    "Google Network revenues decreased $567 million from 2024 to 2025, primarily due to a decrease in AdSense revenues"
+   ],
+   "anchors": [
+    1652044
+   ],
+   "family": "GOOGL:c7f2e51661",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001652044-26-000018:II.7:0024",
+     "grade": 2,
+     "anchor": 1652044
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-C26",
+   "type": "C",
+   "q": "According to AMD's annual report for fiscal year 2025, up to how much additional contingent cash consideration is AMD eligible to receive from Sanmina related to the sale of the ZT Manufacturing Business?",
+   "answer": "Up to $450 million",
+   "quotes": [
+    "We are eligible to receive additional contingent cash consideration of up to $450 million from Sanmina to the extent certain conditions are met."
+   ],
+   "anchors": [
+    2488
+   ],
+   "family": "AMD:703ca6018f",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:II.7:0003",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000021:II.7:0003",
+     "grade": 1,
+     "anchor": 2488
+    }
+   ],
+   "check": "fix",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-C29",
+   "type": "C",
+   "q": "By what percentage did TSMC's net revenue increase in 2025 compared with 2024?",
+   "answer": "31.6%",
+   "quotes": [
+    "Our net revenue in 2025 increased by 31.6% from 2024, which was mainly attributed to an increase in ASP"
+   ],
+   "anchors": [
+    1046179
+   ],
+   "family": "TSM:a44d3801af",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-025362:I.5:0014",
+     "grade": 2,
+     "anchor": 1046179
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-C32",
+   "type": "C",
+   "q": "In Micron's 10-Q filed in June 2026, approximately how much of its $10 billion share repurchase authorization remained?",
+   "answer": "Approximately $2.16 billion",
+   "quotes": [
+    "authorized share repurchases of up to $10 billion of our outstanding common stock, of which approximately $2.16 billion remains"
+   ],
+   "anchors": [
+    723125
+   ],
+   "family": "MU:3abb77eff8",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000723125-26-000015:II.1A:0042",
+     "grade": 2,
+     "anchor": 723125
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 1
+  },
+  {
+   "id": "M2-C41",
+   "type": "C",
+   "q": "What was TSMC's net gain from other operating income and expenses in 2025, in NT dollars?",
+   "answer": "NT$447 million (US$14 million)",
+   "quotes": [
+    "increased by NT$1,677 million from 2024 to a net gain of NT$447 million"
+   ],
+   "anchors": [
+    1046179
+   ],
+   "family": "TSM:427789f7a3",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-025362:I.5:0020",
+     "grade": 2,
+     "anchor": 1046179
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 2
+  },
+  {
+   "id": "M2-C46",
+   "type": "C",
+   "q": "What was AMD's operating cash flow from continuing operations for the first quarter of 2026 (the quarter ended March 28, 2026)?",
+   "answer": "$3.0 billion",
+   "quotes": [
+    "Net cash provided by operating activities of continuing operations was $3.0 billion in the three months ended March 28, 2026"
+   ],
+   "anchors": [
+    2488
+   ],
+   "family": "AMD:9760e7dec3",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000076:I.2:0024",
+     "grade": 2,
+     "anchor": 2488
+    }
+   ],
+   "check": "fix",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 3
+  },
+  {
+   "id": "M2-C49",
+   "type": "C",
+   "q": "How much did NVIDIA spend on repurchases of its common stock in fiscal year 2026?",
+   "answer": "$40.4 billion (282 million shares)",
+   "quotes": [
+    "In fiscal year 2026, we repurchased 282 million shares of our common stock for $40.4 billion"
+   ],
+   "anchors": [
+    1045810
+   ],
+   "family": "NVDA:abc207cf75",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0393",
+     "grade": 2,
+     "anchor": 1045810
+    }
+   ],
+   "check": "fix",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 4
+  },
+  {
+   "id": "M2-C50",
+   "type": "C",
+   "q": "How much commercial paper did Qualcomm have outstanding at the end of its fiscal second quarter of 2026 (March 29, 2026)?",
+   "answer": "$498 million",
+   "quotes": [
+    "$498 million of outstanding commercial paper reported as short-term debt as of March 29, 2026"
+   ],
+   "anchors": [
+    804328
+   ],
+   "family": "QCOM:18885ab8c4",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000804328-26-000061:I.2:0026",
+     "grade": 2,
+     "anchor": 804328
+    }
+   ],
+   "check": "fix",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 5
+  },
+  {
+   "id": "M2-D70",
+   "type": "D",
+   "q": "How do AMD and NVIDIA each address tariffs in their 2026 10-K filings?",
+   "answer": "AMD warns that new or increased tariffs, trade protection measures or retaliatory actions by foreign governments could result in lost sales and harm its reputation and business. NVIDIA says any H200 shipped under its China licensing program will be subject to a 25% tariff on import into the United States, which it may not be able to pass along to customers.",
+   "quotes": [
+    "The implementation or increase of any tariffs, trade protection measures or restrictions, or retaliatory actions from foreign governments could result in lost sales",
+    "any H200 shipped under the new licensing program will be subject to a 25% tariff upon importation into the United States"
+   ],
+   "anchors": [
+    2488,
+    1045810
+   ],
+   "family": "AMD:7a2141b48d+NVDA:82f51277f4",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0020",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0022",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0022",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0323",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0355",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0368",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-26-000052:I.2:0401",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-26-000052:II.1A:0436",
+     "grade": 2,
+     "anchor": 1045810
+    }
+   ],
+   "check": "fix",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-D71",
+   "type": "D",
+   "q": "How much remained available under the share repurchase authorizations at Meta (as of December 31, 2025) and at Alphabet (as of June 30, 2026)?",
+   "answer": "Meta had $25.03 billion remaining as of December 31, 2025. Alphabet had $69.5 billion remaining under its $70.0 billion program as of June 30, 2026.",
+   "quotes": [
+    "As of December 31, 2025, $25.03 billion remained available and authorized for repurchases.",
+    "As of June 30, 2026, $69.5 billion remained available for Class A and Class C share repurchases."
+   ],
+   "anchors": [
+    1326801,
+    1652044
+   ],
+   "family": "META:5711efd36f+GOOGL:809c8f99fc",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-003942:II.7:0061",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001652044-26-000071:I.2:0069",
+     "grade": 2,
+     "anchor": 1652044
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-D73",
+   "type": "D",
+   "q": "How do Intel and Micron each describe advanced packaging as a technical or manufacturing risk?",
+   "answer": "Intel says its disaggregated chip design, with tiles connected by advanced packaging, adds design and manufacturability complexity because several packaging technologies are novel or costly. Micron lists developing advanced packaging solutions among the technological barriers its memory and storage products face.",
+   "quotes": [
+    "can be manufactured on different processes and connected by advanced packaging technology into a single package",
+    "developing advanced packaging solutions, improving power consumption and reliability, and delivering advanced features and higher performance"
+   ],
+   "anchors": [
+    50863,
+    723125
+   ],
+   "family": "INTC:9b704a8c32+MU:e564125c5a",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000050863-26-000011:I.1A:0002",
+     "grade": 2,
+     "anchor": 50863
+    },
+    {
+     "chunk_id": "0000050863-25-000009:I.1A:0000",
+     "grade": 1,
+     "anchor": 50863
+    },
+    {
+     "chunk_id": "0000723125-25-000028:I.1A:0011",
+     "grade": 2,
+     "anchor": 723125
+    },
+    {
+     "chunk_id": "0000723125-26-000015:II.1A:0010",
+     "grade": 2,
+     "anchor": 723125
+    },
+    {
+     "chunk_id": "0000723125-24-000027:I.1A:0010",
+     "grade": 1,
+     "anchor": 723125
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000050863-24-000010:I.1A:0000",
+    "0000723125-25-000046:II.1A:0011",
+    "0000723125-26-000006:II.1A:0011"
+   ],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-D76",
+   "type": "D",
+   "q": "How do Intel and Qualcomm each describe their reliance on TSMC?",
+   "answer": "Intel says it would become dependent on third-party foundries, particularly TSMC, if it stopped developing Intel 14A, and has no long-term contract with TSMC. Qualcomm lists Taiwan Semiconductor Manufacturing Company (TSMC), Samsung Electronics and Global Foundries as the primary foundry suppliers for its integrated circuits.",
+   "quotes": [
+    "We have no long-term contract with TSMC, and if we are unable to secure and maintain sufficient capacity on favorable pricing terms",
+    "The primary foundry suppliers for our various digital, analog/mixed-signal, RF and PM integrated circuits include Taiwan Semiconductor Manufacturing Company (TSMC), Samsung Electronics and Global Foundries."
+   ],
+   "anchors": [
+    50863,
+    804328
+   ],
+   "family": "INTC:532a02ad58+QCOM:511d07c05c",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000050863-26-000011:I.1A:0004",
+     "grade": 2,
+     "anchor": 50863
+    },
+    {
+     "chunk_id": "0000804328-25-000085:I.1:0008",
+     "grade": 2,
+     "anchor": 804328
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-D78",
+   "type": "D",
+   "q": "How do NVIDIA and Microsoft each address the AI Diffusion Rule in their recent filings?",
+   "answer": "NVIDIA says the January 2025 AI Diffusion IFR would have imposed a worldwide licensing requirement on its data center products and split countries into three tiers; it was to be rescinded and replaced by an uncertain rule. Microsoft says the potential replacement of the rescinded rule, along with other AI rulemakings, could adversely affect its business.",
+   "quotes": [
+    "The IFR would have imposed a worldwide licensing requirement on our data center products, such as our H200, GB200 and GB300.",
+    "The potential replacement of the rescinded AI Diffusion Rule, expanded export license conditions, and other potential AI-related rulemakings"
+   ],
+   "anchors": [
+    1045810,
+    789019
+   ],
+   "family": "NVDA:f481809706+MSFT:26f6fcd969",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0323",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0355",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-26-000052:II.1A:0436",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0004",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001193125-26-323660:I.1A:0011",
+     "grade": 2,
+     "anchor": 789019
+    },
+    {
+     "chunk_id": "0001193125-26-191507:II.1A:0010",
+     "grade": 1,
+     "anchor": 789019
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-D80",
+   "type": "D",
+   "q": "How do AMD and NVIDIA each connect climate-related risks to data centers in their 10-K risk factors?",
+   "answer": "AMD says customers that cannot secure enough power or water may be unable to expand data center capacity and could cut purchases from AMD. NVIDIA says wildfire-related power shut-offs in Northern California could affect its Santa Clara headquarters offices and data centers.",
+   "quotes": [
+    "If customers cannot secure sufficient power or water, or experience outages or shortages of these resources, they may be unable to expand their data center capacity",
+    "may lead to power safety shut offs due to wildfire risk, which can have adverse implications for our Santa Clara, California headquarter offices and data centers"
+   ],
+   "anchors": [
+    2488,
+    1045810
+   ],
+   "family": "AMD:dda6f1a4e9+NVDA:240d1ab686",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0018",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0019",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0019",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0346",
+     "grade": 2,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-23-000017:I.1A:0043",
+     "grade": 1,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-24-000029:I.1A:0145",
+     "grade": 1,
+     "anchor": 1045810
+    },
+    {
+     "chunk_id": "0001045810-25-000023:I.1A:0249",
+     "grade": 1,
+     "anchor": 1045810
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 1
+  },
+  {
+   "id": "M2-D83",
+   "type": "D",
+   "q": "How do AMD and Intel each list tariffs among the factors that could hurt demand or economic conditions affecting their business?",
+   "answer": "AMD lists new or increased tariffs and retaliatory tariffs among economic uncertainties that may reduce consumer confidence and make customers postpone purchases. Intel lists trade policies, tariffs or other trade restrictions and geopolitical tensions as factors behind variation in demand for its products.",
+   "quotes": [
+    "implementation of new or increased tariffs, retaliatory tariffs by other countries or other trade restrictions, or currency fluctuations",
+    "geopolitical conditions, including trade policies, tariffs or other trade restrictions and geopolitical tensions and conflicts"
+   ],
+   "anchors": [
+    2488,
+    50863
+   ],
+   "family": "AMD:4097cefd6b+INTC:89c97e92af",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0009",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0009",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0009",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000050863-26-000011:I.1A:0008",
+     "grade": 2,
+     "anchor": 50863
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 2
+  },
+  {
+   "id": "M2-D88",
+   "type": "D",
+   "q": "How do Intel and Broadcom each describe their use of TSMC for manufacturing?",
+   "answer": "Intel uses TSMC, a key foundry competitor, for various tiles or entire products and expects to keep doing so. Broadcom outsources the majority of its front-end wafer manufacturing to external foundries including TSMC, which also performs some assembly and test.",
+   "quotes": [
+    "We expect to continue to use TSMC and other third-party foundry suppliers for various key tiles in a number of current and future products.",
+    "The majority of our front-end wafer manufacturing operations is outsourced to external foundries, including Taiwan Semiconductor Manufacturing Company Limited"
+   ],
+   "anchors": [
+    50863,
+    1730168
+   ],
+   "family": "INTC:ac0ce6802c+AVGO:e8a2412139",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000050863-26-000011:I.1:0010",
+     "grade": 2,
+     "anchor": 50863
+    },
+    {
+     "chunk_id": "0001730168-25-000121:I.1:0008",
+     "grade": 2,
+     "anchor": 1730168
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0001730168-23-000096:I.1:0010",
+    "0001730168-24-000139:I.1:0010"
+   ],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 3
+  },
+  {
+   "id": "M2-E01",
+   "type": "E",
+   "q": "Which type of Microsoft on-premises software does the company cite as an example where it may have little or no visibility into customers' environments when detecting cyberattacks?",
+   "answer": "Exchange Server",
+   "quotes": [
+    "especially where an attack involves on-premises software such as Exchange Server where we may have no or limited visibility"
+   ],
+   "anchors": [
+    789019
+   ],
+   "family": "MSFT:3fbbf9b966",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001193125-26-323660:I.1A:0006",
+     "grade": 2,
+     "anchor": 789019
+    },
+    {
+     "chunk_id": "0000950170-24-087843:I.1A:0008",
+     "grade": 1,
+     "anchor": 789019
+    },
+    {
+     "chunk_id": "0000950170-25-100235:I.1A:0005",
+     "grade": 1,
+     "anchor": 789019
+    },
+    {
+     "chunk_id": "0001193125-26-191507:II.1A:0005",
+     "grade": 1,
+     "anchor": 789019
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000950170-23-035122:I.1A:0008"
+   ],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-E04",
+   "type": "E",
+   "q": "What could happen to government incentives Micron has received if it fails to achieve the milestones tied to them?",
+   "answer": "Up to all of certain incentives could be clawed back, in some cases with interest and/or loss of project assets",
+   "quotes": [
+    "Failure to achieve such milestones could result in up to all of certain incentives being clawed back"
+   ],
+   "anchors": [
+    723125
+   ],
+   "family": "MU:0e21dc17cf",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000723125-25-000028:I.1A:0014",
+     "grade": 2,
+     "anchor": 723125
+    },
+    {
+     "chunk_id": "0000723125-26-000015:II.1A:0012",
+     "grade": 2,
+     "anchor": 723125
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000723125-25-000046:II.1A:0014",
+    "0000723125-26-000006:II.1A:0014"
+   ],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-E06",
+   "type": "E",
+   "q": "What consequence does Broadcom warn of if it fails to obtain a particular design win?",
+   "answer": "It may be unable to obtain design wins in subsequent generations of that product, causing lost revenue and a weaker position in future selections",
+   "quotes": [
+    "Failure to obtain a particular design win may prevent us from obtaining design wins in subsequent generations of a particular product."
+   ],
+   "anchors": [
+    1730168
+   ],
+   "family": "AVGO:09413f6467",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001730168-25-000121:I.1A:0009",
+     "grade": 2,
+     "anchor": 1730168
+    },
+    {
+     "chunk_id": "0001730168-26-000054:II.1A:0010",
+     "grade": 2,
+     "anchor": 1730168
+    },
+    {
+     "chunk_id": "0001730168-26-000080:II.1A:0010",
+     "grade": 2,
+     "anchor": 1730168
+    },
+    {
+     "chunk_id": "0001730168-24-000139:I.1A:0013",
+     "grade": 1,
+     "anchor": 1730168
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0001730168-23-000096:I.1A:0011",
+    "0001730168-26-000016:II.1A:0010"
+   ],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-E11",
+   "type": "E",
+   "q": "Which type of intermediary does Meta say it relies on for meaningful China-based advertising revenue that the government could reduce or eliminate?",
+   "answer": "A small number of resellers serving advertisers based in China",
+   "quotes": [
+    "we generate meaningful revenue from a small number of resellers serving advertisers based in China"
+   ],
+   "anchors": [
+    1326801
+   ],
+   "family": "META:ca3fc27c9a",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-003942:I.1A:0037",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001628280-26-028526:II.1A:0037",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001628280-26-050705:II.1A:0036",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001326801-25-000017:I.1A:0034",
+     "grade": 1,
+     "anchor": 1326801
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0001326801-24-000012:I.1A:0036"
+   ],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-E25",
+   "type": "E",
+   "q": "What transfer pricing dispute with the IRS does Meta describe in its April 2026 10-Q, and which tax years did the examination cover?",
+   "answer": "The IRS issued formal assessments in 2016 and 2018 on transfer pricing with foreign subsidiaries, covering tax years 2010 through 2013; Meta is litigating",
+   "quotes": [
+    "in 2016 and 2018, the IRS issued formal assessments relating to transfer pricing with our foreign subsidiaries"
+   ],
+   "anchors": [
+    1326801
+   ],
+   "family": "META:0e0fdab58d",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-003942:I.1A:0034",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001628280-26-028526:II.1A:0034",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001628280-26-050705:II.1A:0033",
+     "grade": 2,
+     "anchor": 1326801
+    },
+    {
+     "chunk_id": "0001326801-25-000017:I.1A:0031",
+     "grade": 1,
+     "anchor": 1326801
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0001326801-23-000013:I.1A:0029",
+    "0001326801-24-000012:I.1A:0032"
+   ],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-E26",
+   "type": "E",
+   "q": "What consolidation scenario does Qualcomm say could hurt its ability to obtain or license key technologies and intellectual property?",
+   "answer": "A key supplier of technology and IP to the semiconductor industry being sold to one of Qualcomm's competitors",
+   "quotes": [
+    "if any key supplier of technologies and intellectual property to the semiconductor industry was sold to one of our competitors"
+   ],
+   "anchors": [
+    804328
+   ],
+   "family": "QCOM:5c3cae8522",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000804328-25-000085:I.1A:0034",
+     "grade": 2,
+     "anchor": 804328
+    },
+    {
+     "chunk_id": "0000804328-26-000061:II.1A:0034",
+     "grade": 2,
+     "anchor": 804328
+    },
+    {
+     "chunk_id": "0000804328-26-000086:II.1A:0034",
+     "grade": 2,
+     "anchor": 804328
+    },
+    {
+     "chunk_id": "0000804328-24-000075:I.1A:0023",
+     "grade": 1,
+     "anchor": 804328
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000804328-23-000055:I.1A:0021",
+    "0000804328-26-000017:II.1A:0034"
+   ],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 1
+  },
+  {
+   "id": "M2-E30",
+   "type": "E",
+   "q": "What action did the U.S. Department of Commerce take in May 2024 regarding Qualcomm's sales to Huawei?",
+   "answer": "It revoked the export license under which Qualcomm sold 4G and certain other integrated circuit products to Huawei",
+   "quotes": [
+    "in May 2024, the U.S. Department of Commerce revoked the export license under which we previously sold 4G and certain other integrated circuit products to Huawei"
+   ],
+   "anchors": [
+    804328
+   ],
+   "family": "QCOM:008e087fbf",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000804328-25-000085:I.1A:0015",
+     "grade": 2,
+     "anchor": 804328
+    },
+    {
+     "chunk_id": "0000804328-26-000061:II.1A:0015",
+     "grade": 2,
+     "anchor": 804328
+    },
+    {
+     "chunk_id": "0000804328-26-000086:II.1A:0015",
+     "grade": 2,
+     "anchor": 804328
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000804328-26-000017:II.1A:0015"
+   ],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 2
+  },
+  {
+   "id": "M2-E35",
+   "type": "E",
+   "q": "What uncertainty does AMD describe about the U.S. Bureau of Industry and Security's handling of its export license requests and advanced-computing exception filings, and what downside can remain even if a license is granted?",
+   "answer": "AMD has no assurance BIS will grant the exemptions or licenses or act on them in a timely manner; even a granted license may carry burdensome conditions AMD cannot or chooses not to meet",
+   "quotes": [
+    "When we file license applications or Notification Advanced Computing (NAC) exception notices we have no assurance that BIS will grant any exemptions or licenses"
+   ],
+   "anchors": [
+    2488
+   ],
+   "family": "AMD:e8dfcdadd1",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0022",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0023",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0023",
+     "grade": 2,
+     "anchor": 2488
+    },
+    {
+     "chunk_id": "0000002488-25-000012:I.1A:0020",
+     "grade": 1,
+     "anchor": 2488
+    }
+   ],
+   "check": "fix",
+   "gold_outside_graph": [
+    "0000002488-24-000012:I.1A:0022"
+   ],
+   "filer_own": false,
+   "role": "reserve",
+   "reserve_order": 3
+  },
+  {
+   "id": "M2-E39",
+   "type": "E",
+   "q": "What percentage of Alphabet's (Google's) consolidated revenues came from international operations in 2025?",
+   "answer": "Approximately 52%",
+   "quotes": [
+    "International revenues accounted for approximately 52% of consolidated revenues in 2025."
+   ],
+   "anchors": [
+    1652044
+   ],
+   "family": "GOOGL:2f49c1ffaa",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001652044-26-000018:I.1A:0005",
+     "grade": 2,
+     "anchor": 1652044
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 4
+  },
+  {
+   "id": "M2-E40",
+   "type": "E",
+   "q": "Which water-sensitive regions does Intel name as locations of its fabrication facilities that could be affected by climate-related water availability disruption?",
+   "answer": "Arizona and Israel",
+   "quotes": [
+    "could disrupt the availability of water necessary for the operation of our fabrication facilities, including our facilities located in water-sensitive regions such as Arizona and Israel"
+   ],
+   "anchors": [
+    50863
+   ],
+   "family": "INTC:87335a655e",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000050863-26-000011:I.1A:0022",
+     "grade": 2,
+     "anchor": 50863
+    },
+    {
+     "chunk_id": "0000050863-25-000009:I.1A:0023",
+     "grade": 1,
+     "anchor": 50863
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [
+    "0000050863-24-000010:I.1A:0022"
+   ],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 5
+  },
+  {
+   "id": "M2-F04",
+   "type": "F",
+   "q": "By how much did Alphabet's cost of revenues increase in the second quarter of 2026 compared with the second quarter of 2025?",
+   "answer": "$6.9 billion, from increases in other cost of revenues ($5.4 billion) and TAC ($1.5 billion).",
+   "quotes": [
+    "Cost of revenues increased $6.9 billion from the three months ended June 30, 2025 to the three months ended June 30, 2026"
+   ],
+   "anchors": [
+    1652044
+   ],
+   "family": "GOOGL:47523a4a92",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001652044-26-000071:I.2:0032",
+     "grade": 2,
+     "anchor": 1652044
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-F05",
+   "type": "F",
+   "q": "What drove the increase in Apple's iPad net sales in the second quarter of fiscal 2026 compared with the same quarter in 2025?",
+   "answer": "Higher net sales of iPad, partially offset by lower net sales of iPad mini.",
+   "quotes": [
+    "primarily due to higher net sales of iPad, partially offset by lower net sales of iPad mini"
+   ],
+   "anchors": [
+    320193
+   ],
+   "family": "AAPL:a8e6d595b9",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000320193-26-000013:I.2:0016",
+     "grade": 2,
+     "anchor": 320193
+    },
+    {
+     "chunk_id": "0000320193-26-000020:I.2:0016",
+     "grade": 2,
+     "anchor": 320193
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-F17",
+   "type": "F",
+   "q": "What was Meta Platforms' total revenue for the second quarter of 2026 and its growth versus the second quarter of 2025?",
+   "answer": "$60.80 billion, an increase of 28%.",
+   "quotes": [
+    "Total revenue for the second quarter of 2026 was $60.80 billion, an increase of 28% compared to the second quarter of 2025"
+   ],
+   "anchors": [
+    1326801
+   ],
+   "family": "META:23f944d7d6",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-050705:I.2:0001",
+     "grade": 2,
+     "anchor": 1326801
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-F22",
+   "type": "F",
+   "q": "What aggregate net proceeds did Alphabet receive from its June 2026 issuance of Class A and Class C stock and mandatory convertible preferred stock?",
+   "answer": "$49.6 billion.",
+   "quotes": [
+    "In June 2026, we issued a combination of Class A stock and Class C stock and mandatory convertible preferred stock for aggregate net proceeds of $49.6 billion"
+   ],
+   "anchors": [
+    1652044
+   ],
+   "family": "GOOGL:6c28688a19",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0001652044-26-000071:I.2:0016",
+     "grade": 2,
+     "anchor": 1652044
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": false,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-F31",
+   "type": "F",
+   "q": "What were Qualcomm's revenues and net income for fiscal 2025?",
+   "answer": "Revenues of $44.3 billion (up 14%) and net income of $5.5 billion (down 45%).",
+   "quotes": [
+    "Revenues were $44.3 billion, an increase of 14% compared to revenues of $39.0 billion in fiscal 2024"
+   ],
+   "anchors": [
+    804328
+   ],
+   "family": "QCOM:8958b31148",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000804328-25-000085:II.7:0002",
+     "grade": 2,
+     "anchor": 804328
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "main",
+   "reserve_order": 0
+  },
+  {
+   "id": "M2-F33",
+   "type": "F",
+   "q": "What were the two main components of AMD's All Other operating loss of $1.0 billion for the three months ended March 28, 2026?",
+   "answer": "$551 million of amortization of acquisition-related intangibles and $487 million of stock-based compensation expense.",
+   "quotes": [
+    "$551 million of amortization of acquisition-related intangibles and $487 million of stock-based compensation expense"
+   ],
+   "anchors": [
+    2488
+   ],
+   "family": "AMD:39218f40b5",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000076:I.2:0009",
+     "grade": 2,
+     "anchor": 2488
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 1
+  },
+  {
+   "id": "M2-F42",
+   "type": "F",
+   "q": "What drove Apple's Products gross margin increase in the third quarter and first nine months of fiscal 2026?",
+   "answer": "A different mix of products and tariff refunds, partially offset by higher costs including memory.",
+   "quotes": [
+    "primarily due to a different mix of products and tariff refunds, partially offset by higher costs, including memory."
+   ],
+   "anchors": [
+    320193
+   ],
+   "family": "AAPL:76883b1d32",
+   "split": "dev",
+   "gold": [
+    {
+     "chunk_id": "0000320193-26-000020:I.2:0022",
+     "grade": 2,
+     "anchor": 320193
+    }
+   ],
+   "check": "accept",
+   "gold_outside_graph": [],
+   "filer_own": true,
+   "role": "reserve",
+   "reserve_order": 2
+  }
+ ]
+}
