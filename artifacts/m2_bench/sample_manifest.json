@@ -1,0 +1,4965 @@
+{
+ "generator": "scripts/m2_bench.py sample_passages",
+ "rounds": [
+  {
+   "seed": 20261126,
+   "per_type": 32,
+   "items": {
+    "A": [
+     {
+      "ref": "A00",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-028526:II.1A:0049"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:2903f08f9b"
+     },
+     {
+      "ref": "A01",
+      "type": "A",
+      "chunk_ids": [
+       "0001652044-26-000071:II.1A:0002"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:ce5de886bd"
+     },
+     {
+      "ref": "A02",
+      "type": "A",
+      "chunk_ids": [
+       "0000002488-26-000123:II.1A:0016"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:06ee700923"
+     },
+     {
+      "ref": "A03",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-25-000046:II.1A:0024"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:7545fc098c"
+     },
+     {
+      "ref": "A04",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-25-000046:I.2:0006"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:b42d17511b"
+     },
+     {
+      "ref": "A05",
+      "type": "A",
+      "chunk_ids": [
+       "0000002488-26-000123:II.1A:0004"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:92793cc39e"
+     },
+     {
+      "ref": "A06",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1A:0044"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:ad3029cd4c"
+     },
+     {
+      "ref": "A07",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-26-000006:II.1A:0015"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:29ffdaf333"
+     },
+     {
+      "ref": "A08",
+      "type": "A",
+      "chunk_ids": [
+       "0001652044-26-000018:II.7:0013"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:19d5620f94"
+     },
+     {
+      "ref": "A09",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-050705:II.1A:0017"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:e532b012af"
+     },
+     {
+      "ref": "A10",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-025362:I.5:0008"
+      ],
+      "ciks": [
+       1046179
+      ],
+      "tickers": [
+       "TSM"
+      ],
+      "family": "TSM:de1c840136"
+     },
+     {
+      "ref": "A11",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-25-000046:II.1A:0038"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:de6355af89"
+     },
+     {
+      "ref": "A12",
+      "type": "A",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0047"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:c657ed0f9c"
+     },
+     {
+      "ref": "A13",
+      "type": "A",
+      "chunk_ids": [
+       "0001730168-25-000121:I.1A:0007"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:078abf77d8"
+     },
+     {
+      "ref": "A14",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-003942:II.7:0060"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:7df55401b9"
+     },
+     {
+      "ref": "A15",
+      "type": "A",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0044"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:780f884704"
+     },
+     {
+      "ref": "A16",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1A:0033"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:b7b925279e"
+     },
+     {
+      "ref": "A17",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-25-000046:II.1A:0008"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:97758a1342"
+     },
+     {
+      "ref": "A18",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-26-000006:I.2:0002"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:f1f0e15ecb"
+     },
+     {
+      "ref": "A19",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-025362:I.3:0001"
+      ],
+      "ciks": [
+       1046179
+      ],
+      "tickers": [
+       "TSM"
+      ],
+      "family": "TSM:e9a8788f3a"
+     },
+     {
+      "ref": "A20",
+      "type": "A",
+      "chunk_ids": [
+       "0001045810-26-000075:I.2:0016"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:309c8e6594"
+     },
+     {
+      "ref": "A21",
+      "type": "A",
+      "chunk_ids": [
+       "0001045810-26-000075:I.2:0026"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:0756c3d1b2"
+     },
+     {
+      "ref": "A22",
+      "type": "A",
+      "chunk_ids": [
+       "0000804328-25-000085:I.1A:0044"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:24c9f64e56"
+     },
+     {
+      "ref": "A23",
+      "type": "A",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0006"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:74df7f5892"
+     },
+     {
+      "ref": "A24",
+      "type": "A",
+      "chunk_ids": [
+       "0000804328-26-000061:II.1A:0040"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:9181cfc9ad"
+     },
+     {
+      "ref": "A25",
+      "type": "A",
+      "chunk_ids": [
+       "0001045810-26-000075:II.1A:0007"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:819a468d07"
+     },
+     {
+      "ref": "A26",
+      "type": "A",
+      "chunk_ids": [
+       "0001652044-26-000071:I.2:0070"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:6f60914bef"
+     },
+     {
+      "ref": "A27",
+      "type": "A",
+      "chunk_ids": [
+       "0001730168-26-000054:II.1A:0009"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:c04e2adec6"
+     },
+     {
+      "ref": "A28",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-26-000006:II.1A:0039"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:67cb22b780"
+     },
+     {
+      "ref": "A29",
+      "type": "A",
+      "chunk_ids": [
+       "0000002488-26-000018:II.7:0016"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:11cf914c1b"
+     },
+     {
+      "ref": "A30",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-26-000006:II.1A:0032"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:efc3c7c732"
+     },
+     {
+      "ref": "A31",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-26-000015:I.2:0002"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:f1f0e15ecb"
+     }
+    ],
+    "B": [
+     {
+      "ref": "B00",
+      "type": "B",
+      "chunk_ids": [
+       "0001193125-26-323660:II.7:0019"
+      ],
+      "ciks": [
+       789019
+      ],
+      "tickers": [
+       "MSFT"
+      ],
+      "family": "MSFT:137f1e9662"
+     },
+     {
+      "ref": "B01",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0003"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:5031cf2a14"
+     },
+     {
+      "ref": "B02",
+      "type": "B",
+      "chunk_ids": [
+       "0001730168-26-000080:I.2:0008"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:14b4dd6536"
+     },
+     {
+      "ref": "B03",
+      "type": "B",
+      "chunk_ids": [
+       "0001018724-26-000026:I.2:0005"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:23eef6bb8c"
+     },
+     {
+      "ref": "B04",
+      "type": "B",
+      "chunk_ids": [
+       "0000804328-26-000017:I.2:0017"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:57200e2644"
+     },
+     {
+      "ref": "B05",
+      "type": "B",
+      "chunk_ids": [
+       "0001018724-26-000004:II.7:0012"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:0921ddd435"
+     },
+     {
+      "ref": "B06",
+      "type": "B",
+      "chunk_ids": [
+       "0001730168-26-000080:I.2:0026"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:d162c7e417"
+     },
+     {
+      "ref": "B07",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0018"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:8252624d8b"
+     },
+     {
+      "ref": "B08",
+      "type": "B",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1:0025"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:1fc8d96296"
+     },
+     {
+      "ref": "B09",
+      "type": "B",
+      "chunk_ids": [
+       "0000723125-26-000006:I.2:0016"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:d8e9f3dfc4"
+     },
+     {
+      "ref": "B10",
+      "type": "B",
+      "chunk_ids": [
+       "0000804328-26-000017:I.2:0005"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:18afd84316"
+     },
+     {
+      "ref": "B11",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0023"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:1a17354efe"
+     },
+     {
+      "ref": "B12",
+      "type": "B",
+      "chunk_ids": [
+       "0001193125-26-323660:II.7:0002"
+      ],
+      "ciks": [
+       789019
+      ],
+      "tickers": [
+       "MSFT"
+      ],
+      "family": "MSFT:fbed141023"
+     },
+     {
+      "ref": "B13",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-003942:II.7:0003"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:112364fc8d"
+     },
+     {
+      "ref": "B14",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000048:I.2:0032"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:8612f27daf"
+     },
+     {
+      "ref": "B15",
+      "type": "B",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0013"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:8ed8430c41"
+     },
+     {
+      "ref": "B16",
+      "type": "B",
+      "chunk_ids": [
+       "0001018724-26-000014:I.2:0011"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:e05e88a6b9"
+     },
+     {
+      "ref": "B17",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0043"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:94974073dd"
+     },
+     {
+      "ref": "B18",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000075:I.2:0023"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:bbff47a9e3"
+     },
+     {
+      "ref": "B19",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-028526:II.1A:0028"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:9456a84066"
+     },
+     {
+      "ref": "B20",
+      "type": "B",
+      "chunk_ids": [
+       "0000804328-26-000086:I.2:0018"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:6ad4128470"
+     },
+     {
+      "ref": "B21",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000075:II.1A:0001"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:5ddfe154b1"
+     },
+     {
+      "ref": "B22",
+      "type": "B",
+      "chunk_ids": [
+       "0000320193-26-000013:I.2:0006"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:c94bbbf3da"
+     },
+     {
+      "ref": "B23",
+      "type": "B",
+      "chunk_ids": [
+       "0001730168-25-000121:I.1:0016"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:a61fe7c79f"
+     },
+     {
+      "ref": "B24",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000018:II.7:0017"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:4408871618"
+     },
+     {
+      "ref": "B25",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0041"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:c7d852a7c6"
+     },
+     {
+      "ref": "B26",
+      "type": "B",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0009"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:89adda0da9"
+     },
+     {
+      "ref": "B27",
+      "type": "B",
+      "chunk_ids": [
+       "0001730168-26-000016:I.2:0022"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:0700d2b04d"
+     },
+     {
+      "ref": "B28",
+      "type": "B",
+      "chunk_ids": [
+       "0000002488-26-000123:II.1A:0021"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:30f973ca90"
+     },
+     {
+      "ref": "B29",
+      "type": "B",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0011"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:3ac3a3021f"
+     },
+     {
+      "ref": "B30",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000052:I.2:0404"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:45468974d1"
+     },
+     {
+      "ref": "B31",
+      "type": "B",
+      "chunk_ids": [
+       "0000804328-26-000017:I.2:0011"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:d34bce9b98"
+     }
+    ],
+    "C": [
+     {
+      "ref": "C00",
+      "type": "C",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1:0008"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:eb0f068d11"
+     },
+     {
+      "ref": "C01",
+      "type": "C",
+      "chunk_ids": [
+       "0001193125-26-323660:II.7:0020"
+      ],
+      "ciks": [
+       789019
+      ],
+      "tickers": [
+       "MSFT"
+      ],
+      "family": "MSFT:f8061db99e"
+     },
+     {
+      "ref": "C02",
+      "type": "C",
+      "chunk_ids": [
+       "0001018724-26-000026:I.2:0029"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:6a39f962ca"
+     },
+     {
+      "ref": "C03",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-003942:II.7:0042"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:0e9aba14b4"
+     },
+     {
+      "ref": "C04",
+      "type": "C",
+      "chunk_ids": [
+       "0001730168-26-000054:I.2:0026"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:313aa0543b"
+     },
+     {
+      "ref": "C05",
+      "type": "C",
+      "chunk_ids": [
+       "0001018724-26-000026:I.2:0007"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:90cad01e70"
+     },
+     {
+      "ref": "C06",
+      "type": "C",
+      "chunk_ids": [
+       "0001045810-26-000021:II.7:0369"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:bf8d1e31fa"
+     },
+     {
+      "ref": "C07",
+      "type": "C",
+      "chunk_ids": [
+       "0001730168-26-000080:II.1A:0023"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:618df73bed"
+     },
+     {
+      "ref": "C08",
+      "type": "C",
+      "chunk_ids": [
+       "0001730168-26-000054:I.2:0023"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:6bec8f6464"
+     },
+     {
+      "ref": "C09",
+      "type": "C",
+      "chunk_ids": [
+       "0000723125-25-000046:I.2:0005"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:b0b16959d8"
+     },
+     {
+      "ref": "C10",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0022"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:6049a2518d"
+     },
+     {
+      "ref": "C11",
+      "type": "C",
+      "chunk_ids": [
+       "0001045810-26-000052:I.2:0423"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:a427989f81"
+     },
+     {
+      "ref": "C12",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-025362:I.5:0011"
+      ],
+      "ciks": [
+       1046179
+      ],
+      "tickers": [
+       "TSM"
+      ],
+      "family": "TSM:dd2e568fbc"
+     },
+     {
+      "ref": "C13",
+      "type": "C",
+      "chunk_ids": [
+       "0000320193-26-000020:I.2:0035"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:d948b4b24e"
+     },
+     {
+      "ref": "C14",
+      "type": "C",
+      "chunk_ids": [
+       "0001652044-26-000018:II.7:0051"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:19fafb1b23"
+     },
+     {
+      "ref": "C15",
+      "type": "C",
+      "chunk_ids": [
+       "0001730168-25-000121:I.1A:0009"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:3000d9a175"
+     },
+     {
+      "ref": "C16",
+      "type": "C",
+      "chunk_ids": [
+       "0000320193-26-000020:I.2:0025"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:f4049c813b"
+     },
+     {
+      "ref": "C17",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1:0003"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:a8ab71dad7"
+     },
+     {
+      "ref": "C18",
+      "type": "C",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0007"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:5a68b0292b"
+     },
+     {
+      "ref": "C19",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-025362:I.4:0013"
+      ],
+      "ciks": [
+       1046179
+      ],
+      "tickers": [
+       "TSM"
+      ],
+      "family": "TSM:64d751cb49"
+     },
+     {
+      "ref": "C20",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1:0002"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:3f5b7c40a2"
+     },
+     {
+      "ref": "C21",
+      "type": "C",
+      "chunk_ids": [
+       "0001652044-26-000018:II.7:0024"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:c7f2e51661"
+     },
+     {
+      "ref": "C22",
+      "type": "C",
+      "chunk_ids": [
+       "0001730168-25-000121:II.7:0006"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:f5934af668"
+     },
+     {
+      "ref": "C23",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-028526:I.2:0051"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:5f0bde62fe"
+     },
+     {
+      "ref": "C24",
+      "type": "C",
+      "chunk_ids": [
+       "0001045810-26-000075:I.2:0007"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:8162e4d1f6"
+     },
+     {
+      "ref": "C25",
+      "type": "C",
+      "chunk_ids": [
+       "0001652044-26-000048:I.2:0043"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:a90888341d"
+     },
+     {
+      "ref": "C26",
+      "type": "C",
+      "chunk_ids": [
+       "0000002488-26-000018:II.7:0003"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:703ca6018f"
+     },
+     {
+      "ref": "C27",
+      "type": "C",
+      "chunk_ids": [
+       "0001730168-26-000080:I.2:0018"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:e4446c5876"
+     },
+     {
+      "ref": "C28",
+      "type": "C",
+      "chunk_ids": [
+       "0001730168-26-000080:I.2:0015"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:a034563f3e"
+     },
+     {
+      "ref": "C29",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-025362:I.5:0014"
+      ],
+      "ciks": [
+       1046179
+      ],
+      "tickers": [
+       "TSM"
+      ],
+      "family": "TSM:a44d3801af"
+     },
+     {
+      "ref": "C30",
+      "type": "C",
+      "chunk_ids": [
+       "0001045810-26-000021:II.7:0396"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:e4ed3554f2"
+     },
+     {
+      "ref": "C31",
+      "type": "C",
+      "chunk_ids": [
+       "0000050863-26-000079:I.2:0015"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:7cf1ed371a"
+     }
+    ],
+    "D": [
+     {
+      "ref": "D00",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0015",
+       "0001628280-26-050705:II.1A:0050"
+      ],
+      "ciks": [
+       50863,
+       1326801
+      ],
+      "tickers": [
+       "INTC",
+       "META"
+      ],
+      "family": "INTC:e23e04860f+META:f87e6f66b1"
+     },
+     {
+      "ref": "D01",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0008",
+       "0000804328-26-000061:II.1A:0037"
+      ],
+      "ciks": [
+       723125,
+       804328
+      ],
+      "tickers": [
+       "MU",
+       "QCOM"
+      ],
+      "family": "MU:97758a1342+QCOM:cbc2b758fd"
+     },
+     {
+      "ref": "D02",
+      "type": "D",
+      "chunk_ids": [
+       "0000320193-25-000079:I.1A:0002",
+       "0000723125-26-000015:II.1A:0020"
+      ],
+      "ciks": [
+       320193,
+       723125
+      ],
+      "tickers": [
+       "AAPL",
+       "MU"
+      ],
+      "family": "AAPL:83b409220d+MU:d46ba284e7"
+     },
+     {
+      "ref": "D03",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0026",
+       "0000804328-26-000086:II.1A:0019"
+      ],
+      "ciks": [
+       2488,
+       804328
+      ],
+      "tickers": [
+       "AMD",
+       "QCOM"
+      ],
+      "family": "AMD:b3634e63f5+QCOM:3e0420c4c8"
+     },
+     {
+      "ref": "D04",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1A:0008",
+       "0000804328-26-000086:II.1A:0033"
+      ],
+      "ciks": [
+       723125,
+       804328
+      ],
+      "tickers": [
+       "MU",
+       "QCOM"
+      ],
+      "family": "MU:97758a1342+QCOM:d44bb38ff5"
+     },
+     {
+      "ref": "D05",
+      "type": "D",
+      "chunk_ids": [
+       "0000804328-25-000085:I.1A:0042",
+       "0001045810-26-000021:I.1A:0345"
+      ],
+      "ciks": [
+       804328,
+       1045810
+      ],
+      "tickers": [
+       "QCOM",
+       "NVDA"
+      ],
+      "family": "QCOM:29dd1e1a35+NVDA:845e410a08"
+     },
+     {
+      "ref": "D06",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0012",
+       "0001045810-26-000052:I.2:0405"
+      ],
+      "ciks": [
+       2488,
+       1045810
+      ],
+      "tickers": [
+       "AMD",
+       "NVDA"
+      ],
+      "family": "AMD:904b4879f6+NVDA:bc8b87d597"
+     },
+     {
+      "ref": "D07",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0013",
+       "0001628280-26-028526:II.1A:0008"
+      ],
+      "ciks": [
+       50863,
+       1326801
+      ],
+      "tickers": [
+       "INTC",
+       "META"
+      ],
+      "family": "INTC:12ae6e72fa+META:44f1ecf495"
+     },
+     {
+      "ref": "D08",
+      "type": "D",
+      "chunk_ids": [
+       "0000320193-26-000013:I.2:0009",
+       "0001045810-26-000021:I.1A:0362"
+      ],
+      "ciks": [
+       320193,
+       1045810
+      ],
+      "tickers": [
+       "AAPL",
+       "NVDA"
+      ],
+      "family": "AAPL:ff0d298d2e+NVDA:54adcc4fa0"
+     },
+     {
+      "ref": "D09",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-26-000006:II.1A:0006",
+       "0001045810-26-000021:I.1A:0339"
+      ],
+      "ciks": [
+       723125,
+       1045810
+      ],
+      "tickers": [
+       "MU",
+       "NVDA"
+      ],
+      "family": "MU:d558ee38c8+NVDA:ee7ba3a3c6"
+     },
+     {
+      "ref": "D10",
+      "type": "D",
+      "chunk_ids": [
+       "0000804328-26-000086:II.1A:0040",
+       "0001652044-26-000048:I.2:0069"
+      ],
+      "ciks": [
+       804328,
+       1652044
+      ],
+      "tickers": [
+       "QCOM",
+       "GOOGL"
+      ],
+      "family": "QCOM:9181cfc9ad+GOOGL:fcaec66fe9"
+     },
+     {
+      "ref": "D11",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0021",
+       "0001018724-26-000014:II.1A:0009"
+      ],
+      "ciks": [
+       2488,
+       1018724
+      ],
+      "tickers": [
+       "AMD",
+       "AMZN"
+      ],
+      "family": "AMD:30f973ca90+AMZN:ff049c4f1c"
+     },
+     {
+      "ref": "D12",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0006",
+       "0001628280-26-025362:I.4:0014"
+      ],
+      "ciks": [
+       50863,
+       1046179
+      ],
+      "tickers": [
+       "INTC",
+       "TSM"
+      ],
+      "family": "INTC:4f64fb6764+TSM:d08e31e567"
+     },
+     {
+      "ref": "D13",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0018",
+       "0000723125-26-000015:II.1A:0019"
+      ],
+      "ciks": [
+       50863,
+       723125
+      ],
+      "tickers": [
+       "INTC",
+       "MU"
+      ],
+      "family": "INTC:7f21c21faf+MU:3b4ae84e50"
+     },
+     {
+      "ref": "D14",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-26-000006:I.2:0001",
+       "0001628280-26-025362:I.4:0011"
+      ],
+      "ciks": [
+       723125,
+       1046179
+      ],
+      "tickers": [
+       "MU",
+       "TSM"
+      ],
+      "family": "MU:01fb535af9+TSM:5d332842cb"
+     },
+     {
+      "ref": "D15",
+      "type": "D",
+      "chunk_ids": [
+       "0001652044-26-000018:I.1A:0004",
+       "0001730168-26-000054:II.1A:0019"
+      ],
+      "ciks": [
+       1652044,
+       1730168
+      ],
+      "tickers": [
+       "GOOGL",
+       "AVGO"
+      ],
+      "family": "GOOGL:ee884d0e9e+AVGO:9505fc0a73"
+     },
+     {
+      "ref": "D16",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0000",
+       "0000804328-25-000085:II.7:0023"
+      ],
+      "ciks": [
+       2488,
+       804328
+      ],
+      "tickers": [
+       "AMD",
+       "QCOM"
+      ],
+      "family": "AMD:dafde74c1d+QCOM:1865e06dc4"
+     },
+     {
+      "ref": "D17",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000079:I.2:0025",
+       "0000723125-25-000028:I.1A:0013"
+      ],
+      "ciks": [
+       50863,
+       723125
+      ],
+      "tickers": [
+       "INTC",
+       "MU"
+      ],
+      "family": "INTC:2c83087824+MU:75059ea4dc"
+     },
+     {
+      "ref": "D18",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0013",
+       "0000050863-26-000011:I.1A:0000"
+      ],
+      "ciks": [
+       2488,
+       50863
+      ],
+      "tickers": [
+       "AMD",
+       "INTC"
+      ],
+      "family": "AMD:e2c4b7222c+INTC:5f1e85e6f9"
+     },
+     {
+      "ref": "D19",
+      "type": "D",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1A:0359",
+       "0001628280-26-003942:II.7:0007"
+      ],
+      "ciks": [
+       1045810,
+       1326801
+      ],
+      "tickers": [
+       "NVDA",
+       "META"
+      ],
+      "family": "NVDA:e62b71e467+META:d45251b13e"
+     },
+     {
+      "ref": "D20",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-25-000046:II.1A:0012",
+       "0001045810-26-000021:I.1A:0341"
+      ],
+      "ciks": [
+       723125,
+       1045810
+      ],
+      "tickers": [
+       "MU",
+       "NVDA"
+      ],
+      "family": "MU:2fa27bdea0+NVDA:a0388b3323"
+     },
+     {
+      "ref": "D21",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1A:0017",
+       "0001628280-26-025362:I.3:0007"
+      ],
+      "ciks": [
+       2488,
+       1046179
+      ],
+      "tickers": [
+       "AMD",
+       "TSM"
+      ],
+      "family": "AMD:51c61c6516+TSM:993af54854"
+     },
+     {
+      "ref": "D22",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0006",
+       "0001628280-26-028526:I.2:0050"
+      ],
+      "ciks": [
+       2488,
+       1326801
+      ],
+      "tickers": [
+       "AMD",
+       "META"
+      ],
+      "family": "AMD:58c019a0be+META:7d94a63aea"
+     },
+     {
+      "ref": "D23",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0033",
+       "0001730168-25-000121:I.1A:0006"
+      ],
+      "ciks": [
+       723125,
+       1730168
+      ],
+      "tickers": [
+       "MU",
+       "AVGO"
+      ],
+      "family": "MU:efec3c4344+AVGO:42ae1b2af5"
+     },
+     {
+      "ref": "D24",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1:0010",
+       "0001018724-26-000004:I.1:0007"
+      ],
+      "ciks": [
+       723125,
+       1018724
+      ],
+      "tickers": [
+       "MU",
+       "AMZN"
+      ],
+      "family": "MU:89adda0da9+AMZN:43d10eb9d5"
+     },
+     {
+      "ref": "D25",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0011",
+       "0001628280-26-003942:I.1A:0018"
+      ],
+      "ciks": [
+       723125,
+       1326801
+      ],
+      "tickers": [
+       "MU",
+       "META"
+      ],
+      "family": "MU:4745e1eb82+META:60aeafc7d0"
+     },
+     {
+      "ref": "D26",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0020",
+       "0000804328-26-000061:II.1A:0042"
+      ],
+      "ciks": [
+       2488,
+       804328
+      ],
+      "tickers": [
+       "AMD",
+       "QCOM"
+      ],
+      "family": "AMD:c662d43d55+QCOM:29dd1e1a35"
+     },
+     {
+      "ref": "D27",
+      "type": "D",
+      "chunk_ids": [
+       "0001018724-26-000014:II.1A:0021",
+       "0001730168-26-000054:II.1A:0024"
+      ],
+      "ciks": [
+       1018724,
+       1730168
+      ],
+      "tickers": [
+       "AMZN",
+       "AVGO"
+      ],
+      "family": "AMZN:df1c1e3b63+AVGO:e04ea8b71b"
+     },
+     {
+      "ref": "D28",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0017",
+       "0001652044-26-000018:I.1A:0022"
+      ],
+      "ciks": [
+       50863,
+       1652044
+      ],
+      "tickers": [
+       "INTC",
+       "GOOGL"
+      ],
+      "family": "INTC:afaea9042d+GOOGL:2aae5aa5d6"
+     },
+     {
+      "ref": "D29",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0023",
+       "0001628280-26-011378:I.3:0008"
+      ],
+      "ciks": [
+       2488,
+       937966
+      ],
+      "tickers": [
+       "AMD",
+       "ASML"
+      ],
+      "family": "AMD:49037b7c0e+ASML:d19ea893de"
+     },
+     {
+      "ref": "D30",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1A:0010",
+       "0001018724-26-000026:II.1A:0003"
+      ],
+      "ciks": [
+       723125,
+       1018724
+      ],
+      "tickers": [
+       "MU",
+       "AMZN"
+      ],
+      "family": "MU:89adda0da9+AMZN:d51cf48d39"
+     },
+     {
+      "ref": "D31",
+      "type": "D",
+      "chunk_ids": [
+       "0001018724-26-000026:II.1A:0021",
+       "0001628280-26-003942:I.1A:0009"
+      ],
+      "ciks": [
+       1018724,
+       1326801
+      ],
+      "tickers": [
+       "AMZN",
+       "META"
+      ],
+      "family": "AMZN:df1c1e3b63+META:f4a6d9061d"
+     }
+    ],
+    "E": [
+     {
+      "ref": "E00",
+      "type": "E",
+      "chunk_ids": [
+       "0000002488-26-000123:II.1A:0006"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:f4f950bcf6"
+     },
+     {
+      "ref": "E01",
+      "type": "E",
+      "chunk_ids": [
+       "0001193125-26-323660:I.1A:0006"
+      ],
+      "ciks": [
+       789019
+      ],
+      "tickers": [
+       "MSFT"
+      ],
+      "family": "MSFT:3fbbf9b966"
+     },
+     {
+      "ref": "E02",
+      "type": "E",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0018"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:7f83a73423"
+     },
+     {
+      "ref": "E03",
+      "type": "E",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0006"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:5ccceff637"
+     },
+     {
+      "ref": "E04",
+      "type": "E",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0012"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:0e21dc17cf"
+     },
+     {
+      "ref": "E05",
+      "type": "E",
+      "chunk_ids": [
+       "0000723125-25-000046:II.1A:0043"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:827f18d3b9"
+     },
+     {
+      "ref": "E06",
+      "type": "E",
+      "chunk_ids": [
+       "0001730168-26-000016:II.1A:0010"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:09413f6467"
+     },
+     {
+      "ref": "E07",
+      "type": "E",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1A:0340"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:ba2a940da7"
+     },
+     {
+      "ref": "E08",
+      "type": "E",
+      "chunk_ids": [
+       "0001018724-26-000004:I.1A:0014"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:def5dae1d3"
+     },
+     {
+      "ref": "E09",
+      "type": "E",
+      "chunk_ids": [
+       "0000804328-25-000085:I.1A:0035"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:674ca4853c"
+     },
+     {
+      "ref": "E10",
+      "type": "E",
+      "chunk_ids": [
+       "0001018724-26-000004:I.1A:0018"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:fb272e088a"
+     },
+     {
+      "ref": "E11",
+      "type": "E",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1A:0037"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:ca3fc27c9a"
+     },
+     {
+      "ref": "E12",
+      "type": "E",
+      "chunk_ids": [
+       "0001018724-26-000004:I.1A:0017"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:3541727d17"
+     },
+     {
+      "ref": "E13",
+      "type": "E",
+      "chunk_ids": [
+       "0001193125-26-323660:I.1A:0000"
+      ],
+      "ciks": [
+       789019
+      ],
+      "tickers": [
+       "MSFT"
+      ],
+      "family": "MSFT:3c6e6768b2"
+     },
+     {
+      "ref": "E14",
+      "type": "E",
+      "chunk_ids": [
+       "0000002488-26-000123:II.1A:0012"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:904b4879f6"
+     },
+     {
+      "ref": "E15",
+      "type": "E",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0041"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:70f0bb0dbb"
+     },
+     {
+      "ref": "E16",
+      "type": "E",
+      "chunk_ids": [
+       "0000002488-26-000123:II.1A:0022"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:116c7cfbe0"
+     },
+     {
+      "ref": "E17",
+      "type": "E",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1A:0025"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:c0cb7fe2b8"
+     },
+     {
+      "ref": "E18",
+      "type": "E",
+      "chunk_ids": [
+       "0001730168-26-000054:II.1A:0001"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:ceb3671ddd"
+     },
+     {
+      "ref": "E19",
+      "type": "E",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1A:0043"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:827f18d3b9"
+     },
+     {
+      "ref": "E20",
+      "type": "E",
+      "chunk_ids": [
+       "0001730168-26-000054:II.1A:0007"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:078abf77d8"
+     },
+     {
+      "ref": "E21",
+      "type": "E",
+      "chunk_ids": [
+       "0001730168-26-000016:II.1A:0020"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:4e118e0883"
+     },
+     {
+      "ref": "E22",
+      "type": "E",
+      "chunk_ids": [
+       "0001652044-26-000018:I.1A:0008"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:4d4506bb8b"
+     },
+     {
+      "ref": "E23",
+      "type": "E",
+      "chunk_ids": [
+       "0001652044-26-000018:I.1A:0018"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:551c4c179c"
+     },
+     {
+      "ref": "E24",
+      "type": "E",
+      "chunk_ids": [
+       "0001730168-26-000080:II.1A:0017"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:2b1fa33a7d"
+     },
+     {
+      "ref": "E25",
+      "type": "E",
+      "chunk_ids": [
+       "0001628280-26-028526:II.1A:0034"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:0e0fdab58d"
+     },
+     {
+      "ref": "E26",
+      "type": "E",
+      "chunk_ids": [
+       "0000804328-26-000061:II.1A:0034"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:5c3cae8522"
+     },
+     {
+      "ref": "E27",
+      "type": "E",
+      "chunk_ids": [
+       "0000804328-26-000061:II.1A:0008"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:65c8fb8c3a"
+     },
+     {
+      "ref": "E28",
+      "type": "E",
+      "chunk_ids": [
+       "0001730168-26-000054:II.1A:0003"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:a4bc7c9b17"
+     },
+     {
+      "ref": "E29",
+      "type": "E",
+      "chunk_ids": [
+       "0001730168-25-000121:I.1A:0022"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:783cfd865c"
+     },
+     {
+      "ref": "E30",
+      "type": "E",
+      "chunk_ids": [
+       "0000804328-25-000085:I.1A:0015"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:008e087fbf"
+     },
+     {
+      "ref": "E31",
+      "type": "E",
+      "chunk_ids": [
+       "0000804328-26-000086:II.1A:0010"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:828a33d201"
+     }
+    ],
+    "F": [
+     {
+      "ref": "F00",
+      "type": "F",
+      "chunk_ids": [
+       "0000050863-26-000079:I.2:0026"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:6c4d6983cb"
+     },
+     {
+      "ref": "F01",
+      "type": "F",
+      "chunk_ids": [
+       "0000723125-26-000006:I.2:0014"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:c22fee8776"
+     },
+     {
+      "ref": "F02",
+      "type": "F",
+      "chunk_ids": [
+       "0001652044-26-000071:I.2:0052"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:d024862eac"
+     },
+     {
+      "ref": "F03",
+      "type": "F",
+      "chunk_ids": [
+       "0000723125-25-000028:II.7:0016"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:5dec8ecce7"
+     },
+     {
+      "ref": "F04",
+      "type": "F",
+      "chunk_ids": [
+       "0001652044-26-000071:I.2:0032"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:47523a4a92"
+     },
+     {
+      "ref": "F05",
+      "type": "F",
+      "chunk_ids": [
+       "0000320193-26-000013:I.2:0016"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:a8e6d595b9"
+     },
+     {
+      "ref": "F06",
+      "type": "F",
+      "chunk_ids": [
+       "0000320193-26-000013:I.2:0002"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:31c03f2158"
+     },
+     {
+      "ref": "F07",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-26-000016:I.2:0007"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:39d8504f44"
+     },
+     {
+      "ref": "F08",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-26-000080:I.2:0019"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:1433b656a3"
+     },
+     {
+      "ref": "F09",
+      "type": "F",
+      "chunk_ids": [
+       "0000804328-26-000017:I.2:0024"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:04e15019c1"
+     },
+     {
+      "ref": "F10",
+      "type": "F",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0027"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:f20e954535"
+     },
+     {
+      "ref": "F11",
+      "type": "F",
+      "chunk_ids": [
+       "0000002488-26-000076:I.2:0019"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:1695ffdf92"
+     },
+     {
+      "ref": "F12",
+      "type": "F",
+      "chunk_ids": [
+       "0000002488-26-000123:I.2:0012"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:e6e30090d7"
+     },
+     {
+      "ref": "F13",
+      "type": "F",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1A:0011"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:b755ccdbed"
+     },
+     {
+      "ref": "F14",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-26-000080:I.2:0007"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:bc35f6e832"
+     },
+     {
+      "ref": "F15",
+      "type": "F",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0010"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:8f05df63e3"
+     },
+     {
+      "ref": "F16",
+      "type": "F",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1A:0342"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:4754306bdc"
+     },
+     {
+      "ref": "F17",
+      "type": "F",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0001"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:23f944d7d6"
+     },
+     {
+      "ref": "F18",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-26-000016:I.2:0017"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:5d9f922b7a"
+     },
+     {
+      "ref": "F19",
+      "type": "F",
+      "chunk_ids": [
+       "0000050863-26-000079:I.2:0034"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:da15de6d5f"
+     },
+     {
+      "ref": "F20",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-25-000121:II.7:0034"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:ca1a4bf518"
+     },
+     {
+      "ref": "F21",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-26-000080:I.2:0011"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:5b51b13326"
+     },
+     {
+      "ref": "F22",
+      "type": "F",
+      "chunk_ids": [
+       "0001652044-26-000071:I.2:0016"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:6c28688a19"
+     },
+     {
+      "ref": "F23",
+      "type": "F",
+      "chunk_ids": [
+       "0001018724-26-000014:II.1A:0004"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:782eda6805"
+     },
+     {
+      "ref": "F24",
+      "type": "F",
+      "chunk_ids": [
+       "0000320193-26-000006:I.2:0037"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:d82fad8d47"
+     },
+     {
+      "ref": "F25",
+      "type": "F",
+      "chunk_ids": [
+       "0001628280-26-028526:I.2:0047"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:0aa1d2d851"
+     },
+     {
+      "ref": "F26",
+      "type": "F",
+      "chunk_ids": [
+       "0000320193-26-000006:I.2:0018"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:45047fcb1b"
+     },
+     {
+      "ref": "F27",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-25-000121:II.7:0020"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:c0f98ad22b"
+     },
+     {
+      "ref": "F28",
+      "type": "F",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0024"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:48df47d1c6"
+     },
+     {
+      "ref": "F29",
+      "type": "F",
+      "chunk_ids": [
+       "0001628280-26-050705:II.1A:0029"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:c40552160a"
+     },
+     {
+      "ref": "F30",
+      "type": "F",
+      "chunk_ids": [
+       "0001652044-26-000048:I.2:0022"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:11678bfdc6"
+     },
+     {
+      "ref": "F31",
+      "type": "F",
+      "chunk_ids": [
+       "0000804328-25-000085:II.7:0002"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:8958b31148"
+     }
+    ]
+   }
+  },
+  {
+   "seed": 20261127,
+   "per_type": {
+    "A": 16,
+    "B": 40,
+    "C": 20,
+    "D": 0,
+    "E": 12,
+    "F": 16
+   },
+   "exclude": "every round-1 family",
+   "items": {
+    "A": [
+     {
+      "ref": "A32",
+      "type": "A",
+      "chunk_ids": [
+       "0001730168-25-000121:II.7:0009"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:7ee68d979b"
+     },
+     {
+      "ref": "A33",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1A:0015"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:2c6d40182a"
+     },
+     {
+      "ref": "A34",
+      "type": "A",
+      "chunk_ids": [
+       "0000002488-26-000018:II.7:0030"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:41a3290810"
+     },
+     {
+      "ref": "A35",
+      "type": "A",
+      "chunk_ids": [
+       "0000050863-26-000079:I.2:0029"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:c310ce7e0d"
+     },
+     {
+      "ref": "A36",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0046"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:554908097b"
+     },
+     {
+      "ref": "A37",
+      "type": "A",
+      "chunk_ids": [
+       "0000804328-26-000086:I.2:0023"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:109393fa71"
+     },
+     {
+      "ref": "A38",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-003942:II.7:0059"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:b94e6e760d"
+     },
+     {
+      "ref": "A39",
+      "type": "A",
+      "chunk_ids": [
+       "0000804328-26-000061:I.2:0015"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:720025b86e"
+     },
+     {
+      "ref": "A40",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1A:0005"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:fd7fbd2fd6"
+     },
+     {
+      "ref": "A41",
+      "type": "A",
+      "chunk_ids": [
+       "0000723125-26-000006:I.2:0015"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:59eb9e4cfa"
+     },
+     {
+      "ref": "A42",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0041"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:769188b3a5"
+     },
+     {
+      "ref": "A43",
+      "type": "A",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1A:0352"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:d4a3822447"
+     },
+     {
+      "ref": "A44",
+      "type": "A",
+      "chunk_ids": [
+       "0001730168-25-000121:II.7:0017"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:29d67ae406"
+     },
+     {
+      "ref": "A45",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-028526:I.2:0046"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:5030621b63"
+     },
+     {
+      "ref": "A46",
+      "type": "A",
+      "chunk_ids": [
+       "0001628280-26-050705:II.1A:0044"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:d9546f5789"
+     },
+     {
+      "ref": "A47",
+      "type": "A",
+      "chunk_ids": [
+       "0001045810-26-000052:I.2:0408"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:53c46b151b"
+     }
+    ],
+    "B": [
+     {
+      "ref": "B32",
+      "type": "B",
+      "chunk_ids": [
+       "0000804328-26-000017:I.2:0027"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:cb11461787"
+     },
+     {
+      "ref": "B33",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000075:I.2:0017"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:666b411a7b"
+     },
+     {
+      "ref": "B34",
+      "type": "B",
+      "chunk_ids": [
+       "0000804328-26-000061:I.2:0011"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:8fe527fc39"
+     },
+     {
+      "ref": "B35",
+      "type": "B",
+      "chunk_ids": [
+       "0000320193-26-000020:I.2:0013"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:1e55d03f61"
+     },
+     {
+      "ref": "B36",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000079:I.2:0017"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:71f2333e92"
+     },
+     {
+      "ref": "B37",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0016"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:aa7b197c12"
+     },
+     {
+      "ref": "B38",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000071:I.2:0049"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:89971c119d"
+     },
+     {
+      "ref": "B39",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-003942:II.7:0004"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:d95ecaef01"
+     },
+     {
+      "ref": "B40",
+      "type": "B",
+      "chunk_ids": [
+       "0000320193-26-000006:I.2:0029"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:0cdee10eab"
+     },
+     {
+      "ref": "B41",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1:0309"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:8142d08551"
+     },
+     {
+      "ref": "B42",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1A:0039"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:942eae3a3a"
+     },
+     {
+      "ref": "B43",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1:0313"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:a03ce9893e"
+     },
+     {
+      "ref": "B44",
+      "type": "B",
+      "chunk_ids": [
+       "0000320193-26-000013:I.2:0029"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:ae024d1ad7"
+     },
+     {
+      "ref": "B45",
+      "type": "B",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0016"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:339b9a43b0"
+     },
+     {
+      "ref": "B46",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0004"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:84d99ad8bb"
+     },
+     {
+      "ref": "B47",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0025"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:7699d41e46"
+     },
+     {
+      "ref": "B48",
+      "type": "B",
+      "chunk_ids": [
+       "0001730168-26-000016:I.2:0024"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:395b5016c8"
+     },
+     {
+      "ref": "B49",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0045"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:da3606b9e7"
+     },
+     {
+      "ref": "B50",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000157:I.2:0020"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:fa0356299f"
+     },
+     {
+      "ref": "B51",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000079:I.2:0019"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:5e455b5f7a"
+     },
+     {
+      "ref": "B52",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0039"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:e0cf85e3d9"
+     },
+     {
+      "ref": "B53",
+      "type": "B",
+      "chunk_ids": [
+       "0000804328-25-000085:I.1:0003"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:c223e2e713"
+     },
+     {
+      "ref": "B54",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1:0320"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:886f7be214"
+     },
+     {
+      "ref": "B55",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000018:II.7:0021"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:cf7c310ccc"
+     },
+     {
+      "ref": "B56",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000075:I.2:0013"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:1f01f3e4ca"
+     },
+     {
+      "ref": "B57",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1:0317"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:33bf78c1cd"
+     },
+     {
+      "ref": "B58",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000018:II.7:0009"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:433c58f22a"
+     },
+     {
+      "ref": "B59",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0020"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:c8ba0cae88"
+     },
+     {
+      "ref": "B60",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000018:II.7:0012"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:5267a0ba25"
+     },
+     {
+      "ref": "B61",
+      "type": "B",
+      "chunk_ids": [
+       "0001045810-26-000021:II.7:0370"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:737101b6e5"
+     },
+     {
+      "ref": "B62",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-028526:I.2:0003"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:3dd5fb1ae4"
+     },
+     {
+      "ref": "B63",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000018:II.7:0034"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:39131b5746"
+     },
+     {
+      "ref": "B64",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-025362:I.4:0009"
+      ],
+      "ciks": [
+       1046179
+      ],
+      "tickers": [
+       "TSM"
+      ],
+      "family": "TSM:d050b2f9bd"
+     },
+     {
+      "ref": "B65",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000048:I.2:0014"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:7586c8c05c"
+     },
+     {
+      "ref": "B66",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000157:I.2:0025"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:4fca1c4bd3"
+     },
+     {
+      "ref": "B67",
+      "type": "B",
+      "chunk_ids": [
+       "0000320193-25-000079:I.1:0002"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:38a626b3cc"
+     },
+     {
+      "ref": "B68",
+      "type": "B",
+      "chunk_ids": [
+       "0001652044-26-000018:I.1:0007"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:876f8de8ac"
+     },
+     {
+      "ref": "B69",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-025362:I.5:0038"
+      ],
+      "ciks": [
+       1046179
+      ],
+      "tickers": [
+       "TSM"
+      ],
+      "family": "TSM:d834c32325"
+     },
+     {
+      "ref": "B70",
+      "type": "B",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0011"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:3e800f534e"
+     },
+     {
+      "ref": "B71",
+      "type": "B",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1:0015"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:67a032179f"
+     }
+    ],
+    "C": [
+     {
+      "ref": "C32",
+      "type": "C",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0042"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:3abb77eff8"
+     },
+     {
+      "ref": "C33",
+      "type": "C",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1A:0365"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:996ab73309"
+     },
+     {
+      "ref": "C34",
+      "type": "C",
+      "chunk_ids": [
+       "0000804328-26-000086:I.2:0020"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:f49dc8ae28"
+     },
+     {
+      "ref": "C35",
+      "type": "C",
+      "chunk_ids": [
+       "0000002488-26-000076:I.2:0022"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:ca8bd3d608"
+     },
+     {
+      "ref": "C36",
+      "type": "C",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0021"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:ffa77ff9df"
+     },
+     {
+      "ref": "C37",
+      "type": "C",
+      "chunk_ids": [
+       "0001730168-25-000121:II.7:0008"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:84168a851a"
+     },
+     {
+      "ref": "C38",
+      "type": "C",
+      "chunk_ids": [
+       "0000804328-26-000061:I.2:0014"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:9a101d9c54"
+     },
+     {
+      "ref": "C39",
+      "type": "C",
+      "chunk_ids": [
+       "0000002488-26-000018:II.7:0024"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:35e5bf40ed"
+     },
+     {
+      "ref": "C40",
+      "type": "C",
+      "chunk_ids": [
+       "0000804328-25-000085:II.7:0033"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:313969be18"
+     },
+     {
+      "ref": "C41",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-025362:I.5:0020"
+      ],
+      "ciks": [
+       1046179
+      ],
+      "tickers": [
+       "TSM"
+      ],
+      "family": "TSM:427789f7a3"
+     },
+     {
+      "ref": "C42",
+      "type": "C",
+      "chunk_ids": [
+       "0000723125-26-000015:I.2:0018"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:7ee573e81c"
+     },
+     {
+      "ref": "C43",
+      "type": "C",
+      "chunk_ids": [
+       "0001045810-26-000052:I.2:0421"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:9ad8b33fac"
+     },
+     {
+      "ref": "C44",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-003942:II.7:0052"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:679933e758"
+     },
+     {
+      "ref": "C45",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0019"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:6ecadff798"
+     },
+     {
+      "ref": "C46",
+      "type": "C",
+      "chunk_ids": [
+       "0000002488-26-000076:I.2:0024"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:9760e7dec3"
+     },
+     {
+      "ref": "C47",
+      "type": "C",
+      "chunk_ids": [
+       "0000002488-26-000123:II.1A:0023"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:4972286a0b"
+     },
+     {
+      "ref": "C48",
+      "type": "C",
+      "chunk_ids": [
+       "0001628280-26-050705:I.2:0037"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:b453fc7d12"
+     },
+     {
+      "ref": "C49",
+      "type": "C",
+      "chunk_ids": [
+       "0001045810-26-000021:II.7:0393"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:abc207cf75"
+     },
+     {
+      "ref": "C50",
+      "type": "C",
+      "chunk_ids": [
+       "0000804328-26-000061:I.2:0026"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:18885ab8c4"
+     },
+     {
+      "ref": "C51",
+      "type": "C",
+      "chunk_ids": [
+       "0000723125-25-000046:I.2:0009"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:65ee0205b7"
+     }
+    ],
+    "E": [
+     {
+      "ref": "E32",
+      "type": "E",
+      "chunk_ids": [
+       "0001628280-26-011378:I.3:0006"
+      ],
+      "ciks": [
+       937966
+      ],
+      "tickers": [
+       "ASML"
+      ],
+      "family": "ASML:323778c22c"
+     },
+     {
+      "ref": "E33",
+      "type": "E",
+      "chunk_ids": [
+       "0001628280-26-050705:II.1A:0033"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:e113e886c3"
+     },
+     {
+      "ref": "E34",
+      "type": "E",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1A:0351"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:d560d89140"
+     },
+     {
+      "ref": "E35",
+      "type": "E",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1A:0022"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:e8dfcdadd1"
+     },
+     {
+      "ref": "E36",
+      "type": "E",
+      "chunk_ids": [
+       "0000723125-25-000046:II.1A:0007"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:e60179a8f8"
+     },
+     {
+      "ref": "E37",
+      "type": "E",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1A:0007"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:2017582848"
+     },
+     {
+      "ref": "E38",
+      "type": "E",
+      "chunk_ids": [
+       "0000804328-25-000085:I.1A:0004"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:a8a4ee66fc"
+     },
+     {
+      "ref": "E39",
+      "type": "E",
+      "chunk_ids": [
+       "0001652044-26-000018:I.1A:0005"
+      ],
+      "ciks": [
+       1652044
+      ],
+      "tickers": [
+       "GOOGL"
+      ],
+      "family": "GOOGL:2f49c1ffaa"
+     },
+     {
+      "ref": "E40",
+      "type": "E",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0022"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:87335a655e"
+     },
+     {
+      "ref": "E41",
+      "type": "E",
+      "chunk_ids": [
+       "0001730168-25-000121:I.1A:0002"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:a14c110cfe"
+     },
+     {
+      "ref": "E42",
+      "type": "E",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0020"
+      ],
+      "ciks": [
+       50863
+      ],
+      "tickers": [
+       "INTC"
+      ],
+      "family": "INTC:a34e64c1a3"
+     },
+     {
+      "ref": "E43",
+      "type": "E",
+      "chunk_ids": [
+       "0001018724-26-000004:I.1A:0008"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:c7aba05afa"
+     }
+    ],
+    "F": [
+     {
+      "ref": "F32",
+      "type": "F",
+      "chunk_ids": [
+       "0000320193-26-000006:I.2:0017"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:3cbb530df6"
+     },
+     {
+      "ref": "F33",
+      "type": "F",
+      "chunk_ids": [
+       "0000002488-26-000076:I.2:0009"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:39218f40b5"
+     },
+     {
+      "ref": "F34",
+      "type": "F",
+      "chunk_ids": [
+       "0001045810-26-000075:I.2:0024"
+      ],
+      "ciks": [
+       1045810
+      ],
+      "tickers": [
+       "NVDA"
+      ],
+      "family": "NVDA:a336fca093"
+     },
+     {
+      "ref": "F35",
+      "type": "F",
+      "chunk_ids": [
+       "0000002488-26-000076:I.2:0012"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:dc9320f687"
+     },
+     {
+      "ref": "F36",
+      "type": "F",
+      "chunk_ids": [
+       "0000723125-25-000046:I.2:0004"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:be3c6e3fd5"
+     },
+     {
+      "ref": "F37",
+      "type": "F",
+      "chunk_ids": [
+       "0000002488-26-000018:II.7:0001"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:23c082f659"
+     },
+     {
+      "ref": "F38",
+      "type": "F",
+      "chunk_ids": [
+       "0000723125-25-000046:I.2:0010"
+      ],
+      "ciks": [
+       723125
+      ],
+      "tickers": [
+       "MU"
+      ],
+      "family": "MU:d8282eda75"
+     },
+     {
+      "ref": "F39",
+      "type": "F",
+      "chunk_ids": [
+       "0000320193-26-000013:I.2:0035"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:6bc61d31f7"
+     },
+     {
+      "ref": "F40",
+      "type": "F",
+      "chunk_ids": [
+       "0000804328-26-000017:I.2:0028"
+      ],
+      "ciks": [
+       804328
+      ],
+      "tickers": [
+       "QCOM"
+      ],
+      "family": "QCOM:3e2c530f40"
+     },
+     {
+      "ref": "F41",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-26-000080:I.2:0016"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:0333556f18"
+     },
+     {
+      "ref": "F42",
+      "type": "F",
+      "chunk_ids": [
+       "0000320193-26-000020:I.2:0022"
+      ],
+      "ciks": [
+       320193
+      ],
+      "tickers": [
+       "AAPL"
+      ],
+      "family": "AAPL:76883b1d32"
+     },
+     {
+      "ref": "F43",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-26-000016:I.2:0019"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:1c44a13db5"
+     },
+     {
+      "ref": "F44",
+      "type": "F",
+      "chunk_ids": [
+       "0001628280-26-003942:II.7:0005"
+      ],
+      "ciks": [
+       1326801
+      ],
+      "tickers": [
+       "META"
+      ],
+      "family": "META:7fd1a142a2"
+     },
+     {
+      "ref": "F45",
+      "type": "F",
+      "chunk_ids": [
+       "0001730168-26-000016:I.2:0003"
+      ],
+      "ciks": [
+       1730168
+      ],
+      "tickers": [
+       "AVGO"
+      ],
+      "family": "AVGO:3e58075ebe"
+     },
+     {
+      "ref": "F46",
+      "type": "F",
+      "chunk_ids": [
+       "0000002488-26-000076:I.2:0014"
+      ],
+      "ciks": [
+       2488
+      ],
+      "tickers": [
+       "AMD"
+      ],
+      "family": "AMD:50c6fd7b3a"
+     },
+     {
+      "ref": "F47",
+      "type": "F",
+      "chunk_ids": [
+       "0001018724-26-000026:I.2:0014"
+      ],
+      "ciks": [
+       1018724
+      ],
+      "tickers": [
+       "AMZN"
+      ],
+      "family": "AMZN:74ed94e408"
+     }
+    ]
+   }
+  },
+  {
+   "seed": 20261128,
+   "per_type": {
+    "D": 36
+   },
+   "topics": [
+    "export control",
+    "section 232",
+    "ai diffusion",
+    "entity list",
+    "tsmc",
+    "hbm",
+    "rare earth",
+    "tariff",
+    "openai",
+    "advanced packaging",
+    "cybersecurity incident",
+    "chips act",
+    "taiwan",
+    "share repurchase",
+    "gross margin",
+    "data center"
+   ],
+   "note": "type D redrawn as topic-matched pairs after the owner's spot-check; rounds 1-2 type D retired",
+   "exclude": "every round-1 and round-2 family",
+   "items": {
+    "D": [
+     {
+      "ref": "D64",
+      "type": "D",
+      "chunk_ids": [
+       "0000320193-26-000013:I.2:0020",
+       "0000804328-26-000061:I.2:0005"
+      ],
+      "ciks": [
+       320193,
+       804328
+      ],
+      "tickers": [
+       "AAPL",
+       "QCOM"
+      ],
+      "family": "AAPL:ff127abdfa+QCOM:03eb32d3f5",
+      "topic": "gross margin"
+     },
+     {
+      "ref": "D65",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1A:0021",
+       "0001045810-26-000021:I.1A:0353"
+      ],
+      "ciks": [
+       2488,
+       1045810
+      ],
+      "tickers": [
+       "AMD",
+       "NVDA"
+      ],
+      "family": "AMD:d80ded0700+NVDA:b0ed418c26",
+      "topic": "entity list"
+     },
+     {
+      "ref": "D66",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000076:I.2:0006",
+       "0001628280-26-028526:I.2:0029"
+      ],
+      "ciks": [
+       2488,
+       1326801
+      ],
+      "tickers": [
+       "AMD",
+       "META"
+      ],
+      "family": "AMD:9ffa02bceb+META:1c9fcb5051",
+      "topic": "data center"
+     },
+     {
+      "ref": "D67",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000123:II.1A:0036",
+       "0000804328-25-000085:I.1A:0043"
+      ],
+      "ciks": [
+       2488,
+       804328
+      ],
+      "tickers": [
+       "AMD",
+       "QCOM"
+      ],
+      "family": "AMD:64c09e98bd+QCOM:d7f83cf9b5",
+      "topic": "taiwan"
+     },
+     {
+      "ref": "D68",
+      "type": "D",
+      "chunk_ids": [
+       "0000320193-26-000020:I.2:0004",
+       "0001628280-26-025362:I.3:0002"
+      ],
+      "ciks": [
+       320193,
+       1046179
+      ],
+      "tickers": [
+       "AAPL",
+       "TSM"
+      ],
+      "family": "AAPL:ce09ab7991+TSM:8fa772ba88",
+      "topic": "section 232"
+     },
+     {
+      "ref": "D69",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1:0013",
+       "0001730168-25-000121:I.1A:0010"
+      ],
+      "ciks": [
+       723125,
+       1730168
+      ],
+      "tickers": [
+       "MU",
+       "AVGO"
+      ],
+      "family": "MU:2e36c72a64+AVGO:babfbf0f1f",
+      "topic": "rare earth"
+     },
+     {
+      "ref": "D70",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1A:0020",
+       "0001045810-26-000021:I.1:0323"
+      ],
+      "ciks": [
+       2488,
+       1045810
+      ],
+      "tickers": [
+       "AMD",
+       "NVDA"
+      ],
+      "family": "AMD:7a2141b48d+NVDA:82f51277f4",
+      "topic": "tariff"
+     },
+     {
+      "ref": "D71",
+      "type": "D",
+      "chunk_ids": [
+       "0001628280-26-003942:II.7:0061",
+       "0001652044-26-000071:I.2:0069"
+      ],
+      "ciks": [
+       1326801,
+       1652044
+      ],
+      "tickers": [
+       "META",
+       "GOOGL"
+      ],
+      "family": "META:5711efd36f+GOOGL:809c8f99fc",
+      "topic": "share repurchase"
+     },
+     {
+      "ref": "D72",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0022",
+       "0001045810-26-000052:II.1A:0435"
+      ],
+      "ciks": [
+       2488,
+       1045810
+      ],
+      "tickers": [
+       "AMD",
+       "NVDA"
+      ],
+      "family": "AMD:2975854cd9+NVDA:f2d6dca050",
+      "topic": "export control"
+     },
+     {
+      "ref": "D73",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0002",
+       "0000723125-26-000015:II.1A:0010"
+      ],
+      "ciks": [
+       50863,
+       723125
+      ],
+      "tickers": [
+       "INTC",
+       "MU"
+      ],
+      "family": "INTC:9b704a8c32+MU:e564125c5a",
+      "topic": "advanced packaging"
+     },
+     {
+      "ref": "D74",
+      "type": "D",
+      "chunk_ids": [
+       "0000320193-25-000079:I.1A:0008",
+       "0001730168-26-000080:II.1A:0012"
+      ],
+      "ciks": [
+       320193,
+       1730168
+      ],
+      "tickers": [
+       "AAPL",
+       "AVGO"
+      ],
+      "family": "AAPL:9cbd8834d3+AVGO:16e4cb5ddd",
+      "topic": "cybersecurity incident"
+     },
+     {
+      "ref": "D75",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-25-000028:I.1A:0014",
+       "0001628280-26-025362:I.3:0005"
+      ],
+      "ciks": [
+       723125,
+       1046179
+      ],
+      "tickers": [
+       "MU",
+       "TSM"
+      ],
+      "family": "MU:79d4269f63+TSM:23e8b4907d",
+      "topic": "chips act"
+     },
+     {
+      "ref": "D76",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0004",
+       "0000804328-25-000085:I.1:0008"
+      ],
+      "ciks": [
+       50863,
+       804328
+      ],
+      "tickers": [
+       "INTC",
+       "QCOM"
+      ],
+      "family": "INTC:532a02ad58+QCOM:511d07c05c",
+      "topic": "tsmc"
+     },
+     {
+      "ref": "D77",
+      "type": "D",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1A:0347",
+       "0001193125-26-323660:I.1A:0004"
+      ],
+      "ciks": [
+       1045810,
+       789019
+      ],
+      "tickers": [
+       "NVDA",
+       "MSFT"
+      ],
+      "family": "NVDA:a7a7f91644+MSFT:3d292341f2",
+      "topic": "openai"
+     },
+     {
+      "ref": "D78",
+      "type": "D",
+      "chunk_ids": [
+       "0001045810-26-000052:II.1A:0436",
+       "0001193125-26-323660:I.1A:0011"
+      ],
+      "ciks": [
+       1045810,
+       789019
+      ],
+      "tickers": [
+       "NVDA",
+       "MSFT"
+      ],
+      "family": "NVDA:f481809706+MSFT:26f6fcd969",
+      "topic": "ai diffusion"
+     },
+     {
+      "ref": "D79",
+      "type": "D",
+      "chunk_ids": [
+       "0000320193-26-000020:I.2:0020",
+       "0000804328-26-000086:I.2:0005"
+      ],
+      "ciks": [
+       320193,
+       804328
+      ],
+      "tickers": [
+       "AAPL",
+       "QCOM"
+      ],
+      "family": "AAPL:30c357b928+QCOM:6211fc9a3f",
+      "topic": "gross margin"
+     },
+     {
+      "ref": "D80",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1A:0018",
+       "0001045810-26-000021:I.1A:0346"
+      ],
+      "ciks": [
+       2488,
+       1045810
+      ],
+      "tickers": [
+       "AMD",
+       "NVDA"
+      ],
+      "family": "AMD:dda6f1a4e9+NVDA:240d1ab686",
+      "topic": "data center"
+     },
+     {
+      "ref": "D81",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0010",
+       "0001628280-26-011378:I.3:0003"
+      ],
+      "ciks": [
+       50863,
+       937966
+      ],
+      "tickers": [
+       "INTC",
+       "ASML"
+      ],
+      "family": "INTC:1404f2b69f+ASML:1f1057cc1f",
+      "topic": "taiwan"
+     },
+     {
+      "ref": "D82",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0015",
+       "0000320193-25-000079:I.1:0013"
+      ],
+      "ciks": [
+       50863,
+       320193
+      ],
+      "tickers": [
+       "INTC",
+       "AAPL"
+      ],
+      "family": "INTC:8f87d36270+AAPL:730034dcd6",
+      "topic": "rare earth"
+     },
+     {
+      "ref": "D83",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000076:II.1A:0009",
+       "0000050863-26-000011:I.1A:0008"
+      ],
+      "ciks": [
+       2488,
+       50863
+      ],
+      "tickers": [
+       "AMD",
+       "INTC"
+      ],
+      "family": "AMD:4097cefd6b+INTC:89c97e92af",
+      "topic": "tariff"
+     },
+     {
+      "ref": "D84",
+      "type": "D",
+      "chunk_ids": [
+       "0001628280-26-028526:I.2:0052",
+       "0001652044-26-000048:I.2:0065"
+      ],
+      "ciks": [
+       1326801,
+       1652044
+      ],
+      "tickers": [
+       "META",
+       "GOOGL"
+      ],
+      "family": "META:d99cc02ec2+GOOGL:155b2563b4",
+      "topic": "share repurchase"
+     },
+     {
+      "ref": "D85",
+      "type": "D",
+      "chunk_ids": [
+       "0001628280-26-025362:I.3:0003",
+       "0001628280-26-050705:II.1A:0030"
+      ],
+      "ciks": [
+       1046179,
+       1326801
+      ],
+      "tickers": [
+       "TSM",
+       "META"
+      ],
+      "family": "TSM:e7bddfe54f+META:4c5337f8b0",
+      "topic": "export control"
+     },
+     {
+      "ref": "D86",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0009",
+       "0001730168-25-000121:I.1:0002"
+      ],
+      "ciks": [
+       50863,
+       1730168
+      ],
+      "tickers": [
+       "INTC",
+       "AVGO"
+      ],
+      "family": "INTC:b4a10a27d1+AVGO:3630afb473",
+      "topic": "advanced packaging"
+     },
+     {
+      "ref": "D87",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:II.7:0038",
+       "0000723125-26-000015:I.2:0019"
+      ],
+      "ciks": [
+       50863,
+       723125
+      ],
+      "tickers": [
+       "INTC",
+       "MU"
+      ],
+      "family": "INTC:66e9d779b0+MU:20672fa68d",
+      "topic": "chips act"
+     },
+     {
+      "ref": "D88",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1:0010",
+       "0001730168-25-000121:I.1:0008"
+      ],
+      "ciks": [
+       50863,
+       1730168
+      ],
+      "tickers": [
+       "INTC",
+       "AVGO"
+      ],
+      "family": "INTC:ac0ce6802c+AVGO:e8a2412139",
+      "topic": "tsmc"
+     },
+     {
+      "ref": "D89",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000123:I.2:0002",
+       "0001018724-26-000014:I.2:0006"
+      ],
+      "ciks": [
+       2488,
+       1018724
+      ],
+      "tickers": [
+       "AMD",
+       "AMZN"
+      ],
+      "family": "AMD:d4d4d83d83+AMZN:c9fd10fbaf",
+      "topic": "openai"
+     },
+     {
+      "ref": "D90",
+      "type": "D",
+      "chunk_ids": [
+       "0001045810-26-000052:I.2:0402",
+       "0001193125-26-323660:II.7:0010"
+      ],
+      "ciks": [
+       1045810,
+       789019
+      ],
+      "tickers": [
+       "NVDA",
+       "MSFT"
+      ],
+      "family": "NVDA:785fd173ea+MSFT:176c24fcb2",
+      "topic": "gross margin"
+     },
+     {
+      "ref": "D91",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000123:I.2:0006",
+       "0001628280-26-050705:I.2:0038"
+      ],
+      "ciks": [
+       2488,
+       1326801
+      ],
+      "tickers": [
+       "AMD",
+       "META"
+      ],
+      "family": "AMD:f06d127670+META:f27030bf69",
+      "topic": "data center"
+     },
+     {
+      "ref": "D92",
+      "type": "D",
+      "chunk_ids": [
+       "0000723125-26-000015:II.1A:0016",
+       "0001628280-26-025362:I.3:0008"
+      ],
+      "ciks": [
+       723125,
+       1046179
+      ],
+      "tickers": [
+       "MU",
+       "TSM"
+      ],
+      "family": "MU:3cafc955c5+TSM:f7fc164228",
+      "topic": "taiwan"
+     },
+     {
+      "ref": "D93",
+      "type": "D",
+      "chunk_ids": [
+       "0001045810-26-000021:I.1A:0337",
+       "0001193125-26-323660:I.1A:0009"
+      ],
+      "ciks": [
+       1045810,
+       789019
+      ],
+      "tickers": [
+       "NVDA",
+       "MSFT"
+      ],
+      "family": "NVDA:6b9e53b911+MSFT:b5510e2b66",
+      "topic": "tariff"
+     },
+     {
+      "ref": "D94",
+      "type": "D",
+      "chunk_ids": [
+       "0001628280-26-003942:I.1A:0036",
+       "0001652044-26-000018:I.1A:0020"
+      ],
+      "ciks": [
+       1326801,
+       1652044
+      ],
+      "tickers": [
+       "META",
+       "GOOGL"
+      ],
+      "family": "META:f239142d08+GOOGL:23cf99e841",
+      "topic": "share repurchase"
+     },
+     {
+      "ref": "D95",
+      "type": "D",
+      "chunk_ids": [
+       "0000320193-25-000079:I.1A:0007",
+       "0001193125-26-323660:I.1A:0015"
+      ],
+      "ciks": [
+       320193,
+       789019
+      ],
+      "tickers": [
+       "AAPL",
+       "MSFT"
+      ],
+      "family": "AAPL:ef343511c9+MSFT:19d3e83165",
+      "topic": "export control"
+     },
+     {
+      "ref": "D96",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0002",
+       "0000050863-26-000011:II.7:0000"
+      ],
+      "ciks": [
+       2488,
+       50863
+      ],
+      "tickers": [
+       "AMD",
+       "INTC"
+      ],
+      "family": "AMD:8e2e7b7529+INTC:ac7d929778",
+      "topic": "advanced packaging"
+     },
+     {
+      "ref": "D97",
+      "type": "D",
+      "chunk_ids": [
+       "0000050863-26-000011:I.1A:0006",
+       "0000723125-25-000028:II.7:0017"
+      ],
+      "ciks": [
+       50863,
+       723125
+      ],
+      "tickers": [
+       "INTC",
+       "MU"
+      ],
+      "family": "INTC:b6773fe759+MU:c7aa561720",
+      "topic": "chips act"
+     },
+     {
+      "ref": "D98",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0024",
+       "0000050863-26-000011:I.1:0002"
+      ],
+      "ciks": [
+       2488,
+       50863
+      ],
+      "tickers": [
+       "AMD",
+       "INTC"
+      ],
+      "family": "AMD:a252934fcd+INTC:01f1d82328",
+      "topic": "tsmc"
+     },
+     {
+      "ref": "D99",
+      "type": "D",
+      "chunk_ids": [
+       "0000002488-26-000018:I.1:0003",
+       "0001045810-26-000075:I.2:0002"
+      ],
+      "ciks": [
+       2488,
+       1045810
+      ],
+      "tickers": [
+       "AMD",
+       "NVDA"
+      ],
+      "family": "AMD:3f57ce5ef6+NVDA:7390e2cbc2",
+      "topic": "openai"
+     }
+    ]
+   }
+  }
+ ]
+}
