@@ -1,120 +1,291 @@
-# M2: search upgrade (trimmed)
+# M2: measured hybrid retrieval, upload keyword search and the `search_filings` fix
 
-Status: **DEFERRED 2026-11-25 (docs/decisions/006-m2-after-m2a.md, the owner: "Council plan").** M2a fixed D1 and X4 without
-search changes; this draft is detailed and run only if decision 006's reopen trigger fires. Before then, update its stale facts
-from that record: the excerpt query is now at retriever.py:312-316; neo4j-graphrag 1.24.0 re-checked (still no filters or RRF);
-`db.index.fulltext.queryNodes` is deprecated from Neo4j 2026.10. Was: DRAFT, for approval only after M2a closes. INTERNAL document. Path: full (DB queries, LLM context, a new eval dependency).
+Status: **DRAFT for owner approval (2026-11-26). INTERNAL. Path: full.**
 
-Basis: decision 004 (recommendation 3), the research note sections 2 and 3, and the live re-verification of 2026-11-20. Ids: Q = requirements, S = security claims, T = plan steps.
+Basis: decision 010 (docs/decisions/010-m2-design.md: the council design, followed here), decision 009 (docs/decisions/009-upload-size-for-sec-filings.md: uploads inside M2, owner-approved 2026-11-26) and decision 006 (docs/decisions/006-m2-after-m2a.md: its tripwire gold and tool stay in use; its deferral is superseded by the owner). This text replaces the earlier M2 draft entirely; the old draft stays in git history. Its useful parts are kept: the query-handling care (Lucene escaping becomes bm25s query caps), reciprocal rank fusion, the flag, fingerprint and cache isolation, and the spirit of the kill rule.
+
+Nothing in this spec was run against Neo4j. A planning pass read the code and the research notes, and two Opus reviews (code feasibility; evaluation, security and process) were applied on 2026-11-26; code references are repo-relative, were taken from that pass, and are re-checked in I0. Anything not grounded is marked UNVERIFIED.
+
+Ids: OD = owner decisions, R = requirements, S = security claims, I = increments, T-xxx = gates. Neo4j instances are named by role, never by local path: **G** holds the real local graph (read-only use for benchmark runs), **S** is a scratch install, **T** holds synthetic data for integration tests only. Production is two Fly apps; deploys are run by the owner.
+
+Order the owner chose: M2 first, then CP (docs/specs/cp-add-company.md, approved). M2 must not break CP's plan; section 3 OD13 and I8 carry the hand-off.
 
 ## 1. Why
 
-Two of the triaged defects are retrieval scope. The excerpt query keeps a passage only if it MENTIONS an anchor company (retriever.py:302-306). A filer's own passage that says "we" can never be an excerpt. That is D1 and, by inference, X4(b). BM25, fusion or reranking alone change nothing while that hop stays. The fix is a second search leg scoped by filer; `filer_cik` is already a filter property of the vector index (schema.cypher:45-47).
-
-The full-text indexes exist (schema.cypher:53-57) and no retrieval code queries them. Nothing fuses ranked lists today.
+- **The benchmark cannot show a gain today.** The 60-question benchmark has 0 retrieval misses in context (decision 006), because most of the context is deterministic blocks and the 8 excerpt slots rarely carry the only copy of the evidence. Any claim of improved search would be unmeasured until a harder, blind benchmark exists.
+- **The excerpt query cannot return a company's own passages.** `EXCERPTS_QUERY` (src/semigraph/retrieval/retriever.py:312-316) keeps a passage only if it mentions an anchor company. A filer's own "we ..." passage never becomes an excerpt. A filer-scoped dense leg is free (`filer_cik` is a filter property of `evidence_embedding`, artifacts/schema.cypher:45-47), and the council flagged it as the likely cheapest fix. It is measured on its own so that hybrid retrieval does not get credit for it.
+- **Exact terms, figures and periods are weak for dense retrieval.** Public financial-text results cited by decision 010 (T2-RAGBench, recall at 5): dense 0.587, BM25 0.644, hybrid RRF 0.695, contextual hybrid 0.717, hybrid plus a hosted reranker 0.816. These are literature numbers on a different corpus, not ours, and are the reason for building the hybrid and then measuring it here.
+- **Uploads reject real filings.** The per-document cap is 10,000 tokens (lowered from 16,000 on 2026-11-06); median 10-K is 92k tokens. Decision 009 splits accepting a file from embedding it, and needs the same keyword engine M2 builds.
+- **The deep agent's `search_filings` returns nothing new.** In the X4 failure it returned "0 new excerpts (8 in total)" because k=5 results were all already in the prefetch (src/semigraph/agent/merge.py:126-137). That bug shares code with the new retrieval and is fixed here; the agent is not re-gated.
 
 ## 2. Scope
 
-**In.** Structured gold ids; logged traces; a filer-scoped vector leg; a full-text leg; Python reciprocal rank fusion; one flag; ir-measures; one $0 ablation; a paid answer-level eval if the ablation passes.
+**What "state of the art" means here, plainly.** Measured hybrid retrieval: dense plus BM25 plus filtered legs, fused by reciprocal rank fusion into the same 8 excerpt slots. It is proven on a blind benchmark, at $0 per month and with no added cost per answer. A reranker or a vendor comes only if the data asks for it (a written trigger, section 7), and never for uploads.
 
-**Out.** neo4j-graphrag (the research note found its hybrid retrievers take no filters and have no RRF; not re-checked); adaptive k; edge cap and rank; a Neo4j upgrade (production stays on 2026.07.1); `SEARCH ... FULLTEXT` (the Cypher manual gives it from 2026.09); a reranker, unless section 5 triggers a spike. The company and entity lists are frozen from the gold freeze to the end of the ablation.
+**In.**
+- M2-Bench: about 90 blind questions (30 dev, 60 test), hash-committed before any retrieval change; the harness; the baseline (R1-R3).
+- Free filtered dense legs (filer-own, period-filtered, per-anchor), a slot policy, one query embedding per ask, measured alone before bm25s exists (R4-R7).
+- bm25s in-process keyword index with a deterministic context field, RRF fusion into the existing 8 slots, behind the flag `RETRIEVAL_FUSION` (R8-R13).
+- Uploads per decision 009: inline-XBRL stripping, section detection, keyword-ready write, a background embedding queue with progress and cancel, new limits and validators, per-workspace keyword index, fusion in the workspace's 6 slots (R14-R19).
+- `search_filings` fix (R20); the reranker trigger as a report line (R21); the CP hand-off amendment (R22).
 
-## 3. Requirements
+**Out.**
+- A reranker, hosted or local, unless the trigger in section 7 fires. A hosted reranker needs the owner's vendor approval and a data-egress note. Uploads have no reranker call in their code path, structurally (S4).
+- LLM query decomposition (E6): later. Multi-company questions are handled deterministically (one dense and one bm25s leg per anchor).
+- The Neo4j full-text procedure (deprecated from Neo4j 2026.10) and a Neo4j upgrade.
+- Planner work or a paid agent gate (E5). The agent prefetch stays on the old path until the agent gate CP already budgets (OD7).
+- A hosted embedder, a dedicated-CPU machine or per-upload workers for uploads (decision 009 options C, D, E); reopen trigger in decision 009.
+- LLM-written contextual prefixes. The deterministic prefix re-embed rides the CP rebuild (OD4).
+- neo4j-graphrag retrievers (no filters, no RRF in the version checked by earlier research; not re-checked).
 
-**Q1 Gold ids first.** Add a structured `retrieval_gold` list of EvidenceSpan and rule ids to the benchmark questions. Sources: the chunk ids already in `facts`, the ids in free-text `judge_notes`, and new labels seeded with D1 and X4. Every id is checked to exist in the M2a snapshot. Target: at least 40 questions with gold. Labelling is capped at 2 working days. The file's hash is recorded here before any candidate runs. After that the gold does not change.
+## 3. Owner decisions (recommendation first)
 
-**Q2 Logged traces.** `scripts/compare_retrieval.py` (extended and tested in M2a I0) also keeps scores and the candidates before the post-filter, per leg.
+**OD1 Reranker (council E1).** Recommended: none in M2; deferred to a written trigger. The trigger: hybrid still leaves at least 15% of M2-Bench dev misses whose gold is in the fused top 50 but not in the top 8. If it fires, MiniLM is tested first, quality offline on dev and p95 added latency on the machine at 2 s or less, throttled. A hosted reranker (public filing text only) goes to the owner only if MiniLM fails both conditions, with vendor approval and a data-egress note. Alternatives: ship MiniLM now (UNVERIFIED on this 4 GB machine; the research arithmetic puts a 0.6B cross-encoder at minutes per question throttled); a hosted reranker now (new vendor, per-call cost).
 
-**Q3 Baseline.** On the frozen gold, record the current path's Success@8, R@5, R@8, R@20 and nDCG@10. $0. Run with the production embedder (`EMBEDDING_BACKEND=onnx`).
+**OD2 Keyword engine and the new dependency (council E2).** Recommended: in-process bm25s; one index per graph snapshot for filings, built at API startup and held in memory; one index per workspace for uploads. $0, MIT licence per research (to be confirmed by reading the LICENSE file; the PyPI licence field is empty), no deprecation cliff, one engine for both uses. bm25s is a new dependency, pinned with no extras (no jax, numba or PyStemmer) and with its Hugging Face loader never imported. The image installs from the hash-locked `deploy/requirements-serve.txt`, compiled from `deploy/requirements-serve.in`, and `serve` is an optional extra in pyproject.toml, not a dependency group. So in I0: licence, maintenance, Windows and Python 3.13 import test and osv-scanner run first; after your approval bm25s goes into pyproject.toml's `serve` extra and `deploy/requirements-serve.in`, and `deploy/requirements-serve.txt` is regenerated with `--generate-hashes`; tests/test_serve_dependencies.py, tests/test_deploy_hashes.py and the lock-equality check in tests/test_tools_mockllm_calibrate.py are updated. The image therefore changes, so syft and grype apply (section 7). Research found 0.3.16 (2026-10-28), a pure-Python wheel needing numpy only; earlier notes said 0.3.9, so the version is re-read in I0. Alternatives: the Neo4j full-text procedure (deprecated from 2026.10, no WHERE pushdown in its replacement); a Neo4j upgrade (migration without payoff).
 
-**Q4 Metrics library.** ir-measures 0.4.3 over pytrec-eval-terrier 0.5.11 (MIT, a Windows cp313 wheel is listed), in the eval extra only, never in the serve image. Before installing: read the ir-measures LICENSE file (the PyPI licence field is empty) and test install and import on this machine. The lockfile changes, so osv-scanner runs.
+**OD3 Benchmark protocol (council E3).** Recommended: M2-Bench, 90 questions, six types, 5 dev and 10 test per type (30 dev, 60 test), blind-labelled in one pass, both files hash-committed and tagged before any candidate code (section 7). Full protocol in section 7. Difficulty target: today's system misses at least 30% of dev (at least 9 of 30), with a swap rule written in section 7 now. Alternatives: about 30 questions (underpowered, council); a 20-question dev slice only.
 
-**Q5 Filer-scoped leg.** A vector search with `filer_cik` in the index filter, `retrievable` kept, over-fetched (a filtered search can return fewer than top-k). Start with one search per anchor using `=`. `IN $ciks` is documented from 2026.06, and production is 2026.07.1, so it should work, but it is **untested**: prove it on a 2026.07.1 instance or keep `=`.
+**OD4 Contextual prefix (council E4).** Recommended: deterministic prefix only (company, form, year, section), and its dense half rides the CP rebuild, which re-embeds anyway. Its keyword half ships now: the context field is indexed in bm25s text only, no re-embed. No LLM-written prefixes. CP consequences are OD13.
 
-**Q6 Full-text leg.** `db.index.fulltext.queryNodes` on `evidence_text_ft`. That it is not deprecated on 2026.07.1 is the research note's claim; confirm on the instance first. Over-fetch, then post-filter (`retrievable`, current, public). The query string is built by one escaping helper (S1).
+**OD5 Deep agent (council E5).** Recommended: separate from M2's goals. Inside M2, only `search_filings` shares code: it uses an over-fetch by the number of held ids, excludes held ids, and runs on the new legs once the agent gate admits the flag (R20). No planner changes, no paid agent re-gate in M2.
 
-**Q7 Fusion.** About 15 lines of Python RRF, k = 60, over the mention leg, the filer leg and the full-text leg. Rank-based, because raw scores are not comparable across sources. No fusion library.
+**OD6 Query decomposition (council E6).** Recommended: later. The $0.76 per-answer cap has no headroom for an LLM call. Revisit only if the multi-company slice (type D) still fails after deterministic per-anchor legs.
 
-**Q8 One flag.** `RETRIEVAL_FUSION`, off by default. Off means byte-identical contexts to M2a (a golden test).
+**OD7 Flag scope.** Recommended: `RETRIEVAL_FUSION` covers hybrid asks and the SEC part of workspace asks. The agent prefetch stays on the old path until the agent gate that CP already budgets (CP OD5). Alternative: include the agent now (changes the agent's estimate and needs a paid agent gate inside M2).
 
-**Q9 Cache and examples.** The flag's effective value is part of the template fingerprint through M2a's `CONTEXT_VERSION` mechanism. Flag on and flag off never share a cached answer, and examples generated under one are refused under the other.
+**OD8 Index lifecycle.** Recommended: build in memory at API startup, keyed by the graph snapshot id read at startup (`app.state.snapshot_id`, src/semigraph/serve/main.py:301), storing chunk ids, `content_hash`, `accession_no`, `valid_from`, filer, form and mention ciks, not text (both hash and accession are stored on the span, src/semigraph/graph/loaders.py:393-395); winners are hydrated by chunk id with `retrievable` re-checked, and that hydration query counts in the section 7 query gate and in S7. Scoring all documents and masking by filer in numpy is exact, so no bm25s per-filer masking support is needed (risk 26 is removed). At about 5,900 chunks the index is expected to be tens of MB and a few seconds to build (UNVERIFIED, measured in I3); the build runs inside the 180 s `grace_period` in fly.toml:86, so the measured time must leave margin. An `as_of` ask never uses the current-only keyword index and falls back to the dense legs. With the flag on, a failed index build fails startup (no silent dense-only fallback while the fusion fingerprint is live, section 8 risk 9). Rejected: baking the index into the image (the image and graph deploy separately, so a mismatch is possible); an on-disk index (a second source of truth). Open: whether the API restarts after a database deploy (UNVERIFIED); if it does not, a snapshot-id check per ask would be needed. This staleness is not new: serve/main.py:197 and :301 and serve/routes.py:341 already depend on the startup snapshot.
 
-**Q10 Ablation.** One batched $0 run on the release graph: baseline against (a) plus filer leg, (b) plus full-text, (c) all three with RRF. Primary metric and candidate are fixed now: **Success@8 of candidate (c)**.
+**OD9 Period legs and `retrievable`.** Recommended: period legs keep `retrievable = true`, like the mention leg. Dropping it would show superseded text unmarked. Alternative: allow superseded text with an explicit mark (more recall for "what did last year say", more prompt work, a new render rule).
 
-**Q11 Answer-level eval.** Only after a pass: one paid `eval-deployed` with the flag on, then the agent gate, with the same commands, caps and approval as M2a section 8; the M2a thresholds are non-regression gates, plus the D1 row. Then regenerate and reseed examples (a code-only deploy if the snapshot is unchanged).
+**OD10 What counts as a miss.** Recommended: primary metric is excerpt-level Success@8 (gold, grade 2, in the 8 excerpts); context-level (gold anywhere in the rendered context) is always reported beside it. A win with no context-level win is reported as "no answer value".
 
-## 4. Minimum detectable effect and kill rule (fixed in advance)
+**OD11 Upload limits (decision 009, owner-approved; values marked * are fixed after the $0 re-measure as sample maximum times 1.15).**
 
-Per question the outcome is binary: at least one gold id in the top 8, or not. Compare baseline and candidate per question. Count wins W (candidate hits, baseline misses) and losses L. Ties are ignored. Two-sided exact sign test at 0.05:
-
-| W-L | Two-sided p | Passes |
+| Setting | Now | New |
 |---|---|---|
-| 5-0 | 0.063 | no |
-| 6-0 | 0.031 | yes |
-| 7-1 | 0.070 | no |
-| 8-1 | 0.039 | yes |
-| 9-2 | 0.065 | no |
-| 10-2 | 0.039 | yes |
-| 11-3 | fails | no |
-| 12-3 | 0.035 | yes |
+| File bytes (all types) | 15 MiB | 40 MiB, gated on the 33.9 MB 20-F parsing in the real sandbox; else HTML stays at 15 MiB |
+| PDF pages | 30 (and `upload_max_workspace_pages` 120, src/semigraph/config.py:330) | 300, gated on a sandbox parse of a real 10-K PDF; the workspace page limit is raised to match; no OCR |
+| DOCX uncompressed size | 60 MiB, 200 members, compression ratio cap (src/semigraph/uploads/gate.py:143-145, :195-198) | unchanged; raised only if a measured real filing exceeds 60 MiB |
+| Parsed tokens per document (accepted, keyword-searchable) | 10,000 | 160,000* |
+| Keyword chunks per version (`upload_max_chunks`, jobs.py:594) | 120 | maximum chunk count in the re-measure x 1.15* (about 600: chunks are 1,200 characters with an 1,800 maximum, src/semigraph/uploads/units.py:43-44, and EDGAR text runs at 3.9-4.1 characters per token, so 160k tokens is about 530 chunks and a 140k-token 10-K about 470); the old cap bounded vector writes, which keyword-only chunks do not have, so vector writes are bounded by the guaranteed-token figure instead |
+| Guaranteed embedded tokens per document | 10,000 | 19,900 (60 min x 5.54 tok/s; production check validates the guaranteed figure) |
+| Best-effort embedding | none | priority sections continue while the time limit allows; the rest stays keyword-only |
+| Embedded tokens per workspace | 48,000 | 48,000 (unchanged) |
+| Documents per workspace | 3 | 3 (unchanged) |
+| Embedding time limit | 2,100 s | 3,600 s |
+| Uploads per day | 40 | 40, at most 23 with embedding jobs (24 x 3,600 s = 86,400 passes the strict check with zero margin, and the last-chunk overrun of about 70 s, jobs.py:756-768, pushes a day over); later ones are keyword-only. The alternative is a 3,500 s ceiling with 24 jobs |
+| Per IP | 10 per hour | 10 per hour, plus one active embedding job per IP and workspace |
+| Memory guard and parse sandbox | 1.25 GB free; 1 GiB / 120 s | unchanged |
 
-The smallest passing results are 6-0, 8-1, 10-2, 12-3. With at most 3 losses that is a net gain of 6 to 9 questions: on 40 questions, **15 to 22.5 points of Success@8**. With more losses, more net wins are needed. A smaller true gain will usually not be detected. That is accepted here, in advance.
+Priority sections: 10-K Item 1A, Item 7, Item 1; 10-Q Part II Item 1A, Part I Item 2; 20-F Item 3.D, Item 5, Item 4. The user is told plainly: every 10-K and 10-Q in the sample is accepted and keyword-searchable whole; vector search over the whole filing is not promised. The reopen trigger in decision 009 goes to the owner and is not acted on automatically.
 
-**Kill rule.** If candidate (c) does not reach a passing result: stop. The flag stays off. Keep the gold, the traces and the baseline. Record the result and move to CP. No second ablation with new settings. Also stop if the time-box (10 working days from Q5) runs out.
+**OD12 `timeout` and `too_slow` stop being failures.** With a background job, an embedding time-out ends in "keyword only" for the unfinished sections, not a failed upload. This amends docs/specs/upload-cap-and-abort.md and accepted risk UC-1 (docs/security/accepted-risks.md:22, which describes the `too_slow` abort; its entry is updated in I4). Recommended: accept. Alternative: keep the failure states and refuse long filings (contradicts decision 009).
 
-## 5. Reranker trigger
+**OD13 CP spec amendment.** The embedding cache is keyed by chunk id alone (src/semigraph/embeddings.py:227-228), so CP's deterministic-prefix re-embed would silently reuse old vectors unless the cache path changes, and it moves CP's T-RET numbers. Recommended amendment to docs/specs/cp-add-company.md, applied by I8 and approved by you: the prefix is deterministic and versioned; the cache path changes with the prefix version; CP's T-RET baseline is taken after the re-embed, not before. M2 itself changes no CP file.
 
-A spike is opened only if the ablation shows a **ranking** gap: for at least 5 gold questions a gold id is in candidate (c)'s top 20 but not its top 8. A spike needs owner approval for the weights download, and CPU latency and memory measured at the production machine size.
+**OD14 Metrics library group.** Recommended: ir-measures goes in a new `bench` dependency group, not `eval`, because the `eval` extra carries ragas, whose import is broken here. ir-measures (Apache-2.0, per research; read the LICENSE file) over pytrec-eval-terrier; never imported under `src/semigraph/serve` or `src/semigraph/uploads`. Alternative: hand-written metrics (small, but a second implementation to test).
 
-## 6. Security requirements and abuse cases (checkable)
+**OD15 Paid steps and a proposed M2 spend cap.** M2 is $0 until I6. Paid steps, each behind a printed `--dry-run` estimate and an approved `--max-usd`:
 
-- **S1 Lucene escaping (direct input).** One helper escapes `+ - && || ! ( ) { } [ ] ^ " ~ * ? : \ /`, drops bare AND, OR, NOT, caps the length and the term count, and quotes ids as phrases. Tests: each special character; a 10,000-character question; an unbalanced quote; `*:*`; a fuzzy `~` bomb. No input raises a parse error or widens the query.
-- **S2 Parameters only.** The query string is a Cypher parameter. The index name is a constant.
-- **S3 No upload chunks.** Neither new leg can return workspace evidence. Integration test on the throwaway instance with an upload fixture whose text matches the query exactly. How upload chunks are labelled against `evidence_text_ft` is unverified; check it first.
-- **S4 No superseded text as current.** Both legs filter or mark currency the way the mention leg does.
-- **S5 Indirect injection.** The new legs bring more filing text into the prompt: the same trust class as today's excerpts. The M2a promptfoo cases, PII case included, are rerun with the flag on.
-- **S6 Cache-key isolation.** Q9's test: the key differs between flag values.
-- **S7 Bounded work.** Fixed over-fetch sizes; at most one extra vector search per anchor and one full-text query per ask. Latency is measured before and after.
-- **S8 Spend.** If the context grows, the M2a invariants are re-proved (hybrid at most $0.76, agent at most $1.02). The agent shares the retrieval path; whether the flag reaches it is decided against its margin, as in M2a OD6.
-- **S9 No new tool.** The agent's tool list is unchanged.
-
-## 7. Plan
-
-| Step | What | Cost |
+| Paid step | Estimate | Note |
 |---|---|---|
-| T0 | Owner approves this spec with the M2a numbers filled in | |
-| T1 | Q4 licence and install test; Q1 gold; freeze and record the hash | $0 |
-| T2 | Q2 traces; Q3 baseline | $0 |
-| T3 | Q5-Q9, test first, flag off | $0 |
-| T4 | Q10 ablation; apply section 4 | $0 |
-| T5 | Section 5 spike, only if triggered | $0 API; approval for weights |
-| T6 | Stage 4 merge gates and the owner's `/red-team` on the frozen code | $0 |
-| T7 | Q11 paid eval and examples, only after a pass | about $2.7-4.1 likely, about $10.0 worst, as M2a |
-| T8 | Verifier, deploy with the flag on, live check of D1 | |
+| Answer-level run, headroom plus control questions, two arms | $2-5 per decision 010; the derived figure in the research is $4-6 | derived, UNVERIFIED; the dry run governs |
+| Non-regression `eval-deployed` on the old 60 | about $2.7-4.1 likely, about $10 worst | from the earlier draft's T7 (the M2a run); UNVERIFIED for this run |
+| Regenerating the 56 seeded examples under the flag-on fingerprint | unverified; a dry-run estimate is taken in I0 from the build script | the dry run governs |
+| Labelling, query-writing and Opus checks | $0 API for the Claude-family checker and the local-model draft (R1, section 7); a paid non-Claude drafter only with your separate approval, its cost added to the ledger | see section 7 |
+
+Recommended: a **$15 total cap for M2**, enforced by the same kind of ledger CP uses, stop at the cap or after two failed paid attempts. The summed estimates fit inside it (answer-level plus non-regression about $7-10 likely) and the worst cases can reach it, so a paid step that would exceed the remaining cap is not started. Priority when the cap binds: (1) the answer-level run, (2) the non-regression run, (3) regenerating the examples. The ledger is a gitignored file outside committed paths. The remaining project budget is checked with you privately before I6; nothing about spend is recorded in the repository. Alternative: a smaller cap with the non-regression run only on the questions whose context changed.
+
+## 4. Requirements and acceptance criteria
+
+**R1 M2-Bench.** Six types (A filer-own "we ..." passages; B exact terms and identifiers; C numbers stated in prose, not XBRL metrics; D multi-company comparisons, 2-3 anchors; E long-tail risk items; F period-specific), 5 dev and 10 test each, labelled blind (section 7). The old 60 and the 9 tripwire questions are separate no-loss sets, not part of the 90. One labelling pass also writes reserve items, at least 5 per type per split (60 or more). Gold is sampled only from EvidenceSpans that are `retrievable = true` in G, through an exported id list, so unreachable gold cannot inflate difficulty or dilute both arms. The test split has at most one question per passage family (type D families keyed by the anchor set), checked in the harness. Acceptance: `artifacts/m2_bench_dev.json` and `artifacts/m2_bench_test.json` exist and each hash is in its commit message; an annotated tag `m2-bench-freeze` is pushed to origin before any candidate commit; `test_bench_freeze_order` recomputes the SHA-256 of both files at the tag and checks that no commit between the merge-base and the tag touches `src/semigraph/retrieval/**` or the candidate arms of `scripts/m2_bench.py`. The v2 branch is never squash-merged (the tag keeps the ordering checkable if it were).
+
+**R2 Harness.** New `scripts/m2_bench.py`, reusing `registered_gold` (scripts/compare_retrieval.py:400-404). It reports Success@8 (grade 2 only), Recall@20 and nDCG@10 (graded: 2 current copy, 1 older-filing copy) at excerpt level and context level; type D succeeds only if every anchor has a gold chunk in the top 8; per-leg ranked lists are logged to depth 50; the exact two-sided sign test is computed. Acceptance: tests `test_bench_refuses_changed_gold_hash`, `test_success_at_8_counts_grade_2_only`, `test_type_d_needs_every_anchor`, `test_sign_test_matches_exact_binomial`, `test_one_test_question_per_family`.
+
+**R3 Baseline.** Run today's system on dev (and the no-loss sets) with the production embedder. Acceptance: it misses at least 9 of 30 dev questions at excerpt level; if not, the swap rule in section 7 applies. The baseline is run on dev only; the test split is not run until I6, where baseline and candidate run on test in one scripted invocation (section 7).
+
+**R4 Filer-dense leg.** A new constant `FILER_EXCERPTS_QUERY` (a new query, not an edit of `EXCERPTS_QUERY`, which is pinned by tests/test_retrieval_pure.py:461-476 and tests/agent_fakes.py:128): a vector search with `filer_cik = $cik` in the index filter, `retrievable` kept, over-fetched, with no mention hop. Uses `=` per anchor like `_active_risks` (retriever.py:723-729); `IN $list` is not used (the retriever docstring forbids `IN` inside SEARCH, retriever.py:30-35). No filer leg for the defaulted Nvidia anchor (retriever.py:776-779). Acceptance: `test_filer_leg_has_no_mentions_hop`, `test_no_filer_leg_for_defaulted_anchor`; measured alone on dev before bm25s exists.
+
+**R5 Period leg.** A new constant `PERIOD_EXCERPTS_QUERY`, run per anchor only when `mentioned_periods` is non-empty (retriever.py:781), using `filer_cik` plus a `valid_from` window derived from `mentioned_periods` alone, and `retrievable = true` (OD9). `ANNUAL_PAIRS_QUERY` is not used: it runs only in pair mode (retriever.py:786-795), would add an unbudgeted query, and annual pairs cannot define a 10-Q window. A DATE range on `valid_from` is unproven for this index (the docs list INTEGER, FLOAT, STRING and BOOLEAN filter types); I0 probes it on S and, because local is Neo4j 2026.05 and production 2026.07.1, also on the production version; if it fails the window is applied by post-filtering over-fetched results. Acceptance: probe result recorded; `test_period_leg_only_with_mentioned_periods`.
+
+**R6 Slot policy.** Fused excerpts replace the 8 slots, never add. Guaranteed: 2 filer-own slots per anchor for 1-2 anchors, 1 each for 3-4; 2 mention-leg slots; at most 3 per accession; dedup on `content_hash`; ties by chunk id. Both fields must be present for every candidate: `EXCERPTS_QUERY` returns only `chunk_id`, `score`, `text` and `source_url` (retriever.py:315, pinned by tests/test_retrieval_pure.py:461-468), so with the flag on the mention leg uses a new constant `FUSION_MENTION_EXCERPTS_QUERY` that also returns `content_hash` and `accession_no`; the other legs return them too, and keyword hits get them from the index metadata (OD8). Values are tuned on dev, then frozen and hashed. Acceptance: `test_slots_never_exceed_k_chunks`, `test_rrf_deterministic_on_ties`, `test_dedup_on_content_hash`.
+
+**R7 One embedding per ask.** All dense legs reuse one query vector (the mention leg is the existing query with `k` raised to the fusion depth, so no new query text). The sync workspace path embeds twice today (src/semigraph/retrieval/workspace.py:284-285); it is changed to pass `query_vec` so M2 adds none. Acceptance: `test_legs_reuse_one_query_vector`; an embedding-call counter in the harness shows 0 extra tokens.
+
+**R8 bm25s index.** New `src/semigraph/retrieval/keyword.py`. Built in the API process at startup from `retrievable = true` spans, in memory, keyed by the snapshot id (OD8). The indexed text includes a deterministic context field (company, ticker, form, filing year, section, sub-heading); the field is never rendered to the model. Per-filer masking on bm25s 0.3.16 is UNVERIFIED; if unsupported, over-fetch and post-filter. Acceptance: `test_context_field_never_rendered`, `test_hydration_drops_non_retrievable`; recorded index build time and RSS.
+
+**R9 Tokenizer and query handling.** One versioned function: lowercase, keeps tokens like `3A090`, `10-K` and `H20` whole, no stemmer, Unicode-normalised (NFKC). bm25s has no query language, so injection of syntax is not a concern, but work is: query tokens are capped (count and length), and an empty token list gives an empty leg. Acceptance: `test_keyword_query_cases` (identifiers, hyphens, Unicode, a 10,000-character question, an empty query, `*:*`).
+
+**R10 Fusion.** About 15 lines of Python RRF in `src/semigraph/retrieval/fusion.py` with the types `FusionConfig` and `SlotPolicy` (created in I2, after the I1 freeze, section 6); k = 60 to depth 20; rank-based. Legs: mention; filer-dense per anchor; period per anchor (when applicable); bm25s per anchor (filer mask); one mention-scoped bm25s leg. Hydration by chunk id. `chunks[].score` becomes an RRF score; every reader is checked (scripts/compare_retrieval.py `chunk_ranks`). Acceptance: property tests for tie order and determinism; an oracle comparison against a library `fuse` in a dev-only environment.
+
+**R11 Flag, fingerprint and cache.** `RETRIEVAL_FUSION`, default off, passed to `hybrid_retrieve` as a keyword-only argument (None means today's exact path; `hybrid_retrieve` takes no settings today, retriever.py:741, and the callers are src/semigraph/retrieval/answerer.py:587 and :763, answerer_async.py:504, workspace.py:284, workspace_async.py:137, agent/graph.py:102, eval/bakeoff.py:388). Plumbing: `template_fingerprint()` takes no argument today (src/semigraph/retrieval/answerer.py:94-98) and is called by `store.cache_key` (serve/store.py:39), by serve/routes.py:349 and `store.put` (store.py:244) without a template, by `examples_match_template` (store.py:61) and by serve/main.py:218. It becomes `template_fingerprint(*, fusion=False)`, and every cache-key read, put and example seed passes the setting. The index object travels from `app.state` through serve/stream_runtime.py (PaidStream) to answerer_async.py:504 and workspace_async.py:137 and down to `hybrid_retrieve`, and eval/bakeoff.py:388 gets it for the I6 two-arm run (I3's list is these seven callers, not three serve call sites). Off: the template fingerprint is `2a6910aa5d` and the context is byte-identical (the 56 seeded examples depend on it). On: the fingerprint input gains one element `fusion=<FUSION_VERSION>`; the join is otherwise unchanged. `CONTEXT_VERSION` is not bumped. Acceptance: `test_fingerprint_is_2a6910aa5d_with_fusion_off`, `test_fusion_on_changes_fingerprint_and_cache_key` (cache key: src/semigraph/serve/store.py:32), `test_examples_refused_across_the_flag` (src/semigraph/serve/main.py:204-225), `test_fusion_off_runs_same_queries_same_params` (FakeDriver query count and parameters unchanged), and tests/test_answerer_context.py goldens unedited.
+
+**R12 Spend invariant.** The hybrid estimate is $0.753229 against a $0.76 cap (agent cap $1.02). Fused excerpts replace the slots. "No larger than flag-off" is not deterministic (chunks differ in length), so the invariant is the estimator's own bound (K_CHUNKS x (CHUNK_TEXT_MAX_CHARS 12,000 + 64), serve/estimate.py:123, :127-128, :291, :332): at most 8 excerpt slots and each excerpt text at most 12,000 characters (a cut that does not exist today and is added); for a workspace, at most 6 slots of at most 1,800 characters (estimate.py:165-166). Acceptance: `test_fused_excerpt_chars_within_estimate` asserts these bounds; tests/test_m2a_spend_budget.py and tests/test_serve_estimate.py green with unmoved pins (a moved pin is updated on purpose and reported).
+
+**R13 Latency and memory.** Gates in section 7. Acceptance: recorded RSS, index build time, p95 retrieval, per-ask CPU, each beside its threshold.
+
+**R14 Upload parsing.** In src/semigraph/uploads/parse_worker.py (the HTML parser class, about :367-427), strip only `ix:header` and hidden elements; the risk sections sit inside `ix:nonNumeric`, so stripping all `ix:*` content would delete visible text. Today the parser has only a skip counter and ignores attributes, so hidden-element stripping needs a tag stack. Add `src/semigraph/uploads/sections.py` (section order per form, detection with a fallback to document order, and a message when no sections are found). `sections.py` runs inside the existing parse sandbox (or with linear-time patterns only), because it scans untrusted text of up to about 640k characters. Add a cheap character-count precheck after stripping and before tokenizing, placed before src/semigraph/uploads/jobs.py:560. The DOCX caps already exist (60 MiB uncompressed, 200 members, ratio cap, gate.py:143-145); they are kept. Acceptance: `test_ix_header_stripped_visible_ix_text_kept`, `test_section_order_per_form`, `test_sections_pathological_input_is_fast`, `test_char_precheck_before_tokenizing`, `test_docx_uncompressed_cap` (a regression pin of the existing 60 MiB limit); the 73 local filings re-parsed with post-strip token counts and the detection hit rate per form recorded; the 33.9 MB 20-F parsed in the real sandbox with peak RSS and CPU seconds recorded; the starred limits in OD11 set from these.
+
+**R15 Keyword-ready write.** Today a job holds the single slot (serve/main.py:313) and writes once at the end in one `put_version` transaction that also carries `change_report`, with compare after embedding (src/semigraph/uploads/jobs.py:621-681). The job order becomes: parse, chunk, compare (on timeout write the version as not compared, never fail), `put_version` with null embeddings (`_create_chunks` already accepts them, src/semigraph/uploads/repo.py:400), drop the up-to-40 MiB `data` bytes, release the slot, emit `keyword_ready`. Consequences handled explicitly: the workspace quota delta is counted only when chunks are created (repo.py:395-405), so the per-chunk vector write takes the workspace lock and updates the quota; `embedded_chunks` hash reuse (jobs.py:454) ignores null vectors; and a new version becomes current with null vectors, so dense search loses that document until its embedding finishes (stated to the user as "keyword only for now"). Acceptance: `test_keyword_ready_before_any_embedding`; `test_compare_timeout_writes_version_not_compared`; `test_null_vectors_ignored_by_hash_reuse`; a second upload is not answered "busy" during embedding.
+
+**R16 Embedding queue.** A single FIFO worker at the existing lowered priority (`_lower_priority` is nice 10, not 19, jobs.py:300-311), in small batches that yield, reusing the model already loaded (a second 1.26 GB copy would crash the 4 GB machine). The memory guard and the W1c peak of 2.32 GB were measured with one job at a time; with the slot released, a second upload's 1 GiB parse child could run beside the background embedding, so the embed queue pauses while a parse child runs (the alternative is re-measuring the peak with both running before keeping "memory guard unchanged"). The p95 latency gate is measured with the embed worker running. Priority sections first; vectors written per chunk. On restart, requeue from null-embedding chunks instead of failing (`fail_interrupted_jobs`, repo.py:703; `_fail_interrupted_older_than_s`, jobs.py:774, updated); if resume fails the document is marked keyword-only. A cancel route (authorization in S12). Guaranteed tokens above floor(ceiling x 5.54) or above the workspace budget degrade to keyword-only instead of failing the whole job (today they fail it, jobs.py:459 and :610-611). Acceptance: `test_embed_job_resumes_after_restart`, `test_25th_embed_job_is_keyword_only`, `test_day_rule_counts_embed_jobs`, `test_guaranteed_tokens_within_ceiling_times_floor`, and a test that a cancelled job leaves a valid keyword-only document.
+
+**R17 Upload keyword search and fusion.** The keyword index is built on demand from that workspace's current `UserChunk.text` rows and cached in memory, never on disk, keyed by (workspace id, current version ids), in an LRU bounded by count and MB and invalidated when a version is replaced or a document deleted. `workspace_retrieve` (src/semigraph/retrieval/workspace.py:192-209) fuses dense and keyword rows into the same 6 slots. The `done` event's `workspace` block (workspace.py:304-306) gains the label keyword-only or keyword plus semantic; serving uses `workspace_async.py`, so the label edit and the fusion land there as well as in the sync workspace.py:304. An `as_of` ask never uses the keyword index. Acceptance: `test_user_a_query_never_returns_user_b_text` (on T), `test_upload_path_has_no_reranker_or_filings_index_import`, `test_index_invalidated_on_new_version_and_delete`, `test_index_cache_bounded`.
+
+**R18 Limits and validators.** src/semigraph/config.py (about :510-528) takes the OD11 values. Validators: guaranteed tokens at most floor(3,600 x 5.54) = 19,944; (embedding ceiling x embedding jobs per day) at most 86,400 (the old rule `3,600 x 40 > 86,400` would fail, so the rule counts embed jobs, 23: 24 x 3,600 passes the strict `>` check at config.py:520 with zero margin and the last-chunk overrun pushes the day over); the existing token validator (config.py:523-524) binds `upload_max_tokens`, which becomes 160k, so a named guaranteed-token field is added and the validator checks that field instead; the workspace page limit consistent with the PDF page limit. Acceptance: validator tests including the failing cases; fly.toml values set by the owner after the staging measurement.
+
+**R19 Upload UI.** Preflight card (detected form, parsed tokens, sections found, estimated wait), "Keyword search ready", progress with queue position and measured-speed estimate, a cancel button, and the end summary of embedded and keyword-only sections (web/src/pages/WorkspaceUpload.tsx, WorkspaceActive.tsx, web/src/lib/workspace.ts). Progress reuses the SSE route (src/semigraph/serve/workspace_routes.py:508-523) with new `keyword_ready` and `embedding` states. Detected headings and labels are rendered as escaped text (no `dangerouslySetInnerHTML`). Acceptance: web tests for each state; a Playwright e2e for upload, keyword_ready and cancel in the off-OneDrive mirror; the web suite runs in the mirror.
+
+**R20 `search_filings`.** Today a call can return only held excerpts (src/semigraph/agent/tools.py:323-336; dedup in agent/merge.py:126-137). Fix: exclude held ids in Python or after SEARCH (exclusion cannot sit inside SEARCH, retriever.py:30-35), raise `candidates` as well as `$k` by the number of held ids (the companies branch draws from 60 ANN candidates before the mention filter, retriever.py:97, :313, agent/tools.py:327, and held excerpts can reach 16, serve/estimate.py:168, so raising `$k` alone cannot help), leave the pinned constant unedited, and use the new legs when the flag is admitted to the agent (OD7). Acceptance: `test_search_filings_excludes_held_ids`, `test_search_filings_overfetches_by_held_count` (tests/test_agent_tools.py:184 area); the agent estimate is unchanged; a replay of X4 on G returns at least 1 new excerpt. No paid agent re-gate.
+
+**R21 Reranker trigger report.** A report line only: the fraction of dev misses with gold in the fused top 50 but not in the top 8. Acceptance: the line is in the report; the section 7 rule is applied.
+
+**R22 CP hand-off.** An amendment text for docs/specs/cp-add-company.md per OD13, delivered as a document for your approval. Acceptance: the amendment is approved or declined in writing before CP starts.
+
+**R23 Non-regression.** Flag off, nothing else changes: existing tests, the old 60 and the tripwire pass as before. Acceptance: the full suite green at coverage of at least 80%.
+
+## 5. Security requirements and abuse cases (checkable)
+
+- **S1 Upload isolation.** The keyword index is per workspace (and per user), built from that workspace's rows; no shared index exists. Negative test on T: with a synthetic upload by user A whose text matches user B's query exactly, B's results never contain A's text, in keyword, dense and fused results. The cache is bounded and invalidated (R17). The filings index never contains upload text, and the upload path never queries the filings index (`test_upload_path_has_no_reranker_or_filings_index_import` and an import-graph test).
+- **S2 Untrusted upload parsing.** The parser runs in the existing sandbox (1 GiB / 120 s), unchanged. Checkable: iXBRL stripping removes `ix:header` and hidden elements only (a fixture with visible `ix:nonNumeric` text keeps it, a fixture with a hidden fact drops it); a DOCX zip-bomb fixture is refused by the existing uncompressed-size cap (60 MiB, kept) before expansion; the multipart read buffers the whole body today (docs/upl_live.md:104), so the body is streamed to a temp file or concurrent body memory is otherwise bounded (the memory guard checks only at the start), with a test of N concurrent 40 MiB uploads (`test_concurrent_large_uploads_bounded`); `sections.py` runs in the sandbox or with linear-time patterns, with a pathological-input time test; a 40 MB TXT is refused by the character precheck before tokenizing; an over-limit file, a PDF over the page limit and a malformed PDF and DOCX end in a clean refusal, never a crash; the memory guard (1.25 GB free) still refuses new work when memory is low; the 33.9 MB 20-F stays inside the sandbox limits (measured, or HTML stays at 15 MiB).
+- **S3 Query handling into bm25s.** The user's question is tokenised by one function with caps (at most 64 tokens of at most 40 characters each, frozen on dev) and Unicode normalisation; there is no query syntax to inject into. Tests: an empty result for an empty token list, a 10,000-character question, control characters, mixed scripts, `*:*`, very many repeated tokens; no input raises or widens the query.
+- **S4 Parameterised queries and no reranker or vendor on uploads.** Every new Cypher string is a constant with parameters only (`$cik`, `$vec`, `$k`, date bounds); no user text is concatenated into Cypher. A grep-style test fails if `src/semigraph/uploads` or `src/semigraph/serve` imports `ir_measures` or a reranker. No new vendor, no hosted embedder or reranker, without the owner's separate approval.
+- **S5 LLM context and indirect injection.** More filing and upload text can reach the prompt through the new legs, in the same trust class as today's excerpts. The RT-003 data-boundary rule stays: retrieved text is delimited and treated as data, and the fused excerpts use the same renderer. The context field (company, form, year, section) is never rendered. promptfoo adversarial cases (prompt injection, jailbreak, PII and secret leakage) are rerun with the flag on against the local model; exit 100 means a case failed and blocks. New cases place injection text where it is reachable only through the keyword-only upload leg and through a bm25s-ranked filing span, so the new legs are actually exercised.
+- **S6 Cache-key isolation by flag.** The cache key and the template fingerprint differ between flag values; an answer cached with the flag off is never served with it on, and examples generated under one value are refused under the other (R11 tests).
+- **S7 Bounded work per ask.** Fixed over-fetch sizes; at most one dense query per anchor per leg type and one bm25s call per leg; token caps (S3); no extra embedding calls (R7); an index is built once per snapshot, not per ask. Checkable by a FakeDriver query-count test and by the latency and memory gates in section 7.
+- **S8 Supply chain (bm25s).** Licence read from the LICENSE file, release history and maintainer activity noted, a Windows and Python 3.13 import test, osv-scanner on the lockfile, and an install-time-script check, all before the dependency is added; `uv.lock` is committed; osv-scanner and pip-audit also run on `deploy/requirements-serve.txt` (the file accepted risk D-1 scans, which carries the image's dependencies); bm25s is pinned with no extras; the owner approves (OD2). ir-measures stays out of the serve image (OD14).
+- **S9 No data egress.** Upload text is embedded and searched only on the same machine; no call to a third party carries upload text (no hosted embedder or reranker). Checkable: a test that the upload retrieval and embedding path imports no network client other than the database driver and local model. The same import test covers `src/semigraph/retrieval/keyword.py` (no huggingface_hub, no network client).
+- **S10 Upload persistence.** Keyword indexes are held in memory only, per workspace, and are dropped when the workspace expires or is deleted; the workspace expiry (24 hours) still deletes chunks. Checkable: a test that expiry removes the cached index and rows; replacing or deleting a document drops its cached index (R17).
+- **S12 New routes and states.** The cancel route and the new `keyword_ready` and `embedding` SSE states require the workspace token, enforce Origin and CSRF checks and the existing rate limits, and cancel is idempotent. Tests: `test_cancel_requires_workspace_token`, `test_cancel_other_workspace_403`, `test_cancel_idempotent`.
+- **S11 Gold and benchmark integrity.** Labellers cannot see retrieval code or outputs (section 7), the labeller and the Opus checker run in an isolated directory holding only the exported chunk and filing text, with a recorded tool allowlist, and the file manifest and prompts are committed with the freeze; the hash check refuses a changed gold file (R2). The repo is public: no absolute local paths, no personal data, no spend records in committed files (checked by a grep in the verifier checks).
+
+## 6. Plan (increments)
+
+**Shared surfaces, serial, main session first:** src/semigraph/config.py (settings and validators), pyproject.toml, `deploy/requirements-serve.in` and uv.lock, fly.toml. `fusion.py` (types `FusionConfig`, `SlotPolicy`) is not created here: it is created in I2, after the I1 hash commits and the `m2-bench-freeze` tag, so the plan passes its own order test (R1). R7 (the single query vector in workspace.py) is part of I2. I4a (strip and re-measure) can run beside I3 and I5; I4b-d run after I3, because R17 needs I3's keyword.py and R7, I3 and I4 all edit workspace.py, and config.py is a serial shared surface. At most 3 concurrent workers; two never edit the same file.
+
+| # | Goal | Files | Failing tests first | Acceptance | Cost / instance | Gate and owner action |
+|---|---|---|---|---|---|---|
+| I0 | Dependency and grammar probes | pyproject.toml (bm25s in the `serve` extra; ir-measures in a new `bench` group), `deploy/requirements-serve.in` and regenerated `deploy/requirements-serve.txt` (`--generate-hashes`), tests/test_serve_dependencies.py, tests/test_deploy_hashes.py, tests/test_tools_mockllm_calibrate.py | `test_bm25s_imports_on_py313`, `test_ir_measures_not_imported_under_serve`, `test_keyword_leg_does_not_import_scipy` (builds an index and retrieves, then asserts scipy is not in `sys.modules`, because tests/test_serve_monitor_isolation.py:80-110 pins that the API process never loads scipy) | licence read; osv-scanner and pip-audit clean on both lock files; dry-run estimate for regenerating the examples; the DATE-range probe on S and on the production Neo4j version; on S: `filer_cik = $cik` leg works, a DATE range on `valid_from` works or is recorded as failing, `IN $list` recorded; line references re-checked | $0 / S | owner approves the dependency (OD2, OD14) |
+| I1 | M2-Bench and harness | scripts/m2_bench.py; artifacts/m2_bench_dev.json, artifacts/m2_bench_test.json; tag `m2-bench-freeze` | `test_bench_refuses_changed_gold_hash`, `test_success_at_8_counts_grade_2_only`, `test_type_d_needs_every_anchor`, `test_sign_test_matches_exact_binomial`, `test_bench_freeze_order`, `test_one_test_question_per_family` | both hashes committed and tagged before any candidate commit; dev baseline misses at least 9 of 30; per-leg lists logged to depth 50 | $0 / G read-only | owner spot-checks about 10 items |
+| I2 | Free legs and slot policy, measured alone (first candidate commits; `fusion.py` created here) | src/semigraph/retrieval/retriever.py (`FILER_EXCERPTS_QUERY`, `PERIOD_EXCERPTS_QUERY`, `FUSION_MENTION_EXCERPTS_QUERY`), fusion.py, retrieval/workspace.py (R7) | `test_fusion_off_runs_same_queries_same_params`, `test_filer_leg_has_no_mentions_hop`, `test_legs_reuse_one_query_vector`, `test_slots_never_exceed_k_chunks`, `test_no_filer_leg_for_defaulted_anchor`, `test_rrf_deterministic_on_ties` | dense-only arm recorded on dev before bm25s exists | $0 / G | none |
+| I3 | bm25s, context field, RRF, flag | src/semigraph/retrieval/keyword.py; serve/main.py lifespan (after `snapshot_id`, :301); retrieval/answerer.py:94-98 and the seven callers and plumbing named in R11 | `test_fingerprint_is_2a6910aa5d_with_fusion_off`, `test_fusion_on_changes_fingerprint_and_cache_key`, `test_examples_refused_across_the_flag`, `test_keyword_query_cases`, `test_context_field_never_rendered`, `test_hydration_drops_non_retrievable`, `test_fused_excerpt_chars_within_estimate` | existing goldens untouched; tests/test_m2a_spend_budget.py green; RSS, build-time and p95 gates | $0 / G, then the production-size machine | **capability milestone** shown to the owner; owner measures on Fly |
+| I4 | Uploads (a strip and re-measure; b keyword-ready write; c embed queue and progress; d limits and validators) | uploads/parse_worker.py, new uploads/sections.py, uploads/jobs.py, uploads/repo.py, retrieval/workspace.py, retrieval/workspace_async.py, serve/workspace_routes.py, web/src/pages/WorkspaceUpload.tsx, WorkspaceActive.tsx, web/src/lib/workspace.ts | `test_ix_header_stripped_visible_ix_text_kept`, `test_section_order_per_form`, `test_keyword_ready_before_any_embedding`, `test_user_a_query_never_returns_user_b_text`, `test_upload_path_has_no_reranker_or_filings_index_import`, `test_embed_job_resumes_after_restart`, `test_25th_embed_job_is_keyword_only`, `test_day_rule_counts_embed_jobs`, `test_guaranteed_tokens_within_ceiling_times_floor`, `test_docx_uncompressed_cap`, `test_char_precheck_before_tokenizing`, `test_cancel_requires_workspace_token`, `test_cancel_idempotent`, `test_index_cache_bounded`, `test_concurrent_large_uploads_bounded` | 73 filings re-parsed; detection hit rate per form; 33.9 MB 20-F in the real sandbox; starred limits fixed | $0 / T; sandbox on staging | owner runs the staging measurement and sets fly.toml env |
+| I5 | `search_filings` | agent/tools.py, agent/merge.py, tests/test_agent_tools.py | `test_search_filings_excludes_held_ids`, `test_search_filings_overfetches_by_held_count` | agent estimate unchanged; X4 replay on G returns at least 1 new excerpt | $0 / T, G | none; no paid re-gate |
+| I6 | Test split once (baseline and candidate in one scripted invocation), then the paid answer run | harness only | none | strata classified from that baseline run and written before scoring; pre-registered decision applied and recorded (section 7) | paid, OD15 | owner approves the printed estimate |
+| I7 | Reranker trigger | report line | none | fires only if at least 15% of dev misses have gold in the top 50 but not the top 8 | $0 | owner, only if it fires |
+| I8 | CP hand-off | docs only | none | amendment to docs/specs/cp-add-company.md approved (OD13) | $0 | owner approves the amendment |
+
+Per increment (stage 2): test first (RED, seen failing), minimal code (GREEN), refactor; `code-reviewer` (Sonnet) right after the code; `security-reviewer` (Opus) on I3, I4 and I5 (DB queries, file I/O, LLM context); CRITICAL and HIGH fixed before moving on. LLM calls are mocked in unit tests.
+
+## 7. Gates and pre-registered rules
+
+Everything below is fixed before any candidate code exists. Proposed numeric thresholds that are not repository facts are marked (proposed) and confirmed by the owner with this spec.
+
+**M2-Bench protocol (OD3).**
+- **Blind labelling.** Passages are sampled from `data/processed/chunks/*.parquet`, stratified by type and company. Labellers see only those chunks and the filing text; they get no access to src/semigraph/retrieval, scripts/compare_retrieval.py, backups or any run file. Questions for types A, C, E and F do not copy the passage's sentence (type B is meant to be lexical). Drafting uses a model of a different family from the answerer and from the Opus checker: the local model at 127.0.0.1:8080 ($0), or a paid non-Claude model only with your approval. Opus checks every item; the owner checks about 10. Blinding is enforced structurally, not by instruction alone: isolated directory, recorded tool allowlist, committed file manifest and prompts (S11).
+- **Gold unit.** Every verbatim copy of the passage in the newest annual filing and later 10-Qs (the tripwire gold policy); grade 2 is the current copy, grade 1 an older-filing copy. Success@k and Recall@k count grade 2 only; nDCG@10 uses the grades. Type D succeeds only if every anchor has a gold chunk in the top 8.
+- **Machine-tagged type A.** The tripwire's filer-own rule (filer is an anchor and no MENTIONS edge to an anchor) tags type A mechanically; `names_anchor_in_text` is kept so type A can be audited.
+- **Hash and order.** Dev and test files are committed separately, each hash in its commit message, and the annotated tag `m2-bench-freeze` is pushed before any candidate commit (R1). Strata (headroom: baseline context lacks the gold; control: baseline context has it) are classified in I6 from the baseline run made in the same scripted invocation as the candidate run on test, and written to a separate file before scoring. Split by passage family, deterministic from a hash of the family id; at most one test question per family.
+- **Difficulty rule.** Run the baseline on dev only. If it misses fewer than 9 of 30: replace dev questions the baseline answers correctly, easiest first (the questions whose gold ranks highest in the baseline), with reserves of the same type, until 9 of 30 are missed or a type's reserves (at least 5 per type per split) run out; apply the same replacement count per type to test, choosing by the same reserve order, and never by any test run. Commit the original hashes, the baseline dev result and the swap commit, all before any candidate commit, then re-hash and re-tag. If the target is still not met after the swaps: stop, report to you, and do not proceed without your written approval.
+- **Discipline.** All tuning (RRF k, over-fetch sizes, slot policy, tokenizer, query caps) is on dev only; settings are then frozen and hash-recorded. The test split runs once. A rerun after any change needs a fresh, unseen test set.
+
+**Primary test (fixed sequence, alpha 0.05 each step).** On pooled test Success@8 (excerpt level, grade 2 only) over the 60 test questions, two-sided exact sign tests: H1, fused against baseline; H2, run only if H1 passes, fused against the "+filer and period" arm. The filer leg alone can win about 10 type A questions against a baseline of 0 by construction (risk 22), so passing H1 alone shows the free legs work, not that hybrid or bm25s adds anything. "Hybrid" or "state of the art" may be claimed only if H2 passes. H1 with type A excluded is reported as a sensitivity result. Per-type results are descriptive only. Secondary: nDCG@10 and Recall@20 with a paired bootstrap resampled by passage family, Holm-corrected across the three metrics, reported as intervals. Power (own binomial arithmetic, UNVERIFIED): with 25-35% discordance on 60 questions there are about 15-21 discordant pairs; 12-3, 15-5 and 16-5 are the smallest passing splits at those sizes, giving roughly 0.6-0.8 power if the true win share is 0.8, and low power for a win share of 0.65 or below. That is accepted in advance.
+
+**No-loss gates (all must hold).**
+- The old 60 stay at 0 context misses.
+- The 9 tripwire questions are unchanged.
+- Per-type wins minus losses (W - L) at least 0 on the test split.
+- Control stratum: at most 2 losses.
+- Latency and RSS gates below.
+
+**Latency, memory and cost gates.**
+
+| Gate | Limit | How measured |
+|---|---|---|
+| Extra embedding tokens per ask | 0 | counter in the harness |
+| Extra Neo4j queries per ask | at most one dense query per anchor per leg type | FakeDriver query-count test |
+| Added retrieval p95, warm | at most +150 ms (proposed) | 119 questions (dev 30, the old 60, the 9 tripwire, 20 or more reserves) x 5 repeats, before and after, same machine, with the embed worker running; test-split questions are never used (or, inside I6 only, with outputs discarded) |
+| Added API CPU per ask | at most +50 ms (proposed) | cgroup CPU deltas, as RUNBOOK.md:801-806 does |
+| RRF and merge | at most 5 ms (proposed) | microbenchmark |
+| Index memory | measured RSS recorded; the upload memory guard (1.25 GB free) must still hold with the model and index loaded (threshold set from the measurement, proposed: index adds at most 250 MB) | RSS on the production-size machine |
+| Index build time at startup | recorded; at most 60 s (proposed), and inside the 180 s `grace_period` with margin | startup log on the production-size machine |
+| Rendered EXCERPTS block | at most 8 slots, each at most 12,000 characters (workspace: 6 x 1,800) | `test_fused_excerpt_chars_within_estimate` |
+| Per-answer cost | hybrid estimate at most $0.76, agent at most $1.02 | tests/test_serve_estimate.py and tests/test_m2a_spend_budget.py |
+
+Neo4j runs as a separate app, so local S numbers bound only the database side; production latency, CPU and RSS are measured by the owner on Fly and are UNVERIFIED until then.
+
+**Ship rule per component.** A component (filer leg, period leg, bm25s leg, context field) ships only if the arm containing it shows a net dev gain of at least 1 on Success@8 or on nDCG@10, with neither below the arm without it. Otherwise it is dropped (a zero-effect component does not ship). Arms: baseline; +filer; +period; +filer and period; +bm25s without the context field; +bm25s with the context field; all fused.
+
+**Kill rule.** If H1 fails on the test split, or any no-loss gate fails, the flag stays off. Keep the gold, the traces and the baseline; record the result. No re-tuning on the same test set. The time-box is 10 working days from I2 (proposed); if it runs out, stop and report.
+
+**Reranker trigger.** Only if at least 15% of dev misses have gold in the fused top 50 but not the top 8 (OD1). Then MiniLM offline on dev, then latency on the machine (p95 added at most 2 s, throttled). A hosted reranker goes to the owner only if MiniLM fails both; never for uploads.
+
+**Answer-level decision rule (set now, applied in I6).** The paid run uses headroom questions (baseline context lacks the gold, about 30) plus a control sample (about 15), two arms, the same harness (`run_deployed` and `score_deployed`, src/semigraph/eval/bakeoff.py:369 and :427). The answer-level questions are drawn from the test split only (dev questions are tuned-on and biased). Mechanical `any_of` and needle checks are preferred for types B and C; also claim support, judged correctness with 3 votes, and citation validity. Decision:
+- Public wording: copy says "hybrid" or "state of the art" only after H2 passes, worded as the measured M2-Bench result (strengths only).
+- Recommend the flag on in production only if the retrieval primary (H1 and, for the hybrid claim, H2) passes, the no-loss gates hold, and at the answer level the headroom comparison has wins greater than losses with at most 1 loss and the control stratum has at most 1 loss; M2a thresholds (including the D1 row) hold on the old 60.
+- If the retrieval primary passes but the answer-level rule fails, the code stays merged with the flag off, and the result is reported as "retrieval gain, no answer value".
+- With about 30 headroom questions, power is only for large effects, so the result is stated with its interval, not as a bare pass or fail.
+- Regenerate the 56 seeded examples under the flag-on fingerprint only after a flag-on decision, and only inside the cap (OD15).
+
+**Security and regression gates (stage 4).** Before each push: `/security-review` over the commits, gitleaks, osv-scanner (the lockfile changes: bm25s) and pip-audit (pyproject changes; conda-only packages are not audited, reported as such), checkov only if IaC changed, syft and grype apply because the image's hash-locked requirements change (OD2). A missing scanner is not a pass; its install command is given. At merge: `differential-review`; semgrep on the branch diff with the baseline commit (python and security-audit packs, plus a TypeScript pack because web files change); `spec-to-code-compliance` against this spec. Before the flag-on deploy: the owner runs `/red-team`. Before installing bm25s: `skillspector` does not apply (it is not a skill or MCP server); the supply-chain checks in S8 do.
 
 ## 8. Risks and where the obvious implementation is wrong
 
-1. Adding BM25 and RRF but keeping the MENTIONS post-filter on every leg. D1 stays broken.
-2. Fusing raw scores from the vector and full-text legs. They are not comparable.
-3. Asking a filtered vector search for exactly k rows. It can return fewer; over-fetch.
-4. Labelling gold after seeing candidate output. The gold is frozen first.
-5. Tuning k, weights or legs after the ablation and testing again on the same questions.
-6. Flipping the flag by environment variable without changing the fingerprint. Stale answers replay from the cache and seeded examples replay forever.
-7. Using `SEARCH ... FULLTEXT`. Production's version does not have it.
-8. Running the ablation on the throwaway test instance, or with a different embedder from production.
+1. Stripping all `ix:*` content deletes visible text, since risk sections sit inside `ix:nonNumeric`. Strip `ix:header` and hidden elements only.
+2. Raising the embedding ceiling to 3,600 s fails the existing day rule (config.py:520: 3,600 x 40 > 86,400). The rule must count embedding jobs (23, for margin).
+3. `upload_max_workspace_pages = 120` (config.py:330) still blocks a 300-page PDF.
+4. 3 x 19,900 guaranteed tokens exceed the 48,000 workspace budget, and today that fails the whole job (jobs.py:459, :610-611). It must degrade to keyword-only.
+5. Leaving `put_version` at the end (jobs.py:668) gives no keyword-ready state, and holding the slot for up to 60 minutes answers every other upload "busy". The 40 MiB `data` bytes must be dropped after parsing.
+6. `fail_interrupted_jobs` (repo.py:703) fails embedding jobs on restart. Requeue from null-embedding chunks instead and update `_fail_interrupted_older_than_s` (jobs.py:774).
+7. Bumping `CONTEXT_VERSION` for the flag breaks the fingerprint `2a6910aa5d`. Add an element only when the flag is on.
+8. Flag on refuses all 56 seeded examples until they are regenerated, which is paid.
+9. A silent dense-only fallback while the fusion fingerprint is live poisons the cache. With the flag on, a failed index build must fail startup.
+10. Baking the index into the image mismatches the graph, because the two apps deploy separately.
+11. Filer legs on the defaulted Nvidia anchor (retriever.py:776-779) flood sector-wide questions. No filer leg for a defaulted anchor.
+12. Dropping `retrievable` in period legs shows superseded text unmarked.
+13. A DATE range on `valid_from` is unproven for this index (the docs list only INTEGER, FLOAT, STRING and BOOLEAN filter types). Probe on S; fall back to post-filtering.
+14. BM25 ranks the same paragraph from a 10-K and its 10-Qs together; without `content_hash` dedup they fill the slots.
+15. The sync workspace path already embeds twice (workspace.py:284-285). Pass `query_vec` so M2 adds none.
+16. The embedding cache is keyed by chunk id alone (src/semigraph/embeddings.py:227-228). CP's prefix re-embed silently reuses old vectors unless the cache path changes, and it moves CP's T-RET numbers (OD13).
+17. The `eval` extra carries ragas, whose import is broken here. Use a separate `bench` group (OD14).
+18. `chunks[].score` becomes an RRF score; every reader must be checked (scripts/compare_retrieval.py `chunk_ranks`).
+19. Editing `EXCERPTS_QUERY` breaks tests/test_retrieval_pure.py:461-476 and tests/agent_fakes.py:128 and changes flag-off behaviour. New legs are new constants.
+20. Gold written after seeing candidate output, or tuning on the test split, voids the test. Labellers are blinded; the test runs once.
+21. Selecting only baseline failures makes losses impossible. The control stratum exists to keep the test two-sided in effect.
+22. A filer leg "wins" trivially on type A (baseline is 0 by design). That proves the mechanism, not the benefit; hence the two reporting levels (OD10) and the filer leg measured alone (I2).
+23. Fusing raw scores from vector and keyword legs: not comparable; fuse ranks.
+24. The memory budget: bm25s sits beside the 1.26 GB fp32 model on a 4 GB machine, and per-workspace indexes add to it. Gates and a per-workspace size limit follow from the 160k-token cap; the sizing is UNVERIFIED until I3 and I4 measure it.
+25. Comparison time for a 160k-token upload inside the 110 s limit is UNVERIFIED (open).
+26. Removed: scoring all documents and masking by filer in numpy is exact (OD8).
+27. Whether the API restarts after a database deploy is UNVERIFIED; the startup snapshot is already depended on (serve/main.py:197, :301, serve/routes.py:341), so this risk is not new (OD8).
+28. `fusion.py` created before the freeze breaks the plan's own order test (R1); it is created in I2.
+29. With the slot released after keyword-ready, a second parse child can run beside background embedding (R16).
 
 ## 9. Acceptance checks for the verifier
 
-Gold hash recorded before the first candidate commit (check by git history). Flag off is byte-identical to M2a. The ablation report shows per-question outcomes, W, L and the result applied. S1's cases pass. No ir-measures import under `src/semigraph/serve`. The kill or the pass is recorded with its numbers.
+1. Git history: both gold hashes and the `m2-bench-freeze` tag precede the first candidate commit (`test_bench_freeze_order`); the test split was run once; the v2 branch was not squash-merged.
+2. Flag off: `template_fingerprint()` is `2a6910aa5d`; tests/test_answerer_context.py goldens unedited; the FakeDriver query count and parameters are unchanged.
+3. Flag on: the cache key differs; examples are refused; at most 8 excerpts of at most 12,000 characters; one embedding call per ask; tests/test_m2a_spend_budget.py and tests/test_serve_estimate.py green.
+4. No `ir_measures` or reranker import under src/semigraph/serve or src/semigraph/uploads.
+5. The isolation negative test passes on T; upload text never reaches the filings index.
+6. Production validators: guaranteed tokens at most floor(3,600 x 5.54) = 19,944; (ceiling x embedding jobs per day, 23) at most 86,400.
+7. Measured values recorded beside thresholds: RSS, index build time, p95 retrieval, added CPU, section hit rate per form, sandbox peak for the 33.9 MB 20-F.
+8. The sign-test result, W and L per type, the per-component ablation and the decision applied are in the report.
+9. `EXCERPTS_QUERY` is unchanged (tests pin it); new legs are new constants.
+10. A grep of the diff for absolute local paths, personal data and spend records finds none.
+11. The ledger total, if any paid step ran, is at most the approved cap and each paid step had an approval at or above its printed estimate; the figures themselves are not in the repository.
+12. Full Python suite, integration on T and the web suite (off-OneDrive mirror) are green, with any known CRLF failure (tests/test_tools_probe_w1d) named.
 
 ## Status
 
 | Stage | Gate | Evidence needed |
 |---|---|---|
-| 1 Spec | owner approval after M2a | the owner's words |
-| 2 Dev | RED then GREEN; gold frozen first | hash; test counts |
-| 3 Regression and ablation | section 4 applied | the report |
-| 4 Security | pre-push and merge gates as in M2a; the owner is asked to run `/red-team` before the flag-on deploy | commands and results; the report path |
-| 5-6 Fix, re-test, verifier | as in M2a | as in M2a |
-| 7 Deploy or kill | recorded | image tags, or the kill record |
-| 8 Archify | only if the architecture changed | decision and reason |
+| 1 Spec | Owner approves this spec and OD1-OD15; Opus review of the draft; `fable-architect` plan | the owner's words; the two Opus reviews (applied 2026-11-26); the `fable-architect` plan (the plan stage of workflow wf_d80994ce-2f8, run as the `fable-architect` agent; this spec is written from it); council verdicts in docs/decisions/009 and 010 |
+| 2 Dev (TDD) | Per increment I0-I5: RED then GREEN; `code-reviewer` clean of CRITICAL/HIGH; `security-reviewer` (Opus) on I3, I4, I5 | test names and counts per increment; reviewer verdicts; promptfoo exit code (100 = a case failed) |
+| 3 Regression | Full suite, coverage at least 80%, integration on T, web suite and the Playwright upload e2e (upload, keyword_ready, cancel) in the mirror; the M2-Bench no-loss gates and ship rules applied | commands and counts; the bench report (W, L per type; the test run once) |
+| 4 Security | Before each push: `/security-review`, gitleaks, osv-scanner (lockfile), pip-audit, checkov only if IaC changed, syft and grype only if an image build changes. At merge: `differential-review`, semgrep on the branch diff, `spec-to-code-compliance`. Before the flag-on deploy: the owner runs `/red-team` | reports; any missing scanner named with its install command |
+| 5 Fix findings | Failing test first; one approval table; `llm-council` only if ambiguous and expensive | table, approved ids, accepted-risk entries |
+| 6 Re-test and verifier | Stages 3 and 4 again on changed code; Opus `verifier` runs section 9 | counts; verdict; the I6 report with every gate value beside its threshold |
+| 7 Push, CI, deploy | CI green; the owner deploys and measures RSS, latency and index build time on Fly; flag-on decision per the answer-level rule | run ids; the owner's deploy log; live checks of D1, X4 and one question per type |
+| 8 Archify | Applies if merged: a new in-process index, a background embedding worker and a new data flow change the architecture. Offline view from the repo and docs/decisions/; online view from fly.toml and deploy/ only, never live probes; store HTML and `candidate.json` in docs/architecture/ | the files, or the recorded reason |
