@@ -1,10 +1,29 @@
 # CP v1: add a company with one local command
 
-Status: **DRAFT for owner approval (2026-11-26). INTERNAL. Path: full.**
+Status: **APPROVED by the owner 2026-11-26, with the changes in "Owner decisions 2026-11-26" below. INTERNAL. Path: full.**
 
 Basis: decision 006 (docs/decisions/006-m2-after-m2a.md: M2 deferred, the per-company tripwire gate), decision 007 (docs/decisions/007-cp-scope-and-first-company.md: council verdict D1-D4), and outline section A (docs/specs/company-pipeline-and-web-search-outline.md). A planning pass by `fable-architect` fixed the design; nothing in it was run against Neo4j, the network or a model. Code references are repo-relative and were taken from the research reports; line numbers can drift and are re-checked in I0.
 
 Ids in this spec: R = requirements, S = security claims, OD = owner decisions, I = increments, T-xxx = gates. Neo4j instances are named by role, never by local path: **G** holds the real graph (bolt 7699), **S** is a scratch Community 2026.07.1 install (bolt 7799), **T** holds synthetic data for integration tests only (bolt 7898).
+
+## Owner decisions 2026-11-26 (verbatim where quoted; they override the recommendations below where they differ)
+
+- Baseline freeze, one source of truth as a no-op, MRVL first with TXN fallback, the isolated workspace on S with a manual dump and
+  deploy: "ok" / "agree". CP spend cap: $15 total, "that is okay".
+- **OD1, amended.** Removal from the graph stays unsupported, but the owner asks for a front-end switch: "from graph it cant be
+  removed okay, but we can disable it on front end, and maybe its links". Added as R15: a company can be hidden on the site (its
+  page, the nav, starters, the switcher and links to its page) by a field in the one source of truth; the graph and retrieval are
+  unchanged. Recorded caveat: answers can still cite a hidden company's filings (the reason the council rejected (c) as removal).
+- **OD5 agent gate.** "fix it up correctly, make sure it works": the agent's `lookup_company` tool change is implemented and tested,
+  and the agent ship gate is run and budgeted inside the CP cap (not waived).
+- S2 name rule (ASCII letters, digits, space and `.&-`, at most 50): "okay". README paragraph (OD9 exception): "nope".
+  `--dry-run` for `eval-deployed` (I8): "this is okay".
+- **Priority.** "do the development first on priority, later we can worry about fixes, as first we need to prove the capability of
+  functioning properly": functionality first; gate tolerances are completed after the capability works (the noise-floor step stays,
+  but does not hold development).
+- **T-RET (displaced excerpts).** Sent to the llm-council with the owner's leeway ("I'm open to give it leeway"); the verdict
+  replaces T-RET's rule when it lands.
+- The project spend record is kept between the owner and the assistant, not in the repository.
 
 ## 1. Why
 
@@ -42,7 +61,7 @@ Adding a company today is a hand sequence (docs/RUNBOOK.md:599-640; no orchestra
 
 **OD4 Gold.** Recommended: 5 questions per company, at least 3 filer-own (a "we ..." sentence that does not name the company), drafted from the raw filing and approved and committed by the owner. Decision 006 floor: 3-5 questions, at least 2 filer-own. Fewer than 3 bound questions or fewer than 2 filer-own makes the company's set invalid (T-TRIP).
 
-**OD5 CP spend cap.** Recommended: **$15 total for CP** (the council's proposal, not yet an approved budget), enforced by a ledger (R11), stop at the cap or after two failed paid attempts. Likely total about $2.5-5, worst about $11. Remaining project budget must be recomputed before I11, and the recompute is a T-SPEND precondition. `total_cost_usd` in artifacts/eval_report.*.json counts answers only, not the judge, agent, extraction or adjudication spend, so the recompute also sums those sources (UNVERIFIED which files hold them; the M2a spec recorded at most $25.46 of $30 left before M2a's own spend).
+**OD5 CP spend cap.** Recommended: **$15 total for CP** (the council's proposal, not yet an approved budget), enforced by a ledger (R11), stop at the cap or after two failed paid attempts. Likely total about $2.5-5, worst about $11. Remaining project budget must be recomputed before I11, and the recompute is a T-SPEND precondition. `total_cost_usd` in artifacts/eval_report.*.json counts answers only, not the judge, agent, extraction or adjudication spend, so the recompute also sums those sources. The recompute is done with the owner privately and is not recorded in the repository.
 
 | Paid step | Likely | Worst | Note |
 |---|---|---|---|
@@ -125,6 +144,13 @@ Accept: one test per tolerance row, plus `test_new_company_chunks_identified_by_
 Accept: `test_merge_refuses_unless_every_gate_passed`, `test_merge_refuses_if_real_lake_changed_since_copy`, `test_merge_keeps_preimages`, `test_merge_refuses_if_gates_or_tolerances_changed_since_control_rebuild`.
 
 **R14 Finalize.** Regenerate examples at $0 (an example-question change breaks `GATE_QUESTIONS`, scripts/build_onnx_embedder.py:102-129, pinned by tests/test_build_onnx_embedder.py:285-292; M2a's CI failure; if regenerating changes the question list, finalize stops until `GATE_QUESTIONS` is updated in the same commit), write the sanitized run report, and print the manual steps: dump (deploy/neo4j/seed/README.md), `/red-team` request, deploy of image and graph as a pair (FILERS is code in the image), post-deploy benchmark, rollback via the previous dump.
+
+**R15 Hide a company on the site (owner 2026-11-26).** The one source of truth carries `hidden` (default false). A hidden filer has
+no company page (the route answers 404 like an unknown ticker), and is left out of the nav, the starters, the switcher and every link
+to its page in the web app and the API's page lists; the graph, retrieval and answers are unchanged (recorded caveat: an answer can
+still cite its filings). It is a data change plus a redeploy, never a graph rebuild. Accept: `test_a_hidden_filer_has_no_page_route`,
+`test_hidden_filers_are_left_out_of_nav_starters_and_switcher`, `test_hiding_changes_no_graph_input` (the snapshot id is unchanged),
+and a web test that no rendered link points at a hidden company's page.
 
 ## 5. Security requirements and abuse cases (checkable)
 
@@ -212,7 +238,7 @@ Frozen in `artifacts/cp/baseline/tolerances.json` at I0 (OD7); pinned by hash.
 
 | Stage | Gate | Evidence needed |
 |---|---|---|
-| 1 Spec | Owner approves this spec and OD1-OD13; Opus review of the draft | Pending: the owner's approval message; reviewer verdict; council verdict already saved in docs/decisions/007-cp-scope-and-first-company.md |
+| 1 Spec | Owner approves this spec and OD1-OD13; Opus review of the draft | **PASSED 2026-11-26**: the owner's decisions above; two Opus reviews applied (workflow wf_649b7615-5ce); council verdict in docs/decisions/007-cp-scope-and-first-company.md |
 | 2 Dev (TDD) | Per increment I0-I10: RED then GREEN; `code-reviewer` clean of CRITICAL/HIGH; `security-reviewer` (Opus) on every SEC increment: I1, I2, I3, I4, I5, I6, I7, I8, I10 | Test names and counts per increment; reviewer verdicts; injection eval cases and promptfoo exit code (100 = a case failed) |
 | 3 Regression | Full suite, coverage at least 80%, integration on T, web suite in the mirror; no-op proofs of I1 and I2 | Commands and counts; the empty invariant diff; failing-test list with the known CRLF failure named |
 | 4 Security | Before each push: `/security-review`, `gitleaks`, `osv-scanner` if a lockfile changed, `pip-audit` if pyproject changed, `syft dir:. -o syft-json=sbom.json` then `grype sbom:sbom.json --fail-on high` (the project builds a container image, Dockerfile and Fly); `checkov` does not apply (no IaC change). At merge: `differential-review`, `semgrep` with baseline commit (python, security-audit and a TypeScript pack, since web files change), `spec-to-code-compliance`. Before release and before the deploy: the owner runs `/red-team` | Reports; missing scanner named with install command |
