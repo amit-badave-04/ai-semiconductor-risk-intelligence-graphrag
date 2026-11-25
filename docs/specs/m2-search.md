@@ -1,12 +1,28 @@
 # M2: measured hybrid retrieval, upload keyword search and the `search_filings` fix
 
-Status: **DRAFT for owner approval (2026-11-26). INTERNAL. Path: full.**
+Status: **APPROVED by the owner 2026-11-26, with the agent included (see "Owner decisions 2026-11-26"). INTERNAL. Path: full.**
 
 Basis: decision 010 (docs/decisions/010-m2-design.md: the council design, followed here), decision 009 (docs/decisions/009-upload-size-for-sec-filings.md: uploads inside M2, owner-approved 2026-11-26) and decision 006 (docs/decisions/006-m2-after-m2a.md: its tripwire gold and tool stay in use; its deferral is superseded by the owner). This text replaces the earlier M2 draft entirely; the old draft stays in git history. Its useful parts are kept: the query-handling care (Lucene escaping becomes bm25s query caps), reciprocal rank fusion, the flag, fingerprint and cache isolation, and the spirit of the kill rule.
 
 Nothing in this spec was run against Neo4j. A planning pass read the code and the research notes, and two Opus reviews (code feasibility; evaluation, security and process) were applied on 2026-11-26; code references are repo-relative, were taken from that pass, and are re-checked in I0. Anything not grounded is marked UNVERIFIED.
 
 Ids: OD = owner decisions, R = requirements, S = security claims, I = increments, T-xxx = gates. Neo4j instances are named by role, never by local path: **G** holds the real local graph (read-only use for benchmark runs), **S** is a scratch install, **T** holds synthetic data for integration tests only. Production is two Fly apps; deploys are run by the owner.
+
+## Owner decisions 2026-11-26 (they override the recommendations below where they differ)
+
+- The spec: **"Approve, include the agent"**. OD5 and OD7 change: the agent prefetch and `search_filings` move onto the new
+  retrieval under `RETRIEVAL_FUSION` inside M2, and the paid agent ship gate runs inside M2 with the aim of re-enabling the deep
+  agent (`AGENT_ENABLED`). The agent's estimate must stay within its invariant ($1.02); a failed gate keeps the agent off, as in M2a.
+  Planner changes are allowed only where the gate's failure analysis points at them (the four agent-only regressions T1, T7, T9, X4).
+- The M2 spend cap: **"$15"**, with the ledger rule (a paid step that would exceed the remaining cap is not started; stop after two
+  failed paid attempts). The agent gate is one of the paid steps inside it.
+- The benchmark drafter: **"Claude agents, blind"** ($0 API): drafting agents see only the filing text and the benchmark rules, never
+  the retrieval code, scripts or run outputs; an independent Opus check; the owner spot-checks about 10 items.
+- Public copy: **"Yes, only after it passes"**: "hybrid" or "state of the art" appears in public copy only after the pre-registered
+  test run passes, and the owner approves the exact words.
+- All other ODs as recommended. Defaults taken: 23 embedding jobs a day (OD11); a new upload is keyword-only until its embedding
+  finishes; the embed queue pauses while a second upload parses; the owner sees the re-measured upload limits before they are
+  fixed; the one new e2e test runs in the off-OneDrive mirror.
 
 Order the owner chose: M2 first, then CP (docs/specs/cp-add-company.md, approved). M2 must not break CP's plan; section 3 OD13 and I8 carry the hand-off.
 
@@ -281,7 +297,7 @@ Neo4j runs as a separate app, so local S numbers bound only the database side; p
 
 | Stage | Gate | Evidence needed |
 |---|---|---|
-| 1 Spec | Owner approves this spec and OD1-OD15; Opus review of the draft; `fable-architect` plan | the owner's words; the two Opus reviews (applied 2026-11-26); the `fable-architect` plan (the plan stage of workflow wf_d80994ce-2f8, run as the `fable-architect` agent; this spec is written from it); council verdicts in docs/decisions/009 and 010 |
+| 1 Spec | Owner approves this spec and OD1-OD15; Opus review of the draft; `fable-architect` plan | **PASSED 2026-11-26**: the owner's decisions above; the `fable-architect` plan and two Opus reviews (workflow wf_d80994ce-2f8); council verdicts in docs/decisions/009 and 010 |
 | 2 Dev (TDD) | Per increment I0-I5: RED then GREEN; `code-reviewer` clean of CRITICAL/HIGH; `security-reviewer` (Opus) on I3, I4, I5 | test names and counts per increment; reviewer verdicts; promptfoo exit code (100 = a case failed) |
 | 3 Regression | Full suite, coverage at least 80%, integration on T, web suite and the Playwright upload e2e (upload, keyword_ready, cancel) in the mirror; the M2-Bench no-loss gates and ship rules applied | commands and counts; the bench report (W, L per type; the test run once) |
 | 4 Security | Before each push: `/security-review`, gitleaks, osv-scanner (lockfile), pip-audit, checkov only if IaC changed, syft and grype only if an image build changes. At merge: `differential-review`, semgrep on the branch diff, `spec-to-code-compliance`. Before the flag-on deploy: the owner runs `/red-team` | reports; any missing scanner named with its install command |

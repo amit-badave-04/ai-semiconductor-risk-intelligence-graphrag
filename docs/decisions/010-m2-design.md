@@ -116,4 +116,6 @@ Write and hash-commit the blind M2-Bench (30 dev + 60 test) and run today's syst
 
 ## Owner decision
 
-Pending (asked with the M2 spec).
+2026-11-26: the M2 spec is approved with one change from the council: **"Approve, include the agent"** (the agent moves
+onto the new retrieval and its paid ship gate runs inside M2). Cap $15; blind Claude drafters for M2-Bench; public wording only after
+the pre-registered test passes. See docs/specs/m2-search.md, "Owner decisions 2026-11-26".
