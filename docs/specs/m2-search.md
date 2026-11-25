@@ -1,6 +1,9 @@
 # M2: search upgrade (trimmed)
 
-Status: **DRAFT. For approval only after M2a closes.** Numbers marked "after M2a" are filled in then. INTERNAL document. Path: full (DB queries, LLM context, a new eval dependency).
+Status: **DEFERRED 2026-11-25 (docs/decisions/006-m2-after-m2a.md, the owner: "Council plan").** M2a fixed D1 and X4 without
+search changes; this draft is detailed and run only if decision 006's reopen trigger fires. Before then, update its stale facts
+from that record: the excerpt query is now at retriever.py:312-316; neo4j-graphrag 1.24.0 re-checked (still no filters or RRF);
+`db.index.fulltext.queryNodes` is deprecated from Neo4j 2026.10. Was: DRAFT, for approval only after M2a closes. INTERNAL document. Path: full (DB queries, LLM context, a new eval dependency).
 
 Basis: decision 004 (recommendation 3), the research note sections 2 and 3, and the live re-verification of 2026-11-20. Ids: Q = requirements, S = security claims, T = plan steps.
 
