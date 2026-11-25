@@ -232,8 +232,17 @@ def sign_test(wins: int, losses: int) -> float:
     return min(1.0, 2 * tail / 2 ** n)
 
 
+ROOT = Path(__file__).resolve().parents[1]
+# Frozen 2026-11-26 (commits 2cbe9ed and 4eab018, tag m2-bench-freeze): the SHA-256 of each git blob (LF line endings).
+REGISTERED = {
+    "dev": "8b1cfe3f918f819afef0c7199cb1d2cd8e368560c0e2c22bd4266ec6f60eb153",
+    "test": "b122c3deff637cb4767a5d2676f4a274ac2e04163fdad72a8cec5c0038f10946",
+}
+
+
 def file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """SHA-256 with CRLF read as LF, so a Windows checkout (core.autocrlf) hashes like the committed blob."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def registered_bench(path: Path, expected_sha256: str) -> dict:

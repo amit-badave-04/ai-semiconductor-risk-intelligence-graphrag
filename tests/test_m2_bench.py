@@ -213,3 +213,15 @@ def test_topic_pairs_prefer_the_most_similar_passages_and_skip_excluded_families
     fam = mb._family("AM", topic_lake().set_index("chunk_id").loc["a:I.1A:0002", "text"])
     again = mb.sample_topic_pairs(topic_lake(), seed=1, n=1, topics=("hbm",), exclude_families={fam})
     assert "a:I.1A:0002" not in again[0]["chunk_ids"]
+
+
+def test_the_registered_hash_ignores_crlf_line_endings_so_a_windows_checkout_matches_the_git_blob(tmp_path):
+    lf, crlf = tmp_path / "lf.json", tmp_path / "crlf.json"
+    lf.write_bytes(b'{\n "questions": []\n}\n')
+    crlf.write_bytes(b'{\r\n "questions": []\r\n}\r\n')
+    assert mb.file_sha256(lf) == mb.file_sha256(crlf)
+
+
+def test_the_frozen_bench_files_match_their_registered_hashes():
+    for split, sha in mb.REGISTERED.items():
+        assert mb.registered_bench(mb.ROOT / "artifacts" / "m2_bench" / f"m2_bench_{split}.json", sha)["split"] == split
