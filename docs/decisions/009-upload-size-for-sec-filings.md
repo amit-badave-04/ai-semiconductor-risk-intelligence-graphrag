@@ -111,4 +111,6 @@ These numbers fix the provisional caps (\*). They decide whether 40 MiB is safe,
 
 ## Owner decision
 
-Pending.
+2026-11-26, the owner: **"Approve, inside M2 (Recommended)"**. The council plan (B with F as the default, $0/month, no new
+vendor or machine) is built as part of M2, sharing M2's keyword-search machinery. The provisional limits (*) are fixed after the $0
+re-measure (inline-XBRL stripping, the 73 filings re-parsed, the 33.9 MB 20-F parsed in the real sandbox).
