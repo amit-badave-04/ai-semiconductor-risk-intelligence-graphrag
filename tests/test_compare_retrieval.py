@@ -211,3 +211,79 @@ def test_the_scripts_own_queries_run_in_read_sessions():
 
     assert cr._session_rows(Driver(), "RETURN 1 AS n") == [{"n": 1}]
     assert seen == {"default_access_mode": "READ"}
+
+
+# Decision 006 (docs/decisions/006-m2-after-m2a.md): the M2 reopen trigger, applied at $0 by the `tripwire` mode.
+NV = 1045810
+
+
+def gold_q(*gold, anchors=((("Nvidia", NV),))):
+    return {"id": "Q", "anchors": [{"name": n, "cik": c} for n, c in anchors],
+            "gold": [{"chunk_id": cid, "filer_cik": cik} for cid, cik in gold]}
+
+
+def test_a_gold_id_anywhere_in_the_context_is_a_hit():
+    q = gold_q(("a:I.1A:0001", NV), ("a:I.1A:0002", NV))
+    v = cr.tripwire_verdict(q, "RISKS\n[a:I.1A:0002]\nwe rely on ...", mentions={})
+    assert v["hit"] and v["present"] == ["a:I.1A:0002"] and not v["filer_own_miss"]
+
+
+def test_a_miss_with_a_filer_own_unmentioning_gold_chunk_is_a_filer_own_miss():
+    q = gold_q(("a:I.1A:0001", NV))
+    v = cr.tripwire_verdict(q, "[b:I.1A:0009]", mentions={"a:I.1A:0001": []})
+    assert not v["hit"] and v["filer_own_unmentioned"] == ["a:I.1A:0001"] and v["filer_own_miss"]
+
+
+def test_a_miss_whose_gold_mentions_the_anchor_or_is_another_filers_is_not_a_filer_own_miss():
+    q = gold_q(("a:I.1A:0001", NV), ("c:I.1A:0003", 2488))
+    v = cr.tripwire_verdict(q, "", mentions={"a:I.1A:0001": [NV], "c:I.1A:0003": []})
+    assert not v["hit"] and v["filer_own_unmentioned"] == [] and not v["filer_own_miss"]
+
+
+def test_a_gold_chunk_missing_from_the_graph_is_reported_not_guessed():
+    q = gold_q(("a:I.1A:0001", NV))
+    v = cr.tripwire_verdict(q, "", mentions={})
+    assert v["missing_from_graph"] == ["a:I.1A:0001"] and not v["filer_own_miss"]
+
+
+def test_the_trigger_reopens_m2_at_two_filer_own_misses():
+    assert not cr.tripwire_reopens([{"filer_own_miss": True}, {"filer_own_miss": False}])
+    assert cr.tripwire_reopens([{"filer_own_miss": True}, {"filer_own_miss": True}])
+
+
+def test_the_tripwire_refuses_a_gold_file_that_changed_since_it_was_registered(tmp_path):
+    p = tmp_path / "gold.json"
+    p.write_text('{"questions": []}\n', encoding="utf-8")
+    with pytest.raises(SystemExit, match="registered"):
+        cr.registered_gold(p, expected_sha256="0" * 64)
+    assert cr.registered_gold(p, expected_sha256=cr.file_sha256(p)) == {"questions": []}
+
+
+def test_the_registered_gold_hash_is_the_committed_files():
+    assert cr.file_sha256(cr.ROOT / "artifacts" / "m2_tripwire_gold.json") == cr.TRIPWIRE_GOLD_SHA256
+
+
+def test_known_gap_excerpts_keep_only_passages_that_mention_an_anchor():
+    """Characterization of the structural gap decision 006 deferred: the excerpt query keeps a passage only if it MENTIONS an
+    anchor company, so a filer's own "we ..." passage cannot be an excerpt. If this fails, the gap was closed: update decision
+    006 and the tripwire."""
+    from semigraph.retrieval import retriever as R
+
+    assert "MATCH (node)-[:MENTIONS]->(c:Company) WHERE c.cik IN $ids" in R.EXCERPTS_QUERY
+
+
+def test_any_gold_id_present_is_a_hit_even_when_another_gold_chunk_is_filer_own_and_unmentioning():
+    q = gold_q(("a:I.1A:0001", NV), ("a:I.1A:0002", NV))
+    v = cr.tripwire_verdict(q, " [a:I.1A:0002]", mentions={"a:I.1A:0001": [], "a:I.1A:0002": []})
+    assert v["hit"] and v["filer_own_unmentioned"] == ["a:I.1A:0001", "a:I.1A:0002"] and not v["filer_own_miss"]
+
+
+def test_ciks_compare_as_integers_whatever_type_the_graph_returns():
+    q = gold_q(("a:I.1A:0001", NV))
+    v = cr.tripwire_verdict(q, "", mentions={"a:I.1A:0001": [str(NV)]})
+    assert v["filer_own_unmentioned"] == [] and not v["filer_own_miss"]
+
+
+def test_a_run_with_a_gold_chunk_missing_from_the_graph_is_not_a_valid_measurement():
+    verdicts = [{"id": "D2", "missing_from_graph": ["a:I.1A:0001"]}, {"id": "D3", "missing_from_graph": []}]
+    assert cr.invalid_questions(verdicts) == ["D2"]

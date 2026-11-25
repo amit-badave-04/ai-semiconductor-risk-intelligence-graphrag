@@ -23,6 +23,12 @@ Two more modes for the M2a I0 measurements (docs/specs/m2a-answer-integrity.md s
 context, its valid ids, the edges in retrieval order with their chunk ids and quote lengths, and the excerpt
 ranks. `measure` pairs each replayed context with the stored deployed answer and adds the read-only graph
 lookups the spec names. Pin the graph and the embedder on the command line (NEO4J_URI, EMBEDDING_BACKEND=onnx).
+
+One mode for decision 006's M2 reopen trigger (docs/decisions/006-m2-after-m2a.md; read-only, no model call):
+
+    python scripts/compare_retrieval.py tripwire artifacts/m2_tripwire_gold.json --out artifacts/m2_tripwire_snapshot.json
+
+It refuses a gold file that differs from the registered one, and exits non-zero if a gold chunk is missing from the graph.
 """
 
 import argparse
@@ -377,6 +383,89 @@ def measure(dump_path: Path, runs_path: Path, out: Path) -> None:
 
 
 
+# Decision 006 (docs/decisions/006-m2-after-m2a.md): the M2 reopen trigger. The gold was committed in 6c7e9d1 before any trace.
+TRIPWIRE_GOLD_SHA256 = "7a9f4dfc055446195aa9a7750346ce5c3b612782da6709acd9c8626a3b2921b3"
+TRIPWIRE_REOPEN_AT = 2
+GOLD_MENTIONS_QUERY = """UNWIND $ids AS cid MATCH (e:EvidenceSpan {chunk_id: cid})
+OPTIONAL MATCH (e)-[:MENTIONS]->(c:Company)
+RETURN e.chunk_id AS chunk_id, collect(c.cik) AS mention_ciks"""
+
+
+def file_sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def registered_gold(path: Path, expected_sha256: str = TRIPWIRE_GOLD_SHA256) -> dict:
+    """The pre-registered gold, refused if it changed since it was registered (a wrong label is recorded, not edited)."""
+    if file_sha256(path) != expected_sha256:
+        raise SystemExit("refusing: the tripwire gold differs from the registered file (decision 006)")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def tripwire_verdict(question: Mapping, context: str, mentions: Mapping[str, list[int]]) -> dict:
+    """Decision 006's rule for one question. A hit: any gold id appears in the context. A filer-own miss: no hit, and a gold
+    chunk exists in the graph whose filer is an anchor and which has no MENTIONS edge to an anchor."""
+    anchors = {int(a["cik"]) for a in question["anchors"]}
+    gold = [g["chunk_id"] for g in question["gold"]]
+    present = [cid for cid, shown in ids_shown(context, gold).items() if shown]
+    missing = [cid for cid in gold if cid not in mentions]
+    filer_own = [g["chunk_id"] for g in question["gold"]
+                 if g["chunk_id"] in mentions and int(g["filer_cik"]) in anchors
+                 and not anchors & {int(c) for c in mentions[g["chunk_id"]]}]
+    return {"id": question["id"], "hit": bool(present), "present": present, "missing_from_graph": missing,
+            "filer_own_unmentioned": filer_own, "filer_own_miss": not present and bool(filer_own)}
+
+
+def tripwire_reopens(verdicts: Iterable[Mapping]) -> bool:
+    return sum(1 for v in verdicts if v["filer_own_miss"]) >= TRIPWIRE_REOPEN_AT
+
+
+def invalid_questions(verdicts: Iterable[Mapping]) -> list[str]:
+    """Questions with a gold chunk the graph does not hold: a wrong label or another graph, so not a valid measurement."""
+    return [v["id"] for v in verdicts if v["missing_from_graph"]]
+
+
+def tripwire(gold_path: Path, out: Path) -> None:
+    """Run decision 006's pool through the deployed hybrid path (context only, no model call) on a local graph."""
+    from semigraph.config import get_settings
+    from semigraph.embeddings import Embedder
+    from semigraph.graph import client
+    from semigraph.retrieval.answerer import build_blocks
+    from semigraph.retrieval.retriever import hybrid_retrieve
+
+    gold = registered_gold(gold_path)
+    settings = get_settings()
+    graph = local_graph(settings.neo4j_uri)
+    driver = client.get_driver(settings)
+    embedder = Embedder()
+    verdicts = []
+    try:
+        snapshot = _session_rows(driver, SNAPSHOT_QUERY)
+        for q in gold["questions"]:
+            ids = [g["chunk_id"] for g in q["gold"]]
+            mentions = {r["chunk_id"]: r["mention_ciks"] for r in _session_rows(driver, GOLD_MENTIONS_QUERY, ids=ids)}
+            r = hybrid_retrieve(q["question"], driver, embedder)    # answer_stream's defaults: k_chunks=8, hops=2
+            _, context, _ = build_blocks(r)
+            v = tripwire_verdict(q, context, mentions)
+            v["retrieval_anchors"] = r["anchors"]
+            v["excerpts"] = [c["chunk_id"] for c in r["chunks"]]
+            verdicts.append(v)
+    finally:
+        driver.close()
+    report = {"decision": "docs/decisions/006-m2-after-m2a.md", "gold_sha256": TRIPWIRE_GOLD_SHA256, "graph": graph,
+              "embedding_backend": embedder.backend, "snapshot": snapshot, "reopen_at": TRIPWIRE_REOPEN_AT,
+              "filer_own_misses": sum(1 for v in verdicts if v["filer_own_miss"]),
+              "reopens_m2": tripwire_reopens(verdicts), "invalid_questions": invalid_questions(verdicts),
+              "questions": verdicts}
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=1, default=str) + "\n", encoding="utf-8")
+    print(f"{report['filer_own_misses']} filer-own misses of {len(verdicts)}; reopens M2: {report['reopens_m2']} -> {out}")
+    if report["invalid_questions"]:
+        raise SystemExit(f"NOT A VALID RUN: gold chunks missing from the graph for {report['invalid_questions']}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -391,9 +480,14 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("dump", type=Path)
     m.add_argument("runs", type=Path)
     m.add_argument("--out", type=Path, required=True)
+    t = sub.add_parser("tripwire")
+    t.add_argument("gold", type=Path)
+    t.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.cmd == "snapshot":
         take_snapshot(args.out)
+    elif args.cmd == "tripwire":
+        tripwire(args.gold, args.out)
     elif args.cmd == "dump":
         take_dump(args.out)
     elif args.cmd == "measure":
