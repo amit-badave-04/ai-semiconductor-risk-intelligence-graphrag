@@ -116,30 +116,85 @@ def _pairs(rows: list, rng, per_type: int) -> list[list]:
     return pairs
 
 
-def sample_passages(chunks, seed: int, per_type: int, aliases: Mapping[int, list[str]]) -> dict[str, list[dict]]:
-    """A fixed-seed draw of in-scope passages per type (A-F), each chunk used at most once across types."""
+def sample_passages(chunks, seed: int, per_type: "int | Mapping[str, int]", aliases: Mapping[int, list[str]],
+                    exclude_families: Iterable[str] = ()) -> dict[str, list[dict]]:
+    """A fixed-seed draw of in-scope passages per type (A-F), one draw per text family across types and rounds.
+
+    per_type is one count for every type or a count per type; exclude_families are families drawn in an earlier round.
+    """
     import random
 
     scope = in_scope_accessions(chunks)
     rows = sorted((r for r in chunks.itertuples(index=False) if r.accession_no in scope), key=lambda r: r.chunk_id)
     fam = {r.chunk_id: _family(r.ticker, r.text) for r in rows}
-    used: set[str] = set()  # text families already drawn: a passage repeated across filings is drawn once
+    used: set[str] = set(exclude_families)  # text families already drawn: a passage repeated across filings is drawn once
     out: dict[str, list[dict]] = {}
     for kind in ("D", "A", "B", "C", "E", "F"):  # D first: its families never reach another type's split
         rng = random.Random(f"{seed}:{kind}")
+        want = per_type if isinstance(per_type, int) else per_type.get(kind, 0)
         free, seen = [], set()
         for r in rows:
             if fam[r.chunk_id] not in used and fam[r.chunk_id] not in seen and len(r.text) >= MIN_PASSAGE_CHARS:
                 seen.add(fam[r.chunk_id])
                 free.append(r)
         if kind == "D":
-            picked = _pairs(free, rng, per_type)
+            picked = _pairs(free, rng, want) if want else []
         else:
             cands = [r for r in free if _single_type(kind, r, aliases)]
-            picked = [[r] for r in rng.sample(cands, min(per_type, len(cands)))]
+            picked = [[r] for r in rng.sample(cands, min(want, len(cands)))]
         out[kind] = [_item(kind, group) for group in picked]
         used.update(fam[r.chunk_id] for group in picked for r in group)
     return {k: out[k] for k in TYPES}
+
+
+_WORD = re.compile(r"[a-z]{4,}")
+MAX_TOPIC_POOL = 300
+
+
+def _words(text: str) -> frozenset[str]:
+    return frozenset(_WORD.findall(normalise(text)))
+
+
+def sample_topic_pairs(chunks, seed: int, n: int, topics: Iterable[str],
+                       exclude_families: Iterable[str] = ()) -> list[dict]:
+    """Type D: pairs of in-scope passages from two different filers that contain the same specific topic phrase.
+
+    Within a topic the most similar pair (Jaccard of content words) is taken first; topics are visited round-robin in a
+    seeded order until ``n`` pairs are found. No chunk or text family is used twice, and excluded families are skipped.
+    """
+    import random
+
+    scope = in_scope_accessions(chunks)
+    rows = sorted((r for r in chunks.itertuples(index=False)
+                   if r.accession_no in scope and len(r.text) >= MIN_PASSAGE_CHARS), key=lambda r: r.chunk_id)
+    fam = {r.chunk_id: _family(r.ticker, r.text) for r in rows}
+    used = set(exclude_families)
+    order = list(topics)
+    random.Random(f"{seed}:D-topics").shuffle(order)
+    ranked: dict[str, list[tuple]] = {}
+    for topic in order:
+        pool = [r for r in rows if topic in normalise(r.text)][:MAX_TOPIC_POOL]
+        words = {r.chunk_id: _words(r.text) for r in pool}
+        pairs = []
+        for i, a in enumerate(pool):
+            for b in pool[i + 1:]:
+                if a.cik != b.cik:
+                    union = words[a.chunk_id] | words[b.chunk_id]
+                    score = len(words[a.chunk_id] & words[b.chunk_id]) / len(union) if union else 0.0
+                    pairs.append((-score, a.chunk_id, b.chunk_id, a, b))
+        ranked[topic] = sorted(pairs, key=lambda p: p[:3])
+    out: list[dict] = []
+    while len(out) < n and any(ranked.values()):
+        for topic in order:
+            while ranked[topic]:
+                _, _, _, a, b = ranked[topic].pop(0)
+                if fam[a.chunk_id] not in used and fam[b.chunk_id] not in used and fam[a.chunk_id] != fam[b.chunk_id]:
+                    used.update((fam[a.chunk_id], fam[b.chunk_id]))
+                    out.append({**_item("D", [a, b]), "topic": topic})
+                    break
+            if len(out) == n:
+                break
+    return out
 
 
 def split_of(family_id: str) -> str:

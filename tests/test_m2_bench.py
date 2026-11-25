@@ -172,3 +172,44 @@ def test_us_in_capitals_is_not_the_pronoun_and_fiscal_year_labels_are_not_ids():
     assert mb.WE.search("We expect changes.")
     assert not mb.ID_LIKE.search("Revenue in FY2026 and FY24 grew.")
     assert mb.ID_LIKE.search("Shipments of H200 and CoWoS capacity under ECCN 3A090.")
+
+
+def test_a_second_round_skips_families_already_drawn_and_takes_counts_per_type():
+    lake = lake_for_sampling()
+    first = mb.sample_passages(lake, seed=7, per_type=3, aliases={1: ["nvidia"], 2: ["amd"]})
+    drawn = {f for items in first.values() for it in items for f in it["family"].split("+")}
+    second = mb.sample_passages(lake, seed=8, per_type={"A": 2, "B": 0, "C": 0, "D": 0, "E": 1, "F": 0},
+                                aliases={1: ["nvidia"], 2: ["amd"]}, exclude_families=drawn)
+    assert [len(second[t]) for t in mb.TYPES] == [2, 0, 0, 0, 1, 0]
+    again = {f for items in second.values() for it in items for f in it["family"].split("+")}
+    assert not again & drawn
+
+
+def topic_lake():
+    long = " in addition we describe further details of our approach and the risks involved for several more years."
+    return chunks(
+        ("n:I.1A:0001", "NV", 1, "10-K", "2026-02-25", "n", "I.1A", "Export controls on advanced chips to China limit our sales" + long),
+        ("a:I.1A:0001", "AM", 2, "10-K", "2026-02-01", "a", "I.1A", "Export controls on advanced chips to China restrict our products" + long),
+        ("a:I.1A:0002", "AM", 2, "10-K", "2026-02-01", "a", "I.1A", "Our HBM memory supply depends on a few suppliers" + long),
+        ("m:I.1A:0001", "MU", 3, "10-K", "2026-02-10", "m", "I.1A", "Demand for HBM memory from AI customers grew strongly" + long),
+        ("n:I.1A:0002", "NV", 1, "10-K", "2026-02-25", "n", "I.1A", "Our HBM memory supply depends on a few suppliers too" + long),
+    )
+
+
+def test_topic_pairs_share_a_specific_topic_and_differ_in_filer():
+    pairs = mb.sample_topic_pairs(topic_lake(), seed=1, n=3, topics=("export controls", "hbm"))
+    assert pairs == mb.sample_topic_pairs(topic_lake(), seed=1, n=3, topics=("export controls", "hbm"))
+    assert pairs
+    lake = topic_lake().set_index("chunk_id")
+    for it in pairs:
+        a, b = it["chunk_ids"]
+        assert lake.loc[a, "cik"] != lake.loc[b, "cik"]
+        assert it["topic"] in lake.loc[a, "text"].lower() and it["topic"] in lake.loc[b, "text"].lower()
+
+
+def test_topic_pairs_prefer_the_most_similar_passages_and_skip_excluded_families():
+    pairs = mb.sample_topic_pairs(topic_lake(), seed=1, n=1, topics=("hbm",))
+    assert sorted(pairs[0]["chunk_ids"]) == ["a:I.1A:0002", "n:I.1A:0002"]
+    fam = mb._family("AM", topic_lake().set_index("chunk_id").loc["a:I.1A:0002", "text"])
+    again = mb.sample_topic_pairs(topic_lake(), seed=1, n=1, topics=("hbm",), exclude_families={fam})
+    assert "a:I.1A:0002" not in again[0]["chunk_ids"]
