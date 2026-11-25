@@ -281,8 +281,9 @@ def stream_workspace_answer(question: str, driver, embedder, *, strategy: str = 
                             **stream_kwargs):
     """Streaming generator of event dicts, exactly like :func:`semigraph.retrieval.answerer.answer_stream` but over
     an upload workspace (docs/v2/M4_PLAN.md 4.2). Never the agent, never the answer cache."""
-    r_sec = hybrid_retrieve(question, driver, embedder, k_chunks=k_chunks, hops=hops)
-    r_ws = workspace_retrieve(question, workspace_id, driver, embedder, as_of=as_of, k=k_doc_chunks)
+    vec = embedder.encode_query(question)                      # once: the SEC and the workspace search share it (M2 R7)
+    r_sec = hybrid_retrieve(question, driver, embedder, k_chunks=k_chunks, hops=hops, query_vec=vec)
+    r_ws = workspace_retrieve(question, workspace_id, driver, embedder, as_of=as_of, k=k_doc_chunks, query_vec=vec)
     doc_chunks = r_ws["doc_chunks"]
     delimiter = make_delimiter(doc_chunks)
     prompt, full_context, valid_ids, chunk_ids, sources = build_workspace_prompt(question, r_sec, r_ws, delimiter)

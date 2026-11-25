@@ -67,6 +67,7 @@ from datetime import date
 from functools import lru_cache
 
 from ..artifacts import load_canonical_entities
+from .fusion import FusionConfig, SlotPolicy, rrf, select_slots
 
 logger = logging.getLogger("semigraph.retrieval")
 
@@ -313,6 +314,29 @@ EXCERPTS_QUERY = """MATCH (node:EvidenceSpan)
 SEARCH node IN (VECTOR INDEX evidence_embedding FOR $vec WHERE node.retrievable = true LIMIT $candidates) SCORE AS score
 MATCH (node)-[:MENTIONS]->(c:Company) WHERE c.cik IN $ids
 RETURN DISTINCT node.chunk_id AS chunk_id, score, node.text AS text, node.source_url AS source_url
+ORDER BY score DESC LIMIT $k"""
+# The fusion legs (M2 R4-R6; only with ``hybrid_retrieve(..., fusion=FusionConfig(...))``). Each returns the hash and accession
+# the slot policy dedups and caps on. ``=`` per anchor, never ``IN``, inside the SEARCH. ``EXCERPTS_QUERY`` is untouched.
+_FUSION_COLUMNS = """RETURN node.chunk_id AS chunk_id, score, node.text AS text, node.source_url AS source_url,
+       node.content_hash AS content_hash, node.accession_no AS accession_no, node.is_current AS is_current
+ORDER BY score DESC LIMIT $k"""
+# Filer-own passages: the filer filter is in the index, so ``LIMIT $candidates`` is filled with qualifying rows; no mention hop.
+FILER_EXCERPTS_QUERY = """MATCH (node:EvidenceSpan)
+SEARCH node IN (VECTOR INDEX evidence_embedding FOR $vec WHERE node.retrievable = true AND node.filer_cik = $cik LIMIT $candidates) SCORE AS score
+""" + _FUSION_COLUMNS
+# The same, inside a filing-date window (``valid_from`` is the filing date, a DATE). Probed read-only on the local graph G,
+# Neo4j 2026.07.1 (the production version), 2026-11-26: `node.valid_from >= $since` with a Date parameter inside the vector
+# index WHERE returned 20 rows, all on or after the bound; `filer_cik IN $list` and `form = '10-Q'` also worked
+# (docs/specs/m2-search.md Status, I0). G is 2026.07.1, not 2026.05, so R5's second probe does not apply.
+PERIOD_EXCERPTS_QUERY = """MATCH (node:EvidenceSpan)
+SEARCH node IN (VECTOR INDEX evidence_embedding FOR $vec WHERE node.retrievable = true AND node.filer_cik = $cik AND node.valid_from >= $since AND node.valid_from < $until LIMIT $candidates) SCORE AS score
+""" + _FUSION_COLUMNS
+# The mention leg: the shape of EXCERPTS_QUERY plus content_hash and accession_no (``$k`` is the fusion depth).
+FUSION_MENTION_EXCERPTS_QUERY = """MATCH (node:EvidenceSpan)
+SEARCH node IN (VECTOR INDEX evidence_embedding FOR $vec WHERE node.retrievable = true LIMIT $candidates) SCORE AS score
+MATCH (node)-[:MENTIONS]->(c:Company) WHERE c.cik IN $ids
+RETURN DISTINCT node.chunk_id AS chunk_id, score, node.text AS text, node.source_url AS source_url,
+       node.content_hash AS content_hash, node.accession_no AS accession_no, node.is_current AS is_current
 ORDER BY score DESC LIMIT $k"""
 
 VECTOR_QUERY = """MATCH (node:EvidenceSpan)
@@ -738,8 +762,45 @@ def _passages(driver, pairs: list[dict], question: str) -> tuple[list[dict], lis
     return select_passages(rows, pairs, question)
 
 
+def _period_window(periods: Mapping[str, list]) -> tuple[date, date] | None:
+    """The filing-date window of the named periods, or None when the question names none. shortcut: from the year only
+    (Jan 1 of the year BEFORE the earliest, because a fiscal year ending in January has its Q1-Q3 10-Qs filed in the prior
+    calendar year, to Jul 1 after the latest, which holds that year's annual filing for any fiscal year end); tighten with
+    the period-end dates if the dev bench shows the window is too wide."""
+    years = [*periods["years"], *(int(d[:4]) for d in periods["dates"])]
+    return (date(min(years) - 1, 1, 1), date(max(years) + 1, 7, 1)) if years else None
+
+
+def _fused_excerpts(driver, vec: list[float], anchor_ids: list[int], *, defaulted: bool, periods: Mapping[str, list],
+                    k_chunks: int, cfg: FusionConfig) -> tuple[list[dict], dict[str, list[str]], list[str]]:
+    """Run the enabled legs on the one query vector, fuse by RRF into at most ``k_chunks`` excerpts under the slot policy.
+    Returns the excerpts (the usual four keys, ``score`` = RRF score), every leg's ranked chunk ids and the ids of the
+    excerpts that come from a superseded filing (freshness keeps a superseded risk section retrievable)."""
+    legs: dict[str, list[dict]] = {}
+    if cfg.mention:
+        legs["mention"] = run_cypher(driver, FUSION_MENTION_EXCERPTS_QUERY, ids=anchor_ids, vec=vec, k=cfg.fetch_k,
+                                     candidates=cfg.mention_candidates)
+    window = _period_window(periods)
+    for cik in ([] if defaulted else anchor_ids):                         # no own-filer leg for the defaulted Nvidia anchor
+        if cfg.filer:
+            legs[f"filer:{cik}"] = run_cypher(driver, FILER_EXCERPTS_QUERY, cik=cik, vec=vec, k=cfg.fetch_k,
+                                              candidates=cfg.filer_candidates)
+        if cfg.period and window:
+            legs[f"period:{cik}"] = run_cypher(driver, PERIOD_EXCERPTS_QUERY, cik=cik, vec=vec, k=cfg.fetch_k,
+                                               candidates=cfg.period_candidates, since=window[0], until=window[1])
+    ranked = {name: [r["chunk_id"] for r in rows] for name, rows in legs.items()}
+    rows = {r["chunk_id"]: r for leg in legs.values() for r in reversed(leg)}   # rows of one node are identical across legs, any copy will do
+    picked = select_slots(rrf(ranked, k=cfg.rrf_k, depth=cfg.depth), rows,
+                          filer_lists=[ids for name, ids in ranked.items() if name.startswith("filer:")],
+                          mention_list=ranked.get("mention", []), policy=SlotPolicy(k_chunks=k_chunks))
+    chunks = [{"chunk_id": cid, "score": score, "text": rows[cid]["text"], "source_url": rows[cid]["source_url"]}
+              for cid, score in picked]
+    superseded = sorted(cid for cid, _ in picked if rows[cid].get("is_current") is False)
+    return chunks, {name: ids[:cfg.log_depth] for name, ids in ranked.items()}, superseded
+
+
 def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
-                    hops: int = 2, *, query_vec: list[float] | None = None) -> dict:
+                    hops: int = 2, *, query_vec: list[float] | None = None, fusion: FusionConfig | None = None) -> dict:
     """Entity-first hybrid retrieval — ported from notebook 14 (v3), C2-hardened.
 
     anchors -> company relation subgraph + capped AFFECTED_BY rules ->
@@ -767,6 +828,11 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     direct neighbours are included only when ``hops >= 2`` (as in v1). ``query_vec`` is the question's embedding when the
     caller already has it (the async serving path embeds once, on its own thread, and hands the vector in); without it
     the embedder is called here, as before.
+
+    ``fusion`` (keyword-only, default None = exactly the path above): a :class:`FusionConfig` replaces the single excerpt
+    query by the enabled dense legs on the SAME query vector, fused into at most ``k_chunks`` excerpts (M2 R4-R7, R10);
+    ``leg_ranks`` (leg name -> chunk ids, to depth 50) and ``superseded_ids`` (the excerpts from a superseded filing) are added
+    to the result for the bench and no block renders them; ``chunks[].score`` is then an RRF score, not a vector score.
     """
     edges_query = company_edges_query(hops)      # rejects a bad ``hops`` before any work is done
     anchors, dropped = cap_anchors(detect_anchors(question))
@@ -794,14 +860,23 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
         rows = run_cypher(driver, TEMPORAL_SELECTED_QUERY, ids=anchor_ids, newer_accessions=newer) if newer else []
         temporal, temporal_pairs = select_temporal(rows, question, pairs=chosen)
     temporal_passages, temporal_pairs = _passages(driver, temporal_pairs, question)
-    chunks = run_cypher(driver, EXCERPTS_QUERY, ids=anchor_ids, vec=vec, k=k_chunks,
-                        candidates=EXCERPT_CANDIDATES)
+    leg_ranks: dict[str, list[str]] | None = None
+    superseded: list[str] = []
+    if fusion is None:
+        chunks = run_cypher(driver, EXCERPTS_QUERY, ids=anchor_ids, vec=vec, k=k_chunks,
+                            candidates=EXCERPT_CANDIDATES)
+    else:
+        chunks, leg_ranks, superseded = _fused_excerpts(driver, vec, anchor_ids, defaulted=anchor_defaulted, periods=periods,
+                                            k_chunks=k_chunks, cfg=fusion)
     logger.debug("hybrid_retrieve anchors=%s defaulted=%s edges=%d metrics=%d risks=%d "
                  "temporal=%d passages=%d chunks=%d", anchors, anchor_defaulted, len(edges), len(metrics),
                  len(risks), len(temporal), len(temporal_passages), len(chunks))
     result = {"question": question, "anchors": anchors, "edges": edges, "metrics": metrics, "metric_periods": periods, "risks": risks,
               "temporal": temporal, "temporal_pairs": temporal_pairs, "temporal_passages": temporal_passages,
               "temporal_notices": temporal_notices, "chunks": chunks, "anchor_defaulted": anchor_defaulted}
+    if leg_ranks is not None:
+        result["leg_ranks"] = leg_ranks
+        result["superseded_ids"] = superseded
     if dropped:
         result["temporal_notices"] = [*temporal_notices, _dropped_notice(dropped)]
         result["anchors_dropped"] = dropped

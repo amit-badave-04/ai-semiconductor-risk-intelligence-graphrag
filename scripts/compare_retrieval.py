@@ -104,8 +104,10 @@ def edge_rows(retrieval: dict) -> list[dict]:
 
 
 def chunk_ranks(retrieval: dict) -> list[dict]:
-    """The excerpts in the order the prompt shows them, with the vector score when the row has one."""
-    return [{"rank": i, "chunk_id": c["chunk_id"], "score": c.get("score")}
+    """The excerpts in the order the prompt shows them, with the score when the row has one: a vector score on today's path,
+    an RRF score when the retrieval ran with a FusionConfig (it carries ``leg_ranks``)."""
+    extra = {"score_kind": "rrf"} if "leg_ranks" in retrieval else {}      # today's rows are unchanged
+    return [{"rank": i, "chunk_id": c["chunk_id"], "score": c.get("score"), **extra}
             for i, c in enumerate(retrieval.get("chunks", []), start=1)]
 
 

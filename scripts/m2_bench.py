@@ -271,8 +271,27 @@ def summarise(scored: Mapping[str, Mapping]) -> dict:
     return {"n": n, "success8": hits, "context_hit": sum(1 for s in scored.values() if s["context_hit"]), "misses": n - hits}
 
 
-def run_dev(out: Path) -> dict:
-    """Run today's deployed retrieval on the frozen dev split (main and reserves) on a LOCAL graph; ids only, no context text.
+ARMS = ("baseline", "mention", "filer", "period", "filer+period")
+
+
+def arm_config(arm: str):
+    """The FusionConfig of a candidate arm (the mention leg is always on), or None for the baseline (today's exact path).
+    ``mention`` is the fused path with the mention leg alone: the reference for filer / period, so those arms are not
+    credited with what the slot policy (k=50, dedup, accession cap, RRF order) does by itself."""
+    if arm not in ARMS:
+        raise SystemExit(f"unknown arm {arm!r}; one of {', '.join(ARMS)}")
+    if arm == "baseline":
+        return None
+    import sys
+
+    sys.path.insert(0, str(ROOT / "src"))
+    from semigraph.retrieval.fusion import FusionConfig
+
+    return FusionConfig(mention=True, filer="filer" in arm, period="period" in arm)
+
+
+def run_dev(out: Path, arm: str = "baseline") -> dict:
+    """Run one arm of the retrieval on the frozen dev split (main and reserves) on a LOCAL graph; ids only, no context text.
 
     The test split is never run here: it runs once, in I6, after all tuning on dev.
     """
@@ -286,6 +305,7 @@ def run_dev(out: Path) -> dict:
     from semigraph.retrieval.answerer import build_blocks
     from semigraph.retrieval.retriever import hybrid_retrieve
 
+    fusion = arm_config(arm)
     bench = registered_bench(ROOT / "artifacts" / "m2_bench" / "m2_bench_dev.json", REGISTERED["dev"])["questions"]
     settings = get_settings()
     host = urlsplit(settings.neo4j_uri)
@@ -296,14 +316,16 @@ def run_dev(out: Path) -> dict:
         with driver.session(default_access_mode="READ") as ses:
             snapshot = ses.run("MATCH (s:Snapshot) RETURN s.id AS id ORDER BY s.created_at DESC LIMIT 1").single()["id"]
         for q in bench:
-            r = hybrid_retrieve(q["q"], driver, embedder)  # answer_stream's defaults: k_chunks=8, hops=2
+            r = hybrid_retrieve(q["q"], driver, embedder, fusion=fusion)  # answer_stream's defaults: k_chunks=8, hops=2
             _, _, valid_ids = build_blocks(r)
             run[q["id"]] = {"excerpts": [c["chunk_id"] for c in r["chunks"]], "context_ids": sorted(valid_ids)}
+            if "leg_ranks" in r:
+                run[q["id"]]["leg_ranks"] = r["leg_ranks"]
     finally:
         driver.close()
     scored = score_run(bench, run)
     main_ids = {q["id"] for q in bench if q["role"] == "main"}
-    report = {"split": "dev", "arm": "baseline", "snapshot": snapshot, "embedding_backend": embedder.backend,
+    report = {"split": "dev", "arm": arm, "snapshot": snapshot, "embedding_backend": embedder.backend,
               "summary_main": summarise({k: v for k, v in scored.items() if k in main_ids}),
               "summary_all": summarise(scored), "questions": {k: {**scored[k], **run[k]} for k in scored}}
     out.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8", newline="\n")
@@ -315,7 +337,8 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser(description="M2-Bench (docs/specs/m2-search.md section 7)")
     ap.add_argument("cmd", choices=["run-dev"])
-    ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--arm", choices=ARMS, default="baseline")
+    ap.add_argument("--out", type=Path, help="default: artifacts/m2_bench/<arm>_dev.json")
     args = ap.parse_args()
-    rep = run_dev(args.out)
+    rep = run_dev(args.out or ROOT / "artifacts" / "m2_bench" / f"{args.arm.replace('+', '_')}_dev.json", args.arm)
     print("main:", rep["summary_main"], "| all:", rep["summary_all"], "| snapshot:", rep["snapshot"])

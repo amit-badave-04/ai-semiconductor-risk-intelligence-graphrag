@@ -238,3 +238,12 @@ def test_scoring_a_run_reports_excerpt_and_context_hits_per_question():
     assert scored["Q1"] == {"type": "A", "success8": True, "context_hit": True, "ndcg10": pytest.approx(1 / math.log2(3))}
     assert scored["Q2"]["success8"] is False and scored["Q2"]["context_hit"] is True
     assert mb.summarise(scored) == {"n": 2, "success8": 1, "context_hit": 2, "misses": 1}
+
+
+def test_arms_map_to_fusion_configs_and_the_baseline_is_todays_path():
+    assert mb.arm_config("baseline") is None
+    cfgs = {a: mb.arm_config(a) for a in mb.ARMS if a != "baseline"}
+    assert {a: (c.mention, c.filer, c.period) for a, c in cfgs.items()} == {
+        "mention": (True, False, False), "filer": (True, True, False), "period": (True, False, True), "filer+period": (True, True, True)}
+    with pytest.raises(SystemExit):
+        mb.arm_config("bm25")

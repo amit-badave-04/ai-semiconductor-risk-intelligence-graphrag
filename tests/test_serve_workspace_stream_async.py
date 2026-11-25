@@ -578,7 +578,7 @@ def test_the_question_is_embedded_once_and_that_exact_vector_reaches_both_retrie
     sync_embedder = ProbeEmbedder()
     list(ws.stream_workspace_answer(CITED["question"], _upload_driver(CITED), sync_embedder,
                                     **_writer_kwargs(CITED, [], asynchronous=False)))
-    assert len(sync_embedder.calls) == 2, "the contrast: the sync stream embeds the question twice"
+    assert len(sync_embedder.calls) == 1, "M2 R7: the sync stream now embeds the question once too (it used to embed twice)"
 
 
 def test_the_embedding_runs_on_a_worker_thread_under_the_embed_limiter():
