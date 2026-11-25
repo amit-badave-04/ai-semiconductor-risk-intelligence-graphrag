@@ -14,6 +14,12 @@ Ids: OD = owner decisions, R = requirements, S = security claims, I = increments
   retrieval under `RETRIEVAL_FUSION` inside M2, and the paid agent ship gate runs inside M2 with the aim of re-enabling the deep
   agent (`AGENT_ENABLED`). The agent's estimate must stay within its invariant ($1.02); a failed gate keeps the agent off, as in M2a.
   Planner changes are allowed only where the gate's failure analysis points at them (the four agent-only regressions T1, T7, T9, X4).
+- **OD1 changed: the reranker ships in M2.** The owner: "have the reranker", then "Local first, hosted later": a pluggable rerank
+  stage over the fused candidates, with a local small cross-encoder first (a MiniLM-class model on CPU, $0, no vendor); a hosted
+  reranker can be switched in later, and only with the owner's separate approval of the vendor. The benchmark still measures it
+  (fused vs fused + rerank on dev, then the test run), and the p95 added-latency gate on the production machine (2 s throttled)
+  decides the candidate depth, not whether the stage exists. Never on the upload path. Model weights are downloaded only after the
+  owner approves the file, source and size.
 - The M2 spend cap: **"$15"**, with the ledger rule (a paid step that would exceed the remaining cap is not started; stop after two
   failed paid attempts). The agent gate is one of the paid steps inside it.
 - The benchmark drafter: **"Claude agents, blind"** ($0 API): drafting agents see only the filing text and the benchmark rules, never
