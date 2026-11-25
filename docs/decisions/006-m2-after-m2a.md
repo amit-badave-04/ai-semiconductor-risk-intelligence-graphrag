@@ -130,6 +130,23 @@ if ever built, must not rely on `db.index.fulltext.queryNodes` (deprecated from 
 - **T3 is logged as a known limit.** It fails 0/3 in every judged run (v2e, m2a, m2a2, m2a3). The causes are the judge reading
   sentence-level samples as full-corpus claims, plus the same one-item reworded boundary (20 vs 19). No cheap product fix.
 
+## Step 3 result: the pre-CP snapshot (2026-11-25)
+
+Gold committed in 6c7e9d1 (SHA-256 7a9f4dfc...21b3) before the run; the run used c671c8e:
+`scripts/compare_retrieval.py tripwire artifacts/m2_tripwire_gold.json --out artifacts/m2_tripwire_snapshot.json` on G (snapshot
+snap-20260924-b1128354c4), context only, no model call, $0. Embedder: the local fp32 torch model (the same weights as production's
+fp32 ONNX; no local ONNX file), as in M2a's paid runs.
+
+- **0 filer-own misses of 9. The trigger did not fire: M2 stays deferred.** All 9 questions are hits (gold ids present in the
+  context: D2 1, D3 7, D4 2, R1 6, R2 3, R3 5, Q1 2, Q2 3, Q3 5). D2, D3, R1, R3, Q1 and Q3 have filer-own gold chunks with no
+  MENTIONS edge to an anchor, and each of them still reached the context through another block, so the structural gap exists in
+  the graph but did not cost these questions their evidence.
+- **R2 is flagged by the tool as not a clean measurement** (exit 1 by design): one of its 13 any-of gold chunks,
+  `0001730168-26-000016:II.1A:0006` (Broadcom's oldest 10-Q), is not in the graph. The filing node exists, but the graph keeps
+  spans only for the two later 10-Qs (`-26-000054`, not current, and `-26-000080`, current): a labelling-scope mismatch, recorded
+  and not edited. It cannot change the outcome: R2 has no anchor, so it can never be a filer-own miss, and it is a hit through 3
+  other gold chunks.
+
 ## Reopen trigger (fixed 2026-11-25, before any gold or trace for the pool exists)
 
 - **Pool.** The 9 gap-prone benchmark questions D2, D3, D4, R1, R2, R3, Q1, Q2, Q3; plus every question CP adds as a company's
