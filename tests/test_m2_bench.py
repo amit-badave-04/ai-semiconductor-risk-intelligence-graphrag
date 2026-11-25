@@ -1,6 +1,7 @@
 """M2-Bench harness (docs/specs/m2-search.md section 7): gold scope, quote binding, split, metrics, registration."""
 
 import importlib.util
+import math
 import sys
 from pathlib import Path
 
@@ -225,3 +226,15 @@ def test_the_registered_hash_ignores_crlf_line_endings_so_a_windows_checkout_mat
 def test_the_frozen_bench_files_match_their_registered_hashes():
     for split, sha in mb.REGISTERED.items():
         assert mb.registered_bench(mb.ROOT / "artifacts" / "m2_bench" / f"m2_bench_{split}.json", sha)["split"] == split
+
+
+def test_scoring_a_run_reports_excerpt_and_context_hits_per_question():
+    bench = [{"id": "Q1", "type": "A", "gold": [{"chunk_id": "a", "grade": 2, "anchor": 1}]},
+             {"id": "Q2", "type": "D", "gold": [{"chunk_id": "b", "grade": 2, "anchor": 1},
+                                               {"chunk_id": "c", "grade": 2, "anchor": 2}]}]
+    run = {"Q1": {"excerpts": ["x", "a"], "context_ids": ["x", "a"]},
+           "Q2": {"excerpts": ["b"], "context_ids": ["b", "c"]}}
+    scored = mb.score_run(bench, run)
+    assert scored["Q1"] == {"type": "A", "success8": True, "context_hit": True, "ndcg10": pytest.approx(1 / math.log2(3))}
+    assert scored["Q2"]["success8"] is False and scored["Q2"]["context_hit"] is True
+    assert mb.summarise(scored) == {"n": 2, "success8": 1, "context_hit": 2, "misses": 1}

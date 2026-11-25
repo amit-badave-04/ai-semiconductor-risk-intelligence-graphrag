@@ -250,3 +250,72 @@ def registered_bench(path: Path, expected_sha256: str) -> dict:
     if file_sha256(path) != expected_sha256:
         raise SystemExit(f"refusing: {path.name} differs from the registered bench file (docs/specs/m2-search.md section 7)")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def score_run(bench: Iterable[Mapping], run: Mapping[str, Mapping]) -> dict[str, dict]:
+    """Per question: Success@8 over the excerpts (primary), a hit anywhere in the context, and graded nDCG@10."""
+    scored = {}
+    for q in bench:
+        r = run[q["id"]]
+        d = q["type"] == "D"
+        ctx = list(r["context_ids"])
+        scored[q["id"]] = {"type": q["type"], "success8": success_at(r["excerpts"], q["gold"], k=8, per_anchor=d),
+                           "context_hit": success_at(ctx, q["gold"], k=len(ctx), per_anchor=d),
+                           "ndcg10": ndcg_at(r["excerpts"], q["gold"], k=10)}
+    return scored
+
+
+def summarise(scored: Mapping[str, Mapping]) -> dict:
+    n = len(scored)
+    hits = sum(1 for s in scored.values() if s["success8"])
+    return {"n": n, "success8": hits, "context_hit": sum(1 for s in scored.values() if s["context_hit"]), "misses": n - hits}
+
+
+def run_dev(out: Path) -> dict:
+    """Run today's deployed retrieval on the frozen dev split (main and reserves) on a LOCAL graph; ids only, no context text.
+
+    The test split is never run here: it runs once, in I6, after all tuning on dev.
+    """
+    import sys
+    from urllib.parse import urlsplit
+
+    sys.path.insert(0, str(ROOT / "src"))
+    from semigraph.config import get_settings
+    from semigraph.embeddings import Embedder
+    from semigraph.graph import client
+    from semigraph.retrieval.answerer import build_blocks
+    from semigraph.retrieval.retriever import hybrid_retrieve
+
+    bench = registered_bench(ROOT / "artifacts" / "m2_bench" / "m2_bench_dev.json", REGISTERED["dev"])["questions"]
+    settings = get_settings()
+    host = urlsplit(settings.neo4j_uri)
+    if host.hostname not in {"localhost", "127.0.0.1", "::1"} or host.username or host.password:
+        raise SystemExit("refusing: M2-Bench runs read a local graph only")
+    driver, embedder, run = client.get_driver(settings), Embedder(), {}
+    try:
+        with driver.session(default_access_mode="READ") as ses:
+            snapshot = ses.run("MATCH (s:Snapshot) RETURN s.id AS id ORDER BY s.created_at DESC LIMIT 1").single()["id"]
+        for q in bench:
+            r = hybrid_retrieve(q["q"], driver, embedder)  # answer_stream's defaults: k_chunks=8, hops=2
+            _, _, valid_ids = build_blocks(r)
+            run[q["id"]] = {"excerpts": [c["chunk_id"] for c in r["chunks"]], "context_ids": sorted(valid_ids)}
+    finally:
+        driver.close()
+    scored = score_run(bench, run)
+    main_ids = {q["id"] for q in bench if q["role"] == "main"}
+    report = {"split": "dev", "arm": "baseline", "snapshot": snapshot, "embedding_backend": embedder.backend,
+              "summary_main": summarise({k: v for k, v in scored.items() if k in main_ids}),
+              "summary_all": summarise(scored), "questions": {k: {**scored[k], **run[k]} for k in scored}}
+    out.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8", newline="\n")
+    return report
+
+
+if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(description="M2-Bench (docs/specs/m2-search.md section 7)")
+    ap.add_argument("cmd", choices=["run-dev"])
+    ap.add_argument("--out", type=Path, required=True)
+    args = ap.parse_args()
+    rep = run_dev(args.out)
+    print("main:", rep["summary_main"], "| all:", rep["summary_all"], "| snapshot:", rep["snapshot"])
