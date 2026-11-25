@@ -41,12 +41,16 @@ serve = [
     "pdfplumber>=0.11.10",
     "python-docx>=1.2",
     "puremagic>=2.2",
+    "bm25s>=0.3.16",
 ]
 
 [project.scripts]
 semigraph = "semigraph.cli:app"
 
 [dependency-groups]
+bench = [
+    "ir-measures>=0.4.3",
+]
 dev = [
     "onnx>=1.17",  # scripts/build_onnx_embedder.py (weight-only quantization of the query embedder)
     "onnx-ir>=1.0",  # required by onnxruntime.quantization.matmul_nbits_quantizer

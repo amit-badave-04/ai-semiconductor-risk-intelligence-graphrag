@@ -199,6 +199,10 @@ attrs==26.1.0 \
     #   aiohttp
     #   jsonschema
     #   referencing
+bm25s==0.3.16 \
+    --hash=sha256:65d973bd496de883ae525955379e3e7cf90a12c3d54ed175036315ae677512c9 \
+    --hash=sha256:96301f99558c2318a889abfe1bc27cf53dc225f3860cdf03b0aaa5e72f8f4a2e
+    # via -r deploy/requirements-serve.in
 boto3==1.43.90 \
     --hash=sha256:4b669742d5b45b8fd20ca50ac414a4e4cf995ebb8f280d21be28676e71c97594 \
     --hash=sha256:aaaa1216d65ddb3dcf86bf9d93cfa436af05cbcd1e1f8b2847f2b83116012186
@@ -1575,6 +1579,7 @@ numpy==2.5.3 \
     --hash=sha256:ffdc76bfcae6b255dff75202c5e7feaf95b40246bc0a17944facc1fecf9f79ab
     # via
     #   -r deploy/requirements-serve.in
+    #   bm25s
     #   onnxruntime
     #   scipy
 onnxruntime==1.29.0 \

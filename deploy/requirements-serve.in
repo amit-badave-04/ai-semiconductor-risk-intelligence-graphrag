@@ -41,3 +41,5 @@ urllib3>=2.8.0
 certifi>=2026.10.18
 aiohttp>=3.14.4
 filelock>=4.2.1
+# M2 keyword retrieval (docs/specs/m2-search.md OD2): in-process BM25, MIT, numpy only (no extras).
+bm25s>=0.3.16
