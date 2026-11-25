@@ -1,0 +1,582 @@
+{
+ "version": 1,
+ "created": "2026-11-25",
+ "source": "filing text only (artifacts/benchmark.json + data/processed/chunks/*.parquet), blind to run contexts; gold = every verbatim copy in the newest annual filing plus later 10-Qs",
+ "questions": [
+  {
+   "id": "D2",
+   "question": "Which memory suppliers does Nvidia buy HBM or memory from?",
+   "anchors": [
+    {
+     "name": "Nvidia",
+     "cik": 1045810
+    }
+   ],
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0320",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung."
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "Only direct chunk in the in-scope filings (FY2026 10-K; the NVDA 10-Qs -26-000052/-26-000075 have no SK Hynix/Micron/Samsung/HBM hit). Older NVDA 10-Ks repeat the sentence (0001045810-25-000023:I.1:0216, 0001045810-24-000029:I.1:0112, 0001045810-23-000017:I.1:0011) and are out of scope by the latest-filing policy; decide whether a retriever surfacing them is credited. Chunk names TSMC/Samsung but not Nvidia, so only the filer-own path reaches it."
+  },
+  {
+   "id": "D3",
+   "question": "Which foundries does AMD rely on to manufacture its chips?",
+   "anchors": [
+    {
+     "name": "AMD",
+     "cik": 2488
+    }
+   ],
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0011",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "We rely on Taiwan Semiconductor Manufacturing Company Limited (TSMC) for the production of all wafers"
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0024",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "We utilize Taiwan Semiconductor Manufacturing Company Limited (TSMC) for the production of wafers"
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0011",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "we rely primarily on GLOBALFOUNDRIES Inc. (GF) for wafers"
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0011",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "We rely on Taiwan Semiconductor Manufacturing Company Limited (TSMC) for the production of all wafers"
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0012",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "we rely on TSMC, UMC and our other foundries to produce wafers"
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0013",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "we rely on TSMC, UMC and our other foundries to produce wafers"
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0013",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "we rely on TSMC, UMC and our other foundries to produce wafers"
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "All gold chunks name TSMC (UMC/Samsung/GF also appear); none names AMD. I.1A:0012 and its 10-Q copies II.1A:0013 say 'we rely on TSMC, UMC and our other foundries'. Gold includes every verbatim copy in the FY2025 10-K and the two 2026 10-Qs."
+  },
+  {
+   "id": "D4",
+   "question": "Which hyperscaler is disclosed as a customer of AMD in the knowledge graph?",
+   "anchors": [
+    {
+     "name": "AMD",
+     "cik": 2488
+    }
+   ],
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000123:I.2:0002",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "we entered into multi-year agreements with OpenAI OpCo, LLC (OpenAI) and Meta Platforms, Inc. (Meta)"
+    },
+    {
+     "chunk_id": "0000002488-26-000076:I.2:0002",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "we amended a master purchase agreement with Meta Platforms, Inc. (Meta) and Meta agreed to deploy up to 6 gigawatts of AMD GPUs"
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "Meta is named only in the AMD 10-Qs (I.2:0002 MD&A), never in any AMD 10-K (the FY2025 10-K names only OpenAI). No META-filer chunk mentions AMD, so there is no reverse-direction passage. Meta is not a question anchor; question says 'in the knowledge graph', so a graph edge may also answer it."
+  },
+  {
+   "id": "R1",
+   "question": "Which BIS export-control rules is AMD affected by?",
+   "anchors": [
+    {
+     "name": "AMD",
+     "cik": 2488
+    }
+   ],
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0020",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "In October 2023, the Bureau of Industry and Security (BIS) of the United States Department of Commerce issued requirements for the export of certain advanced computing items"
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0021",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "in September 2025, BIS issued a new rule designating any entity that is at least 50% owned by one or more entities on the Entity List"
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0021",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "In October 2023, the Bureau of Industry and Security (BIS) of the United States Department of Commerce issued requirements for the export of certain advanced computing items"
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0022",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "In May 2025, BIS announced its intention to rescind the AI Diffusion Rule"
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0023",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "In June 2019, BIS added certain Chinese entities to the Entity List, including THATIC and the THATIC JV."
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0021",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "In October 2023, the Bureau of Industry and Security (BIS) of the United States Department of Commerce issued requirements for the export of certain advanced computing items"
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0022",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "In June 2019, BIS added certain Chinese entities to the Entity List, including THATIC and the THATIC JV."
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0023",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "in September 2025, BIS issued a new rule designating any entity that is at least 50% owned by one or more entities on the Entity List"
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0031",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "In June 2019, the BIS added certain Chinese entities to the Entity List, including THATIC and the THATIC JV."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0022",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "Notification Advanced Computing (NAC) exception notices"
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0032",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "In June 2019, the BIS added certain Chinese entities to the Entity List, including THATIC and the THATIC JV."
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0032",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "In June 2019, the BIS added certain Chinese entities to the Entity List, including THATIC and the THATIC JV."
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "'Foreign-Produced Direct Product' appears nowhere in the 5,894-chunk corpus (any filer, any year), so that any_of term is unsatisfiable from passages. Gold covers the Oct-2023 advanced computing rule, AI Diffusion Rule, Entity List (THATIC 2019; Sept-2025 50%-ownership rule) and NAC notices, in the FY2025 10-K and both 2026 10-Qs. THATIC-only chunks (10-K I.1A:0031, 10-Q II.1A:0032) are the weakest members."
+  },
+  {
+   "id": "R2",
+   "question": "Which companies in the graph are affected by US export-control rules?",
+   "anchors": [],
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0355",
+     "filer_cik": 1045810,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "we incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associated with H20"
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0323",
+     "filer_cik": 1045810,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "we have been subject to a series of shifting and expanding export control restrictions"
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0004",
+     "filer_cik": 1045810,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "we incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associated with H20"
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0020",
+     "filer_cik": 2488,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "Export Administration Regulations (EAR) administered by the Bureau of Industry and Security (BIS)"
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0021",
+     "filer_cik": 2488,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "Export Administration Regulations (EAR) administered by the Bureau of Industry and Security (BIS)"
+    },
+    {
+     "chunk_id": "0001730168-25-000121:I.1A:0006",
+     "filer_cik": 1730168,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "The U.S. government continues to add companies to its restricted entity list"
+    },
+    {
+     "chunk_id": "0001730168-26-000080:II.1A:0006",
+     "filer_cik": 1730168,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "impose licensing and other restrictions or requirements, which have had and may in the future have an adverse effect on our revenue"
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0354",
+     "filer_cik": 1045810,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "we have been subject to a series of shifting and expanding export control restrictions"
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0368",
+     "filer_cik": 1045810,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "we incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associated with H20"
+    },
+    {
+     "chunk_id": "0001045810-26-000052:II.1A:0436",
+     "filer_cik": 1045810,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "we incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associated with H20"
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0021",
+     "filer_cik": 2488,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "Export Administration Regulations (EAR) administered by the Bureau of Industry and Security (BIS)"
+    },
+    {
+     "chunk_id": "0001730168-26-000054:II.1A:0006",
+     "filer_cik": 1730168,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "The U.S. government continues to add companies to its restricted entity list"
+    },
+    {
+     "chunk_id": "0001730168-26-000016:II.1A:0006",
+     "filer_cik": 1730168,
+     "filer_own": false,
+     "names_anchor_in_text": false,
+     "quote": "The U.S. government continues to add companies to its restricted entity list"
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "Unanchored: filer_own and names_anchor_in_text are false by definition. Gold limited to the expect companies (Nvidia, AMD, Broadcom). Broadcom evidence is generic (EAR, restricted entity list, 'have had ... an adverse effect'); the latest 10-Q copies add 'impose licensing'. Verified but outside expect: MU 0000723125-25-000028:I.1A:0035, QCOM 0000804328-25-000085:I.1A:0015 (Huawei licence revoked), INTC 0000050863-26-000011:I.1A:0010, TSM 0001628280-26-025362:I.3:0002 (October Rules, EAR, TSMC Nanjing licence), ASML 0001628280-26-011378:I.3:0003, MSFT 0001193125-26-323660:I.1A:0011 (AI Diffusion Rule)."
+  },
+  {
+   "id": "R3",
+   "question": "What does Nvidia disclose about export controls affecting its sales to China?",
+   "anchors": [
+    {
+     "name": "Nvidia",
+     "cik": 1045810
+    }
+   ],
+   "gold": [
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0355",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "In August 2025, the USG granted licenses that would allow us to ship certain H20 products to certain China-based customers"
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0323",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "announced export restrictions and export licensing requirements targeting China’s semiconductor and supercomputing industries"
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0354",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "Export controls have and could in the future disrupt our supply chain and distribution channels"
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0356",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "Our competitive position has been harmed by export controls"
+    },
+    {
+     "chunk_id": "0001045810-26-000021:II.7:0368",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "In April 2025, the USG informed us that a license is required for exports of our H20 product into the China market"
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0004",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "we were effectively foreclosed from competing in China’s data center computing/compute market"
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0003",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "In August 2022, the USG announced export restrictions and export licensing requirements targeting China’s semiconductor and supercomputing industries."
+    },
+    {
+     "chunk_id": "0001045810-26-000075:I.2:0003",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "granted licenses that would allow us to ship small amounts of H200 products to specific China-based customers, but such sales were restricted by the PRC government"
+    },
+    {
+     "chunk_id": "0001045810-26-000052:II.1A:0436",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "Beginning in February 2026, the USG granted licenses that would allow us to ship small amounts of H200 products to specific China-based customers."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0324",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "Our competitive position has been harmed by export controls"
+    },
+    {
+     "chunk_id": "0001045810-26-000052:II.1A:0435",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "In August 2022, the USG announced export restrictions and export licensing requirements targeting China’s semiconductor and supercomputing industries."
+    },
+    {
+     "chunk_id": "0001045810-26-000052:II.1A:0437",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "Our competitive position has been harmed by export controls"
+    },
+    {
+     "chunk_id": "0001045810-26-000075:II.1A:0005",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "Our competitive position has been harmed by export controls"
+    },
+    {
+     "chunk_id": "0001045810-26-000052:I.2:0401",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "granted licenses that allow us to ship small amounts of H200 products to specific China-based customers"
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "Gold spans the FY2026 10-K and both FY2027 10-Qs (-26-000052, -26-000075); the latest 10-Q adds the H200 licences, the $0.4B H200 charge and PRC-side restrictions. Several Nvidia chunks use 'we/our' only, so names_anchor_in_text is false for them; the filer-own path reaches all."
+  },
+  {
+   "id": "Q1",
+   "question": "What supply-chain related risks does TSMC disclose in its annual report?",
+   "anchors": [
+    {
+     "name": "TSMC",
+     "cik": 1046179
+    }
+   ],
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-025362:I.3:0007",
+     "filer_cik": 1046179,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "Our revenue and profitability may decline if we are unable to obtain adequate supplies of raw materials in a timely manner"
+    },
+    {
+     "chunk_id": "0001628280-26-025362:I.3:0008",
+     "filer_cik": 1046179,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "failure of critical facilities and equipment, along with disruptions in utility services such as water, electricity and natural gas"
+    },
+    {
+     "chunk_id": "0001628280-26-025362:I.3:0004",
+     "filer_cik": 1046179,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "establishing supply chains for various materials in different locations"
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "TSM 20-F risk-factor chunks DO carry a sub_heading (a truncated first risk heading repeated across I.3). Gold chunks do not name TSMC, but sibling chunks I.3:0002 (TSMC Nanjing) and I.3:0005 (TSMC Arizona) do. I.3:0009 dropped: its 'supply chain' sentence is about downstream export-compliance visibility, not supply risk. I.3:0003 (supply-chain relocation policy, supplier ecosystem) is a weaker alternate, not gold."
+  },
+  {
+   "id": "Q2",
+   "question": "What geopolitical risks does ASML disclose?",
+   "anchors": [
+    {
+     "name": "ASML",
+     "cik": 937966
+    }
+   ],
+   "gold": [
+    {
+     "chunk_id": "0001628280-26-011378:I.3:0003",
+     "filer_cik": 937966,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "deliveries to certain countries, such as China, have been increasingly impacted by export regulations"
+    },
+    {
+     "chunk_id": "0001628280-26-011378:I.3:0000",
+     "filer_cik": 937966,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "many of these risks may be exacerbated by global developments, such as wars, geopolitical tensions"
+    },
+    {
+     "chunk_id": "0001628280-26-011378:I.3:0001",
+     "filer_cik": 937966,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "Cyclicality may be worsened by the geopolitical situation"
+    },
+    {
+     "chunk_id": "0001628280-26-011378:I.3:0012",
+     "filer_cik": 937966,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "export controls including licensing or authorization requirements"
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "I.3:0003 is the best single chunk (Dutch/US licences for EUV and DUV, China, countermeasures, tariffs, sanctions). The 2026 ASML 20-F parsed to only 13 chunks (2025 20-F: 45), all with sub_heading None."
+  },
+  {
+   "id": "Q3",
+   "question": "Compare the competition risks disclosed by AMD and Nvidia.",
+   "anchors": [
+    {
+     "name": "Nvidia",
+     "cik": 1045810
+    },
+    {
+     "name": "AMD",
+     "cik": 2488
+    }
+   ],
+   "gold": [
+    {
+     "chunk_id": "0000002488-26-000018:I.1A:0007",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "The markets in which our products are sold are highly competitive and rapidly evolving."
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0020",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "In the Data Center segment, we compete primarily against Intel Corporation (Intel) and Nvidia Corporation"
+    },
+    {
+     "chunk_id": "0000002488-26-000018:I.1:0019",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "The markets in which our products are sold are highly competitive and rapidly evolving"
+    },
+    {
+     "chunk_id": "0000002488-26-000123:II.1A:0007",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "The markets in which our products are sold are highly competitive and rapidly evolving."
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1A:0336",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "Our target markets remain competitive, and competition may intensify"
+    },
+    {
+     "chunk_id": "0001045810-26-000021:I.1:0321",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "The market for our products is intensely competitive and is characterized by rapid technological change"
+    },
+    {
+     "chunk_id": "0000002488-26-000076:II.1A:0007",
+     "filer_cik": 2488,
+     "filer_own": true,
+     "names_anchor_in_text": true,
+     "quote": "The markets in which our products are sold are highly competitive and rapidly evolving."
+    },
+    {
+     "chunk_id": "0001045810-26-000052:II.1A:0431",
+     "filer_cik": 1045810,
+     "filer_own": true,
+     "names_anchor_in_text": false,
+     "quote": "Our target markets remain competitive, and competition may intensify"
+    }
+   ],
+   "no_passage_gold_reason": null,
+   "notes": "A correct answer needs at least one gold chunk from EACH filer. names_anchor_in_text = text names ANY anchor (AMD chunks name Nvidia; NVDA I.1:0321 names AMD). AMD risk-factor summary bullets (10-K I.1A:0002, 10-Q II.1A:0002) contain the same headline sentence but were excluded as headline-only. AMD I.1:0020 quote corrected to a verbatim substring. Alternate: NVDA 10-K I.1A:0356 ('competitive position has been harmed by export controls')."
+  }
+ ],
+ "decision": "docs/decisions/006-m2-after-m2a.md",
+ "checked_by": "independent Opus check against the filing text (64 entries, existence, verbatim quotes, cik, filer_own)"
+}

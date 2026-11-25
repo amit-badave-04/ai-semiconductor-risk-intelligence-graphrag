@@ -113,6 +113,23 @@ spend budget decision, so the deferral, if the owner chooses it, is recorded her
 Not built unless the trigger fires: the filer-scoped vector leg, the full-text leg, RRF, the sign-test ablation. A full-text leg,
 if ever built, must not rely on `db.index.fulltext.queryNodes` (deprecated from Neo4j 2026.10).
 
+## Step 2 result: T6 and T3 (2026-11-25, read-only diagnosis, workflow wf_883b8916-fdd)
+
+- **T6 is not a product defect; no code change.** The context's "Reworded - showing 4 of 29" is a faithful count of the graph
+  (`select_temporal` totals, retriever.py:482; rendered at context_layout.py:246). The annotators' gold says 28 reworded and 5
+  unchanged; the difference is one risk factor (`0000723125-24-000027:I.1A:i022`, intellectual-property claims) whose only edit is
+  a cross-reference ("Part II – Item 8 – ... – Contingencies" became "Part II, Item 8, ..., Note 14. Contingencies"). The aligner
+  calls any text change "reworded"; the annotators called it unchanged. Both readings are defensible and the benchmark gold stays.
+  The answer's "at least 29" is within the correctness judge's stated tolerance of 2, yet the judge marked it incorrect in all 3
+  votes of runs 1, 2 and 3: the failure is the judge's arithmetic. Logged as a known judge limit. Not done: editing T6's judge
+  notes or the judge prompt (cj-v5) to force a pass; either needs its own re-judge and the owner's approval.
+- **Related data observation (backlog, not M2).** The aligner over-calls "reworded" for cross-reference or punctuation-only edits:
+  MU (T6) 29 vs 28, AMD (T4) 29 vs 28, NVDA (T7) 20 vs 19, TSM (T9) 18 vs 14; META (T5) and NVDA (T8) match. A fix changes the
+  graph (a new snapshot, example reseed and a paid eval), which is not justified for these differences now; revisit with CP's
+  next graph rebuild.
+- **T3 is logged as a known limit.** It fails 0/3 in every judged run (v2e, m2a, m2a2, m2a3). The causes are the judge reading
+  sentence-level samples as full-corpus claims, plus the same one-item reworded boundary (20 vs 19). No cheap product fix.
+
 ## Reopen trigger (fixed 2026-11-25, before any gold or trace for the pool exists)
 
 - **Pool.** The 9 gap-prone benchmark questions D2, D3, D4, R1, R2, R3, Q1, Q2, Q3; plus every question CP adds as a company's
