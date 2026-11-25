@@ -19,12 +19,15 @@ from pathlib import Path
 ANNUAL_FORMS = frozenset({"10-K", "20-F"})
 QUARTERLY_FORMS = frozenset({"10-Q"})
 DEV_SHARE_MOD = 3  # one family in three goes to dev (30 dev, 60 test)
-_QUOTES = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'", " ": " "})
+_QUOTES = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'", " ": " ",
+                         "–": "-", "—": "-", "…": "...", "​": None, "‌": None,
+                         "‍": None, "﻿": None})
+MIN_QUOTE_CHARS = 25  # a shorter quote matches too many chunks to be gold
 _SPACE = re.compile(r"\s+")
 
 
 def normalise(text: str) -> str:
-    """Lower case, straight quotes, single spaces: the form quotes and chunks are compared in."""
+    """Lower case, straight quotes and dashes, no zero-width characters, single spaces: how quotes and chunks compare."""
     return _SPACE.sub(" ", text.translate(_QUOTES)).strip().lower()
 
 
@@ -36,7 +39,7 @@ def in_scope_accessions(chunks) -> set[str]:
         annual = rows[rows["form"].isin(ANNUAL_FORMS)]
         if annual.empty:
             continue
-        newest = annual.sort_values("filing_date").iloc[-1]
+        newest = annual.sort_values(["filing_date", "accession_no"], kind="stable").iloc[-1]
         scope.add(newest["accession_no"])
         later = rows[rows["form"].isin(QUARTERLY_FORMS) & (rows["filing_date"] > newest["filing_date"])]
         scope.update(later["accession_no"])
@@ -46,8 +49,8 @@ def in_scope_accessions(chunks) -> set[str]:
 def bind_quote(quote: str, chunks) -> list[dict]:
     """Every chunk whose text holds the quote verbatim (after ``normalise``): grade 2 in scope, grade 1 older."""
     needle = normalise(quote)
-    if not needle:
-        return []
+    if len(needle) < MIN_QUOTE_CHARS:
+        raise ValueError(f"quote too short to bind as gold ({len(needle)} < {MIN_QUOTE_CHARS} characters)")
     scope = in_scope_accessions(chunks)
     hits = chunks[chunks["text"].map(lambda t: needle in normalise(t))]
     rows = [(0 if acc in scope else 1, date, cid) for cid, acc, date in
@@ -58,8 +61,8 @@ def bind_quote(quote: str, chunks) -> list[dict]:
 TYPES = ("A", "B", "C", "D", "E", "F")
 RISK_SECTIONS = frozenset({"I.1A", "II.1A", "I.3"})
 MIN_PASSAGE_CHARS = 150
-_WE = re.compile(r"\b(we|our|us)\b")
-_ID_LIKE = re.compile(r"\b(?:\d[A-Z]\d{3}[a-z]?|[A-Z]{1,5}\d{2,}[A-Z0-9]*|[A-Z][a-z]+[A-Z][A-Za-z]+)\b")
+WE = re.compile(r"\b(?:[Ww]e|[Oo]ur|[Uu]s|WE|OUR)\b")  # case-sensitive: "US" is not "us"
+ID_LIKE = re.compile(r"\b(?!FY\d)(?:\d[A-Z]\d{3}[a-z]?|[A-Z]{1,5}\d{2,}[A-Z0-9]*|[A-Z][a-z]+[A-Z][A-Za-z]+)\b")
 _NUMBER = re.compile(r"\$\s?\d|\d+(?:\.\d+)?\s?%|\b\d[\d,.]*\s(?:million|billion)\b", re.IGNORECASE)
 _PERIOD = re.compile(r"three months ended|six months ended|nine months ended|\bquarter\b|fiscal (?:year )?20\d\d", re.IGNORECASE)
 PAIR_TOPICS = ("export", "china", "tsmc", "supply", "artificial intelligence", "data center", "tariff", "competition",
@@ -85,9 +88,9 @@ def _single_type(kind: str, row, aliases: Mapping[int, list[str]]) -> bool:
     if len(text) < MIN_PASSAGE_CHARS:
         return False
     if kind == "A":
-        return bool(_WE.search(text.lower())) and not _names_filer(text, aliases.get(int(row.cik), []))
+        return bool(WE.search(text)) and not _names_filer(text, aliases.get(int(row.cik), []))
     if kind == "B":
-        return bool(_ID_LIKE.search(text))
+        return bool(ID_LIKE.search(text))
     if kind == "C":
         return bool(_NUMBER.search(text))
     if kind == "E":
@@ -119,19 +122,24 @@ def sample_passages(chunks, seed: int, per_type: int, aliases: Mapping[int, list
 
     scope = in_scope_accessions(chunks)
     rows = sorted((r for r in chunks.itertuples(index=False) if r.accession_no in scope), key=lambda r: r.chunk_id)
-    used: set[str] = set()
+    fam = {r.chunk_id: _family(r.ticker, r.text) for r in rows}
+    used: set[str] = set()  # text families already drawn: a passage repeated across filings is drawn once
     out: dict[str, list[dict]] = {}
-    for kind in TYPES:
+    for kind in ("D", "A", "B", "C", "E", "F"):  # D first: its families never reach another type's split
         rng = random.Random(f"{seed}:{kind}")
-        free = [r for r in rows if r.chunk_id not in used and len(r.text) >= MIN_PASSAGE_CHARS]
+        free, seen = [], set()
+        for r in rows:
+            if fam[r.chunk_id] not in used and fam[r.chunk_id] not in seen and len(r.text) >= MIN_PASSAGE_CHARS:
+                seen.add(fam[r.chunk_id])
+                free.append(r)
         if kind == "D":
             picked = _pairs(free, rng, per_type)
         else:
             cands = [r for r in free if _single_type(kind, r, aliases)]
             picked = [[r] for r in rng.sample(cands, min(per_type, len(cands)))]
         out[kind] = [_item(kind, group) for group in picked]
-        used.update(r.chunk_id for group in picked for r in group)
-    return out
+        used.update(fam[r.chunk_id] for group in picked for r in group)
+    return {k: out[k] for k in TYPES}
 
 
 def split_of(family_id: str) -> str:
@@ -146,14 +154,15 @@ def success_at(ranked: Iterable[str], gold: Iterable[Mapping], k: int, per_ancho
     current = [g for g in gold if g["grade"] == 2]
     if not per_anchor:
         return any(g["chunk_id"] in top for g in current)
-    anchors = {g["anchor"] for g in current}
+    anchors = {g["anchor"] for g in gold}  # every anchor named in the gold, not only those with current copies
     return bool(anchors) and all(any(g["chunk_id"] in top for g in current if g["anchor"] == a) for a in anchors)
 
 
 def ndcg_at(ranked: Iterable[str], gold: Iterable[Mapping], k: int) -> float:
     """Graded nDCG@k with gains 2^grade - 1."""
     grades = {g["chunk_id"]: g["grade"] for g in gold}
-    dcg = sum((2 ** grades.get(cid, 0) - 1) / math.log2(i + 2) for i, cid in enumerate(list(ranked)[:k]))
+    unique = list(dict.fromkeys(ranked))[:k]
+    dcg = sum((2 ** grades.get(cid, 0) - 1) / math.log2(i + 2) for i, cid in enumerate(unique))
     ideal = sorted(grades.values(), reverse=True)[:k]
     idcg = sum((2 ** g - 1) / math.log2(i + 2) for i, g in enumerate(ideal))
     return dcg / idcg if idcg else 0.0

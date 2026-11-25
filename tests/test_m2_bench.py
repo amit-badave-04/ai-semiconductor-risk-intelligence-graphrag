@@ -40,12 +40,12 @@ def test_a_quote_binds_to_every_verbatim_copy_with_grades():
 
 
 def test_binding_normalises_whitespace_case_and_curly_quotes():
-    lake = chunks(("k:I.1A:0001", "NV", 1, "10-K", "2026-02-25", "k", "I.1A", "the “AI Diffusion”   Rule"))
-    assert mb.bind_quote('The "AI diffusion" rule', lake) == [{"chunk_id": "k:I.1A:0001", "grade": 2}]
+    lake = chunks(("k:I.1A:0001", "NV", 1, "10-K", "2026-02-25", "k", "I.1A", "the “AI Diffusion”   Rule restricts exports"))
+    assert mb.bind_quote('The "AI diffusion" rule restricts exports', lake) == [{"chunk_id": "k:I.1A:0001", "grade": 2}]
 
 
 def test_an_unbound_quote_binds_to_nothing():
-    assert mb.bind_quote("not in any filing", LAKE) == []
+    assert mb.bind_quote("this sentence is not in any filing at all", LAKE) == []
 
 
 def test_the_split_is_deterministic_by_family():
@@ -124,3 +124,51 @@ def test_type_a_passages_do_not_name_their_filer():
                   ("k:I.1A:0002", "NV", 1, "10-K", "2026-02-25", "k", "I.1A", "NVIDIA relies on foundries. We " * 10))
     a = mb.sample_passages(lake, seed=1, per_type=5, aliases={1: ["nvidia"]})["A"]
     assert [x["chunk_ids"] for x in a] == [["k:I.1A:0001"]]
+
+
+# Review of 3436f3b (code-reviewer): fixes before the bench is frozen.
+def test_type_d_fails_when_an_anchor_has_only_older_gold():
+    gold = [{"chunk_id": "a", "grade": 2, "anchor": 1}, {"chunk_id": "b", "grade": 1, "anchor": 2}]
+    assert mb.success_at(["a", "b"], gold, k=8, per_anchor=True) is False
+
+
+def test_a_short_quote_is_refused():
+    with pytest.raises(ValueError, match="too short"):
+        mb.bind_quote("supply chain", LAKE)
+
+
+def test_the_newest_annual_breaks_date_ties_by_accession():
+    lake = chunks(("b:I.1A:0001", "NV", 1, "10-K", "2026-02-25", "b", "I.1A", "x " * 100),
+                  ("a:I.1A:0001", "NV", 1, "10-K", "2026-02-25", "a", "I.1A", "y " * 100))
+    assert mb.in_scope_accessions(lake) == {"b"}
+    assert mb.in_scope_accessions(lake.iloc[::-1]) == {"b"}
+
+
+def test_normalise_maps_dashes_ellipses_and_zero_width_characters():
+    assert mb.normalise("Part II \u2013 Item\u200b 8 \u2014 risks\u2026") == "part ii - item 8 - risks..."
+
+
+def test_ndcg_ignores_a_repeated_chunk_id():
+    gold = [{"chunk_id": "a", "grade": 2}]
+    assert mb.ndcg_at(["a", "a"], gold, k=10) == pytest.approx(1.0)
+
+
+def test_the_split_puts_about_a_third_of_families_in_dev():
+    share = sum(mb.split_of(f"fam{i}") == "dev" for i in range(3000)) / 3000
+    assert 0.30 < share < 0.37
+
+
+def test_the_sampler_draws_one_copy_of_text_repeated_across_filings():
+    text = "We rely on a small number of foundries for wafers and we expect to keep doing so. " * 3
+    lake = chunks(("k:I.1A:0001", "NV", 1, "10-K", "2026-02-25", "k", "I.1A", text),
+                  ("q:II.1A:0001", "NV", 1, "10-Q", "2026-05-20", "q", "II.1A", text))
+    drawn = [c for items in mb.sample_passages(lake, seed=3, per_type=5, aliases={1: ["nvidia"]}).values()
+             for it in items for c in it["chunk_ids"]]
+    assert len(drawn) == 1
+
+
+def test_us_in_capitals_is_not_the_pronoun_and_fiscal_year_labels_are_not_ids():
+    assert not mb.WE.search("Changes in US export rules apply.")
+    assert mb.WE.search("We expect changes.")
+    assert not mb.ID_LIKE.search("Revenue in FY2026 and FY24 grew.")
+    assert mb.ID_LIKE.search("Shipments of H200 and CoWoS capacity under ECCN 3A090.")
