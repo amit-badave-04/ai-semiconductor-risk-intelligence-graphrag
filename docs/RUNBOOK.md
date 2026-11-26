@@ -895,30 +895,48 @@ Cost fields stay out of the public repo: `eval-deployed` writes its report alrea
 sidecar under `data/processed/costs/`); before committing an `eval-agent` report run
 `uv run python scripts/strip_costs.py artifacts/<report>.json`.
 
-M2 retrieval (fused legs + MiniLM rerank, `docs/specs/m2-search.md`) ships OFF. The image always carries the reranker at
+M2 retrieval (fused legs + MiniLM rerank, `docs/specs/m2-search.md`) is ON in the repo. The image always carries the reranker at
 `/srv/models/reranker-minilm-l6` (fetched at build time from a pinned revision, SHA-256 verified by
 `scripts/build_reranker_model.py`; the build fails on a mismatch). `fly.toml [env]` decides use: `RETRIEVAL_FUSION` and
-`RETRIEVAL_RERANK`, with `RETRIEVAL_RERANK_MODEL_DIR = "/srv/models"`. The repo now carries them ON (`"true"` / `"minilm"`) together
+`RETRIEVAL_RERANK`, with `RETRIEVAL_RERANK_MODEL_DIR = "/srv/models"`. The repo carries them ON (`"true"` / `"minilm"`) together
 with the flag-on `src/semigraph/artifacts/examples.json` (copied from `artifacts/examples.m2-fusion.json`); a test fails if the two
-disagree, because boot refuses every example whose template fingerprint does not match the flag.
+disagree, because boot refuses every example whose template fingerprint does not match the serving setting. The flag-on fingerprint
+includes the rerank stage, so it is `e5c72794de` only when MiniLM loads.
 
-- **Enable:** (done in the repo) `RETRIEVAL_FUSION = "true"`, `RETRIEVAL_RERANK = "minilm"` (rerank only acts with fusion on), and the
-  flag-on examples file, then `flyctl deploy -a semigraph`. If the keyword index fails to build at boot the service keeps the pre-M2
-  path and logs it; the flag-on examples are then refused (the page shows no instant examples) until the next boot succeeds. Check the boot log: `flyctl logs -a semigraph` must not say `rerank model 'minilm' not found` or
-  `failed to load` (either disables the stage silently and retrieval falls back to fusion alone).
-- **Verify:** `/healthz` is 200; `GET /api/stats` answers; ask one smoke question from the page (or an example click) and check it is
-  answered with sources. The log line `rerank model 'minilm' loaded from /srv/models/reranker-minilm-l6` appears in the boot log (the model loads at startup, `serving_config` warms it), not on the first ask.
+- **Deploy:** `flyctl deploy --ha=false --remote-only --yes` (the API app only; `semigraph-neo4j` is untouched). CI's `image` job
+  does not boot the service, so the Fly boot log is the gate. Expect, in order: `rerank model 'minilm' loaded from
+  /srv/models/reranker-minilm-l6`, `keyword index built: <N> spans, <X> s, snapshot <id>, tokenizer k1`, five
+  `example Tn refused: failed checks: unsupported_removal_claim` warnings (T8, T9, T13, T14, T15: expected), then
+  `seeded 53 of 58 benchmark answers into the cache`.
+- **Failure lines (roll back):** `rerank model 'minilm' not found` or `failed to load` (the stage is off AND every example is
+  refused: the build's fingerprint is `07f6ff9da6`); `RETRIEVAL_FUSION is on but the keyword index could not be built` (the pre-M2
+  path is served and every example is refused: `2a6910aa5d`); any line with `NOT seeded` (it names both fingerprints). The service
+  keeps answering in each case, with no instant examples. Setting `RETRIEVAL_RERANK = "none"` with fusion on is not a fallback:
+  no examples file carries that fingerprint.
+- **Verify:** `/healthz` is ok; `/api/stats` answers; `(Invoke-RestMethod https://semigraph.fly.dev/api/examples).examples.Count`
+  is 53; `flyctl ssh console -a semigraph -C "printenv RETRIEVAL_FUSION RETRIEVAL_RERANK"` prints `true` and `minilm`; one example
+  click answers instantly with sources.
 - **Roll back:** fastest is the previous image: `flyctl releases -a semigraph --image` to find it, then
-  `flyctl deploy -a semigraph --image <previous image>`. From the repo: set `RETRIEVAL_FUSION = "false"` and `RETRIEVAL_RERANK = "none"`
-  AND restore the flag-off `examples.json` from git history (otherwise no example is seeded), then redeploy. The old path is
-  byte-identical with the flags off.
-- **Measure p95 and RSS (owner-run):** the gate (R24) is that rerank adds at most 2 s at p95 on the throttled machine. How to time it
-  on the machine is for the owner to define: for example per-ask retrieval and rerank seconds from the logs, or an owner-run timed
-  probe. Do not use `scripts/latency_smoke.py` here: it is the S12 calibration runner (local graph, paid with `--live`).
-  Read memory with `flyctl ssh console -a semigraph -C "sh -c 'grep VmRSS /proc/*/status'"` (largest process) or Fly metrics:
-  idle RSS with the flags off, then idle RSS with the flags on, on the same machine (the model loads at boot, so idle-vs-after-asks
-  shows nothing). The spec records about 314 MB process RSS with minilm loaded and no embedder on the dev machine; the Fly figure
-  is the owner's measurement.
+  `flyctl deploy --ha=false --yes --image <previous image>`. That re-applies this checkout's `[env]` (flags on), which is safe only for
+  an image built before 3b73000 (its config ignores `RETRIEVAL_*` and seeds its own flag-off examples). For any later image, or to
+  roll back from the repo: `git revert` the flag-on commit (fly.toml flags off AND the flag-off `examples.json` together), then
+  `flyctl deploy --ha=false --remote-only --yes`. The old path is byte-identical with the flags off.
+- **R24, rerank p95 (owner-run):** the gate is that rerank adds at most 2 s at p95 on the throttled machine. No log line carries the
+  stage's time, so `scripts/rerank_latency_probe.py` times it on the machine (worst case: 20 and 35 candidates, full 384-token
+  window; no database, no model call). Stage and run it like every ad-hoc script:
+  ```
+  flyctl ssh console -a semigraph -C "mkdir -m 700 -p /root/ops"
+  flyctl ssh sftp shell -a semigraph
+      put scripts/rerank_latency_probe.py /root/ops/rerank_latency_probe.py
+  flyctl ssh console -a semigraph -C "sh -c 'cd /root/ops && python -I rerank_latency_probe.py'"
+  ```
+  It prints one JSON line with p50/p95/max per size, the cgroup throttling during the run and `PASS` or `FAIL` (exit 0 / 1; 2 = the
+  model did not load). On the dev machine: p95 0.78 s at 20 candidates, 1.37 s at 35. If it fails, the fallback is a rollback.
+- **RSS and free memory (owner-run):** compare the 60 s `memory vmrss_kb=... mem_available_kb=...` line before and after the deploy
+  (`flyctl logs -a semigraph --no-tail | Select-String "memory vmrss_kb"`). Uploads are refused below `mem_available_kb` 1,250,000
+  (see "Upload workspaces"), so idle free memory must stay clearly above it. The model loads at boot, so idle-vs-after-asks shows
+  nothing; compare idle with idle. Do not use `scripts/latency_smoke.py` here: it is the S12 calibration runner (local graph, paid
+  with `--live`).
 
 ## Troubleshooting
 

@@ -23,6 +23,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 STAGED_IN = "/root/ops"
 SCRIPT = "null_legacy_ip_hashes.py"
+PROBES = ("rerank_latency_probe.py",)                                # read-only scripts: one run, no --yes
 TEXTS = ["docs/RUNBOOK.md", "scripts/null_legacy_ip_hashes.py"]        # the procedure and the script docstring that repeats it
 
 
@@ -76,7 +77,8 @@ def test_every_ssh_console_script_run_comes_from_the_root_only_directory_whateve
     runs = [c for c in console_commands(read(relative)) if re.search(r"python[0-9.]*\s[^']*\.py", c)]
     assert runs, "the procedure documents no script run at all"
     for run in runs:
-        assert re.fullmatch(rf"sh -c 'cd {STAGED_IN} && python -I {SCRIPT}( --yes)?'", run), run
+        allowed = rf"sh -c 'cd {STAGED_IN} && python -I (?:{re.escape(SCRIPT)}( --yes)?|{'|'.join(map(re.escape, PROBES))})'"
+        assert re.fullmatch(allowed, run), run
 
 
 @pytest.mark.parametrize("relative", TEXTS)

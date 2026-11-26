@@ -120,9 +120,8 @@ def select_slots(fused: Sequence[tuple[str, float]], rows: Mapping[str, Mapping]
 
 
 # What the API serves with RETRIEVAL_FUSION on: the legs of the bench's ``all`` arm (mention + filer + period + keyword with the
-# context field), so the bench measures what is served. Not yet trimmed by the ship rule per component. ``mention_current_only``
-# stays off: the mention leg is unchanged until decision 011's mention change lands as its own commit (set it here and in the
-# bench arms together).
+# context field), so the bench measures what is served. Not yet trimmed by the ship rule per component. Every leg is current-only,
+# the mention leg included (``mention_current_only`` defaults to True: decision 011 option D, landed in 0e342d4).
 SERVING_CONFIG = FusionConfig(filer=True, period=True, keyword=True, keyword_context=True)
 
 
