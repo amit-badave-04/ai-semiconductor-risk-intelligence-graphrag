@@ -26,6 +26,7 @@ error, a judge error or an 'on' answer without the rerank stage reports ``incomp
 """
 
 import argparse
+import math
 import hashlib
 import importlib.util
 import json
@@ -196,8 +197,8 @@ def refusals(est: Mapping, *, max_usd: float | None, confirm_paid: bool) -> list
         out.append("the deployed cost report is missing, so the estimate is a fallback, not a measurement")
     if not confirm_paid:
         out.append(f"a paid run needs {CONFIRM_FLAG} (it buys model calls; see the estimate above)")
-    if max_usd is None or max_usd <= 0:
-        out.append("a paid run needs an explicit positive --max-usd")
+    if max_usd is None or not math.isfinite(max_usd) or max_usd <= 0:
+        out.append("a paid run needs an explicit positive, finite --max-usd")
     elif max_usd - est["judge_worst_case_usd"] < est["answers_expected_usd"]:
         out.append(f"--max-usd ${max_usd:.2f} cannot cover the expected answers ${est['answers_expected_usd']:.2f} plus the "
                    f"judge reserve ${est['judge_worst_case_usd']:.2f}")
@@ -232,7 +233,7 @@ def _attempt(arm: str, q: dict, answer_one: AnswerOne, sleep, spent: float, cap:
 
     carried, row, extras = 0.0, {}, {}
     for attempt in range(MAX_TRANSIENT_ATTEMPTS):
-        if spent + carried + worst > cap or spent + carried >= cap:
+        if not (math.isfinite(spent + carried) and math.isfinite(cap)) or spent + carried + worst > cap or spent + carried >= cap:
             raise AnswerBudgetExceeded(
                 f"spend ${spent + carried:.3f} plus one worst-case answer reaches the ${cap:.2f} cap before {arm} {q['id']}")
         sleep(BACKOFF_S[attempt])
@@ -305,6 +306,9 @@ def ledger_gate(ledger: Ledger, *, max_usd: float, est: Mapping) -> tuple[float,
     cap; a step that cannot cover its expected cost plus the judge reserve inside that is not started; two failed paid runs stop it."""
     cap = min(max_usd, M2_CAP_USD - ledger.spent())
     problems = []
+    if not math.isfinite(max_usd) or not math.isfinite(cap) or not math.isfinite(ledger.spent()):
+        problems.append("--max-usd and the ledger spend must be finite numbers")
+        return 0.0, problems
     if ledger.failed_runs() >= MAX_FAILED_RUNS:
         problems.append(f"{ledger.failed_runs()} failed paid runs are already in the ledger (limit {MAX_FAILED_RUNS})")
     if cap <= 0:
@@ -455,6 +459,7 @@ def live_answer_one(settings) -> "tuple[AnswerOne, Callable[[], None], dict]":
     Returns (answer_one, close, run_tag)."""
     from semigraph.embeddings import Embedder
     from semigraph.graph import client
+    _load_script("m2_bench").require_local_graph(settings.neo4j_uri)       # S-06: never run paid answers against a remote graph
     from semigraph.retrieval.answerer import build_blocks, stream_answer_for_context
     from semigraph.retrieval.keyword import build_index, load_rows
     from semigraph.retrieval.rerank import get_reranker
@@ -507,10 +512,17 @@ def build_report(questions: Sequence[dict], arm_scores: Mapping[str, dict], deci
 
 # --- command line -------------------------------------------------------------------------------------------------
 
+def _finite_usd(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise argparse.ArgumentTypeError(f"{text!r} is not a finite number")
+    return value
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     p.add_argument("--dry-run", action="store_true", help="print the exact counts and the worst case; spend nothing")
-    p.add_argument("--max-usd", type=float, default=None, help="hard cap on recorded spend (answers + judge); required for a paid run")
+    p.add_argument("--max-usd", type=_finite_usd, default=None, help="hard cap on recorded spend (answers + judge); required for a paid run")
     p.add_argument("--confirm-paid", action="store_true", help="explicit authorisation to buy model calls")
     p.add_argument("--runs-file", default=None, help="JSONL checkpoint (default: data/processed/m2_answer_eval_runs.jsonl)")
     p.add_argument("--ledger-file", default=None, help="gitignored M2 spend ledger (default: data/processed/m2_ledger.jsonl)")

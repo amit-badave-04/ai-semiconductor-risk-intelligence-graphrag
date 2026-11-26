@@ -921,3 +921,22 @@ def test_pending_embedding_count_counts_this_workspace_s_current_chunks_without_
     assert "workspace_id: $ws" in text and "is_current: true" in text and "embedding IS NULL" in text and "count(" in text
     monkeypatch.setattr(repo, "run_cypher", lambda *a, **kw: [])
     assert repo.pending_embedding_count(object(), "ws1") == 0
+
+
+def test_s08_embedded_chunks_loads_only_the_requested_text_hashes(monkeypatch):
+    """S-08: reuse must not load every embedded vector of a document across all versions."""
+    seen = {}
+
+    def fake_run_cypher(driver, query, **params):
+        seen["query"], seen["params"] = query, params
+        return [{"text_hash": "h1", "embedding": [0.1]}]
+
+    monkeypatch.setattr(repo, "run_cypher", fake_run_cypher)
+    assert repo.embedded_chunks(object(), "w" * 32, "doc", ["h1", "h1", "h2"]) == {"h1": [0.1]}
+    assert "$hashes" in seen["query"] and "IN $hashes" in seen["query"]
+    assert sorted(seen["params"]["hashes"]) == ["h1", "h2"]
+
+
+def test_s08_no_hashes_means_no_query(monkeypatch):
+    monkeypatch.setattr(repo, "run_cypher", lambda *a, **k: pytest.fail("no database call expected"))
+    assert repo.embedded_chunks(object(), "w" * 32, "doc", []) == {}

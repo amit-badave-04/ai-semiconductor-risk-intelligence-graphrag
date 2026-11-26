@@ -272,3 +272,35 @@ def test_fused_rows_carry_the_same_keys_as_dense_rows(fake, monkeypatch):
     got = ws_mod.workspace_retrieve("packaging", A, object(), embedder)
     assert set(got["doc_chunks"][0]) == {"chunk_id", "text", "document_id", "version", "is_current", "title"}
     assert got["search"] == "keyword_only"
+
+
+def test_s03_an_invalidate_during_a_build_is_not_undone_by_the_build(fake, monkeypatch):
+    """S-03: a workspace deleted while its index is being built must not get its text re-inserted into the cache."""
+    real = fake.current_chunk_rows
+
+    def rows_then_delete(driver, ws):
+        out = real(driver, ws)
+        ki.CACHE.invalidate(ws)                      # the delete lands between the read and the remember
+        return out
+
+    monkeypatch.setattr(repo, "current_chunk_rows", rows_then_delete)
+    assert ki.CACHE.get(object(), A) is not None     # this question is still served
+    assert A not in ki.CACHE
+
+
+def test_s09_workspace_warnings_log_the_exception_class_only(fake, monkeypatch, caplog):
+    """S-09: a traceback or message on the workspace path could carry upload text; log the class name only."""
+    def boom(*a, **kw):
+        raise RuntimeError("UPLOAD-SECRET-TEXT")
+
+    monkeypatch.setattr(ki, "keyword_rows", boom)
+    monkeypatch.setattr(repo, "pending_embedding_count", boom, raising=False)
+    monkeypatch.setattr(repo, "search_chunks", lambda driver, ws, vec, k, cutoff: [
+        {"chunk_id": "doc:aaaaaaaaaaaa:v1:0000", "text": "t", "document_id": "aaaaaaaaaaaa", "version": 1, "is_current": True, "title": "t"}])
+    embedder = type("E", (), {"encode_query": lambda self, q: [0.0]})()
+    with caplog.at_level("WARNING", logger="semigraph.retrieval.workspace"):
+        ws_mod.workspace_retrieve("packaging", A, object(), embedder)
+    assert caplog.records
+    for r in caplog.records:
+        assert r.exc_info is None and "UPLOAD-SECRET-TEXT" not in r.getMessage() and "Traceback" not in caplog.text
+    assert any("RuntimeError" in r.getMessage() for r in caplog.records)

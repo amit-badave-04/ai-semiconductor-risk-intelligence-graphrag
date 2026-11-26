@@ -542,7 +542,7 @@ async def cancel_job_embedding(ws: str, job_id: str, request: Request):
     _require_uploads_enabled(request)
     _require_read_rate(request)
     await _authenticate(request, ws)
-    cancelled = jobs.embed_queue_for(request.app).cancel(ws, job_id)
+    cancelled = await run_in_threadpool(jobs.embed_queue_for(request.app).cancel, ws, job_id)
     return JSONResponse({"job_id": job_id, "cancelled": cancelled}, headers=NO_STORE)
 
 

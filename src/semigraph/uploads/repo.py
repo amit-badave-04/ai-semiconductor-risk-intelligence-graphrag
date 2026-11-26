@@ -270,7 +270,7 @@ RETURN c.chunk_id AS chunk_id, c.char_start AS char_start, c.char_end AS char_en
 ORDER BY c.seq"""
 
 EMBEDDED_CHUNKS_QUERY = """MATCH (c:UserChunk {workspace_id: $ws, document_id: $document_id})
-WHERE c.text_hash IS NOT NULL AND c.embedding IS NOT NULL
+WHERE c.text_hash IN $hashes AND c.embedding IS NOT NULL
 RETURN c.text_hash AS text_hash, c.embedding AS embedding"""
 
 
@@ -289,8 +289,12 @@ def version_view(driver, ws: str, document_id: str, version: int) -> dict | None
             "chunk_spans": [[s["chunk_id"], s["char_start"], s["char_end"]] for s in spans]}
 
 
-def embedded_chunks(driver, ws: str, document_id: str) -> dict:
-    rows = run_cypher(driver, EMBEDDED_CHUNKS_QUERY, ws=ws, document_id=document_id)
+def embedded_chunks(driver, ws: str, document_id: str, text_hashes) -> dict:
+    """The stored embedding by text hash, for the given hashes only (what a new version can reuse; S-08)."""
+    hashes = sorted(set(text_hashes))
+    if not hashes:
+        return {}
+    rows = run_cypher(driver, EMBEDDED_CHUNKS_QUERY, ws=ws, document_id=document_id, hashes=hashes)
     return {r["text_hash"]: r["embedding"] for r in rows}
 
 

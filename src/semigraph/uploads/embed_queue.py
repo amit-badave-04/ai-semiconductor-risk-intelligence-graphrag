@@ -142,11 +142,12 @@ class EmbedQueue:
                 self._held.append(task)
                 self._cancelled.setdefault((task.workspace_id, task.job_id), threading.Event())
                 return Admission(True, HELD)
-            reason = None if task.resumed else self._refusal(task)
-            if reason is None:
-                self._register(task)
+            self._register(task)                  # taken first, so the day's DB write below runs without the lock
+        reason = None if task.resumed else self._refusal(task)
         if reason is not None:
+            self._unregister(task)
             self._degrade(task, reason)
+            self._admit_held_safely()
             return Admission(False, reason)
         self._fifo.put(task)
         return Admission(True)
@@ -168,7 +169,7 @@ class EmbedQueue:
             self._active_clients[task.client_key] += 1
         self._cancelled.setdefault((task.workspace_id, task.job_id), threading.Event())
 
-    def _release(self, task: EmbedTask) -> None:
+    def _unregister(self, task: EmbedTask) -> None:
         with self._lock:
             self._active_workspaces[task.workspace_id] -= 1
             if self._active_workspaces[task.workspace_id] <= 0:
@@ -178,10 +179,19 @@ class EmbedQueue:
                 if self._active_clients[task.client_key] <= 0:
                     del self._active_clients[task.client_key]
             self._cancelled.pop((task.workspace_id, task.job_id), None)
-        self._admit_held()
+
+    def _release(self, task: EmbedTask) -> None:
+        self._unregister(task)
+        self._admit_held_safely()
+
+    def _admit_held_safely(self) -> None:
+        try:
+            self._admit_held()
+        except Exception:  # noqa: BLE001 - nothing may kill the worker thread; a held task that failed stays keyword-only
+            logger.exception("upload embed: admitting held tasks failed")
 
     def _admit_held(self) -> None:
-        """Admits every held task whose workspace and client are now free: the day is charged only here."""
+        """Admits every held task whose workspace and client are now free: the day is charged only here, outside the lock."""
         while True:
             with self._lock:
                 task = next((t for t in self._held if not self._conflicts(t)), None)
@@ -189,15 +199,20 @@ class EmbedQueue:
                     return
                 self._held.remove(task)
                 cancelled = self._cancelled[(task.workspace_id, task.job_id)].is_set()
-                reason = "cancelled" if cancelled else self._refusal(task)
-                if reason is None:
-                    self._register(task)
-                else:
+                if cancelled:
                     self._cancelled.pop((task.workspace_id, task.job_id), None)
+                else:
+                    self._register(task)
+            reason = "cancelled" if cancelled else self._refusal(task)
             if reason is None:
                 self._fifo.put(task)
-            else:
+                continue
+            if not cancelled:
+                self._unregister(task)
+            try:
                 self._degrade(task, reason)
+            except Exception:  # noqa: BLE001 - one held task failing must not strand the others behind it (S-01)
+                logger.exception("upload embed: admitting a held task failed; its chunks stay keyword-only")
 
     def _degrade(self, task: EmbedTask, reason: str) -> None:
         """A task that never ran: its chunks stay keyword-only and the job ends ready (never failed)."""

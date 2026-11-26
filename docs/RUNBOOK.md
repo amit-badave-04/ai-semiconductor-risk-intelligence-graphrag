@@ -891,6 +891,10 @@ In PowerShell: `flyctl logs -a semigraph | Select-String "code=too_slow"`. Each 
 
 ## M2 retrieval flags
 
+Cost fields stay out of the public repo: `eval-deployed` writes its report already stripped (costs go to a git-ignored
+sidecar under `data/processed/costs/`); before committing an `eval-agent` report run
+`uv run python scripts/strip_costs.py artifacts/<report>.json`.
+
 M2 retrieval (fused legs + MiniLM rerank, `docs/specs/m2-search.md`) ships OFF. The image always carries the reranker at
 `/srv/models/reranker-minilm-l6` (fetched at build time, SHA-256 verified by `scripts/build_reranker_model.py`; the build fails on a
 mismatch; TODO(owner): pin its `REVISION` to a commit sha). `fly.toml [env]` decides use: `RETRIEVAL_FUSION` (`"false"`) and

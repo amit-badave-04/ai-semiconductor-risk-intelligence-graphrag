@@ -204,8 +204,8 @@ def _fused_with_keyword(driver, workspace_id: str, question: str, dense_rows: li
 
     try:
         keyword_rows = keyword_index.keyword_rows(driver, workspace_id, question, k)
-    except Exception:  # noqa: BLE001 - the ask must still answer from the dense rows
-        logger.warning("upload keyword search failed; answering from the vector rows only", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - the ask must still answer from the dense rows
+        logger.warning("upload keyword search failed; answering from the vector rows only (%s)", type(exc).__name__)
         return dense_rows
     return keyword_index.rrf_fuse(dense_rows, keyword_rows, k) if keyword_rows else dense_rows
 
@@ -245,8 +245,8 @@ def _pending_embeddings(driver, workspace_id: str) -> int:
 
     try:
         return repo.pending_embedding_count(driver, workspace_id)
-    except Exception:  # noqa: BLE001 - the ask must still answer; only its label is more careful
-        logger.warning("upload pending-embedding count failed; labelling the search as partial", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 - the ask must still answer; only its label is more careful
+        logger.warning("upload pending-embedding count failed; labelling the search as partial (%s)", type(exc).__name__)
         return 1
 
 

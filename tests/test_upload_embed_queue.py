@@ -330,3 +330,75 @@ def test_the_stage_line_gets_what_the_embed_reached(monkeypatch):
 @pytest.mark.parametrize("reason", ["timeout", "budget", "guaranteed", "cancelled", "superseded", "embed_error", "daily_limit"])
 def test_every_stop_reason_is_a_known_constant(reason):
     assert reason in eq.STOP_REASONS
+
+
+# ---------------------------------------------------------------- security review S-01, S-04
+
+
+def test_s01_an_error_while_admitting_a_held_task_does_not_escape_the_worker_loop(monkeypatch, caplog):
+    """S-01: _release -> _admit_held -> _degrade -> finish_embedding raising must be logged, never kill the worker thread."""
+    w = World(monkeypatch, pending((10, 0)))
+    w.queue.submit(w.task())
+    w.queue.submit(eq.EmbedTask(workspace_id=WS, job_id="j2", document_id="other", version=1))
+    w.queue.cancel(WS, "j2")                                 # admission will degrade it -> finish_embedding
+    real_finish = w._finish
+    calls = []
+
+    def finish(driver, ws, doc, version):
+        calls.append(doc)
+        if doc == "other":
+            raise RuntimeError("db down SECRET-UPLOAD-TEXT")
+        return real_finish(driver, ws, doc, version)
+
+    monkeypatch.setattr(repo, "finish_embedding", finish)
+    with caplog.at_level("ERROR", logger="semigraph.uploads.embed_queue"):
+        w.queue._run_registered(w.queue._fifo.get_nowait())  # must not raise
+    assert "other" in calls
+    assert any("admit" in r.getMessage() for r in caplog.records)
+    # the loop keeps going: a later task still runs
+    w.queue.submit(eq.EmbedTask(workspace_id="z" * 32, job_id="j3", document_id=DOC, version=1))
+    assert w.queue.run_next() is True
+
+
+def test_s04_the_day_reservation_is_taken_without_the_queue_lock_held(monkeypatch):
+    w = World(monkeypatch, pending((10, 0)))
+    held_during = []
+
+    def reserve(day):
+        held_during.append(w.queue._lock.locked())
+        return True
+
+    w.queue._reserve_day = reserve
+    w.queue.submit(w.task())
+    w.queue.submit(eq.EmbedTask(workspace_id=WS, job_id="j2", document_id="other", version=1))   # held
+    w.queue.run_next()                                                                            # admits j2 -> reserve
+    assert len(held_during) == 2 and not any(held_during)
+
+
+def test_s04_a_refused_reservation_frees_the_workspace_again(monkeypatch):
+    w = World(monkeypatch, pending((10, 0)))
+    w.queue._reserve_day = lambda day: False
+    assert w.queue.submit(w.task()).reason == "daily_limit"
+    w.queue._reserve_day = lambda day: True
+    assert w.queue.submit(w.task()).reason is None            # the refused task left no active registration
+
+
+def test_s01_one_held_task_failing_to_degrade_does_not_strand_the_other_held_tasks(monkeypatch, caplog):
+    """Verify follow-up: the error is caught per held task, so the next admissible held task is still admitted."""
+    w = World(monkeypatch, pending((10, 0)))
+    w.queue.submit(w.task())
+    w.queue.submit(eq.EmbedTask(workspace_id=WS, job_id="j2", document_id="other", version=1))
+    w.queue.submit(eq.EmbedTask(workspace_id=WS, job_id="j3", document_id="third", version=1))
+    w.queue.cancel(WS, "j2")                                 # j2 degrades -> finish_embedding raises
+    real_finish = w._finish
+
+    def finish(driver, ws, doc, version):
+        if doc == "other":
+            raise RuntimeError("db down")
+        return real_finish(driver, ws, doc, version)
+
+    monkeypatch.setattr(repo, "finish_embedding", finish)
+    with caplog.at_level("ERROR", logger="semigraph.uploads.embed_queue"):
+        w.queue._run_registered(w.queue._fifo.get_nowait())
+    assert not w.queue._held                                   # j3 was not stranded behind j2's failure
+    assert w.queue._fifo.get_nowait().job_id == "j3"

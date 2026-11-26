@@ -419,6 +419,20 @@ def bakeoff_cmd(
     typer.echo(f"report -> {out}")
 
 
+def _write_stripped_report(report: dict, out: Path, sidecar: Path) -> Path:
+    """Write ``report`` to ``out`` without any spend field (the owner keeps spend out of the public repo); the removed values go to
+    the git-ignored ``sidecar``. shortcut: loads scripts/strip_costs.py by path, so it needs a source checkout."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("strip_costs", _REPO_ROOT / "scripts" / "strip_costs.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    stripped, removed = mod.strip_report(report)
+    out.write_text(json.dumps(stripped, indent=2), encoding="utf-8")
+    mod.write_sidecar(sidecar, out.name, removed)
+    return sidecar
+
+
 @app.command("eval-deployed")
 def eval_deployed_cmd(
     model: str = typer.Option(None, help="Cheap default model (default: ANSWER_MODEL from settings)"),
@@ -469,13 +483,13 @@ def eval_deployed_cmd(
     report = {"model": model, "escalation_model": escalation_model, "votes": votes, "fusion": runtime is not None,
               **bo.score_deployed(rows, benchmark, llm_json, votes=votes, as_of=data_as_of(settings))}
     out = Path("artifacts") / report_name
-    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    costs_out = _write_stripped_report(report, out, settings.processed_dir / "costs" / f"{Path(report_name).stem}.costs.json")
     j = report["judged"]
     typer.echo(json.dumps({k: report[k] for k in ("mechanical", "citation_validity", "routes", "escalated", "escalated_ids",
                                                    "checks_failed", "rows_without_checks", "avg_cost_usd", "total_cost_usd",
                                                    "avg_latency_s", "errors")}, indent=2, default=str))
     typer.echo(f"open questions correct: {j['open_correct']}/{j['open_of']}  votes {j['votes']}")
-    typer.echo(f"report -> {out}")
+    typer.echo(f"report -> {out} (spend stripped; the removed values are in {costs_out}, git-ignored)")
 
 
 def _echo_adjudication_estimate(est, max_usd: float) -> None:
@@ -783,6 +797,7 @@ def eval_agent_cmd(
     out.write_text(json.dumps({"estimate": estimate, "baseline": _repo_relative(baseline) if base else None, "votes": votes, **result}, indent=2),
                    encoding="utf-8")
     typer.echo(f"clears every gate: {result['clears_all_gates']}; report -> {out}")
+    typer.echo(f"before committing this report, strip its spend: uv run python scripts/strip_costs.py {out}")
     if any(g["passed"] is False for g in result["gates"].values()):
         raise typer.Exit(4)
 

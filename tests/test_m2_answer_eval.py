@@ -387,3 +387,56 @@ def test_ledger_caps_the_m2_total_and_stops_after_two_failed_runs(tmp_path):
     led2.append("i6", 0.1, failed=True)
     assert any("failed" in p for p in ae.ledger_gate(led2, max_usd=20.0, est=est)[1])
     assert ae.Ledger(tmp_path / "l2.jsonl").spent() == pytest.approx(0.2)    # persisted across instances
+
+
+# --- S-05: a non-finite --max-usd must not disable the caps ---
+
+@pytest.mark.parametrize("bad", ["nan", "inf", "-inf"])
+def test_non_finite_max_usd_is_rejected_at_the_command_line(bad, capsys):
+    with pytest.raises(SystemExit):
+        ae.parse_args([f"--max-usd={bad}"])
+    assert "finite" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_refusals_and_ledger_gate_reject_non_finite_cap(bad, tmp_path):
+    est = ae.estimate(55, ae.ARMS, 0.0138)
+    assert ae.refusals(est, max_usd=bad, confirm_paid=True)
+    _, problems = ae.ledger_gate(ae.Ledger(tmp_path / "l.jsonl"), max_usd=bad, est=est)
+    assert problems
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_run_arms_stops_on_a_non_finite_cap(bad, tmp_path):
+    with pytest.raises(AnswerBudgetExceeded):
+        ae.run_arms([q("Q1")], ["off"], lambda a, i: (done_events(), context()), tmp_path / "r.jsonl", max_usd=bad,
+                    sleep=lambda s: None)
+
+
+def test_run_arms_stops_on_a_non_finite_recorded_spend(tmp_path):
+    runs = tmp_path / "r.jsonl"
+    runs.write_text(json.dumps({"arm": "off", "id": "Q0", "cost_usd": float("nan")}) + "\n", encoding="utf-8")
+    with pytest.raises(AnswerBudgetExceeded):
+        ae.run_arms([q("Q1")], ["off"], lambda a, i: (done_events(), context()), runs, max_usd=5.0, sleep=lambda s: None)
+
+
+# --- S-06: the live run reads a local graph only ---
+
+def test_live_run_refuses_a_non_local_graph_before_connecting(monkeypatch):
+    from types import SimpleNamespace
+
+    from semigraph.graph import client
+
+    monkeypatch.setattr(client, "get_driver", lambda s: pytest.fail("must not connect to a non-local graph"))
+    settings = SimpleNamespace(neo4j_uri="neo4j+s://prod.example.com:7687", escalation_model="x")
+    with pytest.raises(SystemExit, match="local graph"):
+        ae.live_answer_one(settings)
+
+
+def test_ledger_gate_refuses_when_a_ledger_row_has_a_nan_spend(tmp_path):
+    """Verify follow-up: min(max_usd, 15 - nan) is the finite max_usd, so the ledger spend itself must be checked."""
+    led = tmp_path / "l.jsonl"
+    led.write_text('{"step": "x", "usd": NaN, "failed": false}\n', encoding="utf-8")
+    est = ae.estimate(55, ae.ARMS, 0.0138)
+    cap, problems = ae.ledger_gate(ae.Ledger(led), max_usd=5.0, est=est)
+    assert problems and cap == 0.0

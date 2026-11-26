@@ -395,7 +395,8 @@ class _BlockHTMLParser:
 
         outer = self
         blocks: list[dict] = []
-        state = {"skip": 0, "tag": None, "buf": [], "hidden": 0, "open_tags": [], "open_hidden": [], "counts": {}}
+        state = {"skip": 0, "tag": None, "buf": [], "hidden": 0, "open_tags": [], "open_hidden": [], "counts": {},
+                 "over": 0, "over_counts": {}, "over_hidden_at": None}
 
         class _Parser(HTMLParser):
             def handle_starttag(self, tag, attrs):
@@ -418,16 +419,21 @@ class _BlockHTMLParser:
                     state["tag"] = None
 
             def handle_data(self, data):
-                if state["skip"] == 0 and state["hidden"] == 0:
+                if state["skip"] == 0 and state["hidden"] == 0 and state["over_hidden_at"] is None:
                     state["buf"].append(data)
 
         self._parser, self._blocks, self._state = _Parser(), blocks, state
 
     @staticmethod
     def _push(state: dict, tag: str, attrs) -> None:
-        if len(state["open_tags"]) >= _HTML_MAX_OPEN_ELEMENTS:
-            return
         hidden = _html_is_hidden(tag, attrs)
+        if len(state["open_tags"]) >= _HTML_MAX_OPEN_ELEMENTS:
+            # Past the cap nothing is stored, but depth and hiddenness are still counted (a hidden element must stay hidden).
+            state["over"] += 1
+            state["over_counts"][tag] = state["over_counts"].get(tag, 0) + 1
+            if hidden and state["over_hidden_at"] is None:
+                state["over_hidden_at"] = state["over"]
+            return
         state["open_tags"].append(tag)
         state["open_hidden"].append(hidden)
         state["counts"][tag] = state["counts"].get(tag, 0) + 1
@@ -435,6 +441,12 @@ class _BlockHTMLParser:
 
     @staticmethod
     def _pop(state: dict, tag: str) -> None:
+        if state["over_counts"].get(tag, 0) > 0:             # a capped (untracked) element is the innermost open one
+            state["over_counts"][tag] -= 1
+            state["over"] -= 1
+            if state["over_hidden_at"] is not None and state["over"] < state["over_hidden_at"]:
+                state["over_hidden_at"] = None
+            return
         if state["counts"].get(tag, 0) <= 0:
             return
         while state["open_tags"]:

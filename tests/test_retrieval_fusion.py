@@ -295,3 +295,18 @@ def test_chunk_ranks_labels_an_rrf_score_on_the_fused_path():
     plain = {"chunks": [{"chunk_id": "c", "score": 0.9}]}
     assert cr.chunk_ranks(plain) == [{"rank": 1, "chunk_id": "c", "score": 0.9}]
     assert cr.chunk_ranks({**plain, "leg_ranks": {}})[0]["score_kind"] == "rrf"
+
+
+# --- S-02: a question naming year 1 or 9999 must not raise on every fused ask ---
+
+@pytest.mark.parametrize("periods", [{"years": [], "dates": ["0001-01-01"]}, {"years": [1], "dates": []},
+                                     {"years": [], "dates": ["9999-12-31"]}, {"years": [9999], "dates": []}])
+def test_period_window_clamps_out_of_range_years(periods):
+    since, until = R._period_window(periods)
+    assert date.min <= since < until <= date.max
+
+
+@pytest.mark.parametrize("named", ["0001-01-01", "9999-12-31"])
+def test_fused_ask_naming_an_extreme_date_does_not_raise(named):
+    out, d, _ = run(f"Nvidia supply risk on {named}", FusionConfig(filer=True, period=True), fusion_mention=[row("m1")])
+    assert out is not None

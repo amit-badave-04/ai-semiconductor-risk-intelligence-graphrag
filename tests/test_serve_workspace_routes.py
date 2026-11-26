@@ -715,3 +715,23 @@ def test_cancel_is_keyed_by_the_authenticated_workspace_so_it_cannot_reach_anoth
     fake_repo.workspaces[other] = {"token": "other-token"}
     assert _cancel(client, ws=other, headers=_auth("other-token")).json()["cancelled"] is False   # job-live belongs to WS
     assert fake_queue.cancelled == [(other, "job-live")]
+
+
+def test_s04_cancel_runs_off_the_event_loop(client, fake_repo, fake_queue):
+    """S-04: EmbedQueue.cancel takes a lock another thread holds across a DB write, so it must not run on the loop."""
+    import asyncio
+
+    on_loop = []
+    real = fake_queue.cancel
+
+    def cancel(ws, job_id):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(ws, job_id)
+
+    fake_queue.cancel = cancel
+    assert _cancel(client).status_code == 200
+    assert on_loop == [False]

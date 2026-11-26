@@ -63,3 +63,20 @@ def test_eval_deployed_with_the_flag_on_stops_before_spending_when_the_index_did
     result = runner.invoke(cli.app, ["eval-deployed", "--max-usd", "1", "--yes", "--report-name", "r.json"])
     assert result.exit_code != 0 and "fusion" in result.output.lower()
     assert calls["run"] == []
+
+
+def test_eval_deployed_writes_a_stripped_report_and_the_costs_to_a_sidecar(env, monkeypatch):
+    from semigraph.eval import bakeoff as bo
+
+    calls = _wire(env, monkeypatch, flag=False, runtime=None)
+    scored = bo.score_deployed(None, None, None)
+    scored = {**scored, "avg_cost_usd": 0.014, "total_cost_usd": 0.84}
+    monkeypatch.setattr(bo, "score_deployed", lambda rows, bench, judge, **kw: scored)
+    result = runner.invoke(cli.app, ["eval-deployed", "--max-usd", "1", "--yes", "--report-name", "r.json"])
+    assert result.exit_code == 0, result.output
+    assert "0.84" in result.output                                               # the console still prints the cost
+    text = (env / "artifacts" / "r.json").read_text(encoding="utf-8")
+    assert "cost_usd" not in text and "0.84" not in text
+    side = json.loads((env / "data" / "processed" / "costs" / "r.costs.json").read_text(encoding="utf-8"))
+    assert side["removed"]["/total_cost_usd"] == 0.84 and side["removed"]["/avg_cost_usd"] == 0.014
+    assert calls["run"]

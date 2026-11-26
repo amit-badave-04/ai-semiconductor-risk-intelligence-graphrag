@@ -65,7 +65,7 @@ import re
 import time
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
-from datetime import date
+from datetime import MAXYEAR, MINYEAR, date
 from functools import lru_cache
 
 from ..artifacts import load_canonical_entities
@@ -782,7 +782,10 @@ def _period_window(periods: Mapping[str, list]) -> tuple[date, date] | None:
     calendar year, to Jul 1 after the latest, which holds that year's annual filing for any fiscal year end); tighten with
     the period-end dates if the dev bench shows the window is too wide."""
     years = [*periods["years"], *(int(d[:4]) for d in periods["dates"])]
-    return (date(min(years) - 1, 1, 1), date(max(years) + 1, 7, 1)) if years else None
+    if not years:
+        return None
+    first, last = max(min(years) - 1, MINYEAR), min(max(years) + 1, MAXYEAR)       # a named year 1 or 9999 must not overflow date()
+    return date(first, 1, 1), date(last, 7, 1)
 
 
 def _dense_legs(driver, vec: list[float], anchor_ids: list[int], *, defaulted: bool, periods: Mapping[str, list],

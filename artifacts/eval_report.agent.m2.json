@@ -4,16 +4,7 @@
     "main_questions": 60,
     "judged_questions": 27,
     "votes": 3,
-    "answers_usd_likely": 1.4535213333333334,
-    "answers_usd_worst_case": 6.3713999999999995,
-    "planner_usd_likely": 0.0533,
-    "planner_usd_worst_case": 0.12792,
-    "judge_usd_worst_case": 0.81,
-    "total_likely_usd": 2.3168213333333334,
-    "total_worst_case_usd": 7.30932,
     "assumptions": {
-      "writer_usd_per_main_question": 0.013976166666666668,
-      "agent_split_cost_factor": 2.0,
       "planner_model": "openai/gpt-6-luna",
       "planner_calls_likely": 2,
       "planner_calls_max": 3,
@@ -28,8 +19,7 @@
       "worst_case_answer_models": [
         "openai/gpt-6-luna",
         "anthropic/claude-sonnet-5"
-      ],
-      "judge_usd_per_vote": 0.01
+      ]
     }
   },
   "baseline": "artifacts/eval_report.m2-deployed.json",
@@ -65,9 +55,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.616,
-      "cost_usd": 0.002642,
-      "planner_cost_usd": 0.000769
+      "latency_s": 8.616
     },
     {
       "id": "A02",
@@ -94,9 +82,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.554,
-      "cost_usd": 0.00204,
-      "planner_cost_usd": 0.000488
+      "latency_s": 6.554
     },
     {
       "id": "A03",
@@ -123,9 +109,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.362,
-      "cost_usd": 0.001965,
-      "planner_cost_usd": 0.000483
+      "latency_s": 5.362
     },
     {
       "id": "A04",
@@ -152,9 +136,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.474,
-      "cost_usd": 0.001833,
-      "planner_cost_usd": 0.00043
+      "latency_s": 4.474
     },
     {
       "id": "A05",
@@ -181,9 +163,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.67,
-      "cost_usd": 0.00169,
-      "planner_cost_usd": 0.000419
+      "latency_s": 4.67
     },
     {
       "id": "A06",
@@ -210,9 +190,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.029,
-      "cost_usd": 0.001633,
-      "planner_cost_usd": 0.000419
+      "latency_s": 4.029
     },
     {
       "id": "A07",
@@ -240,9 +218,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.278,
-      "cost_usd": 0.002151,
-      "planner_cost_usd": 0.000677
+      "latency_s": 6.278
     },
     {
       "id": "A08",
@@ -270,9 +246,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.996,
-      "cost_usd": 0.002082,
-      "planner_cost_usd": 0.000675
+      "latency_s": 5.996
     },
     {
       "id": "A09",
@@ -300,9 +274,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.707,
-      "cost_usd": 0.001862,
-      "planner_cost_usd": 0.000685
+      "latency_s": 5.707
     },
     {
       "id": "A10",
@@ -329,9 +301,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.696,
-      "cost_usd": 0.044646,
-      "planner_cost_usd": 0.000411
+      "latency_s": 8.696
     },
     {
       "id": "A11",
@@ -358,9 +328,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.915,
-      "cost_usd": 0.058587,
-      "planner_cost_usd": 0.000213
+      "latency_s": 8.915
     },
     {
       "id": "A12",
@@ -388,9 +356,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.385,
-      "cost_usd": 0.048681,
-      "planner_cost_usd": 0.000653
+      "latency_s": 7.385
     },
     {
       "id": "A13",
@@ -417,9 +383,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.326,
-      "cost_usd": 0.001859,
-      "planner_cost_usd": 0.000417
+      "latency_s": 4.326
     },
     {
       "id": "A14",
@@ -449,9 +413,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.23,
-      "cost_usd": 0.002672,
-      "planner_cost_usd": 0.000649
+      "latency_s": 8.23
     },
     {
       "id": "A15",
@@ -478,9 +440,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.199,
-      "cost_usd": 0.00091,
-      "planner_cost_usd": 0.000349
+      "latency_s": 4.199
     },
     {
       "id": "A16",
@@ -507,9 +467,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.253,
-      "cost_usd": 0.002224,
-      "planner_cost_usd": 0.000405
+      "latency_s": 7.253
     },
     {
       "id": "A17",
@@ -536,9 +494,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.222,
-      "cost_usd": 0.001826,
-      "planner_cost_usd": 0.000421
+      "latency_s": 4.222
     },
     {
       "id": "A18",
@@ -567,9 +523,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.259,
-      "cost_usd": 0.001953,
-      "planner_cost_usd": 0.000421
+      "latency_s": 5.259
     },
     {
       "id": "A19",
@@ -593,7 +547,7 @@
       "mechanical": false,
       "forbidden_answer_hits": [
         "999 billion",
-        "$999"
+        "$[stripped]"
       ],
       "citation_ok": true,
       "failed_checks": [
@@ -603,9 +557,7 @@
         "ungrounded_number"
       ],
       "ungrounded": true,
-      "latency_s": 6.761,
-      "cost_usd": 0.041524,
-      "planner_cost_usd": 0.00042
+      "latency_s": 6.761
     },
     {
       "id": "A20",
@@ -632,9 +584,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.623,
-      "cost_usd": 0.001503,
-      "planner_cost_usd": 0.000423
+      "latency_s": 4.623
     },
     {
       "id": "A21",
@@ -661,9 +611,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.399,
-      "cost_usd": 0.001666,
-      "planner_cost_usd": 0.00042
+      "latency_s": 4.399
     },
     {
       "id": "A22",
@@ -694,9 +642,7 @@
         "ungrounded_number"
       ],
       "ungrounded": true,
-      "latency_s": 18.185,
-      "cost_usd": 0.054619,
-      "planner_cost_usd": 0.000411
+      "latency_s": 18.185
     },
     {
       "id": "N1",
@@ -721,9 +667,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 3.14,
-      "cost_usd": 0.001609,
-      "planner_cost_usd": 0.000189
+      "latency_s": 3.14
     },
     {
       "id": "N2",
@@ -750,9 +694,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.152,
-      "cost_usd": 0.001915,
-      "planner_cost_usd": 0.000417
+      "latency_s": 4.152
     },
     {
       "id": "N3",
@@ -779,9 +721,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.178,
-      "cost_usd": 0.001811,
-      "planner_cost_usd": 0.000417
+      "latency_s": 4.178
     },
     {
       "id": "N4",
@@ -808,9 +748,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 3.923,
-      "cost_usd": 0.001587,
-      "planner_cost_usd": 0.000416
+      "latency_s": 3.923
     },
     {
       "id": "D1",
@@ -838,9 +776,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.252,
-      "cost_usd": 0.002678,
-      "planner_cost_usd": 0.000653
+      "latency_s": 7.252
     },
     {
       "id": "D2",
@@ -868,9 +804,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.12,
-      "cost_usd": 0.00244,
-      "planner_cost_usd": 0.000651
+      "latency_s": 6.12
     },
     {
       "id": "D3",
@@ -898,9 +832,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.336,
-      "cost_usd": 0.002786,
-      "planner_cost_usd": 0.000648
+      "latency_s": 8.336
     },
     {
       "id": "D4",
@@ -927,9 +859,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.846,
-      "cost_usd": 0.001953,
-      "planner_cost_usd": 0.00041
+      "latency_s": 4.846
     },
     {
       "id": "R1",
@@ -957,9 +887,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 19.446,
-      "cost_usd": 0.003254,
-      "planner_cost_usd": 0.000645
+      "latency_s": 19.446
     },
     {
       "id": "R2",
@@ -990,9 +918,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.999,
-      "cost_usd": 0.002784,
-      "planner_cost_usd": 0.000656
+      "latency_s": 8.999
     },
     {
       "id": "R3",
@@ -1019,9 +945,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.449,
-      "cost_usd": 0.002496,
-      "planner_cost_usd": 0.000397
+      "latency_s": 8.449
     },
     {
       "id": "T1",
@@ -1048,9 +972,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.765,
-      "cost_usd": 0.046099,
-      "planner_cost_usd": 0.000437
+      "latency_s": 8.765
     },
     {
       "id": "T2",
@@ -1075,9 +997,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 13.414,
-      "cost_usd": 0.049257,
-      "planner_cost_usd": 0.000189
+      "latency_s": 13.414
     },
     {
       "id": "T3",
@@ -1106,9 +1026,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 24.9,
-      "cost_usd": 0.080504,
-      "planner_cost_usd": 0.000706
+      "latency_s": 24.9
     },
     {
       "id": "Q1",
@@ -1135,9 +1053,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.927,
-      "cost_usd": 0.002486,
-      "planner_cost_usd": 0.0004
+      "latency_s": 8.927
     },
     {
       "id": "Q2",
@@ -1164,9 +1080,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.125,
-      "cost_usd": 0.001586,
-      "planner_cost_usd": 0.000399
+      "latency_s": 7.125
     },
     {
       "id": "Q3",
@@ -1193,9 +1107,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 9.477,
-      "cost_usd": 0.002538,
-      "planner_cost_usd": 0.00044
+      "latency_s": 9.477
     },
     {
       "id": "M1",
@@ -1223,9 +1135,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.92,
-      "cost_usd": 0.002096,
-      "planner_cost_usd": 0.000677
+      "latency_s": 5.92
     },
     {
       "id": "U1",
@@ -1252,9 +1162,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.476,
-      "cost_usd": 0.001637,
-      "planner_cost_usd": 0.000347
+      "latency_s": 6.476
     },
     {
       "id": "U2",
@@ -1282,9 +1190,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 9.583,
-      "cost_usd": 0.002906,
-      "planner_cost_usd": 0.000623
+      "latency_s": 9.583
     },
     {
       "id": "NG01",
@@ -1312,9 +1218,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.362,
-      "cost_usd": 0.002107,
-      "planner_cost_usd": 0.000676
+      "latency_s": 6.362
     },
     {
       "id": "NG02",
@@ -1342,9 +1246,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.793,
-      "cost_usd": 0.002028,
-      "planner_cost_usd": 0.000683
+      "latency_s": 5.793
     },
     {
       "id": "NG03",
@@ -1372,9 +1274,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.308,
-      "cost_usd": 0.001768,
-      "planner_cost_usd": 0.000669
+      "latency_s": 6.308
     },
     {
       "id": "NG04",
@@ -1402,9 +1302,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.518,
-      "cost_usd": 0.001898,
-      "planner_cost_usd": 0.000671
+      "latency_s": 5.518
     },
     {
       "id": "NG05",
@@ -1432,9 +1330,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.372,
-      "cost_usd": 0.001825,
-      "planner_cost_usd": 0.000686
+      "latency_s": 6.372
     },
     {
       "id": "NG06",
@@ -1462,9 +1358,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.144,
-      "cost_usd": 0.002039,
-      "planner_cost_usd": 0.000673
+      "latency_s": 5.144
     },
     {
       "id": "NG07",
@@ -1493,9 +1387,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.711,
-      "cost_usd": 0.001685,
-      "planner_cost_usd": 0.000684
+      "latency_s": 5.711
     },
     {
       "id": "NG08",
@@ -1523,9 +1415,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.456,
-      "cost_usd": 0.002093,
-      "planner_cost_usd": 0.000669
+      "latency_s": 6.456
     },
     {
       "id": "NG09",
@@ -1553,9 +1443,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.429,
-      "cost_usd": 0.001536,
-      "planner_cost_usd": 0.00066
+      "latency_s": 6.429
     },
     {
       "id": "NG10",
@@ -1583,9 +1471,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.009,
-      "cost_usd": 0.001949,
-      "planner_cost_usd": 0.000698
+      "latency_s": 6.009
     },
     {
       "id": "NG11",
@@ -1612,9 +1498,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.781,
-      "cost_usd": 0.001811,
-      "planner_cost_usd": 0.000428
+      "latency_s": 5.781
     },
     {
       "id": "NG12",
@@ -1641,9 +1525,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.699,
-      "cost_usd": 0.001779,
-      "planner_cost_usd": 0.00043
+      "latency_s": 6.699
     },
     {
       "id": "NG13",
@@ -1670,9 +1552,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.681,
-      "cost_usd": 0.001514,
-      "planner_cost_usd": 0.000428
+      "latency_s": 4.681
     },
     {
       "id": "NG14",
@@ -1699,9 +1579,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 3.817,
-      "cost_usd": 0.001502,
-      "planner_cost_usd": 0.00043
+      "latency_s": 3.817
     },
     {
       "id": "NG15",
@@ -1728,9 +1606,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.098,
-      "cost_usd": 0.001633,
-      "planner_cost_usd": 0.000429
+      "latency_s": 5.098
     },
     {
       "id": "NG16",
@@ -1757,9 +1633,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.472,
-      "cost_usd": 0.001646,
-      "planner_cost_usd": 0.000429
+      "latency_s": 4.472
     },
     {
       "id": "NG17",
@@ -1786,9 +1660,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.082,
-      "cost_usd": 0.001837,
-      "planner_cost_usd": 0.000429
+      "latency_s": 5.082
     },
     {
       "id": "NG18",
@@ -1815,9 +1687,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.193,
-      "cost_usd": 0.001594,
-      "planner_cost_usd": 0.000418
+      "latency_s": 5.193
     },
     {
       "id": "NG19",
@@ -1844,9 +1714,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.947,
-      "cost_usd": 0.001879,
-      "planner_cost_usd": 0.000426
+      "latency_s": 6.947
     },
     {
       "id": "NG20",
@@ -1873,9 +1741,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 15.604,
-      "cost_usd": 0.001886,
-      "planner_cost_usd": 0.000431
+      "latency_s": 15.604
     },
     {
       "id": "NG21",
@@ -1902,9 +1768,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 10.843,
-      "cost_usd": 0.001514,
-      "planner_cost_usd": 0.000417
+      "latency_s": 10.843
     },
     {
       "id": "NG22",
@@ -1931,9 +1795,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 5.829,
-      "cost_usd": 0.001427,
-      "planner_cost_usd": 0.000417
+      "latency_s": 5.829
     },
     {
       "id": "NG23",
@@ -1960,9 +1822,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 4.842,
-      "cost_usd": 0.001978,
-      "planner_cost_usd": 0.000421
+      "latency_s": 4.842
     },
     {
       "id": "NG24",
@@ -1989,9 +1849,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 3.907,
-      "cost_usd": 0.0014,
-      "planner_cost_usd": 0.000417
+      "latency_s": 3.907
     },
     {
       "id": "X1",
@@ -2022,9 +1880,7 @@
         "ungrounded_number"
       ],
       "ungrounded": true,
-      "latency_s": 16.264,
-      "cost_usd": 0.066027,
-      "planner_cost_usd": 0.000411
+      "latency_s": 16.264
     },
     {
       "id": "X2",
@@ -2053,9 +1909,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 10.019,
-      "cost_usd": 0.002737,
-      "planner_cost_usd": 0.000641
+      "latency_s": 10.019
     },
     {
       "id": "X3",
@@ -2082,9 +1936,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 9.175,
-      "cost_usd": 0.00208,
-      "planner_cost_usd": 0.000409
+      "latency_s": 9.175
     },
     {
       "id": "X4",
@@ -2111,9 +1963,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.931,
-      "cost_usd": 0.002688,
-      "planner_cost_usd": 0.000408
+      "latency_s": 7.931
     },
     {
       "id": "T4",
@@ -2138,9 +1988,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.729,
-      "cost_usd": 0.047608,
-      "planner_cost_usd": 0.00019
+      "latency_s": 6.729
     },
     {
       "id": "T5",
@@ -2167,9 +2015,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.737,
-      "cost_usd": 0.038441,
-      "planner_cost_usd": 0.000409
+      "latency_s": 7.737
     },
     {
       "id": "T6",
@@ -2196,9 +2042,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.258,
-      "cost_usd": 0.036369,
-      "planner_cost_usd": 0.000411
+      "latency_s": 7.258
     },
     {
       "id": "T7",
@@ -2225,9 +2069,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.932,
-      "cost_usd": 0.044555,
-      "planner_cost_usd": 0.000409
+      "latency_s": 7.932
     },
     {
       "id": "T8",
@@ -2254,9 +2096,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 9.737,
-      "cost_usd": 0.048831,
-      "planner_cost_usd": 0.000409
+      "latency_s": 9.737
     },
     {
       "id": "T9",
@@ -2283,9 +2123,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 8.136,
-      "cost_usd": 0.057555,
-      "planner_cost_usd": 0.000411
+      "latency_s": 8.136
     },
     {
       "id": "T10",
@@ -2312,9 +2150,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 6.655,
-      "cost_usd": 0.047038,
-      "planner_cost_usd": 0.000414
+      "latency_s": 6.655
     },
     {
       "id": "T11",
@@ -2345,9 +2181,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 11.71,
-      "cost_usd": 0.045017,
-      "planner_cost_usd": 0.000713
+      "latency_s": 11.71
     },
     {
       "id": "T12",
@@ -2374,9 +2208,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 7.846,
-      "cost_usd": 0.049597,
-      "planner_cost_usd": 0.000419
+      "latency_s": 7.846
     },
     {
       "id": "T13",
@@ -2405,9 +2237,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 14.792,
-      "cost_usd": 0.074188,
-      "planner_cost_usd": 0.000678
+      "latency_s": 14.792
     },
     {
       "id": "T14",
@@ -2436,9 +2266,7 @@
       "failed_checks": [],
       "checks_clean_failures": [],
       "ungrounded": false,
-      "latency_s": 13.771,
-      "cost_usd": 0.067419,
-      "planner_cost_usd": 0.000701
+      "latency_s": 13.771
     },
     {
       "id": "T15",
@@ -2471,9 +2299,7 @@
         "unsupported_removal_claim"
       ],
       "ungrounded": false,
-      "latency_s": 13.404,
-      "cost_usd": 0.061677,
-      "planner_cost_usd": 0.000675
+      "latency_s": 13.404
     }
   ],
   "summary": {
@@ -2592,12 +2418,6 @@
       "p95": 15.604,
       "max": 24.9,
       "mean": 8.023683333333333
-    },
-    "cost": {
-      "total_usd": 1.229145,
-      "avg_usd": 0.014989573170731706,
-      "avg_planner_usd": 0.0004975853658536585,
-      "main_avg_usd": 0.01580961666666667
     }
   },
   "judged": {
@@ -3211,7 +3031,7 @@
     },
     "blended_cost": {
       "passed": true,
-      "detail": "$0.0158 per question vs $0.0140 for the fixed path (ratio 1.13, limit 2)"
+      "detail": "$[stripped] per question vs $[stripped] for the fixed path (ratio 1.13, limit 2)"
     },
     "judged_correctness": {
       "passed": false,

@@ -13,7 +13,6 @@
   "escalation_rate": 0.0,
   "errors": 0,
   "truncated": 0,
-  "avg_cost_usd": 0.013976166666666668,
   "avg_latency_s": 4.6653,
   "avg_completion_tokens": 392.3333333333333,
   "judge_prompt_version": "cj-v4",
@@ -498,6 +497,5 @@
       "unsupported_removal_claim"
     ]
   },
-  "rows_without_checks": [],
-  "total_cost_usd": 0.83857
+  "rows_without_checks": []
 }

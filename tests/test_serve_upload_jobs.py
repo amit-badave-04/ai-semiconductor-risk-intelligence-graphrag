@@ -86,7 +86,7 @@ class FakeRepo:
                 return row["view"]
         return None
 
-    def embedded_chunks(self, driver, ws, document_id):
+    def embedded_chunks(self, driver, ws, document_id, text_hashes=None):
         return dict(self.embedded.get(document_id, {}))
 
     def quota(self, driver, ws):

@@ -55,3 +55,16 @@ def test_deep_and_mismatched_nesting_is_linear():
     started = time.perf_counter()
     pw._BlockHTMLParser().parse(html)
     assert time.perf_counter() - started < 3.0
+
+
+def test_s07_hidden_text_past_the_open_element_cap_stays_hidden():
+    """S-07: more than 10,000 nested elements must not make a hidden element's text leak into the extraction."""
+    html = "<div>" * (pw._HTML_MAX_OPEN_ELEMENTS + 50) + '<div style="display:none">HIDDEN-DEEP-TEXT</div><p>visible-deep</p>'
+    text = _texts(html)
+    assert "HIDDEN-DEEP-TEXT" not in text and "visible-deep" in text
+
+
+def test_s07_a_hidden_element_opened_past_the_cap_ends_with_its_end_tag():
+    html = ("<div>" * (pw._HTML_MAX_OPEN_ELEMENTS + 5) + '<section hidden><p>SECRET-DEEP</p></section><p>after</p>')
+    text = _texts(html)
+    assert "SECRET-DEEP" not in text and "after" in text

@@ -320,7 +320,7 @@ def test_embedded_chunks_hands_back_the_stored_embedding_by_text_hash(driver, tw
                      method="text", pages=1, chars=9, chars_per_page=9.0, text="same text", units=[_unit(char_end=9)],
                      chunks=[_chunk("doc:dddddddddddd:v1:0000", "same text", "same-hash", vec1)],
                      change_report=_no_report(), suspicious=False, now=datetime.now(UTC))
-    reuse = repo.embedded_chunks(driver, ws, "dddddddddddd")
+    reuse = repo.embedded_chunks(driver, ws, "dddddddddddd", ["same-hash"])   # S-08: only the hashes it can reuse
     assert "same-hash" in reuse
     assert reuse["same-hash"] == pytest.approx(vec1)
 

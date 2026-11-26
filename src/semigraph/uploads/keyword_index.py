@@ -45,6 +45,7 @@ class IndexCache:
         self._max_entries, self._max_bytes, self._max_age_s, self._clock = max_entries, max_bytes, max_age_s, clock
         self._entries: OrderedDict[str, _Entry] = OrderedDict()
         self._lock = threading.Lock()
+        self._generation: dict[str, int] = {}                  # bumped by invalidate; a build started before it is not kept
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -58,6 +59,7 @@ class IndexCache:
 
     def invalidate(self, workspace_id: str) -> None:
         with self._lock:
+            self._generation[workspace_id] = self._generation.get(workspace_id, 0) + 1
             self._entries.pop(workspace_id, None)
 
     def _drop_expired(self) -> None:
@@ -70,6 +72,8 @@ class IndexCache:
         """The workspace's index, built if absent or stale; ``None`` when it has no current chunk."""
         from . import repo
 
+        with self._lock:
+            generation = self._generation.get(workspace_id, 0)
         key = tuple(sorted((v["document_id"], v["version"]) if isinstance(v, dict) else tuple(v)
                            for v in repo.current_versions(driver, workspace_id)))
         with self._lock:
@@ -83,7 +87,8 @@ class IndexCache:
             return None
         entry = self._build(key, repo.current_chunk_rows(driver, workspace_id))
         with self._lock:
-            self._remember(workspace_id, entry)
+            if self._generation.get(workspace_id, 0) == generation:
+                self._remember(workspace_id, entry)
         return entry
 
     def _build(self, key: tuple, rows: list[dict]) -> _Entry:

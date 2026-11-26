@@ -528,11 +528,11 @@ def _chunk_stage(driver, ws, reg, job_id, document_id, version, text, parsed, ki
         _fail(driver, ws, reg, job_id, document_id, version, "too_many_chunks")
         return None
     sections = detect_sections(text)
-    reusable = repo.embedded_chunks(driver, ws, document_id)
+    spans = [(c, text[c.char_start:c.char_end]) for c in chunks]
+    digests = [content_hash(chunk_text) for _, chunk_text in spans]
+    reusable = repo.embedded_chunks(driver, ws, document_id, digests)
     rows = []
-    for i, c in enumerate(chunks):
-        chunk_text = text[c.char_start:c.char_end]
-        digest = content_hash(chunk_text)
+    for i, ((c, chunk_text), digest) in enumerate(zip(spans, digests)):
         rows.append({"chunk_id": make_doc_id(document_id, version, i), "seq": i, "text": chunk_text, "text_hash": digest,
                      "char_start": c.char_start, "char_end": c.char_end, "tokens": c.tokens, "embedded": False,
                      "embedding": reusable.get(digest), "priority": priority_for_span(sections, c.char_start, c.char_end)})
