@@ -1,7 +1,7 @@
 {
-  "source": "deployed-path benchmark run eval_deployed.m2a3.jsonl (router, cheap draft, verifier, escalation)",
+  "source": "deployed-path benchmark run eval_deployed.m2.jsonl (router, cheap draft, verifier, escalation)",
   "snapshot_id": "snap-20260924-b1128354c4",
-  "template_fingerprint": "2a6910aa5d",
+  "template_fingerprint": "e5c72794de",
   "examples": [
     {
       "id": "N1",
@@ -79,7 +79,7 @@
       "id": "N4",
       "type": "numeric",
       "question": "What was Microsoft's total revenue for the fiscal year ended June 30, 2025?",
-      "answer": "Microsoft’s total revenue for the fiscal year ended June 30, 2025 was **$281,724,000,000**. [xbrl:789019:revenue:2025-06-30]",
+      "answer": "Microsoft’s total revenue for the fiscal year ended June 30, 2025 was **$281.724 billion**. [xbrl:789019:revenue:2025-06-30]",
       "citations": [
         "xbrl:789019:revenue:2025-06-30"
       ],
@@ -103,7 +103,7 @@
       "id": "D1",
       "type": "dependency",
       "question": "Which companies does Nvidia depend on for chip manufacturing and assembly?",
-      "answer": "- **Chip manufacturing:** NVIDIA uses TSMC and Samsung to produce semiconductor wafers. [0001045810-26-000021:I.1:0320]\n- **Assembly, testing, and packaging:** NVIDIA engages Hon Hai Precision Industry (Foxconn), Wistron, and Fabrinet for these activities on its final products. [0001045810-26-000021:I.1:0320]",
+      "answer": "- **Chip manufacturing:** Taiwan Semiconductor Manufacturing Company (TSMC) and Samsung produce Nvidia’s semiconductor wafers. [0001045810-26-000021:I.1:0320]\n- **Assembly, testing, and packaging:** Nvidia names Hon Hai Precision Industry (Foxconn), Wistron, and Fabrinet as independent subcontractors and contract manufacturers. [0001045810-26-000021:I.1:0320]",
       "citations": [
         "0001045810-26-000021:I.1:0320"
       ],
@@ -127,7 +127,7 @@
       "id": "D2",
       "type": "dependency",
       "question": "Which memory suppliers does Nvidia buy HBM or memory from?",
-      "answer": "Nvidia says it purchases memory from SK Hynix Inc., Micron Technology, Inc., and Samsung; the cited disclosure does not specify whether that memory is HBM. [0001045810-26-000021:I.1:0320]",
+      "answer": "Nvidia says it purchases memory from SK Hynix Inc., Micron Technology, Inc., and Samsung. [0001045810-26-000021:I.1:0320] The cited passage does not specify which suppliers provide HBM. [0001045810-26-000021:I.1:0320]",
       "citations": [
         "0001045810-26-000021:I.1:0320"
       ],
@@ -151,9 +151,9 @@
       "id": "D3",
       "type": "dependency",
       "question": "Which foundries does AMD rely on to manufacture its chips?",
-      "answer": "AMD identifies these foundries for chip manufacturing:\n\n- **TSMC** — wafer production for HPC, FPGA and adaptive SoC products. [0000002488-26-000018:I.1:0024]\n- **GlobalFoundries** — wafer purchases for HPC products at the 12 nm and 14 nm technology nodes. [0000002488-26-000018:I.1:0024]\n- **UMC and Samsung** — production of ICs in the form of programmable logic devices. [0000002488-26-000018:I.1:0024]",
+      "answer": "AMD relies on TSMC, GLOBALFOUNDRIES (GF), United Microelectronics Corporation (UMC), and Samsung Electronics as wafer foundries: TSMC supplies wafers for microprocessor and GPU products at 7 nm or smaller nodes, GF is its primary source for those products at larger nodes, and TSMC, UMC, and Samsung manufacture ICs for programmable logic devices. [0000002488-26-000123:II.1A:0011]",
       "citations": [
-        "0000002488-26-000018:I.1:0024"
+        "0000002488-26-000123:II.1A:0011"
       ],
       "hallucinated": [],
       "checks": {
@@ -175,7 +175,7 @@
       "id": "D4",
       "type": "dependency",
       "question": "Which hyperscaler is disclosed as a customer of AMD in the knowledge graph?",
-      "answer": "Meta Platforms (Meta) is disclosed as an AMD customer. [0000002488-26-000123:I.2:0002]",
+      "answer": "Meta Platforms (Meta) is disclosed as a customer of AMD. [0000002488-26-000123:I.2:0002]",
       "citations": [
         "0000002488-26-000123:I.2:0002"
       ],
@@ -199,10 +199,10 @@
       "id": "R1",
       "type": "regulatory",
       "question": "Which BIS export-control rules is AMD affected by?",
-      "answer": "AMD’s filings identify these BIS measures as affecting its export operations:\n\n- **October 2023 advanced-computing export requirements:** The controls apply to certain exports to parties headquartered in, or with an ultimate parent headquartered in, Country Groups D1, D4 or D5, including China; AMD says they prevent it from shipping certain Instinct integrated circuits and Versal FPGAs to specified destinations without a license. [0000002488-26-000018:I.1A:0020]\n- **April 2025 license requirement:** AMD says this requirement covers certain semiconductor products destined for D5 countries or companies headquartered there, and affects its Instinct MI308 products. [0000002488-26-000018:I.1A:0020]\n- **AI Diffusion Rule and prospective replacement rules:** BIS issued the AI Diffusion Rule in January 2025; AMD’s filing says BIS announced in May 2025 that it intended to rescind it and issue replacement rules, which could require licenses or changes to compliance processes and product designs. [0000002488-26-000018:I.1A:0020]\n- **Entity List affiliate restrictions:** AMD’s filing describes a September 2025 rule extending Entity List restrictions to certain entities at least 50% owned by listed entities, military end users, or certain sanctioned parties; it also says the U.S. government planned to suspend enforcement for one year, and that restrictions could be reimposed. [0000002488-26-000123:II.1A:0023]\n\nThe context also lists these **Federal Register rules as keyword-linked to AMD**; that linkage does not establish that every rule directly applies to AMD. [fr:2026-14132]\n\n- **2026-14132:** Enhanced Favorable Treatment for the United Arab Emirates Under the Export Administration Regulations. [fr:2026-14132]\n- **2026-06851:** Extension of Authorized Integrated Circuit (IC) Designer Status and Application Deadline To Become an Approved IC Designer. [fr:2026-06851]\n- **2026-00789:** Revision to License Review Policy for Advanced Computing Commodities; the rule changes review for certain semiconductor exports to China and Macau from a presumption of denial to case-by-case review. [fr:2026-00789]\n- **2025-19846:** One Year Suspension of Expansion of End-User Controls for Affiliates of Certain Listed Entities. [fr:2025-19846]\n- **2025-19001:** Expansion of End-User Controls To Cover Affiliates of Certain Listed Entities. [fr:2025-19001]\n- **2025-16735:** Revocation of Validated End-User Authorizations in the People’s Republic of China. [fr:2025-16735]\n- **2025-02655** and **2025-00711:** Implementation of Additional Due Diligence Measures for Advanced Computing Integrated Circuits; Amendments and Clarifications; and Extension of Comment Period; the former notice also includes a correction. [fr:2025-02655] [fr:2025-00711]",
+      "answer": "AMD’s filing identifies these BIS-related controls as affecting or potentially affecting its business:\n\n- **October 2023 advanced-computing export requirements:** They restrict shipment of certain AMD Instinct integrated circuits and Versal FPGAs to China and certain customers tied to Country Groups D1, D4, or D5 without a license. [0000002488-26-000018:I.1A:0020]\n- **April 2025 licensing requirement for certain semiconductor products:** AMD says it affected MI308 products and led to inventory and related charges; AMD later received licenses to ship to some China-based customers. [0000002488-26-000018:I.1A:0020]\n- **AI Diffusion Rule and planned replacement rules:** AMD’s filing says BIS issued the AI Diffusion Rule in January 2025, then announced plans to rescind it and issue replacement rules; those future rules could require licenses or otherwise affect AMD’s business. [0000002488-26-000018:I.1A:0020]\n- **Entity List affiliate-control rule:** AMD’s filing describes a September 2025 rule covering certain entities at least 50% owned by listed entities, and says the U.S. government planned to suspend enforcement for one year, with restrictions potentially reimposable. [0000002488-26-000018:I.1A:0021]\n\nSeparately, Federal Register notices were linked to AMD by keyword matching; that link alone does not establish that each rule applies to AMD. [fr:2025-00711] [fr:2025-02655] [fr:2025-16735] [fr:2025-19001] [fr:2025-19846] [fr:2026-00789] [fr:2026-06851] [fr:2026-14132]\n\nThe linked notices concern advanced-computing IC due diligence, China validated-end-user authorizations, affiliate end-user controls and their suspension, advanced-computing license review, approved IC designer status, and UAE treatment under the Export Administration Regulations. [fr:2025-00711] [fr:2025-02655] [fr:2025-16735] [fr:2025-19001] [fr:2025-19846] [fr:2026-00789] [fr:2026-06851] [fr:2026-14132]",
       "citations": [
         "0000002488-26-000018:I.1A:0020",
-        "0000002488-26-000123:II.1A:0023",
+        "0000002488-26-000018:I.1A:0021",
         "fr:2025-00711",
         "fr:2025-02655",
         "fr:2025-16735",
@@ -232,10 +232,9 @@
       "id": "R2",
       "type": "regulatory",
       "question": "Which companies in the graph are affected by US export-control rules?",
-      "answer": "- **Nvidia** is the company explicitly identified in the context: its filing says U.S. export controls restrict GPUs and associated products and affect its ability to export products and serve customers. [0001045810-26-000021:I.1A:0354]\n- The Federal Register rules in the context are keyword-linked to Nvidia; that linkage is not a company disclosure. [fr:2026-00789]",
+      "answer": "Nvidia is the company in the graph explicitly identified as affected: its filing says U.S. export controls restrict GPUs and related products and have harmed its business and competitive position. [0001045810-26-000021:I.1A:0354] The context does not establish that any other graph company is affected.",
       "citations": [
-        "0001045810-26-000021:I.1A:0354",
-        "fr:2026-00789"
+        "0001045810-26-000021:I.1A:0354"
       ],
       "hallucinated": [],
       "checks": {
@@ -257,13 +256,13 @@
       "id": "R3",
       "type": "regulatory",
       "question": "What does Nvidia disclose about export controls affecting its sales to China?",
-      "answer": "- Nvidia says U.S. export controls have effectively foreclosed it from the China market: under current rules, it cannot deliver a competitive data-center product approved by both the U.S. and Chinese governments. [0001045810-26-000021:I.1A:0357] [0001045810-26-000021:I.1:0323]\n- It says that in April 2025, the U.S. government informed it that a license was required to export H20 chips—and other chips meeting specified H20 bandwidth characteristics—to China, including Hong Kong and Macau. [0001045810-26-000021:I.1A:0355]\n- Nvidia says export controls have harmed its competitive position and may steer Chinese customers toward competitors; it also reports excess inventory and purchase obligations related to H20. [0001045810-26-000021:I.1A:0356]\n- Nvidia says Chinese antitrust regulators preliminarily found that its compliance with U.S. controls, which required offering degraded products in China, violated terms of China’s approval of the Mellanox acquisition; it warns of potential penalties and business restrictions. [0001045810-26-000021:I.1A:0354]",
+      "answer": "- Nvidia says U.S. export controls have effectively foreclosed it from China and prevent it from offering a competitive data-center product for China that both the U.S. and Chinese governments approve. [0001045810-26-000021:I.1A:0357] [0001045810-26-000021:I.1:0323]\n- Nvidia says the U.S. government informed it in April 2025 that a license is required to export H20 chips—and other chips meeting specified H20 bandwidth thresholds—to China, including Hong Kong and Macau, and to D:5 countries or certain entities connected to those locations. [0001045810-26-000021:I.1A:0355]\n- Nvidia says export controls have harmed its competitive position and may hurt demand; it cites the H20 as a recent example of restrictions leading to excess inventory and purchase obligations. [0001045810-26-000075:II.1A:0005]\n- Nvidia also says China’s antitrust regulators made a preliminary finding that offering degraded products to comply with U.S. export controls discriminated unfairly against Chinese customers and violated the terms of China’s approval of the Mellanox acquisition; Nvidia warns that penalties or business restrictions could follow if regulators conclude it violated the terms or Chinese law. [0001045810-26-000021:I.1A:0354]",
       "citations": [
         "0001045810-26-000021:I.1:0323",
         "0001045810-26-000021:I.1A:0354",
         "0001045810-26-000021:I.1A:0355",
-        "0001045810-26-000021:I.1A:0356",
-        "0001045810-26-000021:I.1A:0357"
+        "0001045810-26-000021:I.1A:0357",
+        "0001045810-26-000075:II.1A:0005"
       ],
       "hallucinated": [],
       "checks": {
@@ -285,10 +284,9 @@
       "id": "T1",
       "type": "temporal",
       "question": "Did Nvidia stop disclosing any risk factors in its latest 10-K that appeared in earlier 10-Ks?",
-      "answer": "Regarding Nvidia's latest 10-K (fiscal year ended January 25, 2026, accession 0001045810-26-000021) compared with the prior annual filing: the text comparison found no risk factor that no longer appears as a separate risk factor between the 10-K filed 2025-02-26 and the 10-K filed 2026-02-25.\n\n- No items are listed under \"No longer appears as a separate risk factor\" for this pair, and none are listed under a \"Not matched\" heading either, so none could be identified as such in that comparison.\n\nFor context, in the earlier comparison covering the fiscal year ended January 28, 2024 to the fiscal year ended January 26, 2025, one risk factor was found that no longer appears as a separate risk factor in that newer filing (parts of its content may be covered inside other risk factors):\n\n- \"Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations.\" [0001045810-24-000029:I.1A:0162]\n\nThat finding, however, relates to the 10-K filed 2024-02-21 versus the 10-K filed 2025-02-26, not to Nvidia's latest 10-K (fiscal year ended January 25, 2026). For the most recent pair of annual filings, the comparison instead shows one risk factor, \"Commercial arrangements expose us to counterparty risks,\" for which no matching risk factor was found in the earlier filing (it is new, or a restructured older risk factor) [0001045810-26-000021:I.1A:0349].",
+      "answer": "Based on the comparisons available, the answer depends on which pair of filings is meant by \"latest 10-K\" versus earlier ones.\n\n**Comparing the 10-K filed 2024-02-21 (fiscal year ended January 28, 2024) with the 10-K filed 2025-02-26 (fiscal year ended January 26, 2025):**\n\n- One risk factor no longer appears as a separate risk factor, meaning the text check found no matching text in the newer filing (parts of its content may be covered inside other risk factors): \"Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations.\" [0001045810-24-000029:I.1A:0162]\n\n**Comparing the 10-K filed 2025-02-26 (fiscal year ended January 26, 2025) with the latest 10-K, filed 2026-02-25 (fiscal year ended January 25, 2026):**\n\n- The text check found no risk factor that no longer appears as a separate risk factor between these two filings.\n\nSo, strictly for Nvidia's latest 10-K (fiscal year ended January 25, 2026) versus its immediately preceding 10-K (fiscal year ended January 26, 2025), no risk factor was found to no longer appear as a separate risk factor. The removal-type finding only applies to the earlier pair of filings, where one risk factor about indebtedness no longer appeared as a separate risk factor going from the fiscal year ended January 28, 2024 filing to the fiscal year ended January 26, 2025 filing [0001045810-24-000029:I.1A:0162].",
       "citations": [
-        "0001045810-24-000029:I.1A:0162",
-        "0001045810-26-000021:I.1A:0349"
+        "0001045810-24-000029:I.1A:0162"
       ],
       "hallucinated": [],
       "checks": {
@@ -310,15 +308,13 @@
       "id": "T2",
       "type": "temporal",
       "question": "What new supply-chain or geopolitical risks appeared in Meta's most recent annual report?",
-      "answer": "Based on the available context, here is what can be said about Meta's most recent annual report (10-K filed 2026-01-29, accession 0001628280-26-003942), compared with the prior year's 10-K (filed 2025-01-30, accession 0001326801-25-000017).\n\n**No wholly new risk factors were identified by the text comparison.** The text check found no risk factor listed as \"no matching risk factor found in the earlier filing,\" so there is no basis to identify a brand-new standalone supply-chain or geopolitical risk factor in the most recent filing [0001628280-26-003942:I.1A:0027].\n\n**Existing geopolitical/trade and supply-chain risk disclosures continue to appear.** Meta's filing discloses that geopolitical events such as international conflicts, tariffs, sanctions, and export/import controls could reduce or eliminate suppliers' or manufacturers' ability to operate or Meta's ability to purchase key components [0001628280-26-003942:I.1A:0027]. It also discloses that complex global infrastructure expansion projects, including in developing regions, expose Meta to anti-corruption, trade compliance, environmental/health/safety, and political risks [0001628280-26-003942:I.1A:0027]. Significant international operations more broadly expose Meta to business, economic, legal, and regulatory risks [0001628280-26-003942:I.1A:0030], and international operations subject Meta to political, social, and economic instability and regulatory scrutiny risks [0001628280-26-003942:I.1A:0030].\n\n**Wording changes within surviving risk factors, not new risks.** The automated comparison found that a differently worded version of certain statements may exist, but these are changes in wording within already-disclosed risk factors, not new risks:\n- A sentence about tax authorities applying \"novel or aggressive interpretations of their laws\" to raise revenue from companies like Meta had wording not found in the older filing, within the surviving risk factor on tax liabilities [0001628280-26-003942:I.1A:0034].\n- Passages concerning cross-border data transfer frameworks (EU-U.S. Data Privacy Framework, Standard Contractual Clauses, Privacy Shield) were reworded within the surviving risk factor on evolving laws and regulations [0001628280-26-003942:I.1A:0039].\n- A passage on Australia's social-media age-restriction law was reworded within that same risk factor [0001628280-26-003942:I.1A:0041].\n\n**Dependency relationships relevant to supply chain remain unchanged in status.** Meta is shown as depending on Apple and Alphabet for distribution/platform access [0001628280-26-050705:II.1A:0013], and Meta competes with Apple and Alphabet [0001628280-26-050705:II.1A:0022]; these reflect ongoing relationships rather than newly identified risks.\n\n**Conclusion:** No risk factor was found under the \"no matching risk factor found in the earlier filing\" heading, meaning the comparison did not identify any new supply-chain or geopolitical risk factor in Meta's most recent annual report [0001628280-26-003942:I.1A:0027]. The supply-chain and geopolitical risks present in the most recent filing — covering tariffs, sanctions, export/import controls, international instability, and trade compliance — are continuations of previously disclosed risk factors, with some passages reworded or carrying wording not found in the prior year's filing [0001628280-26-003942:I.1A:0034] [0001628280-26-003942:I.1A:0039].",
+      "answer": "Based on the context provided, Meta's most recent annual report (10-K filed 2026-01-29, accession 0001628280-26-003942, covering the fiscal year ended December 31, 2025) does not show any new supply-chain or geopolitical risk factors when compared against the prior year's filing.\n\n- The text comparison between Meta's 10-K filed 2025-01-30 (fiscal year ended December 31, 2024) and the 10-K filed 2026-01-29 (fiscal year ended December 31, 2025) found no risk factors under \"No matching risk factor found in the earlier filing,\" meaning none can be described as new [0001628280-26-003942:I.1A:0038].\n- The text check also found no risk factor that no longer appears as a separate risk factor in this comparison [0001628280-26-003942:I.1A:0038].\n\nRegarding existing supply-chain and geopolitical disclosures that continue to appear (not new):\n\n- Meta discloses that geopolitical events such as international conflicts, tariffs, sanctions, and export/import controls could reduce or eliminate suppliers' or manufacturers' ability to operate or Meta's ability to purchase key components [0001628280-26-003942:I.1A:0027].\n- Meta discloses that complex global infrastructure expansion projects, including in developing regions, expose it to anti-corruption, trade compliance, environmental/health/safety, and political risks [0001628280-26-003942:I.1A:0027].\n- Meta discloses that significant international operations expose it to business, economic, legal, and regulatory risks [0001628280-26-003942:I.1A:0030].\n- Meta discloses that international operations subject it to political, social, economic instability and regulatory scrutiny risks [0001628280-26-003942:I.1A:0030].\n- A risk factor concerning design, manufacturing, and supply chain risks for Meta's consumer hardware products — including dependence on a small number of third-party manufacturers often concentrated in Asia, and exposure to macroeconomic conditions, geopolitical challenges, trade disputes, tariffs, sanctions, and export controls — appears in the latest filing [0001628280-26-050705:II.1A:0031].\n\nAmong the reworded risk factors identified by the text comparison, one touching on cross-border data transfer risk (relevant to international/regulatory exposure) was reworded with updated wording about the EU-U.S. Data Privacy Framework and CJEU rulings, though it is still disclosed rather than new [0001628280-26-003942:I.1A:0039].\n\nIn summary: the automated comparison did not identify any genuinely new supply-chain or geopolitical risk factors in Meta's most recent annual report; the supply-chain and geopolitical risks present are continuations (in some cases reworded) of risks disclosed in the prior year's filing.",
       "citations": [
         "0001628280-26-003942:I.1A:0027",
         "0001628280-26-003942:I.1A:0030",
-        "0001628280-26-003942:I.1A:0034",
+        "0001628280-26-003942:I.1A:0038",
         "0001628280-26-003942:I.1A:0039",
-        "0001628280-26-003942:I.1A:0041",
-        "0001628280-26-050705:II.1A:0013",
-        "0001628280-26-050705:II.1A:0022"
+        "0001628280-26-050705:II.1A:0031"
       ],
       "hallucinated": [],
       "checks": {
@@ -333,21 +329,19 @@
         "unsupported_removal_claim": false,
         "unsupported_removal_sentences": [],
         "stale_citations": [],
-        "cited_without_text": [
-          "0001628280-26-050705:II.1A:0013",
-          "0001628280-26-050705:II.1A:0022"
-        ]
+        "cited_without_text": []
       }
     },
     {
       "id": "Q1",
       "type": "risk",
       "question": "What supply-chain related risks does TSMC disclose in its annual report?",
-      "answer": "TSMC’s annual report identifies these supply-chain-related risks:\n\n- **Utilities and production continuity:** Power outages, dips, or surges caused by problems with the electricity supplier or other users on the grid may interrupt production; drought and other factors also raise concerns about the availability of sufficient electricity and water for Taiwan production. [0001628280-26-025362:I.4:0015] [0001628280-26-025362:I.4:0016]\n- **Utility costs:** TSMC anticipates continued increases in utility prices and says higher electricity prices could raise manufacturing costs and adversely affect financial results. [0001628280-26-025362:I.4:0016]\n- **Material supply chains during global expansion:** TSMC identifies higher costs associated with establishing supply chains for materials in different locations as a challenge of managing global operations and expansion. [0001628280-26-025362:I.3:0004]\n- **Export controls:** The disclosed risks include license requirements affecting a P.R.C. fab’s acquisition of certain manufacturing tools, and possible licensing requirements before shipping advanced-node products, which could delay or prohibit shipments and adversely affect financial results. [0001628280-26-025362:I.3:0003] [0001628280-26-025362:I.3:0002]",
+      "answer": "TSMC’s annual report identifies several supply-chain-related exposures:\n\n- Power outages, dips or surges caused by its electricity supplier or other users on the grid may interrupt production, and semiconductor manufacturing uses extensive electricity and water. [0001628280-26-025362:I.4:0015]\n- In Taiwan, energy-policy changes, manufacturers’ growing demand and recurring droughts raise concerns about future electricity and water availability; rising utility prices could increase manufacturing costs and hurt financial results. [0001628280-26-025362:I.4:0016]\n- TSMC says overseas expansion brings challenges and costs, including establishing supply chains for materials in different locations and maintaining productivity and manufacturing efficiency across its ecosystem. [0001628280-26-025362:I.3:0004]\n- A prolonged natural-disaster disruption affecting TSMC or its suppliers could significantly reduce manufacturing capacity and lead to the loss of important customers. [0001628280-26-025362:I.3:0008]\n- Export controls may require licenses for the acquisition of certain manufacturing tools at TSMC’s P.R.C. fab, creating operational risk. [0001628280-26-025362:I.3:0003]\n- New export controls may also require licenses before TSMC can ship advanced-node products, potentially delaying or prohibiting shipments and adversely affecting results. [0001628280-26-025362:I.3:0002]",
       "citations": [
         "0001628280-26-025362:I.3:0002",
         "0001628280-26-025362:I.3:0003",
         "0001628280-26-025362:I.3:0004",
+        "0001628280-26-025362:I.3:0008",
         "0001628280-26-025362:I.4:0015",
         "0001628280-26-025362:I.4:0016"
       ],
@@ -371,9 +365,8 @@
       "id": "Q2",
       "type": "risk",
       "question": "What geopolitical risks does ASML disclose?",
-      "answer": "ASML identifies geopolitical risks that could materially affect its business, financial position, operating results, and reputation. [0001628280-26-011378:I.3:0000]\n\n- Wars, geopolitical tensions, and international responses—including new regulations or tariffs—may exacerbate its risks. [0001628280-26-011378:I.3:0000]\n- Export controls, sanctions, tariffs, and other trade rules can restrict deliveries of systems, technology, and services; licensing requirements and changing restrictions on customers, including in China, can limit or delay supply, while countermeasures may create conflicting regulations and legal liabilities. [0001628280-26-011378:I.3:0003]\n- Changes in trade, security, and investment policies, and efforts to achieve technological sovereignty, may shift global trade, competition, and technology supply chains in ways that affect ASML and its growth prospects. [0001628280-26-011378:I.3:0003]\n- Countries’ controls on raw materials could make materials unavailable or restricted; ASML cites Chinese controls on certain minerals as an example. [0001628280-26-011378:I.3:0003]\n- Geopolitical instability or nationalization of assets could affect ASML; changes in Taiwan–China relations or Taiwan’s political environment could impair its ability to serve customers there. [0001628280-26-011378:I.3:0003]\n- Deteriorating relations between South Korea and North Korea, or conflict on the Korean Peninsula, could disrupt service to customers. [0001628280-26-011378:I.3:0003]\n- Regional tensions in Israel could further affect ASML’s business operations. [0001628280-26-011378:I.3:0003]",
+      "answer": "ASML identifies these geopolitical risks:\n\n- Geopolitical tensions may lead to tighter export controls, sanctions, tariffs, and other trade restrictions, limiting its ability to deliver systems, technology, and services; licensing requirements have increasingly affected deliveries to China. [0001628280-26-011378:I.3:0003]\n- Trade restrictions may expand or prompt countermeasures, creating conflicting regulations and legal liabilities; tariffs may raise costs and weaken margins, competitiveness, or customer demand. [0001628280-26-011378:I.3:0003]\n- Geopolitical tensions could restrict access to raw materials controlled by particular countries, including minerals subject to Chinese export controls, disrupting ASML, its suppliers, or its customers. [0001628280-26-011378:I.3:0003]\n- Geopolitical instability or nationalization of assets could threaten the business; changes in Taiwan’s cross-strait relations, policies, or broader political, economic, or social conditions could affect service to customers there. [0001628280-26-011378:I.3:0003]\n- Deteriorating relations between South Korea and North Korea, or conflict, could disrupt service to South Korean customers. [0001628280-26-011378:I.3:0003]\n- Regional tensions could further affect ASML’s limited operations, suppliers, customers, and support teams in Israel. [0001628280-26-011378:I.3:0003]\n- A global push for technological sovereignty could drive long-term shifts in trade, competition, and technology supply chains, affecting ASML’s operations and growth prospects. [0001628280-26-011378:I.3:0003]",
       "citations": [
-        "0001628280-26-011378:I.3:0000",
         "0001628280-26-011378:I.3:0003"
       ],
       "hallucinated": [],
@@ -396,7 +389,7 @@
       "id": "Q3",
       "type": "risk",
       "question": "Compare the competition risks disclosed by AMD and Nvidia.",
-      "answer": "- **Shared exposure:** Both describe competition as intense and driven by rapid technological change, evolving standards, and competitors’ ability to offer better-performing or lower-priced products. [0000002488-26-000018:I.1A:0007] [0001045810-26-000021:I.1:0321]\n- **AMD’s emphasis:** AMD specifically warns that Nvidia’s data-center GPU position, financial resources, and proprietary software ecosystem can steer customers toward Nvidia systems, constrain customers’ ability to choose AMD products, and pressure AMD’s market share and margins. [0000002488-26-000018:I.1A:0007]\n- **Nvidia’s emphasis:** Nvidia describes a wider competitive field, including AMD among suppliers of GPU, AI, and accelerated-computing products; large cloud companies designing their own hardware and software; and competitors in CPUs, SoCs, and networking. It also highlights competitors’ resources and its own need to anticipate customer needs and deliver products at acceptable quality and competitive prices. [0001045810-26-000021:I.1:0321]\n- **Other risks AMD calls out:** AMD also identifies Intel in CPUs and graphics, Arm-based alternatives, customers developing products for similar AI workloads, and competitor partnerships—including Nvidia’s partnership and investment with Intel—as sources of competitive pressure. [0000002488-26-000018:I.1:0021] [0000002488-26-000018:I.1A:0007]\n\nOverall, AMD’s disclosure is especially specific about Nvidia’s influence on AMD’s customers and product choices, while Nvidia’s disclosure emphasizes the breadth of its competitors and the capabilities needed to compete across product categories. [0000002488-26-000018:I.1A:0007] [0001045810-26-000021:I.1:0321]",
+      "answer": "AMD’s 10-K filed February 4, 2026 and Nvidia’s 10-K filed February 25, 2026 frame competition risks differently. [0000002488-26-000018:I.1A:0007] [0001045810-26-000021:I.1:0321]\n\n- **AMD emphasizes direct competitive pressure from Nvidia:** it says Nvidia’s data-center GPU position, financial resources, and proprietary software ecosystem influence customers that do business with AMD. [0000002488-26-000018:I.1A:0007] AMD also identifies customers’ in-house development of products for similar AI workloads as a competitive threat. [0000002488-26-000018:I.1A:0007]\n- **AMD also describes competition by product segment:** it identifies Nvidia as the discrete-GPU market-share leader, Intel as its primary CPU/APU competitor, and notes that integrated graphics may substitute for discrete graphics in some notebook systems. [0000002488-26-000018:I.1:0021]\n- **Nvidia describes a broader competitive field:** it identifies performance, product breadth, customer and partner access, software support, manufacturing capability, pricing, and total system cost as competitive factors, and warns of competition from existing rivals, new entrants, and alliances. [0001045810-26-000021:I.1:0321] It names AMD among competitors in accelerated-computing products, SoCs, and networking, while also citing cloud companies’ internal hardware and software design teams as competitors. [0001045810-26-000021:I.1:0321]\n\n**Bottom line:** AMD’s disclosed competition risks particularly foreground Nvidia’s influence in data-center GPUs and AI-related customer relationships, while Nvidia presents AMD as one competitor within a wider contest spanning chips, software, systems, cloud-designed hardware, and networking. [0000002488-26-000018:I.1A:0007] [0001045810-26-000021:I.1:0321]",
       "citations": [
         "0000002488-26-000018:I.1:0021",
         "0000002488-26-000018:I.1A:0007",
@@ -422,7 +415,7 @@
       "id": "M1",
       "type": "numeric",
       "question": "By how much did Nvidia's annual revenue grow from the fiscal year ended January 28, 2024 to the fiscal year ended January 25, 2026?",
-      "answer": "Nvidia’s revenue was $60.922 billion for the fiscal year ended January 28, 2024, and $215.938 billion for the fiscal year ended January 25, 2026. [xbrl:1045810:revenue:2024-01-28] [xbrl:1045810:revenue:2026-01-25]\n\nThe change between those fiscal years was not computed in the supplied metrics. [xbrl:1045810:revenue:2024-01-28] [xbrl:1045810:revenue:2026-01-25]",
+      "answer": "NVIDIA’s revenue was $60.922 billion for the fiscal year ended January 28, 2024, and $215.938 billion for the fiscal year ended January 25, 2026. [xbrl:1045810:revenue:2024-01-28] [xbrl:1045810:revenue:2026-01-25] The change between those periods was not computed in the provided metrics.",
       "citations": [
         "xbrl:1045810:revenue:2024-01-28",
         "xbrl:1045810:revenue:2026-01-25"
@@ -447,7 +440,7 @@
       "id": "U1",
       "type": "refusal",
       "question": "What is Samsung's total annual revenue according to its SEC filings?",
-      "answer": "The provided context does not include Samsung’s total annual revenue; it only says Samsung accounted for 10% or more of Qualcomm’s consolidated revenues in fiscal 2025. [0000804328-25-000085:I.1:0012]",
+      "answer": "The provided context does not give Samsung’s total annual revenue; the available revenue excerpt reports Samsung as a customer contributing 10% or more of Qualcomm’s consolidated revenue, not Samsung’s own revenue. [0000804328-25-000085:I.1:0012]",
       "citations": [
         "0000804328-25-000085:I.1:0012"
       ],
@@ -471,7 +464,7 @@
       "id": "U2",
       "type": "refusal",
       "question": "What did Nvidia's CEO say on the most recent earnings call?",
-      "answer": "NVIDIA’s filing identifies Jen-Hsun Huang as its CEO [0001045810-26-000021:I.1:0328]. The provided context does not include his earnings-call remarks, so I can’t determine what he said on the most recent call.",
+      "answer": "The provided context does not include remarks from Nvidia’s most recent earnings call, so I can’t determine what the CEO said. It identifies Jensen Huang as NVIDIA’s CEO, but the excerpt is biographical, not an earnings-call transcript. [0001045810-26-000021:I.1:0328]",
       "citations": [
         "0001045810-26-000021:I.1:0328"
       ],
@@ -495,7 +488,7 @@
       "id": "NG01",
       "type": "numeric",
       "question": "By what percentage did Nvidia's total revenue change from the fiscal year ended January 26, 2025 to the fiscal year ended January 25, 2026?",
-      "answer": "Nvidia’s total revenue increased by **65.5%** from the fiscal year ended January 26, 2025 to the fiscal year ended January 25, 2026. [xbrl:1045810:revenue:2025-01-26] [xbrl:1045810:revenue:2026-01-25]",
+      "answer": "Nvidia’s total revenue increased **65.5%** from the fiscal year ended January 26, 2025 to the fiscal year ended January 25, 2026. [xbrl:1045810:revenue:2025-01-26] [xbrl:1045810:revenue:2026-01-25]",
       "citations": [
         "xbrl:1045810:revenue:2025-01-26",
         "xbrl:1045810:revenue:2026-01-25"
@@ -520,7 +513,7 @@
       "id": "NG02",
       "type": "numeric",
       "question": "By what percentage did AMD's net income change from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025?",
-      "answer": "AMD’s net income increased **164.2%**, from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025. [xbrl:2488:net_income:2024-12-28] [xbrl:2488:net_income:2025-12-27]",
+      "answer": "AMD’s net income increased 164.2% from the fiscal year ended December 28, 2024, to the fiscal year ended December 27, 2025. [xbrl:2488:net_income:2024-12-28] [xbrl:2488:net_income:2025-12-27]",
       "citations": [
         "xbrl:2488:net_income:2024-12-28",
         "xbrl:2488:net_income:2025-12-27"
@@ -545,7 +538,7 @@
       "id": "NG03",
       "type": "numeric",
       "question": "By what percentage did Intel's total revenue change from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025?",
-      "answer": "Intel’s total revenue decreased 0.5% from the fiscal year ended December 28, 2024, to the fiscal year ended December 27, 2025. [xbrl:50863:revenue:2024-12-28] [xbrl:50863:revenue:2025-12-27]",
+      "answer": "Intel’s total revenue decreased **0.5%** from the fiscal year ended December 28, 2024 to the fiscal year ended December 27, 2025. [xbrl:50863:revenue:2024-12-28] [xbrl:50863:revenue:2025-12-27]",
       "citations": [
         "xbrl:50863:revenue:2024-12-28",
         "xbrl:50863:revenue:2025-12-27"
@@ -595,7 +588,7 @@
       "id": "NG05",
       "type": "numeric",
       "question": "By what percentage did Broadcom's total revenue change from the fiscal year ended November 3, 2024 to the fiscal year ended November 2, 2025?",
-      "answer": "Broadcom’s total revenue increased **23.9%** from the fiscal year ended November 3, 2024, to the fiscal year ended November 2, 2025. [xbrl:1730168:revenue:2024-11-03] [xbrl:1730168:revenue:2025-11-02]",
+      "answer": "Broadcom’s total revenue increased by 23.9% from the fiscal year ended November 3, 2024, to the fiscal year ended November 2, 2025. [xbrl:1730168:revenue:2024-11-03] [xbrl:1730168:revenue:2025-11-02]",
       "citations": [
         "xbrl:1730168:revenue:2024-11-03",
         "xbrl:1730168:revenue:2025-11-02"
@@ -620,7 +613,7 @@
       "id": "NG06",
       "type": "numeric",
       "question": "By what percentage did Qualcomm's net income change from the fiscal year ended September 25, 2022 to the fiscal year ended September 24, 2023?",
-      "answer": "Qualcomm’s net income decreased 44.1% from the fiscal year ended September 25, 2022, to the fiscal year ended September 24, 2023. [xbrl:804328:net_income:2022-09-25] [xbrl:804328:net_income:2023-09-24]",
+      "answer": "Qualcomm’s net income decreased by 44.1% from the fiscal year ended September 25, 2022 to the fiscal year ended September 24, 2023. [xbrl:804328:net_income:2022-09-25] [xbrl:804328:net_income:2023-09-24]",
       "citations": [
         "xbrl:804328:net_income:2022-09-25",
         "xbrl:804328:net_income:2023-09-24"
@@ -695,7 +688,7 @@
       "id": "NG09",
       "type": "numeric",
       "question": "By what percentage did Amazon's net income change from the fiscal year ended December 31, 2024 to the fiscal year ended December 31, 2025?",
-      "answer": "Amazon’s net income increased 31.1% from the fiscal year ended December 31, 2024, to the fiscal year ended December 31, 2025. [xbrl:1018724:net_income:2024-12-31] [xbrl:1018724:net_income:2025-12-31]",
+      "answer": "Amazon’s net income increased **31.1%** from the fiscal year ended December 31, 2024, to the fiscal year ended December 31, 2025. [xbrl:1018724:net_income:2024-12-31] [xbrl:1018724:net_income:2025-12-31]",
       "citations": [
         "xbrl:1018724:net_income:2024-12-31",
         "xbrl:1018724:net_income:2025-12-31"
@@ -745,7 +738,7 @@
       "id": "NG11",
       "type": "numeric",
       "question": "What were Nvidia's total revenue and net income for the fiscal year ended January 25, 2026?",
-      "answer": "For the fiscal year ended January 25, 2026, Nvidia reported total revenue of **$215.938 billion** [xbrl:1045810:revenue:2026-01-25] and net income of **$120.067 billion** [xbrl:1045810:net_income:2026-01-25].",
+      "answer": "For the fiscal year ended January 25, 2026, Nvidia reported total revenue of **$215.938 billion** and net income of **$120.067 billion**. [xbrl:1045810:revenue:2026-01-25] [xbrl:1045810:net_income:2026-01-25]",
       "citations": [
         "xbrl:1045810:net_income:2026-01-25",
         "xbrl:1045810:revenue:2026-01-25"
@@ -795,7 +788,7 @@
       "id": "NG13",
       "type": "numeric",
       "question": "What were Meta's total revenue and net income for the fiscal year ended December 31, 2025?",
-      "answer": "For the fiscal year ended December 31, 2025, Meta reported total revenue of **$200.966 billion** [xbrl:1326801:revenue:2025-12-31] and net income of **$60.458 billion** [xbrl:1326801:net_income:2025-12-31].",
+      "answer": "For the fiscal year ended December 31, 2025, Meta reported total revenue of **$200.966 billion** and net income of **$60.458 billion**. [xbrl:1326801:revenue:2025-12-31] [xbrl:1326801:net_income:2025-12-31]",
       "citations": [
         "xbrl:1326801:net_income:2025-12-31",
         "xbrl:1326801:revenue:2025-12-31"
@@ -820,7 +813,7 @@
       "id": "NG14",
       "type": "numeric",
       "question": "What were Apple's total revenue and net income for the fiscal year ended September 28, 2024?",
-      "answer": "For the fiscal year ended September 28, 2024, Apple reported total revenue of **$391.035 billion** [xbrl:320193:revenue:2024-09-28] and net income of **$93.736 billion** [xbrl:320193:net_income:2024-09-28].",
+      "answer": "For the fiscal year ended September 28, 2024, Apple reported **total revenue of $391.035 billion** and **net income of $93.736 billion**. [xbrl:320193:revenue:2024-09-28] [xbrl:320193:net_income:2024-09-28]",
       "citations": [
         "xbrl:320193:net_income:2024-09-28",
         "xbrl:320193:revenue:2024-09-28"
@@ -845,7 +838,7 @@
       "id": "NG15",
       "type": "numeric",
       "question": "What were Micron's total revenue and capital expenditures for the fiscal year ended August 28, 2025?",
-      "answer": "For the fiscal year ended August 28, 2025:\n\n- Total revenue was **$37.378 billion**. [xbrl:723125:revenue:2025-08-28]\n- Capital expenditures were **$15.857 billion**. [xbrl:723125:capex:2025-08-28]",
+      "answer": "For the fiscal year ended August 28, 2025, Micron reported total revenue of **$37.378 billion** [xbrl:723125:revenue:2025-08-28] and capital expenditures of **$15.857 billion** [xbrl:723125:capex:2025-08-28].",
       "citations": [
         "xbrl:723125:capex:2025-08-28",
         "xbrl:723125:revenue:2025-08-28"
@@ -870,7 +863,7 @@
       "id": "NG16",
       "type": "numeric",
       "question": "What were Broadcom's total revenue and net income for the fiscal year ended October 29, 2023?",
-      "answer": "For the fiscal year ended October 29, 2023, Broadcom reported total revenue of **$35.819 billion**. [xbrl:1730168:revenue:2023-10-29]\n\nNet income was **$14.082 billion** for that fiscal year. [xbrl:1730168:net_income:2023-10-29]",
+      "answer": "For the fiscal year ended October 29, 2023, Broadcom reported total revenue of **$35.819 billion** and net income of **$14.082 billion**. [xbrl:1730168:revenue:2023-10-29] [xbrl:1730168:net_income:2023-10-29]",
       "citations": [
         "xbrl:1730168:net_income:2023-10-29",
         "xbrl:1730168:revenue:2023-10-29"
@@ -895,7 +888,7 @@
       "id": "NG17",
       "type": "numeric",
       "question": "What were Nvidia's research and development expense for the fiscal years ended January 25, 2026 and January 29, 2023?",
-      "answer": "NVIDIA’s research and development expense was **$18.497 billion** for the fiscal year ended **January 25, 2026** [xbrl:1045810:rnd:2026-01-25] and **$7.339 billion** for the fiscal year ended **January 29, 2023** [xbrl:1045810:rnd:2023-01-29].",
+      "answer": "- For the fiscal year ended January 25, 2026, Nvidia’s research and development expense was **$18.497 billion**. [xbrl:1045810:rnd:2026-01-25]\n- For the fiscal year ended January 29, 2023, it was **$7.339 billion**. [xbrl:1045810:rnd:2023-01-29]",
       "citations": [
         "xbrl:1045810:rnd:2023-01-29",
         "xbrl:1045810:rnd:2026-01-25"
@@ -920,7 +913,7 @@
       "id": "NG18",
       "type": "numeric",
       "question": "What were Intel's net income for the fiscal years ended December 27, 2025 and December 30, 2023?",
-      "answer": "- Intel reported net income attributable to Intel of **-$267 million** for the fiscal year ended December 27, 2025. [xbrl:50863:net_income:2025-12-27]\n- Intel reported net income attributable to Intel of **$1.689 billion** for the fiscal year ended December 30, 2023. [xbrl:50863:net_income:2023-12-30]",
+      "answer": "Intel’s net income attributable to Intel was **$267 million** for the fiscal year ended December 27, 2025, and **$1.689 billion** for the fiscal year ended December 30, 2023. [xbrl:50863:net_income:2025-12-27] [xbrl:50863:net_income:2023-12-30]",
       "citations": [
         "xbrl:50863:net_income:2023-12-30",
         "xbrl:50863:net_income:2025-12-27"
@@ -945,7 +938,7 @@
       "id": "NG19",
       "type": "numeric",
       "question": "What were Qualcomm's total revenue for the fiscal years ended September 28, 2025 and September 26, 2021?",
-      "answer": "- Total revenue for the fiscal year ended September 28, 2025 was **$44.284 billion**. [xbrl:804328:revenue:2025-09-28]\n- Total revenue for the fiscal year ended September 26, 2021 was **$33.566 billion**. [xbrl:804328:revenue:2021-09-26]",
+      "answer": "- For the fiscal year ended September 28, 2025, Qualcomm’s total revenue was **$44.284 billion**. [xbrl:804328:revenue:2025-09-28]\n- For the fiscal year ended September 26, 2021, Qualcomm’s total revenue was **$33.566 billion**. [xbrl:804328:revenue:2021-09-26]",
       "citations": [
         "xbrl:804328:revenue:2021-09-26",
         "xbrl:804328:revenue:2025-09-28"
@@ -970,7 +963,7 @@
       "id": "NG20",
       "type": "numeric",
       "question": "What were Microsoft's net income for the fiscal years ended June 30, 2025 and June 30, 2023?",
-      "answer": "- Net income for the fiscal year ended June 30, 2025 was $101.832 billion. [xbrl:789019:net_income:2025-06-30]\n- Net income for the fiscal year ended June 30, 2023 was $72.361 billion. [xbrl:789019:net_income:2023-06-30]",
+      "answer": "- Microsoft’s net income for the fiscal year ended June 30, 2025 was **$101.832 billion**. [xbrl:789019:net_income:2025-06-30]\n- Microsoft’s net income for the fiscal year ended June 30, 2023 was **$72.361 billion**. [xbrl:789019:net_income:2023-06-30]",
       "citations": [
         "xbrl:789019:net_income:2023-06-30",
         "xbrl:789019:net_income:2025-06-30"
@@ -995,7 +988,7 @@
       "id": "NG21",
       "type": "numeric",
       "question": "What were Amazon's total revenue for the fiscal years ended December 31, 2025 and December 31, 2022?",
-      "answer": "- Fiscal year ended December 31, 2025: **$716.924 billion** in revenue. [xbrl:1018724:revenue:2025-12-31]\n- Fiscal year ended December 31, 2022: **$513.983 billion** in revenue. [xbrl:1018724:revenue:2022-12-31]",
+      "answer": "- Amazon’s total revenue was **$716.924 billion** for the fiscal year ended December 31, 2025. [xbrl:1018724:revenue:2025-12-31]\n- Amazon’s total revenue was **$513.983 billion** for the fiscal year ended December 31, 2022. [xbrl:1018724:revenue:2022-12-31]",
       "citations": [
         "xbrl:1018724:revenue:2022-12-31",
         "xbrl:1018724:revenue:2025-12-31"
@@ -1020,7 +1013,7 @@
       "id": "NG22",
       "type": "numeric",
       "question": "What were Alphabet's research and development expense for the fiscal years ended December 31, 2025 and December 31, 2023?",
-      "answer": "- Alphabet’s research and development expense for the fiscal year ended December 31, 2025 was **$61.087 billion**. [xbrl:1652044:rnd:2025-12-31]\n- Alphabet’s research and development expense for the fiscal year ended December 31, 2023 was **$45.427 billion**. [xbrl:1652044:rnd:2023-12-31]",
+      "answer": "- Research and development expense for the fiscal year ended December 31, 2025 was **$61.087 billion**. [xbrl:1652044:rnd:2025-12-31]\n- Research and development expense for the fiscal year ended December 31, 2023 was **$45.427 billion**. [xbrl:1652044:rnd:2023-12-31]",
       "citations": [
         "xbrl:1652044:rnd:2023-12-31",
         "xbrl:1652044:rnd:2025-12-31"
@@ -1045,7 +1038,7 @@
       "id": "NG23",
       "type": "numeric",
       "question": "What was TSMC's total revenue for the fiscal year ended December 31, 2025, and in which currency is it reported?",
-      "answer": "TSMC’s total revenue for the fiscal year ended December 31, 2025 was **TWD 3,809,054,300,000**, reported in TWD. [xbrl:1046179:revenue:2025-12-31]",
+      "answer": "TSMC’s total revenue for the fiscal year ended December 31, 2025 was **NT$3,809,054,300,000**, reported in **New Taiwan dollars (TWD)**. [xbrl:1046179:revenue:2025-12-31]",
       "citations": [
         "xbrl:1046179:revenue:2025-12-31"
       ],
@@ -1069,7 +1062,7 @@
       "id": "NG24",
       "type": "numeric",
       "question": "What was ASML's net income for the fiscal year ended December 31, 2025, and in which currency is it reported?",
-      "answer": "ASML’s net income for the fiscal year ended December 31, 2025 was **€9,609,400,000**, reported in **euros (EUR)**. [xbrl:937966:net_income:2025-12-31]",
+      "answer": "ASML’s net income for the fiscal year ended December 31, 2025 was €9,609,400,000, reported in euros. [xbrl:937966:net_income:2025-12-31]",
       "citations": [
         "xbrl:937966:net_income:2025-12-31"
       ],
@@ -1093,9 +1086,8 @@
       "id": "X1",
       "type": "misattribution",
       "question": "What did NVIDIA disclose about the BIS 50% affiliates rule?",
-      "answer": "The supplied NVIDIA filing excerpt does not specifically discuss the BIS 50%-ownership affiliate provision; it addresses export controls and the AI Diffusion IFR instead. [0001045810-25-000023:I.1A:0257]\n\nSeparately, a Federal Register rule described BIS’s September 2025 measure as extending end-user controls to entities at least 50% owned by certain listed entities. [fr:2025-19001] A later Federal Register rule suspended that measure for one year, with the suspension set to end November 9, 2026, absent a future extension. [fr:2025-19846]",
+      "answer": "I can’t establish NVIDIA’s own disclosure about the rule from the provided filing excerpts; the relevant information here comes from Federal Register notices, not a company statement. [fr:2025-19001] [fr:2025-19846]\n\nThe September 30, 2025 Federal Register rule described BIS controls addressing diversion concerns involving Entity List entities and certain other restricted end users, including an affiliate provision for entities at least 50% owned by covered entities. [fr:2025-19001]\n\nA later Federal Register rule suspended the affiliate-controls expansion for one year, through November 9, 2026, absent a future extension. [fr:2025-19846]",
       "citations": [
-        "0001045810-25-000023:I.1A:0257",
         "fr:2025-19001",
         "fr:2025-19846"
       ],
@@ -1103,7 +1095,7 @@
       "checks": {
         "citations_retrieved": true,
         "numbers_grounded": true,
-        "numbers_checked": 2,
+        "numbers_checked": 1,
         "unmatched_numbers": [],
         "echoed_numbers": [],
         "pseudo_citations": [],
@@ -1119,9 +1111,9 @@
       "id": "X2",
       "type": "misattribution",
       "question": "What did AMD disclose about the BIS AI Diffusion Rule?",
-      "answer": "AMD disclosed that BIS issued the AI Diffusion Rule in January 2025; it would have restricted the export, reexport, and in-country transfer of certain advanced semiconductor devices and technology. [0000002488-26-000018:I.1A:0020]\n\nAMD said BIS announced in May 2025 that it intended to rescind the rule, formalize the rescission, and issue replacement rules later. [0000002488-26-000018:I.1A:0020]\n\nAMD warned that replacement rules could limit certain transactions, require new export licenses, delay shipments, or require changes to compliance processes and product designs. [0000002488-26-000018:I.1A:0020]\n\nAMD also said BIS’s plans created uncertainty as it assessed which products, technologies, or software might be covered and whether licenses would be granted in a timely manner or at all; compliance could increase costs, disrupt customer or supplier relationships, weaken its international competitive position, or cause reputational harm. [0000002488-26-000018:I.1A:0020]",
+      "answer": "AMD disclosed that BIS issued the AI Diffusion Rule in January 2025; the rule would have restricted exports, reexports, and in-country transfers of certain advanced semiconductor devices and technology. [0000002488-26-000123:II.1A:0022]\n\nAMD said BIS announced in May 2025 that it intended to rescind the rule, formalize that rescission, and issue replacement rules later. [0000002488-26-000123:II.1A:0022]\n\nAMD warned that replacement rules could limit some business transactions, require new export licenses, delay shipments, or prompt changes to compliance processes and product designs. [0000002488-26-000123:II.1A:0022]\n\nIt also cited uncertainty about which products, technologies, or software might be covered and whether licenses would be granted promptly, alongside potential higher compliance costs, disrupted customer and supplier relationships, weaker international competitiveness, and reputational harm. [0000002488-26-000123:II.1A:0022]",
       "citations": [
-        "0000002488-26-000018:I.1A:0020"
+        "0000002488-26-000123:II.1A:0022"
       ],
       "hallucinated": [],
       "checks": {
@@ -1143,7 +1135,7 @@
       "id": "X3",
       "type": "misattribution",
       "question": "What did Intel disclose about the BIS revocation of Validated End-User authorizations in China?",
-      "answer": "The context does not include an Intel filing passage describing what Intel disclosed about the revocation. It does identify a Federal Register rule dated September 2, 2025, in which BIS revised the China VEU authorizations list to remove Intel Semiconductor (Dalian) Ltd.; that is a regulatory event, not an Intel disclosure. [fr:2025-16735]",
+      "answer": "The provided context contains no Intel filing disclosure about the revocation. It identifies a separate Federal Register rule dated September 2, 2025, in which BIS amended the VEU authorizations list for China to remove Intel Semiconductor (Dalian) Ltd. [fr:2025-16735]",
       "citations": [
         "fr:2025-16735"
       ],
@@ -1167,16 +1159,16 @@
       "id": "X4",
       "type": "misattribution",
       "question": "What did NVIDIA disclose about the BIS license review policy for advanced computing chips published in January 2026?",
-      "answer": "- The January 15, 2026 Federal Register rule revised BIS’s license review for certain semiconductor exports to China and Macau from a presumption of denial to case-by-case review; its abstract identifies NVIDIA’s H200 and equivalents among the covered chips. [fr:2026-00789]\n- Separately, NVIDIA’s filing said that in February 2026 the U.S. government granted a license for small amounts of H200 to specific China-based customers, but NVIDIA had not yet generated revenue under that program and did not know whether imports into China would be allowed. [0001045810-26-000021:II.7:0368]",
+      "answer": "The context identifies the January 15, 2026 measure as a **Federal Register rule, not an NVIDIA filing disclosure**; it changed the BIS review policy for certain semiconductor exports to China and Macau from a presumption of denial to case-by-case review, covering NVIDIA’s H200 and equivalent chips. [fr:2026-00789]\n\nSeparately, NVIDIA disclosed that in February 2026 the U.S. government granted a license for small amounts of H200 shipments to specific China-based customers, but NVIDIA had not yet generated revenue under that program and did not know whether imports would be allowed; the license required U.S. inspection before shipment and subjected imports to a 25% tariff. [0001045810-26-000021:I.1:0323]",
       "citations": [
-        "0001045810-26-000021:II.7:0368",
+        "0001045810-26-000021:I.1:0323",
         "fr:2026-00789"
       ],
       "hallucinated": [],
       "checks": {
         "citations_retrieved": true,
         "numbers_grounded": true,
-        "numbers_checked": 0,
+        "numbers_checked": 1,
         "unmatched_numbers": [],
         "echoed_numbers": [],
         "pseudo_citations": [],
@@ -1192,21 +1184,11 @@
       "id": "T4",
       "type": "temporal",
       "question": "Did AMD remove any risk factors between its FY2024 and FY2025 annual reports?",
-      "answer": "Comparing AMD's 10-K filed 2025-02-05 (fiscal year ended December 28, 2024) with its 10-K filed 2026-02-04 (fiscal year ended December 27, 2025): the text check found no risk factor that no longer appears as a separate risk factor.\n\nAdditional context on what the comparison did find, for completeness:\n\n- At least 1 risk factor had no matching risk factor found in the earlier filing (it is new, or a restructured older risk factor): \"We may be required to satisfy financial obligations under guarantees and other commercial commitments.\" [0000002488-26-000018:I.1A:0029]\n- At least 29 risk factors were found to still be disclosed with reworded text, of which 4 are listed:\n  - \"Government actions and regulations such as export regulations, import tariffs, and trade protection measures may limit our ability to export our products to certain customers.\" [0000002488-26-000018:I.1A:0019] [0000002488-26-000018:I.1A:0020] [0000002488-26-000018:I.1A:0021]\n  - \"We are subject to environmental laws, conflict minerals regulations, as well as a variety of other laws or regulations that could result in additional costs and liabilities.\" [0000002488-26-000018:I.1A:0024] [0000002488-26-000018:I.1A:0025] [0000002488-26-000018:I.1A:0026]\n  - \"Acquisitions, joint ventures, and/or investments, and the failure to integrate acquired businesses, may fail to materialize their anticipated benefits...\" [0000002488-26-000018:I.1A:0030] [0000002488-26-000018:I.1A:0031] [0000002488-26-000018:I.1A:0032]\n  - \"Our worldwide operations are subject to political, legal and economic risks and natural disasters, which could have a material adverse effect on us.\" [0000002488-26-000018:I.1A:0034] [0000002488-26-000018:I.1A:0035] [0000002488-26-000018:I.1A:0036]\n\nThese reworded items remain disclosed risk factors and are not evidence of any removal.",
+      "answer": "Based on the comparison between AMD's 10-K filed 2025-02-05 (covering the fiscal year ended December 28, 2024) and its 10-K filed 2026-02-04 (covering the fiscal year ended December 27, 2025), the text check found no risk factor that no longer appears as a separate risk factor.\n\n- No risk factors are listed under \"No longer appears as a separate risk factor,\" and no \"Not matched\" list is shown for this pair, so none were found and none require verification [0000002488-25-000012:I.1A:0030] [0000002488-26-000018:I.1A:0034].\n\nAdditionally, for context on what did change in this comparison:\n\n- One risk factor has no matching risk factor found in the earlier filing (it is new, or a restructured older risk factor): \"We may be required to satisfy financial obligations under guarantees and other commercial commitments.\" [0000002488-26-000018:I.1A:0029]",
       "citations": [
-        "0000002488-26-000018:I.1A:0019",
-        "0000002488-26-000018:I.1A:0020",
-        "0000002488-26-000018:I.1A:0021",
-        "0000002488-26-000018:I.1A:0024",
-        "0000002488-26-000018:I.1A:0025",
-        "0000002488-26-000018:I.1A:0026",
+        "0000002488-25-000012:I.1A:0030",
         "0000002488-26-000018:I.1A:0029",
-        "0000002488-26-000018:I.1A:0030",
-        "0000002488-26-000018:I.1A:0031",
-        "0000002488-26-000018:I.1A:0032",
-        "0000002488-26-000018:I.1A:0034",
-        "0000002488-26-000018:I.1A:0035",
-        "0000002488-26-000018:I.1A:0036"
+        "0000002488-26-000018:I.1A:0034"
       ],
       "hallucinated": [],
       "checks": {
@@ -1228,14 +1210,10 @@
       "id": "T5",
       "type": "temporal",
       "question": "Did Meta remove any risk factors between its FY2024 and FY2025 annual reports?",
-      "answer": "Comparing Meta's 10-K filed 2025-01-30 (covering the fiscal year ended December 31, 2024) with its 10-K filed 2026-01-29 (covering the fiscal year ended December 31, 2025):\n\n- The text check found no risk factor that no longer appears as a separate risk factor.\n\nNo new risk factors were found either: the comparison shows no entries under \"No matching risk factor found in the earlier filing\" for this pair [0001628280-26-003942:I.1A:0038].\n\nThat said, at least 32 risk factors were found to be reworded (still disclosed, with changed wording), of which 4 are listed as examples:\n\n- \"Our business is subject to complex and evolving U.S. and foreign laws and regulations regarding privacy, data use, data combination, data protection, content, AI, competition, youth, safety, consumer protection, advertising, e-commerce,...\" [0001326801-25-000017:I.1A:0035] [0001628280-26-003942:I.1A:0038]\n- \"Real or perceived inaccuracies in our community and other metrics may harm our reputation and negatively affect our business.\" [0001326801-25-000017:I.1A:0025] [0001628280-26-003942:I.1A:0027]\n- \"If we fail to retain existing users or add new users, or if our users decrease their level of engagement with our products, our revenue, financial results, and business may be significantly harmed.\" [0001326801-25-000017:I.1A:0007] [0001628280-26-003942:I.1A:0007]\n- \"We generate substantially all of our revenue from advertising. The loss of marketers, or reduction in spending by marketers, could seriously harm our business.\" [0001326801-25-000017:I.1A:0010] [0001628280-26-003942:I.1A:0010]",
+      "answer": "Based on the text comparison between Meta's 10-K filed 2025-01-30 (covering the fiscal year ended December 31, 2024) and its 10-K filed 2026-01-29 (covering the fiscal year ended December 31, 2025), the text check found no risk factor that no longer appears as a separate risk factor.\n\n- No items are listed under \"No longer appears as a separate risk factor,\" as none were found in the comparison [0001326801-25-000017:I.1A:0007].\n- There is also no \"Not matched\" list shown for this comparison, so no risk factors are flagged as unverifiable for removal either.\n\nSeparately, the comparison identified risk factors that are reworded rather than removed, such as the risk factor on complex and evolving U.S. and foreign privacy/data/AI regulations, which remains disclosed but with changed wording comparing the earlier version [0001326801-25-000017:I.1A:0035] to the later version [0001628280-26-003942:I.1A:0038]. This and similar reworded items (at least 32 identified, with 4 shown as examples) do not constitute removals, since a reworded risk factor is still disclosed [0001628280-26-003942:I.1A:0027].",
       "citations": [
         "0001326801-25-000017:I.1A:0007",
-        "0001326801-25-000017:I.1A:0010",
-        "0001326801-25-000017:I.1A:0025",
         "0001326801-25-000017:I.1A:0035",
-        "0001628280-26-003942:I.1A:0007",
-        "0001628280-26-003942:I.1A:0010",
         "0001628280-26-003942:I.1A:0027",
         "0001628280-26-003942:I.1A:0038"
       ],
@@ -1259,18 +1237,9 @@
       "id": "T7",
       "type": "temporal",
       "question": "Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?",
-      "answer": "Comparing Nvidia's 10-K filed 2024-02-21 (for the fiscal year ended January 28, 2024) with its 10-K filed 2025-02-26 (for the fiscal year ended January 26, 2025):\n\n- One risk factor no longer appears as a separate risk factor, meaning the text check found no matching text for it in the newer filing (parts of its content may be covered inside other risk factors): \"Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations.\" [0001045810-24-000029:I.1A:0162]\n\nNo \"Not matched\" list of older risk factors is shown for this comparison, so none beyond the one above was flagged as unverifiable in this way.\n\nFor context, this same comparison also found at least 20 risk factors that were reworded (still disclosed, with changed wording), of which 4 are listed as examples:\n- \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business.\" [0001045810-25-000023:I.1A:0255] [0001045810-25-000023:I.1A:0256] [0001045810-25-000023:I.1A:0257]\n- \"Long manufacturing lead times and uncertain supply and component availability, combined with a failure to estimate customer demand accurately, has led and could lead to mismatches between supply and demand.\" [0001045810-25-000023:I.1A:0240] [0001045810-25-000023:I.1A:0241]\n- \"We are subject to stringent and changing data privacy and security laws, rules, regulations and other obligations...\" [0001045810-25-000023:I.1A:0263] [0001045810-25-000023:I.1A:0264]\n- \"Product, system security, and data protection incidents or breaches, as well as cyber-attacks, could disrupt our operations...\" [0001045810-25-000023:I.1A:0246] [0001045810-25-000023:I.1A:0247]\n\nNo risk factors were listed as having no matching risk factor found in the earlier filing (none were found) for this pair.",
+      "answer": "Comparing Nvidia's 10-K filed 2024-02-21 (covering the fiscal year ended January 28, 2024) with its 10-K filed 2025-02-26 (covering the fiscal year ended January 26, 2025): one risk factor no longer appears as a separate risk factor, meaning the text check found no matching text for it in the newer filing, and parts of its content may be covered inside other risk factors.\n\n- \"Our indebtedness could adversely affect our financial position and cash flows from operations, and prevent us from implementing our strategy or fulfilling our contractual obligations.\" [0001045810-24-000029:I.1A:0162]",
       "citations": [
-        "0001045810-24-000029:I.1A:0162",
-        "0001045810-25-000023:I.1A:0240",
-        "0001045810-25-000023:I.1A:0241",
-        "0001045810-25-000023:I.1A:0246",
-        "0001045810-25-000023:I.1A:0247",
-        "0001045810-25-000023:I.1A:0255",
-        "0001045810-25-000023:I.1A:0256",
-        "0001045810-25-000023:I.1A:0257",
-        "0001045810-25-000023:I.1A:0263",
-        "0001045810-25-000023:I.1A:0264"
+        "0001045810-24-000029:I.1A:0162"
       ],
       "hallucinated": [],
       "checks": {
@@ -1292,12 +1261,23 @@
       "id": "T8",
       "type": "temporal",
       "question": "Did Nvidia remove any risk factors between its FY2025 and FY2026 annual reports?",
-      "answer": "Comparing Nvidia's 10-K filed 2025-02-26 (fiscal year ended January 26, 2025) with its 10-K filed 2026-02-25 (fiscal year ended January 25, 2026), the text check found no risk factor that no longer appears as a separate risk factor.\n\n- No items were listed under \"No longer appears as a separate risk factor,\" and the comparison explicitly shows \"none found\" for that category [0001045810-25-000023:I.1A:0255] [0001045810-26-000021:I.1A:0353].\n\nSeparately, the comparison identified other types of changes that are not removals:\n\n- At least 1 risk factor has no matching risk factor found in the earlier filing (it is new, or a restructured older risk factor): \"Commercial arrangements expose us to counterparty risks.\" [0001045810-26-000021:I.1A:0349]\n- At least 16 risk factors were reworded (still disclosed, with changed wording), of which 4 are listed as examples, including \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business\" [0001045810-26-000021:I.1A:0353] and \"Long manufacturing lead times and uncertain supply and capacity availability, combined with a failure to estimate customer demand accurately, has led and could lead to mismatches between supply and demand\" [0001045810-26-000021:I.1A:0337].",
+      "answer": "Comparing Nvidia's 10-K filed 2025-02-26 (covering the fiscal year ended January 26, 2025) with its 10-K filed 2026-02-25 (covering the fiscal year ended January 25, 2026), the text check found no risk factor that no longer appears as a separate risk factor.\n\n- The text check found no risk factor that no longer appears as a separate risk factor.\n\nOther findings from this comparison, which bear on how the risk factor section changed overall:\n\n- At least 1 risk factor had no matching risk factor found in the earlier filing (it is new, or a restructured older risk factor), of which 1 is listed:\n  - \"Commercial arrangements expose us to counterparty risks.\" [0001045810-26-000021:I.1A:0349]\n\n- At least 16 risk factors were reworded (still disclosed, with changed wording), of which 4 are listed as examples:\n  - \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business.\" [0001045810-25-000023:I.1A:0255] [0001045810-25-000023:I.1A:0256] [0001045810-25-000023:I.1A:0257] [0001045810-26-000021:I.1A:0353] [0001045810-26-000021:I.1A:0354] [0001045810-26-000021:I.1A:0355]\n  - \"Long manufacturing lead times and uncertain supply and capacity availability, combined with a failure to estimate customer demand accurately, has led and could lead to mismatches between supply and demand.\" [0001045810-25-000023:I.1A:0240] [0001045810-25-000023:I.1A:0241] [0001045810-26-000021:I.1A:0337] [0001045810-26-000021:I.1A:0338]\n  - \"We may not be able to realize the potential benefits of business investments or acquisitions...\" [0001045810-25-000023:I.1A:0250] [0001045810-26-000021:I.1A:0347]\n  - \"Business disruptions could harm our operations, lead to a decline in revenue and increase our costs.\" [0001045810-25-000023:I.1A:0248] [0001045810-26-000021:I.1A:0345]\n\nSeparately, the comparison also found passages within surviving risk factors whose specific wording was not found in one filing or the other; these are evidence about wording only and do not indicate that any risk factor was removed.",
       "citations": [
+        "0001045810-25-000023:I.1A:0240",
+        "0001045810-25-000023:I.1A:0241",
+        "0001045810-25-000023:I.1A:0248",
+        "0001045810-25-000023:I.1A:0250",
         "0001045810-25-000023:I.1A:0255",
+        "0001045810-25-000023:I.1A:0256",
+        "0001045810-25-000023:I.1A:0257",
         "0001045810-26-000021:I.1A:0337",
+        "0001045810-26-000021:I.1A:0338",
+        "0001045810-26-000021:I.1A:0345",
+        "0001045810-26-000021:I.1A:0347",
         "0001045810-26-000021:I.1A:0349",
-        "0001045810-26-000021:I.1A:0353"
+        "0001045810-26-000021:I.1A:0353",
+        "0001045810-26-000021:I.1A:0354",
+        "0001045810-26-000021:I.1A:0355"
       ],
       "hallucinated": [],
       "checks": {
@@ -1309,8 +1289,10 @@
         "pseudo_citations": [],
         "has_citation": true,
         "is_refusal": false,
-        "unsupported_removal_claim": false,
-        "unsupported_removal_sentences": [],
+        "unsupported_removal_claim": true,
+        "unsupported_removal_sentences": [
+          "Separately, the comparison also found passages within surviving risk factors whose specific wording was not found in one filing or the other"
+        ],
         "stale_citations": [],
         "cited_without_text": []
       }
@@ -1319,16 +1301,11 @@
       "id": "T9",
       "type": "temporal",
       "question": "Did TSMC remove any risk factors between its FY2024 and FY2025 annual reports?",
-      "answer": "Comparing TSMC's 20-F filed 2025-04-17 (covering the fiscal year ended December 31, 2024) with its 20-F filed 2026-04-16 (covering the fiscal year ended December 31, 2025), the text check found no risk factor that no longer appears as a separate risk factor, since no items were listed under that heading for this filing pair [0001628280-26-025362:I.3:0003].\n\nNo \"Not matched\" list of older risk factors is shown for this pair either, so there are no items whose removal status could not be verified [0001628280-26-025362:I.3:0003].\n\nSeparately, the comparison found no matching risk factor in the earlier filing — none were listed under that heading, so there is nothing to report as new or restructured for this pair [0001628280-26-025362:I.3:0003].\n\nIn short: based on this automated text comparison, TSMC did not remove any risk factors between the fiscal year ended December 31, 2024 and the fiscal year ended December 31, 2025 annual reports; the comparison instead found reworded risk factors (at least 18, of which 4 are listed as examples) and passages whose exact wording could not be matched across filings, which reflect wording changes rather than removals:\n\n- \"Any global systemic political, economic and financial crisis...\" — reworded [0001193125-25-083423:I.3:0001] [0001628280-26-025362:I.3:0001]\n- \"Our failure to comply with applicable laws and regulations material to our operations...\" — reworded [0001193125-25-083423:I.3:0010] [0001628280-26-025362:I.3:0009]\n- \"Our global manufacturing, design and sales activities subject us to risks associated with political, economic, financial, military or other conditions...\" — reworded [0001193125-25-083423:I.3:0002] [0001628280-26-025362:I.3:0003]\n- \"If we are unable to compete effectively in the highly competitive foundry segment...\" — reworded [0001193125-25-083423:I.3:0006] [0001628280-26-025362:I.3:0005]",
+      "answer": "This question is about the comparison between TSMC's 20-F filed 2025-04-17 (covering the fiscal year ended December 31, 2024) and TSMC's 20-F filed 2026-04-16 (covering the fiscal year ended December 31, 2025) [0001628280-26-025362:I.3:0001].\n\n- The text check found no risk factor that no longer appears as a separate risk factor between these two filings, and no \"Not matched\" list is shown for this pair.\n\nNo other items bear on removal: the comparison separately lists reworded risk factors (still disclosed with changed wording) and passages whose wording was not found in one filing or the other, but these do not indicate removal of any risk factor [0001628280-26-025362:I.3:0002] [0001193125-25-083423:I.3:0001].",
       "citations": [
         "0001193125-25-083423:I.3:0001",
-        "0001193125-25-083423:I.3:0002",
-        "0001193125-25-083423:I.3:0006",
-        "0001193125-25-083423:I.3:0010",
         "0001628280-26-025362:I.3:0001",
-        "0001628280-26-025362:I.3:0003",
-        "0001628280-26-025362:I.3:0005",
-        "0001628280-26-025362:I.3:0009"
+        "0001628280-26-025362:I.3:0002"
       ],
       "hallucinated": [],
       "checks": {
@@ -1340,8 +1317,10 @@
         "pseudo_citations": [],
         "has_citation": true,
         "is_refusal": false,
-        "unsupported_removal_claim": false,
-        "unsupported_removal_sentences": [],
+        "unsupported_removal_claim": true,
+        "unsupported_removal_sentences": [
+          "No other items bear on removal: the comparison separately lists reworded risk factors (still disclosed with changed wording) and passages whose wording was not found in one filing or the other"
+        ],
         "stale_citations": [],
         "cited_without_text": []
       }
@@ -1350,11 +1329,12 @@
       "id": "T10",
       "type": "temporal",
       "question": "Did AMD stop disclosing its risk about \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property.\" between its FY2024 and FY2025 annual reports?",
-      "answer": "AMD's risk factor titled \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property\" did not stop being disclosed between the fiscal year ended December 28, 2024 and the fiscal year ended December 27, 2025 annual reports; it is listed as \"Reworded,\" meaning it is still disclosed but with changed wording [0000002488-25-000012:I.1A:0015] [0000002488-26-000018:I.1A:0014] [0000002488-26-000018:I.1A:0015].\n\n- The comparison of AMD's 10-K filed 2025-02-05 (covering the fiscal year ended December 28, 2024) and its 10-K filed 2026-02-04 (covering the fiscal year ended December 27, 2025) found no risk factors that \"no longer appear as a separate risk factor,\" so this specific risk is not among any such findings [0000002488-25-000012:I.1A:0015] [0000002488-26-000018:I.1A:0014].\n- This risk factor appears explicitly in the \"Reworded\" list, which the comparison states covers 4 of 29 reworded risk factors between these two filings, with this item named first [0000002488-25-000012:I.1A:0015] [0000002488-26-000018:I.1A:0015].\n- Being reworded means the risk factor is still disclosed, just with changed language, not that it was dropped or stopped being reported [0000002488-26-000018:I.1A:0014].",
+      "answer": "No, AMD did not stop disclosing this risk. The risk factor \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property\" is listed as \"Reworded\" between AMD's 10-K filed 2025-02-05 (covering the fiscal year ended December 28, 2024) and its 10-K filed 2026-02-04 (covering the fiscal year ended December 27, 2025), meaning it is still disclosed with changed wording [0000002488-25-000012:I.1A:0015] [0000002488-26-000018:I.1A:0014] [0000002488-26-000018:I.1A:0015].\n\n- The text comparison between these two filings found no risk factors listed as \"no longer appears as a separate risk factor,\" so there is no basis to say this or any other risk factor stopped being disclosed between these fiscal years.\n- This risk is also confirmed present in a later related filing, where the same headline appears as a standalone risk factor discussing reliance on third-party intellectual property, development tools, and components [0000002488-26-000123:II.1A:0016].",
       "citations": [
         "0000002488-25-000012:I.1A:0015",
         "0000002488-26-000018:I.1A:0014",
-        "0000002488-26-000018:I.1A:0015"
+        "0000002488-26-000018:I.1A:0015",
+        "0000002488-26-000123:II.1A:0016"
       ],
       "hallucinated": [],
       "checks": {
@@ -1376,7 +1356,7 @@
       "id": "T11",
       "type": "temporal",
       "question": "Did Micron stop disclosing its risk about \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.\" between its FY2024 and FY2025 annual reports?",
-      "answer": "No, Micron did not stop disclosing this risk; it is listed as \"Reworded,\" meaning it is still disclosed with changed wording between the two filings, not removed. The headline \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments\" appears in both the 10-K filed 2024-10-04 (fiscal year ended 2024-08-29) and the 10-K filed 2025-10-03 (fiscal year ended 2025-08-28), with changed wording [0000723125-24-000027:I.1A:0036] [0000723125-25-000028:I.1A:0038].\n\n- The text check's \"No longer appears as a separate risk factor\" list for this comparison found none, so this risk is not among any such findings [0000723125-25-000028:I.1A:0038].\n- One sentence from the earlier filing's version of this risk factor — regarding 2025 capital expenditure estimates — had its wording not found in the newer filing, meaning a differently worded version of the same statement may exist [0000723125-24-000027:I.1A:0036].\n- In the newer filing, this same risk is still reflected among Micron's active disclosed risks on liquidity, financing, and capital investments [0000723125-25-000028:I.1A:0038].",
+      "answer": "This risk factor did not stop being disclosed between Micron's fiscal year ended August 29, 2024 10-K and its fiscal year ended August 28, 2025 10-K; the text comparison lists it as \"Reworded,\" meaning it is still disclosed with changed wording [0000723125-24-000027:I.1A:0036] [0000723125-25-000028:I.1A:0038].\n\n- The comparison's \"No longer appears as a separate risk factor\" list for this pair of filings shows none found, so the text check found no risk factor that no longer appears as a separate risk factor.\n- This specific risk factor (\"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.\") is explicitly identified as reworded rather than dropped, carrying the same headline in both filings but with changed supporting text [0000723125-24-000027:I.1A:0036] [0000723125-25-000028:I.1A:0038].\n- Separately, one sentence from within this same risk factor in the earlier filing (\"We estimate capital expenditures in 2025 for property, plant, and equipment, net of proceeds from government incentives, to be around mid-30% range of revenue for the year.\") had wording not found in the newer filing, though a differently worded version of the same statement may exist [0000723125-24-000027:I.1A:0036].\n- The underlying substance of the risk remains present in the fiscal year ended August 28, 2025 filing, which still states there can be no assurance Micron will generate sufficient cash flows or access financing to fund operations, make debt payments, pay its dividend, and make capital investments [0000723125-25-000028:I.1A:0038].\n\nIn short: the risk was not stopped — it is still disclosed, just reworded.",
       "citations": [
         "0000723125-24-000027:I.1A:0036",
         "0000723125-25-000028:I.1A:0038"
@@ -1385,7 +1365,7 @@
       "checks": {
         "citations_retrieved": true,
         "numbers_grounded": true,
-        "numbers_checked": 0,
+        "numbers_checked": 1,
         "unmatched_numbers": [],
         "echoed_numbers": [],
         "pseudo_citations": [],
@@ -1401,7 +1381,7 @@
       "id": "T12",
       "type": "temporal",
       "question": "Did Nvidia stop disclosing its risk about \"We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.\" between its FY2024 and FY2025 annual reports?",
-      "answer": "No, this risk factor was not dropped. The text comparison between Nvidia's 10-K for the fiscal year ended January 28, 2024 and its 10-K for the fiscal year ended January 26, 2025 found that this risk factor was reworded, not removed, meaning it is still disclosed with changed wording [0001045810-24-000029:I.1A:0146] [0001045810-25-000023:I.1A:0250].\n\n- Earlier wording (fiscal year ended January 28, 2024): \"We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.\" [0001045810-24-000029:I.1A:0146]\n- Later wording (fiscal year ended January 26, 2025): a changed version of the same headline, listed in the comparison as reworded rather than identical [0001045810-25-000023:I.1A:0250]\n\nThis risk factor is also still present in Nvidia's most recent annual filing, where it appears as a disclosed risk about acquisitions and investments involving significant challenges and risks that could impair Nvidia's ability to grow its business or develop/sell products [0001045810-26-000021:I.1A:0347].",
+      "answer": "No, this risk factor is still disclosed between Nvidia's 10-K filed 2024-02-21 (fiscal year ended January 28, 2024) and its 10-K filed 2025-02-26 (fiscal year ended January 26, 2025); it was reworded, not dropped.\n\n- The risk factor headlined \"We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.\" is listed as \"Reworded,\" meaning it is still disclosed but with changed wording between the earlier filing [0001045810-24-000029:I.1A:0146] and the later filing [0001045810-25-000023:I.1A:0250].\n- This same risk continues to appear in Nvidia's most recent annual report, discussing acquisitions and investments involving significant challenges and risks that could impair its ability to grow its business, develop new products, or sell its products [0001045810-26-000021:I.1A:0347].\n\nA reworded risk factor is still disclosed, even though its exact wording differs between the two filings.",
       "citations": [
         "0001045810-24-000029:I.1A:0146",
         "0001045810-25-000023:I.1A:0250",
@@ -1427,19 +1407,20 @@
       "id": "T13",
       "type": "temporal",
       "question": "Does NVIDIA's FY2026 10-K still say that the Notified Advanced Computing (NAC) process has not resulted in approvals for exports of products to customers in China, or was that statement removed?",
-      "answer": "Comparing the 10-K filed 2025-02-26 (fiscal year ended January 26, 2025) with the 10-K filed 2026-02-25 (fiscal year ended January 25, 2026): the sentence stating that \"the Notified Advanced Computing, or 'NAC,' process has not resulted in approvals for exports of products to customers in China\" is listed among the passages of a surviving risk factor whose wording was not found in the newer filing, meaning a differently worded version of the same statement may exist [0001045810-25-000023:I.1A:0258].\n\n- The risk factor containing this sentence, \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business,\" is still disclosed in the fiscal year ended January 25, 2026 10-K, though reworded [0001045810-26-000021:I.1A:0353] [0001045810-26-000021:I.1A:0354] [0001045810-26-000021:I.1A:0355].\n- The specific NAC sentence itself falls under the \"wording was not found in the newer filing\" category, not under \"no longer appears as a separate risk factor,\" so this is a wording-level finding about that one sentence rather than about the whole risk factor [0001045810-25-000023:I.1A:0258].\n- Reviewing the newer filing's text for this risk factor (fiscal year ended January 25, 2026), the surviving passages shown focus instead on topics such as the H20 licensing situation, China's antitrust finding on the Mellanox acquisition, and open-source foundation models, rather than restating the specific NAC sentence [0001045810-26-000021:I.1A:0356] [0001045810-26-000021:I.1A:0355] [0001045810-26-000021:I.1A:0354].\n\nIn short: the exact NAC sentence's wording was not found in the fiscal year ended January 25, 2026 10-K, but this does not mean the risk factor itself was removed — it is one of several reworded passages within a risk factor that is still disclosed [0001045810-25-000023:I.1A:0258].",
+      "answer": "The specific sentence about the Notified Advanced Computing (NAC) process is listed among passages whose wording was not found in NVIDIA's fiscal year ended January 25, 2026 10-K (accession 0001045810-26-000021), when compared against the prior year's 10-K for the fiscal year ended January 26, 2025 (accession 0001045810-25-000023).\n\n- The passage \"The USG evaluates license requests in a closed process that does not have clear standards or an opportunity for review. For example, the Notified Advanced Computing, or 'NAC,' process has not resulted in approvals for exports of products to customers in China\" is listed under \"Passages of surviving risk factors whose wording was not found in the newer filing,\" meaning this exact wording was not found in the fiscal year ended January 25, 2026 filing [0001045810-25-000023:I.1A:0258].\n\nPer the required hedge, this finding means the wording \"was not found in the newer filing,\" and a differently worded version of the same statement may exist — it does not mean the statement was removed, deleted, or that NVIDIA stopped making it.\n\nAdditional context on the surrounding risk factor:\n\n- The broader risk factor in which this sentence appeared, titled \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business,\" is listed as \"Reworded\" between the two filings, meaning it is still disclosed in the fiscal year ended January 25, 2026 10-K but with changed wording [0001045810-26-000021:I.1A:0353] [0001045810-26-000021:I.1A:0354] [0001045810-26-000021:I.1A:0355].\n- The current fiscal year ended January 25, 2026 10-K still discusses related export-control licensing issues for China, including that NVIDIA incurred a $4.5 billion charge for H20 products due to new licensing requirements and later received USG licenses allowing limited H20 shipments to China-based customers [0001045810-26-000021:I.1A:0355].\n- The current filing also states that NVIDIA is \"currently effectively foreclosed from the China market due to U.S. export controls\" [0001045810-26-000021:I.1A:0357].\n- It further states that under current export control rules, NVIDIA cannot deliver a competitive product for China's data center market approved by both the U.S. and Chinese governments [0001045810-26-000021:I.1:0323].\n\nIn summary: the specific NAC-process sentence's exact wording was not found in the fiscal year ended January 25, 2026 10-K [0001045810-25-000023:I.1A:0258], but the risk factor it belonged to is still disclosed, reworded, in that filing [0001045810-26-000021:I.1A:0353] [0001045810-26-000021:I.1A:0354] [0001045810-26-000021:I.1A:0355].",
       "citations": [
         "0001045810-25-000023:I.1A:0258",
+        "0001045810-26-000021:I.1:0323",
         "0001045810-26-000021:I.1A:0353",
         "0001045810-26-000021:I.1A:0354",
         "0001045810-26-000021:I.1A:0355",
-        "0001045810-26-000021:I.1A:0356"
+        "0001045810-26-000021:I.1A:0357"
       ],
       "hallucinated": [],
       "checks": {
         "citations_retrieved": true,
         "numbers_grounded": true,
-        "numbers_checked": 0,
+        "numbers_checked": 1,
         "unmatched_numbers": [],
         "echoed_numbers": [],
         "pseudo_citations": [],
@@ -1447,7 +1428,7 @@
         "is_refusal": false,
         "unsupported_removal_claim": true,
         "unsupported_removal_sentences": [
-          "Comparing the 10-K filed 2025-02-26 (fiscal year ended January 26, 2025) with the 10-K filed 2026-02-25 (fiscal year ended January 25, 2026): the sentence stating that \"the Notified Advanced Comput..."
+          "Per the required hedge, this finding means the wording \"was not found in the newer filing,\" and a differently worded version of the same statement may exist — it does not mean the statement was rem..."
         ],
         "stale_citations": [],
         "cited_without_text": []
@@ -1457,37 +1438,12 @@
       "id": "T14",
       "type": "temporal",
       "question": "Does NVIDIA's FY2026 10-K still say that it transitioned some operations out of China and Hong Kong after the 2022 export controls, or was that statement removed?",
-      "answer": "The automated text comparison found that the sentence stating NVIDIA \"transitioned some operations, including certain testing, validation, and supply and distribution operations out of China and Hong Kong\" following the 2022 export controls had its wording not found in the newer filing (the fiscal year ended 2026-01-25 10-K) [0001045810-25-000023:I.1A:0257].\n\nA few important clarifications apply here:\n\n- This finding concerns a specific sentence inside a risk factor that still exists in the newer filing — it does not mean the risk factor itself was removed; the risk factor \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business\" is listed as reworded, meaning it remains disclosed with changed wording between the two filings [0001045810-26-000021:I.1A:0353].\n- Per the rules governing this type of finding, the wording \"was not found in the newer filing,\" and a differently worded version of the same statement may exist [0001045810-25-000023:I.1A:0257].\n- I should not characterize this as the company having \"removed,\" \"dropped,\" or \"stopped saying\" this statement — only that the exact wording check did not find a match in the fiscal year ended 2026-01-25 filing.\n\nFor context, the underlying statement appeared in earlier filings covering the 2022 export controls, including the fiscal year ended 2024-01-28 10-K [0001045810-24-000029:I.1A:0152] and the fiscal year ended 2025-01-26 10-K [0001045810-25-000023:I.1A:0257]. The newer filing (fiscal year ended 2026-01-25) does continue to discuss related export control matters extensively within the same reworded risk factor, including China/Hong Kong/Macau licensing requirements and supply chain disruption from Hong Kong warehousing [0001045810-26-000021:I.1A:0356], but the specific \"transitioned some operations... out of China and Hong Kong\" sentence was not matched by the text comparison in that filing [0001045810-25-000023:I.1A:0257].",
+      "answer": "**Finding: the specific sentence about transitioning operations out of China and Hong Kong was not found in the newer filing's wording, but the surrounding risk factor is still disclosed (reworded).**\n\nComparing NVIDIA's 10-K filed 2025-02-26 (fiscal year ended January 26, 2025) with the 10-K filed 2026-02-25 (fiscal year ended January 25, 2026):\n\n- The sentence \"Following these 2022 export controls, we transitioned some operations, including certain testing, validation, and supply and distribution operations out of China and Hong Kong. Any future transitions could be costly and time consuming, and adversely affect our research and development and supply and distribution operations, as well as our revenue, during any such transition period\" is listed among passages of a surviving risk factor whose wording was not found in the newer filing, meaning a differently worded version of the same statement may exist [0001045810-25-000023:I.1A:0257].\n- This passage appeared within the broader risk factor \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business,\" which is listed as reworded (still disclosed, with changed wording) between the two filings [0001045810-25-000023:I.1A:0255] [0001045810-26-000021:I.1A:0353].\n- The newer filing's version of this risk factor still discusses the August 2022 export restrictions targeting China's semiconductor and supercomputing industries and their impact on products, as well as continuing impacts on NVIDIA's ability to serve customers outside the United States, including shipments to China and Hong Kong [0001045810-26-000021:I.1:0323].\n- The newer filing also states that export controls \"may disrupt our supply and distribution chain for a substantial portion of our products, which are warehoused in and distributed from Hong Kong,\" though this is separate wording from the specific \"transitioned some operations...out of China and Hong Kong\" sentence [0001045810-26-000021:I.1A:0356].\n\nBecause the comparison tool found no matching text for that exact sentence in the newer filing, it is correct to say its wording \"was not found in the newer filing,\" and a differently worded version of the same statement may exist; this is not the same as saying the company removed or stopped disclosing the underlying transition.",
       "citations": [
-        "0001045810-24-000029:I.1A:0152",
+        "0001045810-25-000023:I.1A:0255",
         "0001045810-25-000023:I.1A:0257",
+        "0001045810-26-000021:I.1:0323",
         "0001045810-26-000021:I.1A:0353",
-        "0001045810-26-000021:I.1A:0356"
-      ],
-      "hallucinated": [],
-      "checks": {
-        "citations_retrieved": true,
-        "numbers_grounded": true,
-        "numbers_checked": 0,
-        "unmatched_numbers": [],
-        "echoed_numbers": [],
-        "pseudo_citations": [],
-        "has_citation": true,
-        "is_refusal": false,
-        "unsupported_removal_claim": false,
-        "unsupported_removal_sentences": [],
-        "stale_citations": [],
-        "cited_without_text": []
-      }
-    },
-    {
-      "id": "T15",
-      "type": "temporal",
-      "question": "Does NVIDIA's FY2026 10-K still say that the AI Diffusion IFR would confer special benefits on select \"Universal Verified End Users\" (UVEU), or was that statement removed?",
-      "answer": "The sentence about the AI Diffusion IFR conferring special benefits on \"Universal Verified End Users\" (UVEU) was found in the older filing's wording but its wording was not found in the newer filing [0001045810-25-000023:I.1A:0257].\n\n- This statement sits within the risk factor \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business,\" which is itself still disclosed but with reworded content between the two filings [0001045810-26-000021:I.1A:0356].\n- A differently worded version of the same statement may exist in NVIDIA's 10-K for the fiscal year ended January 25, 2026, but the check found no matching text for this specific UVEU passage in that filing [0001045810-25-000023:I.1A:0257].\n- Separately, the newer filing does contain new wording noting that in May 2025 the U.S. government announced it would rescind the AI Diffusion IFR and implement a replacement rule, with scope and requirements still uncertain [0001045810-26-000021:I.1A:0355].\n\nSo the specific UVEU sentence's exact wording was not found in the fiscal year ended January 25, 2026 10-K, though the broader risk factor discussing the AI Diffusion IFR and export restrictions remains disclosed in reworded form.",
-      "citations": [
-        "0001045810-25-000023:I.1A:0257",
-        "0001045810-26-000021:I.1A:0355",
         "0001045810-26-000021:I.1A:0356"
       ],
       "hallucinated": [],
@@ -1502,8 +1458,38 @@
         "is_refusal": false,
         "unsupported_removal_claim": true,
         "unsupported_removal_sentences": [
-          "The sentence about the AI Diffusion IFR conferring special benefits on \"Universal Verified End Users\" (UVEU) was found in the older filing's wording but its wording was not found in the newer filin...",
-          "So the specific UVEU sentence's exact wording was not found in the fiscal year ended January 25, 2026 10-K"
+          "**Finding: the specific sentence about transitioning operations out of China and Hong Kong was not found in the newer filing's wording, but the surrounding risk factor is still disclosed (reworded).**",
+          "Because the comparison tool found no matching text for that exact sentence in the newer filing, it is correct to say its wording \"was not found in the newer filing,\" and a differently worded versio..."
+        ],
+        "stale_citations": [],
+        "cited_without_text": []
+      }
+    },
+    {
+      "id": "T15",
+      "type": "temporal",
+      "question": "Does NVIDIA's FY2026 10-K still say that the AI Diffusion IFR would confer special benefits on select \"Universal Verified End Users\" (UVEU), or was that statement removed?",
+      "answer": "The specific sentence naming \"Universal Verified End Users\" (UVEU) was not found in NVIDIA's newer filing, the 10-K for the fiscal year ended January 25, 2026 (accession 0001045810-26-000021), when compared against the 10-K for the fiscal year ended January 26, 2025 (accession 0001045810-25-000023) [0001045810-25-000023:I.1A:0257]. This finding comes from a passage of a surviving risk factor — \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products...\" — whose wording was not found in the newer filing, and a differently worded version of the same statement may exist [0001045810-25-000023:I.1A:0257].\n\nKey context on this finding:\n\n- The risk factor itself is still disclosed in the fiscal year ended January 25, 2026 10-K, just reworded, with its headline \"We are subject to complex laws, rules, regulations, and political and other actions, including restrictions on the export of our products, which may adversely impact our business\" unchanged but its wording changed between the two filings [0001045810-25-000023:I.1A:0255] [0001045810-26-000021:I.1A:0353].\n- The newer filing does still discuss the AI Diffusion IFR, stating that it \"would have imposed a burdensome worldwide licensing scheme on Nvidia's data center products before being rescinded, and a replacement rule with uncertain scope may create new restrictions with material impact\" [0001045810-26-000021:I.1:0323].\n- The newer filing also contains new wording not found in the older filing, noting that \"In May 2025, the USG announced that it would rescind the AI Diffusion IFR and implement a replacement rule\" and that \"the scope, timing, and requirements of the forthcoming rule remain uncertain\" [0001045810-26-000021:I.1A:0355].\n\nSo, the exact UVEU/NVEU sentence's wording was not found in the fiscal year ended January 25, 2026 10-K, but this does not mean the underlying risk topic (export licensing restrictions tied to the AI Diffusion IFR) is absent — the risk factor containing it is still disclosed in reworded form, and the filing's updated text instead emphasizes that the AI Diffusion IFR was rescinded and a replacement rule remains pending [0001045810-25-000023:I.1A:0257] [0001045810-26-000021:I.1A:0355].",
+      "citations": [
+        "0001045810-25-000023:I.1A:0255",
+        "0001045810-25-000023:I.1A:0257",
+        "0001045810-26-000021:I.1:0323",
+        "0001045810-26-000021:I.1A:0353",
+        "0001045810-26-000021:I.1A:0355"
+      ],
+      "hallucinated": [],
+      "checks": {
+        "citations_retrieved": true,
+        "numbers_grounded": true,
+        "numbers_checked": 0,
+        "unmatched_numbers": [],
+        "echoed_numbers": [],
+        "pseudo_citations": [],
+        "has_citation": true,
+        "is_refusal": false,
+        "unsupported_removal_claim": true,
+        "unsupported_removal_sentences": [
+          "So, the exact UVEU/NVEU sentence's wording was not found in the fiscal year ended January 25, 2026 10-K"
         ],
         "stale_citations": [],
         "cited_without_text": []
@@ -1517,7 +1503,7 @@
     },
     {
       "id": "T6",
-      "reason": "judged incorrect by the correctness judge: 0 of 3 votes correct"
+      "reason": "judged incorrect by the correctness judge: 1 of 3 votes correct"
     }
   ]
 }

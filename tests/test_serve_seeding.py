@@ -145,9 +145,26 @@ def test_the_committed_examples_match_the_current_template_and_seed_exactly_the_
     fingerprint is the running build's, every example carries the service's own checks, the ones that fail them are refused (and
     named in the log), and the questions the correctness judge rejected are recorded under excluded and are not in the file.
     If this fails after you changed answer.txt or CONTEXT_HEADERS: regenerate the file (it needs a paid deployed run)."""
+    import tomllib
+    from pathlib import Path
+
+    env = tomllib.loads((Path(__file__).resolve().parents[1] / "fly.toml").read_text(encoding="utf-8"))["env"]
+    fusion = env["RETRIEVAL_FUSION"] == "true"                  # the shipped examples must match the deployed flags
+    if fusion:                                                  # the flag-on fingerprint includes the serving config (rerank)
+        from semigraph.config import Settings
+        from semigraph.retrieval import rerank
+
+        deployed = Settings(_env_file=None, retrieval_fusion=True, retrieval_rerank=env["RETRIEVAL_RERANK"])
+        monkeypatch.setattr("semigraph.config.get_settings", lambda: deployed)
+        monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: object())  # CI has no model files
     doc = load_examples()
-    assert store.examples_match_template(doc), "answer.txt / CONTEXT_HEADERS changed since examples.json was generated"
+    assert store.examples_match_template(doc, fusion=fusion), (
+        "examples.json does not carry the template fingerprint of fly.toml's RETRIEVAL_FUSION, or answer.txt / CONTEXT_HEADERS "
+        "changed since it was generated")
     boot = Boot(monkeypatch, {**doc, "snapshot_id": SNAP})
+    if fusion:
+        monkeypatch.setattr(serve_main, "process_runtime", lambda driver, settings, snapshot_id: object())
+        monkeypatch.setattr(serve_main, "set_process_default", lambda runtime: None)
     caplog.set_level(logging.INFO, logger="semigraph.serve.main")
     driver, embedder, stats, snapshot, example_ids = boot.run()
     refused = {e["id"] for e in doc["examples"] if store.refusal_reason(e)}

@@ -896,16 +896,22 @@ sidecar under `data/processed/costs/`); before committing an `eval-agent` report
 `uv run python scripts/strip_costs.py artifacts/<report>.json`.
 
 M2 retrieval (fused legs + MiniLM rerank, `docs/specs/m2-search.md`) ships OFF. The image always carries the reranker at
-`/srv/models/reranker-minilm-l6` (fetched at build time, SHA-256 verified by `scripts/build_reranker_model.py`; the build fails on a
-mismatch; TODO(owner): pin its `REVISION` to a commit sha). `fly.toml [env]` decides use: `RETRIEVAL_FUSION` (`"false"`) and
-`RETRIEVAL_RERANK` (`"none"`), with `RETRIEVAL_RERANK_MODEL_DIR = "/srv/models"`.
+`/srv/models/reranker-minilm-l6` (fetched at build time from a pinned revision, SHA-256 verified by
+`scripts/build_reranker_model.py`; the build fails on a mismatch). `fly.toml [env]` decides use: `RETRIEVAL_FUSION` and
+`RETRIEVAL_RERANK`, with `RETRIEVAL_RERANK_MODEL_DIR = "/srv/models"`. The repo now carries them ON (`"true"` / `"minilm"`) together
+with the flag-on `src/semigraph/artifacts/examples.json` (copied from `artifacts/examples.m2-fusion.json`); a test fails if the two
+disagree, because boot refuses every example whose template fingerprint does not match the flag.
 
-- **Enable:** set `RETRIEVAL_FUSION = "true"` and `RETRIEVAL_RERANK = "minilm"` (rerank only acts with fusion on), then
-  `flyctl deploy -a semigraph`. Check the boot log: `flyctl logs -a semigraph` must not say `rerank model 'minilm' not found` or
+- **Enable:** (done in the repo) `RETRIEVAL_FUSION = "true"`, `RETRIEVAL_RERANK = "minilm"` (rerank only acts with fusion on), and the
+  flag-on examples file, then `flyctl deploy -a semigraph`. If the keyword index fails to build at boot the service keeps the pre-M2
+  path and logs it; the flag-on examples are then refused (the page shows no instant examples) until the next boot succeeds. Check the boot log: `flyctl logs -a semigraph` must not say `rerank model 'minilm' not found` or
   `failed to load` (either disables the stage silently and retrieval falls back to fusion alone).
 - **Verify:** `/healthz` is 200; `GET /api/stats` answers; ask one smoke question from the page (or an example click) and check it is
   answered with sources. The log line `rerank model 'minilm' loaded from /srv/models/reranker-minilm-l6` appears in the boot log (the model loads at startup, `serving_config` warms it), not on the first ask.
-- **Roll back:** set `RETRIEVAL_FUSION = "false"` and `RETRIEVAL_RERANK = "none"`, redeploy. The old path is byte-identical with the flags off.
+- **Roll back:** fastest is the previous image: `flyctl releases -a semigraph --image` to find it, then
+  `flyctl deploy -a semigraph --image <previous image>`. From the repo: set `RETRIEVAL_FUSION = "false"` and `RETRIEVAL_RERANK = "none"`
+  AND restore the flag-off `examples.json` from git history (otherwise no example is seeded), then redeploy. The old path is
+  byte-identical with the flags off.
 - **Measure p95 and RSS (owner-run):** the gate (R24) is that rerank adds at most 2 s at p95 on the throttled machine. How to time it
   on the machine is for the owner to define: for example per-ask retrieval and rerank seconds from the logs, or an owner-run timed
   probe. Do not use `scripts/latency_smoke.py` here: it is the S12 calibration runner (local graph, paid with `--live`).

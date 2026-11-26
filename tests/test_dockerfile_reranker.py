@@ -41,9 +41,10 @@ def test_the_dockerfile_runs_the_verifying_script_in_the_model_stage_to_the_path
     assert model.index("embed_rss.py /models/embed_rss.py") < model.index("build_reranker_model.py --out")  # embedder layers untouched
 
 
-def test_fly_toml_ships_the_flags_off_and_points_at_the_models_directory():
+def test_fly_toml_ships_a_whole_setting_and_points_at_the_models_directory():
+    """Either the pre-M2 path (both off) or the frozen M2 setting (fusion + MiniLM); never half of one."""
     env = tomllib.loads((ROOT / "fly.toml").read_text(encoding="utf-8"))["env"]
-    assert env["RETRIEVAL_FUSION"] == "false" and env["RETRIEVAL_RERANK"] == "none"
+    assert (env["RETRIEVAL_FUSION"], env["RETRIEVAL_RERANK"]) in {("false", "none"), ("true", "minilm")}
     assert env["RETRIEVAL_RERANK_MODEL_DIR"] == "/srv/models"
 
 
