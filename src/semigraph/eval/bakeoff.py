@@ -367,11 +367,14 @@ def check_deployed_runs_resumable(path: Path) -> None:
 
 
 def run_deployed(benchmark: list[dict], driver, embedder, path: Path, *, model: str, escalation_model: str,
-                 max_usd: float | None, max_tokens: int = ANSWER_MAX_TOKENS, timeout: int = 90) -> list[dict]:
+                 max_usd: float | None, max_tokens: int = ANSWER_MAX_TOKENS, timeout: int = 90,
+                 fusion_runtime=None) -> list[dict]:
     """Answer every benchmark question through ``answer_stream`` exactly as the service does (router, cheap
     draft, verifier, escalation), recording the route, the total cost of ALL attempts and the latency.
 
-    Checkpointed per question and capped like :func:`answer_candidates`."""
+    Checkpointed per question and capped like :func:`answer_candidates`. ``fusion_runtime`` (RETRIEVAL_FUSION on; M2) passes the
+    served fusion config and keyword index to the retrieval, so the run measures what the service serves; None is today's call."""
+    fused = {} if fusion_runtime is None else {"fusion": fusion_runtime.config, "keyword_index": fusion_runtime.index}
     path.parent.mkdir(parents=True, exist_ok=True)
     check_deployed_runs_resumable(path)
     existing = _read_rows(path)
@@ -385,7 +388,7 @@ def run_deployed(benchmark: list[dict], driver, embedder, path: Path, *, model: 
                 raise AnswerBudgetExceeded(f"spend ${spent:.3f} reached the ${max_usd:.2f} cap before {q['id']}")
             t0 = time.monotonic()
             # what answer_stream does (k_chunks=8, hops=2), split in two so the context is kept: one retrieval, the served path untouched
-            r = hybrid_retrieve(q["q"], driver, embedder, k_chunks=8, hops=2)
+            r = hybrid_retrieve(q["q"], driver, embedder, k_chunks=8, hops=2, **fused)
             context = build_blocks(r)[1]
             events = list(stream_answer_for_context(q["q"], r, "hybrid", model=model, escalation_model=escalation_model,
                                                     max_tokens=max_tokens, timeout=timeout))

@@ -422,3 +422,17 @@ def test_the_mechanical_score_hands_the_verifier_the_cited_sources_and_the_quest
            "answer": "Revenue was $215.9 billion [%s]." % VALID[1]}
     bo.score_mechanical([row], BENCH, contexts={"N2": context()})
     assert seen["question"] == "Revenue FY26?" and "Revenue was $215.9 billion." in seen["sources"][VALID[1]]
+
+
+def test_run_deployed_passes_the_fusion_runtime_to_retrieval_only_when_given(tmp_path, monkeypatch):
+    """M2: with RETRIEVAL_FUSION on, eval-deployed must measure the fused retrieval the service serves (config + keyword index)."""
+    seen = []
+    monkeypatch.setattr(bo, "hybrid_retrieve", lambda *a, **kw: seen.append(kw) or retrieval())
+    stream, _ = _fake_answer_stream({b["q"]: [_done("x", [])] for b in BENCH})
+    monkeypatch.setattr(bo, "stream_answer_for_context", stream)
+    bench = [b for b in BENCH if b["id"] == "N2"]
+    runtime = type("RT", (), {"config": "CFG", "index": "IDX"})()
+    bo.run_deployed(bench, None, None, tmp_path / "on.jsonl", model="c/m", escalation_model="s/m", max_usd=None, fusion_runtime=runtime)
+    bo.run_deployed(bench, None, None, tmp_path / "off.jsonl", model="c/m", escalation_model="s/m", max_usd=None)
+    assert seen[0] == {"k_chunks": 8, "hops": 2, "fusion": "CFG", "keyword_index": "IDX"}
+    assert seen[1] == {"k_chunks": 8, "hops": 2}                     # flag off: today's exact call

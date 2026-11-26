@@ -458,14 +458,15 @@ def eval_deployed_cmd(
         raise typer.Abort()
     driver = client.get_driver(settings)
     try:
+        runtime = _deployed_fusion_runtime(driver, settings)      # RETRIEVAL_FUSION on: measure what the service serves
         rows = bo.run_deployed(benchmark, driver, Embedder(), settings.processed_dir / runs_file, model=model,
-                               escalation_model=escalation_model, max_usd=max_usd)
+                               escalation_model=escalation_model, max_usd=max_usd, fusion_runtime=runtime)
     except bo.AnswerBudgetExceeded as e:
         typer.echo(f"Stopped: {e}. Nothing further was spent; answers so far are checkpointed.", err=True)
         raise typer.Exit(5) from e
     finally:
         driver.close()
-    report = {"model": model, "escalation_model": escalation_model, "votes": votes,
+    report = {"model": model, "escalation_model": escalation_model, "votes": votes, "fusion": runtime is not None,
               **bo.score_deployed(rows, benchmark, llm_json, votes=votes, as_of=data_as_of(settings))}
     out = Path("artifacts") / report_name
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -839,21 +840,31 @@ def _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_u
         driver.close()
 
 
-def _publish_fusion_default(driver, settings) -> None:
-    """RETRIEVAL_FUSION on: build the fusion runtime once (cached per snapshot, a failed build too) and make it the agent's process
-    default, so the paid agent gate measures the fused agent like production. Flag off: nothing changes."""
+def _deployed_fusion_runtime(driver, settings):
+    """RETRIEVAL_FUSION on: the served fusion runtime (cached per snapshot), or stop before spending if it did not build, so a
+    paid run never measures the unfused path by accident. Flag off: None (today's exact retrieval)."""
     if not settings.retrieval_fusion:
-        return
+        return None
     from semigraph.retrieval import fusion
     from semigraph.serve import store
 
     snapshot_id = (store.current_snapshot(driver) or {}).get("id", "")
     runtime = fusion.process_runtime(driver, settings, snapshot_id)
-    if runtime is None:  # never let the paid gate silently measure the unfused agent
+    if runtime is None:
         typer.echo("Stopped before spending: RETRIEVAL_FUSION is on but the fusion runtime (keyword index) did not build; "
                    "see the log above. Nothing was spent.", err=True)
         raise typer.Exit(6)
-    fusion.set_process_default(runtime)
+    return runtime
+
+
+def _publish_fusion_default(driver, settings) -> None:
+    """RETRIEVAL_FUSION on: make the served fusion runtime the agent's process default, so the paid agent gate measures the fused
+    agent like production (stops before spending if it did not build). Flag off: nothing changes."""
+    runtime = _deployed_fusion_runtime(driver, settings)
+    if runtime is not None:
+        from semigraph.retrieval import fusion
+
+        fusion.set_process_default(runtime)
 
 
 if __name__ == "__main__":
