@@ -910,7 +910,9 @@ includes the rerank stage, so it is `e5c72794de` only when MiniLM loads.
   `seeded 53 of 58 benchmark answers into the cache`.
 - **Failure lines (roll back):** `rerank model 'minilm' not found` or `failed to load` (the stage is off AND every example is
   refused: the build's fingerprint is `07f6ff9da6`); `RETRIEVAL_FUSION is on but the keyword index could not be built` (the pre-M2
-  path is served and every example is refused: `2a6910aa5d`); any line with `NOT seeded` (it names both fingerprints). The service
+  path is served and every example is refused: `2a6910aa5d`); any line with `NOT seeded` (it names both fingerprints). At ask time, a
+  `rerank failed (<ErrorClass>: <message>): serving the fused order` warning means that one ask was answered with the fused order
+  and no rerank (repeated lines point at the model or its inputs). The service
   keeps answering in each case, with no instant examples. Setting `RETRIEVAL_RERANK = "none"` with fusion on is not a fallback:
   no examples file carries that fingerprint.
 - **Verify:** `/healthz` is ok; `/api/stats` answers; `(Invoke-RestMethod https://semigraph.fly.dev/api/examples).examples.Count`
@@ -919,11 +921,15 @@ includes the rerank stage, so it is `e5c72794de` only when MiniLM loads.
 - **Roll back:** fastest is the previous image: `flyctl releases -a semigraph --image` to find it, then
   `flyctl deploy --ha=false --yes --image <previous image>`. That re-applies this checkout's `[env]` (flags on), which is safe only for
   an image built before 3b73000 (its config ignores `RETRIEVAL_*` and seeds its own flag-off examples). For any later image, or to
-  roll back from the repo: `git revert` the flag-on commit (fly.toml flags off AND the flag-off `examples.json` together), then
-  `flyctl deploy --ha=false --remote-only --yes`. The old path is byte-identical with the flags off.
+  roll back from the repo: `git checkout 0b78976^ -- fly.toml src/semigraph/artifacts/examples.json` (the flags off AND the flag-off
+  examples together, from the commit before the flag-on one; valid until a new flag-off `examples.json` is committed for a later
+  snapshot), commit, then `flyctl deploy --ha=false --remote-only --yes`. Both
+  seeding and fly.toml tests (`tests/test_serve_seeding.py`) accept either whole setting, so this stays green. The old path is byte-identical with the flags off.
 - **R24, rerank p95 (owner-run):** the gate is that rerank adds at most 2 s at p95 on the throttled machine. No log line carries the
   stage's time, so `scripts/rerank_latency_probe.py` times it on the machine (worst case: 20 and 35 candidates, full 384-token
-  window; no database, no model call). Stage and run it like every ad-hoc script:
+  window; no model call). It reads no database, so the stage's candidate-text fetch from the graph is not in its numbers. The probe
+  process uses about 305 MB while it runs: run it with no upload in flight (uploads are refused below `mem_available_kb`
+  1,250,000), and do not take the RSS and free-memory comparison below while it runs. Stage and run it like every ad-hoc script:
   ```
   flyctl ssh console -a semigraph -C "mkdir -m 700 -p /root/ops"
   flyctl ssh sftp shell -a semigraph

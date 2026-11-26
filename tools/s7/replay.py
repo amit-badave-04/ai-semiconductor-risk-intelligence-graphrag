@@ -4,6 +4,7 @@ No API and no model: a driver on its own machine sends the DATABASE the operatio
 store and retrieval functions (``tools.s7.flows``), at open-loop Poisson rates, against the staging clone of live's Neo4j.
 
     python -m tools.s7.replay prepare                  # indexes + the cached examples (once per database)
+    #   the shipped examples are flag-on: add --fusion --rerank minilm (the serving app's RETRIEVAL_*; no model files needed here)
     python -m tools.s7.replay run --phase L5 --out /out/L5
     python -m tools.s7.report /out --out s7.json [--evidence SNAPSHOT_DIR]
 
@@ -14,6 +15,7 @@ made from plain values.
 """
 
 import argparse
+import contextlib
 import dataclasses
 import json
 import math
@@ -87,14 +89,16 @@ def password_from_env(env: Mapping[str, str]) -> str:
 
 # ---- preparing the database --------------------------------------------------------------------------------------------
 
-def prepare_examples(driver: Any, examples_doc: Mapping, snapshot_id: str, *, template: str) -> int:
+def prepare_examples(driver: Any, examples_doc: Mapping, snapshot_id: str, *, template: str, fusion: bool = False) -> int:
     """The schema the service creates at boot (``store.ensure_indexes``, so the replay times the indexed database live runs on)
     and the cached examples, through the service's own ``seed_examples``. Returns how many were seeded; 0 when the file was
-    written for another snapshot or another prompt template (they would never be served, as the service itself decides)."""
+    written for another snapshot or another prompt template (they would never be served, as the service itself decides).
+    ``fusion`` (RETRIEVAL_FUSION on) seeds under the flag-on cache key, as the service does."""
     store.ensure_indexes(driver)
     if not store.examples_match_snapshot(dict(examples_doc), snapshot_id) or examples_doc.get("template_fingerprint") != template:
         return 0
-    return len(store.seed_examples(driver, list(examples_doc["examples"]), snapshot_id).seeded_ids)
+    return len(store.seed_examples(driver, list(examples_doc["examples"]), snapshot_id,
+                                       **({"fusion": True} if fusion else {})).seeded_ids)
 
 
 def seedable_examples(examples_doc: Mapping) -> list[dict]:
@@ -203,6 +207,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="the database (default: the staging one); the password is read from S7_NEO4J_PASSWORD")
     common.add_argument("--database", default="neo4j")
     common.add_argument("--examples", type=Path, default=Path("src/semigraph/artifacts/examples.json"))
+    common.add_argument("--fusion", action=argparse.BooleanOptionalAction, default=None,
+                        help="the serving app's RETRIEVAL_FUSION (default: that variable here, else off)")
+    common.add_argument("--rerank", default=None, help="the serving app's RETRIEVAL_RERANK: none, minilm or mxbai (default: that variable here, else none)")
     run = sub.add_parser("run", parents=[common], help="run one phase")
     run.add_argument("--phase", choices=sorted(mix.PHASES), required=True)
     run.add_argument("--out", type=Path, default=None, help="default: $S7_OUT_DIR/PHASE (S7_OUT_DIR is /out on the tools machine)")
@@ -244,14 +251,60 @@ def _examples(path: Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def _cmd_prepare(args: argparse.Namespace, env: Mapping[str, str]) -> int:
+_TRUE = {"1", "true", "t", "yes", "y", "on"}
+_FALSE = {"0", "false", "f", "no", "n", "off"}
+
+
+def serving_setting(args: argparse.Namespace, env: Mapping[str, str]) -> tuple[bool, str]:
+    """``(fusion, rerank)`` the service under test runs with: ``--fusion`` / ``--rerank``, else RETRIEVAL_FUSION /
+    RETRIEVAL_RERANK in ``env`` (the tools machine does not carry the serving app's flags, so say them on the command line;
+    fly.toml [env] of the serving app is the source). A value the service's settings would refuse is refused here too."""
+    from semigraph.retrieval.rerank import RERANK_MODELS
+
+    fusion = args.fusion
+    if fusion is None:
+        word = env.get("RETRIEVAL_FUSION", "").strip().lower()      # the spellings pydantic's bool accepts
+        if word not in _TRUE | _FALSE | {""}:
+            raise SystemExit("RETRIEVAL_FUSION is not a boolean")
+        fusion = word in _TRUE
+    rerank = args.rerank or env.get("RETRIEVAL_RERANK", "none") or "none"
+    if rerank != "none" and rerank not in RERANK_MODELS:
+        raise SystemExit(f"rerank {rerank!r} is not one of none, {', '.join(RERANK_MODELS)}")
+    return fusion, rerank
+
+
+@contextlib.contextmanager
+def serving_as(fusion: bool, rerank: str):
+    """While active, the flag-on fingerprint (and so every ``cache_key(..., fusion=True)``) is computed for ``rerank`` as if its
+    model had loaded: S7 never reranks, so the tools machine needs no model files, and no ``Settings`` is built (the tools app
+    is refused by its validators). Flag off: nothing is changed. shortcut: a process-wide patch, fine while S7 is single-threaded
+    at this point; upgrade by passing settings into ``fusion.serving_digest``."""
+    if not fusion:
+        yield
+        return
+    from unittest import mock
+
+    plain = SimpleNamespace(retrieval_rerank=rerank)
+    with mock.patch("semigraph.config.get_settings", lambda: plain),             mock.patch("semigraph.retrieval.rerank.get_reranker", lambda key, root=None, threads=None: object()):
+        yield
+
+
+def serving_template(fusion: bool, rerank: str) -> str:
     from semigraph.retrieval.answerer import template_fingerprint
 
+    with serving_as(fusion, rerank):
+        return template_fingerprint(fusion=fusion)
+
+
+def _cmd_prepare(args: argparse.Namespace, env: Mapping[str, str]) -> int:
+    fusion, rerank = serving_setting(args, env)
     reading, state = _drivers(args, env)
     try:
         snapshot = store.current_snapshot(reading)
         snapshot_id = snapshot["id"] if snapshot else ""
-        seeded = prepare_examples(reading, _examples(args.examples), snapshot_id, template=template_fingerprint())
+        with serving_as(fusion, rerank):                   # the seeded keys come from the same fingerprint as the comparison
+            seeded = prepare_examples(reading, _examples(args.examples), snapshot_id,
+                                      template=serving_template(fusion, rerank), fusion=fusion)
     finally:
         reading.close()
         state.close()
@@ -281,8 +334,7 @@ def _config_for(args: argparse.Namespace) -> LevelConfig:
 
 
 def _cmd_run(args: argparse.Namespace, env: Mapping[str, str]) -> int:
-    from semigraph.retrieval.answerer import template_fingerprint
-
+    template = serving_template(*serving_setting(args, env))
     for path, how in ((args.pool, "it ships with tools/loadtest"), (args.vectors, "build it with `python -m tools.s7.replay vectors`")):
         if not Path(path).is_file():
             raise SystemExit(f"{path} is missing: {how}")
@@ -293,7 +345,7 @@ def _cmd_run(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     try:
         snapshot = store.current_snapshot(reading)
         inputs = ReplayInputs(pool=pool["live"], vectors=vecs, examples=seedable_examples(_examples(args.examples)),
-                              snapshot_id=snapshot["id"] if snapshot else "", template=template_fingerprint())
+                              snapshot_id=snapshot["id"] if snapshot else "", template=template)
         result = run_level(_config_for(args), read_driver=reading, state_driver=state, inputs=inputs,
                            out_dir=args.out or Path(env.get("S7_OUT_DIR", "s7_out")) / args.phase)
     finally:

@@ -7,7 +7,9 @@ model directory and thread count, read from the machine's environment the way th
 times ``rerank`` on worst-case inputs: 20 candidates (the rerank depth) and 35 (the depth plus the slot-guarantee heads), each
 passage longer than the 384-token window so every pair is cut at the full window. It reads the cgroup's CPU throttling before and
 after. It does not touch the database, ask a model or read a secret; the stage's candidate-text fetch from the graph is not included.
-It loads a second copy of the model (about 23 MB) next to the running service, which keeps serving.
+It loads a second copy of the model next to the running service, which keeps serving. Measured, the probe process reaches
+about 305 MB RSS (importing semigraph.retrieval pulls in the answerer and litellm), not just the model's size. Run it with
+no upload in flight (uploads are refused below mem_available_kb 1,250,000), and do not take an RSS or MemAvailable comparison while it runs.
 
 Stage it like every ad-hoc operator script (docs/RUNBOOK.md), in the root-only directory, and run it isolated:
 
@@ -30,6 +32,10 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
+
+# Before any semigraph import: LiteLLM (loaded by semigraph.retrieval) fetches its price table from the internet unless told to use
+# its bundled copy, and the production machine must make no call it was not asked to make.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 GATE_S = 2.0
 SIZES = (20, 35)

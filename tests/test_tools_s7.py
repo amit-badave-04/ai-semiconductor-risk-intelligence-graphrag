@@ -520,15 +520,19 @@ def test_a_missing_seeded_example_is_refused_before_the_first_ask(tmp_path):
     assert not (tmp_path / "x" / "samples.jsonl").exists() or (tmp_path / "x" / "samples.jsonl").read_text(encoding="utf-8") == ""
 
 
-def test_the_shipped_examples_seed_and_every_example_a_level_asks_for_is_cached(tmp_path):
+def test_the_shipped_examples_seed_and_every_example_a_level_asks_for_is_cached(tmp_path, monkeypatch):
     """A failure that would cost a window: ``prepare`` seeds what ``seed_examples`` accepts (an example whose stored checks
     failed is refused), so the cached asks must be drawn from exactly those, or the pre-check would refuse the level."""
-    from semigraph.retrieval.answerer import template_fingerprint
+    import tomllib
+    env = tomllib.loads((ROOT / "fly.toml").read_text(encoding="utf-8"))["env"]
+    fusion, rerank = replay.serving_setting(parse_args("prepare", "--fusion" if env["RETRIEVAL_FUSION"] == "true" else "--no-fusion",
+                                                       "--rerank", env["RETRIEVAL_RERANK"]), {})
     doc = json.loads((ROOT / "src" / "semigraph" / "artifacts" / "examples.json").read_text(encoding="utf-8"))
-    template = template_fingerprint()
+    template = replay.serving_template(fusion, rerank)          # model-free: nothing patched here, no model files in CI
     assert doc["template_fingerprint"] == template                          # else the service refuses to serve them too
     world = FakeNeo4j()
-    seeded = replay.prepare_examples(world, doc, doc["snapshot_id"], template=template)
+    with replay.serving_as(fusion, rerank):
+        seeded = replay.prepare_examples(world, doc, doc["snapshot_id"], template=template, fusion=fusion)
     asked = replay.seedable_examples(doc)
     assert seeded == len(asked) >= 1
     assert all(store.refusal_reason(example) is None for example in asked)
@@ -973,3 +977,51 @@ def test_a_level_against_a_throwaway_neo4j(tmp_path):                      # pra
     finally:
         reading.close()
         state.close()
+
+
+def parse_args(*argv):
+    return replay.build_parser().parse_args(list(argv))
+
+
+def test_the_serving_setting_comes_from_the_arguments_else_the_environment_and_refuses_what_settings_would():
+    assert replay.serving_setting(parse_args("prepare"), {}) == (False, "none")
+    assert replay.serving_setting(parse_args("prepare"), {"RETRIEVAL_FUSION": "True", "RETRIEVAL_RERANK": "minilm"}) == (True, "minilm")
+    assert replay.serving_setting(parse_args("prepare", "--fusion", "--rerank", "mxbai"), {"RETRIEVAL_FUSION": "false"}) == (True, "mxbai")
+    assert replay.serving_setting(parse_args("run", "--phase", "L5", "--no-fusion"), {"RETRIEVAL_FUSION": "true"})[0] is False
+    with pytest.raises(SystemExit, match="rerank 'MiniLM'"):
+        replay.serving_setting(parse_args("prepare", "--rerank", "MiniLM"), {})
+    with pytest.raises(SystemExit, match="RETRIEVAL_FUSION is not a boolean"):
+        replay.serving_setting(parse_args("prepare"), {"RETRIEVAL_FUSION": "maybe"})
+
+
+def test_the_serving_template_is_the_shipped_one_under_fusion_and_minilm_with_no_model_files(monkeypatch):
+    """Nothing patched here: S7 must not need the reranker's model files nor a Settings (the tools machine has neither)."""
+    from semigraph.retrieval.answerer import template_fingerprint
+    monkeypatch.setenv("FLY_APP_NAME", "semigraph-tools-stg")           # a Settings() here would be refused
+    assert replay.serving_template(False, "minilm") == template_fingerprint()
+    with replay.serving_as(True, "none"):
+        flag_on = template_fingerprint(fusion=True)
+    assert replay.serving_template(True, "none") == flag_on != template_fingerprint()
+    shipped = json.loads((ROOT / "src" / "semigraph" / "artifacts" / "examples.json").read_text(encoding="utf-8"))["template_fingerprint"]
+    assert replay.serving_template(True, "minilm") == shipped == "e5c72794de"
+
+
+def test_prepare_seeds_under_the_tools_app_environment_with_fusion_and_minilm_and_the_keys_are_the_prechecks(tmp_path, monkeypatch):
+    """The whole ``prepare`` path on the tools machine's environment: no Settings is ever built (it would raise here), the seeded
+    cache keys are exactly the keys the level's pre-check computes."""
+    from semigraph import config
+    monkeypatch.setenv("FLY_APP_NAME", "semigraph-tools-stg")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setattr(config, "Settings", lambda *a, **k: pytest.fail("a Settings was built"))
+    template = replay.serving_template(True, "minilm")
+    doc = {"snapshot_id": "snap", "template_fingerprint": template, "examples": [
+        {"id": "E1", "question": "what is nvidia's risk?", "answer": "a", "citations": [], "hallucinated": [],
+         "checks": {"citations_retrieved": True, "numbers_grounded": True, "has_citation": True}}]}
+    world = FakeNeo4j()
+    with replay.serving_as(True, "minilm"):
+        assert replay.prepare_examples(world, doc, "snap", template=template, fusion=True) == 1
+    expected = store.cache_key("what is nvidia's risk?", "hybrid", "snap", template)
+    assert expected in world.answers
+    replay._precheck(world, replay.ReplayInputs(pool=POOL, vectors=VECTORS, examples=doc["examples"], snapshot_id="snap", template=template))
+
+

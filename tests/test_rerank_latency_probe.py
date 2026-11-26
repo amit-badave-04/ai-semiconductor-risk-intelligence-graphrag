@@ -108,3 +108,21 @@ def test_main_exits_1_on_fail(monkeypatch, capsys):
 def test_the_probe_never_prints_settings_or_touches_the_database():
     source = (ROOT / "scripts" / "rerank_latency_probe.py").read_text(encoding="utf-8")
     assert "neo4j" not in source.lower() and "password" not in source.lower() and "get_driver" not in source
+
+
+def test_the_cost_map_is_pinned_local_before_any_semigraph_import():
+    """On the production machine LiteLLM (pulled in by semigraph.retrieval) must not fetch its price table from the internet."""
+    import os
+    import subprocess
+    import sys
+
+    code = ("import importlib.util, os, sys\n"
+            f"spec = importlib.util.spec_from_file_location('p', r'{ROOT / 'scripts' / 'rerank_latency_probe.py'}')\n"
+            "mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)\n"
+            "print(os.environ.get('LITELLM_LOCAL_MODEL_COST_MAP'), any(m.startswith('semigraph') for m in sys.modules))\n")
+    env = {k: v for k, v in os.environ.items() if k != "LITELLM_LOCAL_MODEL_COST_MAP"}
+    done = subprocess.run([sys.executable, "-I", "-c", code], env=env, capture_output=True, text=True, timeout=60)
+    assert done.stdout.split() == ["True", "False"], done.stderr[-1000:]
+    source = (ROOT / "scripts" / "rerank_latency_probe.py").read_text(encoding="utf-8")
+    assert source.index('"LITELLM_LOCAL_MODEL_COST_MAP"') < source.index("from semigraph")
+    assert "23 MB" not in source and "305 MB" in source and "no upload in flight" in source
