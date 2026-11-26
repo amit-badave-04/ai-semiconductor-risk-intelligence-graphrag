@@ -75,7 +75,8 @@ def _names_filer(text: str, aliases: Iterable[str]) -> bool:
 
 
 def _family(ticker: str, text: str) -> str:
-    return f"{ticker}:{hashlib.sha1(normalise(text)[:200].encode('utf-8')).hexdigest()[:10]}"
+    # not a security use: a short deterministic id for a passage family (the frozen M2-Bench sample depends on it)
+    return f"{ticker}:{hashlib.sha1(normalise(text)[:200].encode('utf-8')).hexdigest()[:10]}"  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
 
 
 def _item(kind: str, rows: list) -> dict:

@@ -264,6 +264,7 @@ def build_fusion_runtime(driver, settings, snapshot_id: str) -> FusionRuntime | 
         logger.error("RETRIEVAL_FUSION is on but the keyword index could not be built (%s%s): serving today's retrieval path",
                      type(exc).__name__, f": {exc}" if isinstance(exc, ValueError) else "")
         return None
-    logger.info("keyword index built: %d spans, %.1f s, snapshot %s, tokenizer %s", index.size,
+    # the rule matches the word "tokenizer"; this logs a count, a duration, a snapshot id and a version, no secret
+    logger.info("keyword index built: %d spans, %.1f s, snapshot %s, tokenizer %s", index.size,  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
                 time.perf_counter() - started, snapshot_id or "none", TOKENIZER_VERSION)
     return FusionRuntime(config, index)
