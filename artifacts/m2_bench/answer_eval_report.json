@@ -1,0 +1,2805 @@
+{
+ "spec": "docs/specs/m2-search.md section 7 (answer-level decision rule)",
+ "split": "test",
+ "frozen_settings_sha256": "c5018d87ddd9a9d18e9b4468456fe253d054368d2e80f6142b4c9520778540ce",
+ "questions": [
+  {
+   "id": "M2-A07",
+   "type": "A",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-A08",
+   "type": "A",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-A10",
+   "type": "A",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-A11",
+   "type": "A",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-A14",
+   "type": "A",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-A15",
+   "type": "A",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-A16",
+   "type": "A",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-A18",
+   "type": "A",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-A20",
+   "type": "A",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-B15",
+   "type": "B",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-B25",
+   "type": "B",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-B43",
+   "type": "B",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-B45",
+   "type": "B",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C00",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C01",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C03",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C04",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C05",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C07",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C14",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C18",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C20",
+   "type": "C",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-C23",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-C24",
+   "type": "C",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-D65",
+   "type": "D",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-D67",
+   "type": "D",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-D68",
+   "type": "D",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-D69",
+   "type": "D",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-D72",
+   "type": "D",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-D74",
+   "type": "D",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-D81",
+   "type": "D",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-D84",
+   "type": "D",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-D85",
+   "type": "D",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-D86",
+   "type": "D",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-D87",
+   "type": "D",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-D89",
+   "type": "D",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-E15",
+   "type": "E",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-E16",
+   "type": "E",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-E17",
+   "type": "E",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-E21",
+   "type": "E",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-E23",
+   "type": "E",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-F03",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F06",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F10",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F11",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F13",
+   "type": "F",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-F15",
+   "type": "F",
+   "stratum": "control"
+  },
+  {
+   "id": "M2-F16",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F19",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F20",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F24",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F25",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F27",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F28",
+   "type": "F",
+   "stratum": "headroom"
+  },
+  {
+   "id": "M2-F34",
+   "type": "F",
+   "stratum": "headroom"
+  }
+ ],
+ "control_sample": {
+  "seed": "m2-i6-control-v1",
+  "n": 15,
+  "ids": [
+   "M2-A11",
+   "M2-A16",
+   "M2-B15",
+   "M2-B43",
+   "M2-C20",
+   "M2-D65",
+   "M2-D67",
+   "M2-D69",
+   "M2-D72",
+   "M2-D74",
+   "M2-D81",
+   "M2-E17",
+   "M2-E23",
+   "M2-F13",
+   "M2-F15"
+  ]
+ },
+ "headroom_limit": null,
+ "runs_file": "m2_answer_eval_runs.jsonl",
+ "arms": {
+  "off": {
+   "n": 55,
+   "correct": {
+    "M2-C20": true,
+    "M2-A07": true,
+    "M2-A08": true,
+    "M2-A10": false,
+    "M2-A11": false,
+    "M2-A14": false,
+    "M2-A15": false,
+    "M2-A16": false,
+    "M2-A18": false,
+    "M2-A20": false,
+    "M2-B15": true,
+    "M2-B25": false,
+    "M2-B43": true,
+    "M2-B45": false,
+    "M2-C00": false,
+    "M2-C01": false,
+    "M2-C03": false,
+    "M2-C04": false,
+    "M2-C05": false,
+    "M2-C07": false,
+    "M2-C14": false,
+    "M2-C18": false,
+    "M2-C23": false,
+    "M2-C24": false,
+    "M2-D65": false,
+    "M2-D67": true,
+    "M2-D68": false,
+    "M2-D69": false,
+    "M2-D72": false,
+    "M2-D74": true,
+    "M2-D81": false,
+    "M2-D84": false,
+    "M2-D85": false,
+    "M2-D86": false,
+    "M2-D87": true,
+    "M2-D89": false,
+    "M2-E15": false,
+    "M2-E16": false,
+    "M2-E17": true,
+    "M2-E21": false,
+    "M2-E23": true,
+    "M2-F03": false,
+    "M2-F06": false,
+    "M2-F10": false,
+    "M2-F11": false,
+    "M2-F13": true,
+    "M2-F15": true,
+    "M2-F16": true,
+    "M2-F19": false,
+    "M2-F20": false,
+    "M2-F24": false,
+    "M2-F25": false,
+    "M2-F27": false,
+    "M2-F28": false,
+    "M2-F34": false
+   },
+   "n_correct": 13,
+   "needle_hits": [
+    "M2-C20"
+   ],
+   "judged": {
+    "open_correct": 12,
+    "open_of": 54,
+    "votes": {
+     "M2-A07": 3,
+     "M2-A08": 3,
+     "M2-A10": 0,
+     "M2-A11": 0,
+     "M2-A14": 0,
+     "M2-A15": 0,
+     "M2-A16": 0,
+     "M2-A18": 0,
+     "M2-A20": 0,
+     "M2-B15": 3,
+     "M2-B25": 0,
+     "M2-B43": 3,
+     "M2-B45": 0,
+     "M2-C00": 0,
+     "M2-C01": 0,
+     "M2-C03": 0,
+     "M2-C04": 0,
+     "M2-C05": 0,
+     "M2-C07": 0,
+     "M2-C14": 0,
+     "M2-C18": 0,
+     "M2-C23": 0,
+     "M2-C24": 0,
+     "M2-D65": 0,
+     "M2-D67": 3,
+     "M2-D68": 0,
+     "M2-D69": 0,
+     "M2-D72": 1,
+     "M2-D74": 3,
+     "M2-D81": 0,
+     "M2-D84": 0,
+     "M2-D85": 0,
+     "M2-D86": 0,
+     "M2-D87": 3,
+     "M2-D89": 0,
+     "M2-E15": 0,
+     "M2-E16": 0,
+     "M2-E17": 3,
+     "M2-E21": 0,
+     "M2-E23": 3,
+     "M2-F03": 0,
+     "M2-F06": 0,
+     "M2-F10": 0,
+     "M2-F11": 0,
+     "M2-F13": 3,
+     "M2-F15": 3,
+     "M2-F16": 3,
+     "M2-F19": 0,
+     "M2-F20": 0,
+     "M2-F24": 0,
+     "M2-F25": 0,
+     "M2-F27": 0,
+     "M2-F28": 0,
+     "M2-F34": 0
+    },
+    "errors": {},
+    "details": {
+     "M2-A07": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies China as the predominant producer with export restrictions, consistent with the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies China as the predominant producer with export restrictions, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies China as the predominant producer with export restrictions, matching the grading notes exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-A08": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies energy, equipment, and network capacity as the other technical infrastructure costs besides depreciation, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies energy, equipment, and network capacity costs as other technical infrastructure costs besides depreciation, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies energy, equipment, and network capacity costs as other technical infrastructure costs besides depreciation, matching the grading notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-A10": [
+      {
+       "correct": false,
+       "reason": "The cited passage actually contains the answer (expected future revenue growth and profitability, tax holidays, surtax on unappropriated earnings), but the answer falsely claims the material does not specify these factors and instead discusses unrelated tax topics.",
+       "unsupported_claims": [
+        "The provided material does not specify which factors affect TSMC's ability to realize its deferred income tax assets",
+        "the tax excerpt discusses tax rates, CFC rules, investment tax credits, and the alternative minimum tax instead"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the material does not specify the factors, but the grading notes show the exact same citation contains the relevant text about revenue growth, profitability, and tax holidays affecting deferred tax asset realization.",
+       "unsupported_claims": [
+        "The provided material does not specify which factors affect TSMC's ability to realize its deferred income tax assets"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the material does not specify the factors, but the grading notes show the cited passage explicitly lists future revenue growth, profitability, tax holidays, and surtax on unappropriated earnings as the relevant factors.",
+       "unsupported_claims": [
+        "The provided material does not specify which factors affect TSMC's ability to realize its deferred income tax assets"
+       ]
+      }
+     ],
+     "M2-A11": [
+      {
+       "correct": false,
+       "reason": "The answer fails to state the three drivers (volume, average selling prices, manufacturing costs) despite citing the exact passage containing them, and instead claims the context does not identify them.",
+       "unsupported_claims": [
+        "The provided context does not identify the three drivers"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to state the three drivers (volume, average selling prices, manufacturing costs) that are directly given in the cited filing text per the grading notes, despite citing the exact passage.",
+       "unsupported_claims": [
+        "The provided context does not identify the three drivers"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to identify the three drivers (volume, average selling prices, manufacturing costs) despite citing the exact passage that states them, and thus does not answer the question.",
+       "unsupported_claims": [
+        "The provided context does not identify the three drivers"
+       ]
+      }
+     ],
+     "M2-A14": [
+      {
+       "correct": false,
+       "reason": "The answer fails to state the known figure of $59.0 billion, instead claiming the information is not available, which contradicts the grading notes.",
+       "unsupported_claims": [
+        "The provided context does not state the aggregate principal amount of senior unsecured notes outstanding"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes confirm the filing states $59.0 billion in senior unsecured notes outstanding, but the answer fails to provide this information, claiming it does not state the amount.",
+       "unsupported_claims": [
+        "The provided context does not state the aggregate principal amount of senior unsecured notes"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the information, while the grading notes confirm the filing clearly states $59.0 billion in senior unsecured notes maturing 2027-2064.",
+       "unsupported_claims": [
+        "The provided context does not state Meta Platforms' aggregate principal amount of senior unsecured notes outstanding"
+       ]
+      }
+     ],
+     "M2-A15": [
+      {
+       "correct": false,
+       "reason": "The notes state the actual filing gives $456 million as accelerated depreciation for 2025, but the answer states $950 million and claims the figure is unavailable, contradicting the notes.",
+       "unsupported_claims": [
+        "$950 million in combined accelerated depreciation and impairment charges",
+        "the filing excerpt does not give an accelerated-depreciation-only amount"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state the filing explicitly gives $456 million as accelerated depreciation for 2025 (vs $992 million in 2024), but the answer claims this breakdown is not given and instead states a combined figure of $950 million.",
+       "unsupported_claims": [
+        "$950 million in combined accelerated depreciation and impairment charges",
+        "the filing excerpt does not give an accelerated-depreciation-only amount"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes give $456 million as the 2025 accelerated depreciation figure, but the answer states $950 million and claims no separate figure is given, contradicting the grading notes.",
+       "unsupported_claims": [
+        "Intel recorded $950 million in combined accelerated depreciation and impairment charges",
+        "the filing excerpt does not give an accelerated-depreciation-only amount"
+       ]
+      }
+     ],
+     "M2-A16": [
+      {
+       "correct": false,
+       "reason": "The grading notes show the filing explicitly identifies the regulator as the United Kingdom Competition and Markets Authority, but the answer claims the regulator is not identified.",
+       "unsupported_claims": [
+        "the context does not identify which regulator issued the order"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The filing explicitly identifies the United Kingdom Competition and Markets Authority as the regulator, but the answer claims the regulator is not identified, contradicting the grading notes.",
+       "unsupported_claims": [
+        "it does not identify which regulator issued the order"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes show the cited filing explicitly names the United Kingdom Competition and Markets Authority as the regulator, but the answer claims the regulator is not identified.",
+       "unsupported_claims": [
+        "the context does not identify which regulator issued the order"
+       ]
+      }
+     ],
+     "M2-A18": [
+      {
+       "correct": false,
+       "reason": "The grading notes confirm the filing explicitly states NOR is most commonly used for reliable code storage, but the answer claims the context does not say this, contradicting the notes.",
+       "unsupported_claims": [
+        "The provided context does not say what Micron's NOR memory products are most commonly used for"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes show the filing explicitly states NOR is most commonly used for reliable code storage, but the answer claims the context does not say this.",
+       "unsupported_claims": [
+        "The provided context does not say what Micron's NOR memory products are most commonly used for."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes confirm the filing directly states NOR is most commonly used for reliable code storage, but the answer claims the context does not provide this information.",
+       "unsupported_claims": [
+        "The provided context does not say what Micron's NOR memory products are most commonly used for"
+       ]
+      }
+     ],
+     "M2-A20": [
+      {
+       "correct": false,
+       "reason": "The answer claims the data is not reported, but the grading notes confirm the exact figures (75.0% vs 72.4%) are present in the cited filing, directly contradicting the answer's refusal.",
+       "unsupported_claims": [
+        "The provided context does not report NVIDIA's gross margin for the second quarter of fiscal year 2027 or the comparable quarter a year earlier"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the data is unavailable despite the citation itself containing the exact figures (75.0% and 72.4%) confirmed by the grading notes.",
+       "unsupported_claims": [
+        "The provided context does not report NVIDIA's gross margin for Q2 FY2027 or the comparable quarter a year earlier"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the data is unavailable, but the grading notes show the figures (75.0% and 72.4%) are present in the cited filing, directly contradicting the answer.",
+       "unsupported_claims": [
+        "The provided context does not report NVIDIA's gross margin for Q2 FY2027 or a year earlier"
+       ]
+      }
+     ],
+     "M2-B15": [
+      {
+       "correct": true,
+       "reason": "The answer correctly states that AMD Solarflare adapters are AMD's product brand for low-latency adapters for the FinTech market, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states AMD Solarflare adapters are AMD's product brand for low-latency adapters for FinTech, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies AMD Solarflare adapters as the product brand for low-latency adapters for FinTech, matching the reference answer and cited filing text.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-B25": [
+      {
+       "correct": false,
+       "reason": "The answer fails to identify Nvidia and Softbank Group, instead claiming the information is not available, which contradicts the grading notes.",
+       "unsupported_claims": [
+        "The provided context does not contain information identifying the two companies",
+        "I cannot answer this question from the available context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to identify Nvidia and Softbank Group as the notes require, and does not answer the question.",
+       "unsupported_claims": [
+        "The provided context does not contain information identifying the two companies"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to identify Nvidia and SoftBank Group, instead claiming the information is not available, which contradicts the grading notes.",
+       "unsupported_claims": [
+        "The provided context does not contain information identifying the two companies"
+       ]
+      }
+     ],
+     "M2-B43": [
+      {
+       "correct": true,
+       "reason": "The answer matches the reference answer and filing text exactly, stating NVLink Fusion enables hyperscalers and custom ASIC designers to integrate custom CPUs and XPUs with NVIDIA's platform.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the reference answer and filing text exactly, correctly stating that NVLink Fusion enables hyperscalers and custom ASIC designers to integrate custom CPUs and XPUs with NVIDIA's platform.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the reference answer and cited filing text exactly, correctly stating that NVLink Fusion enables integration of custom CPUs and XPUs with NVIDIA's platform.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-B45": [
+      {
+       "correct": false,
+       "reason": "The reference list is server CPUs, GPU accelerators, DPUs, AI NICs, FPGAs and adaptive SoCs, but the answer omits adaptive SoCs and explicitly denies that AI NICs are said to be purchased by hyperscalers, contradicting the notes.",
+       "unsupported_claims": [
+        "does not specifically say hyperscalers purchase those AI NICs"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The reference answer is server CPUs, GPU accelerators, DPUs, AI NICs, FPGAs and adaptive SoCs, but the answer omits adaptive SoCs and instead adds unsupported hedging claiming AMD does not specifically say hyperscalers purchase AI NICs, contradicting the notes which state the filing directly lists AI NICs among what hyperscale providers purchase.",
+       "unsupported_claims": [
+        "does not specifically say hyperscalers purchase those AI NICs",
+        "omits adaptive SoCs from the list"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The reference answer lists server CPUs, GPU accelerators, DPUs, AI NICs, FPGAs and adaptive SoCs as what hyperscalers purchase, but the answer explicitly denies AMD says hyperscalers purchase AI NICs and omits adaptive SoCs entirely, contradicting the grading notes.",
+       "unsupported_claims": [
+        "does not specifically say hyperscalers purchase those AI NICs"
+       ]
+      }
+     ],
+     "M2-C00": [
+      {
+       "correct": false,
+       "reason": "The notes state the filing reports AEBU revenue of $4.75 billion for 2025, but the answer claims this figure is not reported and substitutes an unrelated CDBU figure.",
+       "unsupported_claims": [
+        "The provided context does not report Micron's AEBU revenue for fiscal 2025",
+        "the segment-revenue figure it provides is CDBU revenue of $7.23 billion"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the AEBU revenue figure and instead gives an irrelevant CDBU figure, contradicting the grading notes which confirm $4.75 billion was reported for AEBU in fiscal 2025.",
+       "unsupported_claims": [
+        "The provided context does not report Micron's AEBU revenue for fiscal 2025"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state AEBU revenue was $4.75 billion in 2025, but the answer claims this figure is not reported and substitutes an unrelated CDBU figure.",
+       "unsupported_claims": [
+        "The provided context does not report Micron's AEBU revenue for fiscal 2025",
+        "the segment-revenue figure it provides is CDBU revenue of $7.23 billion"
+       ]
+      }
+     ],
+     "M2-C01": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the specific G&A increase figure ($733 million, 10%) which was available in the cited filing passage, instead giving an unrelated total operating expenses figure.",
+       "unsupported_claims": [
+        "The provided context does not state the increase in general and administrative expenses"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the G&A increase figure ($733 million, or 10%) which is directly available in the cited source, instead substituting an unrelated total operating expenses figure.",
+       "unsupported_claims": [
+        "The provided context does not state the increase in general and administrative expenses"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the G&A increase figure ($733 million, or 10%) which is directly supported by the cited filing passage, instead claiming the information is not available.",
+       "unsupported_claims": [
+        "The provided context does not state the increase in general and administrative expenses"
+       ]
+      }
+     ],
+     "M2-C03": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure ($2.41 billion, 25%) that the grading notes confirm is available, instead claiming it cannot be determined.",
+       "unsupported_claims": [
+        "The provided context does not include Meta's general and administrative expense figures, so I can't determine the increase."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure ($2.41 billion, or 25%) that is available per the grading notes, instead claiming it cannot be determined.",
+       "unsupported_claims": [
+        "The provided context does not include Meta's general and administrative expense figures, so I can't determine the increase."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the known figure ($2.41 billion, or 25%) and instead claims the data is unavailable, which contradicts the grading notes and does not answer the question.",
+       "unsupported_claims": [
+        "The provided context does not include Meta's general and administrative expense figures, so I can't determine the increase."
+       ]
+      }
+     ],
+     "M2-C04": [
+      {
+       "correct": false,
+       "reason": "The notes state the filing directly reports a $6,085 million increase in cash provided by operations for this exact period, but the answer claims no such data exists and fails to answer the question.",
+       "unsupported_claims": [
+        "No cash-flow-from-operations figures exist for the period in question",
+        "Cannot answer this question from the given context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes confirm a specific $6,085 million figure is reported in the filing, but the answer claims no such data exists and fails to answer the question.",
+       "unsupported_claims": [
+        "The context provided does not contain cash-flow-from-operations figures for the period in question",
+        "I cannot answer this question from the given context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state the filing reports a $6,085 million increase in cash from operations for this exact period, but the answer claims no such data exists and fails to answer the question.",
+       "unsupported_claims": [
+        "No cash-flow-from-operations figures exist for the period in question",
+        "Cannot answer this question from the given context"
+       ]
+      }
+     ],
+     "M2-C05": [
+      {
+       "correct": false,
+       "reason": "The answer claims the context does not state the Q2 2026 income taxes paid, but the grading notes show the exact citation contains this figure ($2.7 billion).",
+       "unsupported_claims": [
+        "The provided context does not state how much Amazon paid in U.S. and foreign income taxes, net of refunds, in Q2 2026."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes show the cited passage directly states the Q2 2026 figure ($2.7 billion), but the answer claims the context does not provide this information, failing to answer the question.",
+       "unsupported_claims": [
+        "The provided context does not state how much Amazon paid in U.S. and foreign income taxes, net of refunds, in Q2 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes show the cited filing passage explicitly states $2.7 billion for Q2 2026, but the answer claims the context does not state this figure, failing to answer the question correctly.",
+       "unsupported_claims": [
+        "The provided context does not state how much Amazon paid in U.S. and foreign income taxes, net of refunds, in Q2 2026."
+       ]
+      }
+     ],
+     "M2-C07": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure $61,079 million stated in the grading notes, instead claiming the context does not state it.",
+       "unsupported_claims": [
+        "The provided context does not state Broadcom's aggregate indebtedness as of August 2, 2026."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure of $61,079 million that the grading notes confirm is stated in the filing, instead claiming the information is not available.",
+       "unsupported_claims": [
+        "The provided context does not state Broadcom's aggregate indebtedness as of August 2, 2026."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state the filing discloses aggregate indebtedness of $61,079 million as of August 2, 2026, but the answer claims this information is not provided, failing to answer the question.",
+       "unsupported_claims": [
+        "The provided context does not state Broadcom's aggregate indebtedness as of August 2, 2026."
+       ]
+      }
+     ],
+     "M2-C14": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the $22.4 billion figure and claims it cannot be determined, contradicting the grading notes which confirm this figure is available.",
+       "unsupported_claims": [
+        "The provided context does not include Alphabet's OI&E, net figures",
+        "I can't determine the increase"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the $22.4 billion figure that the grading notes confirm is available, instead claiming the data is not present.",
+       "unsupported_claims": [
+        "The provided context does not include Alphabet's OI&E, net figures for 2024 and 2025"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure and claims the data is unavailable, when the grading notes confirm a $22.4 billion increase was disclosed in the filing.",
+       "unsupported_claims": [
+        "The provided context does not include Alphabet's OI&E, net figures for 2024 and 2025",
+        "I can't determine the increase"
+       ]
+      }
+     ],
+     "M2-C18": [
+      {
+       "correct": false,
+       "reason": "The notes state the filing explicitly reports an 80% ownership interest, but the answer claims the figure is not specified, contradicting the grading notes.",
+       "unsupported_claims": [
+        "The provided context does not specify Intel's exact percentage ownership interest in Mobileye"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state the filing explicitly discloses an 80% ownership interest, but the answer claims the figure is not specified, contradicting the grading notes.",
+       "unsupported_claims": [
+        "The provided context does not specify Intel's exact percentage ownership interest in Mobileye"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes confirm the filing explicitly states an 80% ownership interest, but the answer claims this figure was not specified in the context, contradicting the grading notes.",
+       "unsupported_claims": [
+        "The provided context does not specify Intel's exact percentage ownership interest in Mobileye"
+       ]
+      }
+     ],
+     "M2-C23": [
+      {
+       "correct": false,
+       "reason": "The notes state the filing discloses an aggregate principal amount of $59.00 billion, but the answer claims this information is not stated and cannot be determined.",
+       "unsupported_claims": [
+        "The provided context does not state the aggregate principal amount of Meta's senior unsecured notes outstanding"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure ($59.00 billion) that the grading notes confirm is available, instead claiming it cannot be determined.",
+       "unsupported_claims": [
+        "The provided context does not state the aggregate principal amount... so I can't determine it."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure ($59.00 billion) that the grading notes confirm is available, instead claiming it cannot be determined.",
+       "unsupported_claims": [
+        "The provided context does not state the aggregate principal amount... so I can't determine it."
+       ]
+      }
+     ],
+     "M2-C24": [
+      {
+       "correct": false,
+       "reason": "The notes state the filing reports revenue of $96.2 billion, but the answer claims the context does not include this information, failing to answer the question.",
+       "unsupported_claims": [
+        "The provided context does not include Nvidia's total revenue for Q2 FY2027"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the revenue figure is not available, but the grading notes confirm the retrieved citation itself contains the $96.2 billion figure, so the answer fails to answer the question despite having the information.",
+       "unsupported_claims": [
+        "The provided context does not include Nvidia's total revenue for the second quarter of fiscal year 2027."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the revenue figure is not available, but the grading notes confirm the cited passage states revenue was $96.2 billion, directly contradicting the answer.",
+       "unsupported_claims": [
+        "The provided context does not include Nvidia's total revenue for the second quarter of fiscal year 2027"
+       ]
+      }
+     ],
+     "M2-D65": [
+      {
+       "correct": false,
+       "reason": "The answer claims NVIDIA's filing 'does not show a specific passage naming the Entity List,' but the grading notes explicitly state NVIDIA discusses the U.S. Entity List, contradicting this claim.",
+       "unsupported_claims": [
+        "the available 2026 filing material does not show a specific passage naming the Entity List"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "NVIDIA's answer misses the core grading-note fact that it ties Entity List risk to inability to do business without an export license with Entity List/restricted-party entities, and instead claims no specific passage names the Entity List, which contradicts the notes.",
+       "unsupported_claims": [
+        "the available 2026 filing material does not show a specific passage naming the Entity List"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The NVIDIA portion fails to state the actual verified fact that NVIDIA ties Entity List designations to its ability to do business without an export license, instead saying the filing material does not show a specific passage naming the Entity List, which contradicts the grading notes.",
+       "unsupported_claims": [
+        "the available 2026 filing material does not show a specific passage naming the Entity List"
+       ]
+      }
+     ],
+     "M2-D67": [
+      {
+       "correct": true,
+       "reason": "The answer correctly states AMD's China-Taiwan disruption risk matching the notes, and correctly states Qualcomm's dependence on foundry supply particularly from Taiwan, consistent with the reference answer.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The AMD description matches the notes exactly (China-Taiwan geopolitical change disrupting Taiwan-based foundries/manufacturing/subcontractors). The Qualcomm description, while phrased differently and adding extra detail about Asia-Pacific suppliers, does not contradict the core fact that Qualcomm depends on foundry partners particularly in Taiwan and Taiwan exposure is the key risk; the added context does not misstate or contradict the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states AMD's China-Taiwan geopolitical risk disrupting Taiwan-based foundries, matching the notes, and correctly states Qualcomm's dependence on foundry supply particularly Taiwan via the cited risk factor language from passage 0008, consistent with the notes. The additional details about the 2024 earthquake and Asia-Pacific concentration are uncontradicted elaborations.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D68": [
+      {
+       "correct": false,
+       "reason": "The answer fails to mention Apple's key disclosure that the January 14, 2026 initial results of the Section 232 investigation did not impose additional tariffs on its products, which is the central fact in the grading notes. It also incorrectly claims the Apple filing is from 2025 not 2026, and introduces unsupported specifics (25% tariff rate, January 2026 US-Taiwan agreement) not confirmed by the notes.",
+       "unsupported_claims": [
+        "Apple's 10-K filed in 2025, not a 2026-filed Apple annual report",
+        "Section 232 investigation resulted in a 25% ad valorem tariff",
+        "January 2026 U.S.-Taiwan agreement provides preferential Section 232 treatment"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "Apple's answer omits the key fact from the notes that the January 14, 2026 initial results did not impose additional tariffs, instead describing only the investigation's scope and general tariff risk, which contradicts/misses the specific grading note content.",
+       "unsupported_claims": [
+        "Apple warns tariffs could affect supply chain, pricing, and gross margin (without mentioning initial results imposed no additional tariffs)",
+        "TSMC says a Section 232 investigation resulted in a 25% ad valorem tariff on certain advanced-computing chips"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer omits Apple's key disclosure that the January 14, 2026 initial results of the Section 232 investigation did not impose additional tariffs on its products, instead substituting unrelated content about investigation scope and general risk warnings. It also misattributes a specific 25% tariff figure and a Taiwan agreement detail to TSMC that are not supported by the grading notes, which only describe TSMC's statement about unclear implications of the IEEPA ruling and Section 232 preferential treatment.",
+       "unsupported_claims": [
+        "Section 232 investigation resulted in a 25% ad valorem tariff on certain advanced-computing chips",
+        "January 2026 U.S.\u2013Taiwan agreement provides preferential Section 232 treatment for Taiwanese semiconductor producers",
+        "Apple's filing does not mention the January 14, 2026 initial results did not impose additional tariffs"
+       ]
+      }
+     ],
+     "M2-D69": [
+      {
+       "correct": false,
+       "reason": "The answer fails to describe Broadcom's actual disclosure that it lists precious and rare earth metals among materials its manufacturing relies on, instead incorrectly claiming the material 'does not specifically identify rare earths,' which contradicts the grading notes.",
+       "unsupported_claims": [
+        "Broadcom material provided here does not specifically identify rare earths"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to state that Broadcom explicitly lists precious and rare earth metals among materials its manufacturing relies on, instead saying the material does not specifically identify rare earths, which contradicts the notes.",
+       "unsupported_claims": [
+        "Broadcom material provided here does not specifically identify rare earths"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to state that Broadcom explicitly lists 'precious and rare earth metals' among materials its manufacturing relies on, which the grading notes confirm is in the cited filing; instead it claims the material 'does not specifically identify rare earths,' contradicting the notes.",
+       "unsupported_claims": [
+        "Broadcom material provided here does not specifically identify rare earths"
+       ]
+      }
+     ],
+     "M2-D72": [
+      {
+       "correct": false,
+       "reason": "The answer claims the context does not include 2026 10-Q passages and instead uses 10-K excerpts, contradicting the question's framing and the notes which describe these as the filing's disclosures; it also omits the key AMD and NVIDIA sentences the notes specify as the core answer.",
+       "unsupported_claims": [
+        "context does not include 2026 10-Q risk-factor passages",
+        "comparison below is based on 10-K excerpts instead"
+       ]
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly conveys AMD's and NVIDIA's core statements about unilateral/worldwide controls on GPUs, matching the grading notes, and adds uncited but plausible detail without contradicting the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the context only includes 10-K excerpts rather than 10-Q, but the citations are from the 10-Q filings per the question and grading notes, and it fails to state the key matching sentences (unilateral controls restricting GPUs, NVIDIA's 'worldwide' wording, China antitrust Mellanox finding) that the notes require.",
+       "unsupported_claims": [
+        "context does not include 2026 10-Q risk-factor passages",
+        "comparison below is based on 10-K excerpts instead of 10-Q"
+       ]
+      }
+     ],
+     "M2-D74": [
+      {
+       "correct": true,
+       "reason": "Both statements are consistent with the grading notes: Apple's regular malicious attack experience and Broadcom's history of disruptive cyberattacks/intrusions, with Broadcom noting none have been material, matches the notes' characterization.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "Both companies' characterizations align with the grading notes: Apple experiences regular malicious attacks, Broadcom has faced disruptive cyberattacks/intrusions, and critically Broadcom's statement that none were material (per notes) is not contradicted by the answer.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "Both companies' characterizations align with the grading notes: Apple reports regular malicious attacks, Broadcom reports a history of disruptive cyberattacks/intrusions, consistent with the reference answer and citations.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D81": [
+      {
+       "correct": false,
+       "reason": "The answer mischaracterizes Intel's disclosure as being about 'rising China-Taiwan tensions' rather than supplier dependency for critical components like compute die, which the notes specify as the actual content.",
+       "unsupported_claims": [
+        "Intel describes rising China\u2013Taiwan tensions as a risk to the supply of critical components"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "Intel's description is misrepresented: the notes say Intel discloses dependence on Taiwan suppliers for critical components like compute die, not a framing around 'rising China-Taiwan tensions,' which is not supported by the grading notes.",
+       "unsupported_claims": [
+        "Intel describes rising China\u2013Taiwan tensions as a risk to the supply of critical components and to its ability to supply customers"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "Intel's described exposure is mischaracterized: the notes specify Intel's risk is about dependence on Taiwan suppliers for critical components like compute die, not about 'China-Taiwan tensions' as framed in the answer.",
+       "unsupported_claims": [
+        "Intel describes rising China\u2013Taiwan tensions as a risk to the supply of critical components"
+       ]
+      }
+     ],
+     "M2-D84": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figures that are available per the grading notes ($25.03 billion for Meta and $69.5 billion for Alphabet), and claims the information is not determinable, which contradicts the notes.",
+       "unsupported_claims": [
+        "The supplied context does not provide remaining share-repurchase authorization balances for Meta or Alphabet"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes provide specific figures ($25.03 billion for Meta and $69.5 billion for Alphabet) that were available in the filings, but the answer fails to provide this information and claims it cannot be determined.",
+       "unsupported_claims": [
+        "The supplied context does not provide remaining share-repurchase authorization balances for Meta or Alphabet"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes provide specific figures ($25.03 billion for Meta and $69.5 billion for Alphabet) that were available, but the answer claims the information is not available and fails to answer the question.",
+       "unsupported_claims": [
+        "The supplied context does not provide remaining share-repurchase authorization balances for Meta or Alphabet as of March 31, 2026"
+       ]
+      }
+     ],
+     "M2-D85": [
+      {
+       "correct": false,
+       "reason": "The answer fails to describe Meta's disclosure at all, claiming the context does not include it, when the grading notes clearly state Meta's export control risk language is available and citable.",
+       "unsupported_claims": [
+        "The supplied context does not include a Meta passage describing export controls as an operational risk"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to describe Meta's disclosure at all, claiming it cannot reliably characterize it, despite the grading notes providing Meta's exact statement about import/export controls, trade restrictions, and sanctions including OFAC regulations.",
+       "unsupported_claims": [
+        "The supplied context does not include a Meta passage describing export controls as an operational risk"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to describe Meta's disclosure at all, claiming the context doesn't include it, when the grading notes clearly provide Meta's export control language; this does not answer the question for Meta.",
+       "unsupported_claims": [
+        "The supplied context does not include a Meta passage describing export controls as an operational risk, so I can't reliably characterize its disclosure."
+       ]
+      }
+     ],
+     "M2-D86": [
+      {
+       "correct": false,
+       "reason": "The Broadcom portion fails to describe its use of advanced packaging (embedded logic, HBM, SerDes, IP cores, processor cores) as given in the grading notes, instead claiming the material does not describe this, which contradicts the notes' citation 0001730168-25-000121:I.1:0008.",
+       "unsupported_claims": [
+        "Broadcom citation does not describe how Broadcom uses advanced packaging in its products"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The Broadcom portion fails to answer the question and contradicts the grading notes, which state Broadcom's filing describes integrating embedded logic, high-bandwidth memory, SerDes, IP cores and processor cores using advanced packaging technologies from the cited passage.",
+       "unsupported_claims": [
+        "does not describe how Broadcom uses advanced packaging in its products"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The Intel description roughly matches the notes, but the Broadcom description fails to mention its custom silicon platforms integrating embedded logic, HBM, SerDes, IP cores and processor cores via advanced packaging, which the grading notes explicitly state is in the cited filing passage.",
+       "unsupported_claims": [
+        "Broadcom passage does not describe how Broadcom uses advanced packaging in its products"
+       ]
+      }
+     ],
+     "M2-D87": [
+      {
+       "correct": true,
+       "reason": "Intel's $5.7 billion accelerated CHIPS funding amendment matches the notes exactly, and Micron's description of CHIPS direct funding agreements as conditional/risk-related is consistent with the notes' reference to restrictions under those agreements, even though the specific sentence about share repurchase isn't quoted.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The Intel claim about the $5.7 billion accelerated CHIPS Act funding matches the grading notes exactly, and the Micron claim about CHIPS Act direct funding agreements and restrictions/conditions is consistent with the notes about share repurchase restrictions tied to those agreements.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "Intel's $5.7 billion accelerated funding via CHIPS amendment matches the notes exactly, and Micron's description of CHIPS direct funding agreements as conditional/restrictive aligns with the notes' mention of restrictions under CHIPS direct funding agreements.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D89": [
+      {
+       "correct": false,
+       "reason": "The answer fails to state Amazon's actual disclosure (the $15.0 billion investment in OpenAI Series C Preferred Stock), instead claiming the citation only covers guidance and provides no information, which contradicts the grading notes.",
+       "unsupported_claims": [
+        "The supplied Amazon quarterly excerpt covers guidance, not an OpenAI financial arrangement, so the context does not provide Amazon's terms"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state Amazon's filing discloses investing $15.0 billion in OpenAI Series C Preferred Stock in Q1 2026 plus a $35.0 billion commitment, but the answer claims the Amazon excerpt provides no information about an OpenAI arrangement, contradicting the notes.",
+       "unsupported_claims": [
+        "The supplied Amazon quarterly excerpt covers guidance, not an OpenAI financial arrangement, so the context does not provide Amazon's terms"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state Amazon's filing discloses a $15.0 billion investment in OpenAI Series C Preferred Stock in Q1 2026 and a commitment to invest $35.0 billion more, but the answer incorrectly claims the Amazon citation does not provide any information about Amazon's OpenAI arrangement.",
+       "unsupported_claims": [
+        "The supplied Amazon quarterly excerpt covers guidance, not an OpenAI financial arrangement, so the context does not provide Amazon's terms"
+       ]
+      }
+     ],
+     "M2-E15": [
+      {
+       "correct": false,
+       "reason": "The grading notes show the cited filing explicitly states stock price fluctuations could impact equity compensation value and affect recruitment/retention, but the answer falsely claims this information is not stated despite citing the exact passages that contain it.",
+       "unsupported_claims": [
+        "it does not state how stock-price swings specifically affect Micron's ability to hire or retain staff"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes state the filing explicitly says stock price fluctuations could impact equity compensation value, affecting recruitment and retention, but the answer claims the citations do not state this connection.",
+       "unsupported_claims": [
+        "the context does not state how stock-price swings specifically affect Micron's ability to hire or retain staff"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes show the filing explicitly states stock price fluctuations could impact equity compensation value and affect recruitment/retention, but the answer claims this information is not stated in the provided context, contradicting the notes.",
+       "unsupported_claims": [
+        "it does not state how stock-price swings specifically affect Micron's ability to hire or retain staff"
+       ]
+      }
+     ],
+     "M2-E16": [
+      {
+       "correct": false,
+       "reason": "The notes show the filing does identify Decree No. 834 and Decree No. 835 by name, but the answer claims the regulations are not named in the context.",
+       "unsupported_claims": [
+        "The provided context does not identify the two regulations"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes show the exact citation retrieved does contain the two regulation names (Decree No. 834 and 835), but the answer claims the context does not identify them, directly contradicting the grading notes and failing to answer the question.",
+       "unsupported_claims": [
+        "The provided context does not identify the two regulations"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to identify Decree No. 834 and Decree No. 835, which the grading notes confirm are explicitly named in the cited filing passage, so it does not answer the question.",
+       "unsupported_claims": [
+        "The provided context does not identify the two regulations"
+       ]
+      }
+     ],
+     "M2-E17": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the bellwether trials in youth-related litigation scheduled for 2026 and beyond, matching the grading notes exactly, with proper citation.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the bellwether trials in youth-related litigation scheduled for 2026 and beyond, matching the grading notes exactly, with proper citation.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies bellwether trials in youth-related litigation scheduled for 2026 and beyond, matching the grading notes exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-E21": [
+      {
+       "correct": false,
+       "reason": "The answer fails to state the key characterization from the notes ('significant, and in some cases potentially unlimited') and instead claims the context does not specify liability limits or amounts, directly contradicting the filing's explicit language.",
+       "unsupported_claims": [
+        "The available context does not specify warranty obligations, liability limits or amounts, or whether those provisions apply to particular large customers."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to state the key fact that liabilities are characterized as significant and potentially unlimited, instead focusing only on IP indemnification and explicitly claiming the context lacks information on liability limits/amounts, which contradicts the grading notes.",
+       "unsupported_claims": [
+        "The available context does not specify... liability limits or amounts"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to state the key characterization from the filing ('significant, and in some cases potentially unlimited'), instead focusing only on indemnification for IP claims and explicitly claiming the context does not specify liability amounts, which contradicts the grading notes.",
+       "unsupported_claims": [
+        "The available context does not specify warranty obligations, liability limits or amounts"
+       ]
+      }
+     ],
+     "M2-E23": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the EU Data Act as the law cited by Alphabet for new data portability requirements for connected products, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the EU Data Act as the cited law introducing data portability requirements for connected products, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the EU Data Act as the source of new data portability requirements for connected products, matching the grading notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F03": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure ($11.94 billion) that the grading notes confirm is available, instead claiming it cannot be determined.",
+       "unsupported_claims": [
+        "Cannot determine Micron's cash and marketable-investments balance as of August 28, 2025"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure despite the grading notes confirming the exact amount ($11.94 billion) is available and verifiable.",
+       "unsupported_claims": [
+        "Cannot determine Micron's cash and marketable-investments balance as of August 28, 2025"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure, which is clearly available in the grading notes ($11.94 billion), making it a non-answer that contradicts the available data.",
+       "unsupported_claims": [
+        "I can't determine Micron's cash and marketable-investments balance as of August 28, 2025 from the provided context"
+       ]
+      }
+     ],
+     "M2-F06": [
+      {
+       "correct": false,
+       "reason": "The notes indicate the filing discloses Q2 fiscal 2026 products (iPad Air, iPhone 17e, MacBook Pro, MacBook Air, MacBook Neo, AirPods Max 2), but the answer claims the context lacks this and instead describes fiscal 2025 products.",
+       "unsupported_claims": [
+        "Context does not identify Q2 fiscal 2026 product announcements",
+        "Lists iPhone 16e, iPad, Mac Studio for Q2 fiscal 2025 instead"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer describes fiscal 2025 Q2 products instead of the asked-about fiscal 2026 Q2 products, and fails to provide the correct list (iPad Air, iPhone 17e, MacBook Pro, MacBook Air, MacBook Neo, AirPods Max 2) despite the citation being to the correct filing.",
+       "unsupported_claims": [
+        "Lists fiscal-year 2025 announcements for second quarter of fiscal 2025 instead of fiscal 2026",
+        "Does not identify the actual fiscal 2026 Q2 products despite citing the relevant filing"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer describes fiscal 2025 Q2 products instead of the fiscal 2026 Q2 products specified in the grading notes (iPad Air, iPhone 17e, MacBook Pro, MacBook Air, MacBook Neo, AirPods Max 2), describing a different fiscal year than asked.",
+       "unsupported_claims": [
+        "lists fiscal-year 2025 announcements instead of fiscal 2026",
+        "iPhone 16e, iPad, Mac Studio were announced in Q2 2026",
+        "does not identify Q2 fiscal 2026 products despite notes specifying them"
+       ]
+      }
+     ],
+     "M2-F10": [
+      {
+       "correct": false,
+       "reason": "The answer claims the data is unavailable and does not provide the $60.12 billion figure, but the grading notes show the exact citation given does contain this figure.",
+       "unsupported_claims": [
+        "The supplied context does not provide Meta's consolidated total revenue on a constant-currency basis"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the data is unavailable and does not provide the figure, but the grading notes show the exact citation contains the $60.12 billion constant-currency total revenue figure.",
+       "unsupported_claims": [
+        "The supplied context does not provide Meta's constant-currency total revenue for the period",
+        "the requested amount cannot be determined from these sources"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes show the filing explicitly states total revenue on a constant currency basis would have been $60.12 billion, but the answer claims this information is not provided in the sources.",
+       "unsupported_claims": [
+        "The supplied context does not provide Meta's consolidated total revenue on a constant-currency basis for the three months ended June 30, 2026"
+       ]
+      }
+     ],
+     "M2-F11": [
+      {
+       "correct": false,
+       "reason": "The answer claims the data is unavailable and the filing covers a different period, but the grading notes show the exact figures ($238 million, 14.8%) are present in the cited filing for the asked period.",
+       "unsupported_claims": [
+        "Filing excerpt does not provide income tax provision or effective tax rate for three months ended March 28, 2026",
+        "Filing discusses only three and six months ended June 27, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes show the cited filing (0000002488-26-000123) actually contains the exact figures requested ($238 million provision, 14.8% effective tax rate) for the period in question, but the answer incorrectly claims this information is not available and describes a different period.",
+       "unsupported_claims": [
+        "The filing excerpt discusses only June 27, 2026 period",
+        "Does not provide the income tax provision or effective tax rate for March 28, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes confirm the exact figures ($238 million provision, 14.8% effective tax rate) are present in the cited filing for the period asked about, but the answer claims the figures cannot be determined from the context.",
+       "unsupported_claims": [
+        "The filing excerpt does not provide the income tax provision or effective tax rate for the three months ended March 28, 2026"
+       ]
+      }
+     ],
+     "M2-F13": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies TSMC as the foundry AMD relies on for 7nm or smaller nodes, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies TSMC as the foundry relied upon for 7nm or smaller nodes, matching the grading notes exactly and citing the correct passage.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies TSMC as the foundry relied upon for 7nm or smaller node wafers, matching the grading notes exactly, with proper citation.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F15": [
+      {
+       "correct": true,
+       "reason": "The answer matches the grading notes exactly: 3.60 billion DAP in June 2026, up 3% from 3.48 billion in June 2025.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the reference figures exactly: 3.60 billion DAP in June 2026, up 3% from 3.48 billion in June 2025.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the reference exactly: 3.60 billion DAP in June 2026, up 3% from 3.48 billion in June 2025.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F16": [
+      {
+       "correct": true,
+       "reason": "The answer states 31% for fiscal year 2026, matching the reference answer and citation exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states 31% for fiscal year 2026, matching the reference answer and citation exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states 31% for fiscal year 2026, matching the reference answer and citation exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F19": [
+      {
+       "correct": false,
+       "reason": "The answer claims the $7.2 billion figure is as of December 28, 2024, but the grading notes confirm this exact figure and citation correspond to March 28, 2026 (the question's date), so it misstates the fiscal period for the cited figure.",
+       "unsupported_claims": [
+        "$7.2 billion available as of December 28, 2024 (wrong date per notes)"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the $7.2 billion figure is as of December 28, 2024, but the grading notes confirm $7.2 billion is the correct answer for March 28, 2026, and the cited filing actually supports that figure for the asked date.",
+       "unsupported_claims": [
+        "reports $7.2 billion available as of December 28, 2024, not March 28, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the $7.2 billion figure is as of December 28, 2024, but the grading notes confirm $7.2 billion is the correct figure for March 28, 2026 (the question's date), from the same cited filing.",
+       "unsupported_claims": [
+        "reports $7.2 billion available as of December 28, 2024",
+        "does not state the amount available as of March 28, 2026"
+       ]
+      }
+     ],
+     "M2-F20": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the $22,490 million figure that the grading notes confirm is explicitly stated in the filing, instead claiming the data is unavailable.",
+       "unsupported_claims": [
+        "The provided context does not include cash used in investing activities for either fiscal year, so I can't determine the decrease."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes confirm the $22,490 million decrease is explicitly stated in the filing, but the answer fails to provide this figure and claims it cannot be determined.",
+       "unsupported_claims": [
+        "The provided context does not include cash used in investing activities for either fiscal year, so I can't determine the decrease."
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes confirm the $22,490 million decrease is explicitly stated in the filing, but the answer fails to provide this figure and claims it cannot be determined.",
+       "unsupported_claims": [
+        "The provided context does not include cash used in investing activities for either fiscal year, so I can't determine the decrease."
+       ]
+      }
+     ],
+     "M2-F24": [
+      {
+       "correct": false,
+       "reason": "The notes show the filing does state the adoption timing (Q4 2026) and prospective transition method, but the answer claims this information is not present, failing to answer the question.",
+       "unsupported_claims": [
+        "The excerpt does not state the ASU 2023-09 adoption timing or transition method"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The filing text actually states Apple will adopt ASU 2023-09 in Q4 2026 using a prospective transition method, but the answer claims it cannot determine this from the provided context, failing to answer the question.",
+       "unsupported_claims": [
+        "Claims the excerpt does not state the ASU 2023-09 adoption timing or transition method"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The filing citation actually contains the exact answer (fourth quarter 2026, prospective transition method) per the grading notes, but the answer claims it cannot determine this from the context, failing to answer the question.",
+       "unsupported_claims": [
+        "The excerpt does not state the ASU 2023-09 adoption timing or transition method"
+       ]
+      }
+     ],
+     "M2-F25": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the $19.00 billion figure for Q1 2026 (three months ended March 31, 2026) that the grading notes confirm, instead citing an unrelated annual figure and claiming the information is unavailable.",
+       "unsupported_claims": [
+        "reports annual capex of $69.691 billion for the fiscal year ended December 31, 2025",
+        "no figure for the three months ended March 31, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the requested figure of $19.00 billion for Q1 2026, instead citing an unrelated annual figure for FY2025 and claiming the data is unavailable, which contradicts the grading notes.",
+       "unsupported_claims": [
+        "Reports annual capex of $69.691 billion for fiscal year ended December 31, 2025",
+        "Cannot determine the amount from supplied context for three months ended March 31, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the $19.00 billion figure for Q1 2026 and instead cites an unrelated annual figure, contradicting the grading notes and not answering the question asked.",
+       "unsupported_claims": [
+        "reports annual capex of $69.691 billion for fiscal year ended December 31, 2025",
+        "no figure for the three months ended March 31, 2026 can be determined"
+       ]
+      }
+     ],
+     "M2-F27": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figures ($748 million, 15%) given in the grading notes, instead claiming the information is unavailable.",
+       "unsupported_claims": [
+        "The provided context does not include Broadcom's SG&A expense or its year-over-year change"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figures ($748 million, 15%) that are available per the grading notes, instead claiming the data is unavailable.",
+       "unsupported_claims": [
+        "The provided context does not include Broadcom's SG&A expense change"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figures ($748 million, 15%) that the grading notes confirm are available, instead claiming it cannot determine the answer.",
+       "unsupported_claims": [
+        "The provided context does not include the SG&A expense or change"
+       ]
+      }
+     ],
+     "M2-F28": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure despite the cited passage containing the exact data ($12.80 billion, or 27%) per the grading notes, so it does not answer the question.",
+       "unsupported_claims": [
+        "The provided context does not include Meta's advertising revenue for either period"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the requested figure ($12.80 billion, 27%) despite the citation containing exactly this information per the grading notes, instead claiming the data is unavailable.",
+       "unsupported_claims": [
+        "The provided context does not include Meta's advertising revenue for either period"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the figure despite the cited filing containing it, and the grading notes confirm the data was available ($12.80 billion, or 27%).",
+       "unsupported_claims": [
+        "The provided context does not include Meta's advertising revenue for either period"
+       ]
+      }
+     ],
+     "M2-F34": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the information available in the grading notes, which clearly state the cause (higher revenue) and offset (increase in accounts receivable from extended payment terms).",
+       "unsupported_claims": [
+        "The provided context does not state what drove the increase in operating cash flow or what partially offset it"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes provide a clear answer (higher revenue driving the increase, offset by increased accounts receivable from extended payment terms), but the answer fails to provide this information and claims it cannot be determined.",
+       "unsupported_claims": [
+        "The provided context does not state what drove the increase in operating cash flow"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the information the question asks for, despite the grading notes containing a clear answer (higher revenue, offset by increased accounts receivable from extended payment terms).",
+       "unsupported_claims": [
+        "Context does not state what drove the increase or what partially offset it"
+       ]
+      }
+     ]
+    }
+   },
+   "judge_errors": {},
+   "transient_errors": [],
+   "rerank_deviations": [],
+   "citation_validity": 1.0,
+   "claim_support": {
+    "supported": 33,
+    "unsupported": 0,
+    "rate": 1.0,
+    "unsupported_by_row": {}
+   },
+   "errors": [],
+   "checks_failed": {
+    "M2-B25": [
+     "no_citation"
+    ]
+   }
+  },
+  "on": {
+   "n": 55,
+   "correct": {
+    "M2-B15": true,
+    "M2-C00": true,
+    "M2-C07": true,
+    "M2-C14": true,
+    "M2-C18": true,
+    "M2-C20": true,
+    "M2-C24": true,
+    "M2-A07": true,
+    "M2-A08": true,
+    "M2-A10": false,
+    "M2-A11": false,
+    "M2-A14": true,
+    "M2-A15": false,
+    "M2-A16": true,
+    "M2-A18": true,
+    "M2-A20": false,
+    "M2-B25": false,
+    "M2-B43": true,
+    "M2-B45": true,
+    "M2-C01": true,
+    "M2-C03": true,
+    "M2-C04": false,
+    "M2-C05": false,
+    "M2-C23": false,
+    "M2-D65": false,
+    "M2-D67": true,
+    "M2-D68": false,
+    "M2-D69": true,
+    "M2-D72": false,
+    "M2-D74": true,
+    "M2-D81": true,
+    "M2-D84": false,
+    "M2-D85": true,
+    "M2-D86": true,
+    "M2-D87": true,
+    "M2-D89": false,
+    "M2-E15": true,
+    "M2-E16": true,
+    "M2-E17": true,
+    "M2-E21": true,
+    "M2-E23": true,
+    "M2-F03": true,
+    "M2-F06": false,
+    "M2-F10": true,
+    "M2-F11": false,
+    "M2-F13": true,
+    "M2-F15": true,
+    "M2-F16": true,
+    "M2-F19": false,
+    "M2-F20": true,
+    "M2-F24": false,
+    "M2-F25": false,
+    "M2-F27": true,
+    "M2-F28": true,
+    "M2-F34": true
+   },
+   "n_correct": 37,
+   "needle_hits": [
+    "M2-B15",
+    "M2-C00",
+    "M2-C07",
+    "M2-C14",
+    "M2-C18",
+    "M2-C20",
+    "M2-C24"
+   ],
+   "judged": {
+    "open_correct": 30,
+    "open_of": 48,
+    "votes": {
+     "M2-A07": 3,
+     "M2-A08": 3,
+     "M2-A10": 0,
+     "M2-A11": 0,
+     "M2-A14": 3,
+     "M2-A15": 0,
+     "M2-A16": 3,
+     "M2-A18": 3,
+     "M2-A20": 0,
+     "M2-B25": 0,
+     "M2-B43": 3,
+     "M2-B45": 3,
+     "M2-C01": 2,
+     "M2-C03": 3,
+     "M2-C04": 0,
+     "M2-C05": 0,
+     "M2-C23": 0,
+     "M2-D65": 0,
+     "M2-D67": 3,
+     "M2-D68": 0,
+     "M2-D69": 3,
+     "M2-D72": 0,
+     "M2-D74": 3,
+     "M2-D81": 3,
+     "M2-D84": 0,
+     "M2-D85": 3,
+     "M2-D86": 3,
+     "M2-D87": 3,
+     "M2-D89": 0,
+     "M2-E15": 3,
+     "M2-E16": 3,
+     "M2-E17": 3,
+     "M2-E21": 3,
+     "M2-E23": 3,
+     "M2-F03": 3,
+     "M2-F06": 0,
+     "M2-F10": 3,
+     "M2-F11": 0,
+     "M2-F13": 3,
+     "M2-F15": 3,
+     "M2-F16": 3,
+     "M2-F19": 0,
+     "M2-F20": 3,
+     "M2-F24": 0,
+     "M2-F25": 0,
+     "M2-F27": 3,
+     "M2-F28": 3,
+     "M2-F34": 3
+    },
+    "errors": {},
+    "details": {
+     "M2-A07": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies China as the predominant producer of rare earth elements that has restricted exports, matching the reference answer and citation content.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies China as the predominant producer of rare earth elements that has restricted exports, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies China as the country, matching the reference answer and grading notes exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-A08": [
+      {
+       "correct": true,
+       "reason": "The answer includes the exact phrase from the grading notes about technical infrastructure operations costs, correctly cited. Additional details about employee compensation and third-party service fees are not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer includes the exact reference phrase about technical infrastructure operations costs (energy, equipment, network capacity), matching the grading notes, and adds other plausible R&D cost components not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer includes the exact reference phrase about other technical infrastructure operations costs, correctly citing the source, and adds plausible additional R&D cost components not contradicted by the notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-A10": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the information available in the filing and contradicts the grading notes, which show the filing does disclose these factors.",
+       "unsupported_claims": [
+        "The provided context does not contain TSMC's disclosure of the factors affecting deferred income tax assets"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the factors disclosed in the filing (revenue growth, profitability, tax holidays, surtax, and tax credit usage), instead claiming the context lacks this information, which contradicts the grading notes showing the filing does disclose these factors.",
+       "unsupported_claims": [
+        "The provided context does not contain TSMC's disclosure of the factors affecting deferred income tax asset realization"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the information that the grading notes confirm is present in the filing, effectively not answering the question.",
+       "unsupported_claims": [
+        "The provided context does not contain TSMC's disclosure of the factors affecting deferred income tax assets"
+       ]
+      }
+     ],
+     "M2-A11": [
+      {
+       "correct": false,
+       "reason": "The answer omits manufacturing costs and incorrectly claims only two factors are named, contradicting the grading notes which state three factors including manufacturing costs.",
+       "unsupported_claims": [
+        "the cited statement names two factors, not three",
+        "answer omits manufacturing costs as a factor"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer omits manufacturing costs and falsely claims the cited statement names only two factors, contradicting the grading notes which confirm three factors including manufacturing costs.",
+       "unsupported_claims": [
+        "the cited statement names two factors, not three"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer omits manufacturing costs, incorrectly claiming only two factors when the filing and notes clearly state three: volume, average selling prices, and manufacturing costs.",
+       "unsupported_claims": [
+        "the cited statement names two factors, not three"
+       ]
+      }
+     ],
+     "M2-A14": [
+      {
+       "correct": true,
+       "reason": "The answer states $59.0 billion in senior unsecured notes outstanding, matching the reference answer and filing details in the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $59.0 billion in senior unsecured notes, matching the reference answer and filing text exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $59.0 billion, matching the reference answer and verified filing text exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-A15": [
+      {
+       "correct": false,
+       "reason": "The notes state the accelerated depreciation was $456 million in 2025, but the answer claims this figure was not stated separately and instead cites an unrelated $797 million combined figure, contradicting the reference answer.",
+       "unsupported_claims": [
+        "$797 million in combined non-cash asset impairment and accelerated depreciation charges in Q2 2025",
+        "the provided context does not state the accelerated-depreciation amount separately"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the correct figure ($456 million) and instead gives an unrelated Q2 2025 combined figure, contradicting the grading notes.",
+       "unsupported_claims": [
+        "Intel reported $797 million in combined non-cash asset impairment and accelerated depreciation charges in Q2 2025"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the correct figure ($456 million) that is directly supported by the cited filing, instead giving an unrelated $797 million figure from Q2 2025 and claiming the amount isn't stated when it is.",
+       "unsupported_claims": [
+        "$797 million in combined non-cash asset impairment and accelerated depreciation charges in Q2 2025",
+        "the provided context does not state the accelerated-depreciation amount separately"
+       ]
+      }
+     ],
+     "M2-A16": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the UK Competition and Markets Authority as the regulator, matching the grading notes and citation.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the UK Competition and Markets Authority (CMA) as the regulator, matching the reference answer and the cited filing text.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the UK Competition and Markets Authority (CMA) as the regulator, matching the reference answer and the cited filing text.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-A18": [
+      {
+       "correct": true,
+       "reason": "The answer matches the reference answer and grading notes closely, stating NOR is most commonly used for reliable code storage with the listed examples. The additional mention of 'frequently changing small-data storage' is an unsupported detail but not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the reference answer and grading notes, correctly describing NOR as used for reliable code storage including boot, application, operating system and execute-in-place code in embedded systems.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the reference answer and grading notes regarding NOR memory's use for reliable code storage, with the additional detail about small-data storage being unsupported but not contradicted.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-A20": [
+      {
+       "correct": false,
+       "reason": "The answer claims the exact gross-margin percentages are not provided, but the grading notes confirm the cited filing states 75.0% vs 72.4%, directly contradicting this claim and failing to answer the question.",
+       "unsupported_claims": [
+        "The supplied context does not provide exact gross-margin percentages for either period"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the exact gross-margin figures are not available, but the grading notes and cited filing explicitly state 75.0% and 72.4%, directly contradicting this claim.",
+       "unsupported_claims": [
+        "The supplied context does not provide exact gross-margin percentages for either period"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the specific gross margin percentages are not provided, but the grading notes confirm the exact citation contains both figures (75.0% and 72.4%), so this fails to answer the question despite having the correct source.",
+       "unsupported_claims": [
+        "The supplied context does not provide exact gross-margin percentages for either period"
+       ]
+      }
+     ],
+     "M2-B25": [
+      {
+       "correct": false,
+       "reason": "The answer fails to identify Nvidia and Softbank Group despite citing the exact passage that names both companies, and explicitly claims the second company is not identified when it is present in the cited source.",
+       "unsupported_claims": [
+        "The provided context does not identify the two companies",
+        "does not name both private-sale purchasers"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to identify Softbank Group despite the citation containing both companies, and claims the information is unavailable when it is present in the cited source.",
+       "unsupported_claims": [
+        "The provided context does not identify the two companies",
+        "does not name both private-sale purchasers"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to identify Softbank Group despite it being in the cited passage, and does not fully answer the question which the notes confirm names Nvidia and Softbank Group.",
+       "unsupported_claims": [
+        "The provided context does not identify the two companies"
+       ]
+      }
+     ],
+     "M2-B43": [
+      {
+       "correct": true,
+       "reason": "The answer correctly states that NVIDIA NVLink Fusion enables hyperscalers and custom ASIC designers to integrate custom CPUs and XPUs with NVIDIA's platform, matching the reference answer and citation.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states that NVLink Fusion enables hyperscalers and custom ASIC designers to integrate custom CPUs and XPUs with NVIDIA's platform, matching the reference answer and citation.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states that NVLink Fusion enables hyperscalers and custom ASIC designers to integrate custom CPUs and XPUs with NVIDIA's platform, matching the reference answer and citation.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-B45": [
+      {
+       "correct": true,
+       "reason": "The answer lists server CPUs, GPU accelerators, DPUs, AI NICs, FPGAs, and adaptive SoCs, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer lists server CPUs, GPU accelerators, DPUs, AI NICs, FPGAs and adaptive SoCs exactly as the grading notes specify, properly cited.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer lists server CPUs, GPU accelerators, DPUs, AI NICs, FPGAs, and adaptive SoCs, matching the grading notes exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-C01": [
+      {
+       "correct": true,
+       "reason": "The answer states the increase as $733 million (7956-7223) and 10%, matching the reference answer and filing language exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states the $733 million / 10% increase (7,223 to 7,956), matching the reference answer and filing text exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": false,
+       "reason": "The reference answer states the increase was $733 million, but the answer's figures imply $733 million ($7,956M - $7,223M), which actually matches; however, the answer never explicitly states the $733 million dollar figure, only the 10% and derived raw numbers, which is a minor omission but not a contradiction. Checking the math: 7956-7223=733, consistent with notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-C03": [
+      {
+       "correct": true,
+       "reason": "The answer states $2.41 billion, or 25% increase for fiscal year 2025 vs 2024, matching the reference answer and filing quote exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $2.41 billion, or 25%, matching the reference answer exactly for the correct fiscal years.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $2.41 billion, 25% increase for fiscal year 2025 vs 2024, matching the grading notes exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-C04": [
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the correct $6,085 million figure for the two fiscal quarters ended May 3, 2026, instead discussing a different period (three quarters ended August 2, 2026) and claiming the requested data is unavailable, contradicting the grading notes which confirm the filing does contain this exact figure.",
+       "unsupported_claims": [
+        "The context does not contain a cash flow figure specifically for the two fiscal quarters ended May 3, 2026",
+        "I cannot answer the question as asked"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the correct $6,085 million figure for the two fiscal quarters ended May 3, 2026, instead discussing a different period (three fiscal quarters ended August 2, 2026) and claiming the requested data doesn't exist, despite citing the very passage (I.2:0027) that contains the correct answer.",
+       "unsupported_claims": [
+        "The context does not contain a cash flow figure specifically for the two fiscal quarters ended May 3, 2026",
+        "cannot answer the question as asked"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fails to provide the $6,085 million figure for the two fiscal quarters ended May 3, 2026, instead substituting a different period's figure and claiming the requested data is unavailable, contradicting the grading notes.",
+       "unsupported_claims": [
+        "The context does not contain a cash flow figure specifically for the two fiscal quarters ended May 3, 2026",
+        "relevant figure covers the three fiscal quarters ended August 2, 2026, not the two fiscal quarters ended May 3, 2026"
+       ]
+      }
+     ],
+     "M2-C05": [
+      {
+       "correct": false,
+       "reason": "The notes confirm the cited passage does contain the figure ($2.7 billion for Q2 2026), but the answer claims the figure is not available in that excerpt, contradicting the grading notes.",
+       "unsupported_claims": [
+        "The excerpt gives no amount for U.S. and foreign income taxes paid net of refunds",
+        "the requested figure is not available in this context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes confirm the exact citation contains the $2.7 billion figure for Q2 2026, but the answer falsely claims the figure is not available in that context.",
+       "unsupported_claims": [
+        "The excerpt gives no amount for U.S. and foreign income taxes paid net of refunds",
+        "the requested figure is not available in this context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes confirm the filing explicitly states $2.7 billion for Q2 2026 income taxes paid, but the answer claims this figure is not available in the citation.",
+       "unsupported_claims": [
+        "the requested figure is not available in this context"
+       ]
+      }
+     ],
+     "M2-C23": [
+      {
+       "correct": false,
+       "reason": "The notes confirm the $59.00 billion figure as of March 31, 2026 is in the filing, but the answer denies this and instead reports a contradictory $84.00 billion figure for a different date.",
+       "unsupported_claims": [
+        "context does not state the aggregate principal amount outstanding as of March 31, 2026",
+        "reports $84.00 billion outstanding as of June 30, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state the correct figure is $59.00 billion as of March 31, 2026, but the answer claims no such figure is stated and instead gives $84.00 billion as of June 30, 2026, contradicting the notes.",
+       "unsupported_claims": [
+        "Context does not state aggregate principal amount as of March 31, 2026",
+        "Reports $84.00 billion outstanding as of June 30, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes state the aggregate principal amount as of March 31, 2026 was $59.00 billion, but the answer claims this figure is not stated and instead gives $84.00 billion as of June 30, 2026, contradicting the reference answer and date.",
+       "unsupported_claims": [
+        "context does not state the aggregate principal amount outstanding as of March 31, 2026",
+        "reports $84.00 billion outstanding as of June 30, 2026"
+       ]
+      }
+     ],
+     "M2-D65": [
+      {
+       "correct": false,
+       "reason": "The answer fails to mention AMD's specific, verified disclosure about THATIC and the THATIC JV being added to the Entity List in June 2019, and instead only describes generic supply-chain language; it also fails to mention NVIDIA's specific language about doing business without an export license with Entity List parties, despite citing the exact passage that contains it.",
+       "unsupported_claims": [
+        "AMD ties the Entity List directly to supply-chain and commercial risks without mentioning THATIC or the June 2019 BIS action",
+        "NVIDIA's risk is framed generally as export-control risk rather than specifically naming the Entity List, despite the cited passage explicitly referencing the U.S. Entity List"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer never mentions AMD's specific tie to THATIC and the THATIC JV being added to the Entity List in June 2019, which is the core fact in the grading notes, and instead substitutes generic supply-chain risk language not confirmed by the notes.",
+       "unsupported_claims": [
+        "AMD ties Entity List to supply-chain risk without mentioning THATIC/THATIC JV",
+        "AMD links export controls to customer and compliance risks without THATIC mention"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer never mentions AMD's specific tie to THATIC/THATIC JV being added to the Entity List in June 2019 and NVIDIA's statement about doing business without an export license with Entity List entities, which are the core facts in the grading notes; instead it substitutes generic supply-chain/export-control framing that does not match the reference answer's content.",
+       "unsupported_claims": [
+        "AMD ties the Entity List directly to supply-chain and commercial risks without mentioning THATIC or THATIC JV",
+        "NVIDIA's passage is described as general export-control risk rather than the specific Entity List/restricted-party license statement in the notes"
+       ]
+      }
+     ],
+     "M2-D67": [
+      {
+       "correct": true,
+       "reason": "Both descriptions accurately match the grading notes' summary of AMD's and Qualcomm's Taiwan risk disclosures, with no contradicted facts or figures.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer accurately describes both companies' Taiwan risk disclosures in line with the grading notes, with matching citations and no contradicted claims.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "Both descriptions align with the grading notes: AMD's Taiwan-based foundry/manufacturing disruption risk and Qualcomm's dependence on Taiwan foundry chipset supply with China-Taiwan conflict risk are accurately captured.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D68": [
+      {
+       "correct": false,
+       "reason": "The answer fabricates specific TSMC details (25% tariff rate, December 2025 conclusion, preferential treatment for Taiwanese producers investing in US capacity) not supported by the grading notes, and omits TSMC's actual stated point that the implications of the IEEPA ruling and Section 232 preferential treatment are still unclear.",
+       "unsupported_claims": [
+        "TSMC investigation concluded in December 2025",
+        "25% tariff on certain advanced-computing chips and derivative products",
+        "exception for designated U.S. uses",
+        "preferential Section 232 treatment for Taiwanese producers investing in U.S. manufacturing capacity"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fabricates specific TSMC details (25% tariff rate, December 2025 conclusion, exception for U.S. uses, U.S.-Taiwan agreement) that are not in the grading notes and contradict the notes' statement that the implications are still unclear, while omitting TSMC's actual point about cost increases and reduced demand.",
+       "unsupported_claims": [
+        "investigation concluded in December 2025",
+        "led to a 25% tariff on certain advanced-computing chips",
+        "exception for designated U.S. uses",
+        "preferential Section 232 treatment for Taiwanese producers investing in U.S. manufacturing under a U.S.-Taiwan agreement"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer fabricates specific TSMC details (25% tariff rate, December 2025 conclusion, specific exceptions and preferential treatment mechanics) not supported by the grading notes, which instead say TSMC describes the implications of the IEEPA ruling and Section 232 preferential treatment as still unclear and warns of cost/demand impacts.",
+       "unsupported_claims": [
+        "TSMC investigation concluded in December 2025 with 25% tariff on advanced-computing chips",
+        "exception for designated U.S. uses described in filing",
+        "preferential Section 232 treatment for Taiwanese producers investing in U.S. manufacturing under U.S.-Taiwan agreement"
+       ]
+      }
+     ],
+     "M2-D69": [
+      {
+       "correct": true,
+       "reason": "Both companies' descriptions align with the grading notes: Micron on limited country availability and China's dominance/export restrictions, Broadcom on listing precious and rare earth metals among materials and supplier concentration. The Broadcom 'two-thirds of materials from five suppliers' figure is omitted but not contradicted, and added details about trade tensions are not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "Micron's description matches the notes (limited countries, China predominant producer, export restrictions), and Broadcom's description matches (precious and rare earth metals among materials, concentrated supplier base). The supplier concentration detail aligns with the two-thirds from five suppliers fact without contradicting it.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "Both company descriptions align with the grading notes: Micron on limited countries/China dominance/export restrictions, Broadcom listing precious and rare earth metals among materials and concentrated supplier base.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D72": [
+      {
+       "correct": false,
+       "reason": "AMD's answer describes a different claim (MI308 inventory charges) instead of the grading notes' statement that AMD's filing says the U.S. imposed unilateral controls restricting GPUs and is likely to adopt further controls; it omits the actual required quote.",
+       "unsupported_claims": [
+        "AMD risk disclosure links export restrictions to significant inventory and related charges on MI308 GPU products"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "AMD's described content (MI308 inventory charges tied to China export restrictions) does not match the grading notes, which state AMD's filing uses the same 'unilateral controls restricting GPUs' language as NVIDIA; the answer also omits NVIDIA's Mellanox/China antitrust detail.",
+       "unsupported_claims": [
+        "AMD risk factor links export restrictions to China with MI308 inventory charges",
+        "AMD description omits the 'unilateral controls restricting GPUs' wording from notes"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "AMD's answer misdescribes the actual quoted risk factor language (unilateral controls on GPUs, likely more controls) and instead substitutes an unrelated claim about MI308 inventory charges, contradicting the grading notes.",
+       "unsupported_claims": [
+        "AMD's disclosure links export restrictions to China with inventory and related charges on MI308 GPU products"
+       ]
+      }
+     ],
+     "M2-D74": [
+      {
+       "correct": true,
+       "reason": "Both companies' characterizations match the grading notes: Apple describes regular malicious attacks, and Broadcom describes periodic disruptive cyberattacks that have not been material.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "Both companies' characterizations match the grading notes: Apple experiences regular malicious attacks/unauthorized access attempts, and Broadcom faces disruptive cyberattacks but none have been material.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer accurately reflects both companies' characterizations as described in the grading notes: Apple's regular malicious attacks and Broadcom's non-material disruptive cyberattacks.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D81": [
+      {
+       "correct": true,
+       "reason": "The answer accurately reflects Intel's and ASML's Taiwan exposure disclosures as described in the grading notes, including the 25.5% figure, without misrepresenting removals or fabricating comparison claims.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer accurately captures Intel's Taiwan supplier dependency and ASML's facilities/customers exposure with the 25.5% figure, consistent with the grading notes. No prohibited claims about removal, hedge misrepresentation, or fr: ids as company statements are present.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly captures Intel's Taiwan supplier dependency risk and ASML's facilities/supply chain/customers in Taiwan with the 25.5% figure matching the notes, without misrepresenting comparisons or removals.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D84": [
+      {
+       "correct": false,
+       "reason": "The notes confirm the citations actually state figures as of March 31, 2026, but the answer incorrectly claims the context does not state this and misattributes the figures to December 31, 2025.",
+       "unsupported_claims": [
+        "The provided context does not state how much remained available on March 31, 2026.",
+        "Meta: $25.03 billion as of December 31, 2025",
+        "Alphabet: $69.5 billion as of December 31, 2025"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer misstates the date as December 31, 2025, when the notes confirm the figures are as of March 31, 2026, and claims the context does not state the March 31, 2026 figures.",
+       "unsupported_claims": [
+        "Meta: $25.03 billion as of December 31, 2025",
+        "Alphabet: $69.5 billion as of December 31, 2025",
+        "The provided context does not state how much remained available on March 31, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims the figures are as of December 31, 2025 and that the filing does not state March 31, 2026 figures, but the grading notes confirm the filings explicitly state these exact figures as of March 31, 2026.",
+       "unsupported_claims": [
+        "Meta: $25.03 billion as of December 31, 2025",
+        "Alphabet: $69.5 billion as of December 31, 2025",
+        "context does not state how much remained available on March 31, 2026"
+       ]
+      }
+     ],
+     "M2-D85": [
+      {
+       "correct": true,
+       "reason": "The answer describes TSMC's and Meta's export control risks consistently with the grading notes, covering license requirements for manufacturing tools/fab operations and Meta's import/export/trade restriction compliance obligations, without contradicting the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer's core claims align with the grading notes: TSMC describes operational risks from export control license requirements affecting its PRC fab, and Meta describes compliance obligations with import/export controls, trade restrictions and sanctions as part of international operations. The additional details provided are not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer describes TSMC's export control risks (license requirements, delays, compliance exposure) and Meta's framing of import/export controls as supply chain and compliance risks, consistent with the grading notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D86": [
+      {
+       "correct": true,
+       "reason": "The answer correctly describes Intel's tile-based advanced packaging and Broadcom's custom silicon integration using advanced packaging, consistent with the grading notes. Extra details about EMIB/Foveros and ASIC design are not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly captures both companies' core descriptions matching the grading notes (Intel's tile integration via advanced packaging, Broadcom's custom silicon integrating embedded logic, HBM, SerDes, IP and processor cores via advanced packaging). Additional details about EMIB/Foveros and ASIC customer platforms are not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "Both companies' descriptions align with the grading notes: Intel integrates tiles into products via advanced packaging, and Broadcom integrates embedded logic, HBM, SerDes, IP and processor cores using advanced packaging. The additional details about EMIB/Foveros and ASIC design are not contradicted by the notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D87": [
+      {
+       "correct": true,
+       "reason": "The answer correctly states Intel's $5.7 billion accelerated funding from a CHIPS Act commercial agreement amendment, and Micron's reference to CHIPS Act direct funding agreements with restrictions, matching the grading notes. Additional details (Secure Enclave, tax credit, dates) are neither supported nor contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly captures Intel's $5.7 billion accelerated funding from the amended commercial CHIPS Act agreement and Micron's framing of CHIPS Act direct funding agreements as restrictions on share repurchases/cash use, matching the grading notes. Additional details (Secure Enclave, tax credit, timeline) are not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states Intel's $5.7 billion accelerated funding from the amended commercial CHIPS agreement and Micron's framing of direct funding agreements with restrictions, matching the grading notes. Additional details (Secure Enclave, tax credit, amendment dates) are not contradicted by the notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-D89": [
+      {
+       "correct": false,
+       "reason": "The answer fails to state Amazon's actual disclosed arrangement ($15.0 billion investment and $35.0 billion commitment), despite the notes and even the cited passage indicating Amazon did disclose this. It incorrectly claims the context doesn't establish Amazon's arrangement.",
+       "unsupported_claims": [
+        "The supplied Amazon 2026 10-Q excerpts do not provide terms for a financial arrangement with OpenAI"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "AMD's description matches the grading notes, but the answer fails to state Amazon's actual disclosure (invested $15.0 billion in OpenAI, committing $35.0 billion more), instead claiming the Amazon citation provides no terms, even though the citation itself is the exact passage containing the $15.0 billion investment fact per the notes.",
+       "unsupported_claims": [
+        "The supplied Amazon 2026 10-Q excerpts do not provide terms for a financial arrangement with OpenAI"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The AMD portion matches the grading notes, but the answer fails to state Amazon's actual disclosure (the $15.0 billion investment and $35.0 billion commitment) despite the citation being retrieved, instead claiming the information isn't available.",
+       "unsupported_claims": [
+        "The supplied Amazon 2026 10-Q excerpts do not provide terms for a financial arrangement with OpenAI"
+       ]
+      }
+     ],
+     "M2-E15": [
+      {
+       "correct": true,
+       "reason": "The answer accurately matches the grading notes, stating that stock price fluctuations affect equity compensation value, impacting recruitment and retention of employees.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer accurately matches the grading notes, stating stock price volatility affects equity compensation value, impacting recruitment and retention.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer accurately reflects the grading notes: stock price fluctuations affect equity compensation value, impacting recruitment and retention.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-E16": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies Decree No. 834 and Decree No. 835 with matching titles, consistent with the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies both Decree No. 834 and Decree No. 835 with matching titles, consistent with the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies both decrees (834 and 835) with matching names and numbers, exactly as supported by the grading notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-E17": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the bellwether trials in youth-related litigation scheduled for 2026 and beyond as the cited event, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies bellwether trials in youth-related litigation scheduled for 2026 and beyond as the event, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies bellwether trials in youth-related litigation scheduled for 2026 and beyond, matching the grading notes exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-E21": [
+      {
+       "correct": true,
+       "reason": "The answer correctly states the core fact from the grading notes: liabilities are significant and potentially unlimited, including with some of its largest customers. Additional details about liquidated damages and reserves are not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states the core claim from the grading notes: liabilities are significant and potentially unlimited, including with some of Broadcom's largest customers. Additional details about warranties, liquidated damages, and reserves are not contradicted by the notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states the core fact from the grading notes: liabilities are significant and potentially unlimited including with largest customers, with the exact citation matching.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-E23": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the EU Data Act as the cited law introducing data portability requirements for connected products, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the EU Data Act as the cited law introducing new data portability requirements for connected products, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies the EU Data Act as the law cited for new data portability requirements for connected products, matching the grading notes.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F03": [
+      {
+       "correct": true,
+       "reason": "The answer states $11.94 billion as of August 28, 2025, matching the reference answer and grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $11.94 billion as of August 28, 2025, matching the reference answer and grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $11.94 billion as of August 28, 2025, matching the reference answer and filing data exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F06": [
+      {
+       "correct": false,
+       "reason": "The notes confirm the filing explicitly lists products announced in Q2 FY2026 (iPad Air, iPhone 17e, MacBook Pro, etc.), but the answer claims the excerpts do not identify such products, failing to answer the question.",
+       "unsupported_claims": [
+        "excerpts do not identify products announced as new or updated during Q2 fiscal 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes confirm the second filing (0000320193-26-000020) does contain the Q2 fiscal 2026 product announcement list, but the answer claims no such information was found and fails to provide the products.",
+       "unsupported_claims": [
+        "excerpts do not identify products announced as new or updated during Q2 fiscal 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes confirm the second filing (0000320193-26-000020) does contain the Q2 fiscal 2026 product announcements list, but the answer claims no such information was found and fails to list the products.",
+       "unsupported_claims": [
+        "excerpts do not identify products announced as new or updated during Q2 fiscal 2026",
+        "excerpts list announcements for fiscal 2025 and Q3 2026 instead"
+       ]
+      }
+     ],
+     "M2-F10": [
+      {
+       "correct": true,
+       "reason": "The answer states $60.12 billion for constant currency total revenue, matching the reference answer exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $60.12 billion for constant currency total revenue, which matches the reference answer exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $60.12 billion for total revenue on a constant currency basis, matching the reference answer and grading notes exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F11": [
+      {
+       "correct": false,
+       "reason": "The answer claims the cited excerpt covers a different period and fails to provide the requested figures, but the citation actually contains the $238 million provision and 14.8% effective tax rate per the grading notes.",
+       "unsupported_claims": [
+        "The context covers three months ended June 27, 2026, not March 28, 2026",
+        "Cannot determine the requested figures from the provided context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes confirm the cited passage reports the $238 million provision and 14.8% effective tax rate for the period in question, but the answer claims the data is unavailable and describes a different period, contradicting the notes.",
+       "unsupported_claims": [
+        "context covers three months ended June 27, 2026, not March 28, 2026",
+        "cannot determine the requested figures from the provided context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer claims it cannot find the figures and describes a different period (June 27, 2026) despite the citation actually containing the requested March 28, 2026 figures per the grading notes, failing to answer the question correctly.",
+       "unsupported_claims": [
+        "context covers three months ended June 27, 2026, not March 28, 2026",
+        "cannot determine the requested figures from the provided context"
+       ]
+      }
+     ],
+     "M2-F13": [
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies TSMC as the foundry AMD relies on for 7nm or smaller node wafers, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies TSMC as the foundry for 7nm or smaller nodes, matching the grading notes exactly and citing the correct source.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly identifies TSMC as the foundry AMD relies on for 7nm or smaller wafers, matching the grading notes exactly, with proper citation.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F15": [
+      {
+       "correct": true,
+       "reason": "The answer matches the reference figures exactly: 3.60 billion DAP in June 2026, up 3% from 3.48 billion in June 2025.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the reference figures exactly: 3.60 billion DAP in June 2026, up 3% from 3.48 billion in June 2025.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the reference figures exactly: 3.60 billion DAP in June 2026, up 3% from 3.48 billion in June 2025.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F16": [
+      {
+       "correct": true,
+       "reason": "The answer states 31% of revenue from outside the US in fiscal year 2026, matching the reference answer and grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states 31% of revenue was from outside the US in fiscal year 2026, matching the reference answer exactly and citing the correct filing.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states 31% of revenue from sales outside the US in fiscal year 2026, matching the reference answer and filing quote exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F19": [
+      {
+       "correct": false,
+       "reason": "The notes confirm the filing states $7.2 billion remained available out of $110.0 billion authorized, but the answer claims it cannot determine this information, failing to answer the question.",
+       "unsupported_claims": [
+        "I can't determine the amount from the provided context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes confirm the filing states $7.2 billion remained available out of $110.0 billion, but the answer fails to provide this information and claims it cannot be determined.",
+       "unsupported_claims": [
+        "I can't determine the amount from the provided context"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The notes confirm the filing states $7.2 billion remained available out of $110.0 billion authorized, but the answer fails to provide this figure, claiming it cannot be determined.",
+       "unsupported_claims": [
+        "I can't determine the amount from the provided context"
+       ]
+      }
+     ],
+     "M2-F20": [
+      {
+       "correct": true,
+       "reason": "The answer states the $22,490 million decrease in cash used in investing activities for fiscal 2025 vs fiscal 2024, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states the $22,490 million decrease in investing activities cash use for fiscal 2025 vs fiscal 2024, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states the $22,490 million decrease in cash used in investing activities for fiscal 2025 vs fiscal 2024, matching the reference answer and filing text exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F24": [
+      {
+       "correct": false,
+       "reason": "The answer claims the excerpt is from the 2025 10-K rather than the Q1 FY2026 10-Q, contradicting the question's premise and effectively describing a different filing than asked about, even though the substantive fact stated matches the notes.",
+       "unsupported_claims": [
+        "The supplied excerpt is from Apple's 2025 10-K, not its first-quarter fiscal 2026 10-Q"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer correctly states the adoption timing and method matching the notes, but incorrectly claims the cited excerpt is from the 2025 10-K rather than the Q1 FY2026 10-Q the question asks about, contradicting the filing/citation context.",
+       "unsupported_claims": [
+        "The supplied excerpt is from Apple's 2025 10-K, not its first-quarter fiscal 2026 10-Q"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The answer provides the correct fiscal quarter and transition method matching the grading notes, but incorrectly claims the filing is from the 2025 10-K rather than the Q1 fiscal 2026 10-Q asked about, describing a different filing from the one the question specifies.",
+       "unsupported_claims": [
+        "The supplied excerpt is from Apple's 2025 10-K, not its first-quarter fiscal 2026 10-Q"
+       ]
+      }
+     ],
+     "M2-F25": [
+      {
+       "correct": false,
+       "reason": "The grading notes state the filing explicitly reports $19.00 billion in purchases of property and equipment, but the answer claims this information is not available.",
+       "unsupported_claims": [
+        "The provided context does not state Meta's purchases of property and equipment for the three months ended March 31, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes state the filing explicitly reports $19.00 billion in purchases of property and equipment, but the answer claims this information is not available.",
+       "unsupported_claims": [
+        "The provided context does not state Meta's purchases of property and equipment for the three months ended March 31, 2026"
+       ]
+      },
+      {
+       "correct": false,
+       "reason": "The grading notes confirm the filing explicitly states $19.00 billion for purchases of property and equipment, but the answer claims this information is not available in the context.",
+       "unsupported_claims": [
+        "The provided context does not state Meta's purchases of property and equipment for the three months ended March 31, 2026"
+       ]
+      }
+     ],
+     "M2-F27": [
+      {
+       "correct": true,
+       "reason": "The answer states $748 million decrease, or 15%, in fiscal year 2025, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $748 million decrease, or 15%, in fiscal year 2025, matching the reference answer and filing text exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $748 million decrease, or 15%, for fiscal year 2025, matching the reference answer exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F28": [
+      {
+       "correct": true,
+       "reason": "The answer states $12.80 billion, or 27% increase for the three months ended June 30, 2026 vs 2025, matching the reference answer and filing text exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $12.80 billion, or 27% increase for the three months ended June 30, 2026, matching the grading notes exactly.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer states $12.80 billion, or 27% increase for the three months ended June 30, 2026, matching the reference answer and grading notes exactly.",
+       "unsupported_claims": []
+      }
+     ],
+     "M2-F34": [
+      {
+       "correct": true,
+       "reason": "The answer correctly states higher revenue drove the increase, partially offset by higher accounts receivable from extended payment terms on large multi-quarter agreements with investment-grade customers, matching the grading notes.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer matches the grading notes exactly: higher revenue drove the increase, partially offset by higher accounts receivable from extended payment terms on large multi-quarter agreements with investment-grade customers.",
+       "unsupported_claims": []
+      },
+      {
+       "correct": true,
+       "reason": "The answer correctly states higher revenue drove the increase and higher accounts receivable from extended payment terms on large multi-quarter agreements with investment-grade customers partially offset it, matching the grading notes.",
+       "unsupported_claims": []
+      }
+     ]
+    }
+   },
+   "judge_errors": {},
+   "transient_errors": [],
+   "rerank_deviations": [],
+   "citation_validity": 1.0,
+   "claim_support": {
+    "supported": 47,
+    "unsupported": 8,
+    "rate": 0.8545454545454545,
+    "unsupported_by_row": {
+     "M2-A14": [
+      "Meta Platforms had an aggregate principal amount of **$59.0 billion** in senior unsecured notes outstanding as of December 31, 2025. [0001628280-26-003942:II.7:0060]"
+     ],
+     "M2-C01": [
+      "Based on Microsoft's 10-K filed July 29, 2026, general and administrative expenses increased from $7,223 million in the fiscal year ended June 30, 2025 to $7,956 million in the fiscal year ended June 30, 2026, a reported increase of 10% [0001193125-26-323660:II.7:0019]."
+     ],
+     "M2-C03": [
+      "Meta\u2019s general and administrative expenses increased **$2.41 billion (25%)** in the fiscal year ended December 31, 2025, compared with the fiscal year ended December 31, 2024. [0001628280-26-003942:II.7:0042]"
+     ],
+     "M2-D84": [
+      "The latest balances it provides are **Meta: $25.03 billion as of December 31, 2025** [0001628280-26-003942:II.7:0061] and **Alphabet: $69.5 billion as of December 31, 2025** [0001652044-26-000018:II.7:0066]."
+     ],
+     "M2-D85": [
+      "- **Meta:** It frames export controls mainly as a risk to the supply of components for its technical infrastructure: government measures could restrict suppliers\u2019 or manufacturers\u2019 operations, or Meta\u2019s ability to purchase key components, causing delays, higher costs, or interruptions to or degradation of its products and services. [0001628280-26-003942:I.1A:0027]",
+      "- **Meta:** For consumer hardware, it likewise warns that export controls and other trade restrictions could cause supply shortages, higher costs, or supply-chain and logistics disruptions. [0001628280-26-003942:I.1A:0031]"
+     ],
+     "M2-F10": [
+      "On a constant currency basis, Meta\u2019s total revenue for the three months ended June 30, 2026 would have been **$60.12 billion**. [0001628280-26-050705:I.2:0027]"
+     ],
+     "M2-F28": [
+      "Meta\u2019s advertising revenue increased by $12.80 billion, or 27%, in the three months ended June 30, 2026, compared with the same period in 2025. [0001628280-26-050705:I.2:0024]"
+     ]
+    }
+   },
+   "errors": [],
+   "checks_failed": {
+    "M2-C01": [
+     "ungrounded_number"
+    ]
+   }
+  }
+ },
+ "decision": {
+  "decision": "pass",
+  "headroom": {
+   "n": 40,
+   "wins": 21,
+   "losses": 0,
+   "both_correct": 4,
+   "both_wrong": 15,
+   "sign_test_p": 9.5367431640625e-07,
+   "win_share_of_discordant_ci95": [
+    0.845,
+    1.0
+   ],
+   "passes": true
+  },
+  "control": {
+   "n": 15,
+   "wins": 3,
+   "losses": 0,
+   "both_correct": 9,
+   "both_wrong": 3,
+   "sign_test_p": 0.25,
+   "win_share_of_discordant_ci95": [
+    0.438,
+    1.0
+   ],
+   "passes": true
+  },
+  "verdict": "answer value: flag on may be recommended (with the retrieval primary and no-loss gates)",
+  "note": "the headroom stratum is small: read the interval, not a bare pass or fail"
+ }
+}
