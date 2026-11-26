@@ -332,5 +332,5 @@ def stream_workspace_answer(question: str, driver, embedder, *, strategy: str = 
             cited = set(ev.get("citations") or [])
             ev = {**ev, "workspace": {"id_hash": _id_hash(workspace_id), "doc_chunks": len(doc_chunks),
                                       "stale_citations": _stale_citations(driver, workspace_id, cited),
-                                      "suspicious": suspicious}}
+                                      "suspicious": suspicious, "search": r_ws.get("search")}}
         yield ev

@@ -1,7 +1,7 @@
 {
  "_about": {
   "what": "agent_answer_stream (src/semigraph/agent/stream.py) driven synchronously with scripted planner and writers over FakeDriver.world(): the events, the totals and the side channels, recorded before the async rewrite (M5a I2)",
-  "commit": "2ed0a40",
+  "commit": "fb2b0dc",
   "recorded": "2026-10-03",
   "regenerate": "uv run python tests/data/record_events_pre_m5.py",
   "scenario": "name; inputs (plain data: every fake is rebuilt from it); events (every event yielded, in order); final (the totals the terminal event reports); observed (side channels of the sync code: sha256[:16] of every prompt a model received, WARNING logs, and per stream either the planner message hashes and tracer call kinds or the upload queries run). An async twin must reproduce events and final exactly.",

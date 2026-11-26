@@ -35,7 +35,7 @@ Every `data` object repeats its name in an `event` field. Fixtures: `live_hybrid
 | `step` | `n`, `tool`, `summary`, `ok` | agent only, before `retrieval` |
 | `delta` | `text` | zero or more, in order |
 | `escalated` | `reasons` (strings), `from`, `to` | when the draft was rejected and the strong model answers |
-| `done` | `answer`, `citations`, `hallucinated`; live: `finish_reason`, `usage`, `cost_usd`, `checks`, `agent`, `workspace`; optional routing fields of a live answer: `answered_by` (string, the model), `routed` (string, `cheap` or `strong`), `escalated` (boolean), `escalation_reasons` (strings) | terminal |
+| `done` | `answer`, `citations`, `hallucinated`; live: `finish_reason`, `usage`, `cost_usd`, `checks`, `agent`, `workspace` (`id_hash`, `doc_chunks`, `stale_citations`, `suspicious`, `search`); optional routing fields of a live answer: `answered_by` (string, the model), `routed` (string, `cheap` or `strong`), `escalated` (boolean), `escalation_reasons` (strings) | terminal |
 | `error` | `detail` | terminal |
 
 The cached `done` is one frame with `cached: true`, `source`, `answer`, `citations` and `hallucinated` (no usage, no checks;
@@ -110,8 +110,10 @@ defined by the server constants of the same names (not repeated here): `MSG_BUDG
 `GET /api/workspace/{ws}/jobs/{job_id}` with the `X-Workspace-Token` header (the token is never in the URL). Frames are
 `event: job` and `data` is the job object (it has no `event` field): `job_id`, `state`, `document_id`, `version` (null before
 validation), and per state `progress` (`done`, `total`, `eta_s`), `chunks`, `units`, `items_compared` (a boolean), `not_compared_reason`,
-`suspicious`, or `error` (`code`, `message`). States, in order: `received`, `validating`, `parsing`, `chunking`, `embedding`
-(repeated with progress), `comparing`, `indexing`, then `ready` or `failed` (terminal). Fixtures: `job_ready.sse`,
+`suspicious`, or `error` (`code`, `message`). States, in order (M2, docs/specs/m2-search.md R15-R16): `received`, `validating`,
+`parsing`, `chunking`, `comparing`, `indexing`, `keyword_ready` (`form`, `sections`, `sections_message`, `pending_chunks`: the version is
+keyword-searchable from here), `embedding` (repeated with progress), then `ready` (`embedded_chunks`, `keyword_only_chunks`, `stopped`,
+`search`) or `failed` (terminal). Fixtures: `job_ready.sse`,
 `job_failed.sse`; they are route-recorded, with the job dicts constructed exactly as `uploads/jobs.py` emits them.
 
 Client rules (`jobStream.ts`): at most one open GET per watch, because the server allows three live watchers per job and answers

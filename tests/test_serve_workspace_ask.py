@@ -209,7 +209,7 @@ def test_workspace_ask_streams_retrieval_with_doc_chunks_then_done_with_a_worksp
     assert events[0]["event"] == "retrieval" and events[0]["doc_chunks"] == 1
     done = events[-1]
     assert done["event"] == "done" and done["citations"] == [DOC1]
-    assert set(done["workspace"]) == {"id_hash", "doc_chunks", "stale_citations", "suspicious"}
+    assert set(done["workspace"]) == {"id_hash", "doc_chunks", "stale_citations", "suspicious", "search"}
     assert done["checks"]["numbers_grounded"] is True
     assert backend.inflight == 0 and len(backend.settled) == 1           # the answer settled its lease and gave it back
 

@@ -430,7 +430,7 @@ def test_the_extra_scenarios_cover_stale_citations_a_suspicious_chunk_and_the_ro
 
 def test_only_the_done_event_gains_the_workspace_block_and_it_never_names_the_raw_id():
     done = run_twin(CITED)["events"][-1]
-    assert list(done["workspace"]) == ["id_hash", "doc_chunks", "stale_citations", "suspicious"]
+    assert list(done["workspace"]) == ["id_hash", "doc_chunks", "stale_citations", "suspicious", "search"]
     assert list(done)[-1] == "workspace" and done["workspace"]["id_hash"] == ws._id_hash(recorder.WS_ID)
     error = run_twin(_extra("error_of_the_buffered_writer")[0])["events"][-1]
     assert error["event"] == "error" and "workspace" not in error

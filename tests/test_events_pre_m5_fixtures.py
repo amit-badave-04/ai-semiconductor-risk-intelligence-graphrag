@@ -247,7 +247,7 @@ def test_a_workspace_answer_is_one_stripped_delta_and_its_done_carries_the_works
     delta, done = cited["events"][1], cited["events"][-1]
     assert "evil.test" not in delta["text"] and "![" not in delta["text"] and delta["text"] == done["answer"]
     assert done["citations"] == sorted(done["citations"]) and set(done["workspace"]) == {
-        "id_hash", "doc_chunks", "stale_citations", "suspicious"}
+        "id_hash", "doc_chunks", "stale_citations", "suspicious", "search"}
     assert cited["events"][0]["doc_chunks"] == 2 and done["workspace"]["id_hash"] != cited["inputs"]["workspace_id"]
     assert cited["observed"]["upload_queries"] == [["search_current", 6], ["chunk_texts", done["citations"]]]
 

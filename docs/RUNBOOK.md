@@ -889,6 +889,27 @@ In PowerShell: `flyctl logs -a semigraph | Select-String "code=too_slow"`. Each 
    While it is off, `/v2/` answers 404 and `/` is unchanged.
 3. Preview on again, the same way.
 
+## M2 retrieval flags
+
+M2 retrieval (fused legs + MiniLM rerank, `docs/specs/m2-search.md`) ships OFF. The image always carries the reranker at
+`/srv/models/reranker-minilm-l6` (fetched at build time, SHA-256 verified by `scripts/build_reranker_model.py`; the build fails on a
+mismatch; TODO(owner): pin its `REVISION` to a commit sha). `fly.toml [env]` decides use: `RETRIEVAL_FUSION` (`"false"`) and
+`RETRIEVAL_RERANK` (`"none"`), with `RETRIEVAL_RERANK_MODEL_DIR = "/srv/models"`.
+
+- **Enable:** set `RETRIEVAL_FUSION = "true"` and `RETRIEVAL_RERANK = "minilm"` (rerank only acts with fusion on), then
+  `flyctl deploy -a semigraph`. Check the boot log: `flyctl logs -a semigraph` must not say `rerank model 'minilm' not found` or
+  `failed to load` (either disables the stage silently and retrieval falls back to fusion alone).
+- **Verify:** `/healthz` is 200; `GET /api/stats` answers; ask one smoke question from the page (or an example click) and check it is
+  answered with sources. The log line `rerank model 'minilm' loaded from /srv/models/reranker-minilm-l6` appears in the boot log (the model loads at startup, `serving_config` warms it), not on the first ask.
+- **Roll back:** set `RETRIEVAL_FUSION = "false"` and `RETRIEVAL_RERANK = "none"`, redeploy. The old path is byte-identical with the flags off.
+- **Measure p95 and RSS (owner-run):** the gate (R24) is that rerank adds at most 2 s at p95 on the throttled machine. How to time it
+  on the machine is for the owner to define: for example per-ask retrieval and rerank seconds from the logs, or an owner-run timed
+  probe. Do not use `scripts/latency_smoke.py` here: it is the S12 calibration runner (local graph, paid with `--live`).
+  Read memory with `flyctl ssh console -a semigraph -C "sh -c 'grep VmRSS /proc/*/status'"` (largest process) or Fly metrics:
+  idle RSS with the flags off, then idle RSS with the flags on, on the same machine (the model loads at boot, so idle-vs-after-asks
+  shows nothing). The spec records about 314 MB process RSS with minilm loaded and no embedder on the dev machine; the Fly figure
+  is the owner's measurement.
+
 ## Troubleshooting
 
 - `/healthz` 503 → the API cannot reach Neo4j: `flyctl status -a semigraph-neo4j` (machine must be

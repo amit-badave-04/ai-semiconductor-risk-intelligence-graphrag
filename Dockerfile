@@ -55,6 +55,13 @@ RUN set -eu; \
 # The memory probe comes in its own step AFTER the variant build, so editing it never re-runs the dequantization above.
 COPY tools/probe/embed_rss.py scripts/
 RUN if [ "$KEEP_UNPATCHED" = 1 ]; then cp scripts/embed_rss.py /models/embed_rss.py; fi
+# The M2 reranker (docs/specs/m2-search.md R24, gate R13): cross-encoder/ms-marco-MiniLM-L6-v2, 8-bit ONNX (23,200,716 bytes), the
+# three files fetched from huggingface.co and each checked against a pinned SHA-256 (scripts/build_reranker_model.py, stdlib only,
+# no torch); a mismatch fails the build. Its own step after everything above, so it never invalidates the embedder layers. It lands at
+# /srv/models/reranker-minilm-l6, where RETRIEVAL_RERANK_MODEL_DIR=/srv/models (fly.toml) points. The model sits in the image
+# whatever the flags say; RETRIEVAL_FUSION / RETRIEVAL_RERANK in fly.toml decide whether it is used.
+COPY scripts/build_reranker_model.py scripts/
+RUN python scripts/build_reranker_model.py --out /models/reranker-minilm-l6
 
 # Web stage. It sits BEFORE the runtime stage so the runtime stays the last (default) target. The tag is an exact version
 # pinned by digest (the multi-arch index), the same Node as web/.node-version and the CI web job (tests/test_web_pins.py). The

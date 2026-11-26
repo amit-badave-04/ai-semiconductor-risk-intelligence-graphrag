@@ -49,7 +49,7 @@ from semigraph.agent.stream import agent_answer_stream  # noqa: E402
 from semigraph.retrieval.workspace import stream_workspace_answer  # noqa: E402
 from semigraph.uploads import repo as upload_repo  # noqa: E402
 
-RECORDED_FROM_COMMIT = "2ed0a40"          # `git rev-parse --short HEAD` of the code whose behaviour is recorded (pre-I2, sync)
+RECORDED_FROM_COMMIT = "fb2b0dc"          # `git rev-parse --short HEAD` of the code recorded; plus M2 R17/R19 (the workspace block's search label)
 RECORDED_ON = "2026-10-03"
 REGENERATE = "uv run python tests/data/record_events_pre_m5.py"
 AGENT_FILE = HERE / "agent_events_pre_m5.json"

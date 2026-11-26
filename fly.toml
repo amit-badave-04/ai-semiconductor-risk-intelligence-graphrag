@@ -58,6 +58,13 @@ kill_timeout = 300
   # "neo4j" (counters in Neo4j too), then redeploy. The live caps are pinned by the production validators in
   # src/semigraph/config.py, not set here.
   STATE_BACKEND = "inprocess"
+  # M2 retrieval (docs/specs/m2-search.md, docs/RUNBOOK.md "M2 retrieval flags"). Both OFF: the image carries the MiniLM reranker
+  # at /srv/models/reranker-minilm-l6 but nothing uses it, and retrieval is the pre-M2 path. The owner turns M2 on at deploy by
+  # setting RETRIEVAL_FUSION = "true" and RETRIEVAL_RERANK = "minilm" (the frozen setting: all legs fused + MiniLM rerank), then
+  # redeploying. Rerank only acts with fusion on. Roll back: both back to "false" / "none" and redeploy.
+  RETRIEVAL_FUSION = "false"
+  RETRIEVAL_RERANK = "none"
+  RETRIEVAL_RERANK_MODEL_DIR = "/srv/models"
 
 [http_service]
   internal_port = 8080

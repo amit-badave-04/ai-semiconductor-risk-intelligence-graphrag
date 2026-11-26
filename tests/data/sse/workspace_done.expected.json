@@ -65,7 +65,8 @@
     "id_hash": "cd93782b7fb9",
     "doc_chunks": 2,
     "stale_citations": [],
-    "suspicious": false
+    "suspicious": false,
+    "search": "keyword_semantic"
    }
   }
  ]

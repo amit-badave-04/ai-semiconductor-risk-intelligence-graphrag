@@ -1,7 +1,7 @@
 {
  "_about": {
   "what": "stream_workspace_answer (src/semigraph/retrieval/workspace.py) driven synchronously with a scripted writer over FakeDriver.world() plus the upload queries answered by query text, recorded before the async rewrite (M5a I2)",
-  "commit": "2ed0a40",
+  "commit": "fb2b0dc",
   "recorded": "2026-10-03",
   "regenerate": "uv run python tests/data/record_events_pre_m5.py",
   "scenario": "name; inputs (plain data: every fake is rebuilt from it); events (every event yielded, in order); final (the totals the terminal event reports); observed (side channels of the sync code: sha256[:16] of every prompt a model received, WARNING logs, and per stream either the planner message hashes and tracer call kinds or the upload queries run). An async twin must reproduce events and final exactly.",
@@ -123,7 +123,8 @@
       "id_hash": "cd93782b7fb9",
       "doc_chunks": 2,
       "stale_citations": [],
-      "suspicious": false
+      "suspicious": false,
+      "search": "keyword_semantic"
      }
     }
    ],
@@ -241,7 +242,8 @@
       "id_hash": "cd93782b7fb9",
       "doc_chunks": 0,
       "stale_citations": [],
-      "suspicious": false
+      "suspicious": false,
+      "search": "keyword_only"
      }
     }
    ],
@@ -406,7 +408,8 @@
       "id_hash": "cd93782b7fb9",
       "doc_chunks": 2,
       "stale_citations": [],
-      "suspicious": false
+      "suspicious": false,
+      "search": "keyword_semantic"
      }
     }
    ],
@@ -540,7 +543,8 @@
       "stale_citations": [
        "doc:fedcba987654:v1:0002"
       ],
-      "suspicious": true
+      "suspicious": true,
+      "search": "semantic_only"
      }
     }
    ],

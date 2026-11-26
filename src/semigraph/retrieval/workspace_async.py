@@ -109,12 +109,12 @@ def _retrieval_event(r_sec: dict, doc_chunks: list[dict]) -> dict:
 
 
 async def _with_workspace_block(done: dict, driver, workspace_id: str, limiters: "Limiters", *, doc_chunks: int,
-                                suspicious: bool) -> dict:
+                                suspicious: bool, search: str | None = None) -> dict:
     """``done`` plus the ``workspace`` block, in the sync key order; ``stale_citations`` is a graph read."""
     cited = set(done.get("citations") or [])
     stale = await _on_db_thread(limiters, _stale_citations, driver, workspace_id, cited)
     return {**done, "workspace": {"id_hash": _id_hash(workspace_id), "doc_chunks": doc_chunks,
-                                  "stale_citations": stale, "suspicious": suspicious}}
+                                  "stale_citations": stale, "suspicious": suspicious, "search": search}}
 
 
 async def astream_workspace_answer(question: str, driver, embedder, *, limiters: "Limiters", strategy: str = "hybrid",
@@ -157,6 +157,6 @@ async def astream_workspace_answer(question: str, driver, embedder, *, limiters:
         async for event in inner:
             if event["event"] == "done":
                 event = {**event, "context_chars": len(full_context)}
-                event = await _with_workspace_block(event, driver, workspace_id, limiters, doc_chunks=len(doc_chunks),
+                event = await _with_workspace_block(event, driver, workspace_id, limiters, doc_chunks=len(doc_chunks), search=r_ws.get("search"),
                                                     suspicious=suspicious)
             yield event
