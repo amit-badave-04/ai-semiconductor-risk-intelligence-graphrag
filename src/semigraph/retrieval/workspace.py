@@ -17,6 +17,7 @@ answer cache or the agent planner.
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import secrets
 import string
@@ -29,6 +30,8 @@ from .ids import CITE_RE, classify_id
 from .fusion import sec_fusion_kwargs
 from .retriever import hybrid_retrieve
 from .verify import SentenceScopedSources
+
+logger = logging.getLogger("semigraph.retrieval.workspace")
 
 if TYPE_CHECKING:
     from .fusion import FusionRuntime
@@ -194,10 +197,24 @@ def strip_links_images(text: str) -> str:
     return _defang(text)
 
 
+def _fused_with_keyword(driver, workspace_id: str, question: str, dense_rows: list[dict], k: int) -> list[dict]:
+    """The dense rows fused with this workspace's keyword rows into the same ``k`` slots. A keyword fault leaves the dense
+    rows as they were: a keyword-ready upload is then simply not found by keyword, never an error in the ask."""
+    from ..uploads import keyword_index
+
+    try:
+        keyword_rows = keyword_index.keyword_rows(driver, workspace_id, question, k)
+    except Exception:  # noqa: BLE001 - the ask must still answer from the dense rows
+        logger.warning("upload keyword search failed; answering from the vector rows only", exc_info=True)
+        return dense_rows
+    return keyword_index.rrf_fuse(dense_rows, keyword_rows, k) if keyword_rows else dense_rows
+
+
 def workspace_retrieve(question: str, workspace_id: str, driver, embedder, *, as_of: str | None = None,
                        k: int = DEFAULT_K_DOC_CHUNKS, query_vec: list[float] | None = None) -> dict:
-    """Filtered vector search over this workspace's chunks (current only, or as of ``as_of``): ``{"doc_chunks":
-    [...], "stale_ids": [...]}`` — ``stale_ids`` names any retrieved chunk that is not the document's current one
+    """Filtered vector search over this workspace's chunks (current only, or as of ``as_of``), fused with a keyword search of
+    this workspace's own current chunks (never for an ``as_of`` ask; docs/specs/m2-search.md R17): ``{"doc_chunks": [...],
+    "stale_ids": [...], "search": "keyword_only" | "keyword_semantic" | "semantic_only"}`` — ``stale_ids`` names any retrieved chunk that is not the document's current one
     (only possible with ``as_of``; a follow-up ask's stale citations are computed from the ANSWER's cited ids
     instead, see :func:`_stale_citations`, since a plain current-only search never retrieves a superseded chunk).
     ``query_vec`` is the question's embedding when the caller already has it (the async path embeds once and passes it to
@@ -207,11 +224,16 @@ def workspace_retrieve(question: str, workspace_id: str, driver, embedder, *, as
 
     vec = query_vec if query_vec is not None else embedder.encode_query(question)
     cutoff = as_of_cutoff(as_of) if as_of else None
-    rows = repo.search_chunks(driver, workspace_id, vec, k, cutoff)
+    rows_dense = repo.search_chunks(driver, workspace_id, vec, k, cutoff)
+    rows = rows_dense
+    if cutoff is None:
+        rows = _fused_with_keyword(driver, workspace_id, question, rows, k)
     doc_chunks = [{"chunk_id": r["chunk_id"], "text": r["text"], "document_id": r["document_id"],
                   "version": r["version"], "is_current": r["is_current"], "title": r["title"]} for r in rows]
     stale_ids = [c["chunk_id"] for c in doc_chunks if not c["is_current"]]
-    return {"doc_chunks": doc_chunks, "stale_ids": stale_ids}
+    from ..uploads.keyword_index import search_label
+
+    return {"doc_chunks": doc_chunks, "stale_ids": stale_ids, "search": search_label(dense=rows_dense, as_of=cutoff is not None)}
 
 
 def make_delimiter(doc_chunks: list[dict]) -> str:

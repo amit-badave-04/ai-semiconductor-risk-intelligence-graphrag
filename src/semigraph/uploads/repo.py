@@ -37,6 +37,7 @@ from datetime import UTC, datetime, timedelta
 from ..graph.client import NO_UNRECOGNIZED_NOTIFICATIONS, run_cypher
 from ..versions import CURRENT, SUPERSEDED
 from . import new_workspace_id, new_workspace_token
+from .sections import NON_PRIORITY as NON_PRIORITY_RANK
 from .versions import CURRENT_VALID_TO
 
 logger = logging.getLogger("semigraph.uploads.repo")
@@ -148,9 +149,9 @@ _JOB_TERMINAL_STATES = ("ready", "failed")
 # uploads.jobs.JOB_ERROR_MESSAGES["interrupted"], duplicated for the same reason: an exact fixed string, never a
 # raw exception message (docs/v2/M4_PLAN.md 5) — kept in sync with jobs.py by tests/test_serve_upload_repo.py.
 _INTERRUPTED_ERROR_MESSAGE = "processing was interrupted and could not finish"
-# At least a ~90 s parse plus the 2,100 s embed budget, with generous slack: a job that has not moved in this long
+# At least a ~90 s parse plus the 3,600 s embed budget, with generous slack: a job that has not moved in this long
 # was abandoned by a dead process, not merely slow.
-FAIL_INTERRUPTED_AFTER_S = 50 * 60   # default only: above parse (90 s) + embed (2,100 s) + a 10 min margin (2,790 s)
+FAIL_INTERRUPTED_AFTER_S = 75 * 60   # default only: above parse (90 s) + embed (3,600 s) + a 10 min margin (4,290 s)
 
 
 def create_workspace(driver, ttl_hours: int) -> tuple[str, str, str]:
@@ -269,7 +270,7 @@ RETURN c.chunk_id AS chunk_id, c.char_start AS char_start, c.char_end AS char_en
 ORDER BY c.seq"""
 
 EMBEDDED_CHUNKS_QUERY = """MATCH (c:UserChunk {workspace_id: $ws, document_id: $document_id})
-WHERE c.text_hash IS NOT NULL
+WHERE c.text_hash IS NOT NULL AND c.embedding IS NOT NULL
 RETURN c.text_hash AS text_hash, c.embedding AS embedding"""
 
 
@@ -341,7 +342,7 @@ CREATE_CHUNK_QUERY = """MATCH (v:UserVersion {workspace_id: $ws, document_id: $d
 CREATE (c:UserChunk {workspace_id: $ws, document_id: $document_id, version: $version, chunk_id: $chunk_id,
     seq: $seq, text: $text, text_hash: $text_hash, char_start: $char_start, char_end: $char_end,
     tokens: $tokens, embedding: $embedding, is_current: true, valid_from: $now, valid_to: $current_valid_to,
-    status: $status})
+    status: $status, priority: $priority, embed_state: $embed_state})
 CREATE (v)-[:HAS_CHUNK]->(c)"""
 
 LINK_SUCCEEDED_BY_QUERY = """MATCH (older:UserUnit {workspace_id: $ws, document_id: $document_id,
@@ -358,6 +359,30 @@ CREATE (newer)-[:HAS_PASSAGE]->(:UserPassage {workspace_id: $ws, document_id: $d
 
 BUMP_EMBEDDED_TOKENS_QUERY = """MATCH (w:UserWorkspace {workspace_id: $ws})
 SET w.embedded_tokens = w.embedded_tokens + $delta"""
+
+# R15/R16: a chunk is written keyword-searchable first (embedding null, embed_state 'pending', or 'done' when a hash-matched
+# vector was reused) and its vector arrives later, one chunk at a time, by the single embedding worker.
+SET_CHUNK_EMBEDDING_QUERY = """MATCH (c:UserChunk {workspace_id: $ws, chunk_id: $chunk_id})
+WHERE c.embed_state = 'pending' AND c.is_current = true AND c.embedding IS NULL
+SET c.embedding = $embedding, c.embed_state = 'done'
+RETURN c.chunk_id AS chunk_id"""
+
+PENDING_CHUNKS_QUERY = """MATCH (c:UserChunk {workspace_id: $ws, document_id: $document_id, version: $version})
+WHERE c.embed_state = 'pending' AND c.is_current = true
+RETURN c.chunk_id AS chunk_id, c.seq AS seq, c.text AS text, c.tokens AS tokens, c.priority AS priority
+ORDER BY c.priority, c.seq"""
+
+SKIP_PENDING_CHUNKS_QUERY = """MATCH (c:UserChunk {workspace_id: $ws, document_id: $document_id, version: $version})
+WHERE c.embed_state = 'pending'
+SET c.embed_state = 'skipped'
+RETURN count(c) AS skipped"""
+
+# Cross-workspace by necessity (documented exception, like the sweeps): after a restart every workspace's pending chunks are
+# requeued. The per-chunk writes that follow stay $ws-bound.
+RESUMABLE_EMBEDS_SELECT_QUERY = f"""MATCH (c:UserChunk) WHERE c.embed_state = 'pending' AND c.is_current = true
+WITH DISTINCT c.workspace_id AS workspace_id, c.document_id AS document_id, c.version AS version
+MATCH (v:UserVersion) WHERE v.workspace_id = workspace_id AND v.document_id = document_id AND v.version = version
+RETURN workspace_id, document_id, version, v.job_id AS job_id LIMIT {SWEEP_SELECT_BATCH}"""
 
 
 def _merge_document(tx, ws: str, document_id: str, title: str | None, now: datetime, version: int) -> None:
@@ -398,7 +423,8 @@ def _create_chunks(tx, ws: str, document_id: str, version: int, chunks: list[dic
     delta = 0
     for c in chunks:
         embedding = [float(x) for x in c["embedding"]] if c.get("embedding") is not None else None
-        tx.run(CREATE_CHUNK_QUERY, ws=ws, document_id=document_id, version=version, chunk_id=c["chunk_id"],
+        embed_state = "pending" if embedding is None else "done"
+        tx.run(CREATE_CHUNK_QUERY, priority=c.get("priority", NON_PRIORITY_RANK), embed_state=embed_state, ws=ws, document_id=document_id, version=version, chunk_id=c["chunk_id"],
                seq=c["seq"], text=c["text"], text_hash=c["text_hash"], char_start=c["char_start"],
                char_end=c["char_end"], tokens=c.get("tokens"), embedding=embedding, now=now,
                current_valid_to=CURRENT_VALID_TO, status=CURRENT)
@@ -481,6 +507,60 @@ def put_version(driver, ws: str, *, document_id: str, title: str | None, version
         session.execute_write(_tx)
     logger.info("put_version ws_hash=%s document_id=%s version=%d chunks=%d units=%d pages=%d",
                 _ws_hash(ws), document_id, version, len(chunks), len(units), pages)
+
+
+def pending_chunks(driver, ws: str, document_id: str, version: int) -> list[dict]:
+    """The current version's chunks still waiting for a vector, highest priority first, then document order."""
+    return run_cypher(driver, PENDING_CHUNKS_QUERY, ws=ws, document_id=document_id, version=version)
+
+
+def set_chunk_embedding(driver, ws: str, chunk_id: str, embedding: list[float], tokens: int) -> bool:
+    """One transaction: lock the workspace (raises :class:`WorkspaceGone` and writes nothing when it is gone), write the
+    vector of a chunk that is still pending and current, and count its tokens against the workspace budget. False when the
+    chunk is no longer pending (a newer version replaced it, the job was cancelled or the document deleted)."""
+    def _tx(tx) -> bool:
+        if not tx.run(LOCK_WORKSPACE_QUERY, ws=ws).data():
+            raise WorkspaceGone("the workspace no longer exists")
+        written = tx.run(SET_CHUNK_EMBEDDING_QUERY, ws=ws, chunk_id=chunk_id,
+                         embedding=[float(x) for x in embedding]).data()
+        if written and tokens:
+            tx.run(BUMP_EMBEDDED_TOKENS_QUERY, ws=ws, delta=int(tokens))
+        return bool(written)
+
+    with driver.session() as session:
+        return session.execute_write(_tx)
+
+
+def finish_embedding(driver, ws: str, document_id: str, version: int) -> int:
+    """Marks every chunk of the version that never got a vector keyword-only (time-out, budget, cancel); returns how many."""
+    rows = run_cypher(driver, SKIP_PENDING_CHUNKS_QUERY, ws=ws, document_id=document_id, version=version)
+    return rows[0]["skipped"] if rows else 0
+
+
+CURRENT_VERSIONS_QUERY = """MATCH (v:UserVersion {workspace_id: $ws, is_current: true})
+RETURN v.document_id AS document_id, v.version AS version"""
+
+CURRENT_CHUNK_ROWS_QUERY = """MATCH (c:UserChunk {workspace_id: $ws, is_current: true})
+MATCH (d:UserDocument {workspace_id: $ws, document_id: c.document_id})
+OPTIONAL MATCH (v:UserVersion {workspace_id: $ws, document_id: c.document_id, version: c.version})
+RETURN c.chunk_id AS chunk_id, c.text AS text, c.document_id AS document_id, c.version AS version,
+       coalesce(v.title, d.title) AS title
+ORDER BY c.document_id, c.seq"""
+
+
+def current_versions(driver, ws: str) -> list[dict]:
+    """The ``(document_id, version)`` pairs that are current in this workspace: the key of its keyword index (R17)."""
+    return run_cypher(driver, CURRENT_VERSIONS_QUERY, ws=ws)
+
+
+def current_chunk_rows(driver, ws: str) -> list[dict]:
+    """Every current chunk of THIS workspace with its text and title: what its keyword index is built from (R17)."""
+    return run_cypher(driver, CURRENT_CHUNK_ROWS_QUERY, ws=ws)
+
+
+def resumable_embeds(driver) -> list[dict]:
+    """``{workspace_id, document_id, version, job_id}`` of every current version that still has pending chunks."""
+    return run_cypher(driver, RESUMABLE_EMBEDS_SELECT_QUERY)
 
 
 # ---------------------------------------------------------------- reads after write
@@ -610,6 +690,9 @@ def sweep_expired(driver, now: datetime) -> int:
     with driver.session() as session:
         expired = [r["workspace_id"] for r in session.run(SWEEP_SELECT_QUERY, now=now).data()]
         deleted = sum(1 for ws in expired if session.execute_write(lambda tx, ws=ws: _delete_if_locked(tx, ws)))
+    from . import keyword_index
+    for ws in expired:
+        keyword_index.CACHE.invalidate(ws)               # an expired workspace's text leaves memory with it (S10, R17)
     if deleted:
         logger.info("swept %d expired workspace(s)", deleted)
     return deleted

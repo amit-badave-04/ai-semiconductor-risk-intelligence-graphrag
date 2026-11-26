@@ -15,6 +15,8 @@ import threading
 
 import pytest
 
+from upload_queue_fakes import drain, install
+
 from semigraph.uploads import jobs, repo
 from semigraph.uploads.parse import Block, ParsedDoc, ParseError
 from semigraph.uploads.units import Chunk
@@ -31,7 +33,9 @@ class FakeSettings:
     upload_max_chunks = 120
     upload_max_workspace_tokens = 48000
     upload_max_workspace_pages = 120
-    upload_embed_timeout_s = 2100
+    upload_embed_timeout_s = 3600
+    upload_guaranteed_embed_tokens = 19900
+    upload_embed_jobs_per_day = 23
     upload_compare_timeout_s = 30     # the "comparing" stage now runs in a real sandboxed subprocess (uploads.compare)
     uploads_enabled = True
 
@@ -162,6 +166,7 @@ def fake_repo(monkeypatch):
     # WorkspaceGone does not exist on the real `repo` module yet (another worker's seam, docs/v2/M4_PLAN.md 15.4):
     # injected here so jobs.py's `getattr(repo, "WorkspaceGone", _NeverRaised)` resolves to something real in tests.
     monkeypatch.setattr(repo, "WorkspaceGone", WorkspaceGone, raising=False)
+    fr.pending = install(monkeypatch, fr)
     return fr
 
 
@@ -178,6 +183,7 @@ def _run(app, *, document_id=DOC, title="doc.txt", data=b"raw bytes", kind="txt"
     reg = jobs.registry(app)
     reg.create(WS, job_id)
     jobs._worker(app, WS, job_id, document_id, title, data, kind, content_hash_hex)
+    drain(app)                       # the embedding queue's worker, run here on the calling thread
     return reg
 
 
@@ -196,7 +202,8 @@ def test_a_plain_text_upload_reaches_ready_and_releases_the_slot(fake_repo, monk
     events = _events(fake_repo)
     states = [e["state"] for e in events]
     collapsed = [s for i, s in enumerate(states) if i == 0 or s != states[i - 1]]   # embedding repeats with progress
-    assert collapsed == ["received", "validating", "parsing", "chunking", "embedding", "comparing", "indexing", "ready"]
+    assert collapsed == ["received", "validating", "parsing", "chunking", "comparing", "indexing", "keyword_ready", "embedding",
+                         "ready"]
     assert events[-1]["chunks"] >= 1 and events[-1]["units"] >= 1
     assert events[-1]["not_compared_reason"] == "first_version"
     assert events[-1]["items_compared"] is False
@@ -235,14 +242,19 @@ def test_run_upload_job_starts_a_real_thread_and_reaches_a_terminal_state(fake_r
     parsed = _parsed([_block("Alpha bravo charlie delta echo.")])
     monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
     app = FakeApp(fake_repo)
-    job_id = jobs.run_upload_job(app, workspace_id=WS, document_id=DOC, title="t", data=b"x", kind="txt",
-                                 content_hash_hex="h" * 64)
-    for _ in range(200):
-        events = _events(fake_repo, job_id)
-        if events and events[-1]["state"] in ("ready", "failed"):
-            break
-        threading.Event().wait(0.01)
-    assert events[-1]["state"] == "ready"
+    queue = jobs.embed_queue_for(app)
+    queue.start()                                  # the embedding worker thread, as start_if_enabled starts it
+    try:
+        job_id = jobs.run_upload_job(app, workspace_id=WS, document_id=DOC, title="t", data=b"x", kind="txt",
+                                     content_hash_hex="h" * 64)
+        for _ in range(300):
+            events = _events(fake_repo, job_id)
+            if events and events[-1]["state"] in ("ready", "failed"):
+                break
+            threading.Event().wait(0.01)
+    finally:
+        queue.stop()
+    assert events[-1]["state"] == "ready" and events[-1]["search"] == "keyword_semantic"
     assert app.state.upload_slots.released == 1
 
 
@@ -273,16 +285,17 @@ def test_too_many_tokens_fails_before_chunking(fake_repo, monkeypatch):
     assert fake_repo.put_version_calls == []
 
 
-def test_workspace_quota_exceeded_fails_without_embedding(fake_repo, monkeypatch):
+def test_a_full_workspace_token_budget_makes_the_upload_keyword_only_instead_of_failing_it(fake_repo, monkeypatch):
+    """OD11/R16: the embedded-token budget degrades to keyword-only; the upload is stored, searchable and ``ready``."""
     parsed = _parsed([_block("Alpha bravo charlie delta echo foxtrot golf.")])
     monkeypatch.setattr("semigraph.uploads.parse.parse_document", lambda *a, **kw: parsed)
     embedder = FakeEmbedder()
     fake_repo.workspace_tokens = FakeSettings.upload_max_workspace_tokens  # already full
     app = FakeApp(fake_repo, embedder=embedder)
     _run(app)
-    assert _events(fake_repo)[-1]["error"]["code"] == "workspace_quota"
-    assert embedder.encode_calls == []
-    assert fake_repo.put_version_calls == []
+    last = _events(fake_repo)[-1]
+    assert last["state"] == "ready" and last["stopped"] == "budget" and last["search"] == "keyword_only"
+    assert embedder.encode_calls == [] and len(fake_repo.put_version_calls) == 1
 
 
 def test_the_120_page_workspace_cap_fails_before_the_token_check(fake_repo, monkeypatch):
@@ -546,43 +559,21 @@ def test_an_unexpected_exception_still_releases_the_slot_and_reports_internal_er
 # ---------------------------------------------------------------- embedding: reuse, quota, progress (direct helper tests)
 
 
-def test_embed_chunks_reuses_already_embedded_text_hashes(fake_repo):
-    embedder = FakeEmbedder()
-    fake_repo.embedded["doc"] = {"hash-a": [9.0, 9.0]}
-    chunk_texts = ["text a", "text b"]
-    chunk_hashes = ["hash-a", "hash-b"]
-    chunks = [Chunk(seq=0, char_start=0, char_end=6, tokens=10), Chunk(seq=1, char_start=6, char_end=12, tokens=10)]
-    events = []
-    result = jobs._embed_chunks(object(), WS, "doc", chunk_texts, chunk_hashes, chunks, embedder, FakeSettings(),
-                                lambda state, **kw: events.append((state, kw)))
-    assert embedder.encode_calls == ["text b"]                 # only the NOT-already-embedded chunk was encoded
-    assert result["vectors"] == {1: [0.1, 0.2, 0.3]}
-    assert result["already"] == {"hash-a": [9.0, 9.0]}
-    assert events and events[-1][1]["progress"]["done"] == 1 and events[-1][1]["progress"]["total"] == 1
+def test_the_chunk_stage_reuses_a_vector_for_a_text_hash_the_document_already_has(fake_repo, monkeypatch):
+    from semigraph.hashing import content_hash
 
-
-def test_embed_chunks_returns_none_when_the_workspace_budget_would_be_exceeded():
-    embedder = FakeEmbedder()
-    settings = FakeSettings()
-    settings.upload_max_workspace_tokens = 5
-    chunks = [Chunk(seq=0, char_start=0, char_end=4, tokens=10)]
-
-    class QuotaRepo:
-        def embedded_chunks(self, driver, ws, document_id):
-            return {}
-
-        def quota(self, driver, ws):
-            return {"embedded_tokens": 0}
-
-    import semigraph.uploads.repo as repo_mod
-    orig_embedded, orig_quota = repo_mod.embedded_chunks, repo_mod.quota
-    repo_mod.embedded_chunks, repo_mod.quota = QuotaRepo().embedded_chunks, QuotaRepo().quota
-    try:
-        result = jobs._embed_chunks(object(), WS, "doc", ["abcd"], ["h1"], chunks, embedder, settings, lambda *a, **kw: None)
-    finally:
-        repo_mod.embedded_chunks, repo_mod.quota = orig_embedded, orig_quota
-    assert result is None
-    assert embedder.encode_calls == []
+    text = "text a\n\ntext b"
+    parsed = _parsed([_block("text a"), _block("text b")])
+    fake_repo.embedded[DOC] = {content_hash("text a"): [9.0, 9.0]}
+    chunks = [Chunk(seq=0, char_start=0, char_end=6, tokens=10), Chunk(seq=1, char_start=8, char_end=14, tokens=10)]
+    monkeypatch.setattr(jobs, "_build_units_and_chunks", lambda *a, **kw: ([], chunks, []))
+    app = FakeApp(fake_repo)
+    stages: dict = {}
+    _, _, rows, _ = jobs._chunk_stage(object(), WS, jobs.registry(app), "job1", DOC, 1, text, parsed, "txt", app.state.embedder,
+                                      app.state.settings, stages=stages)
+    assert [r["embedding"] for r in rows] == [[9.0, 9.0], None]
+    assert all(r["embedded"] is False for r in rows), "nothing is embedded in the job itself"
+    assert (stages["chunks"], stages["fresh"], stages["tokens"]) == (2, 1, 10)
 
 
 # ---------------------------------------------------------------- version-to-version comparison

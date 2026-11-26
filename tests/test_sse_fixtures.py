@@ -332,13 +332,18 @@ def _job(job_id: str, state: str, version, **extra) -> dict:
 
 
 def ready_job_dicts() -> list[dict]:
+    """The real job's sequence: the keyword stage opens the search (keyword_ready), the embeddings follow, then ready."""
     j = JOB_READY
+    message = "The form type was not recognised; the document is embedded in document order."
+    facts = {"chunks": 12, "units": 30, "items_compared": False, "not_compared_reason": "first_version", "suspicious": False,
+             "form": None, "sections": [], "sections_message": message}
     return [_job(j, "received", None), _job(j, "validating", 1), _job(j, "parsing", 1), _job(j, "chunking", 1),
+            _job(j, "comparing", 1), _job(j, "indexing", 1),
+            _job(j, "keyword_ready", 1, **facts, pending_chunks=12),
             _job(j, "embedding", 1, progress={"done": 0, "total": 12, "eta_s": None}),
             _job(j, "embedding", 1, progress={"done": 6, "total": 12, "eta_s": 4.5}),
             _job(j, "embedding", 1, progress={"done": 12, "total": 12, "eta_s": 0.0}),
-            _job(j, "comparing", 1), _job(j, "indexing", 1),
-            _job(j, "ready", 1, chunks=12, units=30, items_compared=False, not_compared_reason="first_version", suspicious=False)]
+            _job(j, "ready", 1, **facts, embedded_chunks=12, keyword_only_chunks=0, stopped=None, search="keyword_semantic")]
 
 
 def failed_job_dicts() -> list[dict]:

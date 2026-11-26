@@ -278,9 +278,9 @@ def job_events(failing: bool, job_id: str, document_id: str, version: int) -> li
 def make_run_upload_job(fake: FakeWorkspaces):
     ids = JobIds()
 
-    def run_upload_job(app, *, workspace_id, document_id, title, data, kind, content_hash_hex, charged_day=None):
+    def run_upload_job(app, *, workspace_id, document_id, title, data, kind, content_hash_hex, client_key=None):
         """Starts a thread that replays the job and returns the job id at once. The thread owns the upload slot's release, as
-        the real worker does, and releases it exactly once."""
+        the real worker does (at ``keyword_ready``, R15, or at the end of a failed job), and releases it exactly once."""
         job_id = ids.take()
         registry = jobs.registry(app)
         registry.create(workspace_id, job_id)
@@ -288,16 +288,24 @@ def make_run_upload_job(fake: FakeWorkspaces):
         version = fake.next_version(workspace_id, document_id)
 
         def play():
+            released = []
+
+            def release_once():
+                if not released:
+                    released.append(True)
+                    app.state.upload_slots.release()
+
             try:
                 for event in job_events(failing, job_id, document_id, version):
                     time.sleep(JOB_STEP_DELAY_S)
-                    if event["state"] == "ready":
+                    if event["state"] == "keyword_ready":      # the real job stores the version here (R15); the vectors come later
                         fake.record_version(workspace_id, document_id, title, content_hash_hex)
+                        release_once()
                     registry.append(workspace_id, job_id, event)
                     if workspace_id in fake.workspaces:
                         fake.workspaces[workspace_id]["jobs"][job_id] = event
             finally:
-                app.state.upload_slots.release()
+                release_once()
 
         threading.Thread(target=play, daemon=True).start()
         return job_id

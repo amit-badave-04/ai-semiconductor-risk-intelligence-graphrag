@@ -91,7 +91,7 @@ def test_workspace_retrieve_uses_a_supplied_query_vec_and_never_calls_the_embedd
 
     r = ws.workspace_retrieve("q", WORKSPACE_ID, object(), Forbidden(), query_vec=[0.5, 0.6])
 
-    assert seen == [[0.5, 0.6]] and r == {"doc_chunks": [], "stale_ids": []}
+    assert seen == [[0.5, 0.6]] and r == {"doc_chunks": [], "stale_ids": [], "search": "keyword_only"}
 
 
 def test_workspace_retrieve_passes_an_as_of_cutoff(fake_repo):

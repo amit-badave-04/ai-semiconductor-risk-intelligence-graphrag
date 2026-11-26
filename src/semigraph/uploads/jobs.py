@@ -60,6 +60,10 @@ PUT_JOB_RETRY_BACKOFF_S = 0.5
 
 TERMINAL_STATES = ("ready", "failed")
 
+# R14: the character precheck rejects a text longer than upload_max_tokens x this many characters before any token is counted.
+# English filing text runs at 3.9-4.1 characters per token, so 8 never rejects a document the token cap would accept.
+PRECHECK_MAX_CHARS_PER_TOKEN = 8
+
 # Fixed, non-upload-controlled client messages per failure code (never the raw exception text — docs/v2/M4_PLAN.md 5).
 JOB_ERROR_MESSAGES = {
     "unsupported_type": "unsupported file type",
@@ -70,7 +74,6 @@ JOB_ERROR_MESSAGES = {
     "empty": "the file is empty",
     "parse_failed": "the document could not be parsed",
     "timeout": "processing took too long and was stopped",
-    "too_slow": "Uploads are slow right now. Please try again in a few minutes, or upload a shorter PDF.",
     "scanned": "the document appears to be scanned; no extractable text was found",
     "too_many_pages": "the document has more pages than this workspace allows",
     "too_many_tokens": "the document is larger than this workspace allows",
@@ -218,6 +221,39 @@ def registry(app) -> JobRegistry:
     return reg
 
 
+def _build_embed_queue(app):
+    """The process's one embedding queue (``uploads.embed_queue``), wired to this app's driver, embedder, settings and job
+    registry. Its ``ready`` events carry the job's keyword-ready summary so a client that only sees the last event has it all."""
+    from .embed_queue import EmbedQueue
+
+    st = app.state
+    reg = registry(app)
+
+    def emit(task, state: str, **extra) -> None:
+        if state != "embedding" and reg.events_from(task.workspace_id, task.job_id, 0) is None:
+            reg.create(task.workspace_id, task.job_id)              # a resumed job has no live log yet
+        body = {**task.summary, **extra} if state == "ready" else extra
+        _emit(st.driver, task.workspace_id, reg, {"job_id": task.job_id, "state": state, "document_id": task.document_id,
+                                                  "version": task.version, **body})
+
+    def reserve_day(day: str) -> bool:
+        from ..serve import store
+
+        # The same atomic ledger as the day's uploads, under its own key: persisted, global, never past the limit.
+        return store.reserve_daily_upload(st.driver, st.settings.upload_embed_jobs_per_day, f"embed:{day}")
+
+    return EmbedQueue(st.driver, st.embedder, st.settings, emit=emit, reserve_day=reserve_day, log_stages=_log_stages,
+                      record_cpu=_record_cpu, lower_priority=_lower_priority)
+
+
+def embed_queue_for(app):
+    """``app.state.embed_queue``, created lazily and NOT started (:func:`start_if_enabled` starts it; a test drives it)."""
+    queue = getattr(app.state, "embed_queue", None)
+    if queue is None:
+        queue = app.state.embed_queue = _build_embed_queue(app)
+    return queue
+
+
 def count_tokens_available(embedder) -> bool:
     """True when ``embedder`` can count tokens (the ONNX and local backends can; the remote backend cannot —
     docs/v2/M4_PLAN.md 4.2: uploads stay unavailable rather than silently skip the token caps)."""
@@ -314,7 +350,6 @@ def _lower_priority() -> None:
 # stage record and is left out (docs/specs/upload-embed-timeout.md requirement 3).
 _STAGE_FIELDS = (("parse_s", "%.3f"), ("chunk_s", "%.3f"), ("embed_s", "%.3f"), ("compare_s", "%.3f"),
                  ("index_s", "%.3f"), ("chunks", "%d"), ("fresh", "%d"), ("done", "%d"), ("tokens", "%d"),
-                 ("projected_s", "%.1f"), ("aborted", "%s"),
                  ("cpu_usage_usec_start", "%d"), ("cpu_nr_throttled_start", "%d"), ("cpu_throttled_usec_start", "%d"),
                  ("cpu_usage_usec_end", "%d"), ("cpu_nr_throttled_end", "%d"), ("cpu_throttled_usec_end", "%d"))
 
@@ -322,13 +357,6 @@ _STAGE_FIELDS = (("parse_s", "%.3f"), ("chunk_s", "%.3f"), ("embed_s", "%.3f"), 
 # built from anything a request carries. A module constant so a test can point it at a temp file.
 CGROUP_CPU_STAT_PATH = "/sys/fs/cgroup/cpu.stat"
 _CPU_COUNTERS = ("usage_usec", "nr_throttled", "throttled_usec")
-
-# The projected-finish abort starts at this embedded chunk: the rate of the first two is noise (requirement 2).
-MIN_CHUNKS_BEFORE_ABORT = 3
-# ... and once this many maximum-size chunks of tokens are embedded: every encoder call has a fixed cost, so a run of tiny chunks
-# looks slow, and by 2 x upload_max_chunk_tokens the per-call cost is negligible next to the token time (requirement 2).
-MIN_CHUNKS_WORTH_OF_TOKENS_BEFORE_ABORT = 2
-
 
 def _read_cpu_stat() -> dict[str, int]:
     """The cgroup counters this stage line names, read from :data:`CGROUP_CPU_STAT_PATH` (takes no argument: S3). A field the
@@ -400,94 +428,6 @@ def _build_units_and_chunks(text: str, blocks, kind: str, embedder, settings):
     return units, chunks, unit_dicts
 
 
-def _may_project(done: int, embedded_tokens: int, max_chunk_tokens: int) -> bool:
-    """True once the job may project its finish (and so abort): at least ``MIN_CHUNKS_BEFORE_ABORT`` chunks are embedded AND at
-    least ``MIN_CHUNKS_WORTH_OF_TOKENS_BEFORE_ABORT x max_chunk_tokens`` tokens are (1,024 at the default 512); never with no tokens."""
-    floor = MIN_CHUNKS_WORTH_OF_TOKENS_BEFORE_ABORT * max_chunk_tokens
-    return done >= MIN_CHUNKS_BEFORE_ABORT and embedded_tokens >= floor and embedded_tokens > 0
-
-
-def _projects_past_ceiling(elapsed: float, total_tokens: int, embedded_tokens: int, total_chunks: int, done_chunks: int,
-                           ceiling: float) -> bool:
-    """True when BOTH of the job's own measured-rate projections are strictly past ``ceiling``: the token-weighted
-    ``elapsed * total_tokens > ceiling * embedded_tokens`` and the chunk-weighted ``elapsed * total_chunks > ceiling *
-    done_chunks``. All counts are of this job's FRESH chunks and tokens. If an embed costs ``c`` a call plus ``t`` a token, the
-    token form overstates the true finish when the embedded chunks are smaller than average and the chunk form when they are
-    larger, so the smaller never exceeds it. Multiplied out, so each boundary is exact (no division, no rounding)."""
-    token_past = elapsed * total_tokens > ceiling * embedded_tokens
-    chunk_past = elapsed * total_chunks > ceiling * done_chunks
-    return token_past and chunk_past
-
-
-def _deciding_projection(elapsed: float, total_tokens: int, embedded_tokens: int, total_chunks: int, done_chunks: int) -> float:
-    """The smaller of the token-weighted and the chunk-weighted projected finish: the one that decides (the stage line's
-    ``projected_s``). The caller's gate guarantees ``embedded_tokens`` and ``done_chunks`` are above 0."""
-    return min(elapsed * total_tokens / embedded_tokens, elapsed * total_chunks / done_chunks)
-
-
-def _projected_too_slow(stages: dict, elapsed: float, done: int, total: int, embedded_tokens: int, total_tokens: int,
-                        ceiling: float, max_chunk_tokens: int) -> bool:
-    """Once :func:`_may_project` allows: records the deciding projection in ``stages`` and, when both projections are past the
-    ceiling, ``aborted=too_slow``, and returns True."""
-    if not _may_project(done, embedded_tokens, max_chunk_tokens):
-        return False
-    stages["projected_s"] = _deciding_projection(elapsed, total_tokens, embedded_tokens, total, done)
-    if not _projects_past_ceiling(elapsed, total_tokens, embedded_tokens, total, done, ceiling):
-        return False
-    stages["aborted"] = "too_slow"
-    return True
-
-
-def _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit, *,
-                  clock=time.monotonic, stages=None):
-    """Embeds only the chunks whose text_hash is not already embedded for this document. Returns
-    ``{"vectors": {index: [float, ...]}, "already": {text_hash: embedding}}``; ``None`` if the workspace's
-    embedded-token budget would be exceeded; the string ``"timeout"`` if the wall budget ran out first; the string
-    ``"too_slow"`` if, once :func:`_may_project` allows (3 chunks and 2 x ``upload_max_chunk_tokens`` tokens embedded), the job's
-    own rate projects its finish past the ceiling by both the token and the chunk count (:func:`_projects_past_ceiling`;
-    docs/specs/upload-cap-and-abort.md requirement 2), reading its own clock and counts only (S1). ``clock`` times the loop;
-    ``stages`` (default: a local record) receives, on every exit, ``fresh`` and ``tokens`` once known, ``done`` after each
-    chunk, and ``embed_s`` at the end."""
-    from . import repo
-
-    stages = {} if stages is None else stages
-    already = repo.embedded_chunks(driver, ws, document_id)
-    to_embed = [i for i, h in enumerate(chunk_hashes) if h not in already]
-    new_tokens = sum(chunks[i].tokens for i in to_embed)
-    stages["fresh"], stages["tokens"] = len(to_embed), new_tokens
-    current_tokens = repo.quota(driver, ws).get("embedded_tokens", 0)
-    if to_embed and current_tokens + new_tokens > settings.upload_max_workspace_tokens:
-        return None
-    _lower_priority()
-    vectors: dict[int, list[float]] = {}
-    stages["done"] = 0
-    _record_cpu(stages, "start")
-    embedded_tokens = 0
-    started = clock()
-    try:
-        for done, i in enumerate(to_embed, start=1):
-            vectors[i] = [float(x) for x in embedder.encode_passages([chunk_texts[i]])[0]]
-            stages["done"] = done
-            embedded_tokens += chunks[i].tokens
-            elapsed = clock() - started
-            remaining = len(to_embed) - done
-            eta = round(elapsed / done * remaining, 1)
-            emit("embedding", progress={"done": done, "total": len(to_embed), "eta_s": eta})
-            ceiling = settings.upload_embed_timeout_s
-            if elapsed > ceiling and remaining:
-                return "timeout"
-            if remaining and _projected_too_slow(stages, elapsed, done, len(to_embed), embedded_tokens, new_tokens, ceiling,
-                                                 settings.upload_max_chunk_tokens):
-                return "too_slow"
-    finally:
-        stages["embed_s"] = clock() - started
-        _record_cpu(stages, "end")
-    wall_s = round(stages["embed_s"], 3)
-    logger.info("upload embed ws_hash=%s document_id=%s tokens=%d wall_s=%.3f tokens_per_s=%.1f",
-               _ws_hash(ws), document_id, new_tokens, wall_s, (new_tokens / wall_s) if wall_s > 0 else 0.0)
-    return {"vectors": vectors, "already": already}
-
-
 def _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed, settings):
     """Runs the comparison in a SANDBOXED SUBPROCESS (``uploads.compare.compare_in_subprocess`` ->
     ``uploads/sandbox.py`` -> ``python -m semigraph.uploads.compare_worker``), never in-process (M4_PLAN.md 4.2,
@@ -557,79 +497,94 @@ def _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, sett
         _fail(driver, ws, reg, job_id, document_id, version, "workspace_quota")
         return None
     text = canonical_text(parsed.blocks)
+    if len(text) > settings.upload_max_tokens * PRECHECK_MAX_CHARS_PER_TOKEN:
+        # R14: a cheap character count BEFORE the tokenizer runs; a text this long cannot fit the token cap.
+        _fail(driver, ws, reg, job_id, document_id, version, "too_many_tokens")
+        return None
     if embedder.count_tokens(text) > settings.upload_max_tokens:
         _fail(driver, ws, reg, job_id, document_id, version, "too_many_tokens")
         return None
     return parsed, text
 
 
-def _refund_daily_upload(driver, charged_day: str | None, job_id: str) -> None:
-    """Give the visitor's daily upload count back for a ``too_slow`` job (requirement 3), on the day the route charged. Best
-    effort: it never raises (a raise would turn the job's one terminal event into ``internal_error``) and logs the exception
-    class only. Without a charged day (a caller that never charged) nothing is refunded."""
-    if charged_day is None:
-        return
-    try:
-        from ..serve import store
-
-        gave_back = store.release_daily_upload(driver, charged_day, job_id)
-        logger.info("upload refund job_id=%s refunded=%s", job_id, bool(gave_back))
-    except Exception as exc:  # noqa: BLE001 - the job's ending must not depend on the refund
-        logger.warning("upload refund failed job_id=%s: %s", job_id, type(exc).__name__)
-
-
-def _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder, settings,
-                           emit, *, clock=time.monotonic, stages=None, charged_day=None):
-    """Chunks, then embeds the new chunks. Returns ``(units, unit_dicts, chunk_rows)``, or ``None`` once a failure
-    event has already been emitted (``too_many_chunks``, ``workspace_quota``, ``timeout`` or ``too_slow``; only the last gives
-    the daily count back, on ``charged_day``). ``clock`` and ``stages``
-    (default: a local record) are :func:`_embed_chunks`' own; this stage adds ``chunk_s`` and ``chunks`` to the record."""
+def _chunk_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder, settings, *,
+                 clock=time.monotonic, stages=None):
+    """Chunks the text and shapes the chunk rows: no embedding happens here (R15). A chunk whose text already has a vector
+    for this document reuses it; every other chunk is written with a null vector and its section priority, and gets its vector
+    from the background embedding queue. Returns ``(units, unit_dicts, chunk_rows, sections)``, or ``None`` once a
+    ``too_many_chunks`` failure event has been emitted. ``stages`` (default: a local record) gains ``chunk_s``, ``chunks``,
+    ``fresh`` (chunks still to embed) and ``tokens`` (their tokens)."""
     from ..hashing import content_hash
     from ..retrieval.ids import doc_id as make_doc_id
+    from . import repo
+    from .sections import detect_sections, priority_for_span
 
     stages = {} if stages is None else stages
     with _timed(stages, "chunk_s", clock):
         units, chunks, unit_dicts = _build_units_and_chunks(text, parsed.blocks, kind, embedder, settings)
     stages["chunks"] = len(chunks)
     if len(chunks) > settings.upload_max_chunks:
-        # Enforced right after chunking, BEFORE any embedding (docs/v2/M4_PLAN.md 15.8 / finding 8): a
-        # whitespace-heavy or short-paragraph-heavy document can produce hundreds of chunks well under the
-        # whole-document token cap, and each chunk is embedded and written with a 1024-float vector.
+        # Enforced right after chunking, before anything is written (docs/v2/M4_PLAN.md 15.8 / finding 8).
         _fail(driver, ws, reg, job_id, document_id, version, "too_many_chunks")
         return None
-    chunk_texts = [text[c.char_start:c.char_end] for c in chunks]
-    chunk_hashes = [content_hash(t) for t in chunk_texts]
-    emit("embedding", progress={"done": 0, "total": len(chunks), "eta_s": None})
-    embedded = _embed_chunks(driver, ws, document_id, chunk_texts, chunk_hashes, chunks, embedder, settings, emit,
-                             clock=clock, stages=stages)
-    if embedded == "too_slow":
-        # Refund BEFORE the failure write: that write can raise WorkspaceGone, which must not skip the refund.
-        _refund_daily_upload(driver, charged_day, job_id)
-        _fail(driver, ws, reg, job_id, document_id, version, "too_slow")
-        return None
-    if embedded is None or embedded == "timeout":
-        _fail(driver, ws, reg, job_id, document_id, version, "workspace_quota" if embedded is None else "timeout")
-        return None
-    chunk_rows = [{"chunk_id": make_doc_id(document_id, version, i), "seq": i, "text": chunk_texts[i],
-                  "text_hash": chunk_hashes[i], "char_start": c.char_start, "char_end": c.char_end,
-                  "tokens": c.tokens, "embedded": i in embedded["vectors"],
-                  "embedding": embedded["vectors"].get(i) or embedded["already"].get(chunk_hashes[i])}
-                 for i, c in enumerate(chunks)]
-    return units, unit_dicts, chunk_rows
+    sections = detect_sections(text)
+    reusable = repo.embedded_chunks(driver, ws, document_id)
+    rows = []
+    for i, c in enumerate(chunks):
+        chunk_text = text[c.char_start:c.char_end]
+        digest = content_hash(chunk_text)
+        rows.append({"chunk_id": make_doc_id(document_id, version, i), "seq": i, "text": chunk_text, "text_hash": digest,
+                     "char_start": c.char_start, "char_end": c.char_end, "tokens": c.tokens, "embedded": False,
+                     "embedding": reusable.get(digest), "priority": priority_for_span(sections, c.char_start, c.char_end)})
+    fresh = [r for r in rows if r["embedding"] is None]
+    stages["fresh"], stages["tokens"] = len(fresh), sum(r["tokens"] for r in fresh)
+    return units, unit_dicts, rows, sections
+
+
+def _keyword_ready_summary(chunk_rows, unit_dicts, change_report, suspicious, sections) -> dict:
+    """What the client is told when the version is searchable by keyword (and again on the final ``ready``)."""
+    return {"chunks": len(chunk_rows), "units": len(unit_dicts), "items_compared": change_report["items_compared"],
+            "not_compared_reason": change_report["not_compared_reason"], "suspicious": suspicious, "form": sections.form,
+            "sections": [s.label for s in sections.sections], "sections_message": sections.message}
+
+
+def _hand_off_to_embedding(emit, submit_embed, task, summary: dict, pending: int, has_vectors: bool) -> None:
+    """After the keyword-ready write: nothing to embed (every chunk reused a vector) or no queue ends the job ``ready`` now;
+    otherwise the task goes to the embedding queue, which ends the job (always ``ready``, never ``failed``, OD12)."""
+    if pending == 0 or submit_embed is None:
+        emit("ready", **summary, embedded_chunks=0, keyword_only_chunks=pending, stopped=None,
+             search="keyword_semantic" if has_vectors else "keyword_only")
+        return
+    workspace_gone = getattr(sys.modules.get("semigraph.uploads.repo"), "WorkspaceGone", _NeverRaised)
+    try:
+        submit_embed(task)
+    except workspace_gone:
+        raise
+    except Exception:  # noqa: BLE001 - the version is stored and searchable: a queue fault never fails the upload
+        logger.exception("upload job could not be handed to the embedding queue job_id=%s", task.job_id)
+        emit("ready", **summary, embedded_chunks=0, keyword_only_chunks=pending, stopped="embed_error", search="keyword_only")
 
 
 def _process(driver, embedder, settings, ws, job_id, document_id, title, data, kind, content_hash_hex, reg, *,
-             clock=time.monotonic, charged_day=None) -> None:
-    """Runs one job. ``clock`` times every stage (production passes nothing; a test passes a fake). From the moment the parse
-    stage returns a result, whatever the exit (``ready`` or any failure), the stage record is written as one log line."""
+             clock=time.monotonic, release_slot=None, submit_embed=None, parse_gate=None, client_key=None) -> None:
+    """Runs one job up to ``keyword_ready`` (R15): parse, chunk, compare, then ONE ``put_version`` with null vectors, after which
+    the raw bytes are gone, the upload slot is released and the version is keyword-searchable. The vectors come later from the
+    embedding queue (``uploads.embed_queue``). ``data`` is the bytes or a one-item list holding them (popped here, so no
+    reference to the up-to-40 MiB body outlives the parse). ``clock`` times every stage (production passes nothing; a test
+    passes a fake). From the moment the parse stage returns a result, whatever the exit, the stage record is one log line."""
     from ..retrieval.workspace import looks_suspicious
     from . import repo
+    from .embed_queue import EmbedTask
     from .versions import next_version
 
     def emit(state: str, version: int | None = None, **extra) -> None:
         _emit(driver, ws, reg, {"job_id": job_id, "state": state, "document_id": document_id, "version": version,
                                 **extra})
 
+    release_slot = release_slot or (lambda: None)
+    gate = parse_gate if parse_gate is not None else contextlib.nullcontext()
+    box = data if isinstance(data, list) else [data]
+    del data
     emit("received")
     latest = repo.latest_version(driver, ws, document_id)
     version = next_version([latest["version"]] if latest else [])
@@ -637,23 +592,22 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
 
     stages: dict = {}       # what each stage reached, filled in by the stages themselves; written by the `finally` below
     emit("parsing", version=version)
-    with _timed(stages, "parse_s", clock):
-        parsed_result = _parse_stage(driver, ws, reg, job_id, document_id, version, data, kind, settings, embedder)
+    with gate, _timed(stages, "parse_s", clock):
+        parsed_result = _parse_stage(driver, ws, reg, job_id, document_id, version, box.pop(), kind, settings, embedder)
     if parsed_result is None:
         return
     parsed, text = parsed_result
 
     try:
         emit("chunking", version=version)
-        chunked = _chunk_and_embed_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder,
-                                         settings, lambda state, **kw: emit(state, version=version, **kw), clock=clock,
-                                         stages=stages, charged_day=charged_day)
+        chunked = _chunk_stage(driver, ws, reg, job_id, document_id, version, text, parsed, kind, embedder, settings,
+                               clock=clock, stages=stages)
         if chunked is None:
             return
-        units, unit_dicts, chunk_rows = chunked
+        units, unit_dicts, chunk_rows, sections = chunked
 
         emit("comparing", version=version)
-        with _timed(stages, "compare_s", clock):
+        with gate, _timed(stages, "compare_s", clock):
             change_report = _compare_with_previous(driver, ws, document_id, latest, text, units, chunk_rows, parsed,
                                                    settings)
         # Defence in depth on top of the linear-time regex fix (docs/v2/M4_PLAN.md 15.12): collapsing whitespace runs
@@ -676,15 +630,34 @@ def _process(driver, embedder, settings, ws, job_id, document_id, title, data, k
             # either — not even this failure event, which goes to the live log only, never to Neo4j.
             _fail(driver, ws, reg, job_id, document_id, version, "workspace_deleted", persist=False)
             return
-        emit("ready", version=version, chunks=len(chunk_rows), units=len(unit_dicts),
-            items_compared=change_report["items_compared"], not_compared_reason=change_report["not_compared_reason"],
-            suspicious=suspicious)
+        del parsed, text                      # the version is stored; nothing below needs the document body
+        release_slot()                        # R15: a second upload is not answered "busy" while this one embeds
+        summary = _keyword_ready_summary(chunk_rows, unit_dicts, change_report, suspicious, sections)
+        pending = sum(1 for r in chunk_rows if r["embedding"] is None)
+        emit("keyword_ready", version=version, **summary, pending_chunks=pending)
+        task = EmbedTask(workspace_id=ws, job_id=job_id, document_id=document_id, version=version, client_key=client_key,
+                         summary=dict(summary))
+        _hand_off_to_embedding(lambda state, **kw: emit(state, version=version, **kw), submit_embed, task, summary,
+                               pending, has_vectors=len(chunk_rows) > pending)
     finally:
         _log_stages(ws, job_id, stages)
 
 
-def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data: bytes, kind: str,
-           content_hash_hex: str, *, charged_day: str | None = None) -> None:
+def _once(release) -> "callable":
+    """``release`` that acts on its first call only: the job releases the upload slot at ``keyword_ready`` and the worker's
+    ``finally`` releases it again on every other exit; a ``BoundedSemaphore`` raises on a double release."""
+    state = {"released": False}
+
+    def release_once() -> None:
+        if not state["released"]:
+            state["released"] = True
+            release()
+
+    return release_once
+
+
+def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data, kind: str,
+           content_hash_hex: str, *, client_key: str | None = None) -> None:
     """Ends in ready/failed on every path (never a silently dead thread) and always releases the upload slot.
     The job's registry entry is NOT discarded here: :class:`JobRegistry` keeps a finished job's log for
     :data:`REGISTRY_GRACE_PERIOD_S` (pruned lazily on the next access) so a watcher that reconnects moments after
@@ -712,9 +685,12 @@ def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data
     st = app.state
     reg = registry(app)
     workspace_gone = getattr(repo, "WorkspaceGone", _NeverRaised)
+    release_slot = _once(st.upload_slots.release)
+    embed = embed_queue_for(app)
     try:
         _process(st.driver, st.embedder, st.settings, ws, job_id, document_id, title, data, kind,
-                 content_hash_hex, reg, charged_day=charged_day)
+                 content_hash_hex, reg, release_slot=release_slot, submit_embed=embed.submit, parse_gate=embed.parse_gate,
+                 client_key=client_key)
     except workspace_gone:
         _fail(st.driver, ws, reg, job_id, document_id, None, "workspace_deleted", persist=False)
     except Exception:  # noqa: BLE001 — a job must always end in ready/failed, never a silently dead thread
@@ -724,14 +700,14 @@ def _worker(app, ws: str, job_id: str, document_id: str, title: str | None, data
         except workspace_gone:
             _fail(st.driver, ws, reg, job_id, document_id, None, "workspace_deleted", persist=False)
     finally:
-        st.upload_slots.release()
+        release_slot()
 
 
 def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | None, data: bytes, kind: str,
-                   content_hash_hex: str, charged_day: str | None = None) -> str:
+                   content_hash_hex: str, client_key: str | None = None) -> str:
     """Starts the worker thread and returns its job id immediately. The caller must already hold
-    ``app.state.upload_slots`` (acquired non-blocking) and have reserved the upload budget of ``charged_day`` (the day the
-    route charged; a ``too_slow`` job gives that day back).
+    ``app.state.upload_slots`` (acquired non-blocking) and have reserved the day's upload budget. ``client_key`` (a hash of the
+    client address, never the address) feeds the one-active-embedding-job rule.
 
     Once the thread has actually started, IT owns the upload slot's release (every path through :func:`_worker`
     releases it exactly once) — a ``BoundedSemaphore`` raises on a double release, so this function must never
@@ -743,8 +719,8 @@ def run_upload_job(app, *, workspace_id: str, document_id: str, title: str | Non
     reg = registry(app)
     reg.create(workspace_id, job_id)
     thread = threading.Thread(target=_worker, name=f"upload-{job_id}", daemon=True,
-                              args=(app, workspace_id, job_id, document_id, title, data, kind, content_hash_hex),
-                              kwargs={"charged_day": charged_day})
+                              args=(app, workspace_id, job_id, document_id, title, [data], kind, content_hash_hex),
+                              kwargs={"client_key": client_key})
     try:
         thread.start()
     except BaseException:
@@ -923,6 +899,8 @@ def start_if_enabled(app) -> None:
         app.state.uploads_ready = False
     app.state.upload_sweeper = _Sweeper(app.state.driver, registry(app), s)
     app.state.upload_sweeper.start()
+    if app.state.uploads_ready:
+        embed_queue_for(app).start(resume=True)         # R16: requeues every version whose chunks are still pending
 
 
 def stop(app) -> None:
@@ -930,3 +908,6 @@ def stop(app) -> None:
     sweeper = getattr(app.state, "upload_sweeper", None)
     if sweeper is not None:
         sweeper.stop()
+    queue = getattr(app.state, "embed_queue", None)
+    if queue is not None:
+        queue.stop()                                    # a running task leaves its pending chunks for the next start

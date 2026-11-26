@@ -480,49 +480,50 @@ EMBED_TIMEOUT = "UPLOAD_EMBED_TIMEOUT_S"
 def test_the_embed_ceiling_default_is_the_spec_value_and_is_what_the_live_machine_runs():
     """fly.toml sets none of it, so what runs today is the code default, and it sits inside the production bounds."""
     assert EMBED_TIMEOUT not in FLY["env"] and "MAX_UPLOADS_PER_DAY" not in FLY["env"]
-    assert Settings.model_fields["upload_embed_timeout_s"].default == live().upload_embed_timeout_s == 2100
+    assert Settings.model_fields["upload_embed_timeout_s"].default == live().upload_embed_timeout_s == 3600     # OD11
     assert (config.PRODUCTION_MIN_UPLOAD_EMBED_TIMEOUT_S, config.SECONDS_PER_DAY) == (600, 86_400)
-    assert live().upload_embed_timeout_s * live().max_uploads_per_day <= config.SECONDS_PER_DAY
+    assert live().upload_embed_timeout_s * live().upload_embed_jobs_per_day <= config.SECONDS_PER_DAY
 
 
 @pytest.mark.parametrize("ceiling,per_day,boots", [
-    (599, 40, False), (600, 40, True),            # the floor: a zero, a near-zero value or a unit slip cannot boot
-    (0, 40, False), (-1, 40, False), (35, 40, False),
-    (1000, 40, True),                              # the floor is a guard, not a throttle margin: a value that fails a cap job boots
-    (2100, 40, True), (2160, 40, True), (2161, 40, False),      # the product rule at 40 a day: 86,400 s and one past it
-    (2100, 41, True), (2100, 42, False),           # 86,100 s boots, 88,200 s does not: a raised daily count refuses too
+    (599, 23, False), (600, 23, True),            # the floor: a zero, a near-zero value or a unit slip cannot boot
+    (0, 23, False), (-1, 23, False), (35, 23, False),
+    (1000, 23, True),                              # the floor is a guard, not a throttle margin: a value that fails a cap job boots
+    (3600, 23, True), (3756, 23, True), (3757, 23, False),      # the product rule at 23 embedding jobs a day: 86,388 s and one past it
+    (3600, 24, True), (3600, 25, False),           # 86,400 s boots with zero margin, 90,000 s does not: a raised job count refuses too
     (600, 144, True), (600, 145, False)])
 def test_production_requires_the_embed_ceiling_above_the_floor_and_its_daily_product_within_a_day(ceiling, per_day, boots):
-    # A 3,000-token cap is at or below 10,000, so the cap rule never checks it and these cases test the ceiling alone; the cap
-    # rule has its own tests (tests/test_serve_upload_cap_and_abort.py).
+    # A 3,000-token guaranteed figure fits every ceiling from 600 up (floor(600 x 5.54) = 3,324), so these cases test the ceiling
+    # and the job count alone; the guaranteed-figure rule has its own tests (tests/test_upload_limits.py).
+    kwargs = {"upload_embed_timeout_s": ceiling, "upload_embed_jobs_per_day": per_day, "upload_guaranteed_embed_tokens": 3000}
     if boots:
-        s = live(upload_embed_timeout_s=ceiling, max_uploads_per_day=per_day, upload_max_tokens=3000)
-        assert (s.upload_embed_timeout_s, s.max_uploads_per_day) == (ceiling, per_day)
+        s = live(**kwargs)
+        assert (s.upload_embed_timeout_s, s.upload_embed_jobs_per_day) == (ceiling, per_day)
         return
     with pytest.raises(ValidationError) as refused:
-        live(upload_embed_timeout_s=ceiling, max_uploads_per_day=per_day, upload_max_tokens=3000)
-    assert named(refused) == [EMBED_TIMEOUT] and "MAX_UPLOADS_PER_DAY" not in str(refused.value)
+        live(**kwargs)
+    assert named(refused) == [EMBED_TIMEOUT] and "UPLOAD_EMBED_JOBS_PER_DAY" not in str(refused.value)
 
 
 def test_the_product_rule_names_the_ceiling_first_and_says_in_words_that_the_daily_count_is_part_of_the_cause():
-    """scripts/check_env_fly.py names a problem by its FIRST word, so an operator who raised the daily count sees a FAIL that
-    names the ceiling: the text must say why."""
+    """scripts/check_env_fly.py names a problem by its FIRST word, so an operator who raised the daily embedding job count sees
+    a FAIL that names the ceiling: the text must say why."""
     with pytest.raises(ValidationError) as refused:
-        live(max_uploads_per_day=42)
+        live(upload_embed_jobs_per_day=25)
     message = refused.value.errors()[0]["msg"].removeprefix("Value error, ")
-    assert message.startswith(EMBED_TIMEOUT + " ") and "daily upload count" in message and "; " not in message
+    assert message.startswith(EMBED_TIMEOUT + " ") and "daily embedding job count" in message and "; " not in message
 
 
 @pytest.mark.parametrize("changes,sentinels", [
     ({"upload_embed_timeout_s": 599}, ("599",)),
-    ({"upload_embed_timeout_s": 2161}, ("2161",)),
-    ({"max_uploads_per_day": 42}, ("2100", "2,100", "88200", "88,200")),
+    ({"upload_embed_timeout_s": 3757}, ("3757",)),
+    ({"upload_embed_jobs_per_day": 25}, ("3600", "3,600", "90000", "90,000")),
 ], ids=["floor", "product", "count"])
 def test_a_refused_embed_ceiling_never_prints_a_value_or_the_daily_count_setting(changes, sentinels):
     with pytest.raises(ValidationError) as refused:
         live(**changes)
     text = str(refused.value)
-    assert "input_value" not in text and "MAX_UPLOADS_PER_DAY" not in text
+    assert "input_value" not in text and "UPLOAD_EMBED_JOBS_PER_DAY" not in text
     assert [value for value in sentinels if value in text] == []
 
 
@@ -539,7 +540,7 @@ def test_outside_production_any_embed_ceiling_and_daily_count_boot():
 
 def test_the_embed_ceiling_is_read_from_its_environment_variable_and_production_judges_that_value(monkeypatch):
     monkeypatch.setenv(EMBED_TIMEOUT, "1500")
-    monkeypatch.setenv("UPLOAD_MAX_TOKENS", "8000")                  # at or below 10,000: the cap rule does not check it
+    monkeypatch.setenv("UPLOAD_GUARANTEED_EMBED_TOKENS", "8000")     # floor(1,500 x 5.54) = 8,310: within the ceiling
     assert Settings(_env_file=None).upload_embed_timeout_s == live().upload_embed_timeout_s == 1500
     monkeypatch.setenv(EMBED_TIMEOUT, "599")
     with pytest.raises(ValidationError) as refused:

@@ -77,9 +77,9 @@ PRODUCTION_MIN_UPLOAD_EMBED_TIMEOUT_S = 600
 # upload_max_tokens > floor(upload_embed_timeout_s x 5.54) (an exact fraction, so the boundary is exact;
 # docs/specs/upload-cap-and-abort.md requirement 1, owner decision 2026-11-07).
 PRODUCTION_WORST_EMBED_TOKENS_PER_S = Fraction("5.54")
-# A cap at or below this is not checked against the ceiling (the Settings default, pinned by a test): the spec words the rule
-# for a cap ABOVE 10,000 only.
-PRODUCTION_UPLOAD_CAP_UNCHECKED_TOKENS = 10_000
+# Keyword chunks per version (OD11, decision 009). PROVISIONAL: the measured maximum chunk count x 1.15 is fixed after the $0
+# re-measure; about 600 from 1,200-character chunks at 3.9-4.1 characters per token (160k tokens is about 530 chunks).
+UPLOAD_MAX_CHUNKS_PROVISIONAL = 600
 SECONDS_PER_DAY = 86_400
 # The Fly app each environment runs on. FLY_APP_NAME is set by Fly on every machine, so a machine that is the live app
 # cannot be started as anything but production (an unset or mistyped ENVIRONMENT would leave every validator off).
@@ -329,14 +329,21 @@ class Settings(BaseSettings):
     # --- Upload workspaces (M4_PLAN.md 3 + 4.2; caps re-registered for shared-cpu-2x / 4 GB, owner decision 2026-09-29) ---
     uploads_enabled: bool = False             # false = every workspace route answers 503
     workspace_ttl_hours: int = 24             # a workspace and everything in it is deleted after this
+    # OD11 / decision 009 limits. Tokens and chunks are PROVISIONAL (fixed after the $0 re-measure as the sample maximum x 1.15).
+    # Bytes and pages stay at today's values: OD11 raises them to 40 MiB / 300 pages (workspace 300) ONLY after the 33.9 MB 20-F
+    # parses in the real sandbox and a real 10-K PDF parses there, and only with body streaming (the route reads the whole body
+    # into memory before the slot and the memory guard). Raise them then, in the same change as that evidence.
     upload_max_bytes: int = 15 * 1024 * 1024
     upload_max_pages: int = 30                # per version, checked after parsing
-    upload_max_tokens: int = 10000            # per version, whole text, the embedder's own tokenizer (sized from the ceiling below)
+    upload_max_tokens: int = 160_000          # per version, whole text (accepted and keyword-searchable), the embedder's tokenizer
+    # Guaranteed embedded tokens per document: floor(3,600 s x 5.54 tokens/s) = 19,944, rounded down to 19,900. Production checks
+    # THIS figure against the ceiling (_upload_embed_timeout_problems); priority sections beyond it embed best-effort only.
+    upload_guaranteed_embed_tokens: int = 19_900
     upload_max_chunk_tokens: int = 512        # per embedded chunk (memory stays flat below ~1k tokens, S1b)
-    upload_max_chunks: int = 120              # per version
+    upload_max_chunks: int = UPLOAD_MAX_CHUNKS_PROVISIONAL   # per version, PROVISIONAL (see the constant)
     upload_max_documents: int = 3             # per workspace
     upload_max_versions: int = 5              # per document
-    upload_max_workspace_pages: int = 120
+    upload_max_workspace_pages: int = 120     # must stay >= upload_max_pages (R18, _timing_problems)
     upload_max_workspace_tokens: int = 48000  # tokens actually embedded (after hash-keyed reuse), per workspace
     upload_parse_timeout_s: int = 90          # the parse subprocess is killed after this
     # The what-changed comparison runs in a subprocess killed after this. 110 s, 10 s under the worker's 120 s CPU cap
@@ -359,7 +366,10 @@ class Settings(BaseSettings):
     # max_uploads_per_day passes one day, and a ceiling that does not cover an upload_max_tokens above 10,000 at 5.54 tokens/s
     # (_upload_embed_timeout_problems; a cap of 10,000 or less is not checked). It does NOT judge the margin of the ceiling over
     # the cap beyond that rate; only the machine's share can (docs/RUNBOOK.md).
-    upload_embed_timeout_s: int = 2100
+    upload_embed_timeout_s: int = 3600       # OD11: 60 min; a time-out leaves unfinished sections keyword-only (OD12)
+    # At most this many uploads a day get an embedding job (OD11): 24 x 3,600 s = 86,400 s passes the strict day rule with zero
+    # margin and the last-chunk overrun pushes a day over, so 23. Later uploads are keyword-only. max_uploads_per_day stays 40.
+    upload_embed_jobs_per_day: int = 23
     # Global. 40 x ~190 CPU-s stays under the shared-cpu-2x baseline: CPU-seconds per completed job do not change, but the
     # slot's WALL time does. A job holds the one upload slot for its whole run, so 40 jobs that all ran to the embed ceiling hold it
     # 40 x 2,100 s = 84,000 s = 23.3 h of embedding, about 25 h with each job's parse (up to 90 s) and last chunk (about 70 s):
@@ -408,6 +418,8 @@ class Settings(BaseSettings):
             problems.append("KILL_SWITCH_STALE_S must be larger than KILL_SWITCH_REFRESH_S")
         if self.lease_renew_s >= self.lease_ttl_s:
             problems.append("LEASE_RENEW_S must be smaller than LEASE_TTL_S")
+        if self.upload_max_workspace_pages < self.upload_max_pages:
+            problems.append("UPLOAD_MAX_WORKSPACE_PAGES must be at least UPLOAD_MAX_PAGES")
         return problems
 
     def _fly_app_problems(self) -> list[str]:
@@ -526,14 +538,13 @@ class Settings(BaseSettings):
         if self.upload_embed_timeout_s < PRODUCTION_MIN_UPLOAD_EMBED_TIMEOUT_S:
             return [f"UPLOAD_EMBED_TIMEOUT_S must be at least {PRODUCTION_MIN_UPLOAD_EMBED_TIMEOUT_S} in production (a zero, a "
                     "near-zero value or a unit slip would fail every upload)"]
-        if self.upload_embed_timeout_s * self.max_uploads_per_day > SECONDS_PER_DAY:
-            return [f"UPLOAD_EMBED_TIMEOUT_S times the daily upload count must be at most one day ({SECONDS_PER_DAY} seconds) in "
-                    "production (the daily upload count is part of the cause: lower the ceiling or the count)"]
-        if (self.upload_max_tokens > PRODUCTION_UPLOAD_CAP_UNCHECKED_TOKENS
-                and self.upload_max_tokens > self.upload_embed_timeout_s * PRODUCTION_WORST_EMBED_TOKENS_PER_S):
-            return ["UPLOAD_EMBED_TIMEOUT_S must cover the upload token cap at the worst measured embed rate of "
-                    f"{float(PRODUCTION_WORST_EMBED_TOKENS_PER_S)} tokens a second in production (the cap is part of the cause: "
-                    "raise the ceiling or lower the cap)"]
+        if self.upload_embed_timeout_s * self.upload_embed_jobs_per_day > SECONDS_PER_DAY:
+            return [f"UPLOAD_EMBED_TIMEOUT_S times the daily embedding job count must be at most one day ({SECONDS_PER_DAY} "
+                    "seconds) in production (the daily embedding job count is part of the cause: lower the ceiling or the count)"]
+        if self.upload_guaranteed_embed_tokens > int(self.upload_embed_timeout_s * PRODUCTION_WORST_EMBED_TOKENS_PER_S):
+            return ["UPLOAD_EMBED_TIMEOUT_S must cover the guaranteed embedded tokens per document at the worst measured embed "
+                    f"rate of {float(PRODUCTION_WORST_EMBED_TOKENS_PER_S)} tokens a second in production (the guaranteed figure "
+                    "is part of the cause: raise the ceiling or lower the figure)"]
         return []
 
     # --- Data lake root (git-ignored, rebuildable) ---

@@ -32,9 +32,8 @@ window -> streamed size cap -> byte gate -> quota -> slot -> MEMORY GUARD -> dai
 503 ``MSG_UPLOAD_BUSY`` (``Retry-After: 120``, no figure in the body) while ``MemAvailable`` is below
 ``upload_min_mem_available_kb``; it comes after every gate that refuses on its own account (so it can never be an oracle
 before Turnstile or the workspace token, and an unchanged re-upload or a quota refusal never meets it) and BEFORE the daily
-budget, which is the one gate that charges (the only give-back is ``store.release_daily_upload``, made for a ``too_slow`` job
-alone, so a refusal after it would spend an upload no job used). The refusal raises inside the slot's try block, so the slot
-goes back through the existing ``except``. Asks, cached answers and every read route never consult it.
+budget, which is the one gate that charges (nothing gives it back since a time-out is no longer a failure, OD12). The refusal
+raises inside the slot's try block, so the slot goes back through the existing ``except``. Asks, cached answers and every read route never consult it.
 
 M5a I4 (docs/v2/M5_DECISIONS.md 2.2): while the process drains (``serve.drain``) workspace creation and an upload are
 refused with 503 ``MSG_DRAINING`` BEFORE any window is consumed, and every other route here (reads, the job stream, the
@@ -232,6 +231,8 @@ async def delete_workspace(ws: str, request: Request):
     _require_read_rate(request)
     await _authenticate(request, ws)
     await run_in_threadpool(repo.delete_workspace, request.app.state.driver, ws)
+    from ..uploads import keyword_index
+    keyword_index.CACHE.invalidate(ws)                    # the deleted upload text leaves memory now (S10, R17)
     return Response(status_code=204, headers=NO_STORE)
 
 
@@ -372,7 +373,7 @@ async def _read_and_gate_body(request: Request, ws: str, s):
 
 
 async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data: bytes, kind: str,
-                           title: str | None):
+                           title: str | None, client_key: str):
     """Resolves the target document, short-circuits an unchanged re-upload, checks quotas, then takes the upload
     slot, asks the memory guard and takes the daily budget (in that order) and starts the job.
 
@@ -410,8 +411,7 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
         # M5a decision 21: short of memory -> 503 before anything is charged or started (the except below frees the slot)
         if await run_in_threadpool(memguard.check_upload, s.upload_min_mem_available_kb):
             raise _upload_busy_refusal()
-        charged_day = store.today()      # read once: the day charged here is the day a too_slow job gives back
-        reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day, charged_day)
+        reserved = await run_in_threadpool(store.reserve_daily_upload, st.driver, s.max_uploads_per_day, store.today())
         if not reserved:
             st.upload_slots.release()
             return JSONResponse({"detail": "the daily upload limit has been reached", "code": "daily_limit"},
@@ -419,7 +419,8 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
 
         version = next_version([latest["version"]] if latest else [])
         job_id = jobs.run_upload_job(request.app, workspace_id=ws, document_id=document_id, title=title, data=data,
-                                     kind=kind, content_hash_hex=content_hash_hex, charged_day=charged_day)
+                                     kind=kind, content_hash_hex=content_hash_hex,
+                                     client_key=client_key)
     except BaseException:
         st.upload_slots.release()
         raise
@@ -444,7 +445,8 @@ async def upload_document(ws: str, request: Request):
     if await routes._kill_level(st) != KILL_OFF:        # on, retrieval_only, unread or stale: no new upload job
         raise HTTPException(status_code=503, detail=routes.MSG_UPLOADS_OFF, headers=NO_STORE)
     await _check_upload_turnstile(request, request.headers.get("x-turnstile-token"))
-    if not st.upload_limiter.allow(guard.hash_request_ip(request, s)):
+    client_key = guard.hash_request_ip(request, s)      # the one hash of this request: the window key and the job's embed-queue key
+    if not st.upload_limiter.allow(client_key):
         raise HTTPException(status_code=429, detail=MSG_UPLOAD_RATE, headers=NO_STORE)
     if _content_length_too_large(request, s.upload_max_bytes):
         return JSONResponse({"detail": "the file is too large", "code": "too_large"}, status_code=413,
@@ -454,7 +456,7 @@ async def upload_document(ws: str, request: Request):
     if isinstance(gated, JSONResponse):
         return gated
     data, kind, title, fields = gated
-    return await _finalize_upload(request, ws, st, s, fields, data, kind, title)
+    return await _finalize_upload(request, ws, st, s, fields, data, kind, title, client_key)
 
 
 # ---------------------------------------------------------------- GET /api/workspace/{ws}/jobs/{job_id} (SSE)
@@ -526,6 +528,22 @@ async def workspace_job_stream(ws: str, job_id: str, request: Request):
 
 async def _replay_once(persisted: dict):
     yield _job_sse(persisted)
+
+
+# ---------------------------------------------------------------- POST /api/workspace/{ws}/jobs/{job_id}/cancel
+
+
+@router.post("/api/workspace/{ws}/jobs/{job_id}/cancel")
+async def cancel_job_embedding(ws: str, job_id: str, request: Request):
+    """R16, S12: stops a job's background embedding at its next chunk; what is not embedded stays keyword-searchable (the job
+    ends ``ready``, the document is valid). Needs the workspace token like every route here and is idempotent: ``cancelled``
+    is true while the job is queued or running and false for any other job id (which is never an error, and says nothing about
+    another workspace's jobs: the lookup is keyed by this workspace's id)."""
+    _require_uploads_enabled(request)
+    _require_read_rate(request)
+    await _authenticate(request, ws)
+    cancelled = jobs.embed_queue_for(request.app).cancel(ws, job_id)
+    return JSONResponse({"job_id": job_id, "cancelled": cancelled}, headers=NO_STORE)
 
 
 # ---------------------------------------------------------------- GET /api/workspace/{ws}/changes

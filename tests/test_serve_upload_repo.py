@@ -39,7 +39,8 @@ def test_every_query_constant_is_actually_exercised_by_this_module():
 
 # The documented, cross-workspace-by-design exceptions to "every query binds $ws" (module docstring): each one's
 # own DELETE/UPDATE still runs the normal per-workspace, $ws-bound queries, one workspace/job at a time.
-_WS_UNSCOPED_QUERIES = {"SWEEP_SELECT_QUERY", "SWEEP_ORPHANS_SELECT_QUERY", "FAIL_INTERRUPTED_JOBS_SELECT_QUERY"}
+_WS_UNSCOPED_QUERIES = {"SWEEP_SELECT_QUERY", "SWEEP_ORPHANS_SELECT_QUERY", "FAIL_INTERRUPTED_JOBS_SELECT_QUERY",
+                          "RESUMABLE_EMBEDS_SELECT_QUERY"}
 
 
 def test_every_query_binds_ws_except_the_documented_sweep_exceptions():
@@ -474,6 +475,17 @@ def test_sweep_expired_deletes_only_the_selected_expired_workspaces():
     for tx in driver.transactions:
         deleted_ws = {p["ws"] for _, p in tx.calls}
         assert deleted_ws <= {"ws-old-1", "ws-old-2"} and len(deleted_ws) == 1
+
+
+def test_sweep_expired_drops_each_expired_workspaces_keyword_index(monkeypatch):
+    """HIGH 1 (S10): the sweeper's expiry path invalidates the in-memory keyword index of every expired workspace."""
+    from semigraph.uploads import keyword_index as ki
+    dropped = []
+    monkeypatch.setattr(ki.CACHE, "invalidate", dropped.append)
+    driver = FakeDriver(session_run_responses={repo.SWEEP_SELECT_QUERY: [{"workspace_id": "ws-old-1"},
+                                                                        {"workspace_id": "ws-old-2"}]})
+    repo.sweep_expired(driver, datetime.now(UTC))
+    assert dropped == ["ws-old-1", "ws-old-2"]
 
 
 def test_sweep_select_query_filters_only_on_expires_at_and_caps_the_batch():

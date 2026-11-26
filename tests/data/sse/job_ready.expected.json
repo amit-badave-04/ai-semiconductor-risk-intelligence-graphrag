@@ -27,6 +27,33 @@
   },
   {
    "job_id": "00112233445566ff",
+   "state": "comparing",
+   "document_id": "0123456789ab",
+   "version": 1
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "indexing",
+   "document_id": "0123456789ab",
+   "version": 1
+  },
+  {
+   "job_id": "00112233445566ff",
+   "state": "keyword_ready",
+   "document_id": "0123456789ab",
+   "version": 1,
+   "chunks": 12,
+   "units": 30,
+   "items_compared": false,
+   "not_compared_reason": "first_version",
+   "suspicious": false,
+   "form": null,
+   "sections": [],
+   "sections_message": "The form type was not recognised; the document is embedded in document order.",
+   "pending_chunks": 12
+  },
+  {
+   "job_id": "00112233445566ff",
    "state": "embedding",
    "document_id": "0123456789ab",
    "version": 1,
@@ -60,18 +87,6 @@
   },
   {
    "job_id": "00112233445566ff",
-   "state": "comparing",
-   "document_id": "0123456789ab",
-   "version": 1
-  },
-  {
-   "job_id": "00112233445566ff",
-   "state": "indexing",
-   "document_id": "0123456789ab",
-   "version": 1
-  },
-  {
-   "job_id": "00112233445566ff",
    "state": "ready",
    "document_id": "0123456789ab",
    "version": 1,
@@ -79,7 +94,14 @@
    "units": 30,
    "items_compared": false,
    "not_compared_reason": "first_version",
-   "suspicious": false
+   "suspicious": false,
+   "form": null,
+   "sections": [],
+   "sections_message": "The form type was not recognised; the document is embedded in document order.",
+   "embedded_chunks": 12,
+   "keyword_only_chunks": 0,
+   "stopped": null,
+   "search": "keyword_semantic"
   }
  ]
 }

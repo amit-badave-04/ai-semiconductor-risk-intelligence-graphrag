@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from semigraph.uploads import changes, compare, jobs
+from semigraph.uploads import changes, compare, embed_queue, jobs, sections
 from semigraph.uploads.parse import ParseError
 from test_serve_upload_jobs import DOC, FakeApp, _block, _events, _parsed, _run, fake_repo  # noqa: F401 - fake_repo is a fixture
 
@@ -30,6 +30,7 @@ FAILED_JOB_ID = "ffeeddccbbaa9988"
 MARGIN = 100     # the largest frame must be at least this many times smaller than the buffer cap
 STRING_CAP = 200  # a generous bound for any one string field of an event (the longest fixed one is far shorter)
 INT_DIGITS = 20
+SECTIONS_CAP = 3   # priority section labels in one event: sections.py has at most 3 targets per form
 
 
 def fixture_events(name: str) -> list[dict]:
@@ -149,11 +150,17 @@ def worst_case_events() -> list[dict]:
     base = {"job_id": "f" * 16, "document_id": "f" * 12, "version": big}
     longest_reason = max(not_compared_reasons(), key=len)
     pad = "x" * STRING_CAP
+    label = max(sections._LABELS.values(), key=len)                        # the real, finite vocabularies of the new fields
+    message = max(sections.NO_FORM_MESSAGE, sections.NO_SECTIONS_MESSAGE, key=len)
+    stopped = max(embed_queue.STOP_REASONS, key=len)
+    summary = dict(chunks=big, units=big, suspicious=False, form="10-K", sections=[label] * SECTIONS_CAP, sections_message=message)
+    ending = dict(embedded_chunks=big, keyword_only_chunks=big, stopped=stopped, search="keyword_semantic")
     events = [
         dict(base, state="validating"),
+        dict(base, state="keyword_ready", items_compared=False, not_compared_reason=longest_reason, pending_chunks=big, **summary),
         dict(base, state="embedding", progress={"done": big, "total": big, "eta_s": float(f"{big}.9")}),
-        dict(base, state="ready", chunks=big, units=big, items_compared=False, not_compared_reason=longest_reason, suspicious=False),
-        dict(base, state="ready", chunks=big, units=big, items_compared=True, not_compared_reason=pad, suspicious=False),
+        dict(base, state="ready", items_compared=False, not_compared_reason=longest_reason, **summary, **ending),
+        dict(base, state="ready", items_compared=True, not_compared_reason=pad, **summary, **ending),
     ]
     for code, message in jobs.JOB_ERROR_MESSAGES.items():
         events.append(dict(base, state="failed", error={"code": code, "message": message}))
@@ -161,13 +168,23 @@ def worst_case_events() -> list[dict]:
     return events
 
 
+def matches_worst(real, worst) -> bool:
+    """``real`` (a shape) is covered by ``worst``: the same key names at every level, each value the same type or null in the real one."""
+    if isinstance(real, dict) or isinstance(worst, dict):
+        return (isinstance(real, dict) and isinstance(worst, dict) and set(real) == set(worst)
+                and all(matches_worst(real[k], worst[k]) for k in real))
+    return real == "null" or real == worst
+
+
 def test_the_worst_case_events_have_the_shapes_the_real_job_emits(fake_repo, monkeypatch):
     """The inflated events are built from the real key sets, so a new field in jobs.py cannot slip past the size test."""
     real_ready = shapes_by_state(run_real_ready(fake_repo, monkeypatch))
     real_failed = shapes_by_state(run_real_failed(fake_repo, monkeypatch, job_id="a" * 16))
     worst = shapes_by_state(worst_case_events())
-    for state in ("validating", "embedding", "ready"):
-        assert set(map(json.dumps, real_ready[state])) <= set(map(json.dumps, worst[state])) or state == "embedding"
+    for state in ("validating", "embedding", "keyword_ready", "ready"):
+        # the full comparison: key names and value types, nested shapes (progress, error) included. A key matches when the real
+        # value is null (the quiet run's form, stopped) or has the same type as the worst case's.
+        assert all(any(matches_worst(real, w) for w in worst[state]) for real in real_ready[state]) or state == "embedding"
     assert set(worst["failed"][0]) == set(real_failed["failed"][0])
     assert set(worst["ready"][0]) == set(real_ready["ready"][0])
 

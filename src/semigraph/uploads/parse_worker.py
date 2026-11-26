@@ -364,36 +364,85 @@ def _html_heading_size(tag: str) -> float:
     return 24.0 - (int(tag[1]) - 1) * 2.0
 
 
+_HTML_VOID_TAGS = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+                             "track", "wbr"})
+_HTML_MAX_OPEN_ELEMENTS = 10_000      # the open-element stack never grows past this (hostile deep nesting stays bounded)
+_HTML_HIDDEN_STYLES = ("display:none", "visibility:hidden")
+
+
+def _html_is_hidden(tag: str, attrs) -> bool:
+    """R14: only ``ix:header`` (inline-XBRL metadata) and hidden elements are stripped; visible ``ix:nonNumeric`` and
+    ``ix:nonFraction`` text stays, because the risk sections sit inside them."""
+    if tag == "ix:header":
+        return True
+    for name, value in attrs:
+        if name == "hidden":
+            return True
+        if name == "style" and value:
+            compact = "".join(value.lower().split())
+            if any(style in compact for style in _HTML_HIDDEN_STYLES):
+                return True
+    return False
+
+
 class _BlockHTMLParser:
-    """A tiny block-level text extractor built on ``html.parser.HTMLParser``; script/style content is dropped."""
+    """A tiny block-level text extractor built on ``html.parser.HTMLParser``; script/style content and hidden elements
+    (``ix:header``, ``display:none``, the ``hidden`` attribute) are dropped. A stack of open elements tracks hiding; an
+    end tag pops to its own start tag (amortised linear), and an end tag with no open start tag is ignored."""
 
     def __init__(self) -> None:
         from html.parser import HTMLParser
 
         outer = self
         blocks: list[dict] = []
-        state = {"skip": 0, "tag": None, "buf": []}
+        state = {"skip": 0, "tag": None, "buf": [], "hidden": 0, "open_tags": [], "open_hidden": [], "counts": {}}
 
         class _Parser(HTMLParser):
             def handle_starttag(self, tag, attrs):
                 if tag in ("script", "style", "title"):
                     state["skip"] += 1
-                elif tag in _BLOCK_TAGS:
+                    return
+                if tag not in _HTML_VOID_TAGS:
+                    outer._push(state, tag, attrs)
+                if tag in _BLOCK_TAGS:
                     outer._flush(state, blocks)
                     state["tag"] = tag
 
             def handle_endtag(self, tag):
                 if tag in ("script", "style", "title"):
                     state["skip"] = max(0, state["skip"] - 1)
-                elif tag in _BLOCK_TAGS:
+                    return
+                outer._pop(state, tag)
+                if tag in _BLOCK_TAGS:
                     outer._flush(state, blocks)
                     state["tag"] = None
 
             def handle_data(self, data):
-                if state["skip"] == 0:
+                if state["skip"] == 0 and state["hidden"] == 0:
                     state["buf"].append(data)
 
         self._parser, self._blocks, self._state = _Parser(), blocks, state
+
+    @staticmethod
+    def _push(state: dict, tag: str, attrs) -> None:
+        if len(state["open_tags"]) >= _HTML_MAX_OPEN_ELEMENTS:
+            return
+        hidden = _html_is_hidden(tag, attrs)
+        state["open_tags"].append(tag)
+        state["open_hidden"].append(hidden)
+        state["counts"][tag] = state["counts"].get(tag, 0) + 1
+        state["hidden"] += 1 if hidden else 0
+
+    @staticmethod
+    def _pop(state: dict, tag: str) -> None:
+        if state["counts"].get(tag, 0) <= 0:
+            return
+        while state["open_tags"]:
+            popped, hidden = state["open_tags"].pop(), state["open_hidden"].pop()
+            state["counts"][popped] -= 1
+            state["hidden"] -= 1 if hidden else 0
+            if popped == tag:
+                return
 
     def _flush(self, state: dict, blocks: list[dict]) -> None:
         text = " ".join("".join(state["buf"]).split())

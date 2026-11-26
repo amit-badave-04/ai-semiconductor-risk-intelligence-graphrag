@@ -37,14 +37,14 @@ class FakeSettings:
     is_production = False
     client_ip_header = ""
     kill_switch = False
-    upload_max_bytes = 15 * 1024 * 1024
+    upload_max_bytes = 40 * 1024 * 1024
     max_uploads_per_day = 40
     workspace_ttl_hours = 24
     upload_max_documents = 3
     upload_max_versions = 5
-    upload_max_workspace_pages = 120
-    upload_max_pages = 30
-    upload_max_tokens = 10000
+    upload_max_workspace_pages = 300
+    upload_max_pages = 300
+    upload_max_tokens = 160_000
     upload_max_workspace_tokens = 48000
     upload_min_mem_available_kb = 0         # the memory guard is off here; tests/test_serve_memguard.py arms it
 
@@ -213,7 +213,7 @@ def test_create_workspace_succeeds_without_turnstile_configured_outside_producti
     body = r.json()
     assert body["workspace_id"] == "b" * 32 and body["token"] == "new-token"
     assert body["limits"]["max_documents"] == 3
-    assert body["limits"]["max_tokens_per_version"] == 10000          # follows upload_max_tokens (the cap, spec requirement 1/5)
+    assert body["limits"]["max_tokens_per_version"] == 160_000          # follows upload_max_tokens (the cap, spec requirement 1/5)
     assert r.headers["cache-control"] == "no-store"
 
 
@@ -253,6 +253,15 @@ def test_delete_workspace_returns_204_and_calls_repo(client, fake_repo):
     r = client.delete(f"/api/workspace/{WS}", headers=_auth())
     assert r.status_code == 204
     assert fake_repo.deleted == [WS]
+
+
+def test_delete_workspace_drops_its_keyword_index_at_once(client, fake_repo, monkeypatch):
+    """HIGH 1 (S10, R17): deleted upload text must not stay in the in-memory keyword index."""
+    from semigraph.uploads import keyword_index as ki
+    dropped = []
+    monkeypatch.setattr(ki.CACHE, "invalidate", dropped.append)
+    assert client.delete(f"/api/workspace/{WS}", headers=_auth()).status_code == 204
+    assert dropped == [WS]
 
 
 # ---------------------------------------------------------------- POST /api/workspace/{ws}/documents
@@ -423,11 +432,13 @@ def test_a_bad_turnstile_token_on_upload_is_403_and_never_reaches_the_gate_or_th
     assert fake_jobs == []
 
 
-def test_the_day_the_route_charges_is_the_day_the_job_is_told_it_was_charged(client, fake_store, fake_jobs):
-    """One reading of the clock (spec requirement 3): a job that aborts after midnight refunds the day it was charged."""
-    r = _upload(client)
+def test_the_job_gets_a_hashed_client_key_never_the_address_and_no_charged_day(client, fake_jobs):
+    """R16: the one-active-embedding-job rule keys on a hash of the client address; nothing is refunded any more (OD12)."""
+    r = _upload(client, headers={"X-Forwarded-For": "203.0.113.9"})
     assert r.status_code == 202
-    assert fake_store["day"] is not None and fake_store["day"] == fake_jobs[0]["charged_day"] == store.today()
+    key = fake_jobs[0]["client_key"]
+    assert isinstance(key, str) and len(key) >= 16 and "203.0.113.9" not in key and "testclient" not in key
+    assert "charged_day" not in fake_jobs[0]
 
 
 def test_junk_files_never_spend_the_daily_upload_budget(client, fake_store):
@@ -659,3 +670,48 @@ def test_an_upload_with_a_wrong_token_is_rate_limited_before_any_database_lookup
     r = client.post(f"/api/workspace/{WS}/documents", headers=wrong, files=files)
     assert r.status_code == 429 and r.headers["cache-control"] == "no-store"
     assert lookups == [1]          # the second, rate-limited request never reached the workspace lookup
+
+
+# ---------------------------------------------------------------- POST /api/workspace/{ws}/jobs/{job_id}/cancel (R16, S12)
+
+
+class FakeQueue:
+    def __init__(self):
+        self.cancelled: list[tuple[str, str]] = []
+        self.known = {(WS, "job-live")}
+
+    def cancel(self, ws, job_id):
+        self.cancelled.append((ws, job_id))
+        return (ws, job_id) in self.known
+
+
+@pytest.fixture
+def fake_queue(monkeypatch):
+    q = FakeQueue()
+    monkeypatch.setattr(jobs, "embed_queue_for", lambda app: q)
+    return q
+
+
+def _cancel(client, job_id="job-live", ws=WS, headers=None):
+    return client.post(f"/api/workspace/{ws}/jobs/{job_id}/cancel", headers=_auth() if headers is None else headers)
+
+
+def test_cancel_requires_workspace_token(client, fake_repo, fake_queue):
+    assert _cancel(client, headers={}).status_code == 404
+    assert _cancel(client, headers=_auth("wrong")).status_code == 404
+    assert fake_queue.cancelled == []
+
+
+def test_cancel_is_idempotent_and_says_whether_the_job_was_running(client, fake_repo, fake_queue):
+    first, second = _cancel(client), _cancel(client)
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json() == {"job_id": "job-live", "cancelled": True}
+    unknown = _cancel(client, job_id="never-heard-of-it")
+    assert unknown.status_code == 200 and unknown.json()["cancelled"] is False
+
+
+def test_cancel_is_keyed_by_the_authenticated_workspace_so_it_cannot_reach_another_workspaces_job(client, fake_repo, fake_queue):
+    other = "c" * 32
+    fake_repo.workspaces[other] = {"token": "other-token"}
+    assert _cancel(client, ws=other, headers=_auth("other-token")).json()["cancelled"] is False   # job-live belongs to WS
+    assert fake_queue.cancelled == [(other, "job-live")]

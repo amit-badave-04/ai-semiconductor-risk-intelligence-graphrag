@@ -51,10 +51,10 @@ def test_m4_settings_default_off_with_the_pre_registered_caps():
     assert (s.freshness_poll_hours, s.freshness_boot_delay_s) == (6, 300)
     assert s.workspace_ttl_hours == 24
     assert s.upload_max_bytes == 15 * 1024 * 1024
-    assert (s.upload_max_pages, s.upload_max_tokens, s.upload_max_chunk_tokens, s.upload_max_chunks) == (30, 10000, 512, 120)
+    assert (s.upload_max_pages, s.upload_max_tokens, s.upload_max_chunk_tokens, s.upload_max_chunks) == (30, 160_000, 512, 600)     # OD11 tokens and chunks (provisional)
     assert (s.upload_max_documents, s.upload_max_versions) == (3, 5)
     assert (s.upload_max_workspace_pages, s.upload_max_workspace_tokens) == (120, 48000)
-    assert (s.upload_parse_timeout_s, s.upload_embed_timeout_s, s.upload_compare_timeout_s) == (90, 2100, 110)
+    assert (s.upload_parse_timeout_s, s.upload_embed_timeout_s, s.upload_compare_timeout_s) == (90, 3600, 110)
     assert (s.max_uploads_per_day, s.workspace_create_per_day, s.uploads_per_hour) == (40, 3, 10)
 
 

@@ -50,11 +50,12 @@ from tools.probe.w1b import Context, Fly, W1bError  # noqa: E402,F401  (W1bError
 from tools.probe.w1b_judge import Scrub  # noqa: E402,F401  (re-exported)
 
 WINDOW = w1d_judge.WINDOW
-# The harness deadline for the job: the budgets of the upload job itself (config.py defaults: parse 90 s, embed ceiling 2,100 s, compare 120 s) and the
+# The harness deadline for the job: the budgets of the upload job itself (config.py defaults: parse 90 s, embed ceiling 3,600 s, compare 120 s) and the
 # last chunk the ceiling lets through (about 70 s, spec requirement 4), with a margin. W1b's own 1,470 s is the OLD budget and would end the watch
 # in the middle of a valid job.
+JOB_EMBED_S = 3600   # the job's own embed ceiling (config.py default, OD11); the judge's pre-registered EMBED_CEILING_S (2,100 s) is a different thing
 PARSE_S, COMPARE_S, LAST_CHUNK_S, MARGIN_S = 90, 120, 70, 300
-JOB_TIMEOUT_S = PARSE_S + w1d_judge.EMBED_CEILING_S + LAST_CHUNK_S + COMPARE_S + MARGIN_S
+JOB_TIMEOUT_S = PARSE_S + JOB_EMBED_S + LAST_CHUNK_S + COMPARE_S + MARGIN_S
 LOG_WAIT_S, LOG_POLL_S, STREAM_SETTLE_S = 60.0, 3.0, 2.0       # after the job ends: how long the stage line may take to reach the stream
 STOP_JOIN_S = 10.0
 PDF_PAGES = w1b.PDF_PAGES

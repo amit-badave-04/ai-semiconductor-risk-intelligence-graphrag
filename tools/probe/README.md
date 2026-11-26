@@ -260,7 +260,7 @@ and the one re-run (api 2.5 h, neo4j and its 3 GB volume 2.5 h = $0.1431); a sin
 * **INVALID** (not a pass) if the share is above **0.15** or `embed_s` is under **0.9** x the harness's `ready_s` (exactly 0.15 and exactly 0.9 x are valid; the arithmetic is exact);
 * **PASS**: valid, the job reaches `ready`, uvicorn `VmHWM` <= 2,400,000 kB (inclusive), no OOM kill or restart;
 * **FAIL**: the job ends with code `timeout` while valid (the embed loop stopped at the 2,100 s ceiling: `done` below `fresh`, `embed_s` >= 2,100), or the memory limit is exceeded;
-* **INCONCLUSIVE**: no usable stage line, the harness deadline (2,680 s) reached first, any unreadable evidence. Never a pass; the stop rule does not re-run it;
+* **INCONCLUSIVE**: no usable stage line, the harness deadline (4,180 s) reached first, any unreadable evidence. Never a pass; the stop rule does not re-run it;
 * **stop rule:** an INVALID boot is re-run unchanged ONCE on a fresh machine (`--attempt 2`); two INVALID boots end the window INCOMPLETE and nothing is amended.
 
 **The burn step (`w1d_burn.py`)** runs ON the api machine, because the CPU quota is the machine's and is pooled across its vCPUs (a burn beside the upload would take the embed's
@@ -297,7 +297,7 @@ of one second; null when the header is missing or unreadable). Every per-second 
 and the burn's span on the machine's clock (`burn.burn_span_machine_s`; the drift is that span minus 599 s).
 
 **Time:** the burn phase is now a fixed 11 minutes or so (the start call, 630 s of waiting, the reads), about 5 minutes more than the early stop took on a machine that throttles at 115 s. A measured boot is about 40 minutes
-for a typical job (about 1,330 s), up to about 65 minutes when the job runs to the harness deadline (create to healthy up to 3 minutes, the burn phase, a job of up to 2,680 s, the stage line and the collection); the canary 15 to 20 minutes.
+for a typical job (about 1,330 s), up to about 90 minutes when the job runs to the harness deadline (create to healthy up to 3 minutes, the burn phase, a job of up to 4,180 s, the stage line and the collection); the canary 15 to 20 minutes.
 
 **The stage line (`jobs.py` `_log_stages`):** `upload stages ws_hash=... job_id=... parse_s=... chunk_s=... embed_s=... compare_s=... index_s=... chunks=... fresh=... done=... tokens=...`.
 `w1d.py` starts a `flyctl logs` STREAM of the api app (with `--machine <id>`; for the whole app if this flyctl rejects the flag) BEFORE the burn, writes it to `NAME.logs.txt` beside `--out`
