@@ -901,22 +901,22 @@ M2 retrieval (fused legs + MiniLM rerank, `docs/specs/m2-search.md`) is ON in th
 `RETRIEVAL_RERANK`, with `RETRIEVAL_RERANK_MODEL_DIR = "/srv/models"`. The repo carries them ON (`"true"` / `"minilm"`) together
 with the flag-on `src/semigraph/artifacts/examples.json` (copied from `artifacts/examples.m2-fusion.json`); a test fails if the two
 disagree, because boot refuses every example whose template fingerprint does not match the serving setting. The flag-on fingerprint
-includes the rerank stage, so it is `e5c72794de` only when MiniLM loads.
+includes the rerank stage and its served workload (192 tokens, 25 candidates), so it is `f604c90263` only when MiniLM loads (`e5c72794de` was the 384-token, uncapped setting). The shipped examples carry `f604c90263` (regenerated 2026-11-26).
 
 - **Deploy:** `flyctl deploy --ha=false --remote-only --yes` (the API app only; `semigraph-neo4j` is untouched). CI's `image` job
   does not boot the service, so the Fly boot log is the gate. Expect, in order: `rerank model 'minilm' loaded from
-  /srv/models/reranker-minilm-l6`, `keyword index built: <N> spans, <X> s, snapshot <id>, tokenizer k1`, five
-  `example Tn refused: failed checks: unsupported_removal_claim` warnings (T8, T9, T13, T14, T15: expected), then
-  `seeded 53 of 58 benchmark answers into the cache`.
+  /srv/models/reranker-minilm-l6`, `keyword index built: <N> spans, <X> s, snapshot <id>, tokenizer k1`, one
+  `example T13 refused: failed checks: unsupported_removal_claim` warning (expected), then
+  `seeded 55 of 56 benchmark answers into the cache`.
 - **Failure lines (roll back):** `rerank model 'minilm' not found` or `failed to load` (the stage is off AND every example is
-  refused: the build's fingerprint is `07f6ff9da6`); `RETRIEVAL_FUSION is on but the keyword index could not be built` (the pre-M2
+  refused: the build's fingerprint is `7a1f985a96`); `RETRIEVAL_FUSION is on but the keyword index could not be built` (the pre-M2
   path is served and every example is refused: `2a6910aa5d`); any line with `NOT seeded` (it names both fingerprints). At ask time, a
   `rerank failed (<ErrorClass>: <message>): serving the fused order` warning means that one ask was answered with the fused order
   and no rerank (repeated lines point at the model or its inputs). The service
   keeps answering in each case, with no instant examples. Setting `RETRIEVAL_RERANK = "none"` with fusion on is not a fallback:
   no examples file carries that fingerprint.
 - **Verify:** `/healthz` is ok; `/api/stats` answers; `(Invoke-RestMethod https://semigraph.fly.dev/api/examples).examples.Count`
-  is 53; `flyctl ssh console -a semigraph -C "printenv RETRIEVAL_FUSION RETRIEVAL_RERANK"` prints `true` and `minilm`; one example
+  is 55; `flyctl ssh console -a semigraph -C "printenv RETRIEVAL_FUSION RETRIEVAL_RERANK"` prints `true` and `minilm`; one example
   click answers instantly with sources.
 - **Roll back:** fastest is the previous image: `flyctl releases -a semigraph --image` to find it, then
   `flyctl deploy --ha=false --yes --image <previous image>`. That re-applies this checkout's `[env]` (flags on), which is safe only for
@@ -925,9 +925,15 @@ includes the rerank stage, so it is `e5c72794de` only when MiniLM loads.
   examples together, from the commit before the flag-on one; valid until a new flag-off `examples.json` is committed for a later
   snapshot), commit, then `flyctl deploy --ha=false --remote-only --yes`. Both
   seeding and fly.toml tests (`tests/test_serve_seeding.py`) accept either whole setting, so this stays green. The old path is byte-identical with the flags off.
-- **R24, rerank p95 (owner-run):** the gate is that rerank adds at most 2 s at p95 on the throttled machine. No log line carries the
-  stage's time, so `scripts/rerank_latency_probe.py` times it on the machine (worst case: 20 and 35 candidates, full 384-token
-  window; no model call). It reads no database, so the stage's candidate-text fetch from the graph is not in its numbers. The probe
+- **R24, rerank p95 (owner-run):** the gate is that rerank adds at most 2 s at p95 on a rested shared-cpu-2x machine: pass mark p95 <= 2.0 s
+  at 20 and at 25 candidates at 192 tokens (the served workload, decision 012), one run only, about 70 minutes after a deploy, never back
+  to back (a drained machine is covered by the rerank time guard, `RETRIEVAL_RERANK_BUDGET_S`, not by the gate; when it fires the log
+  says `rerank over budget (...): serving the fused order`). The probe's `throttling` field is null on Fly (no cgroup `cpu.stat`), so
+  the pre-registered condition (decision 012) is read from Fly's CPU-throttle metric (dashboard Metrics, or `fly_instance_cpu_throttle`):
+  it must be near zero during the probe window. A throttled run is not a reading (neither pass nor fail): record it and decide with the
+  owner, never rerun back to back. No log line carries the
+  stage's time, so `scripts/rerank_latency_probe.py` times it on the machine (worst case: 20 and 25 candidates, full 192-token
+  window, read from the served config; `--max-tokens` and `--max-candidates` override; no model call). It reads no database, so the stage's candidate-text fetch from the graph is not in its numbers. The probe
   process uses about 305 MB while it runs: run it with no upload in flight (uploads are refused below `mem_available_kb`
   1,250,000), and do not take the RSS and free-memory comparison below while it runs. Stage and run it like every ad-hoc script:
   ```
@@ -937,7 +943,7 @@ includes the rerank stage, so it is `e5c72794de` only when MiniLM loads.
   flyctl ssh console -a semigraph -C "sh -c 'cd /root/ops && python -I rerank_latency_probe.py'"
   ```
   It prints one JSON line with p50/p95/max per size, the cgroup throttling during the run and `PASS` or `FAIL` (exit 0 / 1; 2 = the
-  model did not load). On the dev machine: p95 0.78 s at 20 candidates, 1.37 s at 35. If it fails, the fallback is a rollback.
+  model did not load). Dev machine, frozen 384-token window (before decision 012): p95 0.78 s at 20 candidates, 1.37 s at 35. If it fails, the fallback is a rollback.
 - **RSS and free memory (owner-run):** compare the 60 s `memory vmrss_kb=... mem_available_kb=...` line before and after the deploy
   (`flyctl logs -a semigraph --no-tail | Select-String "memory vmrss_kb"`). Uploads are refused below `mem_available_kb` 1,250,000
   (see "Upload workspaces"), so idle free memory must stay clearly above it. The model loads at boot, so idle-vs-after-asks shows

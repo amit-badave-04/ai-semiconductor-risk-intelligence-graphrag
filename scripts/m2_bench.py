@@ -273,7 +273,7 @@ def summarise(scored: Mapping[str, Mapping]) -> dict:
 
 
 ARMS = ("baseline", "mention", "filer", "period", "filer+period", "keyword", "keyword_ctx", "all", "all+rerank_minilm",
-        "all+rerank_mxbai")
+        "all+rerank_mxbai", "served")
 # The legs of each candidate arm besides the always-on mention leg. ``keyword`` is bm25s without the context field,
 # ``keyword_ctx`` with it, ``all`` is mention + filer + period + keyword with the context field.
 ARM_LEGS = {"mention": {}, "filer": {"filer": True}, "period": {"period": True}, "filer+period": {"filer": True, "period": True},
@@ -282,6 +282,9 @@ ARM_LEGS = {"mention": {}, "filer": {"filer": True}, "period": {"period": True},
 # I3b: the ``all`` legs plus the local cross-encoder over the top 20 fused candidates (the slot policy then fills the slots).
 ARM_LEGS["all+rerank_minilm"] = {**ARM_LEGS["all"], "rerank": "minilm", "rerank_depth": 20}
 ARM_LEGS["all+rerank_mxbai"] = {**ARM_LEGS["all"], "rerank": "mxbai", "rerank_depth": 20}
+# Decision 012: what the service serves with RETRIEVAL_RERANK=minilm (fusion.serving_config): the frozen arm at a 192-token pair window
+# and at most 25 candidates. The frozen arms above keep depth 20 / 384 tokens / no cap so the recorded numbers stay reproducible.
+ARM_LEGS["served"] = {**ARM_LEGS["all"], "rerank": "minilm", "rerank_depth": 20, "rerank_max_tokens": 192, "rerank_max_candidates": 25}
 
 
 def require_reranker(fusion) -> None:
@@ -290,7 +293,7 @@ def require_reranker(fusion) -> None:
         return
     from semigraph.retrieval.rerank import get_reranker
 
-    if get_reranker(fusion.rerank) is None:
+    if get_reranker(fusion.rerank, max_tokens=fusion.rerank_max_tokens) is None:
         raise SystemExit(f"refusing: the {fusion.rerank} reranker model is missing or unloadable (models/ directory); "
                          "this arm would run without reranking")
 
@@ -360,7 +363,8 @@ def run_dev(out: Path, arm: str = "baseline") -> dict:
         index_build_s = time.perf_counter() - started
         for q in bench:
             began = time.perf_counter()
-            r = hybrid_retrieve(q["q"], driver, embedder, fusion=fusion, keyword_index=index)  # answer_stream's defaults: k_chunks=8, hops=2
+            r = hybrid_retrieve(q["q"], driver, embedder, fusion=fusion, keyword_index=index,
+                            rerank_budget_s=0)  # answer_stream's defaults: k_chunks=8, hops=2
             elapsed = time.perf_counter() - began                  # retrieval only: the context rendering below is not timed
             _, _, valid_ids = build_blocks(r)
             run[q["id"]] = {"excerpts": [c["chunk_id"] for c in r["chunks"]], "context_ids": sorted(valid_ids),
@@ -675,7 +679,8 @@ def _retrieve_ids(items: Iterable[Mapping], driver, embedder, fusion, index) -> 
 
     run = {}
     for it in items:
-        r = hybrid_retrieve(it["q"], driver, embedder, fusion=fusion, keyword_index=index)  # answer_stream's defaults
+        r = hybrid_retrieve(it["q"], driver, embedder, fusion=fusion, keyword_index=index,
+                            rerank_budget_s=0)  # answer_stream's defaults
         _, _, valid_ids = build_blocks(r)
         run[it["id"]] = {"excerpts": [c["chunk_id"] for c in r["chunks"]], "context_ids": sorted(valid_ids)}
         if "leg_ranks" in r:
@@ -688,7 +693,7 @@ def _retrieve_context(question: str, driver, embedder, fusion, index) -> str:
     from semigraph.retrieval.answerer import build_blocks
     from semigraph.retrieval.retriever import hybrid_retrieve
 
-    return build_blocks(hybrid_retrieve(question, driver, embedder, fusion=fusion, keyword_index=index))[1]
+    return build_blocks(hybrid_retrieve(question, driver, embedder, fusion=fusion, keyword_index=index, rerank_budget_s=0))[1]
 
 
 def _slim(scored: Mapping[str, dict], run: Mapping[str, dict]) -> dict[str, dict]:

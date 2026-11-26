@@ -841,20 +841,33 @@ GUARANTEE_HEAD = 3     # leg heads always scored by the reranker, so the slot gu
 
 
 def _rerank_candidates(fused: list[tuple[str, float]], ranked: Mapping[str, list[str]], cfg: FusionConfig) -> list[str]:
-    heads = [ids[:GUARANTEE_HEAD] for name, ids in ranked.items() if name == "mention" or name.startswith("filer:")]
-    return list(dict.fromkeys([*(cid for cid, _ in fused[:cfg.rerank_depth]), *(c for h in heads for c in h)]))
+    """The top ``rerank_depth`` fused ids plus the slot-guarantee heads. With ``rerank_max_candidates`` over the count, the heads
+    come first and the lowest-ranked fused tail is trimmed."""
+    heads = list(dict.fromkeys(c for name, ids in ranked.items() if name == "mention" or name.startswith("filer:")
+                               for c in ids[:GUARANTEE_HEAD]))
+    cands = list(dict.fromkeys([*(cid for cid, _ in fused[:cfg.rerank_depth]), *heads]))
+    cap = cfg.rerank_max_candidates
+    if cap is None or len(cands) <= cap:
+        return cands
+    return list(dict.fromkeys([*heads, *cands]))[:cap]
 
 
 def _rerank_fused(driver, question: str, fused: list[tuple[str, float]], rows: dict[str, dict],
                   ranked: Mapping[str, list[str]], cfg: FusionConfig,
-                  reranker: "Reranker | None") -> tuple[list[tuple[str, float]], float | None]:
+                  reranker: "Reranker | None", budget_s: float | None = None) -> tuple[list[tuple[str, float]], float | None]:
     """The rerank stage: score the top ``rerank_depth`` fused candidates (plus the slot-guarantee heads) with the cross-encoder
     on the question and the excerpt text, and re-order. Candidate text a keyword winner lacks is fetched by id here (once; the
     rows are updated so ``_with_text`` does not fetch again) and a candidate that is no longer served is left out. Any problem
-    (no model, an error, a wrong number of scores) returns the fused order unchanged. Returns (fused, seconds or None)."""
-    from .rerank import get_reranker, reorder      # here, not at module level: only the SEC retrieval path ever loads the stage
+    (no model, an error, a wrong number of scores, the time budget) returns the fused order unchanged. The budget (``budget_s``;
+    None reads ``retrieval_rerank_budget_s``, 0 = off) runs from the start of the stage, so the candidate-text fetch counts.
+    Returns (fused, seconds or None)."""
+    from .rerank import RerankOverBudget, count_over_budget, get_reranker, reorder      # here, not at module level: only the SEC retrieval path ever loads the stage
 
-    reranker = reranker or get_reranker(cfg.rerank)
+    reranker = reranker or get_reranker(cfg.rerank, max_tokens=cfg.rerank_max_tokens)
+    if budget_s is None:
+        from ..config import get_settings
+
+        budget_s = get_settings().retrieval_rerank_budget_s
     if reranker is None:
         return fused, None
     began = time.perf_counter()
@@ -866,10 +879,17 @@ def _rerank_fused(driver, question: str, fused: list[tuple[str, float]], rows: d
         cands = [c for c in cands if rows[c].get("text")]
         if not cands:
             return fused, None
-        scores = reranker.rerank(question, [rows[c]["text"][:EXCERPT_MAX_CHARS] for c in cands])
+        texts = [rows[c]["text"][:EXCERPT_MAX_CHARS] for c in cands]
+        until = getattr(reranker, "rerank_until", None) if budget_s > 0 else None
+        scores = until(question, texts, began + budget_s) if until else reranker.rerank(question, texts)
         if len(scores) != len(cands):
             raise ValueError(f"{len(scores)} scores for {len(cands)} candidates")
         return reorder(fused, dict(zip(cands, scores))), time.perf_counter() - began
+    except RerankOverBudget as exc:
+        count_over_budget()
+        logger.warning("rerank over budget (%.2f s > %.2f s, %d of %d pairs): serving the fused order",
+                       time.perf_counter() - began, budget_s, exc.done, exc.total)
+        return fused, None
     except Exception as exc:  # noqa: BLE001 - retrieval must still answer with the fused order
         logger.warning("rerank failed (%s: %s): serving the fused order", type(exc).__name__, exc)
         return fused, None
@@ -883,7 +903,7 @@ def _by_rerank(ids: Sequence[str], score: Mapping[str, float]) -> list[str]:
 
 def _fused_excerpts(driver, question: str, vec: list[float], anchor_ids: list[int], *, defaulted: bool,
                     periods: Mapping[str, list], k_chunks: int, cfg: FusionConfig, index: KeywordIndex | None,
-                    reranker: "Reranker | None" = None
+                    reranker: "Reranker | None" = None, rerank_budget_s: float | None = None
                     ) -> tuple[list[dict], dict[str, list[str]], list[str], float | None]:
     """Run the enabled legs on the one query vector (and the keyword legs on the question), fuse by RRF into at most
     ``k_chunks`` excerpts under the slot policy. Returns the excerpts (the usual four keys, ``score`` = RRF score), every
@@ -898,7 +918,7 @@ def _fused_excerpts(driver, question: str, vec: list[float], anchor_ids: list[in
     rows |= {r["chunk_id"]: r for name, leg in legs.items() if not name.startswith("keyword:") for r in reversed(leg)}
     fused, rerank_s = rrf(ranked, k=cfg.rrf_k, depth=cfg.depth), None
     if cfg.rerank:
-        fused, rerank_s = _rerank_fused(driver, question, fused, rows, ranked, cfg, reranker)
+        fused, rerank_s = _rerank_fused(driver, question, fused, rows, ranked, cfg, reranker, rerank_budget_s)
     score = dict(fused) if rerank_s is not None else None       # the guaranteed slots follow the rerank, not the legs' own order
     legs_for_slots = {name: ids if score is None else _by_rerank(ids, score) for name, ids in ranked.items()}
     picked = select_slots(fused, rows,
@@ -911,7 +931,8 @@ def _fused_excerpts(driver, question: str, vec: list[float], anchor_ids: list[in
 
 def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
                     hops: int = 2, *, query_vec: list[float] | None = None, fusion: FusionConfig | None = None,
-                    keyword_index: KeywordIndex | None = None, reranker: "Reranker | None" = None) -> dict:
+                    keyword_index: KeywordIndex | None = None, reranker: "Reranker | None" = None,
+                    rerank_budget_s: float | None = None) -> dict:
     """Entity-first hybrid retrieval — ported from notebook 14 (v3), C2-hardened.
 
     anchors -> company relation subgraph + capped AFFECTED_BY rules ->
@@ -947,7 +968,8 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     ``keyword_index`` (:class:`semigraph.retrieval.keyword.KeywordIndex`) feeds the bm25s legs when ``fusion.keyword`` is on;
     their winners' text is fetched by id, and every fused excerpt is cut at ``EXCERPT_MAX_CHARS`` (R12).
     ``fusion.rerank`` (a model key) adds the local cross-encoder stage (:mod:`.rerank`); ``reranker`` overrides the process-wide
-    one (tests); ``rerank_s`` is added to the result only when the stage ran.
+    one (tests); ``rerank_s`` is added to the result only when the stage ran. ``rerank_budget_s`` overrides the
+    ``retrieval_rerank_budget_s`` setting (None = the setting, 0 = no time guard: the benchmark harnesses pass 0).
     """
     edges_query = company_edges_query(hops)      # rejects a bad ``hops`` before any work is done
     anchors, dropped = cap_anchors(detect_anchors(question))
@@ -984,7 +1006,7 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     else:
         chunks, leg_ranks, superseded, rerank_s = _fused_excerpts(driver, question, vec, anchor_ids, defaulted=anchor_defaulted,
                                                         periods=periods, k_chunks=k_chunks, cfg=fusion, index=keyword_index,
-                                                                        reranker=reranker)
+                                                                        reranker=reranker, rerank_budget_s=rerank_budget_s)
     logger.debug("hybrid_retrieve anchors=%s defaulted=%s edges=%d metrics=%d risks=%d "
                  "temporal=%d passages=%d chunks=%d", anchors, anchor_defaulted, len(edges), len(metrics),
                  len(risks), len(temporal), len(temporal_passages), len(chunks))

@@ -19,6 +19,9 @@ RRF_K = 60
 FUSION_DEPTH = 20            # ranks of each leg that count in the fusion
 SCORE_DIGITS = 12          # RRF scores are rounded to this many places before ties are broken by chunk id
 RERANK_DEPTH = 20            # fused candidates the reranker scores (I3b)
+RERANK_FROZEN_TOKENS = 384   # the pair window of the frozen bench measurements (rerank.MAX_TOKENS, pinned by a test)
+RERANK_SERVED_TOKENS = 192   # decision 012: the pair window the service uses
+RERANK_SERVED_CANDIDATES = 25    # decision 012: at most this many pairs per ask (heads first, then the fused order)
 LOG_DEPTH = 50               # ranks of each leg the bench may log (and the depth each leg is fetched to)
 
 
@@ -38,6 +41,8 @@ class FusionConfig:
     period_candidates: int = 100
     rerank: str | None = None        # a rerank model key (retrieval/rerank.py RERANK_MODELS) or None = no rerank stage (I3b)
     rerank_depth: int = RERANK_DEPTH
+    rerank_max_tokens: int = RERANK_FROZEN_TOKENS         # query + passage tokens per pair (the frozen bench setting by default)
+    rerank_max_candidates: int | None = None              # None = no cap (frozen); serving_config sets it (decision 012)
     rrf_k: int = RRF_K
     depth: int = FUSION_DEPTH
     log_depth: int = LOG_DEPTH
@@ -146,9 +151,10 @@ def serving_config(settings) -> FusionConfig:
         return SERVING_CONFIG
     from . import rerank
 
-    if rerank.get_reranker(key) is None:      # loads (warms) the model once; a missing one means no stage, so no "rerank" in the key
+    if rerank.get_reranker(key, max_tokens=RERANK_SERVED_TOKENS) is None:      # loads (warms) the model once; a missing one means no stage, so no "rerank" in the key
         return SERVING_CONFIG
-    return replace(SERVING_CONFIG, rerank=key, rerank_depth=RERANK_DEPTH)
+    return replace(SERVING_CONFIG, rerank=key, rerank_depth=RERANK_DEPTH, rerank_max_tokens=RERANK_SERVED_TOKENS,
+                   rerank_max_candidates=RERANK_SERVED_CANDIDATES)
 
 
 def serving_digest() -> str:

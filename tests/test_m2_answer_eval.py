@@ -440,3 +440,64 @@ def test_ledger_gate_refuses_when_a_ledger_row_has_a_nan_spend(tmp_path):
     est = ae.estimate(55, ae.ARMS, 0.0138)
     cap, problems = ae.ledger_gate(ae.Ledger(led), max_usd=5.0, est=est)
     assert problems and cap == 0.0
+
+
+# --- dev split with the served rerank setting (decision 012) -------------------------------------------------------------
+
+def test_defaults_are_the_recorded_test_run():
+    args = ae.parse_args([])
+    assert (args.split, args.on_arm) == ("test", "frozen")
+    assert ae.default_runs_name("test", "frozen") == "m2_answer_eval_runs.jsonl"
+    assert ae.report_path("test", "frozen") == ae.OUT_REPORT
+
+
+def test_dev_served_names_never_collide_with_the_test_run():
+    assert ae.default_runs_name("dev", "served") == "m2_answer_eval_dev_served_runs.jsonl"
+    assert ae.report_path("dev", "served").name == "m2_answer_eval.dev-served.json"
+    names = {ae.default_runs_name(s, a) for s in ae.SPLITS for a in ae.ON_ARMS}
+    paths = {ae.report_path(s, a) for s in ae.SPLITS for a in ae.ON_ARMS}
+    assert len(names) == 4 and len(paths) == 4
+
+
+def test_pick_questions_split_dev_refuses_test_questions_and_vice_versa():
+    dev = {"split": "dev", "questions": [q("D1", split="dev")]}
+    assert ae.pick_questions(dev, {"D1": "headroom"}, split="dev")[0]["id"] == "D1"
+    with pytest.raises(ValueError, match="dev split only"):
+        ae.pick_questions({"split": "test", "questions": [q("Q1", split="test")]}, {"Q1": "headroom"}, split="dev")
+    with pytest.raises(ValueError, match="test split only"):
+        ae.pick_questions(dev, {"D1": "headroom"})
+
+
+def test_real_dev_plan_uses_baseline_context_hit_for_strata():
+    questions, est = ae.load_plan(None, 15, "dev", "served")
+    report = json.loads(ae.DEV_REPORT.read_text(encoding="utf-8"))["questions"]
+    assert all(x["split"] == "dev" for x in questions)
+    for x in questions:
+        assert (x["stratum"] == "control") == bool(report[x["id"]]["context_hit"])
+    assert sum(x["stratum"] == "headroom" for x in questions) == sum(not v["context_hit"] for v in report.values())
+    assert sum(x["stratum"] == "control" for x in questions) == 15
+    assert est["answers"] == len(questions) * 2
+
+
+def test_dev_served_dry_run_prints_the_split_arm_and_worst_case(capsys, monkeypatch):
+    monkeypatch.setattr(ae, "run_paid", lambda *a, **k: pytest.fail("a dry run must not reach the paid path"))
+    assert ae.main(["--split", "dev", "--on-arm", "served", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "dev split only" in out and "arms: off, on" in out and "served rerank setting" in out
+    assert "worst case" in out and "judge worst case" in out
+
+
+def test_test_dry_run_text_is_unchanged_for_the_defaults(capsys):
+    assert ae.main(["--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "test split only" in out and "served" not in out
+
+
+def test_served_report_names_the_arm_config_and_carries_no_spend():
+    questions = [q("Q1", "A", "headroom")]
+    s = ae.score_arm(rows_for({"Q1": "x [" + CID + "]."}), {"Q1": questions[0]}, FakeJudge([True, True, True]))
+    report = ae.build_report(questions, {"off": s, "on": s}, {"decision": "pass"}, runs_file=Path("r.jsonl"),
+                             headroom_limit=None, split="dev", on_arm="served")
+    assert report["split"] == "dev" and report["on_arm"] == "served"
+    assert report["on_arm_config"]["rerank_max_candidates"] == 25 and "frozen_settings_sha256" not in report
+    assert not [k for k in walk_keys(report) if "usd" in k.lower() or k in ("estimate", "cost")]

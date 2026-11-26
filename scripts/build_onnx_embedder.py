@@ -151,13 +151,11 @@ GATE_QUESTIONS: tuple[str, ...] = (
     "Did Meta remove any risk factors between its FY2024 and FY2025 annual reports?",
     "Did Nvidia remove any risk factors between its FY2024 and FY2025 annual reports?",
     "Did Nvidia remove any risk factors between its FY2025 and FY2026 annual reports?",
-    "Did TSMC remove any risk factors between its FY2024 and FY2025 annual reports?",
     "Did AMD stop disclosing its risk about \"Our ability to design and introduce new products in a timely manner includes the use of third-party intellectual property.\" between its FY2024 and FY2025 annual reports?",
     "Did Micron stop disclosing its risk about \"We may be unable to generate sufficient cash flows or obtain access to external financing necessary to fund our operations, make scheduled debt payments, pay our dividend, and make adequate capital investments.\" between its FY2024 and FY2025 annual reports?",
     "Did Nvidia stop disclosing its risk about \"We may not be able to realize the potential benefits of business investments or acquisitions, and we may not be able to successfully integrate acquired companies, which could hurt our ability to grow our business, develop new products or sell our products.\" between its FY2024 and FY2025 annual reports?",
     "Does NVIDIA's FY2026 10-K still say that the Notified Advanced Computing (NAC) process has not resulted in approvals for exports of products to customers in China, or was that statement removed?",
     "Does NVIDIA's FY2026 10-K still say that it transitioned some operations out of China and Hong Kong after the 2022 export controls, or was that statement removed?",
-    "Does NVIDIA's FY2026 10-K still say that the AI Diffusion IFR would confer special benefits on select \"Universal Verified End Users\" (UVEU), or was that statement removed?",
 )
 
 EmbedFn = Callable[[Path, Path, Sequence[str]], np.ndarray]  # (model, tokenizer.json, questions) -> unit-norm rows

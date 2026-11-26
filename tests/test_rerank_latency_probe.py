@@ -66,6 +66,42 @@ def test_worst_case_passages_fill_the_token_window():
     assert all(len(p.split()) > MAX_TOKENS for p in passages)
 
 
+def test_served_workload_comes_from_the_served_config():
+    from semigraph.retrieval import fusion
+
+    assert probe.served_workload() == (fusion.RERANK_DEPTH, fusion.RERANK_SERVED_CANDIDATES, fusion.RERANK_SERVED_TOKENS) == (20, 25, 192)
+
+
+def test_worst_case_passages_follow_the_window_override():
+    assert all(len(p.split()) > 1000 for p in probe.worst_case_passages(3, max_tokens=1000))
+
+
+def test_overrides_change_the_window_the_reranker_is_loaded_at_and_the_larger_size(monkeypatch, capsys):
+    clock, loaded = Clock(), []
+    monkeypatch.setattr(probe, "load_reranker", lambda max_tokens=None: loaded.append(max_tokens) or FakeReranker(clock, [0.1] * 100))
+    monkeypatch.setattr(probe.time, "perf_counter", clock)
+    monkeypatch.setattr(probe, "cpu_stat", lambda path=probe.CPU_STAT: None)
+    assert probe.main(["--runs", "1", "--warmup", "0", "--max-tokens", "128", "--max-candidates", "30"]) == 0
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert loaded == [128] and report["max_tokens"] == 128 and [r["candidates"] for r in report["results"]] == [20, 30]
+
+
+def test_the_default_run_loads_the_served_window(monkeypatch, capsys):
+    clock, loaded = Clock(), []
+    monkeypatch.setattr(probe, "load_reranker", lambda max_tokens=None: loaded.append(max_tokens) or FakeReranker(clock, [0.1] * 100))
+    monkeypatch.setattr(probe.time, "perf_counter", clock)
+    monkeypatch.setattr(probe, "cpu_stat", lambda path=probe.CPU_STAT: None)
+    probe.main(["--runs", "1", "--warmup", "0"])
+    assert loaded == [192]
+
+
+def test_overrides_must_be_positive():
+    with pytest.raises(SystemExit):
+        probe.main(["--max-tokens", "0"])
+    with pytest.raises(SystemExit):
+        probe.main(["--max-candidates", "0"])
+
+
 def test_cpu_stat_reads_throttling_and_tolerates_a_missing_file(tmp_path):
     stat = tmp_path / "cpu.stat"
     stat.write_text("usage_usec 100\nnr_periods 10\nnr_throttled 4\nthrottled_usec 2500\n", encoding="utf-8")
@@ -79,26 +115,26 @@ def test_verdict_against_the_two_second_gate():
 
 
 def test_main_exits_2_when_the_model_does_not_load(monkeypatch, capsys):
-    monkeypatch.setattr(probe, "load_reranker", lambda: None)
+    monkeypatch.setattr(probe, "load_reranker", lambda max_tokens=None: None)
     assert probe.main(["--runs", "1"]) == 2
     assert "not loaded" in capsys.readouterr().out
 
 
 def test_main_prints_one_json_report_and_exits_0_on_pass(monkeypatch, capsys):
     clock = Clock()
-    monkeypatch.setattr(probe, "load_reranker", lambda: FakeReranker(clock, [0.2] * 100))
+    monkeypatch.setattr(probe, "load_reranker", lambda max_tokens=None: FakeReranker(clock, [0.2] * 100))
     monkeypatch.setattr(probe.time, "perf_counter", clock)
     monkeypatch.setattr(probe, "cpu_stat", lambda path=probe.CPU_STAT: None)
     assert probe.main(["--runs", "3", "--warmup", "1"]) == 0
     report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert report["gate_s"] == 2.0 and report["verdict"] == "PASS"
-    assert [r["candidates"] for r in report["results"]] == list(probe.SIZES)
+    assert [r["candidates"] for r in report["results"]] == [20, 25] and report["max_tokens"] == 192
     assert report["throttling"] is None
 
 
 def test_main_exits_1_on_fail(monkeypatch, capsys):
     clock = Clock()
-    monkeypatch.setattr(probe, "load_reranker", lambda: FakeReranker(clock, [3.0] * 100))
+    monkeypatch.setattr(probe, "load_reranker", lambda max_tokens=None: FakeReranker(clock, [3.0] * 100))
     monkeypatch.setattr(probe.time, "perf_counter", clock)
     monkeypatch.setattr(probe, "cpu_stat", lambda path=probe.CPU_STAT: None)
     assert probe.main(["--runs", "2", "--warmup", "0"]) == 1

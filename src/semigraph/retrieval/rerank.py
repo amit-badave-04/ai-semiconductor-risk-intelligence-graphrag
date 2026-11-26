@@ -10,6 +10,7 @@ fused order is served unchanged.
 
 import logging
 import threading
+import time
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -29,6 +30,29 @@ BATCH_SIZE = 1          # padding shifts the dynamic-quantised scores (~0.1 logi
 SCORE_DIGITS = 6
 
 
+class RerankOverBudget(Exception):
+    """The per-request rerank deadline passed between two pairs; ``done`` of ``total`` pairs were scored."""
+
+    def __init__(self, done: int, total: int):
+        super().__init__(f"{done} of {total} pairs scored")
+        self.done, self.total = done, total
+
+
+_OVER_BUDGET = 0         # process counter of asks that fell back to the fused order (no metrics surface exists: the WARNING is the log)
+_COUNT_LOCK = threading.Lock()
+
+
+def count_over_budget() -> int:
+    global _OVER_BUDGET
+    with _COUNT_LOCK:
+        _OVER_BUDGET += 1
+        return _OVER_BUDGET
+
+
+def over_budget_count() -> int:
+    return _OVER_BUDGET
+
+
 class Reranker(Protocol):
     def rerank(self, query: str, candidates: Sequence[str]) -> list[float]:
         """One relevance score per candidate text, higher is better, in the order given."""
@@ -45,6 +69,7 @@ class LocalCrossEncoder:
 
         options = ort.SessionOptions()
         options.log_severity_level = 3
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")    # no busy-wait: shared-vCPU credits are not burnt idle
         if threads > 0:                       # 0 = onnxruntime default; the serving default is 1 so asks do not fight the embedder
             options.intra_op_num_threads, options.inter_op_num_threads = threads, 1
         self._session = ort.InferenceSession(str(model_dir / onnx_file), options, providers=["CPUExecutionProvider"])
@@ -67,8 +92,15 @@ class LocalCrossEncoder:
         return feeds
 
     def rerank(self, query: str, candidates: Sequence[str]) -> list[float]:
+        return self.rerank_until(query, candidates, None)
+
+    def rerank_until(self, query: str, candidates: Sequence[str], deadline: float | None) -> list[float]:
+        """``rerank`` that checks ``deadline`` (a ``time.perf_counter()`` value) before each pair: past it, raise
+        :class:`RerankOverBudget`. A reranker without this method (the ``Reranker`` protocol has only ``rerank``) is not guarded."""
         scores: list[float] = []
         for start in range(0, len(candidates), self._batch):
+            if deadline is not None and time.perf_counter() > deadline:
+                raise RerankOverBudget(len(scores), len(candidates))
             logits = self._session.run(None, self._batch_inputs(query, candidates[start:start + self._batch]))[0]
             scores.extend(round(float(x), SCORE_DIGITS) for x in np.asarray(logits).reshape(len(logits), -1)[:, 0])
         return scores
@@ -90,14 +122,14 @@ _LOAD_LOCK = threading.Lock()      # two first asks at once must not load (and h
 
 
 @lru_cache(maxsize=None)
-def _load(key: str, root: str, threads: int) -> Reranker | None:
+def _load(key: str, root: str, threads: int, max_tokens: int) -> Reranker | None:
     folder, onnx_file = RERANK_MODELS[key]
     model_dir = Path(root) / folder
     if not (model_dir / onnx_file).is_file() or not (model_dir / "tokenizer.json").is_file():
         logger.warning("rerank model %r not found under %s: the rerank stage is disabled", key, model_dir)
         return None
     try:
-        encoder = LocalCrossEncoder(model_dir, onnx_file, threads=threads)
+        encoder = LocalCrossEncoder(model_dir, onnx_file, max_tokens=max_tokens, threads=threads)
     except Exception as exc:  # noqa: BLE001 - a broken model must not take retrieval down
         logger.warning("rerank model %r failed to load (%s): the rerank stage is disabled", key, type(exc).__name__)
         return None
@@ -105,12 +137,15 @@ def _load(key: str, root: str, threads: int) -> Reranker | None:
     return encoder
 
 
-def get_reranker(key: str, root: Path | None = None, threads: int | None = None) -> Reranker | None:
-    """The process-wide reranker for ``key`` (loaded on first use), or None when its files are missing or unloadable."""
+def get_reranker(key: str, root: Path | None = None, threads: int | None = None,
+                 max_tokens: int | None = None) -> Reranker | None:
+    """The process-wide reranker for ``key`` and token window (loaded on first use; the default window is the frozen
+    ``MAX_TOKENS``), or None when its files are missing or unloadable."""
     if key not in RERANK_MODELS:
         raise ValueError(f"unknown rerank model {key!r}; one of {', '.join(RERANK_MODELS)}")
     with _LOAD_LOCK:
-        return _load(key, str(root if root is not None else default_root()), threads if threads is not None else default_threads())
+        return _load(key, str(root if root is not None else default_root()), threads if threads is not None else default_threads(),
+                     max_tokens if max_tokens is not None else MAX_TOKENS)
 
 
 get_reranker.cache_clear = _load.cache_clear   # type: ignore[attr-defined]

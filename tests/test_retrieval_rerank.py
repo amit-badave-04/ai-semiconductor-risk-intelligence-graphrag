@@ -242,7 +242,7 @@ def test_settings_default_none_and_validated():
 def test_serving_config_gains_the_rerank_only_when_the_setting_is_on(monkeypatch):
     from semigraph.config import Settings
 
-    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: object())  # CI has no model files
+    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None, **kw: object())  # CI has no model files
     assert fusion.serving_config(Settings(_env_file=None)) == fusion.SERVING_CONFIG
     on = fusion.serving_config(Settings(_env_file=None, retrieval_rerank="minilm"))
     assert on.rerank == "minilm" and on.rerank_depth == fusion.RERANK_DEPTH and fusion.SERVING_CONFIG.rerank is None
@@ -251,7 +251,7 @@ def test_serving_config_gains_the_rerank_only_when_the_setting_is_on(monkeypatch
 def test_rerank_setting_moves_the_serving_digest(monkeypatch):
     from semigraph.config import Settings
 
-    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: object())
+    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None, **kw: object())
     off = fusion.serving_digest()
     monkeypatch.setattr("semigraph.config.get_settings", lambda: Settings(_env_file=None, retrieval_rerank="minilm"))
     assert fusion.serving_digest() != off
@@ -269,9 +269,9 @@ def test_missing_model_gives_the_fingerprint_with_rerank_off(monkeypatch):
 
     off = template_fingerprint(fusion=True)
     monkeypatch.setattr("semigraph.config.get_settings", lambda: Settings(_env_file=None, retrieval_rerank="minilm"))
-    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: None)
+    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None, **kw: None)
     assert template_fingerprint(fusion=True) == off                          # nothing reranks, so the key does not say it does
-    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: object())
+    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None, **kw: object())
     assert template_fingerprint(fusion=True) != off
 
 
@@ -282,9 +282,9 @@ def test_build_fusion_runtime_drops_rerank_when_the_model_is_missing(monkeypatch
     from semigraph.retrieval import keyword as K
 
     st = Settings(_env_file=None, retrieval_fusion=True, retrieval_rerank="minilm")
-    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: None)
+    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None, **kw: None)
     assert K.build_fusion_runtime(Drv([db_row("c1", "export controls")]), st, SNAP).config.rerank is None
-    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: object())
+    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None, **kw: object())
     assert K.build_fusion_runtime(Drv([db_row("c1", "export controls")]), st, SNAP).config.rerank == "minilm"
 
 
@@ -326,7 +326,7 @@ def test_the_bench_refuses_a_rerank_arm_without_its_model(monkeypatch):
     mb = importlib.util.module_from_spec(spec)
     sys.modules["m2_bench_r"] = mb
     spec.loader.exec_module(mb)
-    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: None)
+    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None, **kw: None)
     with pytest.raises(SystemExit, match="model"):
         mb.require_reranker(FusionConfig(rerank="minilm"))
     mb.require_reranker(FusionConfig())

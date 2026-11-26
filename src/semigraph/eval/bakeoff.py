@@ -374,7 +374,8 @@ def run_deployed(benchmark: list[dict], driver, embedder, path: Path, *, model: 
 
     Checkpointed per question and capped like :func:`answer_candidates`. ``fusion_runtime`` (RETRIEVAL_FUSION on; M2) passes the
     served fusion config and keyword index to the retrieval, so the run measures what the service serves; None is today's call."""
-    fused = {} if fusion_runtime is None else {"fusion": fusion_runtime.config, "keyword_index": fusion_runtime.index}
+    fused = {} if fusion_runtime is None else {"fusion": fusion_runtime.config, "keyword_index": fusion_runtime.index,
+                                                "rerank_budget_s": 0}      # guard off: this run is a measurement
     path.parent.mkdir(parents=True, exist_ok=True)
     check_deployed_runs_resumable(path)
     existing = _read_rows(path)

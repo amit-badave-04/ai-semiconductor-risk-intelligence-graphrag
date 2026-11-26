@@ -285,7 +285,7 @@ def serving_as(fusion: bool, rerank: str):
     from unittest import mock
 
     plain = SimpleNamespace(retrieval_rerank=rerank)
-    with mock.patch("semigraph.config.get_settings", lambda: plain),             mock.patch("semigraph.retrieval.rerank.get_reranker", lambda key, root=None, threads=None: object()):
+    with mock.patch("semigraph.config.get_settings", lambda: plain),             mock.patch("semigraph.retrieval.rerank.get_reranker", lambda key, root=None, threads=None, max_tokens=None: object()):
         yield
 
 

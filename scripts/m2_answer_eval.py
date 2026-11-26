@@ -6,6 +6,13 @@ escalation): ``off`` is today's retrieval, ``on`` is fused retrieval with the FR
 (baseline context lacks the gold) plus a fixed, deterministic control sample (baseline context has it), strata read from
 artifacts/m2_bench/test_report.json.
 
+Dev run (owner-approved, decision 012): ``--split dev --on-arm served`` runs the same two-arm check on the 48 M2-Bench DEV
+questions with the SERVED rerank setting as the 'on' arm (the ``served`` arm of scripts/m2_bench.py: depth 20, 192 tokens, cap 25;
+guard off via rerank_budget_s=0). It uses the same headroom + control construction as test: strata come from the dev baseline report
+(artifacts/m2_bench/baseline_dev.json, made by ``m2_bench.py run-dev``): headroom = the baseline context lacks the gold, control =
+it has it (a deterministic sample of CONTROL_N). Its runs file and report names differ from the test run's. The defaults
+(``--split test --on-arm frozen``) are the recorded test run, unchanged.
+
 Modes:
   --dry-run        prints question count, arms, answer-cost model and judge worst case. Spends nothing, opens no connection.
   paid             refuses without --max-usd AND --confirm-paid; checkpoints every answer to a runs file (JSONL), retries
@@ -43,11 +50,15 @@ sys.path.insert(0, str(ROOT / "src"))
 BENCH_DIR = ROOT / "artifacts" / "m2_bench"
 TEST_BENCH = BENCH_DIR / "m2_bench_test.json"
 TEST_REPORT = BENCH_DIR / "test_report.json"
+DEV_BENCH = BENCH_DIR / "m2_bench_dev.json"
+DEV_REPORT = BENCH_DIR / "baseline_dev.json"            # run-dev baseline: per-question context_hit gives the strata
 FROZEN_SETTINGS = BENCH_DIR / "frozen_settings.json"
 DEPLOYED_COST_REPORT = ROOT / "artifacts" / "eval_report.m2a3-deployed.json"
 OUT_REPORT = BENCH_DIR / "answer_eval_report.json"
 
 ARMS = ("off", "on")
+SPLITS = ("test", "dev")
+ON_ARMS = ("frozen", "served")
 VOTES = 3
 CONTROL_N = 15
 CONTROL_SEED = "m2-i6-control-v1"          # recorded in the report; changing it changes the sample
@@ -83,12 +94,12 @@ def control_sample(ids: Iterable[str], n: int, seed: str = CONTROL_SEED) -> list
 
 
 def pick_questions(bench: Mapping, strata: Mapping[str, str], *, control_n: int = CONTROL_N,
-                   headroom_limit: int | None = None, seed: str = CONTROL_SEED) -> list[dict]:
+                   headroom_limit: int | None = None, seed: str = CONTROL_SEED, split: str = "test") -> list[dict]:
     """The answer-level questions: every headroom question (or the first ``headroom_limit`` by id) and the control sample.
-    Refuses anything that is not the test split, so a dev question can never be bought."""
+    Refuses anything that is not the requested split (default test), so a question of the other split can never be bought."""
     questions = bench["questions"]
-    if bench.get("split") != "test" or any(q.get("split") != "test" for q in questions):
-        raise ValueError("the answer-level run draws from the test split only (a dev question was found)")
+    if bench.get("split") != split or any(q.get("split") != split for q in questions):
+        raise ValueError(f"the answer-level run draws from the {split} split only (a question of another split was found)")
     by_id = {q["id"]: q for q in questions}
     unknown = sorted(set(strata) - set(by_id))
     if unknown:
@@ -173,11 +184,11 @@ def estimate(n_questions: int, arms: Sequence[str], avg_answer_usd: float, *, vo
             "total_worst_case_usd": answers * avg_answer_usd * ANSWER_WORST_FACTOR + judge_usd}
 
 
-def format_estimate(est: Mapping, questions: Sequence[Mapping]) -> str:
+def format_estimate(est: Mapping, questions: Sequence[Mapping], *, split: str = "test", on_arm: str = "frozen") -> str:
     strata = {s: sum(1 for q in questions if q["stratum"] == s) for s in ("headroom", "control")}
     return "\n".join([
         f"m2 answer-level evaluation (dry run, nothing spent): {est['questions']} questions "
-        f"({strata['headroom']} headroom, {strata['control']} control), test split only",
+        f"({strata['headroom']} headroom, {strata['control']} control), {split} split only",
         f"arms: {', '.join(est['arms'])} -> {est['answers']} answers (each through router, draft, verifier, escalation)",
         f"answers: expected ${est['answers_expected_usd']:.2f} (avg ${est['avg_answer_usd']:.4f} per answer from the deployed eval), "
         f"worst case ${est['answers_worst_case_usd']:.2f} ({ANSWER_WORST_FACTOR:g}x)",
@@ -185,7 +196,8 @@ def format_estimate(est: Mapping, questions: Sequence[Mapping]) -> str:
         f" = ${est['judge_worst_case_usd']:.2f} (needle hits on B/C skip the judge)",
         f"total: expected ${est['total_expected_usd']:.2f}, worst case ${est['total_worst_case_usd']:.2f}",
         f"cap: {est['answer_model_cap']}; M2 ledger cap ${M2_CAP_USD:.2f} (gitignored ledger file)",
-    ] + ([f"WARNING: the deployed cost report is missing; the per-answer cost is the ${ANSWER_CALL_FLOOR_USD} {COST_SOURCE_FALLBACK} "
+    ] + ([f"on arm: served rerank setting (decision 012: depth 20, 192 tokens, cap 25; guard off)"] if on_arm == "served" else []
+    ) + ([f"WARNING: the deployed cost report is missing; the per-answer cost is the ${ANSWER_CALL_FLOOR_USD} {COST_SOURCE_FALLBACK} "
           f"and a paid run refuses until it exists"] if est.get("cost_source") == COST_SOURCE_FALLBACK else []))
 
 
@@ -452,9 +464,9 @@ def caching_judge(path: Path, judge, cost_sink: list | None = None):
 
 # --- live wiring (paid mode only; never reached by --dry-run or the tests) ------------------------------------------------
 
-def live_answer_one(settings) -> "tuple[AnswerOne, Callable[[], None], dict]":
+def live_answer_one(settings, split: str = "test", on_arm: str = "frozen") -> "tuple[AnswerOne, Callable[[], None], dict]":
     """The deployed path on both arms: ``off`` = ``hybrid_retrieve`` as ``run_deployed`` calls it, ``on`` = the same call with the
-    frozen FusionConfig, the frozen reranker (loaded once, refused if it does not load) and a keyword index built from the graph.
+    frozen FusionConfig (or, with --on-arm served, the served one: 192 tokens, cap 25), the matching reranker (loaded once, refused if it does not load) and a keyword index built from the graph.
     Everything is checked before the first paid call: frozen hash, reranker file and load, graph snapshot against the strata.
     Returns (answer_one, close, run_tag)."""
     from semigraph.embeddings import Embedder
@@ -467,15 +479,20 @@ def live_answer_one(settings) -> "tuple[AnswerOne, Callable[[], None], dict]":
     from semigraph.serve import store
 
     bench = _load_script("m2_bench")
-    frozen_sha = bench.require_frozen_settings(FROZEN_SETTINGS)
-    frozen = json.loads(FROZEN_SETTINGS.read_text(encoding="utf-8"))
-    bench.check_frozen_reranker(frozen)
-    cfg = bench.frozen_candidate(FROZEN_SETTINGS)
-    reranker = require_reranker(get_reranker, cfg.rerank)
+    if on_arm == "served":                      # decision 012: the served setting, not the frozen one
+        cfg = bench.arm_config("served")
+        reranker = require_reranker(lambda key: get_reranker(key, max_tokens=cfg.rerank_max_tokens), cfg.rerank)
+        frozen_sha = None
+    else:
+        frozen_sha = bench.require_frozen_settings(FROZEN_SETTINGS)
+        frozen = json.loads(FROZEN_SETTINGS.read_text(encoding="utf-8"))
+        bench.check_frozen_reranker(frozen)
+        cfg = bench.frozen_candidate(FROZEN_SETTINGS)
+        reranker = require_reranker(get_reranker, cfg.rerank)
     driver, embedder = client.get_driver(settings), Embedder()
     try:
         snapshot = (store.current_snapshot(driver) or {}).get("id", "")
-        check_snapshot(snapshot, json.loads(TEST_REPORT.read_text(encoding="utf-8"))["snapshot"])
+        check_snapshot(snapshot, json.loads(split_files(split)[1].read_text(encoding="utf-8"))["snapshot"])
         index = build_index(load_rows(driver), with_context=cfg.keyword_context, snapshot_id=snapshot)
         if index.size == 0:
             raise SystemExit("stopped before spending: the keyword index is empty")
@@ -484,27 +501,32 @@ def live_answer_one(settings) -> "tuple[AnswerOne, Callable[[], None], dict]":
     except BaseException:
         driver.close()
         raise
-    sys.stderr.write(f"frozen settings {frozen_sha[:16]}, keyword index {index.size} spans, snapshot {snapshot}\n")
+    sys.stderr.write(f"{'served setting' if on_arm == 'served' else 'frozen settings ' + frozen_sha[:16]}, keyword index {index.size} spans, snapshot {snapshot}\n")
     escalation = settings.escalation_model
 
     def answer_one(arm: str, q: dict):
         on = arm == "on"
         extra = {"fusion": cfg, "keyword_index": index, "reranker": reranker} if on else {}
-        r = hybrid_retrieve(q["q"], driver, embedder, k_chunks=8, hops=2, **extra)
+        r = hybrid_retrieve(q["q"], driver, embedder, k_chunks=8, hops=2, rerank_budget_s=0, **extra)   # guard off: a measurement
         events = list(stream_answer_for_context(q["q"], r, "hybrid", model=settings.answer_model, escalation_model=escalation,
                                                 max_tokens=2400, timeout=90))
         return events, build_blocks(r)[1], ({"rerank_ok": "rerank_s" in r} if on else {})
 
+    if on_arm == "served":
+        return answer_one, driver.close, {"on_arm": "served", "arm_config": bench.ARM_LEGS["served"], "snapshot": snapshot}
     return answer_one, driver.close, {"frozen_sha256": frozen_sha, "snapshot": snapshot}
 
 
 def build_report(questions: Sequence[dict], arm_scores: Mapping[str, dict], decision: dict, *, runs_file: Path,
-                 headroom_limit: int | None) -> dict:
+                 headroom_limit: int | None, split: str = "test", on_arm: str = "frozen") -> dict:
     """The committed report. It carries NO spend: no estimate, no cost, no dollar field (spec lines 122 and 301); spend lives in the
     gitignored runs file and ledger."""
     arms = {arm: {k: v for k, v in score.items() if not k.startswith("_")} for arm, score in arm_scores.items()}
-    return {"spec": "docs/specs/m2-search.md section 7 (answer-level decision rule)", "split": "test",
-            "frozen_settings_sha256": _load_script("m2_bench").file_sha256(FROZEN_SETTINGS),
+    bench = _load_script("m2_bench")
+    on_arm_part = ({"on_arm": "served", "on_arm_config": bench.ARM_LEGS["served"]} if on_arm == "served"
+                   else {"frozen_settings_sha256": bench.file_sha256(FROZEN_SETTINGS)})
+    return {"spec": "docs/specs/m2-search.md section 7 (answer-level decision rule)", "split": split,
+            **on_arm_part,
             "questions": [{"id": q["id"], "type": q["type"], "stratum": q["stratum"]} for q in questions],
             "control_sample": {"seed": CONTROL_SEED, "n": CONTROL_N, "ids": [q["id"] for q in questions if q["stratum"] == "control"]},
             "headroom_limit": headroom_limit, "runs_file": runs_file.name, "arms": arms, "decision": decision}
@@ -524,26 +546,62 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="print the exact counts and the worst case; spend nothing")
     p.add_argument("--max-usd", type=_finite_usd, default=None, help="hard cap on recorded spend (answers + judge); required for a paid run")
     p.add_argument("--confirm-paid", action="store_true", help="explicit authorisation to buy model calls")
-    p.add_argument("--runs-file", default=None, help="JSONL checkpoint (default: data/processed/m2_answer_eval_runs.jsonl)")
+    p.add_argument("--split", choices=SPLITS, default="test", help="question split (default test = the recorded run)")
+    p.add_argument("--on-arm", choices=ON_ARMS, default="frozen",
+                   help="rerank setting of the 'on' arm: frozen (default) or served (decision 012)")
+    p.add_argument("--runs-file", default=None, help="JSONL checkpoint (default: data/processed/m2_answer_eval_runs.jsonl; "
+                   "other split/arm: m2_answer_eval_<split>[_served]_runs.jsonl)")
     p.add_argument("--ledger-file", default=None, help="gitignored M2 spend ledger (default: data/processed/m2_ledger.jsonl)")
     p.add_argument("--headroom-limit", type=int, default=None, help="use only the first N headroom ids (default: all)")
     p.add_argument("--control-n", type=int, default=CONTROL_N)
     return p.parse_args(argv)
 
 
-def load_plan(headroom_limit: int | None, control_n: int) -> tuple[list[dict], dict]:
-    bench = json.loads(TEST_BENCH.read_text(encoding="utf-8"))
-    strata = json.loads(TEST_REPORT.read_text(encoding="utf-8"))["strata"]
-    _load_script("m2_bench").require_frozen_settings(FROZEN_SETTINGS)
-    questions = pick_questions(bench, strata, control_n=control_n, headroom_limit=headroom_limit)
+def split_files(split: str) -> tuple[Path, Path]:
+    """(bench file, report file) of a split; the report's snapshot is the one the strata were classified on."""
+    return (DEV_BENCH, DEV_REPORT) if split == "dev" else (TEST_BENCH, TEST_REPORT)
+
+
+def run_tag_name(split: str, on_arm: str) -> str:
+    """'' for the recorded test/frozen run; otherwise a tag keeping runs files and reports apart ('dev-served', 'dev', 'test-served')."""
+    if (split, on_arm) == ("test", "frozen"):
+        return ""
+    return f"{split}-{on_arm}" if on_arm == "served" else split
+
+
+def default_runs_name(split: str, on_arm: str) -> str:
+    tag = run_tag_name(split, on_arm)
+    return "m2_answer_eval_runs.jsonl" if not tag else f"m2_answer_eval_{tag.replace('-', '_')}_runs.jsonl"
+
+
+def report_path(split: str, on_arm: str) -> Path:
+    tag = run_tag_name(split, on_arm)
+    return OUT_REPORT if not tag else ROOT / "artifacts" / f"m2_answer_eval.{tag}.json"
+
+
+def load_strata(split: str, report: Mapping) -> dict[str, str]:
+    """Test: the strata written once from the baseline run. Dev: derived from the dev baseline report's per-question context_hit."""
+    if split == "test":
+        return report["strata"]
+    return _load_script("m2_bench").classify_strata(report["questions"])
+
+
+def load_plan(headroom_limit: int | None, control_n: int, split: str = "test",
+              on_arm: str = "frozen") -> tuple[list[dict], dict]:
+    bench_path, report_file = split_files(split)
+    bench = json.loads(bench_path.read_text(encoding="utf-8"))
+    strata = load_strata(split, json.loads(report_file.read_text(encoding="utf-8")))
+    if on_arm == "frozen":
+        _load_script("m2_bench").require_frozen_settings(FROZEN_SETTINGS)
+    questions = pick_questions(bench, strata, control_n=control_n, headroom_limit=headroom_limit, split=split)
     usd, source = per_answer_usd()
     return questions, estimate(len(questions), ARMS, usd, source=source)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    questions, est = load_plan(args.headroom_limit, args.control_n)
-    print(format_estimate(est, questions))
+    questions, est = load_plan(args.headroom_limit, args.control_n, args.split, args.on_arm)
+    print(format_estimate(est, questions, split=args.split, on_arm=args.on_arm))
     if args.dry_run:
         return 0
     problems = refusals(est, max_usd=args.max_usd, confirm_paid=args.confirm_paid)
@@ -560,13 +618,13 @@ def run_paid(args: argparse.Namespace, questions: list[dict], est: Mapping) -> i
     from semigraph.llm import llm_json
 
     settings = get_settings()
-    runs = Path(args.runs_file) if args.runs_file else settings.processed_dir / "m2_answer_eval_runs.jsonl"
+    runs = Path(args.runs_file) if args.runs_file else settings.processed_dir / default_runs_name(args.split, args.on_arm)
     ledger = Ledger(Path(args.ledger_file) if args.ledger_file else settings.processed_dir / "m2_ledger.jsonl")
     cap, problems = ledger_gate(ledger, max_usd=args.max_usd, est=est)
     if problems:
         print("refusing: " + "; ".join(problems) + ". Nothing was spent.", file=sys.stderr)
         return 2
-    answer_one, close, tag = live_answer_one(settings)
+    answer_one, close, tag = live_answer_one(settings, args.split, args.on_arm)
     before, judge_calls, failed = runs_spend(runs), [], False
     try:
         rows = run_arms(questions, ARMS, answer_one, runs, max_usd=cap - est["judge_worst_case_usd"], run_tag=tag,
@@ -584,10 +642,11 @@ def run_paid(args: argparse.Namespace, questions: list[dict], est: Mapping) -> i
         ledger.append("i6-answer-level", runs_spend(runs) - before + len(judge_calls) * bo.JUDGE_CALL_USD, failed=failed)
     strata = {q["id"]: q["stratum"] for q in questions}
     decision = decide(scores["off"]["correct"], scores["on"]["correct"], strata, unreliable=bad)
-    OUT_REPORT.write_text(json.dumps(build_report(questions, scores, decision, runs_file=runs, headroom_limit=args.headroom_limit),
-                                     indent=1) + "\n", encoding="utf-8", newline="\n")
+    out = report_path(args.split, args.on_arm)
+    out.write_text(json.dumps(build_report(questions, scores, decision, runs_file=runs, headroom_limit=args.headroom_limit,
+                                           split=args.split, on_arm=args.on_arm), indent=1) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps(decision, indent=1))
-    print(f"report -> {OUT_REPORT}")
+    print(f"report -> {out}")
     return 0
 
 

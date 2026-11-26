@@ -156,7 +156,7 @@ def test_the_committed_examples_match_the_current_template_and_seed_exactly_the_
 
         deployed = Settings(_env_file=None, retrieval_fusion=True, retrieval_rerank=env["RETRIEVAL_RERANK"])
         monkeypatch.setattr("semigraph.config.get_settings", lambda: deployed)
-        monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: object())  # CI has no model files
+        monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None, **kw: object())  # CI has no model files
     doc = load_examples()
     assert store.examples_match_template(doc, fusion=fusion), (
         "examples.json does not carry the template fingerprint of fly.toml's RETRIEVAL_FUSION, or answer.txt / CONTEXT_HEADERS "

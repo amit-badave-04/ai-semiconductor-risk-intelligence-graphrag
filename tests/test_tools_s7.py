@@ -1003,7 +1003,7 @@ def test_the_serving_template_is_the_shipped_one_under_fusion_and_minilm_with_no
         flag_on = template_fingerprint(fusion=True)
     assert replay.serving_template(True, "none") == flag_on != template_fingerprint()
     shipped = json.loads((ROOT / "src" / "semigraph" / "artifacts" / "examples.json").read_text(encoding="utf-8"))["template_fingerprint"]
-    assert replay.serving_template(True, "minilm") == shipped == "e5c72794de"
+    assert replay.serving_template(True, "minilm") == shipped == "f604c90263"   # decision 012 served rerank
 
 
 def test_prepare_seeds_under_the_tools_app_environment_with_fusion_and_minilm_and_the_keys_are_the_prechecks(tmp_path, monkeypatch):
