@@ -344,6 +344,10 @@ export const deck = {
       /** The end line; `stopped` is the server's reason (embed_queue.STOP_REASONS). "cancelled" is the user's stop. */
       summary: (embedded: number, keywordOnly: number, stopped: string | null): string => {
         const n = (count: number): string => `${count} ${count === 1 ? "passage" : "passages"}`;
+        // replaced by a newer upload (llm-council): only the current version is searched, so this one is not searched at all
+        if (stopped === "superseded") {
+          return "Replaced by a newer upload of this document. This version is no longer searched. Questions are answered from the newest upload.";
+        }
         if (embedded === 0 && keywordOnly === 0) return "No text was found to search in this file.";
         if (keywordOnly === 0) return embedded === 1 ? "The 1 passage can be searched by keyword and by meaning." : `All ${embedded} passages can be searched by keyword and by meaning.`;
         const prefix = stopped === null ? "" : stopped === "cancelled" ? "Stopped. " : "Search by meaning stopped early. ";

@@ -61,16 +61,12 @@ function Progress({ view, nameId, onCancel }: Pick<Props, "view" | "nameId" | "o
     <div data-job-running="">
       <p className="m-0">{embedding === null ? C.waiting : C.progress(embedding.done, embedding.total)}</p>
       {embedding !== null && embedding.total > 0 && (
-        <div
-          role="progressbar"
+        <progress
           aria-label={C.progressName}
-          aria-valuemin={0}
-          aria-valuemax={embedding.total}
-          aria-valuenow={Math.min(embedding.done, embedding.total)}
-          className="mt-1 h-1.5 w-full max-w-xs overflow-hidden rounded bg-muted"
-        >
-          <div className="h-full bg-foreground" style={{ width: `${Math.min(100, (embedding.done / embedding.total) * 100)}%` }} />
-        </div>
+          max={embedding.total}
+          value={Math.min(embedding.done, embedding.total)}
+          className="mt-1 block h-1.5 w-full max-w-xs accent-foreground"
+        />
       )}
       <button
         type="button"

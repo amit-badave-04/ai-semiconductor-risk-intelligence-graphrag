@@ -239,9 +239,10 @@ def test_settings_default_none_and_validated():
         Settings(_env_file=None, retrieval_rerank="cohere")
 
 
-def test_serving_config_gains_the_rerank_only_when_the_setting_is_on():
+def test_serving_config_gains_the_rerank_only_when_the_setting_is_on(monkeypatch):
     from semigraph.config import Settings
 
+    monkeypatch.setattr(rerank, "get_reranker", lambda key, root=None: object())  # CI has no model files
     assert fusion.serving_config(Settings(_env_file=None)) == fusion.SERVING_CONFIG
     on = fusion.serving_config(Settings(_env_file=None, retrieval_rerank="minilm"))
     assert on.rerank == "minilm" and on.rerank_depth == fusion.RERANK_DEPTH and fusion.SERVING_CONFIG.rerank is None

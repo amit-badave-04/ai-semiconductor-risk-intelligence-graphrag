@@ -54,6 +54,12 @@ describe("upload card copy: the council's wording", () => {
 
   it("the end lines", () => {
     expect(C.summary(12, 0, null)).toBe("All 12 passages can be searched by keyword and by meaning.");
+    // replaced by a newer upload (llm-council, owner instruction): this version is not searched at all, so no counts and no search terms
+    for (const [e, k] of [[30, 10], [0, 12], [12, 0], [0, 0]] as const) {
+      const line = C.summary(e, k, "superseded");
+      expect(line).toBe("Replaced by a newer upload of this document. This version is no longer searched. Questions are answered from the newest upload.");
+      expect(line).not.toMatch(/keyword|meaning|stopped early|\d/);
+    }
     expect(C.summary(1, 0, null)).toBe("The 1 passage can be searched by keyword and by meaning.");
     expect(C.summary(30, 10, "timeout")).toBe("Search by meaning stopped early. 30 passages can be searched by keyword and by meaning. 10 can be searched by keyword only.");
     expect(C.summary(30, 1, null)).toBe("30 passages can be searched by keyword and by meaning. 1 can be searched by keyword only.");
@@ -66,7 +72,7 @@ describe("upload card copy: the council's wording", () => {
   it("the stopped lines: by the user, and by itself", () => {
     expect(C.summary(3, 9, "cancelled")).toBe("Stopped. 3 passages can be searched by keyword and by meaning. 9 can be searched by keyword only.");
     expect(C.summary(0, 12, "cancelled")).toBe("Stopped. All 12 passages can be searched by keyword only.");
-    for (const why of ["timeout", "budget", "guaranteed", "embed_error", "daily_limit", "superseded"]) {
+    for (const why of ["timeout", "budget", "guaranteed", "embed_error", "daily_limit"]) {
       expect(C.summary(0, 12, why)).toBe("Search by meaning stopped early. All 12 passages can be searched by keyword only.");
     }
     // nothing was left over: the job was stopped but every passage was prepared, so there is nothing to apologise for

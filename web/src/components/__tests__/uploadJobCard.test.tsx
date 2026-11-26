@@ -55,7 +55,9 @@ describe("UploadJobCard (M2 R19, the council wording)", () => {
     render(<UploadJobCard view={view({ embedding: { done: 6, total: 40, etaS: 4.2 } })} onCancel={onCancel} />);
     expect(screen.getByText("Preparing search by meaning: 6 of 40 passages")).toBeInTheDocument();
     expect(screen.getByText("Search by meaning: less than a minute left (estimate)")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "Preparing search by meaning" })).toHaveAttribute("aria-valuenow", "6");
+    const bar = screen.getByRole("progressbar", { name: "Preparing search by meaning" });
+    expect(bar.tagName).toBe("PROGRESS");                     // a native <progress> (oxlint prefer-progress), same role and name
+    expect(bar).toHaveAttribute("value", "6");
     await userEvent.click(screen.getByRole("button", { name: "Stop preparing search by meaning" }));
     expect(onCancel).toHaveBeenCalledOnce();
     const pending = screen.getByRole("button", { name: "Stopping…" });
