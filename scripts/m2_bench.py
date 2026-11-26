@@ -511,11 +511,17 @@ def control_gate(base: Mapping, cand: Mapping, ids: Iterable[str], strata: Mappi
 
 
 def tripwire_gate(base_verdicts: Iterable[Mapping], cand_verdicts: Iterable[Mapping]) -> dict:
-    """Decision 006's verdicts (compare.tripwire_verdict, ``hit``): every question that hits on the baseline must still hit."""
-    base = {v["id"]: v["hit"] for v in base_verdicts}
-    cand = {v["id"]: v["hit"] for v in cand_verdicts}
+    """Decision 006's verdicts (compare.tripwire_verdict, ``hit``): every question that hits on the baseline must still hit.
+
+    A question with a gold chunk the graph does not hold is not a clean measurement (decision 006 recorded R2): it is left out
+    of the gate and listed under ``excluded``; the gold itself is never edited."""
+    base_v, cand_v = list(base_verdicts), list(cand_verdicts)
+    excluded = sorted({v["id"] for v in base_v + cand_v if v.get("missing_from_graph")})
+    base = {v["id"]: v["hit"] for v in base_v if v["id"] not in excluded}
+    cand = {v["id"]: v["hit"] for v in cand_v if v["id"] not in excluded}
     lost = [i for i in base if base[i] and not cand[i]]
-    return {"pass": not lost, "lost": lost, "baseline_hits": sum(base.values()), "candidate_hits": sum(cand.values()), "n": len(base)}
+    return {"pass": not lost, "lost": lost, "baseline_hits": sum(base.values()), "candidate_hits": sum(cand.values()),
+            "n": len(base), "excluded": excluded}
 
 
 def known_ids(question: Mapping) -> set[str]:
@@ -736,14 +742,11 @@ def _snapshot(driver) -> str:
 
 
 def _tripwire_mentions(prep: Mapping, driver) -> dict:
-    """Decision 006's MENTIONS lookup; refuse (before the test split is touched) when a gold chunk is not in the graph."""
+    """Decision 006's MENTIONS lookup for the tripwire gold. A gold chunk the graph does not hold is not an error here: its
+    question's verdict carries ``missing_from_graph`` and ``tripwire_gate`` leaves it out and lists it (decision 006, R2)."""
     compare = prep["compare"]
     ids = sorted({g["chunk_id"] for q in prep["tripwire"] for g in q["gold"]})
-    mentions = {r["chunk_id"]: r["mention_ciks"] for r in compare._session_rows(driver, compare.GOLD_MENTIONS_QUERY, ids=ids)}
-    missing = [i for i in ids if i not in mentions]
-    if missing:
-        raise SystemExit(f"refusing: NOT A VALID RUN, tripwire gold chunks missing from the graph: {missing[:5]}")
-    return mentions
+    return {r["chunk_id"]: r["mention_ciks"] for r in compare._session_rows(driver, compare.GOLD_MENTIONS_QUERY, ids=ids)}
 
 
 def _test_split_runs(prep: Mapping, out_dir: Path, driver, embedder, indexes: Mapping, snapshot: str) -> tuple[dict, dict, dict]:
@@ -798,7 +801,7 @@ def _graph_phase(prep: Mapping, out_dir: Path) -> dict:
 
 
 def _tripwire_hits(verdicts: Iterable[Mapping]) -> list[dict]:
-    return [{"id": v["id"], "hit": v["hit"]} for v in verdicts]
+    return [{"id": v["id"], "hit": v["hit"], "missing_from_graph": list(v.get("missing_from_graph") or [])} for v in verdicts]
 
 
 REPORT_NOTES = {

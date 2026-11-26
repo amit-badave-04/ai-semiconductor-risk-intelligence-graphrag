@@ -632,15 +632,17 @@ def test_an_offline_failure_before_the_claim_leaves_the_run_unclaimed(dry, monke
     assert not (dry.out / "test_started.json").exists() and dry.events == []
 
 
-def test_a_tripwire_gold_chunk_missing_from_the_graph_refuses_before_the_test_split_is_touched(dry):
+def test_a_tripwire_gold_chunk_missing_from_the_graph_is_excluded_from_the_gate_and_listed(dry):
+    """Decision 006: a tripwire question whose any-of gold has a chunk the graph does not hold (R2) is not a clean measurement;
+    the run goes on, and the no-loss gate leaves that question out and lists it (the gold is never edited)."""
     trip = mb._load_script("compare_retrieval").registered_gold(mb.ROOT / "artifacts" / "m2_tripwire_gold.json")["questions"]
     FakeDriver.gold_ids = {"absent": {trip[0]["gold"][0]["chunk_id"]}}
     try:
-        with pytest.raises(SystemExit, match="NOT A VALID RUN"):
-            mb.run_test(dry.out)
+        mb.run_test(dry.out)
     finally:
         FakeDriver.gold_ids = {"absent": set()}
-    assert not (dry.out / "test_started.json").exists() and dry.events == []
+    gate = json.loads((dry.out / "test_report.json").read_text(encoding="utf-8"))["gates"]["tripwire"]
+    assert gate["excluded"] == [trip[0]["id"]] and gate["n"] == len(trip) - 1
 
 
 def test_a_remote_graph_is_refused_by_run_test_before_any_query(dry, monkeypatch):
@@ -650,3 +652,14 @@ def test_a_remote_graph_is_refused_by_run_test_before_any_query(dry, monkeypatch
     with pytest.raises(SystemExit, match="local graph"):
         mb.run_test(dry.out)
     assert dry.events == [] and not (dry.out / "test_started.json").exists()
+
+
+def test_the_tripwire_gate_excludes_a_question_whose_gold_is_not_all_in_the_graph_and_lists_it():
+    """Decision 006 recorded R2 as not a clean measurement (one any-of gold chunk has no span in the graph); the test run's
+    no-loss gate leaves such questions out and lists them, instead of refusing the whole run."""
+    base = [{"id": "D2", "hit": True, "missing_from_graph": []}, {"id": "R2", "hit": True, "missing_from_graph": ["x"]}]
+    cand = [{"id": "D2", "hit": True, "missing_from_graph": []}, {"id": "R2", "hit": False, "missing_from_graph": ["x"]}]
+    gate = mb.tripwire_gate(base, cand)
+    assert gate["pass"] and gate["excluded"] == ["R2"] and gate["n"] == 1
+    lost = mb.tripwire_gate(base, [{"id": "D2", "hit": False, "missing_from_graph": []}, cand[1]])
+    assert not lost["pass"] and lost["lost"] == ["D2"]
