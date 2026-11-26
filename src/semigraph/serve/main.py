@@ -33,8 +33,7 @@ from ..embeddings import Embedder
 from ..graph.client import DatabaseDriver, make_state_driver, run_cypher
 from ..graph.schema import PRIVATE_LABEL_PREFIXES, apply_schema, private_label_predicate
 from ..retrieval.answerer import template_fingerprint
-from ..retrieval.fusion import FusionRuntime
-from ..retrieval.keyword import build_fusion_runtime
+from ..retrieval.fusion import FusionRuntime, process_runtime, set_process_default
 from ..uploads import jobs
 from .asgi_middleware import BodyLimit, OriginAuth
 from .embed import LimitedEmbedder
@@ -206,7 +205,8 @@ def bootstrap(settings):
     snapshot_id = (snapshot or {}).get("id", "")
     # Before the examples are seeded: the fingerprint they must carry depends on whether the fusion path is really active
     # (a flag that is on with a failed index build serves today's path, so it seeds like the flag being off).
-    fusion = build_fusion_runtime(driver, settings, snapshot_id)
+    fusion = process_runtime(driver, settings, snapshot_id)      # cached, a failed build too: never retried inside a paid ask
+    set_process_default(fusion)                                  # the agent's runtime when none is passed
     example_ids = seed_examples(driver, load_examples(), snapshot_id, fusion=fusion is not None)
     embedder = Embedder()
     embedder.encode_query("warm-up: export controls and HBM supply")

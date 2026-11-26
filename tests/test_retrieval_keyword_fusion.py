@@ -236,3 +236,34 @@ def test_flag_off_keeps_todays_unmarked_superseded_excerpts_a_known_defect():
     """Decision 011: with the flag off nothing changes, so today's excerpt query can still return a superseded annual risk
     passage with no mark. Recorded as a known defect; it closes when RETRIEVAL_FUSION becomes the default."""
     assert "is_current" not in R.EXCERPTS_QUERY
+
+
+# --- the process-cached runtime helper the agent uses --------------------------------------------------------------------------
+
+def test_runtime_cache_is_per_snapshot(monkeypatch):
+    from semigraph.retrieval import fusion as F
+
+    monkeypatch.setattr(F, "_RUNTIMES", {})
+    built = []
+
+    def build(driver, settings, snapshot_id):
+        built.append(snapshot_id)
+        return object() if snapshot_id != "bad" else None
+
+    a1 = F.process_runtime(None, None, "s1", build)
+    assert F.process_runtime(None, None, "s1", build) is a1
+    a2 = F.process_runtime(None, None, "s2", build)
+    assert a2 is not a1 and built == ["s1", "s2"]
+    assert F.process_runtime(None, None, "bad", build) is None and F.process_runtime(None, None, "bad", build) is None
+    assert built == ["s1", "s2", "bad"]                      # a failed build is cached too: no rebuild on every ask
+
+
+def test_the_process_default_is_set_read_and_cleared():
+    from semigraph.retrieval import fusion as F
+
+    rt = object()
+    F.set_process_default(rt)
+    assert F.process_default() is rt
+    F.set_process_default(None)
+    assert F.process_default() is None
+

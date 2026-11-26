@@ -333,3 +333,65 @@ def test_a_live_run_from_a_different_cwd_still_finds_the_default_baseline_and_es
     result = runner.invoke(cli.app, ["eval-agent", "--benchmark", "bench.json", "--agent-only", "--confirm-paid", "--max-usd", "1.0", "--no-judge"])
     assert result.exit_code == 0, result.output
     assert "estimate" in result.output.lower()
+
+
+@pytest.mark.parametrize("flag", [True, False])
+def test_eval_agent_sets_the_process_default_only_with_the_flag_on(env, monkeypatch, flag):
+    from semigraph import embeddings
+    from semigraph.graph import client
+    from semigraph.retrieval import fusion
+    from semigraph.serve import store
+
+    runtime, built, seen = object(), [], []
+
+    class FakeDriver:
+        def close(self):
+            pass
+
+    def fake_events(driver, embedder, *, model, escalation_model, **kw):
+        def answer(item):
+            seen.append(fusion.process_default())        # what the agent would read while it answers this question
+            return events(item["expected_tools"])
+        return answer
+
+    monkeypatch.setattr(cli, "_settings", lambda: Settings(
+        _env_file=None, data_dir=env / "data", answer_model="openai/gpt-6-luna", escalation_model="anthropic/claude-sonnet-5",
+        retrieval_fusion=flag))
+    monkeypatch.setattr(client, "get_driver", lambda settings=None: FakeDriver())
+    monkeypatch.setattr(embeddings, "Embedder", lambda: object())
+    monkeypatch.setattr(store, "current_snapshot", lambda d: {"id": "S1"})
+    monkeypatch.setattr(fusion, "process_runtime", lambda d, s, sid: built.append(sid) or runtime)
+    monkeypatch.setattr(ae, "agent_answer_events", fake_events)
+    result = invoke("--agent-only", "--confirm-paid", "--max-usd", "1.0", "--no-judge")
+    assert result.exit_code == 0, result.output
+    assert seen and all(r is (runtime if flag else None) for r in seen)
+    assert built == (["S1"] if flag else [])
+    assert fusion.process_default() is None                # cleared when the run ends
+
+
+def test_eval_agent_with_the_flag_on_stops_before_spending_when_the_fusion_index_fails(env, monkeypatch):
+    """Review LOW: with RETRIEVAL_FUSION on and a failed index build, the paid agent gate must not silently measure the unfused
+    agent; it stops with an error before any answer is generated."""
+    from semigraph import embeddings
+    from semigraph.graph import client
+    from semigraph.retrieval import fusion
+    from semigraph.serve import store
+
+    answered = []
+
+    class FakeDriver:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cli, "_settings", lambda: Settings(
+        _env_file=None, data_dir=env / "data", answer_model="openai/gpt-6-luna", escalation_model="anthropic/claude-sonnet-5",
+        retrieval_fusion=True))
+    monkeypatch.setattr(client, "get_driver", lambda settings=None: FakeDriver())
+    monkeypatch.setattr(embeddings, "Embedder", lambda: object())
+    monkeypatch.setattr(store, "current_snapshot", lambda d: {"id": "S1"})
+    monkeypatch.setattr(fusion, "process_runtime", lambda d, s, sid: None)
+    monkeypatch.setattr(ae, "agent_answer_events", lambda *a, **k: (lambda item: answered.append(item) or events([])))
+    result = invoke("--agent-only", "--confirm-paid", "--max-usd", "1.0", "--no-judge")
+    assert result.exit_code != 0
+    assert "fusion" in result.output.lower() and not answered
+    assert fusion.process_default() is None

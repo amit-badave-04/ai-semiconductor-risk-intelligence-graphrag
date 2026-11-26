@@ -250,10 +250,10 @@ def fusion_cache_kwargs(st) -> dict:
 
 
 def fusion_twin_kwargs(st, strategy: str, workspace: bool) -> dict:
-    """``{"fusion": runtime}`` for the answer twin of a hybrid ask or of a workspace ask (its SEC part), else ``{}``. Never for
-    the agent (its prefetch keeps its own setting) or the vector strategy."""
+    """``{"fusion": runtime}`` for the answer twin of a hybrid or agent ask or of a workspace ask (its SEC part), else ``{}``.
+    Never for the vector strategy."""
     runtime = fusion_runtime(st)
-    return {"fusion": runtime} if runtime is not None and (workspace or strategy == "hybrid") else {}
+    return {"fusion": runtime} if runtime is not None and (workspace or strategy in ("hybrid", guard.AGENT_STRATEGY)) else {}
 
 
 def accepts_meter(twin: Callable) -> bool:

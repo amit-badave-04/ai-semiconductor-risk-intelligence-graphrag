@@ -19,3 +19,15 @@ def model_base_variables_come_only_from_the_test(monkeypatch):
     """No test depends on the environment of the machine that runs it: these four start unset in every test."""
     for name in MODEL_BASE_VARIABLES:
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def fresh_fusion_process_state():
+    """The fusion runtime cache and the agent's process default are process-wide: every test starts and ends with both empty."""
+    from semigraph.retrieval import fusion
+
+    fusion._RUNTIMES.clear()
+    fusion.set_process_default(None)
+    yield
+    fusion._RUNTIMES.clear()
+    fusion.set_process_default(None)

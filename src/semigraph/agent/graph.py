@@ -38,6 +38,7 @@ from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, StateGraph
 
 from ..retrieval.answerer import usage_cost
+from ..retrieval.fusion import process_default
 from ..retrieval.retriever import hybrid_retrieve
 from . import merge as M
 from . import planner as P
@@ -260,6 +261,8 @@ def run_agent(question: str, driver, embedder, *, planner: Callable[..., Planner
     the abandoned generator frame."""
     tracer = as_safe(tracer)
     ledger = ledger if ledger is not None else Ledger()
+    if fusion is None:
+        fusion = process_default()          # set at boot / by eval-agent; the agent never reads settings or builds a runtime
     deps = _Deps(question, driver, embedder, Toolbox(driver, embedder, question, clock=_now, fusion=fusion), planner, planner_model, limits,
                  tracer, ledger, tool_specs(), k_chunks, hops, fusion)
     config = {"recursion_limit": recursion_limit or recursion_limit_for(limits)}

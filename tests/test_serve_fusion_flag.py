@@ -134,8 +134,8 @@ def test_helpers_pass_the_runtime_only_for_hybrid_and_workspace_asks_and_only_wh
     st = types.SimpleNamespace(fusion=rt)
     assert sr.fusion_twin_kwargs(st, "hybrid", False) == {"fusion": rt} == sr.fusion_twin_kwargs(st, "hybrid", True)
     assert sr.fusion_twin_kwargs(st, "vector", False) == {}
-    assert sr.fusion_twin_kwargs(st, "agent", False) == {}                  # the agent prefetch keeps its own setting
-    assert sr.fusion_twin_kwargs(st, "agent", True) == {"fusion": rt}       # a workspace ask is never the agent
+    assert sr.fusion_twin_kwargs(st, "agent", False) == {"fusion": rt}      # the owner included the agent in M2
+    assert sr.fusion_twin_kwargs(st, "agent", True) == {"fusion": rt}
     assert sr.fusion_cache_kwargs(st) == {"fusion": True}
     for none in (types.SimpleNamespace(fusion=None), types.SimpleNamespace(), types.SimpleNamespace(fusion=object())):
         assert sr.fusion_twin_kwargs(none, "hybrid", False) == {} and sr.fusion_cache_kwargs(none) == {}
@@ -392,3 +392,47 @@ def test_a_change_to_serving_config_changes_the_fingerprint(monkeypatch):
     monkeypatch.setattr(fusion, "SERVING_CONFIG", fusion.FusionConfig(filer=True, keyword=True, keyword_context=True))
     assert template_fingerprint(fusion=True) != before
     assert template_fingerprint() == "2a6910aa5d"
+
+
+def test_agent_asks_get_the_fusion_runtime():
+    rt = runtime()
+    got = {}
+
+    class Gen:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+        async def aclose(self):
+            return None
+
+    def twin(question, driver, embedder, **kw):
+        got.update(kw)
+        return Gen()
+    st = types.SimpleNamespace(settings=Settings(_env_file=None), driver=None, embedder=None, limiters=None, state=None, fusion=rt)
+    sr.PaidStream(st, "Q?", "agent", "iph", SNAP, None, lease=types.SimpleNamespace(lease_id="l"), twin=twin)._open_stream()
+    assert got.get("fusion") is rt
+
+
+def test_boot_failure_is_cached_and_the_agent_does_not_rebuild(monkeypatch):
+    """A failed boot build is cached per snapshot and the process default stays None: an agent ask neither rebuilds the index nor
+    reads settings (the fixture-server guard), so a broken index is never retried inside a paid ask."""
+    from semigraph.agent import graph as G
+    from semigraph.retrieval import fusion
+
+    BootFakes(monkeypatch, doc(False), Drv(boom=RuntimeError("down")))
+    booted = main.bootstrap(Settings(_env_file=None, retrieval_fusion=True))
+    assert booted.fusion is None and fusion.process_default() is None and fusion._RUNTIMES == {SNAP: None}
+    monkeypatch.setattr(K, "build_fusion_runtime", lambda *a: pytest.fail("rebuilt after a cached failure"))
+    assert fusion.process_runtime(object(), Settings(_env_file=None, retrieval_fusion=True), SNAP) is None
+    assert not hasattr(G, "get_settings")                          # run_agent has no settings access at all
+
+
+def test_bootstrap_publishes_the_runtime_as_the_agents_process_default(monkeypatch):
+    from semigraph.retrieval import fusion
+
+    BootFakes(monkeypatch, doc(True), Drv([db_row("c1", "export controls")]))
+    booted = main.bootstrap(Settings(_env_file=None, retrieval_fusion=True))
+    assert booted.fusion is not None and fusion.process_default() is booted.fusion

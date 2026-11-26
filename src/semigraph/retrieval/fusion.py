@@ -6,6 +6,7 @@ rows here; the fused excerpts REPLACE the ``k_chunks`` slots, they never add to 
 
 from collections.abc import Mapping, Sequence
 import hashlib
+import threading
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
@@ -171,3 +172,32 @@ def sec_fusion_kwargs(runtime: "FusionRuntime | None", as_of: str | None = None)
     if as_of:
         return {"fusion": replace(config, keyword=False), "keyword_index": None}
     return {"fusion": config, "keyword_index": runtime.index}
+
+
+_RUNTIMES: dict[str, "FusionRuntime | None"] = {}      # shortcut: per-process cache, never evicted; one entry per graph snapshot
+_RUNTIMES_LOCK = threading.Lock()
+
+
+def process_runtime(driver, settings, snapshot_id: str, build=None) -> "FusionRuntime | None":
+    """The fusion runtime for ``snapshot_id``, built once per process (``build_fusion_runtime`` by default, which logs and returns
+    None on failure). A failed build is cached too, so a broken index is not retried on every ask (restart to retry)."""
+    with _RUNTIMES_LOCK:
+        if snapshot_id not in _RUNTIMES:
+            if build is None:
+                from .keyword import build_fusion_runtime as build
+            _RUNTIMES[snapshot_id] = build(driver, settings, snapshot_id)
+        return _RUNTIMES[snapshot_id]
+
+
+_DEFAULT: "FusionRuntime | None" = None
+
+
+def set_process_default(runtime: "FusionRuntime | None") -> None:
+    """Publish (or clear, with None) the runtime the agent uses when none is passed. Set once at boot (serve) or by ``eval-agent``;
+    the agent never reads settings or builds anything itself, so a failed boot build is never retried inside a paid ask."""
+    global _DEFAULT
+    _DEFAULT = runtime
+
+
+def process_default() -> "FusionRuntime | None":
+    return _DEFAULT

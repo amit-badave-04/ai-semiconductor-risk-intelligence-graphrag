@@ -825,6 +825,7 @@ def _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_u
                 "(refused before answering anything)")
     driver = client.get_driver(settings)
     try:
+        _publish_fusion_default(driver, settings)
         answer_events = ae.agent_answer_events(driver, Embedder(), model=model, escalation_model=escalation_model)
         return ae.run_agent_benchmark(run_set, answer_events, settings.processed_dir / runs_file, max_usd=max_usd,
                                       unknown_cost_usd=ae.unknown_cost_estimate(estimate))
@@ -832,7 +833,27 @@ def _run_agent_live(run_set, settings, runs_file, model, escalation_model, max_u
         typer.echo(f"Stopped: {e}. Nothing further was spent; answers so far are checkpointed.", err=True)
         raise typer.Exit(5) from e
     finally:
+        from semigraph.retrieval.fusion import set_process_default
+
+        set_process_default(None)
         driver.close()
+
+
+def _publish_fusion_default(driver, settings) -> None:
+    """RETRIEVAL_FUSION on: build the fusion runtime once (cached per snapshot, a failed build too) and make it the agent's process
+    default, so the paid agent gate measures the fused agent like production. Flag off: nothing changes."""
+    if not settings.retrieval_fusion:
+        return
+    from semigraph.retrieval import fusion
+    from semigraph.serve import store
+
+    snapshot_id = (store.current_snapshot(driver) or {}).get("id", "")
+    runtime = fusion.process_runtime(driver, settings, snapshot_id)
+    if runtime is None:  # never let the paid gate silently measure the unfused agent
+        typer.echo("Stopped before spending: RETRIEVAL_FUSION is on but the fusion runtime (keyword index) did not build; "
+                   "see the log above. Nothing was spent.", err=True)
+        raise typer.Exit(6)
+    fusion.set_process_default(runtime)
 
 
 if __name__ == "__main__":

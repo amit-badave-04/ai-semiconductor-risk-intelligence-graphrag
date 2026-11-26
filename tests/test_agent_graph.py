@@ -10,6 +10,7 @@ is the fixed path's own failure); step events and ``tool_calls`` are one-to-one.
 
 import copy
 import json
+import types
 
 import pytest
 from agent_fakes import (
@@ -493,3 +494,56 @@ def test_the_planner_is_shown_the_previous_result_as_counts_and_years_only():
     run(planner, driver=FakeDriver.world())
     tool_message = json.loads(planner.calls[1]["messages"][-1]["content"])
     assert tool_message["comparisons"][0]["newer_fiscal_year"] == 2025 and NVDA_ACC["n25"] not in json.dumps(tool_message)
+
+
+# --- the agent uses the process-wide default fusion runtime (set at boot / by eval-agent); it never reads settings (M2) ----------
+
+class _Runtime:
+    config, index = object(), object()
+
+
+def _no_settings(monkeypatch):
+    """run_agent must stay settings-free (the fixture server's guard): any read of settings fails the test."""
+    from semigraph import config
+
+    monkeypatch.setattr(config, "get_settings", lambda *a, **k: pytest.fail("run_agent read settings"))
+
+
+def _spy_retrieve(monkeypatch):
+    seen = {}
+    real = G.hybrid_retrieve
+    monkeypatch.setattr(G, "hybrid_retrieve", lambda *a, **k: seen.update(k) or real(
+        *a, **{x: y for x, y in k.items() if x not in ("fusion", "keyword_index")}))
+    return seen
+
+
+def test_agent_run_uses_the_process_default_when_none_is_passed(monkeypatch):
+    from semigraph.retrieval import fusion
+
+    _no_settings(monkeypatch)
+    fusion.set_process_default(_Runtime())
+    seen = _spy_retrieve(monkeypatch)
+    run(ScriptedPlanner(turn()))
+    assert seen["fusion"] is _Runtime.config and seen["keyword_index"] is _Runtime.index
+
+
+def test_agent_run_passes_an_explicit_runtime_through_over_the_default(monkeypatch):
+    from semigraph.retrieval import fusion
+
+    class Other:
+        config, index = object(), object()
+
+    _no_settings(monkeypatch)
+    fusion.set_process_default(_Runtime())
+    seen = _spy_retrieve(monkeypatch)
+    run(ScriptedPlanner(turn()), fusion=Other())
+    assert seen["fusion"] is Other.config
+
+
+def test_agent_run_with_no_default_keeps_todays_path_and_reads_no_settings(monkeypatch):
+    _no_settings(monkeypatch)
+    seen = {}
+    real = G.hybrid_retrieve
+    monkeypatch.setattr(G, "hybrid_retrieve", lambda *a, **k: seen.update(k) or real(*a, **k))
+    run(ScriptedPlanner(turn()))
+    assert "fusion" not in seen and "keyword_index" not in seen
