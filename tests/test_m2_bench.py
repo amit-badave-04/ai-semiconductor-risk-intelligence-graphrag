@@ -243,7 +243,30 @@ def test_scoring_a_run_reports_excerpt_and_context_hits_per_question():
 def test_arms_map_to_fusion_configs_and_the_baseline_is_todays_path():
     assert mb.arm_config("baseline") is None
     cfgs = {a: mb.arm_config(a) for a in mb.ARMS if a != "baseline"}
-    assert {a: (c.mention, c.filer, c.period) for a, c in cfgs.items()} == {
-        "mention": (True, False, False), "filer": (True, True, False), "period": (True, False, True), "filer+period": (True, True, True)}
+    assert {a: (c.mention, c.filer, c.period, c.keyword, c.keyword_context) for a, c in cfgs.items()} == {
+        "mention": (True, False, False, False, False), "filer": (True, True, False, False, False),
+        "period": (True, False, True, False, False), "filer+period": (True, True, True, False, False),
+        "keyword": (True, False, False, True, False), "keyword_ctx": (True, False, False, True, True),
+        "all": (True, True, True, True, True), "all+rerank_minilm": (True, True, True, True, True),
+        "all+rerank_mxbai": (True, True, True, True, True)}
+    assert {a: (c.rerank, c.rerank_depth) for a, c in cfgs.items() if c.rerank} == {"all+rerank_minilm": ("minilm", 20),
+                                                                                  "all+rerank_mxbai": ("mxbai", 20)}
+    assert all(c.current_only for c in cfgs.values())            # decision 011: the new legs are current-only in every arm
     with pytest.raises(SystemExit):
         mb.arm_config("bm25")
+
+
+def test_keyword_arms_need_an_index_and_the_context_setting_follows_the_arm():
+    assert [a for a in mb.ARMS if mb.arm_config(a) is not None and mb.arm_config(a).keyword] == ["keyword", "keyword_ctx", "all", "all+rerank_minilm",
+                                                                                                         "all+rerank_mxbai"]
+    rows = [{"chunk_id": "c1", "text": "export controls", "context": "NVIDIA NVDA 10-K 2025"}]
+    assert mb.index_for(mb.arm_config("mention"), rows) is None
+    plain, ctx = mb.index_for(mb.arm_config("keyword"), rows), mb.index_for(mb.arm_config("all"), rows)
+    assert plain.with_context is False and ctx.with_context is True
+    assert plain.search("nvda") == [] and [h.chunk_id for h in ctx.search("nvda")] == ["c1"]
+
+
+def test_timing_summary_records_the_wall_seconds_per_question():
+    assert mb.timing_summary([]) == {"n": 0, "mean_s": 0.0, "p95_s": 0.0, "max_s": 0.0}
+    got = mb.timing_summary([0.1] * 18 + [0.5, 1.0])
+    assert got["n"] == 20 and got["max_s"] == 1.0 and got["p95_s"] == 0.5 and got["mean_s"] == pytest.approx(0.165)

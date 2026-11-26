@@ -62,12 +62,15 @@ This module is importable without a Neo4j driver; functions receive one.
 
 import logging
 import re
-from collections.abc import Mapping
+import time
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING
 from datetime import date
 from functools import lru_cache
 
 from ..artifacts import load_canonical_entities
-from .fusion import FusionConfig, SlotPolicy, rrf, select_slots
+from .fusion import EXCERPT_MAX_CHARS, FusionConfig, SlotPolicy, rrf, select_slots
+from .keyword import KeywordIndex, hydrate
 
 logger = logging.getLogger("semigraph.retrieval")
 
@@ -338,6 +341,17 @@ MATCH (node)-[:MENTIONS]->(c:Company) WHERE c.cik IN $ids
 RETURN DISTINCT node.chunk_id AS chunk_id, score, node.text AS text, node.source_url AS source_url,
        node.content_hash AS content_hash, node.accession_no AS accession_no, node.is_current AS is_current
 ORDER BY score DESC LIMIT $k"""
+
+
+def _current_only(query: str) -> str:
+    """The query with ``is_current = true`` added to the in-index filter (decision 011: a pre-filter, so ``LIMIT`` is still
+    filled with current rows and the leg's ranks are not distorted). Only ``=`` joined by ``AND``, as the grammar allows."""
+    return query.replace("node.retrievable = true", "node.retrievable = true AND node.is_current = true", 1)
+
+
+FILER_CURRENT_EXCERPTS_QUERY = _current_only(FILER_EXCERPTS_QUERY)
+PERIOD_CURRENT_EXCERPTS_QUERY = _current_only(PERIOD_EXCERPTS_QUERY)
+FUSION_MENTION_CURRENT_EXCERPTS_QUERY = _current_only(FUSION_MENTION_EXCERPTS_QUERY)
 
 VECTOR_QUERY = """MATCH (node:EvidenceSpan)
 SEARCH node IN (VECTOR INDEX evidence_embedding FOR $vec WHERE node.retrievable = true LIMIT $k) SCORE AS score
@@ -771,36 +785,130 @@ def _period_window(periods: Mapping[str, list]) -> tuple[date, date] | None:
     return (date(min(years) - 1, 1, 1), date(max(years) + 1, 7, 1)) if years else None
 
 
-def _fused_excerpts(driver, vec: list[float], anchor_ids: list[int], *, defaulted: bool, periods: Mapping[str, list],
-                    k_chunks: int, cfg: FusionConfig) -> tuple[list[dict], dict[str, list[str]], list[str]]:
-    """Run the enabled legs on the one query vector, fuse by RRF into at most ``k_chunks`` excerpts under the slot policy.
-    Returns the excerpts (the usual four keys, ``score`` = RRF score), every leg's ranked chunk ids and the ids of the
-    excerpts that come from a superseded filing (freshness keeps a superseded risk section retrievable)."""
+def _dense_legs(driver, vec: list[float], anchor_ids: list[int], *, defaulted: bool, periods: Mapping[str, list],
+                cfg: FusionConfig) -> dict[str, list[dict]]:
+    """The enabled dense legs on the one query vector. ``current_only`` picks the in-index current-only variant of the filer
+    and period queries, ``mention_current_only`` of the mention query (decision 011)."""
     legs: dict[str, list[dict]] = {}
     if cfg.mention:
-        legs["mention"] = run_cypher(driver, FUSION_MENTION_EXCERPTS_QUERY, ids=anchor_ids, vec=vec, k=cfg.fetch_k,
-                                     candidates=cfg.mention_candidates)
+        query = FUSION_MENTION_CURRENT_EXCERPTS_QUERY if cfg.mention_current_only else FUSION_MENTION_EXCERPTS_QUERY
+        legs["mention"] = run_cypher(driver, query, ids=anchor_ids, vec=vec, k=cfg.fetch_k, candidates=cfg.mention_candidates)
     window = _period_window(periods)
+    filer_q = FILER_CURRENT_EXCERPTS_QUERY if cfg.current_only else FILER_EXCERPTS_QUERY
+    period_q = PERIOD_CURRENT_EXCERPTS_QUERY if cfg.current_only else PERIOD_EXCERPTS_QUERY
     for cik in ([] if defaulted else anchor_ids):                         # no own-filer leg for the defaulted Nvidia anchor
         if cfg.filer:
-            legs[f"filer:{cik}"] = run_cypher(driver, FILER_EXCERPTS_QUERY, cik=cik, vec=vec, k=cfg.fetch_k,
-                                              candidates=cfg.filer_candidates)
+            legs[f"filer:{cik}"] = run_cypher(driver, filer_q, cik=cik, vec=vec, k=cfg.fetch_k, candidates=cfg.filer_candidates)
         if cfg.period and window:
-            legs[f"period:{cik}"] = run_cypher(driver, PERIOD_EXCERPTS_QUERY, cik=cik, vec=vec, k=cfg.fetch_k,
+            legs[f"period:{cik}"] = run_cypher(driver, period_q, cik=cik, vec=vec, k=cfg.fetch_k,
                                                candidates=cfg.period_candidates, since=window[0], until=window[1])
+    return legs
+
+
+def _keyword_legs(question: str, anchor_ids: list[int], *, defaulted: bool, cfg: FusionConfig,
+                  index: KeywordIndex | None) -> dict[str, list[dict]]:
+    """The bm25s legs (metadata rows, no text yet): none without a keyword leg in ``cfg`` or an index; an index whose context
+    setting differs from ``cfg`` is a configuration bug and is refused."""
+    if not cfg.keyword or index is None:
+        return {}
+    if index.with_context != cfg.keyword_context:
+        raise ValueError("the keyword index and FusionConfig.keyword_context disagree about the context field")
+    hits = index.search_legs(question, anchor_ids, current_only=cfg.current_only, filer_legs=not defaulted, depth=cfg.fetch_k)
+    return {name: [h._asdict() for h in leg] for name, leg in hits.items()}
+
+
+def _with_text(driver, picked: list[tuple[str, float]], rows: Mapping[str, Mapping]) -> list[dict]:
+    """The chosen excerpts as the usual four keys. A keyword winner has no text yet: all of them are fetched by id in ONE query
+    (``retrievable`` re-checked) and one that is no longer served is dropped. Text is cut at ``EXCERPT_MAX_CHARS``."""
+    missing = [cid for cid, _ in picked if rows[cid].get("text") is None]
+    fetched = hydrate(driver, missing)
+    chunks = []
+    for cid, score in picked:
+        found = fetched.get(cid) if cid in missing else rows[cid]
+        if found is not None and found.get("text"):         # a null or empty text is no excerpt: dropped, never a TypeError
+            chunks.append({"chunk_id": cid, "score": score, "text": found["text"][:EXCERPT_MAX_CHARS],
+                           "source_url": found["source_url"]})
+    return chunks
+
+
+if TYPE_CHECKING:
+    from .rerank import Reranker
+
+GUARANTEE_HEAD = 3     # leg heads always scored by the reranker, so the slot guarantees see a rerank score too
+
+
+def _rerank_candidates(fused: list[tuple[str, float]], ranked: Mapping[str, list[str]], cfg: FusionConfig) -> list[str]:
+    heads = [ids[:GUARANTEE_HEAD] for name, ids in ranked.items() if name == "mention" or name.startswith("filer:")]
+    return list(dict.fromkeys([*(cid for cid, _ in fused[:cfg.rerank_depth]), *(c for h in heads for c in h)]))
+
+
+def _rerank_fused(driver, question: str, fused: list[tuple[str, float]], rows: dict[str, dict],
+                  ranked: Mapping[str, list[str]], cfg: FusionConfig,
+                  reranker: "Reranker | None") -> tuple[list[tuple[str, float]], float | None]:
+    """The rerank stage: score the top ``rerank_depth`` fused candidates (plus the slot-guarantee heads) with the cross-encoder
+    on the question and the excerpt text, and re-order. Candidate text a keyword winner lacks is fetched by id here (once; the
+    rows are updated so ``_with_text`` does not fetch again) and a candidate that is no longer served is left out. Any problem
+    (no model, an error, a wrong number of scores) returns the fused order unchanged. Returns (fused, seconds or None)."""
+    from .rerank import get_reranker, reorder      # here, not at module level: only the SEC retrieval path ever loads the stage
+
+    reranker = reranker or get_reranker(cfg.rerank)
+    if reranker is None:
+        return fused, None
+    began = time.perf_counter()
+    try:
+        cands = _rerank_candidates(fused, ranked, cfg)
+        fetched = hydrate(driver, [c for c in cands if rows[c].get("text") is None])
+        for cid, found in fetched.items():
+            rows[cid] = {**rows[cid], **found}
+        cands = [c for c in cands if rows[c].get("text")]
+        if not cands:
+            return fused, None
+        scores = reranker.rerank(question, [rows[c]["text"][:EXCERPT_MAX_CHARS] for c in cands])
+        if len(scores) != len(cands):
+            raise ValueError(f"{len(scores)} scores for {len(cands)} candidates")
+        return reorder(fused, dict(zip(cands, scores))), time.perf_counter() - began
+    except Exception as exc:  # noqa: BLE001 - retrieval must still answer with the fused order
+        logger.warning("rerank failed (%s: %s): serving the fused order", type(exc).__name__, exc)
+        return fused, None
+
+
+def _by_rerank(ids: Sequence[str], score: Mapping[str, float]) -> list[str]:
+    """The first ``GUARANTEE_HEAD`` ids of a leg re-sorted by rerank score (stable: ties keep the leg's order); the rest as is."""
+    head = sorted(ids[:GUARANTEE_HEAD], key=lambda c: -score.get(c, float("-inf")))
+    return [*head, *ids[GUARANTEE_HEAD:]]
+
+
+def _fused_excerpts(driver, question: str, vec: list[float], anchor_ids: list[int], *, defaulted: bool,
+                    periods: Mapping[str, list], k_chunks: int, cfg: FusionConfig, index: KeywordIndex | None,
+                    reranker: "Reranker | None" = None
+                    ) -> tuple[list[dict], dict[str, list[str]], list[str], float | None]:
+    """Run the enabled legs on the one query vector (and the keyword legs on the question), fuse by RRF into at most
+    ``k_chunks`` excerpts under the slot policy. Returns the excerpts (the usual four keys, ``score`` = RRF score), every
+    leg's ranked chunk ids, the ids of the excerpts that come from a superseded filing and the rerank seconds (None when the
+    stage did not run). With ``cfg.rerank`` the candidates are re-ordered by the cross-encoder before the slot policy fills
+    the slots (its guarantees still apply) and ``score`` is the rerank score."""
+    legs = _dense_legs(driver, vec, anchor_ids, defaulted=defaulted, periods=periods, cfg=cfg)
+    legs.update(_keyword_legs(question, anchor_ids, defaulted=defaulted, cfg=cfg, index=index))
     ranked = {name: [r["chunk_id"] for r in rows] for name, rows in legs.items()}
-    rows = {r["chunk_id"]: r for leg in legs.values() for r in reversed(leg)}   # rows of one node are identical across legs, any copy will do
-    picked = select_slots(rrf(ranked, k=cfg.rrf_k, depth=cfg.depth), rows,
-                          filer_lists=[ids for name, ids in ranked.items() if name.startswith("filer:")],
-                          mention_list=ranked.get("mention", []), policy=SlotPolicy(k_chunks=k_chunks))
-    chunks = [{"chunk_id": cid, "score": score, "text": rows[cid]["text"], "source_url": rows[cid]["source_url"]}
-              for cid, score in picked]
-    superseded = sorted(cid for cid, _ in picked if rows[cid].get("is_current") is False)
-    return chunks, {name: ids[:cfg.log_depth] for name, ids in ranked.items()}, superseded
+    # rows of one node are identical across legs, but only a dense row has text: the dense copy wins over a keyword one
+    rows = {r["chunk_id"]: r for leg in legs.values() for r in reversed(leg)}
+    rows |= {r["chunk_id"]: r for name, leg in legs.items() if not name.startswith("keyword:") for r in reversed(leg)}
+    fused, rerank_s = rrf(ranked, k=cfg.rrf_k, depth=cfg.depth), None
+    if cfg.rerank:
+        fused, rerank_s = _rerank_fused(driver, question, fused, rows, ranked, cfg, reranker)
+    score = dict(fused) if rerank_s is not None else None       # the guaranteed slots follow the rerank, not the legs' own order
+    legs_for_slots = {name: ids if score is None else _by_rerank(ids, score) for name, ids in ranked.items()}
+    picked = select_slots(fused, rows,
+                          filer_lists=[ids for name, ids in legs_for_slots.items() if name.startswith("filer:")],
+                          mention_list=legs_for_slots.get("mention", []), policy=SlotPolicy(k_chunks=k_chunks))
+    chunks = _with_text(driver, picked, rows)
+    superseded = sorted(c["chunk_id"] for c in chunks if rows[c["chunk_id"]].get("is_current") is False)   # served ones only
+    return chunks, {name: ids[:cfg.log_depth] for name, ids in ranked.items()}, superseded, rerank_s
 
 
 def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
-                    hops: int = 2, *, query_vec: list[float] | None = None, fusion: FusionConfig | None = None) -> dict:
+                    hops: int = 2, *, query_vec: list[float] | None = None, fusion: FusionConfig | None = None,
+                    keyword_index: KeywordIndex | None = None, reranker: "Reranker | None" = None) -> dict:
     """Entity-first hybrid retrieval — ported from notebook 14 (v3), C2-hardened.
 
     anchors -> company relation subgraph + capped AFFECTED_BY rules ->
@@ -833,6 +941,10 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     query by the enabled dense legs on the SAME query vector, fused into at most ``k_chunks`` excerpts (M2 R4-R7, R10);
     ``leg_ranks`` (leg name -> chunk ids, to depth 50) and ``superseded_ids`` (the excerpts from a superseded filing) are added
     to the result for the bench and no block renders them; ``chunks[].score`` is then an RRF score, not a vector score.
+    ``keyword_index`` (:class:`semigraph.retrieval.keyword.KeywordIndex`) feeds the bm25s legs when ``fusion.keyword`` is on;
+    their winners' text is fetched by id, and every fused excerpt is cut at ``EXCERPT_MAX_CHARS`` (R12).
+    ``fusion.rerank`` (a model key) adds the local cross-encoder stage (:mod:`.rerank`); ``reranker`` overrides the process-wide
+    one (tests); ``rerank_s`` is added to the result only when the stage ran.
     """
     edges_query = company_edges_query(hops)      # rejects a bad ``hops`` before any work is done
     anchors, dropped = cap_anchors(detect_anchors(question))
@@ -862,12 +974,14 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     temporal_passages, temporal_pairs = _passages(driver, temporal_pairs, question)
     leg_ranks: dict[str, list[str]] | None = None
     superseded: list[str] = []
+    rerank_s: float | None = None
     if fusion is None:
         chunks = run_cypher(driver, EXCERPTS_QUERY, ids=anchor_ids, vec=vec, k=k_chunks,
                             candidates=EXCERPT_CANDIDATES)
     else:
-        chunks, leg_ranks, superseded = _fused_excerpts(driver, vec, anchor_ids, defaulted=anchor_defaulted, periods=periods,
-                                            k_chunks=k_chunks, cfg=fusion)
+        chunks, leg_ranks, superseded, rerank_s = _fused_excerpts(driver, question, vec, anchor_ids, defaulted=anchor_defaulted,
+                                                        periods=periods, k_chunks=k_chunks, cfg=fusion, index=keyword_index,
+                                                                        reranker=reranker)
     logger.debug("hybrid_retrieve anchors=%s defaulted=%s edges=%d metrics=%d risks=%d "
                  "temporal=%d passages=%d chunks=%d", anchors, anchor_defaulted, len(edges), len(metrics),
                  len(risks), len(temporal), len(temporal_passages), len(chunks))
@@ -877,6 +991,8 @@ def hybrid_retrieve(question: str, driver, embedder, k_chunks: int = 8,
     if leg_ranks is not None:
         result["leg_ranks"] = leg_ranks
         result["superseded_ids"] = superseded
+    if rerank_s is not None:
+        result["rerank_s"] = round(rerank_s, 4)
     if dropped:
         result["temporal_notices"] = [*temporal_notices, _dropped_notice(dropped)]
         result["anchors_dropped"] = dropped

@@ -162,6 +162,7 @@ from .verify import verify_answer
 
 if TYPE_CHECKING:
     from ..serve.limiters import Limiters
+    from .fusion import FusionRuntime
     from ..serve.meter import PaidMeter
 
 # The sync writer's logger on purpose: the same operator filters and the same lines ("draft model ... failed") apply.
@@ -488,7 +489,7 @@ async def _adraft_then_escalate(prompt, *, llm_stream, escalation_stream, escala
 async def aanswer_stream(question: str, driver, embedder, strategy: str = "hybrid",
                          llm_stream=None, k_chunks: int = 8, hops: int = 2, *, limiters: "Limiters",
                          escalation_model: str | None = None, escalation_stream=None,
-                         meter: "PaidMeter | None" = None, **stream_kwargs):
+                         meter: "PaidMeter | None" = None, fusion: "FusionRuntime | None" = None, **stream_kwargs):
     """Async twin of :func:`answerer.answer_stream`: the same event grammar, with retrieval off the event loop.
 
     The question is embedded ONCE, on a worker thread under ``limiters.embed``, and the retrieval receives that vector
@@ -498,10 +499,14 @@ async def aanswer_stream(question: str, driver, embedder, strategy: str = "hybri
     hybrid strategy (the vector strategy never reads it, as in the sync writer).
 
     ``meter`` (a :class:`semigraph.serve.meter.PaidMeter`) is a keyword of its own, like ``limiters``: it never reaches
-    ``**stream_kwargs``, so it cannot reach an injected stream either, and an injected stream is not metered."""
+    ``**stream_kwargs``, so it cannot reach an injected stream either, and an injected stream is not metered.
+
+    ``fusion`` (a :class:`semigraph.retrieval.fusion.FusionRuntime`, RETRIEVAL_FUSION on) makes the hybrid retrieval fuse its
+    excerpt legs; without it the retrieval is exactly what it was. It never reaches ``**stream_kwargs`` either."""
     if strategy == "hybrid":
         company_edges_query(hops)       # the validator ``hybrid_retrieve`` runs first: refuse before the embed
-        retrieve = partial(hybrid_retrieve, question, driver, embedder, k_chunks=k_chunks, hops=hops)
+        retrieve = partial(hybrid_retrieve, question, driver, embedder, k_chunks=k_chunks, hops=hops,
+                           **({"fusion": fusion.config, "keyword_index": fusion.index} if fusion is not None else {}))
     elif strategy == "vector":
         retrieve = partial(vector_retrieve, question, driver, embedder, k=k_chunks)
     else:

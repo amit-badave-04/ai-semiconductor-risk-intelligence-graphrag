@@ -12,7 +12,9 @@ from semigraph.retrieval.answerer import build_blocks, template_fingerprint
 from semigraph.retrieval.fusion import FusionConfig, SlotPolicy, rrf, select_slots
 
 VEC = [0.1, 0.2, 0.3]
-NEW = {R.FILER_EXCERPTS_QUERY: "filer", R.PERIOD_EXCERPTS_QUERY: "period", R.FUSION_MENTION_EXCERPTS_QUERY: "fusion_mention"}
+NEW = {R.FILER_EXCERPTS_QUERY: "filer", R.PERIOD_EXCERPTS_QUERY: "period", R.FUSION_MENTION_EXCERPTS_QUERY: "fusion_mention",
+       # the current-only variants (I3a, decision 011: FusionConfig.current_only is on by default) answer as the plain legs
+       R.FILER_CURRENT_EXCERPTS_QUERY: "filer", R.PERIOD_CURRENT_EXCERPTS_QUERY: "period"}
 
 
 class Driver(_Base):

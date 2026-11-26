@@ -72,6 +72,7 @@ from typing import TYPE_CHECKING
 
 from .answerer import dropped_anchors_field
 from .answerer_async import _hop, astream_answer_for_prompt
+from .fusion import sec_fusion_kwargs
 from .retriever import company_edges_query, hybrid_retrieve
 from .workspace import (
     DEFAULT_K_DOC_CHUNKS,
@@ -88,6 +89,7 @@ from .workspace import (
 if TYPE_CHECKING:
     from ..serve.limiters import Limiters
     from ..serve.meter import PaidMeter
+    from .fusion import FusionRuntime
 
 RETRIEVAL_COUNT_LAYERS = ("edges", "metrics", "risks", "temporal", "chunks")
 
@@ -120,7 +122,7 @@ async def astream_workspace_answer(question: str, driver, embedder, *, limiters:
                                    max_tokens: int | None = None, escalation_model: str | None = None,
                                    escalation_stream=None, llm_stream=None, k_chunks: int = 8, hops: int = 2,
                                    k_doc_chunks: int = DEFAULT_K_DOC_CHUNKS, meter: "PaidMeter | None" = None,
-                                   **stream_kwargs) -> AsyncIterator[dict]:
+                                   fusion: "FusionRuntime | None" = None, **stream_kwargs) -> AsyncIterator[dict]:
     """Async twin of :func:`workspace.stream_workspace_answer`: the same events for the same inputs, with every
     blocking hop off the event loop (see the module docstring). ``llm_stream`` and ``escalation_stream`` are
     injectable: ``callable(prompt) -> async iterable[str]``. A bad ``hops`` is the sync retrieval's ValueError on the
@@ -134,8 +136,9 @@ async def astream_workspace_answer(question: str, driver, embedder, *, limiters:
     # writes the vector cache. A plain embedder (no such method) embeds through ``encode_query``, as before.
     embed = getattr(embedder, "encode_query_private", embedder.encode_query)
     vec = await _hop(embed, question, limiter=limiters.embed)
+    sec_fusion = sec_fusion_kwargs(fusion, as_of)   # the SEC part only
     r_sec = await _on_db_thread(limiters, hybrid_retrieve, question, driver, embedder, k_chunks=k_chunks, hops=hops,
-                                query_vec=vec)
+                                query_vec=vec, **sec_fusion)
     r_ws = await _on_db_thread(limiters, workspace_retrieve, question, workspace_id, driver, embedder, as_of=as_of,
                                k=k_doc_chunks, query_vec=vec)
     doc_chunks = r_ws["doc_chunks"]

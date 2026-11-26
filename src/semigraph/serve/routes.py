@@ -63,8 +63,8 @@ from . import drain, guard, store
 from .state import Denied, Lease, StateUnavailable, micro_to_usd
 from .state.backend import KILL_LEVELS, KILL_OFF, KILL_ON, KILL_RETRIEVAL_ONLY
 from .stream_runtime import (  # noqa: F401 - MSG_BUSY: re-exported (the message of the in-flight refusal)
-    MSG_BUSY, NoStateSlot, PaidResponse, PaidStream, admin_call, select_twin, settle_call, slot_call, sse_event,
-    state_call)
+    MSG_BUSY, NoStateSlot, PaidResponse, PaidStream, admin_call, fusion_cache_kwargs, select_twin, settle_call, slot_call,
+    sse_event, state_call)
 
 logger = logging.getLogger("semigraph.serve")
 router = APIRouter()
@@ -346,7 +346,7 @@ async def ask(body: AskRequest, request: Request):
         _take_free_window(st, iph)
         budget_skipped = not await _check_workspace_access(st, request, workspace["workspace_id"])
     else:
-        cache_key = store.cache_key(question, strategy, snapshot_id)
+        cache_key = store.cache_key(question, strategy, snapshot_id, **fusion_cache_kwargs(st))
         cached = await _answer_from_cache(st, s, iph, strategy, cache_key)
         budget_skipped = cached is _BUDGET_EMPTY
         if cached is not None and not budget_skipped:

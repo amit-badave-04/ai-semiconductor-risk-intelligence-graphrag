@@ -83,7 +83,7 @@ def parse_excludes(items: list[str]) -> dict[str, str]:
 
 
 def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *, source: str,
-                   strict: bool = False, deployed: bool = False, exclude: dict[str, str] | None = None) -> dict:
+                   strict: bool = False, deployed: bool = False, exclude: dict[str, str] | None = None, fusion: bool = False) -> dict:
     """One example per benchmark question, in benchmark order, from its hybrid run, each with its computed ``checks``.
 
     With ``deployed`` the runs are ``eval-deployed`` rows (router, cheap draft, verifier, escalation) and carry the
@@ -118,7 +118,7 @@ def build_examples(runs: list[dict], benchmark: list[dict], snapshot_id: str, *,
             raise ValueError(f"{b['id']}: {e}") from e
         examples.append({"id": b["id"], "type": b["type"], "question": b["q"], "answer": r["answer"],
                          "citations": sorted(r["cited"]), "hallucinated": [], "checks": checks})
-    doc = {"source": source, "snapshot_id": snapshot_id, "template_fingerprint": template_fingerprint(),
+    doc = {"source": source, "snapshot_id": snapshot_id, "template_fingerprint": template_fingerprint(fusion=fusion),
            "examples": examples}
     if exclude:
         doc["excluded"] = [{"id": qid, "reason": reason} for qid, reason in sorted(exclude.items())]
@@ -140,6 +140,9 @@ def main() -> int:
                     help="the deployed-eval report of those runs: questions its judge graded incorrect are not seeded")
     ap.add_argument("--exclude", action="append", default=[], metavar="ID=REASON",
                     help="leave this question out of the examples (repeatable); the reason is recorded under 'excluded'")
+    ap.add_argument("--fusion", action="store_true",
+                    help="stamp the RETRIEVAL_FUSION-on fingerprint (the runs must come from the fusion path; RETRIEVAL_RERANK and its "
+                         "model files must be the same as the service's, or the service refuses these examples)")
     ap.add_argument("--out", type=Path, default=EXAMPLES_PATH)
     ap.add_argument("--strict", action="store_true",
                     help="write nothing and exit non-zero when any example would be refused at seeding")
@@ -153,7 +156,7 @@ def main() -> int:
         exclude = {**(judged_incorrect(json.loads(args.report.read_text(encoding="utf-8"))) if args.report else {}),
                    **parse_excludes(args.exclude)} or None
         doc = build_examples(runs, benchmark, args.snapshot, source=source, strict=args.strict, deployed=args.deployed,
-                             exclude=exclude)
+                             exclude=exclude, fusion=args.fusion)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

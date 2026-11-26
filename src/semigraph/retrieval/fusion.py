@@ -5,12 +5,19 @@ rows here; the fused excerpts REPLACE the ``k_chunks`` slots, they never add to 
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+import hashlib
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
-FUSION_VERSION = "i2"        # part of the template fingerprint once the flag is wired (I3)
+if TYPE_CHECKING:
+    from .keyword import KeywordIndex
+
+FUSION_VERSION = "i3a"       # part of the template fingerprint when RETRIEVAL_FUSION is on (never when off)
+EXCERPT_MAX_CHARS = 12_000   # one fused excerpt's text is cut here: serve/estimate.CHUNK_TEXT_MAX_CHARS, pinned by a test (R12)
 RRF_K = 60
 FUSION_DEPTH = 20            # ranks of each leg that count in the fusion
 SCORE_DIGITS = 12          # RRF scores are rounded to this many places before ties are broken by chunk id
+RERANK_DEPTH = 20            # fused candidates the reranker scores (I3b)
 LOG_DEPTH = 50               # ranks of each leg the bench may log (and the depth each leg is fetched to)
 
 
@@ -21,9 +28,15 @@ class FusionConfig:
     mention: bool = True
     filer: bool = False
     period: bool = False
+    keyword: bool = False            # bm25s legs: one per anchor (filer mask) and one mention-scoped leg (needs a KeywordIndex)
+    keyword_context: bool = False    # the keyword index carries the context field (company, ticker, form, year, section)
+    current_only: bool = True        # the filer, period and keyword legs keep only is_current rows (decision 011: in-index)
+    mention_current_only: bool = False   # the mention leg too (decision 011, its own switch so it can be reverted alone)
     mention_candidates: int = 60     # ANN candidates before the MENTIONS filter (as EXCERPT_CANDIDATES today)
     filer_candidates: int = 100      # over-fetch inside the index for the filer leg (the filter is in-index, so rows fill)
     period_candidates: int = 100
+    rerank: str | None = None        # a rerank model key (retrieval/rerank.py RERANK_MODELS) or None = no rerank stage (I3b)
+    rerank_depth: int = RERANK_DEPTH
     rrf_k: int = RRF_K
     depth: int = FUSION_DEPTH
     log_depth: int = LOG_DEPTH
@@ -103,3 +116,58 @@ def select_slots(fused: Sequence[tuple[str, float]], rows: Mapping[str, Mapping]
         slots.offer(cid)
     score = dict(fused)
     return sorted(((cid, score.get(cid, 0.0)) for cid in slots.ids), key=lambda kv: (-kv[1], kv[0]))
+
+
+# What the API serves with RETRIEVAL_FUSION on: the legs of the bench's ``all`` arm (mention + filer + period + keyword with the
+# context field), so the bench measures what is served. Not yet trimmed by the ship rule per component. ``mention_current_only``
+# stays off: the mention leg is unchanged until decision 011's mention change lands as its own commit (set it here and in the
+# bench arms together).
+SERVING_CONFIG = FusionConfig(filer=True, period=True, keyword=True, keyword_context=True)
+
+
+@dataclass(frozen=True)
+class FusionRuntime:
+    """What the serving paths hand to ``hybrid_retrieve`` when the flag is on and the keyword index was built: the leg
+    configuration and the in-memory index (keyed by the graph snapshot it was built from)."""
+    config: FusionConfig
+    index: "KeywordIndex"
+
+    @property
+    def snapshot_id(self) -> str:
+        return self.index.snapshot_id
+
+
+def serving_config(settings) -> FusionConfig:
+    """``SERVING_CONFIG`` plus the rerank stage when ``RETRIEVAL_RERANK`` names a model whose files load (default none:
+    unchanged; a missing or broken model gives the config without the stage, so the fingerprint and the cache keys never claim
+    a rerank that does not run)."""
+    key = getattr(settings, "retrieval_rerank", "none")
+    if key == "none":
+        return SERVING_CONFIG
+    from . import rerank
+
+    if rerank.get_reranker(key) is None:      # loads (warms) the model once; a missing one means no stage, so no "rerank" in the key
+        return SERVING_CONFIG
+    return replace(SERVING_CONFIG, rerank=key, rerank_depth=RERANK_DEPTH)
+
+
+def serving_digest() -> str:
+    """A short hash of the serving config (``SERVING_CONFIG`` with the rerank setting applied): part of the fingerprint, so
+    trimming a leg, flipping a switch or turning the reranker on can never replay answers cached under the old legs without a
+    ``FUSION_VERSION`` bump."""
+    from ..config import get_settings
+
+    return hashlib.sha256(repr(serving_config(get_settings())).encode("utf-8")).hexdigest()[:8]
+
+
+def sec_fusion_kwargs(runtime: "FusionRuntime | None", as_of: str | None = None) -> dict:
+    """The ``hybrid_retrieve`` keywords for the SEC part of a workspace ask. None means ``{}`` (today's path). An ``as_of`` ask
+    never uses the current-only keyword index (spec OD8): it keeps the dense legs and drops the keyword legs."""
+    if runtime is None:
+        return {}
+    config = runtime.config                            # never the reranker on the workspace path (I3b)
+    if config.rerank:
+        config = replace(config, rerank=None)
+    if as_of:
+        return {"fusion": replace(config, keyword=False), "keyword_index": None}
+    return {"fusion": config, "keyword_index": runtime.index}

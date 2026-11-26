@@ -33,6 +33,8 @@ from ..embeddings import Embedder
 from ..graph.client import DatabaseDriver, make_state_driver, run_cypher
 from ..graph.schema import PRIVATE_LABEL_PREFIXES, apply_schema, private_label_predicate
 from ..retrieval.answerer import template_fingerprint
+from ..retrieval.fusion import FusionRuntime
+from ..retrieval.keyword import build_fusion_runtime
 from ..uploads import jobs
 from .asgi_middleware import BodyLimit, OriginAuth
 from .embed import LimitedEmbedder
@@ -189,35 +191,48 @@ def graph_stats(driver) -> dict:
             "removed_risk_items": by_kind.get("headline", 0), "removed_paragraphs": by_kind.get("paragraph", 0)}
 
 
+class Booted(tuple):
+    """What :func:`bootstrap` returns: ``(driver, embedder, graph_stats, snapshot, example_ids)``, unpacked as always, plus
+    ``fusion``: the keyword-index runtime when RETRIEVAL_FUSION is on and the index was built, else None."""
+
+    fusion: FusionRuntime | None = None
+
+
 def bootstrap(settings):
     driver = connect_with_retry(settings)
     apply_schema(driver)              # idempotent — also rebuilds after a dump restore
     store.ensure_indexes(driver)
     snapshot = store.current_snapshot(driver)
     snapshot_id = (snapshot or {}).get("id", "")
-    example_ids = seed_examples(driver, load_examples(), snapshot_id)
+    # Before the examples are seeded: the fingerprint they must carry depends on whether the fusion path is really active
+    # (a flag that is on with a failed index build serves today's path, so it seeds like the flag being off).
+    fusion = build_fusion_runtime(driver, settings, snapshot_id)
+    example_ids = seed_examples(driver, load_examples(), snapshot_id, fusion=fusion is not None)
     embedder = Embedder()
     embedder.encode_query("warm-up: export controls and HBM supply")
-    return driver, embedder, graph_stats(driver), snapshot, example_ids
+    booted = Booted((driver, embedder, graph_stats(driver), snapshot, example_ids))
+    booted.fusion = fusion
+    return booted
 
 
-def seed_examples(driver, examples: dict, snapshot_id: str) -> frozenset[str]:
+def seed_examples(driver, examples: dict, snapshot_id: str, *, fusion: bool = False) -> frozenset[str]:
     """Seed the saved example answers into the cache and return the ids that are now served (listed by /api/examples).
 
     Never raises for a bad examples file: the service must start. An examples file from another data snapshot or another
     answer-prompt template is refused whole, and an example whose stored checks are missing or failed is refused on its
     own; every refusal is logged with its reason, and a refused example is neither cached nor listed (a click on it would
-    be a paid live call under a label that says "instant, cached")."""
+    be a paid live call under a label that says "instant, cached"). ``fusion`` (RETRIEVAL_FUSION on) expects the flag-on
+    template fingerprint and caches under the flag-on key: examples written with the flag off are refused with it on."""
     if not store.examples_match_snapshot(examples, snapshot_id):
         logger.warning("example answers were generated from another data snapshot than %s — NOT seeded; "
                        "regenerate them with scripts/build_examples.py before publishing", snapshot_id)
         return frozenset()
-    if not store.examples_match_template(examples):
+    if not store.examples_match_template(examples, fusion=fusion):
         logger.warning("example answers were generated under another answer-prompt template (%s) than this build (%s) — "
                        "NOT seeded; regenerate them with scripts/build_examples.py before publishing",
-                       examples.get("template_fingerprint") or "no fingerprint", template_fingerprint())
+                       examples.get("template_fingerprint") or "no fingerprint", template_fingerprint(fusion=fusion))
         return frozenset()
-    result = store.seed_examples(driver, examples["examples"], snapshot_id)
+    result = store.seed_examples(driver, examples["examples"], snapshot_id, **({"fusion": True} if fusion else {}))
     for example_id, reason in result.refused:
         logger.warning("example %s refused: %s", example_id, reason)
     logger.info("seeded %d of %d benchmark answers into the cache (snapshot %s)", len(result.seeded_ids),
@@ -285,7 +300,8 @@ async def lifespan(app: FastAPI):
         require_agent_package()
     log_bot_check_posture(settings)
     memguard.log_boot_posture()          # one WARNING where /proc/meminfo is missing: the upload memory guard is then off
-    driver, embedder, stats, snapshot, example_ids = await run_in_threadpool(bootstrap, settings)
+    booted = await run_in_threadpool(bootstrap, settings)
+    driver, embedder, stats, snapshot, example_ids = booted
     state_driver = None                               # set once start_state has built it (it closes it itself on failure)
     try:
         # A no-op unless all three langfuse settings are set (only then is langfuse imported, hence off the event loop).
@@ -299,6 +315,8 @@ async def lifespan(app: FastAPI):
         app.state.snapshot = snapshot
         app.state.example_ids = example_ids
         app.state.snapshot_id = (snapshot or {}).get("id", "")
+        # None unless RETRIEVAL_FUSION is on AND the keyword index built (bootstrap logs and leaves None otherwise: today's path).
+        app.state.fusion = getattr(booted, "fusion", None)
         app.state.rate_limiter = RateLimiter(settings.rate_limit_questions, settings.rate_limit_window_seconds)
         app.state.free_rate_limiter = RateLimiter(settings.free_rate_limit_questions,
                                                   settings.rate_limit_window_seconds)

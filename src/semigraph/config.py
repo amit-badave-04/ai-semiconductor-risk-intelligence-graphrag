@@ -300,6 +300,15 @@ class Settings(BaseSettings):
 
     # --- Agent (semigraph.agent, docs/v2/M3_AGENT_PLAN.md): OPT-IN retrieval planner, strategy=agent; off = never imported by serve ---
     agent_enabled: bool = False
+    # --- M2 retrieval (docs/specs/m2-search.md R11): fused excerpts (dense filer/period legs + bm25s keyword legs, RRF) for hybrid asks
+    # and the SEC part of workspace asks. Off = today's exact retrieval, fingerprint and cache keys. On builds the keyword index
+    # at startup; a failed build logs and serves today's path. The agent prefetch keeps its own setting for now.
+    retrieval_fusion: bool = False
+    # Local cross-encoder rerank of the fused candidates (I3b; only with retrieval_fusion on; never on the upload path). none = off.
+    # Loaded once, lazily; a missing model file disables the stage with a log line. The directory holds reranker-minilm-l6/ etc.
+    retrieval_rerank: Literal["none", "minilm", "mxbai"] = "none"
+    retrieval_rerank_model_dir: Path = Path(__file__).resolve().parents[2] / "models"   # project root; set an absolute path in deploy
+    retrieval_rerank_threads: int = 1         # onnxruntime threads of the reranker session (0 = onnxruntime default)
     agent_planner_model: str = "openai/gpt-6-luna"   # plans the tool calls only; the answer still goes through answer_model/escalation
     agent_max_tool_calls: int = 4
     agent_max_model_calls: int = 3

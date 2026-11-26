@@ -45,7 +45,9 @@ from ..artifacts import read_prompt
 from ..config import get_settings
 from ..llm import BACKOFF_S, MAX_BUDGET, TRANSIENT
 from ..llm_shape import KNOWN_PRICES_PER_MTOK, MOCK_ALIASES, completion_params, provider_kwargs
+from . import fusion as _fusion
 from . import ids as _ids
+from . import keyword as _keyword
 from .context_layout import (  # noqa: F401 - re-exported: eval/bakeoff and the tests import these from here
     CONTEXT_HEADERS,
     CONTEXT_VERSION,
@@ -91,11 +93,16 @@ RULE_RELATION = "AFFECTED_BY"       # a Federal Register rule linked to a compan
 YOY_GAP_DAYS = (350, 380)           # the prior fiscal year ends this many days earlier (52/53-week years, leap years)
 
 
-def template_fingerprint() -> str:
+def template_fingerprint(*, fusion: bool = False) -> str:
     """A short hash of everything that shapes what the model is asked and shown: the answer prompt, the context headers and
     ``CONTEXT_VERSION`` (bumped whenever a context line format changes). It is part of the answer-cache key and of the seeded
-    examples, so a prompt or template change can never replay an answer that was written under the old one."""
-    return hashlib.sha256("\x00".join([ANSWER_PROMPT, CONTEXT_VERSION, *CONTEXT_HEADERS]).encode("utf-8")).hexdigest()[:10]
+    examples, so a prompt or template change can never replay an answer that was written under the old one. With
+    ``fusion`` (RETRIEVAL_FUSION on) two elements are appended, the fusion and the tokenizer versions, because the excerpts
+    then come from other legs; with it off the input is exactly what it always was (``2a6910aa5d``)."""
+    parts = [ANSWER_PROMPT, CONTEXT_VERSION, *CONTEXT_HEADERS]
+    if fusion:
+        parts += [f"fusion={_fusion.FUSION_VERSION}:{_fusion.serving_digest()}", f"tokenizer={_keyword.TOKENIZER_VERSION}"]
+    return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()[:10]
 
 
 class ContextBlocks(NamedTuple):

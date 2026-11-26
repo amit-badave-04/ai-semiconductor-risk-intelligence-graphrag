@@ -271,13 +271,34 @@ def summarise(scored: Mapping[str, Mapping]) -> dict:
     return {"n": n, "success8": hits, "context_hit": sum(1 for s in scored.values() if s["context_hit"]), "misses": n - hits}
 
 
-ARMS = ("baseline", "mention", "filer", "period", "filer+period")
+ARMS = ("baseline", "mention", "filer", "period", "filer+period", "keyword", "keyword_ctx", "all", "all+rerank_minilm",
+        "all+rerank_mxbai")
+# The legs of each candidate arm besides the always-on mention leg. ``keyword`` is bm25s without the context field,
+# ``keyword_ctx`` with it, ``all`` is mention + filer + period + keyword with the context field.
+ARM_LEGS = {"mention": {}, "filer": {"filer": True}, "period": {"period": True}, "filer+period": {"filer": True, "period": True},
+            "keyword": {"keyword": True}, "keyword_ctx": {"keyword": True, "keyword_context": True},
+            "all": {"filer": True, "period": True, "keyword": True, "keyword_context": True}}
+# I3b: the ``all`` legs plus the local cross-encoder over the top 20 fused candidates (the slot policy then fills the slots).
+ARM_LEGS["all+rerank_minilm"] = {**ARM_LEGS["all"], "rerank": "minilm", "rerank_depth": 20}
+ARM_LEGS["all+rerank_mxbai"] = {**ARM_LEGS["all"], "rerank": "mxbai", "rerank_depth": 20}
+
+
+def require_reranker(fusion) -> None:
+    """A rerank arm without its model would silently run as ``all`` under a rerank label: refuse before any work."""
+    if fusion is None or not fusion.rerank:
+        return
+    from semigraph.retrieval.rerank import get_reranker
+
+    if get_reranker(fusion.rerank) is None:
+        raise SystemExit(f"refusing: the {fusion.rerank} reranker model is missing or unloadable (models/ directory); "
+                         "this arm would run without reranking")
 
 
 def arm_config(arm: str):
     """The FusionConfig of a candidate arm (the mention leg is always on), or None for the baseline (today's exact path).
-    ``mention`` is the fused path with the mention leg alone: the reference for filer / period, so those arms are not
-    credited with what the slot policy (k=50, dedup, accession cap, RRF order) does by itself."""
+    ``mention`` is the fused path with the mention leg alone: the reference for the other arms, so they are not credited
+    with what the slot policy (k=50, dedup, accession cap, RRF order) does by itself. The new legs are current-only
+    (FusionConfig's default, decision 011)."""
     if arm not in ARMS:
         raise SystemExit(f"unknown arm {arm!r}; one of {', '.join(ARMS)}")
     if arm == "baseline":
@@ -287,7 +308,25 @@ def arm_config(arm: str):
     sys.path.insert(0, str(ROOT / "src"))
     from semigraph.retrieval.fusion import FusionConfig
 
-    return FusionConfig(mention=True, filer="filer" in arm, period="period" in arm)
+    return FusionConfig(mention=True, **ARM_LEGS[arm])
+
+
+def index_for(cfg, rows):
+    """The keyword index a config needs, built from the loader's rows (the context field only when the arm has it), or None
+    when the arm has no keyword leg."""
+    if cfg is None or not cfg.keyword:
+        return None
+    from semigraph.retrieval.keyword import build_index
+
+    return build_index(rows, with_context=cfg.keyword_context)
+
+
+def timing_summary(seconds: Iterable[float]) -> dict:
+    """Wall seconds per question: count, mean, nearest-rank p95 and max."""
+    xs = sorted(seconds)
+    if not xs:
+        return {"n": 0, "mean_s": 0.0, "p95_s": 0.0, "max_s": 0.0}
+    return {"n": len(xs), "mean_s": sum(xs) / len(xs), "p95_s": xs[math.ceil(0.95 * len(xs)) - 1], "max_s": xs[-1]}
 
 
 def run_dev(out: Path, arm: str = "baseline") -> dict:
@@ -296,6 +335,7 @@ def run_dev(out: Path, arm: str = "baseline") -> dict:
     The test split is never run here: it runs once, in I6, after all tuning on dev.
     """
     import sys
+    import time
     from urllib.parse import urlsplit
 
     sys.path.insert(0, str(ROOT / "src"))
@@ -303,31 +343,44 @@ def run_dev(out: Path, arm: str = "baseline") -> dict:
     from semigraph.embeddings import Embedder
     from semigraph.graph import client
     from semigraph.retrieval.answerer import build_blocks
+    from semigraph.retrieval.keyword import load_rows
     from semigraph.retrieval.retriever import hybrid_retrieve
 
     fusion = arm_config(arm)
+    require_reranker(fusion)
     bench = registered_bench(ROOT / "artifacts" / "m2_bench" / "m2_bench_dev.json", REGISTERED["dev"])["questions"]
     settings = get_settings()
     host = urlsplit(settings.neo4j_uri)
     if host.hostname not in {"localhost", "127.0.0.1", "::1"} or host.username or host.password:
         raise SystemExit("refusing: M2-Bench runs read a local graph only")
     driver, embedder, run = client.get_driver(settings), Embedder(), {}
+    index_build_s = 0.0
     try:
         with driver.session(default_access_mode="READ") as ses:
             snapshot = ses.run("MATCH (s:Snapshot) RETURN s.id AS id ORDER BY s.created_at DESC LIMIT 1").single()["id"]
+        started = time.perf_counter()
+        index = index_for(fusion, load_rows(driver) if fusion is not None and fusion.keyword else [])   # at run start, from the local graph
+        index_build_s = time.perf_counter() - started
         for q in bench:
-            r = hybrid_retrieve(q["q"], driver, embedder, fusion=fusion)  # answer_stream's defaults: k_chunks=8, hops=2
+            began = time.perf_counter()
+            r = hybrid_retrieve(q["q"], driver, embedder, fusion=fusion, keyword_index=index)  # answer_stream's defaults: k_chunks=8, hops=2
+            elapsed = time.perf_counter() - began                  # retrieval only: the context rendering below is not timed
             _, _, valid_ids = build_blocks(r)
-            run[q["id"]] = {"excerpts": [c["chunk_id"] for c in r["chunks"]], "context_ids": sorted(valid_ids)}
+            run[q["id"]] = {"excerpts": [c["chunk_id"] for c in r["chunks"]], "context_ids": sorted(valid_ids),
+                            "retrieval_s": round(elapsed, 4)}
             if "leg_ranks" in r:
                 run[q["id"]]["leg_ranks"] = r["leg_ranks"]
+            if "rerank_s" in r:
+                run[q["id"]]["rerank_s"] = r["rerank_s"]
     finally:
         driver.close()
     scored = score_run(bench, run)
     main_ids = {q["id"] for q in bench if q["role"] == "main"}
     report = {"split": "dev", "arm": arm, "snapshot": snapshot, "embedding_backend": embedder.backend,
               "summary_main": summarise({k: v for k, v in scored.items() if k in main_ids}),
-              "summary_all": summarise(scored), "questions": {k: {**scored[k], **run[k]} for k in scored}}
+              "summary_all": summarise(scored), "retrieval_timing": timing_summary(v["retrieval_s"] for v in run.values()),
+              "keyword_index_build_s": round(index_build_s, 2),
+              "rerank_timing": timing_summary(v["rerank_s"] for v in run.values() if "rerank_s" in v), "questions": {k: {**scored[k], **run[k]} for k in scored}}
     out.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8", newline="\n")
     return report
 

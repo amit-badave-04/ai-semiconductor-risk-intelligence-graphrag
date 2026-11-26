@@ -20,13 +20,18 @@ import hashlib
 import re
 import secrets
 import string
+from typing import TYPE_CHECKING
 
 from ..artifacts import read_prompt
 from .answerer import build_blocks, dropped_anchors_field, sources_from_context, stream_answer_for_prompt
 from .context_layout import DETAIL_LINES_KEY
 from .ids import CITE_RE, classify_id
+from .fusion import sec_fusion_kwargs
 from .retriever import hybrid_retrieve
 from .verify import SentenceScopedSources
+
+if TYPE_CHECKING:
+    from .fusion import FusionRuntime
 
 WORKSPACE_PROMPT = read_prompt("answer_workspace")
 
@@ -278,11 +283,12 @@ def stream_workspace_answer(question: str, driver, embedder, *, strategy: str = 
                             as_of: str | None = None, timeout: float | None = None, max_tokens: int | None = None,
                             escalation_model: str | None = None, escalation_stream=None, llm_stream=None,
                             k_chunks: int = 8, hops: int = 2, k_doc_chunks: int = DEFAULT_K_DOC_CHUNKS,
-                            **stream_kwargs):
+                            fusion: FusionRuntime | None = None, **stream_kwargs):
     """Streaming generator of event dicts, exactly like :func:`semigraph.retrieval.answerer.answer_stream` but over
     an upload workspace (docs/v2/M4_PLAN.md 4.2). Never the agent, never the answer cache."""
     vec = embedder.encode_query(question)                      # once: the SEC and the workspace search share it (M2 R7)
-    r_sec = hybrid_retrieve(question, driver, embedder, k_chunks=k_chunks, hops=hops, query_vec=vec)
+    sec_fusion = sec_fusion_kwargs(fusion, as_of)   # the SEC part only
+    r_sec = hybrid_retrieve(question, driver, embedder, k_chunks=k_chunks, hops=hops, query_vec=vec, **sec_fusion)
     r_ws = workspace_retrieve(question, workspace_id, driver, embedder, as_of=as_of, k=k_doc_chunks, query_vec=vec)
     doc_chunks = r_ws["doc_chunks"]
     delimiter = make_delimiter(doc_chunks)

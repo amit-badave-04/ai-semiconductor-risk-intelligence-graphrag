@@ -29,14 +29,15 @@ from ..retrieval.verify import failed_check_names
 from .state import ledger as state_ledger
 
 
-def cache_key(question: str, strategy: str, snapshot_id: str = "", template: str | None = None) -> str:
+def cache_key(question: str, strategy: str, snapshot_id: str = "", template: str | None = None, *, fusion: bool = False) -> str:
     """Answer-cache key. Two things besides the question are part of it: the data snapshot id (a refresh of the graph can
     never serve an answer computed from older data) and the fingerprint of the answer prompt + context headers
     (:func:`semigraph.retrieval.answerer.template_fingerprint`; a prompt or template change can never replay an answer
-    written under the old one). ``template`` defaults to the running build's."""
+    written under the old one). ``template`` defaults to the running build's; ``fusion`` (RETRIEVAL_FUSION on) selects its
+    fingerprint with the fusion element, so an answer cached with the flag off is never served with it on."""
     norm = " ".join(question.lower().split()).rstrip("?.! ")
     prefix = f"{snapshot_id}|" if snapshot_id else ""
-    return hashlib.sha256(f"{template or template_fingerprint()}|{prefix}{strategy}|{norm}".encode()).hexdigest()[:32]
+    return hashlib.sha256(f"{template or template_fingerprint(fusion=fusion)}|{prefix}{strategy}|{norm}".encode()).hexdigest()[:32]
 
 
 def current_snapshot(driver: Driver) -> dict | None:
@@ -55,10 +56,11 @@ def examples_match_snapshot(examples_doc: dict, snapshot_id: str) -> bool:
     return examples_doc.get("snapshot_id") == snapshot_id
 
 
-def examples_match_template(examples_doc: dict) -> bool:
+def examples_match_template(examples_doc: dict, *, fusion: bool = False) -> bool:
     """Seeded answers were written under ONE answer prompt + context template; they are served as cached answers only
-    by a build that runs that same template (a file without the fingerprint predates it and is refused)."""
-    return examples_doc.get("template_fingerprint") == template_fingerprint()
+    by a build that runs that same template (a file without the fingerprint predates it and is refused). ``fusion`` compares
+    against the flag-on fingerprint: examples written with the flag off are refused with it on, and the reverse."""
+    return examples_doc.get("template_fingerprint") == template_fingerprint(fusion=fusion)
 
 
 def _now() -> str:
@@ -235,13 +237,13 @@ def get_answer(driver: Driver, key: str, ttl_hours: int) -> dict | None:
 
 def put_answer(driver: Driver, *, question: str, strategy: str, answer: str,
                citations: list[str], hallucinated: list[str], usage: dict | None = None,
-               cost_usd: float | None = None, source: str = "live", snapshot_id: str = "") -> None:
+               cost_usd: float | None = None, source: str = "live", snapshot_id: str = "", fusion: bool = False) -> None:
     usage = usage or {}
     run_cypher(driver, """MERGE (a:SvcAnswer {key: $key})
         SET a.question = $question, a.strategy = $strategy, a.answer = $answer,
             a.citations = $citations, a.hallucinated = $hallucinated, a.source = $source,
             a.usage_prompt = $pt, a.usage_completion = $ct, a.cost_usd = $cost, a.created_at = $ts""",
-               key=cache_key(question, strategy, snapshot_id), question=question, strategy=strategy,
+               key=cache_key(question, strategy, snapshot_id, fusion=fusion), question=question, strategy=strategy,
                answer=answer, citations=citations, hallucinated=hallucinated, source=source,
                pt=usage.get("prompt_tokens"), ct=usage.get("completion_tokens"), cost=cost_usd, ts=_now())
 
@@ -269,7 +271,7 @@ def refusal_reason(example: dict) -> str | None:
     return f"failed checks: {', '.join(failed)}" if failed else None
 
 
-def seed_examples(driver: Driver, examples: list[dict], snapshot_id: str = "") -> SeedResult:
+def seed_examples(driver: Driver, examples: list[dict], snapshot_id: str = "", *, fusion: bool = False) -> SeedResult:
     """Pre-load the benchmarked hybrid answers so example clicks are free, EXCEPT any whose stored checks are missing or
     failed: a cached replay carries no checks of its own, so an example that was never checked (or failed) would look clean
     for as long as it is served. Refused examples are returned with their reason (the caller logs them)."""
@@ -282,7 +284,7 @@ def seed_examples(driver: Driver, examples: list[dict], snapshot_id: str = "") -
             continue
         put_answer(driver, question=ex["question"], strategy="hybrid", answer=ex["answer"],
                    citations=ex["citations"], hallucinated=ex["hallucinated"], source="benchmark",
-                   snapshot_id=snapshot_id)
+                   snapshot_id=snapshot_id, **({"fusion": True} if fusion else {}))
         seeded.append(ex["id"])
     return SeedResult(tuple(seeded), tuple(refused))
 

@@ -93,6 +93,7 @@ from starlette.types import Message, Receive, Scope, Send
 
 from ..graph.client import STATE_OP_TIMEOUT_DEFAULT_S
 from ..retrieval.answerer_async import aanswer_stream
+from ..retrieval.fusion import FusionRuntime
 from ..retrieval.verify import checks_failed
 from ..retrieval.workspace_async import astream_workspace_answer
 from . import drain, guard, tracing
@@ -235,6 +236,26 @@ def _nothing() -> None:
     return None
 
 
+def fusion_runtime(st) -> FusionRuntime | None:
+    """The fusion runtime ``app.state`` holds (set at boot only with RETRIEVAL_FUSION on and the keyword index built), else
+    None. An object that is not a :class:`FusionRuntime` is "no runtime" (a test double must not switch the path)."""
+    runtime = getattr(st, "fusion", None)
+    return runtime if isinstance(runtime, FusionRuntime) else None
+
+
+def fusion_cache_kwargs(st) -> dict:
+    """``{"fusion": True}`` for the answer-cache key and write when the fusion path is active, else ``{}``: the flag-off call
+    is exactly what it was."""
+    return {"fusion": True} if fusion_runtime(st) is not None else {}
+
+
+def fusion_twin_kwargs(st, strategy: str, workspace: bool) -> dict:
+    """``{"fusion": runtime}`` for the answer twin of a hybrid ask or of a workspace ask (its SEC part), else ``{}``. Never for
+    the agent (its prefetch keeps its own setting) or the vector strategy."""
+    runtime = fusion_runtime(st)
+    return {"fusion": runtime} if runtime is not None and (workspace or strategy == "hybrid") else {}
+
+
 def accepts_meter(twin: Callable) -> bool:
     """True when ``twin`` declares a parameter literally named ``meter`` that can be passed by keyword. ``**kwargs`` does
     not count: nearly every test double takes it and records nothing, and a twin that cannot record must not be taken for
@@ -374,7 +395,7 @@ class PaidStream:
         self._twin_called = True               # likewise: from here on a paid call may have started, whatever the call does
         stream = twin(self._question, st.driver, st.embedder, strategy=self._strategy, timeout=s.llm_request_timeout_s,
                       max_tokens=s.llm_answer_max_tokens, escalation_model=s.escalation_model or None,
-                      limiters=st.limiters, **extra, **metering)
+                      limiters=st.limiters, **extra, **metering, **fusion_twin_kwargs(st, self._strategy, self._in_workspace))
         if not (hasattr(stream, "__aiter__") and hasattr(stream, "aclose")):
             getattr(stream, "close", _nothing)()
             raise TwinContractError(
@@ -502,7 +523,8 @@ class PaidStream:
         try:
             await state_call(self._st, self._backend.cache_put, question=self._question, strategy=self._strategy,
                              answer=ev["answer"], citations=ev["citations"], hallucinated=ev["hallucinated"],
-                             usage=ev["usage"], cost_usd=ev["cost_usd"], snapshot_id=self._snapshot_id)
+                             usage=ev["usage"], cost_usd=ev["cost_usd"], snapshot_id=self._snapshot_id,
+                             **fusion_cache_kwargs(self._st))
         except Exception:  # noqa: BLE001
             logger.exception("caching the answer failed")
 
