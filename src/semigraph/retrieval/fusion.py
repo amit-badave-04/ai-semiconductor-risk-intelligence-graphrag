@@ -31,7 +31,7 @@ class FusionConfig:
     keyword: bool = False            # bm25s legs: one per anchor (filer mask) and one mention-scoped leg (needs a KeywordIndex)
     keyword_context: bool = False    # the keyword index carries the context field (company, ticker, form, year, section)
     current_only: bool = True        # the filer, period and keyword legs keep only is_current rows (decision 011: in-index)
-    mention_current_only: bool = False   # the mention leg too (decision 011, its own switch so it can be reverted alone)
+    mention_current_only: bool = True    # the mention leg too (decision 011 option D; its own switch so it can be reverted alone)
     mention_candidates: int = 60     # ANN candidates before the MENTIONS filter (as EXCERPT_CANDIDATES today)
     filer_candidates: int = 100      # over-fetch inside the index for the filer leg (the filter is in-index, so rows fill)
     period_candidates: int = 100

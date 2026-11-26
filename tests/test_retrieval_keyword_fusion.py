@@ -71,7 +71,7 @@ STORE = {"k1": {"text": "Nvidia depends on a single foundry for CoWoS packaging"
 def test_keyword_legs_fuse_into_the_slots_and_only_their_winners_are_hydrated():
     idx = K.build_index(SPANS, with_context=False)
     out, d, e = run("How does Nvidia depend on TSMC cowos?", FusionConfig(keyword=True), idx,
-                    fusion_mention=[dense("m1")], hydrate=hydrator(STORE))
+                    mention_current=[dense("m1")], hydrate=hydrator(STORE))
     ids = [c["chunk_id"] for c in out["chunks"]]
     assert {"m1", "k1", "k2"} <= set(ids) and len(ids) <= 8
     assert [c["text"] for c in out["chunks"] if c["chunk_id"] == "k1"] == [STORE["k1"]["text"]]
@@ -85,16 +85,16 @@ def test_keyword_legs_fuse_into_the_slots_and_only_their_winners_are_hydrated():
 
 def test_no_hydration_query_when_no_keyword_winner():
     unrelated = K.build_index([kw("z1", "zzz yyy")], with_context=False)
-    out, d, _ = run(Q2, FusionConfig(keyword=True), unrelated, fusion_mention=[dense("m1")], hydrate=hydrator(STORE))
+    out, d, _ = run(Q2, FusionConfig(keyword=True), unrelated, mention_current=[dense("m1")], hydrate=hydrator(STORE))
     assert "hydrate" not in d.names() and [c["chunk_id"] for c in out["chunks"]] == ["m1"]      # nothing matches
-    _, d, _ = run(Q2, FusionConfig(), fusion_mention=[dense("m1")])
+    _, d, _ = run(Q2, FusionConfig(), mention_current=[dense("m1")])
     assert "hydrate" not in d.names()
 
 
 def test_hydration_drops_a_winner_that_is_no_longer_retrievable():
     idx = K.build_index(SPANS, with_context=False)
     store = {**STORE, "k1": {**STORE["k1"], "retrievable": False}}
-    out, _, _ = run("Nvidia TSMC cowos packaging foundry", FusionConfig(keyword=True), idx, fusion_mention=[dense("m1")],
+    out, _, _ = run("Nvidia TSMC cowos packaging foundry", FusionConfig(keyword=True), idx, mention_current=[dense("m1")],
                     hydrate=hydrator(store))
     ids = [c["chunk_id"] for c in out["chunks"]]
     assert "k1" not in ids and "k2" in ids and "m1" in ids
@@ -153,9 +153,9 @@ def test_current_only_drops_superseded_rows_from_new_legs():
     cfg = FusionConfig(filer=True, period=True)                                  # current_only is on by default
     _, d, _ = run("Nvidia supply risk in FY2024", cfg, fusion_mention=[dense("m1")], filer_current=[dense("f1")],
                   period_current=[dense("p1")])
-    assert {"filer_current", "period_current", "fusion_mention"} <= set(d.names())
-    assert not {"filer", "period", "mention_current"} & set(d.names())           # the mention leg is unchanged by current_only
-    _, d, _ = run("Nvidia supply risk in FY2024", FusionConfig(filer=True, period=True, current_only=False),
+    assert {"filer_current", "period_current", "mention_current"} <= set(d.names())   # decision 011: the mention leg too
+    assert not {"filer", "period", "fusion_mention"} & set(d.names())
+    _, d, _ = run("Nvidia supply risk in FY2024", FusionConfig(filer=True, period=True, current_only=False, mention_current_only=False),
                   fusion_mention=[dense("m1")], filer=[dense("f1")], period=[dense("p1")])
     assert {"filer", "period", "fusion_mention"} <= set(d.names()) and not {"filer_current", "period_current"} & set(d.names())
     _, d, _ = run(Q2, FusionConfig(mention_current_only=True), mention_current=[dense("m1")])
@@ -198,7 +198,7 @@ def test_fused_excerpt_chars_within_estimate():
 
 
 def test_short_excerpts_are_untouched():
-    out, _, _ = run(Q2, FusionConfig(), fusion_mention=[dense("m1", text="short text")])
+    out, _, _ = run(Q2, FusionConfig(), mention_current=[dense("m1", text="short text")])
     assert out["chunks"][0]["text"] == "short text"
 
 
@@ -217,3 +217,22 @@ def test_superseded_ids_list_only_excerpts_that_were_served():
     out, _, _ = run("Nvidia TSMC cowos packaging foundry", FusionConfig(keyword=True, current_only=False), idx,
                     fusion_mention=[dense("m1")], hydrate=hydrator({"old": {"text": "cowos", "retrievable": False}}))
     assert "old" not in [c["chunk_id"] for c in out["chunks"]] and "old" not in out["superseded_ids"]
+
+
+def test_flag_on_no_superseded_excerpt_survives_and_the_slots_still_fill():
+    """Decision 011 (option D): a superseded passage that would top every leg never reaches the excerpts when fusion is on,
+    because every leg runs its in-index current-only variant; the 8 slots still fill from current passages."""
+    old = dense("old", acc="OLD", current=False)
+    cur = lambda p: [dense(f"{p}{i}", acc=f"{p}{i}") for i in range(6)]   # distinct filings: the accession cap is 3
+    out, d, _ = run("Nvidia supply risk in FY2024", FusionConfig(filer=True, period=True),
+                    mention_current=cur("m"), filer_current=cur("f"), period_current=cur("p"),
+                    fusion_mention=[old] + cur("m"), filer=[old] + cur("f"), period=[old] + cur("p"))
+    ids = [c["chunk_id"] for c in out["chunks"]]
+    assert "old" not in ids and len(ids) == 8
+    assert not {"fusion_mention", "filer", "period"} & set(d.names())
+
+
+def test_flag_off_keeps_todays_unmarked_superseded_excerpts_a_known_defect():
+    """Decision 011: with the flag off nothing changes, so today's excerpt query can still return a superseded annual risk
+    passage with no mark. Recorded as a known defect; it closes when RETRIEVAL_FUSION becomes the default."""
+    assert "is_current" not in R.EXCERPTS_QUERY

@@ -14,7 +14,9 @@ from semigraph.retrieval.fusion import FusionConfig, SlotPolicy, rrf, select_slo
 VEC = [0.1, 0.2, 0.3]
 NEW = {R.FILER_EXCERPTS_QUERY: "filer", R.PERIOD_EXCERPTS_QUERY: "period", R.FUSION_MENTION_EXCERPTS_QUERY: "fusion_mention",
        # the current-only variants (I3a, decision 011: FusionConfig.current_only is on by default) answer as the plain legs
-       R.FILER_CURRENT_EXCERPTS_QUERY: "filer", R.PERIOD_CURRENT_EXCERPTS_QUERY: "period"}
+       R.FILER_CURRENT_EXCERPTS_QUERY: "filer", R.PERIOD_CURRENT_EXCERPTS_QUERY: "period",
+       # decision 011 (option D): the fused mention leg is current-only by default too
+       R.FUSION_MENTION_CURRENT_EXCERPTS_QUERY: "fusion_mention"}
 
 
 class Driver(_Base):

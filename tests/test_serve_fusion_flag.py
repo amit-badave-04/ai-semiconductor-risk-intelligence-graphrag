@@ -117,7 +117,7 @@ def runtime():
 def test_serving_config_is_the_measured_legs_with_the_context_index():
     c = fusion.SERVING_CONFIG
     assert (c.mention, c.filer, c.period, c.keyword, c.keyword_context, c.current_only) == (True,) * 6
-    assert c.mention_current_only is False                       # decision 011's mention change is its own switch
+    assert c.mention_current_only is True                        # decision 011 (option D): every leg current-only when on
     import importlib.util
     import sys
     from pathlib import Path
