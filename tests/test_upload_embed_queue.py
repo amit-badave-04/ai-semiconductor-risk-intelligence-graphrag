@@ -288,15 +288,94 @@ def test_a_finished_task_frees_its_workspace_and_client_for_the_next_one(monkeyp
     assert w.queue.submit(eq.EmbedTask(workspace_id=WS, job_id="j9", document_id=DOC, version=1, client_key="ip-a")).queued
 
 
-def test_resume_requeues_pending_versions_without_counting_the_day_or_the_client(monkeypatch):
+def _marks(w, monkeypatch, fail=False):
+    marks = []
+
+    def mark(driver, ws, doc, version, day):
+        if fail:
+            raise RuntimeError("db down")
+        marks.append((ws, doc, version, day))
+
+    monkeypatch.setattr(repo, "mark_embed_charged", mark)
+    return marks
+
+
+def test_resume_requeues_charged_versions_without_counting_the_day_or_the_client(monkeypatch):
+    # updated for M2RT-01: the rows carry the charge marker; before, any pending version was assumed charged
     w = World(monkeypatch, pending((10, 0)))
-    rows = [{"workspace_id": WS, "document_id": DOC, "version": 2, "job_id": "jobX"},
-            {"workspace_id": "z" * 32, "document_id": DOC, "version": 1, "job_id": None}]
+    rows = [{"workspace_id": WS, "document_id": DOC, "version": 2, "job_id": "jobX", "embed_charged_day": "2026-11-26"},
+            {"workspace_id": "z" * 32, "document_id": DOC, "version": 1, "job_id": None, "embed_charged_day": "2026-11-25"}]
     monkeypatch.setattr(repo, "resumable_embeds", lambda d: rows)
     assert w.queue.resume_pending() == 2
     assert w.reserved == 0
     w.queue.run_next()
     assert w.queue.pending_count() == 1
+
+
+def test_resume_charges_an_unmarked_version_and_never_embeds_it_free_when_the_cap_is_full(monkeypatch):
+    w = World(monkeypatch, pending((10, 0)))
+    _marks(w, monkeypatch)
+    w.reserved = 23                                           # the day is full
+    monkeypatch.setattr(repo, "resumable_embeds",
+                        lambda d: [{"workspace_id": WS, "document_id": DOC, "version": 1, "job_id": "j", "embed_charged_day": None}])
+    assert w.queue.resume_pending() == 1
+    assert w.queue.pending_count() == 0 and w.written == [] and w.finished == [(WS, DOC, 1)]
+    assert w.last()[1]["stopped"] == "daily_limit"
+
+
+def test_resume_of_an_unmarked_version_is_charged_once_and_runs_when_the_cap_has_room(monkeypatch):
+    w = World(monkeypatch, pending((10, 0)))
+    marks = _marks(w, monkeypatch)
+    monkeypatch.setattr(repo, "resumable_embeds",
+                        lambda d: [{"workspace_id": WS, "document_id": DOC, "version": 1, "job_id": "j"}])   # pre-marker row
+    w.queue.resume_pending()
+    assert w.reserved == 1 and len(marks) == 1 and w.queue.pending_count() == 1
+
+
+def test_a_fault_on_one_resumed_row_does_not_stop_the_resume_of_the_others(monkeypatch):
+    """An unmarked row on a full day degrades; if that write fails, the charged rows after it must still be requeued."""
+    w = World(monkeypatch, pending((10, 0)))
+    _marks(w, monkeypatch)
+    w.reserved = 23
+
+    def broken_finish(*args, **kwargs):
+        raise RuntimeError("neo4j blip")
+
+    monkeypatch.setattr(repo, "finish_embedding", broken_finish)
+    rows = [{"workspace_id": WS, "document_id": DOC, "version": 1, "job_id": "a", "embed_charged_day": None},
+            {"workspace_id": "z" * 32, "document_id": DOC, "version": 2, "job_id": "b", "embed_charged_day": "2026-11-26"}]
+    monkeypatch.setattr(repo, "resumable_embeds", lambda d: rows)
+    assert w.queue.resume_pending() == 2
+    assert w.queue.pending_count() == 1                       # the charged row was still requeued
+
+
+def test_a_charged_submit_records_the_day_and_a_refused_one_does_not(monkeypatch):
+    w = World(monkeypatch, pending((10, 0)))
+    marks = _marks(w, monkeypatch)
+    w.queue.submit(w.task())
+    assert marks == [(WS, DOC, 1, w.queue._today())]
+    w.reserved = 23
+    marks.clear()
+    w.queue.submit(eq.EmbedTask(workspace_id="y" * 32, job_id="j2", document_id=DOC, version=1))
+    assert marks == []
+
+
+def test_a_held_task_is_marked_charged_only_when_admitted(monkeypatch):
+    w = World(monkeypatch, pending((10, 0)))
+    marks = _marks(w, monkeypatch)
+    w.queue.submit(w.task())
+    w.queue.submit(eq.EmbedTask(workspace_id=WS, job_id="j2", document_id="other", version=1))
+    assert [m[1] for m in marks] == [DOC]
+    w.queue.run_next()
+    assert [m[1] for m in marks] == [DOC, "other"]
+
+
+def test_a_failed_marker_write_does_not_stop_the_task_or_crash_the_queue(monkeypatch, caplog):
+    w = World(monkeypatch, pending((10, 0)))
+    _marks(w, monkeypatch, fail=True)
+    assert w.queue.submit(w.task()) == eq.Admission(True)
+    assert w.queue.pending_count() == 1 and w.reserved == 1
+    assert "recording the day's charge failed" in caplog.text
 
 
 def test_the_worker_thread_runs_tasks_first_in_first_out(monkeypatch):

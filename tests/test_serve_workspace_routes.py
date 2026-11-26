@@ -38,6 +38,7 @@ class FakeSettings:
     client_ip_header = ""
     kill_switch = False
     upload_max_bytes = 40 * 1024 * 1024
+    upload_max_concurrent_bodies = 2
     max_uploads_per_day = 40
     workspace_ttl_hours = 24
     upload_max_documents = 3
@@ -735,3 +736,68 @@ def test_s04_cancel_runs_off_the_event_loop(client, fake_repo, fake_queue):
     fake_queue.cancel = cancel
     assert _cancel(client).status_code == 200
     assert on_loop == [False]
+
+
+# ---------------------------------------------------------------- M2RT-08: process-wide bound on upload bodies in memory
+
+
+def test_no_body_permit_left_answers_the_busy_429_before_reading_the_body(client, fake_jobs):
+    assert _upload(client).status_code == 202                  # the first request creates the permit semaphore
+    permits = client.app.state.upload_body_permits
+    assert permits.acquire(blocking=False) and permits.acquire(blocking=False)
+    fake_jobs.clear()
+    r = _upload(client)
+    assert r.status_code == 429 and r.json() == {"detail": wr.MSG_BUSY, "code": "busy"}
+    assert fake_jobs == []
+
+
+def test_the_body_permit_is_released_after_every_kind_of_refusal(client, monkeypatch):
+    for _ in range(4):                                          # more refusals than permits: a leak would run dry
+        r = client.post(f"/api/workspace/{WS}/documents", headers={**_auth(), **_turnstile()}, content=b"garbage")
+        assert r.status_code == 400 and r.json()["code"] == "malformed"
+
+    def boom(app, **kw):
+        raise RuntimeError("simulated thread-start failure")
+
+    monkeypatch.setattr(jobs, "run_upload_job", boom)
+    for _ in range(3):
+        with pytest.raises(RuntimeError):
+            _upload(client)
+    permits = client.app.state.upload_body_permits
+    assert permits.acquire(blocking=False) and permits.acquire(blocking=False)
+    assert not permits.acquire(blocking=False)                  # exactly 2 permits, none leaked
+
+
+def test_the_body_permit_is_released_after_a_success(client, fake_jobs):
+    assert _upload(client).status_code == 202
+    permits = client.app.state.upload_body_permits
+    assert permits.acquire(blocking=False) and permits.acquire(blocking=False)
+
+
+def test_the_body_permit_is_released_when_the_body_read_raises(client):
+    for _ in range(4):                                          # a 400 raised inside the permit-held region, no `file` part
+        r = client.post(f"/api/workspace/{WS}/documents", headers={**_auth(), **_turnstile()},
+                        files={"other": ("a.txt", b"x", "text/plain")})
+        assert r.status_code == 400
+    permits = client.app.state.upload_body_permits
+    assert permits.acquire(blocking=False) and permits.acquire(blocking=False)
+    assert not permits.acquire(blocking=False)
+
+
+def test_the_body_permit_is_held_until_the_upload_job_is_started(client, monkeypatch):
+    seen = []
+
+    def spy(app, **kw):
+        permits = app.state.upload_body_permits
+        got = [permits.acquire(blocking=False), permits.acquire(blocking=False)]
+        seen.append(got)
+        for g in got:
+            if g:
+                permits.release()
+        return "job-1"
+
+    monkeypatch.setattr(jobs, "run_upload_job", spy)
+    assert _upload(client).status_code == 202
+    assert seen == [[True, False]]                              # this request's own permit is still out
+    permits = client.app.state.upload_body_permits
+    assert permits.acquire(blocking=False) and permits.acquire(blocking=False)

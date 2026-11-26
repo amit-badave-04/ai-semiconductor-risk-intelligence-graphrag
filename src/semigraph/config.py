@@ -383,6 +383,9 @@ class Settings(BaseSettings):
     # 1 GiB RLIMIT_AS plus a margin (window W1c's lowest reading under the heaviest measured load was 1,471,596). Production
     # allows PRODUCTION_UPLOAD_MIN_MEM_AVAILABLE_KB only; 0 = off, outside production only. A refusal never echoes the value.
     upload_min_mem_available_kb: int = Field(1_250_000, ge=0)
+    # M2RT-08: upload bodies read and parsed in memory at once, process-wide (each is several copies of up to
+    # upload_max_bytes); one more is refused with the busy 429 before its body is read.
+    upload_max_concurrent_bodies: int = Field(2, ge=1)
 
     @property
     def is_production(self) -> bool:

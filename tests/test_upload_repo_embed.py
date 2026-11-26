@@ -90,3 +90,12 @@ def test_resumable_embeds_lists_pending_current_chunks_per_version(monkeypatch):
     assert repo.resumable_embeds(object()) == rows
     assert "$ws" not in repo.RESUMABLE_EMBEDS_SELECT_QUERY       # cross-workspace by necessity: a restart requeues every workspace
     assert "embed_state = 'pending'" in repo.RESUMABLE_EMBEDS_SELECT_QUERY
+
+
+def test_resumable_embeds_returns_the_charge_marker_and_the_marker_write_is_ws_bound(monkeypatch):
+    assert "embed_charged_day" in repo.RESUMABLE_EMBEDS_SELECT_QUERY
+    seen = []
+    monkeypatch.setattr(repo, "run_cypher", lambda d, q, **p: seen.append((q, p)) or [])
+    repo.mark_embed_charged(object(), "ws1", "doc", 2, "2026-11-26")
+    assert seen == [(repo.MARK_EMBED_CHARGED_QUERY, {"ws": "ws1", "document_id": "doc", "version": 2, "day": "2026-11-26"})]
+    assert "workspace_id: $ws" in repo.MARK_EMBED_CHARGED_QUERY and "$day" in repo.MARK_EMBED_CHARGED_QUERY

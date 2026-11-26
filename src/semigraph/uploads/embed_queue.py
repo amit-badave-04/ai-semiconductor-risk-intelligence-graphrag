@@ -161,7 +161,20 @@ class EmbedQueue:
         except Exception:  # noqa: BLE001 - fail closed: a counter that cannot be read means keyword-only, never an unbounded day
             logger.exception("upload embed day counter failed")
             reserved = False
-        return None if reserved else "daily_limit"
+        if not reserved:
+            return "daily_limit"
+        self._mark_charged(task)
+        return None
+
+    def _mark_charged(self, task: EmbedTask) -> None:
+        """Persists that the day was charged, so a restart resumes this version for free. A failed write is safe: the task still
+        runs now, and an unmarked version is charged (or degraded) again at the next start, never embedded uncharged."""
+        from . import repo
+
+        try:
+            repo.mark_embed_charged(self._driver, task.workspace_id, task.document_id, task.version, self._today())
+        except Exception as exc:  # noqa: BLE001 - nothing may kill the worker; the version just stays unmarked (fails closed)
+            logger.warning("upload embed: recording the day's charge failed exc_type=%s", type(exc).__name__)
 
     def _register(self, task: EmbedTask) -> None:
         self._active_workspaces[task.workspace_id] += 1
@@ -236,15 +249,20 @@ class EmbedQueue:
         return True
 
     def resume_pending(self) -> int:
-        """Requeues every current version that still has pending chunks (a restart). Not counted against the day's
-        embedding jobs or the client rule: those were taken when the job first started."""
+        """Requeues every current version that still has pending chunks (a restart). A version marked as charged
+        (``embed_charged_day``) resumes without a new charge. An unmarked one (held, refused with a failed degrade, or written
+        before the marker) fails closed: it takes the normal path, so the day is charged for it or it degrades to keyword-only."""
         from . import repo
 
         rows = repo.resumable_embeds(self._driver)
         for row in rows:
             job_id = row.get("job_id") or f"{RESUME_JOB_PREFIX}{row['document_id']}-{row['version']}"
-            self.submit(EmbedTask(workspace_id=row["workspace_id"], job_id=job_id, document_id=row["document_id"],
-                                  version=row["version"], resumed=True))
+            try:
+                self.submit(EmbedTask(workspace_id=row["workspace_id"], job_id=job_id, document_id=row["document_id"],
+                                      version=row["version"], resumed=bool(row.get("embed_charged_day"))))
+            except Exception as exc:  # noqa: BLE001 - one row's fault (e.g. a failed degrade write) must not strand the rest
+                logger.warning("upload embed: resume of one version failed (%s); its chunks stay pending until the next start",
+                               type(exc).__name__)
         return len(rows)
 
     # ------------------------------------------------------------ the worker

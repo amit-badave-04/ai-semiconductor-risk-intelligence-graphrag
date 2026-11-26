@@ -40,7 +40,8 @@ def test_embed_job_resumes_after_restart(monkeypatch, fresh_drain):  # noqa: F81
 
     # ---- the restart: a new app and queue, the same database
     monkeypatch.setattr(repo, "resumable_embeds",
-                        lambda driver: [{"workspace_id": WS, "document_id": DOC, "version": 1, "job_id": "job1"}])
+                        lambda driver: [{"workspace_id": WS, "document_id": DOC, "version": 1, "job_id": "job1",
+                                           "embed_charged_day": "2026-11-26"}])
     restarted = FakeApp(embedder, JobSettings(DEFAULT_CEILING), CountingSlot())
     queue = jobs.embed_queue_for(restarted)
     queue._clock = world.clock

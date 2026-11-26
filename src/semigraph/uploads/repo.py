@@ -386,7 +386,7 @@ RETURN count(c) AS skipped"""
 RESUMABLE_EMBEDS_SELECT_QUERY = f"""MATCH (c:UserChunk) WHERE c.embed_state = 'pending' AND c.is_current = true
 WITH DISTINCT c.workspace_id AS workspace_id, c.document_id AS document_id, c.version AS version
 MATCH (v:UserVersion) WHERE v.workspace_id = workspace_id AND v.document_id = document_id AND v.version = version
-RETURN workspace_id, document_id, version, v.job_id AS job_id LIMIT {SWEEP_SELECT_BATCH}"""
+RETURN workspace_id, document_id, version, v.job_id AS job_id, v.embed_charged_day AS embed_charged_day LIMIT {SWEEP_SELECT_BATCH}"""
 
 
 def _merge_document(tx, ws: str, document_id: str, title: str | None, now: datetime, version: int) -> None:
@@ -535,6 +535,16 @@ def set_chunk_embedding(driver, ws: str, chunk_id: str, embedding: list[float], 
         return session.execute_write(_tx)
 
 
+# The day's embedding-job cap was charged for this version (OD11): written when the queue reserves the day, read by the resume.
+MARK_EMBED_CHARGED_QUERY = """MATCH (v:UserVersion {workspace_id: $ws, document_id: $document_id, version: $version})
+SET v.embed_charged_day = $day"""
+
+
+def mark_embed_charged(driver, ws: str, document_id: str, version: int, day: str) -> None:
+    """Records that the version was charged to ``day``'s embedding-job cap, so a restart may resume it without a new charge."""
+    run_cypher(driver, MARK_EMBED_CHARGED_QUERY, ws=ws, document_id=document_id, version=version, day=day)
+
+
 def finish_embedding(driver, ws: str, document_id: str, version: int) -> int:
     """Marks every chunk of the version that never got a vector keyword-only (time-out, budget, cancel); returns how many."""
     rows = run_cypher(driver, SKIP_PENDING_CHUNKS_QUERY, ws=ws, document_id=document_id, version=version)
@@ -576,7 +586,7 @@ def current_chunk_rows(driver, ws: str) -> list[dict]:
 
 
 def resumable_embeds(driver) -> list[dict]:
-    """``{workspace_id, document_id, version, job_id}`` of every current version that still has pending chunks."""
+    """``{workspace_id, document_id, version, job_id, embed_charged_day}`` of every current version that still has pending chunks."""
     return run_cypher(driver, RESUMABLE_EMBEDS_SELECT_QUERY)
 
 

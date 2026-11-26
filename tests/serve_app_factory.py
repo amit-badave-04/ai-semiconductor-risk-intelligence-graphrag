@@ -64,6 +64,7 @@ class FakeSettings(RouteSettings):
     ui_dist_dir = DEFAULT_DIST_DIR
     # the upload limits the workspace routes read (the production values of config.py; uploads_enabled stays False by default)
     upload_max_bytes = 15 * 1024 * 1024
+    upload_max_concurrent_bodies = 2
     max_uploads_per_day = 40
     workspace_ttl_hours = 24
     upload_max_documents = 3

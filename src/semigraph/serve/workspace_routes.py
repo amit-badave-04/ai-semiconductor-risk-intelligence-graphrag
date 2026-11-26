@@ -430,13 +430,22 @@ async def _finalize_upload(request: Request, ws: str, st, s, fields: dict, data:
                         headers=NO_STORE)
 
 
+def _body_permits(st, s) -> threading.BoundedSemaphore:
+    """``app.state.upload_body_permits``: how many upload bodies may be read and parsed at once, process-wide. Made on
+    first use (no await between the check and the set, so one event loop cannot make two)."""
+    permits = getattr(st, "upload_body_permits", None)
+    if permits is None:
+        permits = st.upload_body_permits = threading.BoundedSemaphore(s.upload_max_concurrent_bodies)
+    return permits
+
+
 @router.post("/api/workspace/{ws}/documents", status_code=202)
 async def upload_document(ws: str, request: Request):
     """Gate order, now literal (docs/v2/M4_PLAN.md 14.6, 15.2 — the Turnstile token moved to the
     ``X-Turnstile-Token`` header, so it no longer needs the body read first; 16: every workspace route takes the
     in-memory read-rate window before its database lookup): uploads-available -> draining (503) -> read-rate window ->
-    workspace token (404) -> kill level -> Turnstile -> per-address upload window -> streamed size cap (declared,
-    then live) -> byte gate -> quota -> slot -> memory guard (503, M5a decision 21) -> daily budget."""
+    workspace token (404) -> kill level -> Turnstile -> per-address upload window -> declared size cap -> body
+    permit (429 busy, M2RT-08: bounds upload bodies in memory process-wide) -> streamed size cap (live) -> byte gate -> quota -> slot -> memory guard (503, M5a decision 21) -> daily budget."""
     st, s = request.app.state, request.app.state.settings
     _require_uploads_enabled(request)
     _refuse_while_draining()
@@ -452,11 +461,17 @@ async def upload_document(ws: str, request: Request):
         return JSONResponse({"detail": "the file is too large", "code": "too_large"}, status_code=413,
                             headers=NO_STORE)
 
-    gated = await _read_and_gate_body(request, ws, s)
-    if isinstance(gated, JSONResponse):
-        return gated
-    data, kind, title, fields = gated
-    return await _finalize_upload(request, ws, st, s, fields, data, kind, title, client_key)
+    permits = _body_permits(st, s)
+    if not permits.acquire(blocking=False):             # M2RT-08: too many bodies in memory already: refuse unread
+        return JSONResponse({"detail": MSG_BUSY, "code": "busy"}, status_code=429, headers=NO_STORE)
+    try:                                                # the permit bounds read + parse + the hand-off to the job thread
+        gated = await _read_and_gate_body(request, ws, s)
+        if isinstance(gated, JSONResponse):
+            return gated
+        data, kind, title, fields = gated
+        return await _finalize_upload(request, ws, st, s, fields, data, kind, title, client_key)
+    finally:
+        permits.release()
 
 
 # ---------------------------------------------------------------- GET /api/workspace/{ws}/jobs/{job_id} (SSE)
