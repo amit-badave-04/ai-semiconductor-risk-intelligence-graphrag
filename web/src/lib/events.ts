@@ -48,7 +48,13 @@ export interface WorkspaceInfo {
   doc_chunks: number;
   stale_citations: string[];
   suspicious: boolean;
+  /** How the uploaded document's part of this answer was searched; absent from an answer that predates it. */
+  search?: SearchLabel;
 }
+
+/** M2 (docs/specs/m2-search.md R17): the label of the search over the upload. */
+export type SearchLabel = "keyword_only" | "keyword_semantic" | "keyword_semantic_partial" | "semantic_only";
+const SEARCH_LABELS: readonly string[] = ["keyword_only", "keyword_semantic", "keyword_semantic_partial", "semantic_only"];
 
 interface DoneBase {
   event: "done";
@@ -96,6 +102,7 @@ export const JOB_STATES = [
   "embedding",
   "comparing",
   "indexing",
+  "keyword_ready",
   "ready",
   "failed",
 ] as const;
@@ -119,6 +126,17 @@ export interface JobEvent {
   not_compared_reason?: string | null;
   suspicious?: boolean;
   error?: { code: string; message: string };
+  /** keyword_ready and ready (M2 R15): the detected form (null when not recognised), the labels of the sections found, the
+   *  server's sentence about them, and how many chunks still wait for a vector. */
+  form?: string | null;
+  sections?: string[];
+  sections_message?: string;
+  pending_chunks?: number;
+  /** ready: how it ended; `stopped` names why embedding ended early (null when it ran to the end). */
+  embedded_chunks?: number;
+  keyword_only_chunks?: number;
+  stopped?: string | null;
+  search?: SearchLabel;
 }
 
 type Dict = Record<string, unknown>;
@@ -202,8 +220,13 @@ function isWorkspaceInfo(value: unknown): value is WorkspaceInfo {
     typeof value.id_hash === "string" &&
     isFiniteNumber(value.doc_chunks) &&
     isStringArray(value.stale_citations) &&
-    typeof value.suspicious === "boolean"
+    typeof value.suspicious === "boolean" &&
+    optional(value, "search", isSearchLabel)
   );
+}
+
+function isSearchLabel(value: unknown): value is SearchLabel {
+  return typeof value === "string" && SEARCH_LABELS.includes(value);
 }
 
 export function isCachedDoneEvent(value: unknown): value is CachedDoneEvent {
@@ -266,7 +289,15 @@ export function isJobEvent(value: unknown): value is JobEvent {
     optional(value, "items_compared", (item) => typeof item === "boolean") &&
     optional(value, "not_compared_reason", (item) => item === null || typeof item === "string") &&
     optional(value, "suspicious", (item) => typeof item === "boolean") &&
-    optional(value, "error", isJobFailure)
+    optional(value, "error", isJobFailure) &&
+    optional(value, "form", (item) => item === null || typeof item === "string") &&
+    optional(value, "sections", isStringArray) &&
+    optional(value, "sections_message", (item) => typeof item === "string") &&
+    optional(value, "pending_chunks", isFiniteNumber) &&
+    optional(value, "embedded_chunks", isFiniteNumber) &&
+    optional(value, "keyword_only_chunks", isFiniteNumber) &&
+    optional(value, "stopped", (item) => item === null || typeof item === "string") &&
+    optional(value, "search", isSearchLabel)
   );
 }
 

@@ -21,7 +21,8 @@
 import { deck } from "@/copy/deck";
 import type { WorkspaceSession } from "@/state/useWorkspace";
 import type { JobEvent } from "./events";
-import { watchJob, type WatchOptions, type WatchResult } from "./jobStream";
+import { foldJob, type JobView } from "./jobView";
+import { JOB_ID_RE, WORKSPACE_ID_RE, watchJob, type WatchOptions, type WatchResult } from "./jobStream";
 import { detailOf } from "./refusal";
 import { uploadTitleFor } from "./workspace";
 
@@ -44,9 +45,11 @@ const JOB_STATE_TEXT: Readonly<Record<string, string>> = {
   validating: "checking",
   parsing: deck.jobs.phase.parsing,
   chunking: deck.jobs.phase.chunking,
-  embedding: "embedding",
+  // the row stays at the keyword-ready line while search by meaning is prepared: the card shows the progress (council wording)
+  embedding: deck.jobs.keywordReady,
   comparing: deck.jobs.phase.comparing,
   indexing: "saving",
+  keyword_ready: deck.jobs.keywordReady,
   ready: "ready",
   failed: "failed",
 };
@@ -60,12 +63,6 @@ export function jobStateText(job: unknown): string {
   const j = isRow(job) ? job : {};
   const state = typeof j.state === "string" ? j.state : "";
   const base = JOB_STATE_TEXT[state] ?? (state || "unknown");
-  if (state === "embedding" && isRow(j.progress)) {
-    const { done, total, eta_s: eta } = j.progress;
-    const count = typeof done === "number" && typeof total === "number" ? ` ${done}/${total}` : "";
-    const left = typeof eta === "number" && eta > 0 ? deck.jobs.left(Math.ceil(eta)) : "";
-    return `${base}${count}${left}`;
-  }
   if (state === "failed") {
     const error = isRow(j.error) ? j.error : {};
     const why = (typeof error.message === "string" && error.message) || (typeof error.code === "string" && error.code) || deck.jobs.unknownError;
@@ -82,6 +79,10 @@ export interface JobRow {
   tone: "" | "ok" | "err";
   /** The file's outcome is final (ready, failed, refused, unchanged...). */
   terminal: boolean;
+  /** The job being watched, once the server accepted the file (cancel needs it). */
+  jobId: string | null;
+  /** What the upload card shows (preflight, progress, outcome), folded from the job's events; null until one arrived. */
+  view: JobView | null;
 }
 
 /** The part of the Turnstile gate the queue uses (state/useTurnstile.ts). */
@@ -130,6 +131,8 @@ export class UploadQueue {
   private pending: Pending[] = [];
   private rows: JobRow[] = [];
   private nextKey = 0;
+  /** The session and job of each row that has one, for cancel. */
+  private sessions = new Map<number, { session: WorkspaceSession; jobId: string }>();
 
   private readonly deps: QueueDeps;
 
@@ -167,12 +170,32 @@ export class UploadQueue {
     if (!this.running) void this.drain({ epoch: this.epoch, signal: this.controller.signal });
   }
 
+  /** Ask the server to stop preparing search by meaning for one row's job (the document stays, keyword-searchable). The job still ends
+   *  with `ready`, which the open watcher shows; a refusal or a lost connection returns false. */
+  async cancel(key: number): Promise<boolean> {
+    const known = this.sessions.get(key);
+    if (known === undefined || this.controller === null) return false;
+    if (!WORKSPACE_ID_RE.test(known.session.id) || !JOB_ID_RE.test(known.jobId)) return false;
+    try {
+      const res = await fetch(`/api/workspace/${known.session.id}/jobs/${known.jobId}/cancel`, {
+        method: "POST",
+        headers: { "X-Workspace-Token": known.session.token },
+        signal: this.controller.signal,
+      });
+      return res.ok;
+    } catch {
+      // idempotent on the server; the watcher shows the job's real end. False lets the card give the stop button back.
+      return false;
+    }
+  }
+
   private abortAll(): void {
     this.controller?.abort();
     this.epoch += 1;
     this.running = false;
     this.pending = [];
     this.rows = [];
+    this.sessions.clear();
   }
 
   private emit(): void {
@@ -185,10 +208,12 @@ export class UploadQueue {
 
   private setRow(pass: Pass, key: number, patch: Partial<Omit<JobRow, "key">>): void {
     if (!this.live(pass)) return;
+    const cardShown = this.rows.find((r) => r.key === key)?.view?.keywordReady === true;
     this.rows = this.rows.map((row) => (row.key === key ? { ...row, ...patch } : row));
     this.emit();
     const row = this.rows.find((r) => r.key === key);
-    if (row?.terminal === true && patch.terminal === true) this.deps.onAnnounce(`${row.name}: ${row.text}`);
+    // a card already on screen speaks its own end line in its live region; the global status line would say it twice
+    if (row?.terminal === true && patch.terminal === true && !(cardShown && row.view?.outcome != null)) this.deps.onAnnounce(`${row.name}: ${row.text}`);
   }
 
   private async drain(pass: Pass): Promise<void> {
@@ -222,7 +247,7 @@ export class UploadQueue {
 
   private async uploadOne(pass: Pass, item: Pending): Promise<void> {
     const key = (this.nextKey += 1);
-    this.rows = [...this.rows, { key, name: item.file.name, text: UPLOADING_TEXT, tone: "", terminal: false }];
+    this.rows = [...this.rows, { key, name: item.file.name, text: UPLOADING_TEXT, tone: "", terminal: false, jobId: null, view: null }];
     this.emit();
     const bot = await this.tokenFor(pass);
     if (!bot.ok) {
@@ -268,14 +293,21 @@ export class UploadQueue {
       if (this.live(pass)) this.deps.onTerminal();
       return;
     }
-    this.setRow(pass, key, { text: QUEUED_TEXT });
+    this.setRow(pass, key, { text: QUEUED_TEXT, jobId: fields.job_id });
+    this.sessions.set(key, { session: item.session, jobId: fields.job_id });
     await this.watchOne(pass, key, item, fields.job_id);
   }
 
   private async watchOne(pass: Pass, key: number, item: Pending, jobId: string): Promise<void> {
     const onJob = (job: JobEvent): void => {
       const final = job.state === "ready" || job.state === "failed";
-      this.setRow(pass, key, { text: jobStateText(job), tone: job.state === "failed" ? "err" : job.state === "ready" ? "ok" : "", terminal: final });
+      const current = this.rows.find((r) => r.key === key);
+      const view = job.state === "failed" ? (current?.view ?? null) : foldJob(current?.view ?? null, job);
+      this.setRow(pass, key, { text: jobStateText(job), tone: job.state === "failed" ? "err" : job.state === "ready" ? "ok" : "", terminal: final, view });
+      if (job.state === "keyword_ready" && current?.view?.keywordReady !== true && this.live(pass)) {
+        this.deps.onAnnounce(`${item.file.name}: ${deck.jobs.card.keywordReady}`);
+        this.deps.onUnchanged(); // the version is stored and searchable now: read the documents again
+      }
     };
     const watch = this.deps.watch ?? watchJob;
     let result: WatchResult | { kind: "threw" };

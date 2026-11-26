@@ -32,8 +32,8 @@ export const RETRY_DELAYS_MS = [500, 1000, 2000, 4000];
 // The server's id grammar: a workspace id is secrets.token_hex(16) checked by uploads.WORKSPACE_ID_RE, a job id is
 // secrets.token_hex(8) (uploads/jobs.py). Anything else (".", "..", a slash, upper case) is never put into a path, so the token
 // can only ever go to this job's route: encodeURIComponent alone leaves "." as a path segment the URL parser resolves.
-const WORKSPACE_ID_RE = /^[0-9a-f]{32}$/;
-const JOB_ID_RE = /^[0-9a-f]{16}$/;
+export const WORKSPACE_ID_RE = /^[0-9a-f]{32}$/;
+export const JOB_ID_RE = /^[0-9a-f]{16}$/;
 
 const DEFAULT_SLEEP = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise((resolve) => {

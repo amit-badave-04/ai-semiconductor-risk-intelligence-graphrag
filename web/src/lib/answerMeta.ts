@@ -168,6 +168,9 @@ export type CheckedCode =
   | "sourcesMissing"
   | "sourcesReplaced"
   | "sourcesReferenceOnly"
+  | "uploadKeywordOnly"
+  | "uploadKeywordSemantic"
+  | "uploadKeywordSemanticPartial"
   | "noCitation"
   | "declines"
   | "figuresMatched"
@@ -209,6 +212,15 @@ function evidenceLines(c: Dict | null): CheckedLine[] {
   return lines;
 }
 
+/** M2 R19: how the upload part of a workspace answer was searched, from the answer's own label; no label, no line. */
+function uploadSearchLines(ev: Dict): CheckedLine[] {
+  const search = isDict(ev.workspace) ? ev.workspace.search : undefined;
+  if (search === "keyword_only") return [{ code: "uploadKeywordOnly", tone: "plain" }];
+  if (search === "keyword_semantic") return [{ code: "uploadKeywordSemantic", tone: "plain" }];
+  if (search === "keyword_semantic_partial") return [{ code: "uploadKeywordSemanticPartial", tone: "plain" }];
+  return [];
+}
+
 function sourcesLine(cites: unknown[], hall: unknown[], c: Dict | null): CheckedLine | null {
   if (hall.length || (c !== null && c.citations_retrieved === false)) return { code: "sourcesMissing", tone: "bad", params: { count: hall.length } };
   if (c !== null && c.has_citation === false) return c.is_refusal === true ? { code: "declines", tone: "plain" } : { code: "noCitation", tone: "warn" };
@@ -240,6 +252,7 @@ export function checkedView(event: unknown): CheckedView {
   const sources = sourcesLine(list(ev.citations), list(ev.hallucinated), c);
   if (sources !== null) lines.push(sources);
   lines.push(...evidenceLines(c));
+  lines.push(...uploadSearchLines(ev));
   lines.push(...figureLines(c));
   if (c !== null && list(c.pseudo_citations).length) lines.push({ code: "pseudoCitation", tone: "warn", params: { items: joined(list(c.pseudo_citations)) } });
   if (c !== null && c.unsupported_removal_claim === true) lines.push({ code: "removalClaim", tone: "warn" });

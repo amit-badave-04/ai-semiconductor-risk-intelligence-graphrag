@@ -179,7 +179,8 @@ class ProbeDriver(recorder.UploadFakeDriver):
         self.entered, self.release = threading.Event(), threading.Event()
         repo = recorder.upload_repo
         self._kinds = {repo.SEARCH_CURRENT_QUERY: "search_current", repo.SEARCH_ASOF_QUERY: "search_as_of",
-                       repo.CHUNK_TEXTS_QUERY: "chunk_texts", repo.CURRENT_VERSIONS_QUERY: "keyword_versions"}
+                       repo.CHUNK_TEXTS_QUERY: "chunk_texts", repo.CURRENT_VERSIONS_QUERY: "keyword_versions",
+                       repo.PENDING_EMBEDDING_COUNT_QUERY: "pending_count"}
 
     def answer(self, query: str, params: dict, *, timeout: float | None = None) -> list[dict]:
         kind = self._kinds.get(query) or self._names.get(query, "unknown")
@@ -663,7 +664,7 @@ def test_retrieval_and_the_stale_citation_read_run_on_worker_threads_under_the_d
     assert all(t["thread"] != ran.loop_thread for t in trace), "a graph read ran on the event loop"
     assert all(t["borrowed"] >= 1 for t in trace), "a graph read ran outside limiters.db"
     order = [t["kind"] for t in trace]
-    sec = [i for i, kind in enumerate(order) if kind not in ("search_current", "chunk_texts", "keyword_versions")]
+    sec = [i for i, kind in enumerate(order) if kind not in ("search_current", "chunk_texts", "keyword_versions", "pending_count")]
     assert max(sec) < order.index("search_current") < order.index("chunk_texts"), \
         "the sync order is the SEC retrieval, then the workspace search, then the stale-citation read"
 

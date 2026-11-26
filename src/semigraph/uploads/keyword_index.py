@@ -27,6 +27,7 @@ _ROW_OVERHEAD_BYTES = 400
 _TEXT_BYTES_FACTOR = 3                       # the text, its tokens and the index postings, roughly
 
 KEYWORD_ONLY, KEYWORD_SEMANTIC, SEMANTIC_ONLY = "keyword_only", "keyword_semantic", "semantic_only"
+KEYWORD_SEMANTIC_PARTIAL = "keyword_semantic_partial"      # some current chunks had no vector at answer time
 
 
 @dataclass(frozen=True)
@@ -128,8 +129,11 @@ def rrf_fuse(dense: list[dict], keyword: list[dict], k: int) -> list[dict]:
     return [rows[cid] for cid in order[:k]]
 
 
-def search_label(*, dense: list[dict], as_of: bool) -> str:
-    """What the upload part of an answer used: keyword only, keyword plus semantic, or (an ``as_of`` ask) semantic only."""
+def search_label(*, dense: list[dict], as_of: bool, pending: int = 0) -> str:
+    """What the upload part of an answer used: keyword only, keyword plus semantic (``pending`` = how many current chunks had no
+    vector at answer time; any means only part of the document was searched by meaning), or (an ``as_of`` ask) semantic only."""
     if as_of:
         return SEMANTIC_ONLY
-    return KEYWORD_SEMANTIC if dense else KEYWORD_ONLY
+    if not dense:
+        return KEYWORD_ONLY
+    return KEYWORD_SEMANTIC_PARTIAL if pending > 0 else KEYWORD_SEMANTIC

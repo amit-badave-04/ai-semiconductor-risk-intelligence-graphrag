@@ -151,3 +151,24 @@ describe("the deck words every code, plainly", () => {
     }
   });
 });
+
+describe("checkedView: how the upload part was searched (M2 R19)", () => {
+  const withSearch = (search: unknown) => live({ citations_retrieved: true, has_citation: true, numbers_checked: 0 }, { workspace: { search } });
+  it("keyword_only and keyword_semantic each get their own line", () => {
+    expect(codes(withSearch("keyword_only").lines)).toContain("uploadKeywordOnly");
+    expect(codes(withSearch("keyword_semantic").lines)).toContain("uploadKeywordSemantic");
+    expect(deck.checked.line({ code: "uploadKeywordOnly", tone: "plain" })).toBe("Your uploaded document was searched by keyword only.");
+    expect(deck.checked.line({ code: "uploadKeywordSemantic", tone: "plain" })).toBe("Your uploaded document was searched by keyword and by meaning.");
+  });
+  it("keyword_semantic_partial says only part of it was searched by meaning", () => {
+    expect(codes(withSearch("keyword_semantic_partial").lines)).toContain("uploadKeywordSemanticPartial");
+    expect(deck.checked.line({ code: "uploadKeywordSemanticPartial", tone: "plain" })).toBe(
+      "Your uploaded document was searched by keyword, and part of it by meaning.",
+    );
+  });
+  it("no label, or one the client does not word, adds no line", () => {
+    expect(codes(withSearch(undefined).lines).some((c) => c.startsWith("upload"))).toBe(false);
+    expect(codes(withSearch("semantic_only").lines).some((c) => c.startsWith("upload"))).toBe(false);
+    expect(codes(live({ citations_retrieved: true, has_citation: true }).lines).some((c) => c.startsWith("upload"))).toBe(false);
+  });
+});

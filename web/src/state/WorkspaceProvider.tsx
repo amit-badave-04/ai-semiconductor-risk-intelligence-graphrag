@@ -226,7 +226,8 @@ function useHandlers(queueRef: QueueRef, gate: GateRef, s: Session, d: Docs) {
     },
     [session, queueRef],
   );
-  return useMemo(() => ({ create, restore, remove, upload }), [create, restore, remove, upload]);
+  const cancel = useCallback((rowKey: number) => queueRef.current?.cancel(rowKey) ?? Promise.resolve(false), [queueRef]);
+  return useMemo(() => ({ create, restore, remove, upload, cancel }), [create, restore, remove, upload, cancel]);
 }
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {

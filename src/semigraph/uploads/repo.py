@@ -548,6 +548,19 @@ RETURN c.chunk_id AS chunk_id, c.text AS text, c.document_id AS document_id, c.v
 ORDER BY c.document_id, c.seq"""
 
 
+# The current chunks of THIS workspace that have no vector (still pending, or skipped after a stop): what an answer's search label
+# reads to say "part of it by meaning". One bounded count, read-only.
+PENDING_EMBEDDING_COUNT_QUERY = """MATCH (c:UserChunk {workspace_id: $ws, is_current: true})
+WHERE c.embedding IS NULL
+RETURN count(c) AS pending"""
+
+
+def pending_embedding_count(driver, ws: str) -> int:
+    """How many current chunks of this workspace have no vector yet (pending or skipped): zero means every one is searchable by meaning."""
+    rows = run_cypher(driver, PENDING_EMBEDDING_COUNT_QUERY, ws=ws)
+    return int(rows[0]["pending"]) if rows else 0
+
+
 def current_versions(driver, ws: str) -> list[dict]:
     """The ``(document_id, version)`` pairs that are current in this workspace: the key of its keyword index (R17)."""
     return run_cypher(driver, CURRENT_VERSIONS_QUERY, ws=ws)

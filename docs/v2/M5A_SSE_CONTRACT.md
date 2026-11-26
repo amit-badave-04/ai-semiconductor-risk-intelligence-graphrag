@@ -35,7 +35,7 @@ Every `data` object repeats its name in an `event` field. Fixtures: `live_hybrid
 | `step` | `n`, `tool`, `summary`, `ok` | agent only, before `retrieval` |
 | `delta` | `text` | zero or more, in order |
 | `escalated` | `reasons` (strings), `from`, `to` | when the draft was rejected and the strong model answers |
-| `done` | `answer`, `citations`, `hallucinated`; live: `finish_reason`, `usage`, `cost_usd`, `checks`, `agent`, `workspace` (`id_hash`, `doc_chunks`, `stale_citations`, `suspicious`, `search`); optional routing fields of a live answer: `answered_by` (string, the model), `routed` (string, `cheap` or `strong`), `escalated` (boolean), `escalation_reasons` (strings) | terminal |
+| `done` | `answer`, `citations`, `hallucinated`; live: `finish_reason`, `usage`, `cost_usd`, `checks`, `agent`, `workspace` (`id_hash`, `doc_chunks`, `stale_citations`, `suspicious`, `search`: `keyword_only`, `keyword_semantic` (every current chunk had a vector at answer time), `keyword_semantic_partial` (some had not) or `semantic_only`); optional routing fields of a live answer: `answered_by` (string, the model), `routed` (string, `cheap` or `strong`), `escalated` (boolean), `escalation_reasons` (strings) | terminal |
 | `error` | `detail` | terminal |
 
 The cached `done` is one frame with `cached: true`, `source`, `answer`, `citations` and `hallucinated` (no usage, no checks;

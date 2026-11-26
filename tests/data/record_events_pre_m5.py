@@ -261,6 +261,8 @@ class UploadFakeDriver(FakeDriver):
             ids = list(params["chunk_ids"])
             self.upload_queries.append(["chunk_texts", ids])
             return [{"chunk_id": cid, "is_current": self.chunk_is_current[cid]} for cid in ids if cid in self.chunk_is_current]
+        if query == upload_repo.PENDING_EMBEDDING_COUNT_QUERY:       # every current chunk has its vector; not recorded as a query
+            return [{"pending": 0}]
         return super().answer(query, params, timeout=timeout)
 
 

@@ -29,18 +29,17 @@ describe("jobStateText (workspace.test.mjs 7 to 10)", () => {
     expect(text("validating")).toBe("checking");
     expect(text("parsing")).toBe("reading the document");
     expect(text("chunking")).toBe("splitting into sections");
-    expect(text("embedding")).toBe("embedding");
+    expect(text("embedding")).toBe("Keyword search ready");
     expect(text("comparing")).toBe("comparing with the previous version");
     expect(text("indexing")).toBe("saving");
     expect(text("ready")).toBe("ready");
   });
 
-  it("shows embedding progress and an eta when given", () => {
+  it("keeps the row at the keyword-ready line while search by meaning is prepared (the card shows progress; never seconds)", () => {
     const job = (progress: unknown) => jobStateText({ state: "embedding", progress } as unknown as JobEvent);
-    expect(job({ done: 3, total: 10, eta_s: 12.4 })).toBe("embedding 3/10 (~13s left)");
-    expect(job({ done: 0, total: 5, eta_s: 0 })).toBe("embedding 0/5");
-    expect(job({ done: 1, total: 5, eta_s: null })).toBe("embedding 1/5");
-    expect(jobStateText({ state: "embedding" } as unknown as JobEvent)).toBe("embedding");
+    expect(job({ done: 3, total: 10, eta_s: 12.4 })).toBe("Keyword search ready");
+    expect(job({ done: 0, total: 5, eta_s: 0 })).toBe("Keyword search ready");
+    expect(jobStateText({ state: "embedding" } as unknown as JobEvent)).toBe("Keyword search ready");
   });
 
   it("surfaces the fixed error message of a failed job, never a stack trace", () => {
@@ -445,7 +444,7 @@ describe("UploadQueue: row texts (the legacy words)", () => {
     expect(r.rows()[0].text).toBe("queued");
     r.watches[0].options.onJob({ job_id: r.watches[0].job, state: "embedding", document_id: "d", version: 1, progress: { done: 1, total: 4, eta_s: 3 } });
     await flush();
-    expect(r.rows()[0]).toMatchObject({ text: "embedding 1/4 (~3s left)", tone: "", terminal: false });
+    expect(r.rows()[0]).toMatchObject({ text: "Keyword search ready", tone: "", terminal: false });
     r.watches[0].options.onJob({ job_id: r.watches[0].job, state: "failed", document_id: "d", version: null, error: { code: "x", message: "too many pages" } });
     await flush();
     expect(r.rows()[0]).toMatchObject({ text: "failed: too many pages", tone: "err", terminal: true });
@@ -663,5 +662,111 @@ describe("UploadQueue: teardown and the workspace changing (R34, StrictMode)", (
     r.queue.abortSession();
     await flush();
     expect(r.rows()).toEqual([]);
+  });
+});
+
+describe("UploadQueue: M2 R19 views and cancel", () => {
+  const ev = (state: string, extra: Record<string, unknown> = {}) =>
+    ({ job_id: jobId(1), state, document_id: "abc123456789", version: 1, ...extra }) as unknown as JobEvent;
+
+  it("keyword_ready fills the row's view, announces it, reloads the documents, and stays non-terminal", async () => {
+    const r = rig({ deferWatch: true });
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    r.watches[0].options.onJob(ev("keyword_ready", { form: "10-K", sections: ["Item 1A"], sections_message: "", chunks: 5, pending_chunks: 5 }));
+    const row = r.rows()[0];
+    expect(row.text).toBe("Keyword search ready");
+    expect(row.terminal).toBe(false);
+    expect(row.jobId).toBe(jobId(1));
+    expect(row.view?.keywordReady).toBe(true);
+    expect(row.view?.preflight?.sections).toEqual(["Item 1A"]);
+    expect(r.announcements).toEqual(["a.txt: Keyword search is ready. You can ask questions now."]);
+    expect(r.unchanged()).toBe(1);
+    r.watches[0].options.onJob(ev("embedding", { progress: { done: 2, total: 5, eta_s: 3 } }));
+    expect(r.rows()[0].view?.embedding).toEqual({ done: 2, total: 5, etaS: 3 });
+    r.watches[0].options.onJob(ev("ready", { embedded_chunks: 5, keyword_only_chunks: 0, stopped: null, search: "keyword_semantic" }));
+    expect(r.rows()[0].view?.outcome?.search).toBe("keyword_semantic");
+    expect(r.rows()[0].terminal).toBe(true);
+  });
+
+  it("cancel posts to the job's cancel route with the token in the header only", async () => {
+    const r = rig({ deferWatch: true });
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    const before = r.posts.length;
+    await r.queue.cancel(r.rows()[0].key);
+    const sent = r.posts[before];
+    expect(sent.url).toBe(`/api/workspace/${WS}/jobs/${jobId(1)}/cancel`);
+    expect(sent.headers).toEqual({ "X-Workspace-Token": TOKEN });
+    expect(sent.url).not.toContain(TOKEN);
+  });
+
+  it("a replayed keyword_ready announces and reloads the documents once", async () => {
+    const r = rig({ deferWatch: true });
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    const kr = ev("keyword_ready", { form: "10-K", sections: [], sections_message: "", chunks: 5, pending_chunks: 5 });
+    r.watches[0].options.onJob(kr);
+    r.watches[0].options.onJob(kr);
+    expect(r.announcements).toHaveLength(1);
+    expect(r.unchanged()).toBe(1);
+  });
+
+  it("a watch that gave up after keyword_ready leaves a terminal row the card can see", async () => {
+    const r = rig({ deferWatch: true });
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    r.watches[0].options.onJob(ev("keyword_ready", { form: null, sections: [], sections_message: "", chunks: 5, pending_chunks: 5 }));
+    r.watches[0].resolve({ kind: "gave_up", reason: "attempts", status: 0 });
+    await flush();
+    const row = r.rows()[0];
+    expect(row.terminal).toBe(true);
+    expect(row.view?.outcome).toBeNull();
+  });
+
+  it("cancel refuses ids outside the server's grammar and sends nothing", async () => {
+    const r = rig({ deferWatch: true });
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    const before = r.posts.length;
+    // a session whose id is not 32 hex digits can never reach the watch; force one into the row's session map
+    (r.queue as unknown as { sessions: Map<number, { session: unknown; jobId: string }> }).sessions.set(r.rows()[0].key, {
+      session: { id: "../x", token: TOKEN, expires_at: null },
+      jobId: jobId(1),
+    });
+    await r.queue.cancel(r.rows()[0].key);
+    expect(r.posts).toHaveLength(before);
+  });
+
+  it("cancel reports success only when the server accepted it", async () => {
+    const r = rig({ deferWatch: true });
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    expect(await r.queue.cancel(r.rows()[0].key)).toBe(true);
+  });
+
+  it("cancel reports failure when the fetch throws or the server refuses", async () => {
+    const r = rig({ deferWatch: true });
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("net"))));
+    expect(await r.queue.cancel(r.rows()[0].key)).toBe(false);
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response("{}", { status: 429 }))));
+    expect(await r.queue.cancel(r.rows()[0].key)).toBe(false);
+  });
+
+  it("a ready job with a card outcome is announced by the card only, not by the global announcer", async () => {
+    const r = rig({ deferWatch: true });
+    r.queue.enqueue(SESSION, [file("a.txt")], "");
+    await flush();
+    r.watches[0].options.onJob(ev("keyword_ready", { form: null, sections: [], sections_message: "", chunks: 5, pending_chunks: 5 }));
+    r.watches[0].options.onJob(ev("ready", { embedded_chunks: 5, keyword_only_chunks: 0, stopped: null, search: "keyword_semantic" }));
+    expect(r.announcements).toEqual(["a.txt: Keyword search is ready. You can ask questions now."]);
+  });
+
+  it("cancel of an unknown row sends nothing", async () => {
+    const r = rig({ deferWatch: true });
+    await r.queue.cancel(99);
+    expect(r.posts).toHaveLength(0);
   });
 });

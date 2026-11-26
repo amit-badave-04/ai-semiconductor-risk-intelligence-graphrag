@@ -6,22 +6,24 @@ import { useId, useRef, useState, type DragEvent } from "react";
 import type { JobRow } from "@/lib/jobs";
 import { deck } from "@/copy/deck";
 import { FILE_ACCEPT, uploadTargetOptions, type WsDocument } from "@/lib/workspace";
+import { UploadJobCard } from "@/components/UploadJobCard";
 import { useWorkspaceUploads } from "@/state/useWorkspaceUploads";
 
 const { DROP_TEXT, UPLOAD_AS, types: TYPES } = deck.workspace;
 
 const TONE: Record<JobRow["tone"], string> = { "": "", ok: "text-foreground font-medium", err: "text-destructive" };
 
-function Rows({ rows }: { rows: readonly JobRow[] }) {
+function Rows({ rows, onCancel }: { rows: readonly JobRow[]; onCancel: (key: number) => Promise<boolean> }) {
   if (rows.length === 0) return null;
   return (
     <ul className="m-0 mt-3 list-none space-y-1 p-0 text-sm">
       {rows.map((row) => (
         <li key={row.key} data-job-row="" className="flex flex-wrap gap-x-3">
-          <span className="font-medium break-all">
+          <span id={`job-name-${row.key}`} className="font-medium break-all">
             <bdi>{row.name}</bdi>
           </span>
           <span className={TONE[row.tone]}>{row.text}</span>
+          {row.view !== null && <UploadJobCard view={row.view} terminal={row.terminal} nameId={`job-name-${row.key}`} onCancel={() => onCancel(row.key)} />}
         </li>
       ))}
     </ul>
@@ -78,7 +80,7 @@ function DropZone({ onFiles, describedBy }: DropZoneProps) {
 }
 
 export function WorkspaceUpload({ documents }: { documents: readonly WsDocument[] }) {
-  const { upload, rows } = useWorkspaceUploads();
+  const { upload, rows, cancel } = useWorkspaceUploads();
   const [chosen, setChosen] = useState("");
   const targetId = useId();
   const typesId = useId();
@@ -112,7 +114,7 @@ export function WorkspaceUpload({ documents }: { documents: readonly WsDocument[
       <p id={typesId} className="mt-2 mb-0 text-sm text-muted-foreground">
         {TYPES}
       </p>
-      <Rows rows={rows} />
+      <Rows rows={rows} onCancel={cancel} />
     </div>
   );
 }

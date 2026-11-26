@@ -905,3 +905,19 @@ def test_create_workspace_honours_the_ttl(monkeypatch, hours, expect_future):
     _, _, expires_at = repo.create_workspace(object(), ttl_hours=hours)
     is_future = datetime.fromisoformat(expires_at) > datetime.now(UTC)
     assert is_future == expect_future or hours == 0  # a zero-hour TTL expires immediately (>=, not >)
+
+
+def test_pending_embedding_count_counts_this_workspace_s_current_chunks_without_a_vector(monkeypatch):
+    seen = {}
+
+    def fake_run(driver, query, **params):
+        seen.update(query=query, params=params)
+        return [{"pending": 4}]
+
+    monkeypatch.setattr(repo, "run_cypher", fake_run)
+    assert repo.pending_embedding_count(object(), "ws1") == 4
+    assert seen["query"] == repo.PENDING_EMBEDDING_COUNT_QUERY and seen["params"] == {"ws": "ws1"}
+    text = repo.PENDING_EMBEDDING_COUNT_QUERY
+    assert "workspace_id: $ws" in text and "is_current: true" in text and "embedding IS NULL" in text and "count(" in text
+    monkeypatch.setattr(repo, "run_cypher", lambda *a, **kw: [])
+    assert repo.pending_embedding_count(object(), "ws1") == 0

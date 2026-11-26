@@ -28,6 +28,8 @@ class FakeRepo:
                          _row(A, "aaaaaaaaaaaa", 1, 1, "Export controls restrict shipments of accelerators to certain countries.")],
                      B: [_row(B, "bbbbbbbbbbbb", 1, 0, "The zebra migration plan is a confidential strategy for the herd.")]}
         self.row_reads = 0
+        self.pending = 0
+        self.pending_reads = 0
 
     def current_versions(self, driver, ws):
         return sorted({(r["document_id"], r["version"]) for r in self.rows.get(ws, [])})
@@ -37,9 +39,15 @@ class FakeRepo:
         return [dict(r) for r in self.rows.get(ws, [])]
 
 
+    def pending_embedding_count(self, driver, ws):
+        self.pending_reads += 1
+        return self.pending
+
+
 @pytest.fixture
 def fake(monkeypatch):
     fr = FakeRepo()
+    monkeypatch.setattr(repo, "pending_embedding_count", fr.pending_embedding_count, raising=False)
     monkeypatch.setattr(repo, "current_versions", fr.current_versions)
     monkeypatch.setattr(repo, "current_chunk_rows", fr.current_chunk_rows)
     monkeypatch.setattr(ki, "CACHE", ki.IndexCache())
@@ -162,6 +170,49 @@ def test_search_label_names_what_the_ask_used():
     assert ki.search_label(dense=[{"chunk_id": "x"}], as_of=False) == "keyword_semantic"
     assert ki.search_label(dense=[], as_of=False) == "keyword_only"
     assert ki.search_label(dense=[{"chunk_id": "x"}], as_of=True) == "semantic_only"
+
+
+def test_search_label_is_partial_when_some_current_chunks_still_lack_a_vector():
+    assert ki.search_label(dense=[{"chunk_id": "x"}], as_of=False, pending=3) == "keyword_semantic_partial"
+    assert ki.search_label(dense=[{"chunk_id": "x"}], as_of=False, pending=0) == "keyword_semantic"
+    assert ki.search_label(dense=[], as_of=False, pending=3) == "keyword_only"
+    assert ki.search_label(dense=[{"chunk_id": "x"}], as_of=True, pending=3) == "semantic_only"
+
+
+def _ask(monkeypatch, dense, **kw):
+    monkeypatch.setattr(repo, "search_chunks", lambda driver, ws, vec, k, cutoff: dense)
+    embedder = type("E", (), {"encode_query": lambda self, q: [0.0]})()
+    return ws_mod.workspace_retrieve("packaging", A, object(), embedder, **kw)
+
+
+_DENSE = [{"chunk_id": "doc:aaaaaaaaaaaa:v1:0000", "text": "dense", "document_id": "aaaaaaaaaaaa", "version": 1,
+           "is_current": True, "title": "t"}]
+
+
+def test_an_answer_over_a_partly_embedded_workspace_is_labelled_partial(fake, monkeypatch):
+    fake.pending = 2
+    assert _ask(monkeypatch, _DENSE)["search"] == "keyword_semantic_partial"
+
+
+def test_an_answer_over_a_fully_embedded_workspace_is_labelled_keyword_semantic(fake, monkeypatch):
+    assert _ask(monkeypatch, _DENSE)["search"] == "keyword_semantic"
+
+
+def test_the_pending_count_is_read_only_when_it_can_change_the_label(fake, monkeypatch):
+    fake.pending = 2
+    _ask(monkeypatch, [])                                   # no vector hit: keyword only, nothing to count
+    _ask(monkeypatch, _DENSE, as_of="2026-01-01")           # an as-of ask is semantic only
+    assert fake.pending_reads == 0
+    _ask(monkeypatch, _DENSE)
+    assert fake.pending_reads == 1
+
+
+def test_a_failed_pending_count_never_claims_full_coverage(fake, monkeypatch):
+    def boom(driver, ws):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(repo, "pending_embedding_count", boom, raising=False)
+    assert _ask(monkeypatch, _DENSE)["search"] == "keyword_semantic_partial"
 
 
 def test_an_as_of_ask_never_uses_the_keyword_index(fake, monkeypatch):

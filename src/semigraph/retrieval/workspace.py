@@ -214,7 +214,7 @@ def workspace_retrieve(question: str, workspace_id: str, driver, embedder, *, as
                        k: int = DEFAULT_K_DOC_CHUNKS, query_vec: list[float] | None = None) -> dict:
     """Filtered vector search over this workspace's chunks (current only, or as of ``as_of``), fused with a keyword search of
     this workspace's own current chunks (never for an ``as_of`` ask; docs/specs/m2-search.md R17): ``{"doc_chunks": [...],
-    "stale_ids": [...], "search": "keyword_only" | "keyword_semantic" | "semantic_only"}`` — ``stale_ids`` names any retrieved chunk that is not the document's current one
+    "stale_ids": [...], "search": "keyword_only" | "keyword_semantic" | "keyword_semantic_partial" | "semantic_only"}`` — ``stale_ids`` names any retrieved chunk that is not the document's current one
     (only possible with ``as_of``; a follow-up ask's stale citations are computed from the ANSWER's cited ids
     instead, see :func:`_stale_citations`, since a plain current-only search never retrieves a superseded chunk).
     ``query_vec`` is the question's embedding when the caller already has it (the async path embeds once and passes it to
@@ -233,7 +233,21 @@ def workspace_retrieve(question: str, workspace_id: str, driver, embedder, *, as
     stale_ids = [c["chunk_id"] for c in doc_chunks if not c["is_current"]]
     from ..uploads.keyword_index import search_label
 
-    return {"doc_chunks": doc_chunks, "stale_ids": stale_ids, "search": search_label(dense=rows_dense, as_of=cutoff is not None)}
+    pending = _pending_embeddings(driver, workspace_id) if rows_dense and cutoff is None else 0
+    return {"doc_chunks": doc_chunks, "stale_ids": stale_ids,
+            "search": search_label(dense=rows_dense, as_of=cutoff is not None, pending=pending)}
+
+
+def _pending_embeddings(driver, workspace_id: str) -> int:
+    """Current chunks of this workspace without a vector at answer time. A fault counts as "some", never as "none": the label must
+    not claim a full search by meaning it could not confirm."""
+    from ..uploads import repo
+
+    try:
+        return repo.pending_embedding_count(driver, workspace_id)
+    except Exception:  # noqa: BLE001 - the ask must still answer; only its label is more careful
+        logger.warning("upload pending-embedding count failed; labelling the search as partial", exc_info=True)
+        return 1
 
 
 def make_delimiter(doc_chunks: list[dict]) -> str:

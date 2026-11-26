@@ -252,7 +252,7 @@ def test_stream_workspace_answer_emits_retrieval_with_doc_chunks_then_done_with_
     assert done["checks"]["numbers_grounded"] is True          # "41.5%" and "$500 million" both appear in the chunk
     workspace = done["workspace"]
     assert set(workspace) == {"id_hash", "doc_chunks", "stale_citations", "suspicious", "search"}
-    assert workspace["search"] in {"keyword_only", "keyword_semantic", "semantic_only"}   # R17/R19: the answer label
+    assert workspace["search"] in {"keyword_only", "keyword_semantic", "keyword_semantic_partial", "semantic_only"}   # R17/R19: the answer label
     assert workspace["doc_chunks"] == 1
     assert workspace["stale_citations"] == [DOC1]              # chunk_texts fixture reports is_current False
     assert workspace["suspicious"] is False

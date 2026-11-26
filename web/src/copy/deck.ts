@@ -313,9 +313,46 @@ export const deck = {
     cannotWatch: "could not watch this upload",
     connectionLost: "connection lost while watching this upload \u2014 check its status later",
     phase: { parsing: "reading the document", chunking: "splitting into sections", comparing: "comparing with the previous version" },
-    left: (seconds: number): string => ` (~${seconds}s left)`,
     unknownError: "unknown error",
     unchanged: (version: string): string => `unchanged (still v${version})`,
+    keywordReady: "Keyword search ready",
+    /** M2 R19 (decision 009, llm-council wording): the upload card. One term pair: "keyword search" and "search by meaning". */
+    card: {
+      preflightHeading: "What we found in this file",
+      passagesHelp: "A passage is a short piece of your file.",
+      form: (form: string | null): string => (form === null ? "Form: not recognised. You can still ask about this file." : `Form: ${form}`),
+      passages: (count: number): string => `${count} ${count === 1 ? "passage" : "passages"} to search`,
+      sectionsFound: "Sections found",
+      noSections: "No standard sections found.",
+      /** An estimate in minutes, never seconds: under a minute, 1 to 59 minutes (above 10 to the nearest 5), then an hour. */
+      wait: (seconds: number): string => {
+        const minutes = Math.ceil(seconds / 60);
+        const rounded = minutes > 10 ? Math.round(minutes / 5) * 5 : minutes;
+        const left =
+          seconds < 60 ? "less than a minute left" : rounded >= 60 ? "about 1 hour left" : `about ${rounded} ${rounded === 1 ? "minute" : "minutes"} left`;
+        return `Search by meaning: ${left} (estimate)`;
+      },
+      waitUnknown: "Search by meaning: time estimate shown once it starts. This can take up to an hour.",
+      keywordReady: "Keyword search is ready. You can ask questions now.",
+      waiting: "Search by meaning is waiting to start. Keyword search works now.",
+      started: "Preparing search by meaning started.",
+      progressName: "Preparing search by meaning",
+      progress: (done: number, total: number): string => `Preparing search by meaning: ${done} of ${total} ${total === 1 ? "passage" : "passages"}`,
+      cancel: "Stop preparing search by meaning",
+      cancelHelp: "Keyword search keeps working. Passages already prepared stay searchable by meaning.",
+      stopping: "Stopping\u2026",
+      /** The end line; `stopped` is the server's reason (embed_queue.STOP_REASONS). "cancelled" is the user's stop. */
+      summary: (embedded: number, keywordOnly: number, stopped: string | null): string => {
+        const n = (count: number): string => `${count} ${count === 1 ? "passage" : "passages"}`;
+        if (embedded === 0 && keywordOnly === 0) return "No text was found to search in this file.";
+        if (keywordOnly === 0) return embedded === 1 ? "The 1 passage can be searched by keyword and by meaning." : `All ${embedded} passages can be searched by keyword and by meaning.`;
+        const prefix = stopped === null ? "" : stopped === "cancelled" ? "Stopped. " : "Search by meaning stopped early. ";
+        if (embedded === 0) {
+          return `${prefix}${keywordOnly === 1 ? "The 1 passage" : `All ${keywordOnly} passages`} can be searched by keyword only.`;
+        }
+        return `${prefix}${n(embedded)} can be searched by keyword and by meaning. ${keywordOnly} can be searched by keyword only.`;
+      },
+    },
   },
 
   changesReport: {
@@ -453,6 +490,12 @@ export const deck = {
             : "Some cited sources were not among the passages found for this question.";
         case "sourcesReplaced":
           return `Checked: ${count} cited ${count === 1 ? "source comes" : "sources come"} from a filing that has since been replaced`;
+        case "uploadKeywordOnly":
+          return "Your uploaded document was searched by keyword only.";
+        case "uploadKeywordSemantic":
+          return "Your uploaded document was searched by keyword and by meaning.";
+        case "uploadKeywordSemanticPartial":
+          return "Your uploaded document was searched by keyword, and part of it by meaning.";
         case "sourcesReferenceOnly":
           return `Checked: ${count} ${count === 1 ? "source was" : "sources were"} shown to the model as a reference only`;
         case "noCitation":

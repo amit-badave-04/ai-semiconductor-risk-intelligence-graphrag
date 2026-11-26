@@ -24,6 +24,8 @@ export interface WorkspaceUploadsValue {
   remove: () => Promise<void>;
   /** Queue files for upload into the open workspace, one at a time. Called from the upload handler only. */
   upload: (files: readonly File[], documentId: string) => void;
+  /** Ask the server to stop preparing search by meaning for one row's job (M2 R19; true when the server took it); the document stays keyword-searchable. */
+  cancel: (rowKey: number) => Promise<boolean>;
 }
 
 const INERT: WorkspaceUploadsValue = {
@@ -34,6 +36,7 @@ const INERT: WorkspaceUploadsValue = {
   restore: () => Promise.resolve(""),
   remove: () => Promise.resolve(),
   upload: () => {},
+  cancel: () => Promise.resolve(false),
 };
 
 export const WorkspaceUploadsContext = createContext<WorkspaceUploadsValue>(INERT);
