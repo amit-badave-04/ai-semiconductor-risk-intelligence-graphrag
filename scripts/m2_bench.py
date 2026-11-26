@@ -336,7 +336,6 @@ def run_dev(out: Path, arm: str = "baseline") -> dict:
     """
     import sys
     import time
-    from urllib.parse import urlsplit
 
     sys.path.insert(0, str(ROOT / "src"))
     from semigraph.config import get_settings
@@ -350,14 +349,11 @@ def run_dev(out: Path, arm: str = "baseline") -> dict:
     require_reranker(fusion)
     bench = registered_bench(ROOT / "artifacts" / "m2_bench" / "m2_bench_dev.json", REGISTERED["dev"])["questions"]
     settings = get_settings()
-    host = urlsplit(settings.neo4j_uri)
-    if host.hostname not in {"localhost", "127.0.0.1", "::1"} or host.username or host.password:
-        raise SystemExit("refusing: M2-Bench runs read a local graph only")
+    require_local_graph(settings.neo4j_uri)
     driver, embedder, run = client.get_driver(settings), Embedder(), {}
     index_build_s = 0.0
     try:
-        with driver.session(default_access_mode="READ") as ses:
-            snapshot = ses.run("MATCH (s:Snapshot) RETURN s.id AS id ORDER BY s.created_at DESC LIMIT 1").single()["id"]
+        snapshot = _snapshot(driver)
         started = time.perf_counter()
         index = index_for(fusion, load_rows(driver) if fusion is not None and fusion.keyword else [])   # at run start, from the local graph
         index_build_s = time.perf_counter() - started
@@ -385,13 +381,465 @@ def run_dev(out: Path, arm: str = "baseline") -> dict:
     return report
 
 
+
+# ---- I6: the one-time M2-Bench test run (spec section 7: primary test, no-loss gates; R2, R3, R21) ----
+
+ALPHA = 0.05
+BOOTSTRAP_RESAMPLES = 10_000
+BOOTSTRAP_SEED = 20261126
+CONTROL_LOSS_LIMIT = 2
+FUSED_LOG_DEPTH = 50
+BENCH_DIR = ROOT / "artifacts" / "m2_bench"
+_KNOWN_ID = re.compile(r"\b\d{10}-\d{2}-\d{6}:[A-Za-z0-9.]+:\d+\b|\bxbrl:\d+:[a-z_]+:\d{4}-\d{2}-\d{2}\b|\bfr:\d{4}-\d{5}\b")
+
+
+RUN_ONCE_FILES = ("test_started.json", "test_strata.json", "test_report.json")
+# SHA-256 of artifacts/m2_bench/frozen_settings.json as frozen on dev (commit 76ced9e), LF line endings.
+FROZEN_SETTINGS_SHA256 = "c5018d87ddd9a9d18e9b4468456fe253d054368d2e80f6142b4c9520778540ce"
+SNAPSHOT_QUERY = "MATCH (s:Snapshot) RETURN s.id AS id ORDER BY s.created_at DESC LIMIT 1"
+
+
+def refuse_if_already_run(out_dir: Path) -> None:
+    """The test split runs once: a second look is a new experiment, so there is no override. Any trace of a run counts."""
+    for name in RUN_ONCE_FILES:
+        if (out_dir / name).exists():
+            raise SystemExit(f"refusing: {name} exists; the M2-Bench test runs once (spec section 7)")
+
+
+def claim_test_run(out_dir: Path, meta: Mapping) -> None:
+    """Take the one run (exclusive create) right before the first test question; a crash later cannot re-open it."""
+    try:
+        with open(out_dir / "test_started.json", "x", encoding="utf-8", newline="\n") as f:
+            f.write(json.dumps(meta, indent=1) + "\n")
+    except FileExistsError:
+        raise SystemExit("refusing: test_started.json exists; the M2-Bench test runs once (spec section 7)") from None
+
+
+def require_frozen_settings(path: Path) -> str:
+    """The frozen settings must be the ones frozen on dev (registered hash); returns the hash."""
+    digest = file_sha256(path)
+    if digest != FROZEN_SETTINGS_SHA256:
+        raise SystemExit(f"refusing: {path.name} differs from the frozen settings (registered SHA-256 {FROZEN_SETTINGS_SHA256[:16]})")
+    return digest
+
+
+def check_reranker_hash(path: Path, expected_prefix: str) -> str:
+    """The reranker file the run would load must be the one frozen (SHA-256 prefix); returns the prefix."""
+    if not path.is_file():
+        raise SystemExit(f"refusing: the frozen reranker file {path} is missing")
+    prefix = hashlib.sha256(path.read_bytes()).hexdigest()[:len(expected_prefix)]
+    if prefix != expected_prefix:
+        raise SystemExit(f"refusing: the reranker file differs from the frozen one ({prefix} != {expected_prefix})")
+    return prefix
+
+
+def check_frozen_reranker(frozen: Mapping) -> str:
+    from semigraph.retrieval.rerank import RERANK_MODELS, default_root
+
+    directory, onnx_file = RERANK_MODELS[frozen["config"]["rerank"]]
+    if onnx_file != frozen["reranker"]["file"]:
+        raise SystemExit("refusing: the reranker file name differs from the frozen settings")
+    return check_reranker_hash(default_root() / directory / onnx_file, frozen["reranker"]["sha256_prefix"])
+
+
+def frozen_candidate(path: Path):
+    """The candidate FusionConfig, read from the frozen settings artifact."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "src"))
+    from semigraph.retrieval.fusion import FusionConfig
+
+    return FusionConfig(**json.loads(path.read_text(encoding="utf-8"))["config"])
+
+
+def recall_at(ranked: Iterable[str], gold: Iterable[Mapping], k: int) -> float:
+    """Share of the grade-2 gold chunks inside the first k distinct ranked ids."""
+    current = {g["chunk_id"] for g in gold if g["grade"] == 2}
+    top = set(list(dict.fromkeys(ranked))[:k])
+    return len(current & top) / len(current) if current else 0.0
+
+
+def recall_ranking(excerpts: Iterable[str], context_ids: Iterable[str]) -> list[str]:
+    """The ranked list Recall@20 reads: the excerpts in rank order, then the other context ids (sorted; unranked)."""
+    first = list(excerpts)
+    return first + sorted(set(context_ids) - set(first))
+
+
+def classify_strata(baseline_scored: Mapping[str, Mapping]) -> dict[str, str]:
+    """Headroom: the baseline context lacks the grade-2 gold. Control: it has it. Decided from the baseline run alone."""
+    return {qid: "control" if s["context_hit"] else "headroom" for qid, s in baseline_scored.items()}
+
+
+def paired_outcomes(base: Mapping, cand: Mapping, ids: Iterable[str]) -> tuple[int, int]:
+    """(wins, losses) of the candidate over the base on Success@8; ties are dropped."""
+    ids = list(ids)
+    wins = sum(1 for i in ids if cand[i]["success8"] and not base[i]["success8"])
+    losses = sum(1 for i in ids if base[i]["success8"] and not cand[i]["success8"])
+    return wins, losses
+
+
+def sign_step(base: Mapping, cand: Mapping, ids: Iterable[str]) -> dict:
+    wins, losses = paired_outcomes(base, cand, ids)
+    p = sign_test(wins, losses)
+    return {"wins": wins, "losses": losses, "p": p, "alpha": ALPHA, "passes": p < ALPHA and wins > losses}
+
+
+def primary_test(base: Mapping, cand: Mapping, filer_period: Mapping, ids: Iterable[str]) -> dict:
+    """H1 candidate vs baseline; H2 (candidate vs filer+period) only if H1 passes; H1 without type A as a sensitivity."""
+    ids = list(ids)
+    h1 = sign_step(base, cand, ids)
+    no_a = [i for i in ids if base[i]["type"] != "A"]
+    return {"h1": h1, "h2": {"run": True, **sign_step(filer_period, cand, ids)} if h1["passes"] else {"run": False},
+            "h1_without_type_a": sign_step(base, cand, no_a)}
+
+
+def per_type_gate(base: Mapping, cand: Mapping, ids: Iterable[str]) -> dict:
+    """Wins minus losses at least 0 in every type (test split, main questions)."""
+    ids = list(ids)
+    by_type = {t: (lambda w_l: w_l[0] - w_l[1])(paired_outcomes(base, cand, [i for i in ids if base[i]["type"] == t]))
+               for t in sorted({base[i]["type"] for i in ids})}
+    return {"pass": all(v >= 0 for v in by_type.values()), "by_type": by_type}
+
+
+def control_gate(base: Mapping, cand: Mapping, ids: Iterable[str], strata: Mapping[str, str]) -> dict:
+    """At most two losses among the control-stratum questions."""
+    control = [i for i in ids if strata[i] == "control"]
+    losses = paired_outcomes(base, cand, control)[1]
+    ctx_losses = sum(1 for i in control if base[i]["context_hit"] and not cand[i]["context_hit"])   # reported, not gated
+    return {"pass": losses <= CONTROL_LOSS_LIMIT, "losses": losses, "context_hit_losses": ctx_losses,
+            "control_n": len(control), "limit": CONTROL_LOSS_LIMIT}
+
+
+def tripwire_gate(base_verdicts: Iterable[Mapping], cand_verdicts: Iterable[Mapping]) -> dict:
+    """Decision 006's verdicts (compare.tripwire_verdict, ``hit``): every question that hits on the baseline must still hit."""
+    base = {v["id"]: v["hit"] for v in base_verdicts}
+    cand = {v["id"]: v["hit"] for v in cand_verdicts}
+    lost = [i for i in base if base[i] and not cand[i]]
+    return {"pass": not lost, "lost": lost, "baseline_hits": sum(base.values()), "candidate_hits": sum(cand.values()), "n": len(base)}
+
+
+def known_ids(question: Mapping) -> set[str]:
+    """The evidence ids an old-benchmark question names in metric_ids, facts and judge_notes (chunk, xbrl and fr ids)."""
+    text = json.dumps([question.get(k) for k in ("metric_ids", "facts", "judge_notes")], ensure_ascii=False)
+    return set(_KNOWN_ID.findall(text))
+
+
+def old_sixty_gate(questions: Iterable[Mapping], base_ctx: Mapping[str, Iterable[str]], cand_ctx: Mapping[str, Iterable[str]]) -> dict:
+    """Of the questions with known evidence ids: a context miss is none of them in the candidate context, and a lost id is one the
+    baseline context held that the candidate's does not (cp-add-company: "none loses a gold id from context"). Both fail the gate."""
+    misses, baseline_misses, lost, checked, skipped = [], [], {}, 0, 0
+    for q in questions:
+        ids = known_ids(q)
+        if not ids:
+            skipped += 1
+            continue
+        checked += 1
+        base, cand = set(base_ctx[q["id"]]), set(cand_ctx[q["id"]])
+        if not ids & cand:
+            misses.append(q["id"])
+        if not ids & base:
+            baseline_misses.append(q["id"])
+        if (ids & base) - cand:
+            lost[q["id"]] = sorted((ids & base) - cand)
+    return {"pass": not misses and not lost, "checked": checked, "misses": misses, "baseline_misses": baseline_misses,
+            "lost": lost, "skipped": skipped}
+
+
+def paired_bootstrap(diffs: Mapping[str, list[float]], resamples: int = BOOTSTRAP_RESAMPLES, seed: int = BOOTSTRAP_SEED):
+    """Mean paired difference of each resample, drawing whole passage families with replacement (fixed seed)."""
+    import numpy as np
+
+    fams = sorted(diffs)
+    sums = np.array([sum(diffs[f]) for f in fams], dtype=float)
+    counts = np.array([len(diffs[f]) for f in fams], dtype=float)
+    idx = np.random.default_rng(seed).integers(0, len(fams), size=(resamples, len(fams)))
+    return sums[idx].sum(axis=1) / counts[idx].sum(axis=1)
+
+
+def holm(pvals: Mapping[str, float], alpha: float = ALPHA) -> dict[str, dict]:
+    """Holm step-down: per metric whether it is significant and the alpha its interval is cut at (alpha / (m - rank))."""
+    out, failed = {}, False
+    for rank, (name, p) in enumerate(sorted(pvals.items(), key=lambda kv: kv[1])):
+        level = alpha / (len(pvals) - rank)
+        failed = failed or p >= level
+        out[name] = {"significant": not failed, "alpha": level}
+    return out
+
+
+def _bootstrap_p(means) -> float:
+    n = len(means)
+    return min(1.0, 2 * min(((means <= 0).sum() + 1) / (n + 1), ((means >= 0).sum() + 1) / (n + 1)))
+
+
+def secondary_metrics(base: Mapping, cand: Mapping, ids: Iterable[str], family: Mapping[str, str],
+                      resamples: int = BOOTSTRAP_RESAMPLES, seed: int = BOOTSTRAP_SEED) -> dict[str, dict]:
+    """Success@8, nDCG@10 and Recall@20 paired differences with family-bootstrap intervals at the Holm level."""
+    import numpy as np
+
+    ids, boots, mean_diff = list(ids), {}, {}
+    for name in ("success8", "ndcg10", "recall20"):
+        diffs: dict[str, list[float]] = {}
+        for i in ids:
+            diffs.setdefault(family[i], []).append(float(cand[i][name]) - float(base[i][name]))
+        boots[name] = paired_bootstrap(diffs, resamples, seed)
+        mean_diff[name] = sum(sum(v) for v in diffs.values()) / len(ids)
+    levels = holm({n: _bootstrap_p(m) for n, m in boots.items()})
+    return {n: {"mean_diff": mean_diff[n], "holm": levels[n], "p": _bootstrap_p(boots[n]),
+                "ci": [float(np.quantile(boots[n], levels[n]["alpha"] / 2)),
+                       float(np.quantile(boots[n], 1 - levels[n]["alpha"] / 2))]} for n in boots}
+
+
+def fused_ranking(leg_ranks: Mapping[str, list[str]], rrf_k: int) -> list[str]:
+    """Reciprocal rank fusion of the logged leg lists (the offline stand-in for the fused list; no rerank, no slot policy)."""
+    score: dict[str, float] = {}
+    for ranked in leg_ranks.values():
+        for pos, cid in enumerate(ranked):
+            score[cid] = score.get(cid, 0.0) + 1.0 / (rrf_k + pos + 1)
+    first = {cid: n for n, cid in enumerate(dict.fromkeys(c for r in leg_ranks.values() for c in r))}
+    return sorted(score, key=lambda c: (-score[c], first[c]))
+
+
+def reranker_trigger(questions: Mapping[str, Mapping], gold: Mapping[str, list], ids: Iterable[str], rrf_k: int) -> dict:
+    """R21: of the dev misses, the fraction with grade-2 gold in the fused top 50 but not in the fused top 8 (offline)."""
+    misses = [i for i in ids if not questions[i]["success8"]]
+    deep = 0
+    for i in misses:
+        fused = fused_ranking(questions[i].get("leg_ranks", {}), rrf_k)
+        current = {g["chunk_id"] for g in gold[i] if g["grade"] == 2}
+        if current & set(fused[:FUSED_LOG_DEPTH]) - set(fused[:8]):
+            deep += 1
+    return {"misses": len(misses), "gold_in_top50_beyond_8": deep, "fraction": deep / len(misses) if misses else 0.0}
+
+
+def verdict_line(primary: Mapping, gates: Mapping[str, Mapping]) -> str:
+    """One line: H1, H2 and the no-loss gates."""
+    def step(name, s):
+        return f"{name} not run" if not s.get("run", True) else \
+            f"{name} {'pass' if s['passes'] else 'fail'} {s['wins']}-{s['losses']} (p={s['p']:.4g})"
+
+    failed = [n for n, g in gates.items() if not g["pass"]]
+    tail = "gates OK" if not failed else "HOLD, failed gates: " + ", ".join(failed)
+    return " | ".join([step("H1", primary["h1"]), step("H2", primary["h2"]), tail])
+
+
+def score_arm(bench: Iterable[Mapping], run: Mapping[str, Mapping]) -> dict[str, dict]:
+    """score_run plus Recall@20 over the excerpts-then-context ranking."""
+    bench = list(bench)
+    scored = score_run(bench, run)
+    for q in bench:
+        r = run[q["id"]]
+        scored[q["id"]]["recall20"] = recall_at(recall_ranking(r["excerpts"], r["context_ids"]), q["gold"], 20)
+    return scored
+
+
+def analyse_test(bench: list[Mapping], scored: Mapping[str, Mapping[str, dict]], strata: Mapping[str, str]) -> dict:
+    """Primary tests, secondary intervals and the per-type and control gates, on the main questions only."""
+    main = [q["id"] for q in bench if q["role"] == "main"]
+    family = {q["id"]: q["family"] for q in bench}
+    base, cand, fp = scored["baseline"], scored["candidate"], scored["filer+period"]
+    return {"primary": primary_test(base, cand, fp, main),
+            "secondary_vs_baseline": secondary_metrics(base, cand, main, family),
+            "gates": {"per_type": per_type_gate(base, cand, main), "control": control_gate(base, cand, main, strata)}}
+
+
+def require_local_graph(uri: str) -> None:
+    from urllib.parse import urlsplit
+
+    host = urlsplit(uri)
+    if host.hostname not in {"localhost", "127.0.0.1", "::1"} or host.username or host.password:
+        raise SystemExit("refusing: M2-Bench runs read a local graph only")
+
+
+def _load_script(name: str):
+    import importlib.util
+    import sys
+
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _retrieve_ids(items: Iterable[Mapping], driver, embedder, fusion, index) -> dict[str, dict]:
+    """Ids only (no context text): the excerpts in rank order, the rendered context's ids, the logged leg lists."""
+    from semigraph.retrieval.answerer import build_blocks
+    from semigraph.retrieval.retriever import hybrid_retrieve
+
+    run = {}
+    for it in items:
+        r = hybrid_retrieve(it["q"], driver, embedder, fusion=fusion, keyword_index=index)  # answer_stream's defaults
+        _, _, valid_ids = build_blocks(r)
+        run[it["id"]] = {"excerpts": [c["chunk_id"] for c in r["chunks"]], "context_ids": sorted(valid_ids)}
+        if "leg_ranks" in r:
+            run[it["id"]]["leg_ranks"] = r["leg_ranks"]
+    return run
+
+
+def _retrieve_context(question: str, driver, embedder, fusion, index) -> str:
+    """The rendered context text, held in memory for decision 006's tripwire verdict only (never written)."""
+    from semigraph.retrieval.answerer import build_blocks
+    from semigraph.retrieval.retriever import hybrid_retrieve
+
+    return build_blocks(hybrid_retrieve(question, driver, embedder, fusion=fusion, keyword_index=index))[1]
+
+
+def _slim(scored: Mapping[str, dict], run: Mapping[str, dict]) -> dict[str, dict]:
+    return {qid: {**s, "excerpts": run[qid]["excerpts"]} for qid, s in scored.items()}
+
+
+def _write_json(path: Path, obj) -> None:
+    path.write_text(json.dumps(obj, indent=1) + "\n", encoding="utf-8", newline="\n")
+
+
+def _dev_trigger(frozen_rrf_k: int) -> dict:
+    """R21 from the dev report of the unreranked ``all`` arm (offline; no graph)."""
+    dev = registered_bench(BENCH_DIR / "m2_bench_dev.json", REGISTERED["dev"])["questions"]
+    report = json.loads((BENCH_DIR / "all_dev.json").read_text(encoding="utf-8"))
+    main = [q["id"] for q in dev if q["role"] == "main"]
+    return reranker_trigger(report["questions"], {q["id"]: q["gold"] for q in dev}, main, frozen_rrf_k)
+
+
+def _git_state() -> dict:
+    """HEAD and the uncommitted paths (other tracks edit src/ while this runs, so the run records what it ran on)."""
+    import subprocess
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=False).stdout.strip()
+
+    dirty = [ln for ln in git("status", "--porcelain").splitlines() if not ln.startswith("??")]
+    return {"head": git("rev-parse", "HEAD"), "dirty": bool(dirty), "modified_tracked_files": dirty[:60]}
+
+
+def _prepare_offline(out_dir: Path) -> dict:
+    """Everything fallible that needs no graph: a failure here has not looked at the test split."""
+    refuse_if_already_run(out_dir)
+    frozen_path = out_dir / "frozen_settings.json"
+    frozen_sha = require_frozen_settings(frozen_path)
+    frozen = json.loads(frozen_path.read_text(encoding="utf-8"))
+    arms = {"baseline": None, "filer+period": arm_config("filer+period"), "candidate": frozen_candidate(frozen_path)}
+    for fusion in arms.values():
+        require_reranker(fusion)
+    reranker_sha = check_frozen_reranker(frozen)
+    compare = _load_script("compare_retrieval")
+    old = json.loads((ROOT / "src" / "semigraph" / "artifacts" / "benchmark.json").read_text(encoding="utf-8"))
+    return {"frozen": frozen, "arms": arms, "compare": compare, "old": old,
+            "bench": registered_bench(out_dir / "m2_bench_test.json", REGISTERED["test"])["questions"],
+            "tripwire": compare.registered_gold(ROOT / "artifacts" / "m2_tripwire_gold.json")["questions"],
+            "trigger": _dev_trigger(frozen["config"].get("rrf_k", 60)),
+            "provenance": {"frozen_settings_sha256": frozen_sha, "reranker_sha256_prefix": reranker_sha, **_git_state()}}
+
+
+def _snapshot(driver) -> str:
+    with driver.session(default_access_mode="READ") as ses:
+        return ses.run(SNAPSHOT_QUERY).single()["id"]
+
+
+def _tripwire_mentions(prep: Mapping, driver) -> dict:
+    """Decision 006's MENTIONS lookup; refuse (before the test split is touched) when a gold chunk is not in the graph."""
+    compare = prep["compare"]
+    ids = sorted({g["chunk_id"] for q in prep["tripwire"] for g in q["gold"]})
+    mentions = {r["chunk_id"]: r["mention_ciks"] for r in compare._session_rows(driver, compare.GOLD_MENTIONS_QUERY, ids=ids)}
+    missing = [i for i in ids if i not in mentions]
+    if missing:
+        raise SystemExit(f"refusing: NOT A VALID RUN, tripwire gold chunks missing from the graph: {missing[:5]}")
+    return mentions
+
+
+def _test_split_runs(prep: Mapping, out_dir: Path, driver, embedder, indexes: Mapping, snapshot: str) -> tuple[dict, dict, dict]:
+    """Baseline first, strata written from it, then the other two arms (one pass over every test question)."""
+    arms, bench = prep["arms"], prep["bench"]
+    items = [{"id": q["id"], "q": q["q"]} for q in bench]
+    runs = {"baseline": _retrieve_ids(items, driver, embedder, None, None)}
+    scored = {"baseline": score_arm(bench, runs["baseline"])}
+    strata = classify_strata(scored["baseline"])                          # before any candidate is scored
+    _write_json(out_dir / "test_strata.json", {"snapshot": snapshot, "strata": strata,
+                                               "counts": {s: list(strata.values()).count(s) for s in ("headroom", "control")}})
+    for name in ("filer+period", "candidate"):
+        runs[name] = _retrieve_ids(items, driver, embedder, arms[name], indexes[name])
+        scored[name] = score_arm(bench, runs[name])
+    _write_json(out_dir / "test_runs.json", {"snapshot": snapshot, "runs": runs})   # ids only, before any analysis can fail
+    return runs, scored, strata
+
+
+def _no_loss_runs(prep: Mapping, driver, embedder, indexes: Mapping, mentions: Mapping) -> dict:
+    """The 9 tripwire questions (decision 006 verdicts on the rendered context) and the old 60 (context ids), baseline and candidate."""
+    arms, compare = prep["arms"], prep["compare"]
+    out = {"tripwire": {}, "old": {}}
+    for name in ("baseline", "candidate"):
+        out["tripwire"][name] = [compare.tripwire_verdict(
+            q, _retrieve_context(q["question"], driver, embedder, arms[name], indexes[name]), mentions) for q in prep["tripwire"]]
+        run = _retrieve_ids([{"id": q["id"], "q": q["q"]} for q in prep["old"]], driver, embedder, arms[name], indexes[name])
+        out["old"][name] = {k: v["context_ids"] for k, v in run.items()}
+    return out
+
+
+def _graph_phase(prep: Mapping, out_dir: Path) -> dict:
+    """Connect (local graph only), claim the one run, then run. Nothing here is repeatable."""
+    from semigraph.config import get_settings
+    from semigraph.embeddings import Embedder
+    from semigraph.graph import client
+    from semigraph.retrieval.keyword import load_rows
+
+    settings = get_settings()
+    require_local_graph(settings.neo4j_uri)
+    driver, embedder = client.get_driver(settings), Embedder()
+    try:
+        snapshot, rows = _snapshot(driver), load_rows(driver)
+        indexes = {n: index_for(f, rows) for n, f in prep["arms"].items()}   # each keyword index is built once
+        mentions = _tripwire_mentions(prep, driver)
+        claim_test_run(out_dir, {"snapshot": snapshot, **prep["provenance"]})   # the first test question is asked after this line
+        runs, scored, strata = _test_split_runs(prep, out_dir, driver, embedder, indexes, snapshot)
+        no_loss = _no_loss_runs(prep, driver, embedder, indexes, mentions)
+        _write_json(out_dir / "test_noloss_runs.json", {"tripwire": no_loss["tripwire"], "old_context_ids": no_loss["old"]})
+    finally:
+        driver.close()
+    return {"snapshot": snapshot, "backend": embedder.backend, "runs": runs, "scored": scored, "strata": strata, "no_loss": no_loss}
+
+
+def _tripwire_hits(verdicts: Iterable[Mapping]) -> list[dict]:
+    return [{"id": v["id"], "hit": v["hit"]} for v in verdicts]
+
+
+REPORT_NOTES = {
+    "recall20": "approximate: ranks 1-8 are the excerpts in rank order, ranks 9-20 are the other context ids sorted alphabetically; not for public claims",
+    "control_gate": "control = baseline context holds grade-2 gold; the gate counts Success@8 losses, context_hit_losses is reported beside it",
+    "old_sixty": "pass needs no context miss (any-of) AND no known id that the baseline context held but the candidate context lost",
+}
+
+
+def run_test(out_dir: Path = BENCH_DIR) -> dict:
+    """The one-time M2-Bench test run: baseline, filer+period and the frozen candidate on every test question, then the
+    no-loss sets. Offline checks first, then the claim (test_started.json, exclusive create), then the graph. Strata are
+    written from the baseline run before any candidate is scored. Local graph only."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "src"))
+    prep = _prepare_offline(out_dir)
+    got = _graph_phase(prep, out_dir)
+    bench, scored, no_loss = prep["bench"], got["scored"], got["no_loss"]
+    analysis = analyse_test(bench, scored, got["strata"])
+    trip = tripwire_gate(_tripwire_hits(no_loss["tripwire"]["baseline"]), _tripwire_hits(no_loss["tripwire"]["candidate"]))
+    sixty = old_sixty_gate(prep["old"], no_loss["old"]["baseline"], no_loss["old"]["candidate"])
+    gates = {**analysis["gates"], "tripwire": trip, "old_sixty": sixty}
+    report = {"split": "test", "snapshot": got["snapshot"], "embedding_backend": got["backend"], "frozen": prep["frozen"]["frozen"],
+              "provenance": prep["provenance"], "notes": REPORT_NOTES,
+              "arms": {n: _slim(scored[n], got["runs"][n]) for n in scored}, "strata": got["strata"], **analysis, "gates": gates,
+              "reranker_trigger_dev": prep["trigger"], "verdict": verdict_line(analysis["primary"], gates)}
+    _write_json(out_dir / "test_report.json", report)
+    return report
+
+
 if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description="M2-Bench (docs/specs/m2-search.md section 7)")
-    ap.add_argument("cmd", choices=["run-dev"])
-    ap.add_argument("--arm", choices=ARMS, default="baseline")
-    ap.add_argument("--out", type=Path, help="default: artifacts/m2_bench/<arm>_dev.json")
+    ap.add_argument("cmd", choices=["run-dev", "run-test"])
+    ap.add_argument("--arm", choices=ARMS, default="baseline", help="run-dev only")
+    ap.add_argument("--out", type=Path, help="run-dev only; default: artifacts/m2_bench/<arm>_dev.json")
     args = ap.parse_args()
-    rep = run_dev(args.out or ROOT / "artifacts" / "m2_bench" / f"{args.arm.replace('+', '_')}_dev.json", args.arm)
-    print("main:", rep["summary_main"], "| all:", rep["summary_all"], "| snapshot:", rep["snapshot"])
+    if args.cmd == "run-test":      # no flags: the run is guarded to happen once
+        print(run_test()["verdict"])
+    else:
+        rep = run_dev(args.out or ROOT / "artifacts" / "m2_bench" / f"{args.arm.replace('+', '_')}_dev.json", args.arm)
+        print("main:", rep["summary_main"], "| all:", rep["summary_all"], "| snapshot:", rep["snapshot"])
