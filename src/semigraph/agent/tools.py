@@ -229,6 +229,9 @@ def _run_cypher(driver, query: str, *, timeout: float | None = None, **params) -
         return [dict(row) for row in session.run(q, **params)]
 
 
+FUSED_MIN_SECONDS = 2.0      # shortcut: a floor, not a bound; the fused legs run uninterruptible, upgrade when the retriever takes a timeout
+
+
 @dataclass
 class ToolCallBudget:
     """What one tool call may spend, threaded down to every Cypher query the call makes: a shared DEADLINE (a tool that
@@ -247,8 +250,9 @@ class ToolCallBudget:
 class Toolbox:
     """The tools bound to one driver, one embedder and the user's question (the tools that rank use the question)."""
 
-    def __init__(self, driver, embedder, question: str, *, clock: Callable[[], float] = time.monotonic):
+    def __init__(self, driver, embedder, question: str, *, clock: Callable[[], float] = time.monotonic, fusion: Any = None):
         self.driver, self.embedder, self.question, self._clock = driver, embedder, question, clock
+        self._fusion = fusion        # a ``retrieval.fusion.FusionRuntime`` (RETRIEVAL_FUSION on) or None: the plain queries
         self._handlers: dict[str, Callable[[Any, dict, ToolCallBudget], ToolOutcome]] = {
             name: getattr(self, f"_{name}") for name in TOOL_NAMES}
 
@@ -324,16 +328,38 @@ class Toolbox:
         ids = self._resolve(a.companies) if a.companies else {}
         M.check_company_cap(r, ids)
         vec = self.embedder.encode_query(a.query)
-        if ids:
-            rows = self._cypher(R.EXCERPTS_QUERY, budget, ids=list(ids.values()), vec=vec, k=a.k, candidates=R.EXCERPT_CANDIDATES)
+        held = {c["chunk_id"] for c in r["chunks"]}
+        fetch_k = a.k + len(held)            # R20: over-fetch by what is held, so the held ids cannot crowd out every new excerpt
+        if ids and self._fusion is not None:
+            self._require_time_for_fusion(budget)
+            rows = self._fused_rows(a.query, vec, list(ids.values()), fetch_k)
+        elif ids:
+            rows = self._cypher(R.EXCERPTS_QUERY, budget, ids=list(ids.values()), vec=vec, k=fetch_k,
+                               candidates=R.EXCERPT_CANDIDATES + len(held))     # R20: $k alone cannot help, the ANN pool is 60
         else:
-            rows = self._cypher(R.VECTOR_QUERY, budget, k=a.k, vec=vec)
+            rows = self._cypher(R.VECTOR_QUERY, budget, k=fetch_k, vec=vec)
+        rows = M.fresh_rows(rows, held, a.k)
         merged = M.add_anchors(M.merge_chunks(r, rows), ids)
         added = len(merged["chunks"]) - len(r["chunks"])
         return self._done("search_filings", a, merged,
                           {"chunks_returned": len(rows), "chunks_added": added, "chunks_total": len(merged["chunks"]),
                            "chunk_cap": M.MAX_CHUNKS},
                           f"search_filings: {added} new excerpts ({len(merged['chunks'])} in total)")
+
+    @staticmethod
+    def _require_time_for_fusion(budget: ToolCallBudget) -> None:
+        """The fused legs cannot be interrupted, so refuse the call up front when the budget cannot cover them."""
+        left = budget.remaining()
+        if left is not None and left < FUSED_MIN_SECONDS:
+            raise ToolError({"error": "not enough time left for the fused search"}, "search_filings: refused, no time left in the budget")
+
+    def _fused_rows(self, query: str, vec: list[float], anchor_ids: list[int], k_chunks: int) -> list[dict]:
+        """The excerpts of the serving legs (the same ``FusionConfig`` and keyword index as the hybrid path) for the planner's
+        query and the named companies. shortcut: these queries run without the per-call Cypher timeout, upgrade when
+        ``retrieval.retriever`` takes a timeout."""
+        chunks, _, _, _ = R._fused_excerpts(self.driver, query, vec, anchor_ids, defaulted=False, periods=R.mentioned_periods(query),
+                                            k_chunks=k_chunks, cfg=self._fusion.config, index=self._fusion.index)
+        return chunks
 
     def _financial_metrics(self, a: FinancialMetricsArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         ids = self._resolve(a.companies)

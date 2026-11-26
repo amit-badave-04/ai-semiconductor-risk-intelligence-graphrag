@@ -20,12 +20,14 @@ from agent_fakes import (
     TSMC,
     FakeDriver,
     FakeEmbedder,
+    chunk_row,
     poisoned_world,
 )
 
 from semigraph.agent import tools as T
 from semigraph.eval.agent_eval import AGENT_TOOL_UNIVERSE
 from semigraph.retrieval import retriever as R
+from semigraph.retrieval.fusion import FusionConfig
 from semigraph.retrieval.answerer import build_blocks
 from semigraph.retrieval.retriever import hybrid_retrieve
 
@@ -181,17 +183,19 @@ def test_search_filings_embeds_the_planners_query_and_merges_new_chunks_after_th
     assert embedder.queries == ["CoWoS packaging capacity"]
     assert driver.names() == ["excerpts"]
     params = driver.params_of("excerpts")[0]
-    assert params["ids"] == [TSMC] and params["k"] == 10 and params["candidates"] == R.EXCERPT_CANDIDATES
-    assert out.r["chunks"][:8] == r["chunks"] and len(out.r["chunks"]) == 10        # the fake returns ids 1..10: two are new
+    # R20: k is the asked 10 plus the 8 excerpts already held (the deliberate update of the pinned parameter)
+    assert params["ids"] == [TSMC] and params["k"] == 18 and params["candidates"] == R.EXCERPT_CANDIDATES + 8
+    # the fake returns ids 1..18 (it honours k): ids 9..18 are the ten new ones, of which 8 fit under the 16-chunk cap
+    assert out.r["chunks"][:8] == r["chunks"] and len(out.r["chunks"]) == 16
     assert out.r["anchors"]["TSMC"] == TSMC
-    assert out.result == {"chunks_returned": 10, "chunks_added": 2, "chunks_total": 10, "chunk_cap": 16} and out.ok
-    assert out.summary == "search_filings: 2 new excerpts (10 in total)"
+    assert out.result == {"chunks_returned": 10, "chunks_added": 8, "chunks_total": 16, "chunk_cap": 16} and out.ok
+    assert out.summary == "search_filings: 8 new excerpts (16 in total)"
 
 
 def test_search_filings_without_a_company_is_the_unanchored_vector_search():
     box, r, driver, _ = setup()
     out = run(box, r, "search_filings", {"query": "data center power"})
-    assert driver.names() == ["vector"] and driver.params_of("vector")[0]["k"] == 6
+    assert driver.names() == ["vector"] and driver.params_of("vector")[0]["k"] == 6 + len(r["chunks"])
     assert out.r["anchors"] == r["anchors"] and out.result["chunks_total"] == len(out.r["chunks"])
 
 
@@ -200,6 +204,103 @@ def test_search_filings_never_exceeds_sixteen_chunks_and_never_duplicates_one():
     out = run(box, r, "search_filings", {"query": "again", "companies": ["Nvidia"], "k": 10})
     ids = [c["chunk_id"] for c in out.r["chunks"]]
     assert len(ids) == len(set(ids)) <= 16
+
+
+def _rows_after(driver, n_new):
+    """A driver whose excerpt query returns the 8 held ids first and then ``n_new`` fresh ones, cut at ``k`` like the real query."""
+    held = [chunk_row(n) for n in range(1, 9)]
+    fresh = [chunk_row(n) for n in range(100, 100 + n_new)]
+    driver.layers["excerpts"] = lambda params: (held + fresh)[: params["k"]]
+    driver.layers["vector"] = lambda params: (held + fresh)[: params["k"]]
+
+
+def test_search_filings_excludes_held_ids():
+    box, r, driver, _ = setup()
+    held = {c["chunk_id"] for c in r["chunks"]}
+    _rows_after(driver, 5)
+    out = run(box, r, "search_filings", {"query": "x", "companies": ["Nvidia"], "k": 3})
+    new = [c["chunk_id"] for c in out.r["chunks"][len(r["chunks"]):]]
+    assert len(new) == 3 and not held & set(new)
+    assert out.result["chunks_added"] == 3 and out.result["chunks_returned"] == 3
+
+
+def test_search_filings_overfetches_by_held_count():
+    box, r, driver, _ = setup()
+    _rows_after(driver, 5)
+    run(box, r, "search_filings", {"query": "x", "companies": ["Nvidia"], "k": 3})
+    assert driver.params_of("excerpts")[0]["k"] == 3 + len(r["chunks"])
+    # R20: raising $k alone cannot help, the companies branch draws only EXCERPT_CANDIDATES ANN candidates before the filter
+    assert driver.params_of("excerpts")[0]["candidates"] == R.EXCERPT_CANDIDATES + len(r["chunks"]) == 60 + len(r["chunks"])
+    run(box, r, "search_filings", {"query": "x", "k": 2})
+    assert driver.params_of("vector")[0]["k"] == 2 + len(r["chunks"])
+
+
+def test_search_filings_with_every_hit_already_held_adds_nothing_and_says_so():
+    box, r, driver, _ = setup()
+    _rows_after(driver, 0)
+    out = run(box, r, "search_filings", {"query": "x", "companies": ["Nvidia"], "k": 4})
+    assert out.ok and out.r["chunks"] == r["chunks"] and out.result["chunks_added"] == 0
+
+
+# --- search_filings with RETRIEVAL_FUSION (the agent uses the fused legs) -----------------------------------------------------
+
+class _Runtime:
+    """What ``FusionRuntime`` carries (the leg config and the keyword index); the legs themselves are faked below."""
+    def __init__(self):
+        self.config = FusionConfig(filer=True, period=True, keyword=True, keyword_context=True, rerank="minilm")
+        self.index = object()
+
+
+def test_search_filings_with_fusion_runs_the_fused_legs_on_the_query_and_excludes_held_ids(monkeypatch):
+    driver, embedder = FakeDriver.world(), FakeEmbedder()
+    runtime = _Runtime()
+    r = hybrid_retrieve(QUESTION, driver, embedder)
+    held = [c["chunk_id"] for c in r["chunks"]]
+    seen = {}
+
+    def fake_fused(drv, question, vec, anchor_ids, **kw):
+        seen.update(question=question, vec=vec, anchor_ids=anchor_ids, **kw)
+        rows = [chunk_row(n) for n in range(1, 9)] + [chunk_row(n) for n in range(100, 105)]
+        return rows[: kw["k_chunks"]], {}, [], None
+
+    monkeypatch.setattr(R, "_fused_excerpts", fake_fused)
+    driver.calls.clear()
+    box = T.Toolbox(driver, embedder, QUESTION, fusion=runtime)
+    out = box.execute("search_filings", json.dumps({"query": "CoWoS capacity", "companies": ["TSMC"], "k": 3}), r)
+    assert seen["question"] == "CoWoS capacity" and seen["anchor_ids"] == [TSMC] and seen["cfg"] is runtime.config
+    assert seen["index"] is runtime.index and seen["k_chunks"] == 3 + len(held) and seen["defaulted"] is False
+    assert driver.names() == []                       # the plain excerpt query did not run
+    new = [c["chunk_id"] for c in out.r["chunks"][len(held):]]
+    assert len(new) == 3 and not set(held) & set(new) and out.result["chunks_added"] == 3 and len(out.r["chunks"]) <= 16
+
+
+def test_fused_search_filings_is_refused_when_the_time_budget_is_spent_or_below_the_floor(monkeypatch):
+    driver, embedder = FakeDriver.world(), FakeEmbedder()
+    r = hybrid_retrieve(QUESTION, driver, embedder)
+    monkeypatch.setattr(R, "_fused_excerpts", lambda *a, **k: pytest.fail("no time remained: the fused legs must not run"))
+    box = T.Toolbox(driver, embedder, QUESTION, fusion=_Runtime())
+    for timeout in (0.0, T.FUSED_MIN_SECONDS / 2):
+        out = box.execute("search_filings", json.dumps({"query": "x", "companies": ["TSMC"]}), r, timeout=timeout)
+        assert not out.ok and out.r is r and "time" in out.summary
+
+
+def test_fused_search_filings_runs_when_there_is_no_deadline_or_enough_time(monkeypatch):
+    driver, embedder = FakeDriver.world(), FakeEmbedder()
+    r = hybrid_retrieve(QUESTION, driver, embedder)
+    monkeypatch.setattr(R, "_fused_excerpts", lambda *a, **k: ([chunk_row(100)], {}, [], None))
+    box = T.Toolbox(driver, embedder, QUESTION, fusion=_Runtime())
+    for timeout in (None, T.FUSED_MIN_SECONDS * 10):
+        out = box.execute("search_filings", json.dumps({"query": "x", "companies": ["TSMC"]}), r, timeout=timeout)
+        assert out.ok and out.result["chunks_added"] == 1
+
+
+def test_search_filings_with_fusion_but_no_company_keeps_the_unanchored_vector_search(monkeypatch):
+    driver, embedder = FakeDriver.world(), FakeEmbedder()
+    r = hybrid_retrieve(QUESTION, driver, embedder)
+    monkeypatch.setattr(R, "_fused_excerpts", lambda *a, **k: pytest.fail("fusion needs anchors"))
+    driver.calls.clear()
+    out = T.Toolbox(driver, embedder, QUESTION, fusion=_Runtime()).execute("search_filings", json.dumps({"query": "power"}), r)
+    assert out.ok and driver.names() == ["vector"]
 
 
 # --- financial_metrics ------------------------------------------------------------------------------------------------------
