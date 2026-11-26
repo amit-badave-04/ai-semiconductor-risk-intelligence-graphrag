@@ -294,6 +294,26 @@ def test_the_prefetch_uses_the_callers_k_chunks_and_hops():
     assert driver.params_of("excerpts")[0]["k"] == 3 and len(result.r["chunks"]) == 3
 
 
+def test_the_prefetch_without_fusion_passes_no_fusion_keywords(monkeypatch):
+    seen = {}
+    real = G.hybrid_retrieve
+    monkeypatch.setattr(G, "hybrid_retrieve", lambda *a, **k: seen.update(k) or real(*a, **k))
+    run(ScriptedPlanner(turn()))
+    assert "fusion" not in seen and "keyword_index" not in seen
+
+
+def test_the_prefetch_with_a_fusion_runtime_uses_the_serving_legs(monkeypatch):
+    class Runtime:
+        config, index = object(), object()
+
+    seen = {}
+    real = G.hybrid_retrieve
+    monkeypatch.setattr(G, "hybrid_retrieve", lambda *a, **k: seen.update(k) or real(
+        *a, **{x: y for x, y in k.items() if x not in ("fusion", "keyword_index")}))
+    _, result, _ = run(ScriptedPlanner(turn()), fusion=Runtime())
+    assert seen["fusion"] is Runtime.config and seen["keyword_index"] is Runtime.index and result.fallback_reason is None
+
+
 # --- the time budget (requirement 4) -----------------------------------------------------------------------------------------
 
 def slow(clock, seconds):

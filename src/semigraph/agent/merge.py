@@ -137,6 +137,19 @@ def merge_chunks(r: dict, rows: Iterable[Mapping], *, cap: int = MAX_CHUNKS) -> 
     return {**r, "chunks": [*r["chunks"], *added]}
 
 
+def fresh_rows(rows: Iterable[Mapping], held: Iterable[str], k: int) -> list[Mapping]:
+    """The first ``k`` of ``rows`` whose ``chunk_id`` is not in ``held`` (and not repeated): what a search can still add."""
+    have = set(held)
+    fresh: list[Mapping] = []
+    for row in rows:
+        chunk_id = row.get("chunk_id")
+        if not chunk_id or chunk_id in have or len(fresh) >= k:
+            continue
+        have.add(chunk_id)
+        fresh.append(row)
+    return fresh
+
+
 def without_detail_lines(r: dict) -> dict:
     """``r`` as the agent's WRITER context is rendered (M2a, council decision 005): the edge quote lines and rule abstracts switched
     off (R6b, OD6) and the computed year-over-year note left in today's inline form, without the prior-year id (R4 off, ``YOY_OFF``).

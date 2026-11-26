@@ -272,6 +272,21 @@ def test_the_writers_keyword_arguments_reach_the_writer_and_the_agents_own_do_no
     assert driver.params_of("excerpts")[0]["k"] == 3 and events[-1]["event"] == "done"
 
 
+def test_a_fusion_runtime_goes_to_the_prefetch_and_the_tools_never_to_the_writer(monkeypatch):
+    SpyStream.calls = []
+    monkeypatch.setattr(answerer_mod, "TextStream", SpyStream)
+    seen = {}
+
+    class Runtime:
+        config, index = object(), object()
+
+    real = S.run_agent
+    monkeypatch.setattr(S, "run_agent", lambda *a, **k: seen.update(k) or real(*a, **{x: y for x, y in k.items() if x != "fusion"}))
+    list(S.agent_answer_stream(QUESTION, FakeDriver.world(), FakeEmbedder(), planner=ScriptedPlanner(turn()),
+                               settings=make_settings(), fusion=Runtime()))
+    assert isinstance(seen["fusion"], Runtime) and all("fusion" not in call for call in SpyStream.calls)
+
+
 def test_without_a_timeout_the_writer_is_not_given_one(monkeypatch):
     SpyStream.calls = []
     monkeypatch.setattr(answerer_mod, "TextStream", SpyStream)

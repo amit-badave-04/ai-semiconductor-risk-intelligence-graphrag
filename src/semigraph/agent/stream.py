@@ -29,7 +29,7 @@ from .trace import as_safe
 
 logger = logging.getLogger("semigraph.agent")
 
-_PREFETCH_ARGS = ("k_chunks", "hops")      # answer_stream's retrieval arguments: the agent's prefetch takes them, the writer must not
+_PREFETCH_ARGS = ("k_chunks", "hops", "fusion")      # answer_stream's retrieval arguments: the agent's prefetch takes them, the writer must not
 _ROUTING_KEYS = ("finish_reason", "escalated", "answered_by", "routed", "escalation_reasons")
 
 

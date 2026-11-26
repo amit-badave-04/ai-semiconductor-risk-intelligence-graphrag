@@ -81,6 +81,13 @@ class _Deps:
     specs: list[dict]
     k_chunks: int
     hops: int
+    fusion: Any = None              # a ``FusionRuntime`` (RETRIEVAL_FUSION on) or None: the prefetch and search_filings use its legs
+
+
+def _fusion_kwargs(runtime: Any) -> dict:
+    """The ``hybrid_retrieve`` keywords of the serving legs (its config, rerank stage included, and the keyword index); ``{}`` with
+    no runtime, which is today's prefetch exactly."""
+    return {} if runtime is None else {"fusion": runtime.config, "keyword_index": runtime.index}
 
 
 def _cost(usage: dict | None, model: str) -> float | None:
@@ -99,7 +106,8 @@ def _chars(value: Any) -> int:
 def _prefetch_node(d: _Deps):
     def prefetch(state: AgentState) -> dict:
         with d.tracer.span("prefetch") as span:
-            r = hybrid_retrieve(d.question, d.driver, d.embedder, k_chunks=d.k_chunks, hops=d.hops)
+            r = hybrid_retrieve(d.question, d.driver, d.embedder, k_chunks=d.k_chunks, hops=d.hops,
+                                **_fusion_kwargs(d.fusion))
             span.set(chunks=len(r["chunks"]), metric_rows=len(r["metrics"]), edges=len(r["edges"]))
         try:
             messages = P.initial_messages(d.question, r)
@@ -240,7 +248,7 @@ def _result(state: dict, ledger: Ledger) -> AgentResult:
 
 def run_agent(question: str, driver, embedder, *, planner: Callable[..., PlannerTurn], planner_model: str, limits: Limits,
               tracer: Tracer | None = None, k_chunks: int = 8, hops: int = 2,
-              recursion_limit: int | None = None, ledger: Ledger | None = None) -> Generator[dict, None, AgentResult]:
+              recursion_limit: int | None = None, ledger: Ledger | None = None, fusion: Any = None) -> Generator[dict, None, AgentResult]:
     """Run the planning graph; yield one ``step`` event per tool call as its turn completes and RETURN the :class:`AgentResult`.
 
     Raises only when the prefetch itself fails. Any later failure (a planner error, the time budget, a bug in a node, the recursion
@@ -252,8 +260,8 @@ def run_agent(question: str, driver, embedder, *, planner: Callable[..., Planner
     the abandoned generator frame."""
     tracer = as_safe(tracer)
     ledger = ledger if ledger is not None else Ledger()
-    deps = _Deps(question, driver, embedder, Toolbox(driver, embedder, question, clock=_now), planner, planner_model, limits, tracer, ledger,
-                 tool_specs(), k_chunks, hops)
+    deps = _Deps(question, driver, embedder, Toolbox(driver, embedder, question, clock=_now, fusion=fusion), planner, planner_model, limits,
+                 tracer, ledger, tool_specs(), k_chunks, hops, fusion)
     config = {"recursion_limit": recursion_limit or recursion_limit_for(limits)}
     state: dict = dict(initial_state(question, _now()))
     emitted = 0
