@@ -232,7 +232,7 @@ def prefetch_summary(r: Mapping, *, tool_calls_left: int | None = None) -> dict:
     named = sorted({name for key in (r.get("anchors") or {}) if (name := canonical_name(key))})
     default_name = company_for_id(DEFAULT_ANCHOR_CIK) if defaulted else None
     from . import merge as _merge        # lazy: merge imports this module. One definition of "covered" and of the cap, shared with the enforcer
-    covered = sorted({name for name in _merge.covered_companies(r).values() if canonical_name(name)})
+    covered = sorted({c for name in _merge.covered_companies(r).values() if (c := canonical_name(name))})   # canonical output only (review L1)
     metrics: dict[str, dict[str, list[str]]] = {}
     for company in view_metrics(r.get("metrics") or [], cap=10_000)["companies"]:
         metrics[company["company"]] = {metric: [p["period_end"] for p in periods] for metric, periods in company["metrics"].items()}

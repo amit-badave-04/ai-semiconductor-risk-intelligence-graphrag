@@ -35,11 +35,17 @@ wrong although within it), T9's gold note says 14 reworded where the data says 1
 - **OD3 Gate run as a paired session:** the fixed path and the agent run in the same session on the same commit, and the gate reads
   that pair. If the first session fails only on judged correctness by 2 or less, one repeat session is allowed (pre-registered
   here), never a relabel. *Recommended.*
-- **OD4 Spend cap:** $12 for this milestone, stop after two failed paid sessions. *Recommended.*
+- **OD4 Spend cap:** $12 for this milestone, stop after two failed paid sessions. *Recommended.* Raised to $15 by the owner
+  on 2026-11-28 after one agent gate run was invalidated by the eval environment (LiteLLM's offline price map refused the
+  planner's `tool_choice`, so all 82 runs fell back; production uses the live map and is unaffected).
 - **OD5 T9 gold:** correct the gold note to the data's count (18) with the evidence, or leave it and accept the miss on both paths.
   *Recommended: correct it*, recorded as a gold fix, applied to both paths.
 - **OD6 Judge noise (T4, T7, T8):** a separate judge-quality task; no judge or gate edit here. *Recommended.*
 - **OD7 CP's `lookup_company` change:** stays with CP and its own gate run. *Recommended.*
+
+- **OD8 (owner, 2026-11-28, verbatim): "whatever the situation I want Deep Agent live on website after deployment."** The paired
+  gate still runs and is reported as measured. If it fails, the agent is switched on as the owner's explicit, recorded waiver
+  (never relabelled as a pass); `/red-team` before Release B stays, per the owner's standing rules.
 
 Note: `semigraph bakeoff` (src/semigraph/eval/bakeoff.py) keeps the single-message shape on purpose, to stay comparable with its
 saved v2 baseline; it is not part of the M3 gates and does not reach production.
@@ -120,10 +126,10 @@ session, worst about $10; plus about $1-1.5 for Release A's examples regeneratio
 | Stage | Gate | Evidence |
 |---|---|---|
 | 1 Spec | owner approves this spec and OD1-OD7 | **DONE 2026-11-28:** approved as recommended |
-| 2 Dev (TDD) | I1-I3 RED then GREEN; reviewers clean of CRITICAL/HIGH | |
-| 3 Regression | full suite, coverage, promptfoo thresholds, $0 replays | |
-| 4 Security | `/security-review`, gitleaks, semgrep on the diff; owner `/red-team` before Release B | |
+| 2 Dev (TDD) | I1-I3 RED then GREEN; reviewers clean of CRITICAL/HIGH | **DONE 2026-11-28:** I1 context parity, I2 answer rules (minimal, 9,513 chars), I3 planner v2, R6 timings, OD5 grading note, rules as a system message (amendment), security-review lows L1-L3; each test-first; Opus reviews; an out-of-spec output-rewriting guard was built and removed. |
+| 3 Regression | full suite, coverage, promptfoo thresholds, $0 replays | **DONE 2026-11-28:** full suite green apart from the 3 local web/dist checks; production writer check (m3_production_check.py): GPT-6 Luna 57/60, Claude Sonnet 5 35/60 (names injected text while refusing; three prompt variants did not change it); coverage not measured (no coverage tool installed). |
+| 4 Security | `/security-review`, gitleaks, semgrep on the diff; owner `/red-team` before Release B | **2026-11-28:** Opus pre-push review of 6afb759: nothing blocking the push; HIGH H1 = the Sonnet escalation writer can echo a dictated token (pre-existing on the live fixed path; the agent adds a route); lows L1-L3 fixed. gitleaks clean. Owner `/red-team` requested before the agent-on deploy. |
 | 5 Fix findings | per stage 5 | |
 | 6 Re-test and verifier | Opus verifier | |
-| 7 Push, CI, deploy | Release A, then the paid session, then Release B if the gate passes | |
+| 7 Push, CI, deploy | Release A, then the paid session, then Release B if the gate passes | **Gate 2026-11-28 (paired session at 6afb759):** fixed path eval_report.m3-deployed.json mechanical 41/41, citation 1.0, judged 20/23. Agent eval_report.agent.m3.json: 13 of 15 gates pass (mechanical 60/60, injection 5/5, ungrounded 0, misattribution 5/5, refusals 4/4, no_fallback, limits, spend, p95 12.2 s, cost ratio 1.11, judged 19/23 vs 20/23); FAIL checks_clean (T12 removal-claim wording) and trajectory (A15 called a tool for an uncovered company; R2 exceeded the 4-company cap then retried). Not a judged-correctness miss, so no OD3 repeat. A first agent run was invalid (offline LiteLLM map refused tool_choice; 82 fallbacks). **Gate FAILED; AGENT_ENABLED set true by the owner's explicit waiver OD8.** Follow-ups: planner refuses uncovered companies without a tool call; planner never asks for more than the remaining company room; T12 writer wording. |
 | 8 Archify | applies only if the architecture changes (it should not) | |

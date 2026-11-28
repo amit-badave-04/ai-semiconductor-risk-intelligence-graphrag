@@ -41,8 +41,10 @@ kill_timeout = 300
   # Opt-in retrieval-planning agent (strategy=agent), docs/RUNBOOK.md "The M3 agent" / docs/v2/M3_AGENT_PLAN.md section 7.
   # Enabled 2026-09-27 after a live paid ship-gate evaluation showed no regression vs the fixed path. Turned OFF for M2a's
   # deploy C (owner, 2026-11-22: "Ship with agent OFF"): its ship gate (artifacts/eval_report.agent.m2a.json) scored 17/23
-  # against the improved fixed path's 21/23 (tolerance 1). Re-enable only after a passing agent gate. Revert: set "true".
-  AGENT_ENABLED = "false"
+  # against the improved fixed path's 21/23 (tolerance 1). M3 fix (docs/specs/m3-agent-fix.md): gate 2026-11-28 passed 13 of 15
+  # (judged 19/23 vs 20/23, injection 5/5, p95 12.2 s) and failed checks_clean (T12) and trajectory (A15, R2); switched ON by the
+  # owner's explicit waiver OD8 ("whatever the situation I want Deep Agent live on website after deployment"). Revert: "false".
+  AGENT_ENABLED = "true"
   # M4 (docs/RUNBOOK.md "Freshness monitor" / "Upload workspaces"). SEC_USER_AGENT is a Fly SECRET (it names a real person).
   # Revert either feature: set it to "false" and redeploy (workspaces still expire on schedule: the sweeper always runs).
   FRESHNESS_ENABLED = "true"

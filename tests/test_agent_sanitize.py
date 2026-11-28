@@ -227,3 +227,10 @@ def test_prefetch_summary_coverage_follows_the_merge_modules_cap_and_covered_com
     assert S.prefetch_summary(r)["companies_covered"] == sorted(merge.covered_companies(r).values())
     monkeypatch.setattr(merge, "company_cap", lambda: 3)
     assert S.prefetch_summary(r)["room"]["companies"] == 1
+
+
+def test_prefetch_summary_emits_canonical_names_only(monkeypatch):
+    """L1 (pre-push security review): the covered list is canonicalised, so a non-canonical anchor key never reaches the planner."""
+    import semigraph.agent.merge as merge_mod
+    monkeypatch.setattr(merge_mod, "covered_companies", lambda r: {"x": "NVDA", "y": "nvidia"})
+    assert S.prefetch_summary({"anchors": {}, "edges": [], "metrics": [], "chunks": []})["companies_covered"] == ["Nvidia"]

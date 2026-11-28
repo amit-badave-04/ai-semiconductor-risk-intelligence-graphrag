@@ -599,3 +599,27 @@ def test_the_argument_schemas_are_unchanged_by_the_description_edits():
     assert schemas["search_filings"]["properties"]["query"]["maxLength"] == 300
     assert schemas["financial_metrics"]["properties"]["companies"]["maxItems"] == 4
     assert schemas["compute_change"]["additionalProperties"] is False
+
+
+# --- M3 pre-push security review lows (L2, L3) -------------------------------------------------------------------------------
+
+def test_compute_change_accepts_a_legal_entity_form_that_resolves_to_one_company():
+    """L3: "Advanced Micro Devices, Inc." is one company (canonical_name resolves it); the comma must not refuse it."""
+    box, r, _, _ = setup()
+    r = _with_amd_fact(r)
+    out = run(box, r, "compute_change", {"company": "Advanced Micro Devices, Inc.", "metric": "revenue",
+                                         "from_period_end": "2024-12-28", "to_period_end": "2025-12-27"})
+    assert "one company" not in (out.result.get("error") or "")
+
+
+def test_execute_never_raises_when_the_repeat_key_cannot_be_built(monkeypatch):
+    """L2: the repeat key is built outside the handler's try; a failure there is a refusal, never an exception."""
+    box, r, _, _ = setup()
+    import semigraph.agent.tools as tools_mod
+
+    def boom(*args, **kwargs):
+        raise TypeError("not serialisable")
+
+    monkeypatch.setattr(tools_mod.json, "dumps", boom)
+    out = box.execute("lookup_company", {"name": "AMD"}, r)
+    assert out.ok is False and out.r == r

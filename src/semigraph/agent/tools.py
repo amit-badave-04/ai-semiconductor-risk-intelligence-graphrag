@@ -126,6 +126,13 @@ _REPEAT = "this exact call was already refused; change one argument or stop"
 _COMPANY_SEPARATORS = re.compile(r"\s(?:and|vs\.?|versus)\s|[&,/+;]", re.IGNORECASE)
 
 
+def _names_two_companies(text: str) -> bool:
+    """True when ``text`` splits at a separator into at least two parts that each resolve to a company ("Nvidia and AMD",
+    "NVDA, AMD"); a legal-entity form such as "Advanced Micro Devices, Inc." is one company (security review L3)."""
+    parts = [p.strip() for p in _COMPANY_SEPARATORS.split(text) if p and p.strip()]
+    return sum(1 for p in parts if S.canonical_name(p)) >= 2
+
+
 def _descriptions() -> dict[str, str]:
     return {
         "lookup_company": ("Resolve a company name or ticker. Returns its canonical name, whether it files with the SEC and the "
@@ -278,7 +285,10 @@ class Toolbox:
         args = _parse(raw_arguments)
         if args is None:
             return self._refused(tool, r, {}, {"error": "arguments must be a JSON object"}, f"{tool}: refused, arguments are not a JSON object")
-        key = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"
+        try:
+            key = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"
+        except (TypeError, ValueError):   # never raises (review L2): an unkeyable argument object is refused, not crashed on
+            return self._refused(tool, r, {}, {"error": "arguments must be a JSON object"}, f"{tool}: refused, arguments are not a JSON object")
         if key in self._refused_calls:
             return self._refused(tool, r, S.clip_args(args), {"error": _REPEAT}, f"{tool}: refused, same arguments as a refused call")
         try:
@@ -437,7 +447,7 @@ class Toolbox:
 
     def _compute_change(self, a: ComputeChangeArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         # pure: no Cypher query at all, so ``budget`` (timeout / edges) is unused here.
-        if len(R.detect_anchors(a.company)) > 1 or _COMPANY_SEPARATORS.search(a.company):
+        if len(R.detect_anchors(a.company)) > 1 or _names_two_companies(a.company):
             raise ToolError({"error": _TWO_COMPANIES}, "compute_change: refused, one company only", final=True)
         (name, entity_id), = self._resolve([a.company]).items()
         try:
