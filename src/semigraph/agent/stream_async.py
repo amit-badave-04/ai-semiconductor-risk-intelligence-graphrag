@@ -412,8 +412,12 @@ async def aagent_answer_stream(question: str, driver, embedder, strategy: str = 
                 # A cancelled scope that the shielded join absorbed (or that landed since) must stop the stream here:
                 # past this point the first thing the writer does is to ask for a paid model call.
                 await anyio.lowlevel.checkpoint()
+                # The size check renders the whole context once: CPU work, so it runs off the loop (CI loop-lag test, M3),
+                # then a checkpoint so a cancel that landed during the hop is honoured before any paid call.
+                writer_r = await anyio.to_thread.run_sync(agent_writer_context, plan.r, limiter=limiters.db if limiters else None)
+                await anyio.lowlevel.checkpoint()
                 writer = astream_answer_for_context(
-                    question, agent_writer_context(plan.r), strategy, llm_stream=llm_stream, escalation_model=escalation_model,
+                    question, writer_r, strategy, llm_stream=llm_stream, escalation_model=escalation_model,
                     escalation_stream=escalation_stream, max_tokens=max_tokens, limiters=limiters, meter=meter,
                     **writer_kwargs)
                 try:
