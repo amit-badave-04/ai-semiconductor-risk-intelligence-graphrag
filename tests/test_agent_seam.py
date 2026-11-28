@@ -159,7 +159,9 @@ def test_the_async_agent_writer_is_handed_the_same_context_helper():
     """The async twin builds its writer call from ``plan.r`` at one place; it must go through the same switch."""
     from semigraph.agent import stream_async
 
-    assert "question, agent_writer_context(plan.r), strategy" in inspect.getsource(stream_async)
+    source = inspect.getsource(stream_async)
+    # the size check runs off the loop (M3 CI loop-lag follow-up); the writer gets exactly that result
+    assert "run_sync(agent_writer_context, plan.r" in source and "question, writer_r, strategy" in source
 
 
 def test_the_planner_view_never_receives_quotes_abstracts_or_titles():
