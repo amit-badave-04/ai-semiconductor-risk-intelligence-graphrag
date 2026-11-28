@@ -161,6 +161,26 @@ def without_detail_lines(r: dict) -> dict:
     return {**r, DETAIL_LINES_KEY: False, YOY_PRIOR_IDS_KEY: YOY_OFF}
 
 
+def context_allowance(n_companies: int) -> int:
+    """The most characters the agent's rendered context may hold for ``n_companies`` covered companies with the detail lines on: the spend
+    estimate's own figures (``serve.estimate``: the shared part of its agent ceiling plus ``AGENT_GRAPH_CHARS_PER_COMPANY`` per company),
+    so the per-ask ceiling is untouched. A prefetch that fell back to the default company counts as one."""
+    from ..serve import estimate as est        # lazy: the estimate module is a serve-layer import
+    shared = est.context_chars("agent") - est.agent_company_blocks() * est.AGENT_GRAPH_CHARS_PER_COMPANY
+    return shared + max(1, n_companies) * est.AGENT_GRAPH_CHARS_PER_COMPANY
+
+
+def agent_writer_context(r: dict) -> dict:
+    """``r`` as the agent's writer AND verifier render it (M3 R1): exactly the fixed path's context (edge quotes and rule abstracts on),
+    unless that context would exceed :func:`context_allowance`, when the detail lines go off as before (:func:`without_detail_lines`).
+    The rule is the size, never whether tools ran: ``merge_metrics`` widens ``metric_periods`` even for zero new rows."""
+    from ..retrieval.answerer import build_blocks     # lazy: the answerer loads litellm
+    _, context, _ = build_blocks(r)
+    if len(context) <= context_allowance(len(covered_companies(r))):
+        return r
+    return without_detail_lines(r)
+
+
 def _union(existing: Iterable, more: Iterable) -> list:
     return sorted({*existing, *more})
 

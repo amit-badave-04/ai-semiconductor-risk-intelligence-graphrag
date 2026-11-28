@@ -245,6 +245,6 @@ def test_exclude_options_parse_into_an_id_to_reason_map_and_reject_a_malformed_o
 def test_build_examples_stamps_the_flag_on_fingerprint_with_fusion():
     off = be.build_examples(runs(), BENCH, SNAP, source="s")
     on = be.build_examples(runs(), BENCH, SNAP, source="s", fusion=True)
-    assert off["template_fingerprint"] == template_fingerprint() == "2a6910aa5d"
+    assert off["template_fingerprint"] == template_fingerprint() == "416bca4fa4"
     assert on["template_fingerprint"] == template_fingerprint(fusion=True) != off["template_fingerprint"]
     assert store.examples_match_template(on, fusion=True) and not store.examples_match_template(on)

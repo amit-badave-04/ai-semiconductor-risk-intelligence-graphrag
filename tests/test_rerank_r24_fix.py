@@ -65,14 +65,14 @@ def test_the_served_workload_is_part_of_the_digest_and_the_fingerprint(fake_mode
     frozen = replace(fusion.serving_config(settings(retrieval_rerank="minilm")), rerank_max_tokens=384, rerank_max_candidates=None)
     assert served != hashlib.sha256(repr(frozen).encode()).hexdigest()[:8]
     assert template_fingerprint(fusion=True) != "e5c72794de"            # the shipped examples carry the old one
-    assert template_fingerprint(fusion=True) == "f604c90263"
+    assert template_fingerprint(fusion=True) == "d189620c3d"
 
 
-def test_flag_off_fingerprint_is_still_2a6910aa5d(fake_models, monkeypatch):
+def test_flag_off_fingerprint_is_still_416bca4fa4(fake_models, monkeypatch):
     from semigraph.retrieval.answerer import template_fingerprint
 
     monkeypatch.setattr("semigraph.config.get_settings", lambda: settings(retrieval_rerank="minilm"))
-    assert template_fingerprint() == template_fingerprint(fusion=False) == "2a6910aa5d"
+    assert template_fingerprint() == template_fingerprint(fusion=False) == "416bca4fa4"
 
 
 # --- the cap: slot-guarantee heads first, then the fused order, lowest fused tail trimmed ---

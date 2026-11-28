@@ -192,3 +192,38 @@ def test_recorded_tool_names_and_arguments_are_clipped_to_something_safe_to_emit
 def test_a_pair_of_a_company_outside_the_universe_is_left_out_and_odd_argument_values_are_stringified_and_clipped():
     assert S.view_pairs([{"company": "Acme Robotics", "cik": 42, "compared": True}]) == []
     assert S.clip_args({"thing": object()})["thing"].startswith("<object object")
+
+
+# --- M3 I3: the coverage the planner sees (spec R5, S2) --------------------------------------------------------------------------
+
+def test_prefetch_summary_shows_coverage():
+    r = hybrid_retrieve("How exposed is Nvidia to TSMC, and how did its risks change?", poisoned_world(), FakeEmbedder())
+    summary = S.prefetch_summary(r, tool_calls_left=4)
+    assert summary["companies_covered"] == ["Nvidia", "TSMC"]
+    assert summary["room"] == {"companies": 2, "tool_calls": 4}
+    relations = summary["edge_relations"]
+    assert set(relations) <= set(S.KNOWN_COMPANIES) and "Nvidia" in relations
+    assert all(rel in S.RELATIONS and isinstance(n, int) for per in relations.values() for rel, n in per.items())
+
+
+def test_prefetch_summary_room_never_goes_negative_and_covers_the_defaulted_company():
+    r = hybrid_retrieve("What is the weather?", FakeDriver.world(), FakeEmbedder())
+    summary = S.prefetch_summary(r)
+    assert summary["companies_covered"] == ["Nvidia"] and summary["room"]["companies"] == 3
+    assert S.prefetch_summary({**r, "anchors": {n: i for i, n in enumerate(S.KNOWN_COMPANIES[:5])}})["room"]["companies"] == 0
+
+
+def test_the_planner_view_with_coverage_carries_no_filing_or_upload_text():
+    r = hybrid_retrieve("How exposed is Nvidia to TSMC, and how did its risks change?", poisoned_world(), FakeEmbedder())
+    r = {**r, "edges": [*r["edges"], {"source": f"Nvidia {INJECTION}", "relation": "DEPENDS_ON", "target": INJECTION, "quote": INJECTION},
+                        {"source": "doc:upload-1 " + INJECTION, "relation": INJECTION, "target": "TSMC"}]}
+    text = json.dumps(S.prefetch_summary(r, tool_calls_left=3))
+    assert CANARY not in text and "Ignore" not in text and "upload" not in text
+
+
+def test_prefetch_summary_coverage_follows_the_merge_modules_cap_and_covered_companies(monkeypatch):
+    from semigraph.agent import merge
+    r = hybrid_retrieve("How exposed is Nvidia to TSMC?", poisoned_world(), FakeEmbedder())
+    assert S.prefetch_summary(r)["companies_covered"] == sorted(merge.covered_companies(r).values())
+    monkeypatch.setattr(merge, "company_cap", lambda: 3)
+    assert S.prefetch_summary(r)["room"]["companies"] == 1

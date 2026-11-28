@@ -59,7 +59,7 @@ def test_computed_lines_are_appended_to_the_metrics_block_as_data_and_change_not
 def test_the_template_is_not_touched_by_the_seam():
     """Computed lines are DATA in METRICS: the agent must never change the prompt template (seeded examples, the cache and the
     eval baselines are keyed to it). A deliberate template change updates this pin AND re-runs the benchmark."""
-    assert template_fingerprint() == "2a6910aa5d"
+    assert template_fingerprint() == "416bca4fa4"
 
 
 def test_stream_answer_for_context_is_what_answer_stream_delegates_to():
@@ -100,7 +100,7 @@ def test_every_twin_a_route_can_stream_through_takes_the_paid_call_meter_as_its_
     assert inspect.signature(routes.aanswer_stream).parameters["limiters"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
-# --- M2a R6b / S14: the detail lines (edge quotes, rule abstracts) are the plain hybrid ask's; the agent switches them off -------------
+# --- M3 R1: the detail lines (edge quotes, rule abstracts) are the plain hybrid ask's; the agent keeps them until the allowance -------------
 
 DETAIL_EDGE = {"source": "Nvidia", "relation": "SUPPLIES_TO", "target": "AMD", "status": "Active", "chunk_ids": ["0001-25-000001:I.1:0001"],
                "quote": "SECRETQUOTE we ship GPUs.", "source_cik": 1045810, "target_cik": 2,
@@ -126,7 +126,7 @@ def _fake_run_agent(r):
     return run_agent
 
 
-def test_the_agent_writer_gets_no_quote_or_abstract_lines_and_the_hybrid_writer_gets_them(monkeypatch):
+def test_the_agent_writer_gets_the_quote_and_abstract_lines_like_the_hybrid_writer(monkeypatch):
     from agent_fakes import FakeWriter, ScriptedPlanner, make_settings, turn
 
     from semigraph.agent import stream as S
@@ -137,14 +137,13 @@ def test_the_agent_writer_gets_no_quote_or_abstract_lines_and_the_hybrid_writer_
                                         llm_stream=agent_writer))
     assert events[-1]["event"] == "done"
     prompt = agent_writer.prompts[0]
-    assert "SECRETQUOTE" not in prompt and "SECRETABSTRACT" not in prompt and "evidence [" not in prompt
-    assert "SECRETTITLE rule" in prompt                       # R2 and the rule line itself stay
+    assert "SECRETQUOTE" in prompt and "SECRETABSTRACT" in prompt and "SECRETTITLE rule" in prompt
     hybrid_writer = FakeWriter("Nvidia ships GPUs [0001-25-000001:I.1:0001].")
     list(answerer.stream_answer_for_context("q?", _detail_retrieval(), "hybrid", llm_stream=hybrid_writer))
     assert "SECRETQUOTE" in hybrid_writer.prompts[0] and "SECRETABSTRACT" in hybrid_writer.prompts[0]
 
 
-def test_agent_answer_rebuilds_the_context_with_the_switch_off(monkeypatch):
+def test_agent_answer_rebuilds_the_context_with_the_detail_lines_on(monkeypatch):
     from agent_fakes import FakeWriter, ScriptedPlanner, make_settings, turn
 
     from semigraph.agent import stream as S
@@ -152,15 +151,15 @@ def test_agent_answer_rebuilds_the_context_with_the_switch_off(monkeypatch):
     monkeypatch.setattr(S, "run_agent", _fake_run_agent(_detail_retrieval()))
     out = S.agent_answer("q?", None, None, planner=ScriptedPlanner(turn()), settings=make_settings(),
                          llm_stream=FakeWriter("Nvidia ships GPUs [0001-25-000001:I.1:0001]."))
-    assert "SECRETQUOTE" not in out["context"] and "SECRETABSTRACT" not in out["context"]
+    assert "SECRETQUOTE" in out["context"] and "SECRETABSTRACT" in out["context"]
     assert "detail_lines" not in out["retrieval"]             # the switch is applied for rendering only
 
 
-def test_the_async_agent_writer_is_handed_the_switched_off_retrieval():
+def test_the_async_agent_writer_is_handed_the_same_context_helper():
     """The async twin builds its writer call from ``plan.r`` at one place; it must go through the same switch."""
     from semigraph.agent import stream_async
 
-    assert "question, without_detail_lines(plan.r), strategy" in inspect.getsource(stream_async)
+    assert "question, agent_writer_context(plan.r), strategy" in inspect.getsource(stream_async)
 
 
 def test_the_planner_view_never_receives_quotes_abstracts_or_titles():

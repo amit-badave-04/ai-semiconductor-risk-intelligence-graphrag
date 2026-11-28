@@ -49,7 +49,7 @@ from semigraph.agent.stream import agent_answer_stream  # noqa: E402
 from semigraph.retrieval.workspace import stream_workspace_answer  # noqa: E402
 from semigraph.uploads import repo as upload_repo  # noqa: E402
 
-RECORDED_FROM_COMMIT = "fb2b0dc"          # `git rev-parse --short HEAD` of the code recorded; plus M2 R17/R19 (the workspace block's search label)
+RECORDED_FROM_COMMIT = "bcf0465"          # `git rev-parse --short HEAD` of the code recorded; plus the uncommitted M3 agent fix (context parity, planner v2, timings, answer.txt R2-R4)
 RECORDED_ON = "2026-10-03"
 REGENERATE = "uv run python tests/data/record_events_pre_m5.py"
 AGENT_FILE = HERE / "agent_events_pre_m5.json"
@@ -302,13 +302,19 @@ def _plain(value):
 
 
 def normalise_event(event: dict) -> dict:
-    """``done.agent.elapsed_s`` (wall-clock planning time, a float that differs on every run) becomes ``ELAPSED_PLACEHOLDER``."""
+    """``done.agent.elapsed_s`` and every ``done.agent.timings[].s`` (wall-clock seconds that differ on every run) become
+    ``ELAPSED_PLACEHOLDER``; the span kinds and names stay (they are deterministic)."""
     agent = event.get("agent")
-    if isinstance(agent, dict) and "elapsed_s" in agent:
+    if not isinstance(agent, dict):
+        return event
+    if "elapsed_s" in agent:
         if not isinstance(agent["elapsed_s"], float):
             raise TypeError(f"done.agent.elapsed_s changed type: {agent['elapsed_s']!r}")
-        return {**event, "agent": {**agent, "elapsed_s": ELAPSED_PLACEHOLDER}}
-    return event
+        agent = {**agent, "elapsed_s": ELAPSED_PLACEHOLDER}
+    if isinstance(agent.get("timings"), list):
+        agent = {**agent, "timings": [{**t, "s": ELAPSED_PLACEHOLDER} if isinstance(t, dict) and "s" in t else t
+                                      for t in agent["timings"]]}
+    return {**event, "agent": agent}
 
 
 def _drive(stream: Iterator[dict], close_after_events: int | None) -> list[dict]:

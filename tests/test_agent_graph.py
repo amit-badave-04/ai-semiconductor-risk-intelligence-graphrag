@@ -232,7 +232,7 @@ def test_a_bug_in_the_loop_is_a_fallback_not_an_error_and_the_planners_spend_is_
 
 
 def test_planner_messages_that_cannot_be_built_are_a_fallback_and_the_planner_is_never_called(monkeypatch):
-    def broken(question, r):
+    def broken(question, r, **kwargs):          # M3: graph.py passes tool_calls_left
         raise FileNotFoundError("agent_planner.txt is missing from the image")
 
     monkeypatch.setattr(G.P, "initial_messages", broken)

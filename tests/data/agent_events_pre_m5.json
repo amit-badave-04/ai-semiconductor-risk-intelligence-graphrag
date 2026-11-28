@@ -1,7 +1,7 @@
 {
  "_about": {
   "what": "agent_answer_stream (src/semigraph/agent/stream.py) driven synchronously with scripted planner and writers over FakeDriver.world(): the events, the totals and the side channels, recorded before the async rewrite (M5a I2)",
-  "commit": "fb2b0dc",
+  "commit": "bcf0465",
   "recorded": "2026-10-03",
   "regenerate": "uv run python tests/data/record_events_pre_m5.py",
   "scenario": "name; inputs (plain data: every fake is rebuilt from it); events (every event yielded, in order); final (the totals the terminal event reports); observed (side channels of the sync code: sha256[:16] of every prompt a model received, WARNING logs, and per stream either the planner message hashes and tracer call kinds or the upload queries run). An async twin must reproduce events and final exactly.",
@@ -197,7 +197,7 @@
       "0001045810-26-000021:I.1A:0007",
       "0001045810-26-000021:I.1A:0008"
      ],
-     "context_chars": 4299,
+     "context_chars": 5138,
      "agent": {
       "tool_calls": [
        {
@@ -239,8 +239,45 @@
        "completion_tokens": 110
       },
       "planner_cost_usd": 0.000225,
-      "planner_prompt_version": "1",
-      "stop_reason": "planner_done"
+      "planner_prompt_version": "2",
+      "stop_reason": "planner_done",
+      "timings": [
+       {
+        "kind": "prefetch",
+        "name": "prefetch",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "planner",
+        "name": "planner",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "tool",
+        "name": "financial_metrics",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "tool",
+        "name": "lookup_company",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "planner",
+        "name": "planner",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "tool",
+        "name": "compute_change",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "planner",
+        "name": "planner",
+        "s": "<elapsed_s>"
+       }
+      ]
      }
     }
    ],
@@ -261,12 +298,12 @@
    },
    "observed": {
     "prompt_hashes": [
-     "500a83f0b5549c26"
+     "5c20de19fcae8e11"
     ],
     "planner_message_hashes": [
-     "479d03ee9faac376",
-     "5e7d52c121e714e1",
-     "ba735e8fabc6dacb"
+     "35a396784744e007",
+     "a0318e49507b3039",
+     "264800772cc200f2"
     ],
     "warnings": [],
     "tracer_calls": [
@@ -478,7 +515,7 @@
       "0001045810-26-000021:I.1A:0007",
       "0001045810-26-000021:I.1A:0008"
      ],
-     "context_chars": 3843,
+     "context_chars": 4611,
      "escalated": true,
      "escalation_reasons": [
       "invalid_citation"
@@ -509,8 +546,30 @@
        "completion_tokens": 80
       },
       "planner_cost_usd": 0.00014,
-      "planner_prompt_version": "1",
-      "stop_reason": "planner_done"
+      "planner_prompt_version": "2",
+      "stop_reason": "planner_done",
+      "timings": [
+       {
+        "kind": "prefetch",
+        "name": "prefetch",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "planner",
+        "name": "planner",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "tool",
+        "name": "financial_metrics",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "planner",
+        "name": "planner",
+        "s": "<elapsed_s>"
+       }
+      ]
      }
     }
    ],
@@ -531,12 +590,12 @@
    },
    "observed": {
     "prompt_hashes": [
-     "3dfcd4c519cccf63",
-     "3dfcd4c519cccf63"
+     "208731eb6eb40b8e",
+     "208731eb6eb40b8e"
     ],
     "planner_message_hashes": [
-     "479d03ee9faac376",
-     "a49d6f765f4a946f"
+     "35a396784744e007",
+     "ba7957ea123db522"
     ],
     "warnings": [],
     "tracer_calls": [
@@ -698,7 +757,7 @@
       "0001045810-26-000021:I.1A:0007",
       "0001045810-26-000021:I.1A:0008"
      ],
-     "context_chars": 3843,
+     "context_chars": 4611,
      "agent": {
       "tool_calls": [
        {
@@ -716,8 +775,30 @@
        "completion_tokens": 80
       },
       "planner_cost_usd": 0.00014,
-      "planner_prompt_version": "1",
-      "stop_reason": "planner_done"
+      "planner_prompt_version": "2",
+      "stop_reason": "planner_done",
+      "timings": [
+       {
+        "kind": "prefetch",
+        "name": "prefetch",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "planner",
+        "name": "planner",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "tool",
+        "name": "invalid",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "planner",
+        "name": "planner",
+        "s": "<elapsed_s>"
+       }
+      ]
      }
     }
    ],
@@ -738,11 +819,11 @@
    },
    "observed": {
     "prompt_hashes": [
-     "3dfcd4c519cccf63"
+     "208731eb6eb40b8e"
     ],
     "planner_message_hashes": [
-     "479d03ee9faac376",
-     "6c619eb5a0436bed"
+     "35a396784744e007",
+     "2ce758cf020f0405"
     ],
     "warnings": [],
     "tracer_calls": [
@@ -881,7 +962,7 @@
       "0001045810-26-000021:I.1A:0007",
       "0001045810-26-000021:I.1A:0008"
      ],
-     "context_chars": 3843,
+     "context_chars": 4611,
      "agent": {
       "tool_calls": [],
       "model_calls": 1,
@@ -893,8 +974,20 @@
        "completion_tokens": 0
       },
       "planner_cost_usd": 0.0,
-      "planner_prompt_version": "1",
-      "stop_reason": "fallback"
+      "planner_prompt_version": "2",
+      "stop_reason": "fallback",
+      "timings": [
+       {
+        "kind": "prefetch",
+        "name": "prefetch",
+        "s": "<elapsed_s>"
+       },
+       {
+        "kind": "planner",
+        "name": "planner",
+        "s": "<elapsed_s>"
+       }
+      ]
      }
     }
    ],
@@ -915,10 +1008,10 @@
    },
    "observed": {
     "prompt_hashes": [
-     "3dfcd4c519cccf63"
+     "208731eb6eb40b8e"
     ],
     "planner_message_hashes": [
-     "479d03ee9faac376"
+     "35a396784744e007"
     ],
     "warnings": [
      "semigraph.agent: the planner call failed (planner_error:RuntimeError): answering from the plain retrieval"
@@ -1066,11 +1159,11 @@
    },
    "observed": {
     "prompt_hashes": [
-     "3dfcd4c519cccf63"
+     "208731eb6eb40b8e"
     ],
     "planner_message_hashes": [
-     "479d03ee9faac376",
-     "a49d6f765f4a946f"
+     "35a396784744e007",
+     "ba7957ea123db522"
     ],
     "warnings": [],
     "tracer_calls": [
@@ -1194,7 +1287,7 @@
    "observed": {
     "prompt_hashes": [],
     "planner_message_hashes": [
-     "479d03ee9faac376"
+     "35a396784744e007"
     ],
     "warnings": [
      "semigraph.agent: the agent stream was abandoned before a terminal event; the planner had already cost $0.000070"
@@ -1330,11 +1423,11 @@
    },
    "observed": {
     "prompt_hashes": [
-     "3dfcd4c519cccf63"
+     "208731eb6eb40b8e"
     ],
     "planner_message_hashes": [
-     "479d03ee9faac376",
-     "a49d6f765f4a946f"
+     "35a396784744e007",
+     "ba7957ea123db522"
     ],
     "warnings": [
      "semigraph.agent: the agent stream was abandoned before a terminal event; the planner had already cost $0.000140"

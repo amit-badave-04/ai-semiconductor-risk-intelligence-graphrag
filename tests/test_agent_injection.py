@@ -133,15 +133,8 @@ def test_a_planner_that_obeys_an_injected_question_is_refused_and_no_query_runs(
     assert set(driver.names()) <= {"company_edges", "rule_edges", "metrics", "active_risks", "temporal", "passages", "excerpts"}   # the prefetch only
     told = [json.loads(m["content"]) for m in hijacked.calls[1]["messages"] if m["role"] == "tool"]
     assert len(told) == 3 and all("error" in result for result in told)                # each refused call got its error reply
-    from semigraph.agent.merge import without_detail_lines
-    from semigraph.retrieval import answerer as answerer_mod
-    real = answerer_mod.hybrid_retrieve
-    answerer_mod.hybrid_retrieve = lambda *a, **k: without_detail_lines(real(*a, **k))    # the writer's own rendering (council 005)
-    try:
-        plain_writer = FakeWriter(GOOD)
-        list(answer_stream(attack, FakeDriver.world(), FakeEmbedder(), llm_stream=plain_writer))
-    finally:
-        answerer_mod.hybrid_retrieve = real
+    plain_writer = FakeWriter(GOOD)
+    list(answer_stream(attack, FakeDriver.world(), FakeEmbedder(), llm_stream=plain_writer))
     assert writer.prompts == plain_writer.prompts             # nothing the hijacked planner asked for changed what the writer saw
     assert events[-1]["event"] == "done" and events[-1]["agent"]["fallback_reason"] is None
 

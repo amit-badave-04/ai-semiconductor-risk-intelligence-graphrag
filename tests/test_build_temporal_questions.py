@@ -342,3 +342,18 @@ def test_the_output_document_and_both_benchmark_copies_carry_the_development_lab
     merged = {e["id"]: e for e in json.loads(a.read_bytes().decode("utf-8"))}
     assert {merged[f"T{n}"]["split"] for n in range(4, 16)} == {"development"}
     assert "split" not in merged["T1"] and "split" not in merged["U1"]           # the legacy entries keep their exact shape
+
+
+def test_od5_adds_a_grading_note_to_the_tsmc_pair_only_and_keeps_the_annotation_counts():
+    """M3 OD5: the comparison block counts 18 reworded for TSMC FY24->FY25; the annotators' 14 treated 4 edits as unchanged. The
+    annotation stays as labelled (counts agree with the per-item labels); the judge gets a grading note for that one pair."""
+    mod = btq
+    pid = mod.OD5_PAIR
+    counts = {"unchanged": 11, "reworded": 14, "merged": 1, "removed": 0}
+    f = mod.PairFacts(pid, "TSM", "TSMC", None, None, "risk factor", {}, counts, {"carried": 25, "new": 0}, (), (), 26, 25)
+    text = mod._counts_sentence(f)
+    assert "11 unchanged, 14 reworded, 1 merged" in text                     # the annotation is not rewritten
+    assert "Grading note (OD5, M3)" in text and "showing 4 of 18" in text and "is not wrong for that count" in text
+    other = mod.PairFacts("NVDA-x-y", "NVDA", "NVIDIA", None, None, "risk factor", {}, counts, {"carried": 25, "new": 0}, (), (), 26, 25)
+    assert "OD5" not in mod._counts_sentence(other)
+    assert not hasattr(mod, "corrected_counts")

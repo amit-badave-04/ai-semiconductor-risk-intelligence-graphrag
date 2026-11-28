@@ -2138,7 +2138,7 @@ def metered_run(monkeypatch, outcomes, question: str = Q_SEC, **kw):
 
 
 def prompt_chars_of(fake: FakeAcompletion, call: int = 0) -> int:
-    return len(fake.calls[call]["messages"][0]["content"])
+    return sum(len(m["content"]) for m in fake.calls[call]["messages"])
 
 
 def test_a_draft_only_answer_meters_one_draft_call_with_its_usage(monkeypatch):

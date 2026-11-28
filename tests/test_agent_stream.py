@@ -28,7 +28,7 @@ CHUNK = "0001045810-26-000021:I.1A:0001"
 GOOD = f"Nvidia depends on TSMC for advanced wafer supply [{CHUNK}]."
 FM = ("financial_metrics", {"companies": ["Nvidia"], "fiscal_years": [2026]})
 AGENT_KEYS = {"tool_calls", "model_calls", "elapsed_s", "fallback_reason", "planner_model", "planner_usage", "planner_cost_usd",
-              "planner_prompt_version", "stop_reason"}
+              "planner_prompt_version", "stop_reason", "timings"}   # M3 R6: span names and seconds only
 
 
 def test_an_abandoned_stream_logs_the_planners_already_accrued_spend(caplog):
@@ -133,14 +133,9 @@ def plain_events(writer):
 ], ids=["no-tool", "planner-error", "refused-tool", "error-after-a-tool"])
 def test_a_planner_that_adds_nothing_gives_the_writer_the_byte_identical_prompt(make_planner, fallback, monkeypatch):
     """A run that adds nothing, and EVERY fallback (even after a tool call that worked), answers exactly like the fixed path
-    rendered the way the agent's writer renders (M2a council 005: no edge quote lines or rule abstracts, and the computed note
-    inline without the prior id: ``agent.merge.without_detail_lines``). The fixed path itself keeps all of them."""
-    from semigraph.agent.merge import without_detail_lines
-    real = answerer_mod.hybrid_retrieve
-    monkeypatch.setattr(answerer_mod, "hybrid_retrieve", lambda *a, **k: without_detail_lines(real(*a, **k)))
+    (M3 R1: the same context renderer, detail lines on, while it fits the allowance)."""
     plain_writer, agent_writer = FakeWriter(GOOD), FakeWriter(GOOD)
     plain = plain_events(plain_writer)
-    monkeypatch.setattr(answerer_mod, "hybrid_retrieve", real)
     agent = stream(make_planner(), agent_writer, fallback=fallback)
     assert agent_writer.prompts == plain_writer.prompts
     assert [e for e in agent if e["event"] == "retrieval"] == [e for e in plain if e["event"] == "retrieval"]

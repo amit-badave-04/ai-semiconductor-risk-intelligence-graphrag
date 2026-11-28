@@ -568,7 +568,7 @@ def test_every_estimate_covers_the_worst_case_prompt_rendered_at_the_caps_on_the
 def test_the_rendered_worst_cases_are_the_prompts_the_hand_arithmetic_describes():
     """The rendered sizes (characters), so a change to a layout or a cap shows here first."""
     assert {t: rendered_worst_case_chars(t) for t in ASK_TYPES} == {
-        "vector": 106_228, "hybrid": 339_982, "workspace": 341_271, "agent": 461_822}
+        "vector": 106_233, "hybrid": 339_987, "workspace": 341_271, "agent": 461_827}   # M3: answer.txt 9,508 -> 9,513 (allowance 9,600)
 
 
 @pytest.mark.parametrize("pairs", [1, 2])
@@ -644,7 +644,7 @@ def test_without_the_cap_the_same_calls_cost_more_than_the_agent_estimate_holds(
     at the live prices, above the 1,008,529 the estimate holds. The cap, not the data, is what keeps it a bound."""
     r = merged_agent_context(AGENT_COMPANIES, pair_cap=100)
     assert sum(1 for p in r["temporal_pairs"] if p["cik"] == CIK_BASE + 1) == 10
-    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (581_846, 1_243_786)
+    assert (_prompt_chars(r), math.ceil(writer_floor_micro("agent", _prompt_chars(r)))) == (581_851, 1_243_799)   # M3: answer.txt +5 characters
     assert math.ceil(writer_floor_micro("agent", _prompt_chars(r))) > est.estimate_micro("agent", live_settings())
 
 

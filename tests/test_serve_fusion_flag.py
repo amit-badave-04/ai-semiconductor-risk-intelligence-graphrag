@@ -48,8 +48,8 @@ def test_production_accepts_the_flag_either_way():
 
 # --- the fingerprint: an element only when on ---
 
-def test_fingerprint_is_2a6910aa5d_with_the_flag_off():
-    assert template_fingerprint() == template_fingerprint(fusion=False) == "2a6910aa5d"
+def test_fingerprint_is_416bca4fa4_with_the_flag_off():
+    assert template_fingerprint() == template_fingerprint(fusion=False) == "416bca4fa4"
 
 
 def test_fusion_on_changes_fingerprint_and_cache_key(monkeypatch):
@@ -391,7 +391,7 @@ def test_a_change_to_serving_config_changes_the_fingerprint(monkeypatch):
     before = template_fingerprint(fusion=True)
     monkeypatch.setattr(fusion, "SERVING_CONFIG", fusion.FusionConfig(filer=True, keyword=True, keyword_context=True))
     assert template_fingerprint(fusion=True) != before
-    assert template_fingerprint() == "2a6910aa5d"
+    assert template_fingerprint() == "416bca4fa4"
 
 
 def test_agent_asks_get_the_fusion_runtime():

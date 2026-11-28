@@ -102,7 +102,7 @@
     "0001045810-26-000021:I.1A:0007",
     "0001045810-26-000021:I.1A:0008"
    ],
-   "context_chars": 4299,
+   "context_chars": 5138,
    "agent": {
     "tool_calls": [
      {
@@ -136,7 +136,7 @@
      }
     ],
     "model_calls": 3,
-    "elapsed_s": 1.5,
+    "elapsed_s": 3.25,
     "fallback_reason": null,
     "planner_model": "openai/gpt-6-luna",
     "planner_usage": {
@@ -144,8 +144,45 @@
      "completion_tokens": 110
     },
     "planner_cost_usd": 0.000225,
-    "planner_prompt_version": "1",
-    "stop_reason": "planner_done"
+    "planner_prompt_version": "2",
+    "stop_reason": "planner_done",
+    "timings": [
+     {
+      "kind": "prefetch",
+      "name": "prefetch",
+      "s": 0.125
+     },
+     {
+      "kind": "planner",
+      "name": "planner",
+      "s": 0.125
+     },
+     {
+      "kind": "tool",
+      "name": "financial_metrics",
+      "s": 0.375
+     },
+     {
+      "kind": "tool",
+      "name": "lookup_company",
+      "s": 0.375
+     },
+     {
+      "kind": "planner",
+      "name": "planner",
+      "s": 0.125
+     },
+     {
+      "kind": "tool",
+      "name": "compute_change",
+      "s": 0.25
+     },
+     {
+      "kind": "planner",
+      "name": "planner",
+      "s": 0.125
+     }
+    ]
    }
   }
  ]

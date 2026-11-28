@@ -260,7 +260,7 @@ def test_rerank_setting_moves_the_serving_digest(monkeypatch):
 def test_flag_off_fingerprint_is_untouched():
     from semigraph.retrieval.answerer import template_fingerprint
 
-    assert template_fingerprint() == "2a6910aa5d"
+    assert template_fingerprint() == "416bca4fa4"
 
 
 def test_missing_model_gives_the_fingerprint_with_rerank_off(monkeypatch):

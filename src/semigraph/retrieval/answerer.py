@@ -126,6 +126,24 @@ def render_prompt(question: str, blocks: ContextBlocks) -> str:
     return ANSWER_PROMPT.format(question=question, **blocks._asdict())
 
 
+_QUESTION_MARKER = "QUESTION: {question}"
+# The Rules of answer.txt as they render (everything before the question line; it holds no placeholder).
+_RULES_PREFIX = ANSWER_PROMPT.partition(_QUESTION_MARKER)[0].format()
+
+
+def prompt_messages(prompt: str) -> list[dict]:
+    """The chat messages for a rendered prompt. A prompt rendered from ``answer.txt`` (it starts with that template's Rules,
+    then the ``QUESTION:`` line) goes as a SYSTEM message (the Rules) and a USER message (the question and every context
+    block): the untrusted question and the evidence no longer share a message with the rules, which the escalation writer
+    needs to keep them (owner decision 2026-11-28, docs/specs/m3-agent-fix.md). The two texts re-join to ``prompt``
+    exactly. Any other prompt (the workspace template, adjudication, a judge, a bare string) stays ONE user message. The
+    split is anchored at the template's own prefix, so a question that contains the marker cannot move it."""
+    cut = len(_RULES_PREFIX)
+    if cut and prompt.startswith(_RULES_PREFIX) and prompt[cut:].startswith("QUESTION: "):
+        return [{"role": "system", "content": prompt[:cut]}, {"role": "user", "content": prompt[cut:]}]
+    return [{"role": "user", "content": prompt}]
+
+
 def _metric_amount(m: dict) -> str:
     """``215,938,000,000 USD``: the metric's own unit (``TWD``/``EUR`` for IFRS filers); none renders as USD."""
     return f"{m['value']:,.0f} {m.get('unit') or DEFAULT_UNIT}"
@@ -444,7 +462,7 @@ def llm_text(prompt: str, *, model: str | None = None, max_tokens: int = 1200,
     for attempt in range(attempts):
         try:
             resp = completion(
-                model=model, messages=[{"role": "user", "content": prompt}],
+                model=model, messages=prompt_messages(prompt),
                 **completion_params(model, budget, reasoning_effort=reasoning_effort), num_retries=2, **extra,
                 **provider_kwargs(model, get_settings()),
             )
@@ -546,7 +564,7 @@ class TextStream:
     def __iter__(self):
         import litellm
 
-        messages = [{"role": "user", "content": self.prompt}]
+        messages = prompt_messages(self.prompt)
         last_err = "unknown"
         for attempt in range(self.attempts):
             self._chunks = []

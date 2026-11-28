@@ -73,8 +73,8 @@ def test_fusion_off_query_sequence_is_the_golden_list():
     assert d.params_of("excerpts") == [{"ids": [NVDA, TSMC], "vec": VEC, "k": 8, "candidates": R.EXCERPT_CANDIDATES}]
 
 
-def test_fingerprint_is_2a6910aa5d_with_fusion_off():
-    assert template_fingerprint() == "2a6910aa5d"
+def test_fingerprint_is_416bca4fa4_with_fusion_off():
+    assert template_fingerprint() == "416bca4fa4"
 
 
 # --- the new queries ---

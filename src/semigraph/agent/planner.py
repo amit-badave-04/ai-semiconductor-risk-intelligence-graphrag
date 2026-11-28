@@ -27,7 +27,7 @@ from .sanitize import prefetch_summary
 from .state import PlannerTurn, ToolCall
 
 # Bumped whenever ``prompts/agent_planner.txt`` changes; surfaced in ``done.agent`` so an eval run says which prompt planned it.
-PLANNER_PROMPT_VERSION = "1"
+PLANNER_PROMPT_VERSION = "2"
 PLANNER_MAX_TOKENS = 400          # a tool call or two: the planner never writes prose
 
 
@@ -35,9 +35,10 @@ def system_prompt() -> str:
     return read_prompt("agent_planner")
 
 
-def initial_messages(question: str, r: Mapping) -> list[dict]:
-    """The system prompt, then the question and the summary of what the plain retrieval already holds."""
-    summary = json.dumps(prefetch_summary(r), separators=(",", ":"))
+def initial_messages(question: str, r: Mapping, *, tool_calls_left: int | None = None) -> list[dict]:
+    """The system prompt, then the question and the summary of what the plain retrieval already holds.
+    ``tool_calls_left`` is the run's own limit (the caller knows it; Settings is never read here)."""
+    summary = json.dumps(prefetch_summary(r, tool_calls_left=tool_calls_left), separators=(",", ":"))
     user = f"QUESTION (untrusted user text):\n{question}\n\nALREADY RETRIEVED (plain hybrid retrieval; counts and ids only):\n{summary}"
     return [{"role": "system", "content": system_prompt()}, {"role": "user", "content": user}]
 

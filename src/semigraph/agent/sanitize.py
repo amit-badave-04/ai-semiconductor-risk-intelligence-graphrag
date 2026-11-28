@@ -208,18 +208,44 @@ def view_edges(rows: Iterable[Mapping]) -> dict:
             "other_relations": other_relations, "rule_ids": rule_ids}
 
 
-def prefetch_summary(r: Mapping) -> dict:
+def _edge_relations_per_company(edges: Iterable[Mapping]) -> dict[str, dict[str, int]]:
+    """``{canonical company: {relation: count}}`` over the edges: an edge counts once for each universe company at its ends
+    (a rule edge only for its source). Relations outside the fixed vocabulary and endpoints outside the universe are skipped."""
+    out: dict[str, dict[str, int]] = {}
+    for edge in edges:
+        relation = edge.get("relation")
+        if relation not in RELATIONS:
+            continue
+        ends = [edge.get("source")] if relation == RULE_RELATION else [edge.get("source"), edge.get("target")]
+        for name in {n for end in ends if (n := canonical_name(end))}:
+            per = out.setdefault(name, {})
+            per[relation] = per.get(relation, 0) + 1
+    return {name: dict(sorted(per.items())) for name, per in sorted(out.items())}
+
+
+def prefetch_summary(r: Mapping, *, tool_calls_left: int | None = None) -> dict:
     """What the plain hybrid retrieval already holds, for the planner's first message: the companies it anchored on (or the default
-    it fell back to), the metric periods per company, the risk-change comparisons and the counts of every layer."""
+    it fell back to), the metric periods per company, the risk-change comparisons and the counts of every layer, plus the coverage
+    the planner needs to stay inside its limits: the companies the answer covers, the room left (companies, and tool calls when
+    ``tool_calls_left`` is given) and the edge relations per company. Counts, ids and canonical names only."""
     defaulted = bool(r.get("anchor_defaulted"))
     named = sorted({name for key in (r.get("anchors") or {}) if (name := canonical_name(key))})
+    default_name = company_for_id(DEFAULT_ANCHOR_CIK) if defaulted else None
+    from . import merge as _merge        # lazy: merge imports this module. One definition of "covered" and of the cap, shared with the enforcer
+    covered = sorted({name for name in _merge.covered_companies(r).values() if canonical_name(name)})
     metrics: dict[str, dict[str, list[str]]] = {}
     for company in view_metrics(r.get("metrics") or [], cap=10_000)["companies"]:
         metrics[company["company"]] = {metric: [p["period_end"] for p in periods] for metric, periods in company["metrics"].items()}
     edges = r.get("edges") or []
+    room = {"companies": max(0, _merge.company_cap() - len(covered))}
+    if tool_calls_left is not None:
+        room["tool_calls"] = safe_count(tool_calls_left)
     return {"companies_in_question": [] if defaulted else named,
-            "defaulted_to": company_for_id(DEFAULT_ANCHOR_CIK) if defaulted else None,
+            "defaulted_to": default_name,
+            "companies_covered": covered,
+            "room": room,
             "metrics": metrics,
+            "edge_relations": _edge_relations_per_company(edges),
             "risk_comparisons": view_pairs(r.get("temporal_pairs") or []),
             "counts": {"chunks": len(r.get("chunks") or []), "edges": sum(1 for e in edges if e.get("relation") != RULE_RELATION),
                        "rules": sum(1 for e in edges if e.get("relation") == RULE_RELATION), "active_risks": len(r.get("risks") or []),

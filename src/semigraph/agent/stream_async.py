@@ -118,7 +118,7 @@ from ..retrieval.answerer import usage_cost
 from ..retrieval.answerer_async import astream_answer_for_context
 from ..serve.tracing import redact_secret_shaped
 from .graph import AgentResult, run_agent
-from .merge import without_detail_lines
+from .merge import agent_writer_context
 from .planner import PLANNER_MAX_TOKENS, LiteLLMPlanner
 from .state import Ledger, Limits, PlannerTurn
 from .stream import _PREFETCH_ARGS, _agent_info, _fold_spend, _planner_cost
@@ -413,7 +413,7 @@ async def aagent_answer_stream(question: str, driver, embedder, strategy: str = 
                 # past this point the first thing the writer does is to ask for a paid model call.
                 await anyio.lowlevel.checkpoint()
                 writer = astream_answer_for_context(
-                    question, without_detail_lines(plan.r), strategy, llm_stream=llm_stream, escalation_model=escalation_model,
+                    question, agent_writer_context(plan.r), strategy, llm_stream=llm_stream, escalation_model=escalation_model,
                     escalation_stream=escalation_stream, max_tokens=max_tokens, limiters=limiters, meter=meter,
                     **writer_kwargs)
                 try:

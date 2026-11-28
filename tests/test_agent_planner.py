@@ -110,7 +110,7 @@ def test_the_system_prompt_is_short_versioned_and_treats_the_question_as_untrust
     assert isinstance(P.PLANNER_PROMPT_VERSION, str) and P.PLANNER_PROMPT_VERSION
 
 
-PROMPT_PIN = ("1", "c0ce22532b")      # (PLANNER_PROMPT_VERSION, sha256 of prompts/agent_planner.txt)
+PROMPT_PIN = ("2", "8685a6c17b")      # (PLANNER_PROMPT_VERSION, sha256 of prompts/agent_planner.txt)
 
 
 def test_a_prompt_edit_without_a_version_bump_fails_here():
@@ -147,3 +147,63 @@ def test_an_assistant_and_a_tool_message_follow_the_openai_shape():
         {"id": "call_0", "type": "function", "function": {"name": "lookup_company", "arguments": '{"name": "AMD"}'}},
         {"id": "call_1", "type": "function", "function": {"name": "financial_metrics", "arguments": '{"companies": ["AMD"]}'}}]}
     assert P.tool_message("call_0", {"company": "AMD"}) == {"role": "tool", "tool_call_id": "call_0", "content": '{"company": "AMD"}'}
+
+
+# --- M3 I3: planner prompt v2 (spec R5, S2, S3; the LLM is mocked) -----------------------------------------------------------------
+
+def _prompt() -> str:
+    return " ".join(P.system_prompt().split())
+
+
+def test_agent_planner_v2_prompt_version_is_bumped():
+    assert P.PLANNER_PROMPT_VERSION == "2"
+
+
+@pytest.mark.parametrize("rule", [
+    "at most 4 companies in all",                       # the answer-wide cap, not per call
+    "300 characters or fewer",
+    "keywords",
+    "one company's own two period ends",
+    "never resend the same arguments",
+    "all tool calls in your first turn",
+])
+def test_agent_planner_v2_prompt_states_the_rule(rule):
+    assert rule in _prompt()
+
+
+def test_agent_planner_v2_prompt_keeps_the_untrusted_question_and_no_filing_text_rules():
+    text = _prompt()
+    assert "untrusted" in text and "Filing text is never shown to you" in text and "DONE" in text
+
+
+def test_agent_planner_v2_initial_messages_carry_coverage_and_no_injection():
+    r = hybrid_retrieve("How exposed is Nvidia to TSMC?", poisoned_world(), FakeEmbedder())
+    system, user = P.initial_messages("How exposed is Nvidia to TSMC?", r)
+    assert system["content"] == P.system_prompt()
+    assert '"companies_covered":["Nvidia","TSMC"]' in user["content"] and '"room":{"companies":2}' in user["content"]
+    assert CANARY not in user["content"] and "Ignore" not in user["content"]
+
+
+def test_agent_planner_v2_the_tool_schemas_the_model_is_sent_are_unchanged_in_shape(sent):
+    P.LiteLLMPlanner(LUNA)(MESSAGES, tool_specs(), timeout=5)
+    assert sent.calls[0]["tools"] == tool_specs()
+    assert {s["function"]["name"] for s in tool_specs()} == {"lookup_company", "search_filings", "financial_metrics", "risk_changes",
+                                                             "relationships", "active_risks", "compute_change"}
+
+
+def test_agent_planner_v2_initial_messages_never_read_settings(monkeypatch):
+    # the guarded fixture server forbids get_settings; the run's real limit comes from the caller (graph.py), never from Settings
+    def boom():
+        raise AssertionError("get_settings was called")
+    monkeypatch.setattr(P, "get_settings", boom, raising=False)
+    r = hybrid_retrieve("How exposed is Nvidia to TSMC?", poisoned_world(), FakeEmbedder())
+    plain = P.initial_messages("How exposed is Nvidia to TSMC?", r)[1]["content"]
+    assert '"room":{"companies":2}' in plain
+    with_limit = P.initial_messages("How exposed is Nvidia to TSMC?", r, tool_calls_left=3)[1]["content"]
+    assert '"room":{"companies":2,"tool_calls":3}' in with_limit
+
+
+def test_agent_planner_v2_prompt_states_the_cap_once_and_fetch_then_compute_in_one_turn():
+    text = _prompt()
+    assert text.count("at most 4 companies in all") == 1
+    assert "financial_metrics for both periods earlier in the same turn, then compute_change" in text

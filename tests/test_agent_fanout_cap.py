@@ -389,7 +389,7 @@ def test_the_whole_agent_stream_carries_the_refused_step_the_dropped_list_and_th
     assert done["agent"]["tool_calls"] == [{"tool": "financial_metrics", "args": {"companies": ["TSMC"]}, "ok": False}]
     assert done["agent"]["fallback_reason"] is None and done["agent"]["stop_reason"] == "planner_done"
     assert set(done["agent"]) == {"tool_calls", "model_calls", "elapsed_s", "fallback_reason", "planner_model",
-                                  "planner_usage", "planner_cost_usd", "planner_prompt_version", "stop_reason"}
+                                  "planner_usage", "planner_cost_usd", "planner_prompt_version", "stop_reason", "timings"}   # M3 R6
 
 
 def test_the_agent_object_and_events_of_a_question_under_the_cap_are_what_they_were():

@@ -22,6 +22,8 @@ causes spot-checked: X1 and T4). Production: `AGENT_ENABLED = "false"` (fly.toml
 wrong although within it), T9's gold note says 14 reworded where the data says 18, and the fixed path itself moved from 21/23 to
 19/23 between two runs: the gate compares two single runs, so noise alone can fail it.
 
+**Amendment 2026-11-28 (owner).** Decision "Rules as system message (Recommended)". The production check (`tests/security/promptfoo/m3_production_check.py`, results in `m3_production_results.json`) showed the escalation writer `anthropic/claude-sonnet-5` breaking the new rules R2-R4 (38/60) because the rules, the untrusted QUESTION and the evidence were sent as ONE user message, while GPT-6 Luna passed 57/60. For prompts rendered from `answer.txt` (the fixed path and the agent path share it) everything before the `QUESTION:` line (the Rules) is now sent as a SYSTEM message, and the QUESTION plus all context blocks as the USER message (`answerer.prompt_messages`, used by `llm_text`, `TextStream` and `AsyncTextStream`; other templates, the planner and the judge keep one user message). The two texts re-join to the rendered prompt exactly, so the metered and estimated character counts do not change. The answer-rule edits were also reduced to minimal wording inside the 9,600-character template allowance (the earlier output-rewriting guard was removed); that edit moved `template_fingerprint()` from `183eba08e7` to `7eea855d45` (fusion on: `53c88d4fdd` to `433d463331`), and the pins were updated.
+
 **Cost.** About $3.5-3.8 per paired session (fixed-path re-benchmark about $1.5 + agent gate about $2.0-2.3), worst case about $10.
 
 **Decisions for the owner (recommendation first).**
@@ -38,6 +40,9 @@ wrong although within it), T9's gold note says 14 reworded where the data says 1
   *Recommended: correct it*, recorded as a gold fix, applied to both paths.
 - **OD6 Judge noise (T4, T7, T8):** a separate judge-quality task; no judge or gate edit here. *Recommended.*
 - **OD7 CP's `lookup_company` change:** stays with CP and its own gate run. *Recommended.*
+
+Note: `semigraph bakeoff` (src/semigraph/eval/bakeoff.py) keeps the single-message shape on purpose, to stay comparable with its
+saved v2 baseline; it is not part of the M3 gates and does not reach production.
 
 ## 1. Goal and fixed constraints
 

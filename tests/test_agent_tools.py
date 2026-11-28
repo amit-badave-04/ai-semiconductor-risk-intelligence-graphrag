@@ -21,6 +21,7 @@ from agent_fakes import (
     FakeDriver,
     FakeEmbedder,
     chunk_row,
+    metric_rows,
     poisoned_world,
 )
 
@@ -516,3 +517,85 @@ def test_arguments_may_arrive_already_parsed():
     box, r, _, _ = setup()
     out = box.execute("lookup_company", {"name": "AMD"}, r)
     assert out.ok and out.result["company"] == "AMD"
+
+
+# --- M3 I3: compute_change is one company's own two period ends; refusals are not retried (spec R5, S3) --------------------------
+
+def _with_amd_fact(r):
+    return {**r, "metrics": [*r["metrics"], *metric_rows(cik=AMD, company="AMD", series={"2024-12-28": 25785000000.0})]}
+
+
+def test_compute_change_refuses_two_companies():
+    box, r, driver, _ = setup()
+    out = run(box, r, "compute_change", {"company": "Nvidia and AMD", "metric": "revenue", "from_period_end": "2025-01-26",
+                                         "to_period_end": "2026-01-25"})
+    assert out.ok is False and driver.calls == [] and out.r == r
+    assert "one company" in out.result["error"] and "own two period ends" in out.result["error"]
+
+
+@pytest.mark.parametrize("company", ["Nvidia and AMD", "NVDA and AMD", "Nvidia, AMD", "Nvidia vs AMD", "Nvidia/AMD"])
+def test_compute_change_refuses_every_two_company_form(company):
+    box, r, driver, _ = setup()
+    out = run(box, r, "compute_change", {"company": company, "metric": "revenue", "from_period_end": "2025-01-26",
+                                         "to_period_end": "2026-01-25"})
+    assert out.ok is False and driver.calls == [] and "one company" in out.result["error"]
+
+
+def test_compute_change_for_a_period_end_the_company_lacks_says_to_fetch_it_never_that_it_is_another_companys():
+    # Intel and AMD share a fiscal year end: the right recovery is financial_metrics for this company, not giving up.
+    box, r, _, _ = setup()
+    r = _with_amd_fact(r)
+    out = run(box, r, "compute_change", {"company": "Nvidia", "metric": "revenue", "from_period_end": "2024-12-28",
+                                         "to_period_end": "2026-01-25"})
+    assert out.ok is False and "financial_metrics" in out.result["error"] and "another company" not in out.result["error"]
+
+
+def test_compute_change_still_refuses_a_never_fetched_fact_with_the_fetch_message():
+    box, r, _, _ = setup()
+    out = run(box, r, "compute_change", {"company": "Nvidia", "metric": "revenue", "from_period_end": "2010-01-31",
+                                         "to_period_end": "2026-01-25"})
+    assert "financial_metrics" in out.result["error"]
+
+
+def test_a_refused_call_is_refused_at_once_when_sent_again_with_the_same_arguments():
+    box, r, driver, _ = setup()
+    args = {"company": "Nvidia and AMD", "metric": "revenue", "from_period_end": "2025-01-26", "to_period_end": "2026-01-25"}
+    first = run(box, r, "compute_change", args)
+    second = run(box, r, "compute_change", dict(reversed(list(args.items()))))      # same arguments, other key order
+    assert first.ok is False and second.ok is False and driver.calls == []
+    assert "already refused" in second.result["error"] and "change one argument" in second.result["error"]
+    assert "do not resend" in first.result["error"]
+    changed = run(box, r, "compute_change", {**args, "company": "Nvidia"})           # one argument changed: judged on its own
+    assert "already refused" not in changed.result.get("error", "")
+
+
+def test_an_invalid_call_sent_twice_is_refused_the_second_time_without_a_query():
+    box, r, driver, _ = setup()
+    args = {"query": "x" * 301}
+    first = run(box, r, "search_filings", args)
+    second = run(box, r, "search_filings", args)
+    assert first.ok is False and "already refused" not in first.result["error"]
+    assert second.ok is False and "already refused" in second.result["error"] and driver.calls == []
+
+
+def test_a_refusal_that_depends_on_what_was_fetched_is_not_remembered():
+    box, r, _, _ = setup()
+    args = {"company": "Nvidia", "metric": "revenue", "from_period_end": "2025-01-26", "to_period_end": "2026-01-25"}
+    first = run(box, r, "compute_change", {**args, "from_period_end": "2010-01-31"})
+    again = run(box, r, "compute_change", {**args, "from_period_end": "2010-01-31"})
+    assert first.ok is False and again.ok is False and "already refused" not in again.result["error"]
+
+
+def test_tool_descriptions_state_the_v2_limits_once_and_stay_small():
+    texts = {s["function"]["name"]: " ".join(s["function"]["description"].split()) for s in T.tool_specs()}
+    assert "one company" in texts["compute_change"].lower() and "own two period ends" in texts["compute_change"]
+    assert "keywords" in texts["search_filings"] and "300" in texts["search_filings"]
+    for name in ("financial_metrics", "risk_changes", "relationships", "active_risks"):
+        assert "4 companies in all" not in texts[name]          # stated once, in the system prompt
+
+
+def test_the_argument_schemas_are_unchanged_by_the_description_edits():
+    schemas = {s["function"]["name"]: s["function"]["parameters"] for s in T.tool_specs()}
+    assert schemas["search_filings"]["properties"]["query"]["maxLength"] == 300
+    assert schemas["financial_metrics"]["properties"]["companies"]["maxItems"] == 4
+    assert schemas["compute_change"]["additionalProperties"] is False

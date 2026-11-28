@@ -22,7 +22,7 @@ from ..config import get_settings
 from ..retrieval.answerer import build_blocks, stream_answer_for_context, usage_cost
 from . import planner as P
 from .graph import AgentResult, run_agent
-from .merge import without_detail_lines
+from .merge import agent_writer_context
 from .planner import LiteLLMPlanner
 from .state import Ledger, Limits
 from .trace import as_safe
@@ -45,7 +45,8 @@ def _agent_info(plan: AgentResult, planner_model: str, planner_cost: float) -> d
     """The ``agent`` object of ``done`` (plan section 6, plus the prompt version and why planning stopped)."""
     return {"tool_calls": plan.tool_calls, "model_calls": plan.model_calls, "elapsed_s": plan.elapsed_s,
             "fallback_reason": plan.fallback_reason, "planner_model": planner_model, "planner_usage": plan.planner_usage,
-            "planner_cost_usd": planner_cost, "planner_prompt_version": P.PLANNER_PROMPT_VERSION, "stop_reason": plan.stop_reason}
+            "planner_cost_usd": planner_cost, "planner_prompt_version": P.PLANNER_PROMPT_VERSION, "stop_reason": plan.stop_reason,
+            "timings": plan.timings}
 
 
 def _total_cost(writer_cost: float | None, planner_cost: float) -> float | None:
@@ -94,7 +95,7 @@ def _run(question: str, driver, embedder, strategy: str, *, timeout, max_tokens,
                 span.set(tool_calls=len(plan.tool_calls), model_calls=plan.model_calls, fallback_reason=plan.fallback_reason,
                          stop_reason=plan.stop_reason, planner_cost_usd=planner_cost)
                 try:
-                    for event in stream_answer_for_context(question, without_detail_lines(plan.r), strategy, llm_stream=llm_stream,
+                    for event in stream_answer_for_context(question, agent_writer_context(plan.r), strategy, llm_stream=llm_stream,
                                                            escalation_model=escalation_model, escalation_stream=escalation_stream,
                                                            max_tokens=max_tokens, **writer_kwargs):
                         event = _fold_spend(event, planner_cost, agent)
@@ -164,7 +165,7 @@ def agent_answer(question: str, driver, embedder, strategy: str = "agent", **kwa
     terminal = events[-1]
     if terminal["event"] != "done":
         raise AgentAnswerError(terminal)
-    _, context, valid_ids = build_blocks(without_detail_lines(final_r))
+    _, context, valid_ids = build_blocks(agent_writer_context(final_r))
     cited = set(terminal["citations"])
     return {"question": question, "strategy": strategy, "answer": terminal["answer"], "citations": terminal["citations"], "cited": cited,
             "valid_ids": valid_ids, "hallucinated": cited - valid_ids, "context": context, "checks": terminal["checks"],

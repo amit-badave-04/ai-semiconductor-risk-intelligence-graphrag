@@ -152,6 +152,7 @@ from .answerer import (
     _totals,
     build_blocks,
     dropped_anchors_field,
+    prompt_messages,
     render_prompt,
     sources_from_context,
     usage_cost,
@@ -303,7 +304,7 @@ class AsyncTextStream:
             logger.debug("usage estimate unavailable: %s", e)
 
     async def __aiter__(self) -> AsyncIterator[str]:
-        messages = [{"role": "user", "content": self.prompt}]
+        messages = prompt_messages(self.prompt)
         last_err = "unknown"
         for attempt in range(self.attempts):
             self._chunks = []

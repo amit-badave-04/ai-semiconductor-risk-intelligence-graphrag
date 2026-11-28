@@ -23,6 +23,7 @@ result names the companies covered and how many more fit, so the planner can ret
 
 import json
 import logging
+import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -119,24 +120,28 @@ _MODELS: dict[str, type[_Args]] = {
     "compute_change": ComputeChangeArgs}
 
 
+_TWO_COMPANIES = ("compute_change is for one company: its own two period ends. For two companies, fetch each company's figure with "
+                  "financial_metrics and do not compute a change. Change one argument or stop; do not resend the same arguments.")
+_REPEAT = "this exact call was already refused; change one argument or stop"
+_COMPANY_SEPARATORS = re.compile(r"\s(?:and|vs\.?|versus)\s|[&,/+;]", re.IGNORECASE)
+
+
 def _descriptions() -> dict[str, str]:
     return {
-        "lookup_company": ("Resolve a company name or ticker. Returns its canonical name, whether it files with the SEC and the fiscal "
-                           f"years of annual filings the graph holds. Companies: {', '.join(S.KNOWN_COMPANIES)}. Only these file with "
+        "lookup_company": ("Resolve a company name or ticker. Returns its canonical name, whether it files with the SEC and the "
+                           f"fiscal years of annual filings held. Companies: {', '.join(S.KNOWN_COMPANIES)}. Only these file with "
                            f"the SEC: {', '.join(sorted(S.SEC_FILERS))}."),
-        "search_filings": ("Vector search over filing excerpts for a topic the plain retrieval may have missed. New excerpts are added "
-                           "to the context; you are told only how many."),
+        "search_filings": ("Vector search over filing excerpts for a topic the plain retrieval may have missed. Adds excerpts to the "
+                           "context; returns a count. The query is keywords, 300 characters or fewer."),
         "financial_metrics": ("Reported annual XBRL metrics (revenue, net_income, rnd, capex) of companies: the latest periods plus any "
-                              "named fiscal years or period ends. Adds them to the context and returns the metric names, period "
-                              "ends and values."),
-        "risk_changes": ("What changed in a company's risk-factor disclosures between annual filings (text-verified comparison of "
-                         "removed / new / reworded items and passages), for the latest pair, for named fiscal years or across "
-                         "recent reports. Adds it to the context and returns the counts."),
-        "relationships": ("Supplier / customer / dependency / competitor links of companies and the Federal Register rules linked to "
-                          "them. Adds them to the context and returns counts and names."),
-        "active_risks": "The currently active risk disclosures of companies most relevant to a topic. Adds them to the context.",
-        "compute_change": ("Percentage change of one metric between two period ends, computed in code from metric facts already "
-                           "fetched (call financial_metrics for both periods first). Never do this arithmetic yourself."),
+                              "named fiscal years or period ends. Adds them to the context; returns names, period ends, values."),
+        "risk_changes": ("What changed in a company's risk-factor disclosures between annual filings (removed / new / reworded "
+                         "items), for the latest pair, named fiscal years or recent reports. Adds it to the context; returns counts."),
+        "relationships": ("Supplier / customer / dependency / competitor links of companies and their Federal Register rules. "
+                          "Adds them to the context; returns counts, names."),
+        "active_risks": ("The currently active risk disclosures of companies most relevant to a topic. Adds them to the context."),
+        "compute_change": ("Percentage change of one metric of ONE company between its own two period ends, from facts already "
+                           "fetched (financial_metrics first). Never compare two companies."),
     }
 
 
@@ -175,9 +180,10 @@ class ToolOutcome:
 class ToolError(Exception):
     """A call the tool refuses: ``result`` is what the planner is told (fixed text), ``summary`` the step line."""
 
-    def __init__(self, result: dict, summary: str):
+    def __init__(self, result: dict, summary: str, *, final: bool = False):
         super().__init__(summary)
         self.result, self.summary = result, summary
+        self.final = final        # True: the refusal cannot change with what has been fetched, so a repeat is refused at once
 
 
 def _problems(error: ValidationError) -> str:
@@ -253,6 +259,7 @@ class Toolbox:
     def __init__(self, driver, embedder, question: str, *, clock: Callable[[], float] = time.monotonic, fusion: Any = None):
         self.driver, self.embedder, self.question, self._clock = driver, embedder, question, clock
         self._fusion = fusion        # a ``retrieval.fusion.FusionRuntime`` (RETRIEVAL_FUSION on) or None: the plain queries
+        self._refused_calls: set[str] = set()        # canonical (tool, arguments) of calls refused for a reason that cannot change
         self._handlers: dict[str, Callable[[Any, dict, ToolCallBudget], ToolOutcome]] = {
             name: getattr(self, f"_{name}") for name in TOOL_NAMES}
 
@@ -271,15 +278,21 @@ class Toolbox:
         args = _parse(raw_arguments)
         if args is None:
             return self._refused(tool, r, {}, {"error": "arguments must be a JSON object"}, f"{tool}: refused, arguments are not a JSON object")
+        key = f"{name}:{json.dumps(args, sort_keys=True, default=str)}"
+        if key in self._refused_calls:
+            return self._refused(tool, r, S.clip_args(args), {"error": _REPEAT}, f"{tool}: refused, same arguments as a refused call")
         try:
             model = _MODELS[name].model_validate(args)
         except ValidationError as e:
+            self._refused_calls.add(key)
             return self._refused(tool, r, S.clip_args(args), {"error": f"invalid arguments ({_problems(e)})"},
                                  f"{tool}: refused, invalid arguments")
         budget = ToolCallBudget(self._clock, None if timeout is None else self._clock() + timeout, edges_budget)
         try:
             return self._handlers[name](model, r, budget)
         except ToolError as e:
+            if e.final:
+                self._refused_calls.add(key)
             return self._refused(tool, r, model.model_dump(mode="json", exclude_defaults=True), e.result, e.summary)
         except M.CompanyCapError as e:
             result, summary = _cap_refusal(tool, e)
@@ -424,6 +437,8 @@ class Toolbox:
 
     def _compute_change(self, a: ComputeChangeArgs, r: dict, budget: ToolCallBudget) -> ToolOutcome:
         # pure: no Cypher query at all, so ``budget`` (timeout / edges) is unused here.
+        if len(R.detect_anchors(a.company)) > 1 or _COMPANY_SEPARATORS.search(a.company):
+            raise ToolError({"error": _TWO_COMPANIES}, "compute_change: refused, one company only", final=True)
         (name, entity_id), = self._resolve([a.company]).items()
         try:
             merged, info = M.compute_change(r, cik=entity_id, metric=a.metric, from_end=a.from_period_end, to_end=a.to_period_end,

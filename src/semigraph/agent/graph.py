@@ -31,7 +31,7 @@ import json
 import logging
 import time
 from collections.abc import Callable, Generator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from langgraph.errors import GraphRecursionError
@@ -66,6 +66,7 @@ class AgentResult:
     fallback_reason: str | None
     stop_reason: str
     planner_usage: dict
+    timings: list[dict] = field(default_factory=list)   # {kind: planner|tool|prefetch, name, s} per span: names and seconds only (S5)
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,7 @@ class _Deps:
     specs: list[dict]
     k_chunks: int
     hops: int
+    timings: list = field(default_factory=list)   # run-local, like the ledger: survives a node bug
     fusion: Any = None              # a ``FusionRuntime`` (RETRIEVAL_FUSION on) or None: the prefetch and search_filings use its legs
 
 
@@ -98,6 +100,11 @@ def _cost(usage: dict | None, model: str) -> float | None:
         return None
 
 
+def _time(d: "_Deps", kind: str, name: str, t0: float) -> None:
+    """Record one span's duration. ``name`` is a fixed word or an already-validated tool name, never question or answer text."""
+    d.timings.append({"kind": kind, "name": name, "s": round(max(0.0, _now() - t0), 3)})
+
+
 def _chars(value: Any) -> int:
     return len(json.dumps(value, default=str))
 
@@ -106,12 +113,14 @@ def _chars(value: Any) -> int:
 
 def _prefetch_node(d: _Deps):
     def prefetch(state: AgentState) -> dict:
+        t_prefetch = _now()
         with d.tracer.span("prefetch") as span:
             r = hybrid_retrieve(d.question, d.driver, d.embedder, k_chunks=d.k_chunks, hops=d.hops,
                                 **_fusion_kwargs(d.fusion))
+            _time(d, "prefetch", "prefetch", t_prefetch)
             span.set(chunks=len(r["chunks"]), metric_rows=len(r["metrics"]), edges=len(r["edges"]))
         try:
-            messages = P.initial_messages(d.question, r)
+            messages = P.initial_messages(d.question, r, tool_calls_left=d.limits.max_tool_calls)
         except Exception as e:  # noqa: BLE001 - past the prefetch the agent degrades, it never errors
             logger.exception("the planner's first messages could not be built")
             return {"r": r, "prefetch_r": r, "messages": [], "fallback_reason": f"agent_error:{type(e).__name__}",
@@ -136,16 +145,19 @@ def _plan_node(d: _Deps):
             timeout = min(remaining, limits.planner_call_cap_s)
             span.set(timeout_s=round(timeout, 3))
             ledger.model_calls += 1                      # counted before the call: a call that fails or times out is still a call
+            t_call = _now()
             try:
                 turn = d.planner(state["messages"], d.specs, timeout=timeout)
                 if not isinstance(turn, PlannerTurn):
                     raise TypeError("the planner did not return a PlannerTurn")
             except Exception as e:  # noqa: BLE001 - any planner failure (a 400 on tool calling, a timeout) degrades to the plain retrieval
+                _time(d, "planner", "planner", t_call)
                 reason = f"planner_error:{type(e).__name__}"
                 logger.warning("the planner call failed (%s): answering from the plain retrieval", reason)
                 span.set(error=type(e).__name__)
                 d.tracer.event("fallback", reason=reason)
                 return {"pending": [], "fallback_reason": reason, "stop_reason": "fallback"}
+            _time(d, "planner", "planner", t_call)
             ledger.record(turn.usage)
             d.tracer.generation(name="planner", model=d.planner_model, usage=turn.usage, cost_usd=_cost(turn.usage, d.planner_model),
                                 input_chars=_chars(state["messages"]), output_chars=_chars([c.name for c in turn.tool_calls]))
@@ -178,9 +190,13 @@ def _tools_node(d: _Deps):
             span_tool = name if isinstance(name, str) and name in TOOL_NAMES else "invalid"
             timeout = min(remaining, d.limits.tool_call_cap_s)
             edges_budget = max(0, M.MAX_EDGES_ADDED - edges_added)
-            with d.tracer.span("tool", tool=span_tool) as span:
-                outcome = d.toolbox.execute(name, call["arguments"], r, timeout=timeout, edges_budget=edges_budget)
-                span.set(ok=outcome.ok)
+            t_tool = _now()
+            try:
+                with d.tracer.span("tool", tool=span_tool) as span:
+                    outcome = d.toolbox.execute(name, call["arguments"], r, timeout=timeout, edges_budget=edges_budget)
+                    span.set(ok=outcome.ok)
+            finally:
+                _time(d, "tool", span_tool, t_tool)   # a raising tool is timed too (review)
             edges_added += max(0, len(outcome.r.get("edges", [])) - len(r.get("edges", [])))
             r = outcome.r
             steps.append({"n": len(steps) + 1, "tool": outcome.tool, "args": outcome.args, "summary": outcome.summary, "ok": outcome.ok})
@@ -230,7 +246,7 @@ def _build_graph(d: _Deps):
 
 # --- the runner ---------------------------------------------------------------------------------------------------------------
 
-def _result(state: dict, ledger: Ledger) -> AgentResult:
+def _result(state: dict, ledger: Ledger, timings: list[dict] | None = None) -> AgentResult:
     """The outcome of a run (M3 finding #10). A fallback with ZERO successful tool calls answers from the untouched
     prefetch (``prefetch_r``): nothing was gathered worth keeping. A fallback with AT LEAST ONE successful tool call
     finalizes with what was gathered (the merged ``r``) instead -- ``fallback_reason`` is still reported, but the merged
@@ -244,7 +260,7 @@ def _result(state: dict, ledger: Ledger) -> AgentResult:
                        tool_calls=[{"tool": s["tool"], "args": s["args"], "ok": s["ok"]} for s in steps],
                        model_calls=ledger.model_calls, elapsed_s=state.get("elapsed_s", round(_now() - state["t0"], 3)),
                        fallback_reason=fallback, stop_reason=state.get("stop_reason") or "planner_done",
-                       planner_usage=dict(ledger.usage))
+                       planner_usage=dict(ledger.usage), timings=[dict(t) for t in timings or []])
 
 
 def run_agent(question: str, driver, embedder, *, planner: Callable[..., PlannerTurn], planner_model: str, limits: Limits,
@@ -264,7 +280,7 @@ def run_agent(question: str, driver, embedder, *, planner: Callable[..., Planner
     if fusion is None:
         fusion = process_default()          # set at boot / by eval-agent; the agent never reads settings or builds a runtime
     deps = _Deps(question, driver, embedder, Toolbox(driver, embedder, question, clock=_now, fusion=fusion), planner, planner_model, limits,
-                 tracer, ledger, tool_specs(), k_chunks, hops, fusion)
+                 tracer, ledger, tool_specs(), k_chunks, hops, [], fusion)
     config = {"recursion_limit": recursion_limit or recursion_limit_for(limits)}
     state: dict = dict(initial_state(question, _now()))
     emitted = 0
@@ -281,4 +297,4 @@ def run_agent(question: str, driver, embedder, *, planner: Callable[..., Planner
         tracer.event("fallback", reason=reason)
         state = {**state, "fallback_reason": state.get("fallback_reason") or reason, "stop_reason": "fallback",
                  "elapsed_s": round(_now() - state["t0"], 3)}
-    return _result(state, ledger)
+    return _result(state, ledger, deps.timings)
